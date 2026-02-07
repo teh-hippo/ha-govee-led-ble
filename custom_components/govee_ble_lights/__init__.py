@@ -30,10 +30,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    coordinator: GoveeBLECoordinator = hass.data[DOMAIN][entry.entry_id]
-    await coordinator.disconnect()
-
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator: GoveeBLECoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        await coordinator.disconnect()
     return unload_ok

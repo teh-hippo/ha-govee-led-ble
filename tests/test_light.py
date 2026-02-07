@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bleak import BleakError
 
 from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
 from custom_components.govee_ble_lights.light import GoveeBLELight
@@ -113,4 +114,35 @@ async def test_turn_on_with_effect(light, mock_coordinator):
 def test_brightness_conversion(light, mock_coordinator):
     """Test brightness converts from pct to 0-255."""
     mock_coordinator.brightness_pct = 50
-    assert light.brightness == 127
+    assert light.brightness == 128
+
+
+@pytest.mark.asyncio
+async def test_turn_on_rollback_on_failure(light, mock_coordinator):
+    """Test that state is rolled back when a command fails."""
+    mock_coordinator.is_on = False
+    mock_coordinator.brightness_pct = 100
+    mock_coordinator.rgb_color = (255, 255, 255)
+    mock_coordinator.effect = None
+
+    # Fail on the second call (brightness) after power succeeds
+    mock_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("connection lost")])
+
+    with pytest.raises(BleakError):
+        await light.async_turn_on(brightness=128)
+
+    # State should be rolled back
+    assert mock_coordinator.is_on is False
+    assert mock_coordinator.brightness_pct == 100
+
+
+@pytest.mark.asyncio
+async def test_turn_off_rollback_on_failure(light, mock_coordinator):
+    """Test that state is rolled back when turn_off fails."""
+    mock_coordinator.is_on = True
+    mock_coordinator.send_command = AsyncMock(side_effect=BleakError("timeout"))
+
+    with pytest.raises(BleakError):
+        await light.async_turn_off()
+
+    assert mock_coordinator.is_on is True

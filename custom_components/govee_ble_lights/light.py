@@ -84,7 +84,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
     @property
     def brightness(self) -> int | None:
         """Return the brightness (0-255)."""
-        return int(self.coordinator.brightness_pct * 255 / 100)
+        return round(self.coordinator.brightness_pct * 255 / 100)
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
@@ -112,41 +112,64 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on."""
-        await self.coordinator.send_command(build_power(True))
-        self.coordinator.is_on = True
-        self.coordinator.effect = None
+        # Snapshot state for rollback on failure
+        prev_on = self.coordinator.is_on
+        prev_brightness = self.coordinator.brightness_pct
+        prev_rgb = self.coordinator.rgb_color
+        prev_temp = self.coordinator.color_temp_kelvin
+        prev_effect = self.coordinator.effect
+        prev_mode = self._attr_color_mode
 
-        if ATTR_BRIGHTNESS in kwargs:
-            brightness_255 = kwargs[ATTR_BRIGHTNESS]
-            brightness_pct = max(1, min(100, int(brightness_255 * 100 / 255)))
-            await self.coordinator.send_command(build_brightness(brightness_pct))
-            self.coordinator.brightness_pct = brightness_pct
-
-        if ATTR_RGB_COLOR in kwargs:
-            r, g, b = kwargs[ATTR_RGB_COLOR]
-            await self.coordinator.send_command(build_color_rgb(r, g, b))
-            self.coordinator.rgb_color = (r, g, b)
-            self._attr_color_mode = ColorMode.RGB
-            self.coordinator.color_temp_kelvin = None
+        try:
+            await self.coordinator.send_command(build_power(True))
+            self.coordinator.is_on = True
             self.coordinator.effect = None
 
-        if ATTR_COLOR_TEMP_KELVIN in kwargs:
-            kelvin = kwargs[ATTR_COLOR_TEMP_KELVIN]
-            await self.coordinator.send_command(build_color_temp(kelvin))
-            self.coordinator.color_temp_kelvin = kelvin
-            self._attr_color_mode = ColorMode.COLOR_TEMP
-            self.coordinator.effect = None
+            if ATTR_BRIGHTNESS in kwargs:
+                brightness_255 = kwargs[ATTR_BRIGHTNESS]
+                brightness_pct = max(1, min(100, round(brightness_255 * 100 / 255)))
+                await self.coordinator.send_command(build_brightness(brightness_pct))
+                self.coordinator.brightness_pct = brightness_pct
 
-        if ATTR_EFFECT in kwargs:
-            effect_name = kwargs[ATTR_EFFECT]
-            if effect_name in SCENE_IDS:
-                await self.coordinator.send_command(build_scene(SCENE_IDS[effect_name]))
-                self.coordinator.effect = effect_name
+            if ATTR_RGB_COLOR in kwargs:
+                r, g, b = kwargs[ATTR_RGB_COLOR]
+                await self.coordinator.send_command(build_color_rgb(r, g, b))
+                self.coordinator.rgb_color = (r, g, b)
+                self._attr_color_mode = ColorMode.RGB
+                self.coordinator.color_temp_kelvin = None
+                self.coordinator.effect = None
+
+            if ATTR_COLOR_TEMP_KELVIN in kwargs:
+                kelvin = kwargs[ATTR_COLOR_TEMP_KELVIN]
+                await self.coordinator.send_command(build_color_temp(kelvin))
+                self.coordinator.color_temp_kelvin = kelvin
+                self._attr_color_mode = ColorMode.COLOR_TEMP
+                self.coordinator.effect = None
+
+            if ATTR_EFFECT in kwargs:
+                effect_name = kwargs[ATTR_EFFECT]
+                if effect_name in SCENE_IDS:
+                    await self.coordinator.send_command(build_scene(SCENE_IDS[effect_name]))
+                    self.coordinator.effect = effect_name
+        except Exception:
+            # Rollback optimistic state on any command failure
+            self.coordinator.is_on = prev_on
+            self.coordinator.brightness_pct = prev_brightness
+            self.coordinator.rgb_color = prev_rgb
+            self.coordinator.color_temp_kelvin = prev_temp
+            self.coordinator.effect = prev_effect
+            self._attr_color_mode = prev_mode
+            raise
 
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
-        await self.coordinator.send_command(build_power(False))
-        self.coordinator.is_on = False
+        prev_on = self.coordinator.is_on
+        try:
+            await self.coordinator.send_command(build_power(False))
+            self.coordinator.is_on = False
+        except Exception:
+            self.coordinator.is_on = prev_on
+            raise
         self.async_write_ha_state()
