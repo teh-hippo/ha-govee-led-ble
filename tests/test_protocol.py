@@ -19,6 +19,7 @@ from protocol import (
     build_packet,
     build_power,
     build_scene,
+    build_scene_multi,
     build_segment_color,
     build_state_query,
     kelvin_to_rgb,
@@ -195,6 +196,30 @@ class TestScene(unittest.TestCase):
         expected = bytes.fromhex("3305041600000000000000000000000000000024")
         self.assertEqual(build_scene(0x16), expected)
 
+    def test_scene_twinkle(self):
+        """Twinkle (was 'blinking' — renamed per Govee API)."""
+        expected = bytes.fromhex("330504080000000000000000000000000000003a")
+        self.assertEqual(build_scene(0x08), expected)
+
+    def test_scene_breathe(self):
+        """Breathe — newly added simple scene from Govee API."""
+        expected = bytes.fromhex("3305040a00000000000000000000000000000038")
+        self.assertEqual(build_scene(0x0A), expected)
+
+    def test_scene_energetic_simple(self):
+        """Energetic — newly added simple scene from Govee API."""
+        expected = bytes.fromhex("3305041000000000000000000000000000000022")
+        self.assertEqual(build_scene(0x10), expected)
+
+    def test_scene_ids_match_govee_api(self):
+        """Verify our SCENE_IDS match the Govee API for H617A."""
+        expected_scenes = {
+            "sunrise": 0x00, "sunset": 0x01, "movie": 0x04,
+            "romantic": 0x07, "twinkle": 0x08, "candlelight": 0x09,
+            "breathe": 0x0A, "energetic": 0x10, "rainbow": 0x16,
+        }
+        self.assertEqual(SCENE_IDS, expected_scenes)
+
     def test_all_scenes_valid(self):
         for name, sid in SCENE_IDS.items():
             packet = build_scene(sid)
@@ -204,6 +229,92 @@ class TestScene(unittest.TestCase):
                 packet[19],
                 f"Scene {name} bad checksum",
             )
+
+    def test_scene_multi_byte_code(self):
+        """Complex scene codes (>255) use little-endian byte order."""
+        # e.g., code 2163 (Forest) → 0x0873 → bytes [0x73, 0x08]
+        packet = build_scene(2163)
+        self.assertEqual(packet[2], 0x04)  # scene sub-command
+        self.assertEqual(packet[3], 0x73)  # low byte
+        self.assertEqual(packet[4], 0x08)  # high byte
+        self.assertEqual(len(packet), 20)
+        self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+
+class TestSceneMulti(unittest.TestCase):
+    def test_empty_param_returns_single_packet(self):
+        """Empty scenceParam means only the standard command."""
+        packets = build_scene_multi("", 22)
+        self.assertEqual(len(packets), 1)
+        # Should be the standard scene command for code 22 (rainbow)
+        self.assertEqual(packets[0], build_scene(22))
+
+    def test_multi_packet_structure(self):
+        """Multi-packet scene with real scenceParam data."""
+        # Small base64 payload to test packet splitting
+        import base64
+        # 20 bytes of data → after prefix_add (1 byte) = 21 bytes
+        # + 2 bytes (0x01, num_lines) = 23 bytes total
+        # 23 / 17 = 2 packets (ceil)
+        raw = bytes(20)
+        param_b64 = base64.b64encode(raw).decode()
+        packets = build_scene_multi(param_b64, 100)
+
+        # Should have a3 packets + 1 standard command at the end
+        self.assertGreater(len(packets), 1)
+
+        # All packets are 20 bytes
+        for pkt in packets:
+            self.assertEqual(len(pkt), 20)
+
+        # First packet starts with a3 00
+        self.assertEqual(packets[0][0], 0xA3)
+        self.assertEqual(packets[0][1], 0x00)
+
+        # Last a3 packet has index 0xFF
+        self.assertEqual(packets[-2][0], 0xA3)
+        self.assertEqual(packets[-2][1], 0xFF)
+
+        # Final packet is the standard command
+        self.assertEqual(packets[-1][0], 0x33)
+        self.assertEqual(packets[-1][1], 0x05)
+        self.assertEqual(packets[-1][2], 0x04)
+
+        # All packets have valid checksums
+        for pkt in packets:
+            self.assertEqual(xor_checksum(pkt[:19]), pkt[19])
+
+    def test_multi_packet_real_scene(self):
+        """Test with real Forest scene data from Govee API for H617A."""
+        forest_param = (
+            "AyYAAQAKAgH/GQG0CgoCyBQF//8AAP//////AP//lP8AFAGWAAAAACMAAg8F"
+            "AgH/FAH7AAAB+goEBP8AtP8AR///4/8AAAAAAAAAABoAAAABAgH/BQHIFBQC"
+            "7hQBAP8AAAAAAAAAAA=="
+        )
+        forest_code = 2163
+
+        packets = build_scene_multi(forest_param, forest_code)
+
+        # Should produce multiple a3 packets + 1 standard command
+        self.assertGreater(len(packets), 2)
+
+        for pkt in packets:
+            self.assertEqual(len(pkt), 20)
+            self.assertEqual(xor_checksum(pkt[:19]), pkt[19])
+
+        # First a3 packet: prefix=a3, index=00, then 0x01, num_lines, prefix_add(02), data...
+        self.assertEqual(packets[0][0], 0xA3)
+        self.assertEqual(packets[0][1], 0x00)
+        self.assertEqual(packets[0][2], 0x01)  # multi-packet marker
+
+        # Standard command at the end: 33 05 04 [code_lo] [code_hi]
+        std = packets[-1]
+        self.assertEqual(std[0], 0x33)
+        self.assertEqual(std[1], 0x05)
+        self.assertEqual(std[2], 0x04)
+        # 2163 = 0x0873 → little-endian: 0x73, 0x08
+        self.assertEqual(std[3], 0x73)
+        self.assertEqual(std[4], 0x08)
 
 
 class TestMusicMode(unittest.TestCase):

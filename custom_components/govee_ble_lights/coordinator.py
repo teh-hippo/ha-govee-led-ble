@@ -100,6 +100,11 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self.address,
                     )
 
+    async def send_commands(self, packets: list[bytes]) -> None:
+        """Send multiple BLE packets in sequence (for multi-packet scenes)."""
+        for packet in packets:
+            await self.send_command(packet)
+
     async def disconnect(self) -> None:
         """Disconnect from the BLE device."""
         if self._disconnect_timer:

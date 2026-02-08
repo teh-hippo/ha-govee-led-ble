@@ -4,6 +4,7 @@ Packet format: 20 bytes, XOR checksum at byte 19.
 Commands use Write Without Response (response=False in bleak).
 """
 
+import base64
 import math
 
 # BLE UUIDs
@@ -11,18 +12,28 @@ SERVICE_UUID = "00010203-0405-0607-0809-0a0b0c0d1910"
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 
-# Known scene IDs (captured from Govee app BLE traffic)
+# Simple scene IDs — single-packet scenes from Govee API for H617A.
+# These use sceneType=0 with empty scenceParam (no multi-packet needed).
 SCENE_IDS: dict[str, int] = {
     "sunrise": 0x00,
     "sunset": 0x01,
     "movie": 0x04,
-    "dating": 0x05,
     "romantic": 0x07,
-    "blinking": 0x08,
+    "twinkle": 0x08,
     "candlelight": 0x09,
-    "snowflake": 0x0F,
+    "breathe": 0x0A,
+    "energetic": 0x10,
     "rainbow": 0x16,
 }
+
+# Multi-packet scene prefix byte (0xA3 for H617A)
+MULTI_PACKET_PREFIX = 0xA3
+
+# H617A model-specific parameters (from AlgoClaw/Govee analysis).
+# scenceParam data is prefixed with this before splitting into packets.
+H617A_HEX_PREFIX_ADD = bytes([0x02])
+# No prefix to remove from scenceParam for H617A (empty string in API data).
+H617A_HEX_PREFIX_REMOVE = b""
 
 # Music mode v2 IDs (command: 0x33 0x05 0x13 [id] 0x63)
 MUSIC_MODE_IDS: dict[str, int] = {
@@ -141,11 +152,78 @@ def build_color_temp(kelvin: int) -> bytes:
 
 
 def build_scene(scene_id: int) -> bytes:
-    """Build scene selection command.
+    """Build scene selection command (standard/modeCmd).
 
-    Format: 33 05 04 [scene_id] 00...00 [xor]
+    Format: 33 05 04 [code_byte(s)] 00...00 [xor]
+    For simple scenes, scene_id fits in one byte.
+    For complex scenes, scene_id is little-endian multi-byte.
     """
-    return build_packet(0x33, 0x05, [0x04, scene_id])
+    code_bytes = []
+    code = scene_id
+    if code == 0:
+        code_bytes = [0x00]
+    else:
+        while code > 0:
+            code_bytes.append(code & 0xFF)
+            code >>= 8
+    return build_packet(0x33, 0x05, [0x04] + code_bytes)
+
+
+def build_scene_multi(scene_param_b64: str, scene_code: int) -> list[bytes]:
+    """Build multi-packet scene command sequence.
+
+    Implements the AlgoClaw/Govee v1.2 multi-packet protocol for complex
+    scenes that include scenceParam data from the Govee API.
+
+    Args:
+        scene_param_b64: Base64-encoded scenceParam from Govee API.
+        scene_code: Scene code (decimal) from Govee API lightEffects.sceneCode.
+
+    Returns:
+        List of 20-byte packets to send in order.
+    """
+    if not scene_param_b64:
+        # Empty scenceParam — only the standard command is needed
+        return [build_scene(scene_code)]
+
+    param_hex = base64.b64decode(scene_param_b64)
+
+    # Apply model-specific prefix transforms
+    data = param_hex
+    if H617A_HEX_PREFIX_REMOVE and data.startswith(H617A_HEX_PREFIX_REMOVE):
+        data = data[len(H617A_HEX_PREFIX_REMOVE) :]
+    data = H617A_HEX_PREFIX_ADD + data
+
+    # Prepend 0x01 and num_lines
+    # Each a3 packet carries 17 bytes of payload (20 - prefix(1) - index(1) - checksum(1))
+    total_len = len(data) + 2  # +2 for the 0x01 and num_lines bytes
+    num_lines = math.ceil(total_len / 17)
+    payload = bytes([0x01, num_lines]) + data
+
+    # Split payload into 17-byte chunks
+    chunks = []
+    for i in range(0, len(payload), 17):
+        chunks.append(payload[i : i + 17])
+
+    # Build a3 packets with line indices
+    packets: list[bytes] = []
+    for i, chunk in enumerate(chunks):
+        if i == len(chunks) - 1:
+            line_idx = 0xFF
+        else:
+            line_idx = i
+        pkt = bytearray([MULTI_PACKET_PREFIX, line_idx])
+        pkt.extend(chunk)
+        # Pad to 19 bytes and add checksum
+        while len(pkt) < 19:
+            pkt.append(0x00)
+        pkt = pkt[:19]
+        pkt.append(xor_checksum(pkt))
+        packets.append(bytes(pkt))
+
+    # Append the standard command
+    packets.append(build_scene(scene_code))
+    return packets
 
 
 def build_music_mode(mode_id: int, sensitivity: int = 0x63) -> bytes:
