@@ -214,9 +214,15 @@ class TestScene(unittest.TestCase):
     def test_scene_ids_match_govee_api(self):
         """Verify our SCENE_IDS match the Govee API for H617A."""
         expected_scenes = {
-            "sunrise": 0x00, "sunset": 0x01, "movie": 0x04,
-            "romantic": 0x07, "twinkle": 0x08, "candlelight": 0x09,
-            "breathe": 0x0A, "energetic": 0x10, "rainbow": 0x16,
+            "sunrise": 0x00,
+            "sunset": 0x01,
+            "movie": 0x04,
+            "romantic": 0x07,
+            "twinkle": 0x08,
+            "candlelight": 0x09,
+            "breathe": 0x0A,
+            "energetic": 0x10,
+            "rainbow": 0x16,
         }
         self.assertEqual(SCENE_IDS, expected_scenes)
 
@@ -253,6 +259,7 @@ class TestSceneMulti(unittest.TestCase):
         """Multi-packet scene with real scenceParam data."""
         # Small base64 payload to test packet splitting
         import base64
+
         # 20 bytes of data → after prefix_add (1 byte) = 21 bytes
         # + 2 bytes (0x01, num_lines) = 23 bytes total
         # 23 / 17 = 2 packets (ceil)
