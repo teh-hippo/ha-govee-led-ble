@@ -23,13 +23,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import GoveeBLECoordinator
 from .protocol import (
-    SCENE_IDS,
     build_brightness,
     build_color_rgb,
     build_color_temp,
     build_power,
     build_scene,
+    build_scene_multi,
 )
+from .scenes import SCENES, get_scene_names
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
     @property
     def effect_list(self) -> list[str]:
         """Return the list of supported effects."""
-        return list(SCENE_IDS.keys())
+        return get_scene_names()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on."""
@@ -148,8 +149,13 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
 
             if ATTR_EFFECT in kwargs:
                 effect_name = kwargs[ATTR_EFFECT]
-                if effect_name in SCENE_IDS:
-                    await self.coordinator.send_command(build_scene(SCENE_IDS[effect_name]))
+                scene = SCENES.get(effect_name)
+                if scene is not None:
+                    if scene.is_simple:
+                        await self.coordinator.send_command(build_scene(scene.code))
+                    else:
+                        packets = build_scene_multi(scene.param, scene.code)
+                        await self.coordinator.send_commands(packets)
                     self.coordinator.effect = effect_name
         except Exception:
             # Rollback optimistic state on any command failure

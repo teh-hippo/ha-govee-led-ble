@@ -10,12 +10,12 @@ from bleak import BleakError
 from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
 from custom_components.govee_ble_lights.light import GoveeBLELight
 from custom_components.govee_ble_lights.protocol import (
-    SCENE_IDS,
     build_brightness,
     build_color_rgb,
     build_power,
     build_scene,
 )
+from custom_components.govee_ble_lights.scenes import SCENES
 
 
 @pytest.fixture
@@ -55,8 +55,10 @@ def test_unique_id(light):
 
 
 def test_effect_list(light):
-    """Test effect list matches scene IDs."""
-    assert light.effect_list == list(SCENE_IDS.keys())
+    """Test effect list contains all scenes sorted."""
+    effects = light.effect_list
+    assert len(effects) == len(SCENES)
+    assert effects == sorted(SCENES.keys())
 
 
 def test_is_off_initially(light):
@@ -103,12 +105,27 @@ async def test_turn_on_with_rgb(light, mock_coordinator):
 
 @pytest.mark.asyncio
 async def test_turn_on_with_effect(light, mock_coordinator):
-    """Test turning on with an effect."""
+    """Test turning on with a simple effect."""
     await light.async_turn_on(effect="rainbow")
     calls = mock_coordinator.send_command.call_args_list
     assert len(calls) == 2
-    assert calls[1].args[0] == build_scene(SCENE_IDS["rainbow"])
+    assert calls[1].args[0] == build_scene(SCENES["rainbow"].code)
     assert mock_coordinator.effect == "rainbow"
+
+
+@pytest.mark.asyncio
+async def test_turn_on_with_complex_effect(light, mock_coordinator):
+    """Test turning on with a complex multi-packet effect."""
+    mock_coordinator.send_commands = AsyncMock()
+    await light.async_turn_on(effect="forest")
+    # Power on via send_command, then scene via send_commands
+    mock_coordinator.send_command.assert_called_once_with(build_power(True))
+    mock_coordinator.send_commands.assert_called_once()
+    packets = mock_coordinator.send_commands.call_args.args[0]
+    assert len(packets) > 1  # multi-packet
+    assert packets[0][0] == 0xA3  # first is a3 packet
+    assert packets[-1][0] == 0x33  # last is standard command
+    assert mock_coordinator.effect == "forest"
 
 
 def test_brightness_conversion(light, mock_coordinator):
