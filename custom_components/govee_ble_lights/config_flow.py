@@ -33,15 +33,10 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    def __init__(self) -> None:
-        """Initialize the config flow."""
-        self._discovery_info: BluetoothServiceInfo | None = None
-
     async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfo) -> FlowResult:
         """Handle the bluetooth discovery step."""
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
-        self._discovery_info = discovery_info
 
         model = _extract_model(discovery_info.name) or "H617A"
         self.context["title_placeholders"] = {"name": discovery_info.name}

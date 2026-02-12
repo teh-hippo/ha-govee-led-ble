@@ -40,24 +40,7 @@ class ColorMode(IntEnum):
     VIDEO = 0x00
     MUSIC = 0x13
     STATIC = 0x15
-    SIMPLE = 0x02
-    SCENE = 0x04
-    SEGMENT = 0x0B
 
-
-# Simple scene IDs — single-packet scenes from Govee API.
-# These use sceneType=0 with empty scenceParam (no multi-packet needed).
-SCENE_IDS: dict[str, int] = {
-    "sunrise": 0x00,
-    "sunset": 0x01,
-    "movie": 0x04,
-    "romantic": 0x07,
-    "twinkle": 0x08,
-    "candlelight": 0x09,
-    "breathe": 0x0A,
-    "energetic": 0x10,
-    "rainbow": 0x16,
-}
 
 # Multi-packet scene prefix byte (0xA3)
 MULTI_PACKET_PREFIX = 0xA3
@@ -67,15 +50,6 @@ MULTI_PACKET_PREFIX = 0xA3
 SCENE_HEX_PREFIX_ADD = bytes([0x02])
 # No prefix to remove from scenceParam (empty string in API data).
 SCENE_HEX_PREFIX_REMOVE = b""
-
-# Music mode v2 IDs (command: 0x33 0x05 0x13 [id] 0x63)
-MUSIC_MODE_IDS: dict[str, int] = {
-    "rhythm": 0x03,
-    "spectrum": 0x04,
-    "energetic": 0x05,
-    "rolling": 0x06,
-    "separation": 0x32,
-}
 
 
 def xor_checksum(data: bytes) -> int:
@@ -127,17 +101,6 @@ def build_color_rgb(r: int, g: int, b: int) -> bytes:
     b = max(0, min(255, b))
     params = [0x15, 0x01, r, g, b, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x7F]
     return build_packet(0x33, 0x05, params)
-
-
-def build_color_rgb_simple(r: int, g: int, b: int) -> bytes:
-    """Build color command using simple mode (0x02).
-
-    This mode may NOT work on segmented devices (which require 0x15).
-    """
-    r = max(0, min(255, r))
-    g = max(0, min(255, g))
-    b = max(0, min(255, b))
-    return build_packet(0x33, 0x05, [0x02, r, g, b])
 
 
 def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
@@ -259,37 +222,6 @@ def build_scene_multi(scene_param_b64: str, scene_code: int) -> list[bytes]:
     return packets
 
 
-def build_music_mode(mode_id: int, sensitivity: int = 0x63) -> bytes:
-    """Build music mode v2 command.
-
-    Format: 33 05 13 [mode_id] [sensitivity] 00...00 [xor]
-    """
-    return build_packet(0x33, 0x05, [0x13, mode_id, sensitivity])
-
-
-def build_segment_color(r: int, g: int, b: int, segments: list[int]) -> bytes:
-    """Build per-segment color command.
-
-    Args:
-        r, g, b: Color values 0-255.
-        segments: List of segment numbers (1-15) to apply color to.
-
-    Segment bitmask: bits 0-7 in low byte (segs 1-8),
-                     bits 0-6 in high byte (segs 9-15).
-    """
-    r = max(0, min(255, r))
-    g = max(0, min(255, g))
-    b = max(0, min(255, b))
-    mask = 0
-    for seg in segments:
-        if 1 <= seg <= 15:
-            mask |= 1 << (seg - 1)
-    seg_lo = mask & 0xFF
-    seg_hi = (mask >> 8) & 0xFF
-    params = [0x15, 0x01, r, g, b, 0x00, 0x00, 0x00, 0x00, 0x00, seg_lo, seg_hi]
-    return build_packet(0x33, 0x05, params)
-
-
 def build_state_query() -> bytes:
     """Build state query packet.
 
@@ -355,14 +287,6 @@ def build_music_mode_with_color(
 # --- State response parsing (for models with notify support) ---
 
 
-def build_status_query_for(domain: int) -> bytes:
-    """Build a status query for a specific domain.
-
-    Format: AA [domain] 00...00 [xor]
-    """
-    return build_packet(PacketHeader.STATUS, domain, [])
-
-
 def parse_power_response(payload: bytes) -> bool:
     """Parse power state from status response payload."""
     return bool(payload[0])
@@ -371,30 +295,3 @@ def parse_power_response(payload: bytes) -> bool:
 def parse_brightness_response(payload: bytes) -> int:
     """Parse brightness percentage from status response payload."""
     return payload[0]
-
-
-def parse_color_mode_response(payload: bytes) -> dict:
-    """Parse color mode from status response payload.
-
-    Returns a dict describing the current mode:
-      {"mode": "video", "full_screen": bool, "game_mode": bool, "saturation": int}
-      {"mode": "music", "music_mode": int}
-      {"mode": "static"}
-      {"mode": "unknown", "raw": int}
-    """
-    mode_byte = payload[0]
-    if mode_byte == ColorMode.VIDEO:
-        return {
-            "mode": "video",
-            "full_screen": bool(payload[1]) if len(payload) > 1 else True,
-            "game_mode": bool(payload[2]) if len(payload) > 2 else False,
-            "saturation": payload[3] if len(payload) > 3 else 100,
-        }
-    if mode_byte == ColorMode.MUSIC:
-        return {
-            "mode": "music",
-            "music_mode": payload[1] if len(payload) > 1 else 0,
-        }
-    if mode_byte == ColorMode.STATIC:
-        return {"mode": "static"}
-    return {"mode": "unknown", "raw": mode_byte}

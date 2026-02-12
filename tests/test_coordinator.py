@@ -43,11 +43,6 @@ def test_profile_loaded(coordinator, h6199_coordinator):
     assert h6199_coordinator.profile.state_readable is True
 
 
-def test_h6199_has_color_mode_info(h6199_coordinator):
-    """Test H6199 coordinator has color_mode_info attribute."""
-    assert h6199_coordinator.color_mode_info is None
-
-
 @pytest.mark.asyncio
 async def test_send_command_retries_on_failure(coordinator):
     """Test that send_command retries up to 3 times."""
@@ -186,22 +181,6 @@ def test_notify_callback_brightness(h6199_coordinator):
     data = bytearray([0xAA, 0x04, 0x4B] + [0x00] * 5)  # 75%
     h6199_coordinator._notify_callback(None, data)
     assert h6199_coordinator.brightness_pct == 75
-
-
-def test_notify_callback_color_mode_video(h6199_coordinator):
-    """Test notify callback parses video mode response."""
-    data = bytearray([0xAA, 0x05, 0x00, 0x01, 0x00, 0x64])
-    h6199_coordinator._notify_callback(None, data)
-    assert h6199_coordinator.color_mode_info is not None
-    assert h6199_coordinator.color_mode_info["mode"] == "video"
-
-
-def test_notify_callback_color_mode_music(h6199_coordinator):
-    """Test notify callback parses music mode response."""
-    data = bytearray([0xAA, 0x05, 0x13, 0x05])
-    h6199_coordinator._notify_callback(None, data)
-    assert h6199_coordinator.color_mode_info["mode"] == "music"
-    assert h6199_coordinator.color_mode_info["music_mode"] == 0x05
 
 
 def test_notify_callback_ignores_short_data(h6199_coordinator):

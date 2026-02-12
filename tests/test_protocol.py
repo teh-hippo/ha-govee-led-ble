@@ -8,30 +8,23 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "custom_components", "govee_ble_lights"))
 
 from protocol import (
-    MUSIC_MODE_IDS,
-    SCENE_IDS,
     ColorMode,
     PacketHeader,
     PacketType,
     build_brightness,
     build_color_rgb,
-    build_color_rgb_simple,
     build_color_temp,
     build_gradient,
     build_keep_alive,
-    build_music_mode,
     build_music_mode_with_color,
     build_packet,
     build_power,
     build_scene,
     build_scene_multi,
-    build_segment_color,
     build_state_query,
-    build_status_query_for,
     build_video_mode,
     kelvin_to_rgb,
     parse_brightness_response,
-    parse_color_mode_response,
     parse_power_response,
     xor_checksum,
 )
@@ -154,21 +147,6 @@ class TestColorRGB(unittest.TestCase):
         self.assertEqual(packet[6], 128)
 
 
-class TestColorRGBSimple(unittest.TestCase):
-    def test_simple_mode_byte(self):
-        packet = build_color_rgb_simple(255, 0, 0)
-        self.assertEqual(packet[2], 0x02)
-
-    def test_simple_rgb_values(self):
-        packet = build_color_rgb_simple(0xAA, 0xBB, 0xCC)
-        self.assertEqual(packet[3], 0xAA)
-        self.assertEqual(packet[4], 0xBB)
-        self.assertEqual(packet[5], 0xCC)
-
-    def test_simple_length(self):
-        self.assertEqual(len(build_color_rgb_simple(128, 128, 128)), 20)
-
-
 class TestColorTemp(unittest.TestCase):
     def test_packet_length(self):
         self.assertEqual(len(build_color_temp(4000)), 20)
@@ -220,31 +198,6 @@ class TestScene(unittest.TestCase):
         """Energetic — newly added simple scene from Govee API."""
         expected = bytes.fromhex("3305041000000000000000000000000000000022")
         self.assertEqual(build_scene(0x10), expected)
-
-    def test_scene_ids_match_govee_api(self):
-        """Verify our SCENE_IDS match the Govee API for H617A."""
-        expected_scenes = {
-            "sunrise": 0x00,
-            "sunset": 0x01,
-            "movie": 0x04,
-            "romantic": 0x07,
-            "twinkle": 0x08,
-            "candlelight": 0x09,
-            "breathe": 0x0A,
-            "energetic": 0x10,
-            "rainbow": 0x16,
-        }
-        self.assertEqual(SCENE_IDS, expected_scenes)
-
-    def test_all_scenes_valid(self):
-        for name, sid in SCENE_IDS.items():
-            packet = build_scene(sid)
-            self.assertEqual(len(packet), 20, f"Scene {name} wrong length")
-            self.assertEqual(
-                xor_checksum(packet[:19]),
-                packet[19],
-                f"Scene {name} bad checksum",
-            )
 
     def test_scene_multi_byte_code(self):
         """Complex scene codes (>255) use little-endian byte order."""
@@ -334,83 +287,6 @@ class TestSceneMulti(unittest.TestCase):
         self.assertEqual(std[4], 0x08)
 
 
-class TestMusicMode(unittest.TestCase):
-    def test_music_energetic(self):
-        expected = bytes.fromhex("3305130563000000000000000000000000000043")
-        self.assertEqual(build_music_mode(0x05, 0x63), expected)
-
-    def test_music_spectrum(self):
-        expected = bytes.fromhex("3305130463000000000000000000000000000042")
-        self.assertEqual(build_music_mode(0x04, 0x63), expected)
-
-    def test_music_rhythm(self):
-        expected = bytes.fromhex("3305130363000000000000000000000000000045")
-        self.assertEqual(build_music_mode(0x03, 0x63), expected)
-
-    def test_music_rolling(self):
-        packet = build_music_mode(0x06, 0x63)
-        self.assertEqual(packet[:5], bytes([0x33, 0x05, 0x13, 0x06, 0x63]))
-
-    def test_music_separation(self):
-        expected = bytes.fromhex("3305133263000000000000000000000000000074")
-        self.assertEqual(build_music_mode(0x32, 0x63), expected)
-
-    def test_all_music_modes_valid(self):
-        for name, mid in MUSIC_MODE_IDS.items():
-            packet = build_music_mode(mid)
-            self.assertEqual(len(packet), 20, f"Music {name} wrong length")
-            self.assertEqual(
-                xor_checksum(packet[:19]),
-                packet[19],
-                f"Music {name} bad checksum",
-            )
-
-
-class TestSegmentColor(unittest.TestCase):
-    def test_all_segments(self):
-        packet = build_segment_color(255, 0, 0, list(range(1, 16)))
-        self.assertEqual(packet[12], 0xFF)  # low byte: segs 1-8
-        self.assertEqual(packet[13], 0x7F)  # high byte: segs 9-15
-
-    def test_single_segment_1(self):
-        packet = build_segment_color(255, 0, 0, [1])
-        self.assertEqual(packet[12], 0x01)
-        self.assertEqual(packet[13], 0x00)
-
-    def test_single_segment_8(self):
-        packet = build_segment_color(255, 0, 0, [8])
-        self.assertEqual(packet[12], 0x80)
-        self.assertEqual(packet[13], 0x00)
-
-    def test_single_segment_9(self):
-        packet = build_segment_color(255, 0, 0, [9])
-        self.assertEqual(packet[12], 0x00)
-        self.assertEqual(packet[13], 0x01)
-
-    def test_single_segment_15(self):
-        packet = build_segment_color(255, 0, 0, [15])
-        self.assertEqual(packet[12], 0x00)
-        self.assertEqual(packet[13], 0x40)
-
-    def test_segment_combination(self):
-        packet = build_segment_color(255, 0, 0, [1, 9])
-        self.assertEqual(packet[12], 0x01)
-        self.assertEqual(packet[13], 0x01)
-
-    def test_empty_segments(self):
-        packet = build_segment_color(255, 0, 0, [])
-        self.assertEqual(packet[12], 0x00)
-        self.assertEqual(packet[13], 0x00)
-
-    def test_segment_length(self):
-        self.assertEqual(len(build_segment_color(255, 0, 0, [1, 5, 10])), 20)
-
-    def test_segment_ignores_invalid(self):
-        packet = build_segment_color(255, 0, 0, [0, 16, 20])
-        self.assertEqual(packet[12], 0x00)
-        self.assertEqual(packet[13], 0x00)
-
-
 class TestStateQuery(unittest.TestCase):
     def test_state_query(self):
         expected = bytes.fromhex("AA010000000000000000000000000000000000AB")
@@ -470,20 +346,11 @@ class TestAllPacketsLength(unittest.TestCase):
     def test_color_rgb(self):
         self.assertEqual(len(build_color_rgb(128, 128, 128)), 20)
 
-    def test_color_simple(self):
-        self.assertEqual(len(build_color_rgb_simple(128, 128, 128)), 20)
-
     def test_color_temp(self):
         self.assertEqual(len(build_color_temp(4000)), 20)
 
     def test_scene(self):
         self.assertEqual(len(build_scene(0x00)), 20)
-
-    def test_music_mode(self):
-        self.assertEqual(len(build_music_mode(0x03)), 20)
-
-    def test_segment_color(self):
-        self.assertEqual(len(build_segment_color(255, 0, 0, [1, 2, 3])), 20)
 
     def test_state_query(self):
         self.assertEqual(len(build_state_query()), 20)
@@ -573,24 +440,6 @@ class TestMusicModeWithColor(unittest.TestCase):
             self.assertEqual(xor_checksum(packet[:19]), packet[19])
 
 
-class TestStatusQuery(unittest.TestCase):
-    def test_power_query(self):
-        packet = build_status_query_for(PacketType.POWER)
-        self.assertEqual(packet[0], 0xAA)
-        self.assertEqual(packet[1], 0x01)
-        self.assertEqual(len(packet), 20)
-
-    def test_brightness_query(self):
-        packet = build_status_query_for(PacketType.BRIGHTNESS)
-        self.assertEqual(packet[0], 0xAA)
-        self.assertEqual(packet[1], 0x04)
-
-    def test_color_query(self):
-        packet = build_status_query_for(PacketType.COLOR)
-        self.assertEqual(packet[0], 0xAA)
-        self.assertEqual(packet[1], 0x05)
-
-
 class TestResponseParsers(unittest.TestCase):
     def test_parse_power_on(self):
         self.assertTrue(parse_power_response(bytes([0x01, 0x00])))
@@ -600,38 +449,6 @@ class TestResponseParsers(unittest.TestCase):
 
     def test_parse_brightness(self):
         self.assertEqual(parse_brightness_response(bytes([75, 0x00])), 75)
-
-    def test_parse_color_mode_video(self):
-        result = parse_color_mode_response(bytes([0x00, 0x01, 0x00, 0x64]))
-        self.assertEqual(result["mode"], "video")
-        self.assertTrue(result["full_screen"])
-        self.assertFalse(result["game_mode"])
-        self.assertEqual(result["saturation"], 100)
-
-    def test_parse_color_mode_video_game(self):
-        result = parse_color_mode_response(bytes([0x00, 0x00, 0x01, 50]))
-        self.assertEqual(result["mode"], "video")
-        self.assertTrue(result["game_mode"])
-        self.assertEqual(result["saturation"], 50)
-
-    def test_parse_color_mode_music(self):
-        result = parse_color_mode_response(bytes([0x13, 0x05]))
-        self.assertEqual(result["mode"], "music")
-        self.assertEqual(result["music_mode"], 0x05)
-
-    def test_parse_color_mode_static(self):
-        result = parse_color_mode_response(bytes([0x15]))
-        self.assertEqual(result["mode"], "static")
-
-    def test_parse_color_mode_unknown(self):
-        result = parse_color_mode_response(bytes([0xFF]))
-        self.assertEqual(result["mode"], "unknown")
-        self.assertEqual(result["raw"], 0xFF)
-
-    def test_parse_color_mode_video_short_payload(self):
-        result = parse_color_mode_response(bytes([0x00]))
-        self.assertEqual(result["mode"], "video")
-        self.assertTrue(result["full_screen"])
 
 
 class TestEnums(unittest.TestCase):

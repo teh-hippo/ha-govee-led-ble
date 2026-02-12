@@ -18,7 +18,6 @@ from .protocol import (
     WRITE_UUID,
     build_keep_alive,
     parse_brightness_response,
-    parse_color_mode_response,
     parse_power_response,
 )
 
@@ -56,7 +55,6 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
         self.effect: str | None = None
-        self.color_mode_info: dict[str, Any] | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Return current state dict."""
@@ -119,8 +117,6 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.is_on = parse_power_response(payload)
             elif domain == 0x04:
                 self.brightness_pct = parse_brightness_response(payload)
-            elif domain == 0x05:
-                self.color_mode_info = parse_color_mode_response(payload)
             self.async_set_updated_data(self.data or {})
         except (IndexError, ValueError):
             _LOGGER.debug("Failed to parse notify data from %s: %s", self.address, data.hex())
