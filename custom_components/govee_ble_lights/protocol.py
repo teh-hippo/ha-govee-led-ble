@@ -17,14 +17,17 @@ READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 
 # --- Packet types ---
 
+
 class PacketHeader(IntEnum):
     """First byte of every packet."""
+
     COMMAND = 0x33
     STATUS = 0xAA
 
 
 class PacketType(IntEnum):
     """Second byte — identifies the command domain."""
+
     POWER = 0x01
     BRIGHTNESS = 0x04
     COLOR = 0x05
@@ -33,12 +36,14 @@ class PacketType(IntEnum):
 
 class ColorMode(IntEnum):
     """Third byte of color packets (0x33 0x05 [mode])."""
+
     VIDEO = 0x00
     MUSIC = 0x13
     STATIC = 0x15
     SIMPLE = 0x02
     SCENE = 0x04
     SEGMENT = 0x0B
+
 
 # Simple scene IDs — single-packet scenes from Govee API.
 # These use sceneType=0 with empty scenceParam (no multi-packet needed).

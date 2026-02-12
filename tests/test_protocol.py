@@ -505,7 +505,7 @@ class TestVideoMode(unittest.TestCase):
         self.assertEqual(packet[2], 0x00)  # VIDEO mode
         self.assertEqual(packet[3], 0x01)  # full_screen=True
         self.assertEqual(packet[4], 0x00)  # game_mode=False
-        self.assertEqual(packet[5], 100)   # saturation=100
+        self.assertEqual(packet[5], 100)  # saturation=100
 
     def test_video_mode_game(self):
         packet = build_video_mode(full_screen=False, game_mode=True, saturation=75)
@@ -552,8 +552,8 @@ class TestMusicModeWithColor(unittest.TestCase):
         self.assertEqual(packet[1], 0x05)
         self.assertEqual(packet[2], 0x13)
         self.assertEqual(packet[3], 0x05)  # energic
-        self.assertEqual(packet[4], 80)     # sensitivity
-        self.assertEqual(packet[5], 0x00)   # no color flag
+        self.assertEqual(packet[4], 80)  # sensitivity
+        self.assertEqual(packet[5], 0x00)  # no color flag
 
     def test_with_color(self):
         packet = build_music_mode_with_color(0x04, sensitivity=100, color=(255, 0, 128))

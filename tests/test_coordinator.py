@@ -226,6 +226,7 @@ async def test_start_notify_called_for_state_readable(h6199_coordinator):
     mock_client.is_connected = True
     mock_client.start_notify = AsyncMock()
     mock_client.write_gatt_char = AsyncMock()
+    mock_client.disconnect = AsyncMock()
 
     mock_ble_device = MagicMock()
     with (
@@ -237,6 +238,7 @@ async def test_start_notify_called_for_state_readable(h6199_coordinator):
 
     mock_client.start_notify.assert_called_once()
     assert client is mock_client
+    await h6199_coordinator.disconnect()
 
 
 @pytest.mark.asyncio
@@ -245,6 +247,7 @@ async def test_start_notify_not_called_for_write_only(coordinator):
     mock_client = MagicMock()
     mock_client.is_connected = True
     mock_client.start_notify = AsyncMock()
+    mock_client.disconnect = AsyncMock()
 
     mock_ble_device = MagicMock()
     with (
@@ -255,6 +258,7 @@ async def test_start_notify_not_called_for_write_only(coordinator):
         await coordinator._ensure_connected()
 
     mock_client.start_notify.assert_not_called()
+    await coordinator.disconnect()
 
 
 @pytest.mark.asyncio
