@@ -12,11 +12,20 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .protocol import WRITE_UUID
+from .const import ModelProfile, get_profile
+from .protocol import (
+    READ_UUID,
+    WRITE_UUID,
+    build_keep_alive,
+    parse_brightness_response,
+    parse_color_mode_response,
+    parse_power_response,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 DISCONNECT_DELAY = 120  # seconds before auto-disconnect
+KEEP_ALIVE_INTERVAL = 5  # seconds between keep-alive pings
 
 
 class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -36,18 +45,21 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.address = address
         self.model = model
+        self.profile: ModelProfile = get_profile(model)
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
         self._disconnect_timer: asyncio.TimerHandle | None = None
-        # Optimistic state
+        self._keep_alive_task: asyncio.Task | None = None
+        # Optimistic state (updated by actual state for state_readable models)
         self.is_on: bool = False
         self.brightness_pct: int = 100
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
         self.effect: str | None = None
+        self.color_mode_info: dict[str, Any] | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Return optimistic state (BLE is write-only for most commands)."""
+        """Return current state dict."""
         return {
             "is_on": self.is_on,
             "brightness_pct": self.brightness_pct,
@@ -68,6 +80,10 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._client = await establish_connection(BleakClient, ble_device, self.address)
         self._reset_disconnect_timer()
+
+        if self.profile.state_readable:
+            await self._start_notify()
+
         return self._client
 
     def _reset_disconnect_timer(self) -> None:
@@ -77,6 +93,66 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._disconnect_timer = self.hass.loop.call_later(
             DISCONNECT_DELAY, lambda: self.hass.async_create_task(self.disconnect())
         )
+
+    # --- Notify / state reading (for state_readable models) ---
+
+    async def _start_notify(self) -> None:
+        """Subscribe to BLE notifications for state reading."""
+        if self._client and self._client.is_connected:
+            try:
+                await self._client.start_notify(READ_UUID, self._notify_callback)
+                self._start_keep_alive()
+            except BleakError:
+                _LOGGER.debug("Failed to start notify for %s", self.address)
+
+    def _notify_callback(self, _sender: Any, data: bytearray) -> None:
+        """Handle incoming BLE notifications with state data."""
+        if len(data) < 3:
+            return
+        header = data[0]
+        domain = data[1]
+        payload = bytes(data[2:])
+        if header != 0xAA:
+            return
+        try:
+            if domain == 0x01:
+                self.is_on = parse_power_response(payload)
+            elif domain == 0x04:
+                self.brightness_pct = parse_brightness_response(payload)
+            elif domain == 0x05:
+                self.color_mode_info = parse_color_mode_response(payload)
+            self.async_set_updated_data(self.data or {})
+        except (IndexError, ValueError):
+            _LOGGER.debug("Failed to parse notify data from %s: %s", self.address, data.hex())
+
+    def _start_keep_alive(self) -> None:
+        """Start periodic keep-alive pings."""
+        self._stop_keep_alive()
+        self._keep_alive_task = self.hass.async_create_task(self._keep_alive_loop())
+
+    def _stop_keep_alive(self) -> None:
+        """Stop the keep-alive loop."""
+        if self._keep_alive_task and not self._keep_alive_task.done():
+            self._keep_alive_task.cancel()
+            self._keep_alive_task = None
+
+    async def _keep_alive_loop(self) -> None:
+        """Periodically send keep-alive packets to maintain connection."""
+        try:
+            while True:
+                await asyncio.sleep(KEEP_ALIVE_INTERVAL)
+                if self._client and self._client.is_connected:
+                    try:
+                        await self._client.write_gatt_char(WRITE_UUID, build_keep_alive(), response=False)
+                    except BleakError:
+                        _LOGGER.debug("Keep-alive failed for %s", self.address)
+                        break
+                else:
+                    break
+        except asyncio.CancelledError:
+            pass
+
+    # --- Command sending ---
 
     async def send_command(self, packet: bytes) -> None:
         """Send a BLE command with retry logic."""
@@ -107,6 +183,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def disconnect(self) -> None:
         """Disconnect from the BLE device."""
+        self._stop_keep_alive()
         if self._disconnect_timer:
             self._disconnect_timer.cancel()
             self._disconnect_timer = None

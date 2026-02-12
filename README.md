@@ -6,9 +6,10 @@ A Home Assistant custom integration for controlling Govee LED strips via Bluetoo
 
 ## Supported Devices
 
-| Model | Name |
-|-------|------|
-| H617A | LED Strip |
+| Model | Name | Features |
+|-------|------|----------|
+| H617A | LED Strip | Scenes, RGB, Color Temp |
+| H6199 | DreamView T1 | Video Sync, Music Modes, RGB, Color Temp, State Reading |
 
 ## Features
 
@@ -16,7 +17,10 @@ A Home Assistant custom integration for controlling Govee LED strips via Bluetoo
 - **Brightness** adjustment (0-100%)
 - **RGB Color** — full color control via segmented BLE mode
 - **Color Temperature** — 2000K–9000K (converted to RGB)
-- **Scenes** — sunrise, sunset, movie, dating, romantic, blinking, candlelight, snowflake, rainbow
+- **Scenes** — 80+ cloud scenes for H617A (sunrise, sunset, rainbow, etc.)
+- **Video Sync** — camera-based TV ambient lighting (H6199: movie & game modes)
+- **Music Modes** — sound-reactive lighting (H6199: energic, rhythm, spectrum, rolling)
+- **State Reading** — real-time device state via BLE notify (H6199)
 - **BLE Auto-Discovery** — automatically detects Govee devices nearby
 
 ## Installation (HACS)

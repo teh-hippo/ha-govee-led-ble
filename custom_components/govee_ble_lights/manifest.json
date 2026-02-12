@@ -5,7 +5,11 @@
         {"local_name": "ihoment_H617A*"},
         {"local_name": "Govee_H617A*"},
         {"local_name": "GBK_H617A*"},
-        {"local_name": "GVH_H617A*"}
+        {"local_name": "GVH_H617A*"},
+        {"local_name": "ihoment_H6199*"},
+        {"local_name": "Govee_H6199*"},
+        {"local_name": "GBK_H6199*"},
+        {"local_name": "GVH_H6199*"}
     ],
     "codeowners": ["@teh-hippo"],
     "config_flow": true,

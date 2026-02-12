@@ -6,30 +6,52 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak import BleakError
+from homeassistant.components.light import ColorMode
 
+from custom_components.govee_ble_lights.const import MODEL_PROFILES
 from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
-from custom_components.govee_ble_lights.light import GoveeBLELight
+from custom_components.govee_ble_lights.light import GoveeBLELight, _build_effect_list
 from custom_components.govee_ble_lights.protocol import (
     build_brightness,
     build_color_rgb,
+    build_music_mode_with_color,
     build_power,
     build_scene,
+    build_video_mode,
 )
 from custom_components.govee_ble_lights.scenes import SCENES
 
 
 @pytest.fixture
 def mock_coordinator():
-    """Create a mock coordinator."""
+    """Create a mock coordinator for H617A."""
     coordinator = MagicMock(spec=GoveeBLECoordinator)
     coordinator.address = "AA:BB:CC:DD:EE:FF"
     coordinator.model = "H617A"
+    coordinator.profile = MODEL_PROFILES["H617A"]
     coordinator.is_on = False
     coordinator.brightness_pct = 100
     coordinator.rgb_color = (255, 255, 255)
     coordinator.color_temp_kelvin = None
     coordinator.effect = None
     coordinator.send_command = AsyncMock()
+    return coordinator
+
+
+@pytest.fixture
+def mock_h6199_coordinator():
+    """Create a mock coordinator for H6199."""
+    coordinator = MagicMock(spec=GoveeBLECoordinator)
+    coordinator.address = "11:22:33:44:55:66"
+    coordinator.model = "H6199"
+    coordinator.profile = MODEL_PROFILES["H6199"]
+    coordinator.is_on = False
+    coordinator.brightness_pct = 100
+    coordinator.rgb_color = (255, 255, 255)
+    coordinator.color_temp_kelvin = None
+    coordinator.effect = None
+    coordinator.send_command = AsyncMock()
+    coordinator.send_commands = AsyncMock()
     return coordinator
 
 
@@ -163,3 +185,197 @@ async def test_turn_off_rollback_on_failure(light, mock_coordinator):
         await light.async_turn_off()
 
     assert mock_coordinator.is_on is True
+
+
+def test_rgb_color_returns_tuple_in_rgb_mode(light, mock_coordinator):
+    """Test rgb_color property returns color when in RGB mode."""
+    mock_coordinator.rgb_color = (128, 64, 32)
+    light._attr_color_mode = ColorMode.RGB
+    assert light.rgb_color == (128, 64, 32)
+
+
+def test_rgb_color_returns_none_in_color_temp_mode(light, mock_coordinator):
+    """Test rgb_color returns None when not in RGB mode."""
+    light._attr_color_mode = ColorMode.COLOR_TEMP
+    assert light.rgb_color is None
+
+
+def test_color_temp_kelvin_returns_value_in_temp_mode(light, mock_coordinator):
+    """Test color_temp_kelvin returns value when in COLOR_TEMP mode."""
+    mock_coordinator.color_temp_kelvin = 4000
+    light._attr_color_mode = ColorMode.COLOR_TEMP
+    assert light.color_temp_kelvin == 4000
+
+
+def test_color_temp_kelvin_returns_none_in_rgb_mode(light, mock_coordinator):
+    """Test color_temp_kelvin returns None when not in COLOR_TEMP mode."""
+    mock_coordinator.color_temp_kelvin = 4000
+    light._attr_color_mode = ColorMode.RGB
+    assert light.color_temp_kelvin is None
+
+
+def test_effect_property(light, mock_coordinator):
+    """Test effect property reflects coordinator state."""
+    mock_coordinator.effect = "rainbow"
+    assert light.effect == "rainbow"
+
+
+def test_effect_property_none(light, mock_coordinator):
+    """Test effect property returns None when no effect active."""
+    mock_coordinator.effect = None
+    assert light.effect is None
+
+
+@pytest.mark.asyncio
+async def test_turn_on_with_color_temp(light, mock_coordinator):
+    """Test turning on with color temperature."""
+    from custom_components.govee_ble_lights.protocol import build_color_temp
+
+    await light.async_turn_on(color_temp_kelvin=4000)
+    calls = mock_coordinator.send_command.call_args_list
+    assert len(calls) == 2
+    assert calls[1].args[0] == build_color_temp(4000)
+    assert mock_coordinator.color_temp_kelvin == 4000
+    assert light._attr_color_mode == ColorMode.COLOR_TEMP
+
+
+@pytest.mark.asyncio
+async def test_turn_on_color_temp_clears_effect(light, mock_coordinator):
+    """Test color temp clears any active effect."""
+    mock_coordinator.effect = "rainbow"
+    await light.async_turn_on(color_temp_kelvin=5000)
+    assert mock_coordinator.effect is None
+
+
+# --- H6199-specific tests ---
+
+
+@pytest.fixture
+def h6199_light(mock_h6199_coordinator, mock_config_entry):
+    """Create an H6199 light entity for testing."""
+    entity = GoveeBLELight(mock_h6199_coordinator, mock_config_entry)
+    entity.async_write_ha_state = MagicMock()
+    return entity
+
+
+def test_h6199_effect_list(h6199_light):
+    """Test H6199 effect list contains video + music modes (no scenes)."""
+    effects = h6199_light.effect_list
+    assert "video: movie" in effects
+    assert "video: game" in effects
+    assert "music: energic" in effects
+    assert "music: rhythm" in effects
+    assert "music: spectrum" in effects
+    assert "music: rolling" in effects
+    # No scenes — H6199 has scene_source="none"
+    assert "rainbow" not in effects
+
+
+def test_h617a_effect_list_has_scenes(light):
+    """Test H617A effect list contains scenes (no video/music modes)."""
+    effects = light.effect_list
+    assert "rainbow" in effects
+    assert "video: movie" not in effects
+
+
+def test_build_effect_list_api_model():
+    """Test _build_effect_list includes scenes for api source models."""
+    effects = _build_effect_list(MODEL_PROFILES["H617A"])
+    assert len(effects) == len(SCENES)
+
+
+def test_build_effect_list_none_model():
+    """Test _build_effect_list uses profile effects for non-api models."""
+    effects = _build_effect_list(MODEL_PROFILES["H6199"])
+    assert len(effects) == len(MODEL_PROFILES["H6199"].effects)
+
+
+@pytest.mark.asyncio
+async def test_h6199_video_movie(h6199_light, mock_h6199_coordinator):
+    """Test H6199 video: movie effect sends video mode command."""
+    await h6199_light.async_turn_on(effect="video: movie")
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert len(calls) == 2  # power + video mode
+    assert calls[1].args[0] == build_video_mode(full_screen=True, game_mode=False)
+    assert mock_h6199_coordinator.effect == "video: movie"
+
+
+@pytest.mark.asyncio
+async def test_h6199_video_game(h6199_light, mock_h6199_coordinator):
+    """Test H6199 video: game effect sends game mode command."""
+    await h6199_light.async_turn_on(effect="video: game")
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_video_mode(full_screen=True, game_mode=True)
+    assert mock_h6199_coordinator.effect == "video: game"
+
+
+@pytest.mark.asyncio
+async def test_h6199_music_energic(h6199_light, mock_h6199_coordinator):
+    """Test H6199 music: energic effect sends music mode command."""
+    await h6199_light.async_turn_on(effect="music: energic")
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(0x05)
+    assert mock_h6199_coordinator.effect == "music: energic"
+
+
+@pytest.mark.asyncio
+async def test_h6199_music_rhythm(h6199_light, mock_h6199_coordinator):
+    """Test H6199 music: rhythm effect."""
+    await h6199_light.async_turn_on(effect="music: rhythm")
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(0x03)
+
+
+@pytest.mark.asyncio
+async def test_h6199_music_spectrum(h6199_light, mock_h6199_coordinator):
+    """Test H6199 music: spectrum effect."""
+    await h6199_light.async_turn_on(effect="music: spectrum")
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(0x04)
+
+
+@pytest.mark.asyncio
+async def test_h6199_music_rolling(h6199_light, mock_h6199_coordinator):
+    """Test H6199 music: rolling effect."""
+    await h6199_light.async_turn_on(effect="music: rolling")
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(0x06)
+
+
+@pytest.mark.asyncio
+async def test_h6199_unknown_effect_ignored(h6199_light, mock_h6199_coordinator):
+    """Test H6199 unrecognized effect name doesn't set effect."""
+    await h6199_light.async_turn_on(effect="nonexistent_effect")
+    # Only power command, no effect command
+    assert mock_h6199_coordinator.send_command.call_count == 1
+    assert mock_h6199_coordinator.effect is None
+
+
+@pytest.mark.asyncio
+async def test_h6199_rgb_still_works(h6199_light, mock_h6199_coordinator):
+    """Test H6199 supports RGB color just like H617A."""
+    await h6199_light.async_turn_on(rgb_color=(255, 0, 0))
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert len(calls) == 2
+    assert calls[1].args[0] == build_color_rgb(255, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_h6199_brightness_still_works(h6199_light, mock_h6199_coordinator):
+    """Test H6199 supports brightness just like H617A."""
+    await h6199_light.async_turn_on(brightness=200)
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert len(calls) == 2
+    assert calls[1].args[0] == build_brightness(78)  # 200/255 * 100 ≈ 78
+
+
+def test_h6199_unique_id(h6199_light):
+    """Test H6199 unique ID derived from its address."""
+    assert h6199_light.unique_id == "112233445566"
+
+
+def test_h6199_device_info(h6199_light):
+    """Test H6199 device info reports correct model."""
+    info = h6199_light.device_info
+    assert info["model"] == "H6199"
+    assert "Govee H6199" in info["name"]

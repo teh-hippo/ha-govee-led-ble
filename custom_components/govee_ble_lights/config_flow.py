@@ -11,7 +11,7 @@ from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResult
 
-from .const import CONF_MODEL, DOMAIN, SUPPORTED_MODELS
+from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES
 
 # Pattern to extract model from BLE local name
 MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
@@ -22,8 +22,7 @@ def _extract_model(name: str) -> str | None:
     match = MODEL_PATTERN.search(name)
     if match:
         model = match.group(1)
-        # Strip trailing BLE suffix (e.g. H617A_ABCD -> H617A)
-        for known in SUPPORTED_MODELS:
+        for known in MODEL_PROFILES:
             if model.startswith(known):
                 return known
     return None
@@ -66,7 +65,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 data={CONF_MODEL: user_input[CONF_MODEL]},
             )
 
-        model_list = list(SUPPORTED_MODELS.keys())
+        model_list = list(MODEL_PROFILES.keys())
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(

@@ -1,18 +1,46 @@
-"""Govee H617A BLE protocol implementation.
+"""Govee BLE protocol implementation.
 
 Packet format: 20 bytes, XOR checksum at byte 19.
 Commands use Write Without Response (response=False in bleak).
+Supports H617A, H6199, and future models sharing the same base protocol.
 """
 
 import base64
 import math
+from enum import IntEnum
 
-# BLE UUIDs
+# BLE UUIDs (shared across all known Govee BLE models)
 SERVICE_UUID = "00010203-0405-0607-0809-0a0b0c0d1910"
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 
-# Simple scene IDs — single-packet scenes from Govee API for H617A.
+
+# --- Packet types ---
+
+class PacketHeader(IntEnum):
+    """First byte of every packet."""
+    COMMAND = 0x33
+    STATUS = 0xAA
+
+
+class PacketType(IntEnum):
+    """Second byte — identifies the command domain."""
+    POWER = 0x01
+    BRIGHTNESS = 0x04
+    COLOR = 0x05
+    GRADIENT = 0x14
+
+
+class ColorMode(IntEnum):
+    """Third byte of color packets (0x33 0x05 [mode])."""
+    VIDEO = 0x00
+    MUSIC = 0x13
+    STATIC = 0x15
+    SIMPLE = 0x02
+    SCENE = 0x04
+    SEGMENT = 0x0B
+
+# Simple scene IDs — single-packet scenes from Govee API.
 # These use sceneType=0 with empty scenceParam (no multi-packet needed).
 SCENE_IDS: dict[str, int] = {
     "sunrise": 0x00,
@@ -26,14 +54,14 @@ SCENE_IDS: dict[str, int] = {
     "rainbow": 0x16,
 }
 
-# Multi-packet scene prefix byte (0xA3 for H617A)
+# Multi-packet scene prefix byte (0xA3)
 MULTI_PACKET_PREFIX = 0xA3
 
-# H617A model-specific parameters (from AlgoClaw/Govee analysis).
+# Model-specific multi-packet parameters (from AlgoClaw/Govee analysis).
 # scenceParam data is prefixed with this before splitting into packets.
-H617A_HEX_PREFIX_ADD = bytes([0x02])
-# No prefix to remove from scenceParam for H617A (empty string in API data).
-H617A_HEX_PREFIX_REMOVE = b""
+SCENE_HEX_PREFIX_ADD = bytes([0x02])
+# No prefix to remove from scenceParam (empty string in API data).
+SCENE_HEX_PREFIX_REMOVE = b""
 
 # Music mode v2 IDs (command: 0x33 0x05 0x13 [id] 0x63)
 MUSIC_MODE_IDS: dict[str, int] = {
@@ -78,13 +106,13 @@ def build_power(on: bool) -> bytes:
 
 
 def build_brightness(percent: int) -> bytes:
-    """Build brightness command (0-100 percentage scale for H617A)."""
+    """Build brightness command (0-100 percentage scale)."""
     percent = max(0, min(100, percent))
     return build_packet(0x33, 0x04, [percent])
 
 
 def build_color_rgb(r: int, g: int, b: int) -> bytes:
-    """Build color command using SEGMENTED mode (0x15) for H617A.
+    """Build color command using SEGMENTED mode (0x15).
 
     Sets all 15 segments to the specified color.
     Format: 33 05 15 01 RR GG BB 00 00 00 00 00 FF 7F 00 00 00 00 00 [xor]
@@ -97,9 +125,9 @@ def build_color_rgb(r: int, g: int, b: int) -> bytes:
 
 
 def build_color_rgb_simple(r: int, g: int, b: int) -> bytes:
-    """Build color command using simple mode (0x02) for comparison testing.
+    """Build color command using simple mode (0x02).
 
-    This mode may NOT work on H617A (which requires segmented 0x15).
+    This mode may NOT work on segmented devices (which require 0x15).
     """
     r = max(0, min(255, r))
     g = max(0, min(255, g))
@@ -144,7 +172,7 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
 def build_color_temp(kelvin: int) -> bytes:
     """Build color temperature command by converting Kelvin to RGB.
 
-    H617A has no native color temp BLE command, so we convert to RGB
+    No native color temp BLE command exists, so we convert to RGB
     and use the segmented color mode.
     """
     r, g, b = kelvin_to_rgb(kelvin)
@@ -190,9 +218,9 @@ def build_scene_multi(scene_param_b64: str, scene_code: int) -> list[bytes]:
 
     # Apply model-specific prefix transforms
     data = param_hex
-    if H617A_HEX_PREFIX_REMOVE and data.startswith(H617A_HEX_PREFIX_REMOVE):
-        data = data[len(H617A_HEX_PREFIX_REMOVE) :]
-    data = H617A_HEX_PREFIX_ADD + data
+    if SCENE_HEX_PREFIX_REMOVE and data.startswith(SCENE_HEX_PREFIX_REMOVE):
+        data = data[len(SCENE_HEX_PREFIX_REMOVE) :]
+    data = SCENE_HEX_PREFIX_ADD + data
 
     # Prepend 0x01 and num_lines
     # Each a3 packet carries 17 bytes of payload (20 - prefix(1) - index(1) - checksum(1))
@@ -268,3 +296,100 @@ def build_state_query() -> bytes:
 def build_keep_alive() -> bytes:
     """Build keep-alive packet (same as state query)."""
     return build_state_query()
+
+
+# --- H6199-specific commands ---
+
+
+def build_video_mode(
+    full_screen: bool = True,
+    game_mode: bool = False,
+    saturation: int = 100,
+) -> bytes:
+    """Build video/camera sync mode command.
+
+    The device's onboard camera reads the TV screen and drives the LEDs.
+    Format: 33 05 00 [full_screen] [game_mode] [saturation] 00...00 [xor]
+    """
+    saturation = max(0, min(100, saturation))
+    params = [
+        ColorMode.VIDEO,
+        0x01 if full_screen else 0x00,
+        0x01 if game_mode else 0x00,
+        saturation,
+    ]
+    return build_packet(0x33, 0x05, params)
+
+
+def build_gradient(on: bool) -> bytes:
+    """Build gradient toggle command.
+
+    Enables smooth color blending across segments (vs. hard boundaries).
+    Format: 33 14 01/00 00...00 [xor]
+    """
+    return build_packet(0x33, PacketType.GRADIENT, [0x01 if on else 0x00])
+
+
+def build_music_mode_with_color(
+    mode_id: int,
+    sensitivity: int = 100,
+    color: tuple[int, int, int] | None = None,
+) -> bytes:
+    """Build music mode command with optional accent color.
+
+    Format: 33 05 13 [mode_id] [sensitivity] [has_color] [R] [G] [B] 00...00 [xor]
+    """
+    sensitivity = max(0, min(100, sensitivity))
+    params = [0x13, mode_id, sensitivity]
+    if color is not None:
+        r, g, b = color
+        params.extend([0x01, max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))])
+    return build_packet(0x33, 0x05, params)
+
+
+# --- State response parsing (for models with notify support) ---
+
+
+def build_status_query_for(domain: int) -> bytes:
+    """Build a status query for a specific domain.
+
+    Format: AA [domain] 00...00 [xor]
+    """
+    return build_packet(PacketHeader.STATUS, domain, [])
+
+
+def parse_power_response(payload: bytes) -> bool:
+    """Parse power state from status response payload."""
+    return bool(payload[0])
+
+
+def parse_brightness_response(payload: bytes) -> int:
+    """Parse brightness percentage from status response payload."""
+    return payload[0]
+
+
+def parse_color_mode_response(payload: bytes) -> dict:
+    """Parse color mode from status response payload.
+
+    Returns a dict describing the current mode:
+      {"mode": "video", "full_screen": bool, "game_mode": bool, "saturation": int}
+      {"mode": "music", "music_mode": int}
+      {"mode": "static"}
+      {"mode": "unknown", "raw": int}
+    """
+    mode_byte = payload[0]
+    if mode_byte == ColorMode.VIDEO:
+        return {
+            "mode": "video",
+            "full_screen": bool(payload[1]) if len(payload) > 1 else True,
+            "game_mode": bool(payload[2]) if len(payload) > 2 else False,
+            "saturation": payload[3] if len(payload) > 3 else 100,
+        }
+    if mode_byte == ColorMode.MUSIC:
+        return {
+            "mode": "music",
+            "music_mode": payload[1] if len(payload) > 1 else 0,
+        }
+    if mode_byte == ColorMode.STATIC:
+        return {"mode": "static"}
+    return {"mode": "unknown", "raw": mode_byte}

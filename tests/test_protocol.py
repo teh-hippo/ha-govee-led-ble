@@ -10,19 +10,29 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "custom_compone
 from protocol import (
     MUSIC_MODE_IDS,
     SCENE_IDS,
+    ColorMode,
+    PacketHeader,
+    PacketType,
     build_brightness,
     build_color_rgb,
     build_color_rgb_simple,
     build_color_temp,
+    build_gradient,
     build_keep_alive,
     build_music_mode,
+    build_music_mode_with_color,
     build_packet,
     build_power,
     build_scene,
     build_scene_multi,
     build_segment_color,
     build_state_query,
+    build_status_query_for,
+    build_video_mode,
     kelvin_to_rgb,
+    parse_brightness_response,
+    parse_color_mode_response,
+    parse_power_response,
     xor_checksum,
 )
 
@@ -484,3 +494,158 @@ class TestAllPacketsLength(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVideoMode(unittest.TestCase):
+    def test_video_mode_default(self):
+        packet = build_video_mode()
+        self.assertEqual(len(packet), 20)
+        self.assertEqual(packet[0], 0x33)
+        self.assertEqual(packet[1], 0x05)
+        self.assertEqual(packet[2], 0x00)  # VIDEO mode
+        self.assertEqual(packet[3], 0x01)  # full_screen=True
+        self.assertEqual(packet[4], 0x00)  # game_mode=False
+        self.assertEqual(packet[5], 100)   # saturation=100
+
+    def test_video_mode_game(self):
+        packet = build_video_mode(full_screen=False, game_mode=True, saturation=75)
+        self.assertEqual(packet[3], 0x00)  # full_screen=False
+        self.assertEqual(packet[4], 0x01)  # game_mode=True
+        self.assertEqual(packet[5], 75)
+
+    def test_video_mode_saturation_clamp(self):
+        packet = build_video_mode(saturation=200)
+        self.assertEqual(packet[5], 100)
+        packet2 = build_video_mode(saturation=-5)
+        self.assertEqual(packet2[5], 0)
+
+    def test_video_mode_checksum(self):
+        packet = build_video_mode()
+        self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+    def test_video_mode_length(self):
+        self.assertEqual(len(build_video_mode()), 20)
+
+
+class TestGradient(unittest.TestCase):
+    def test_gradient_on(self):
+        packet = build_gradient(True)
+        self.assertEqual(packet[0], 0x33)
+        self.assertEqual(packet[1], 0x14)
+        self.assertEqual(packet[2], 0x01)
+        self.assertEqual(len(packet), 20)
+
+    def test_gradient_off(self):
+        packet = build_gradient(False)
+        self.assertEqual(packet[2], 0x00)
+
+    def test_gradient_checksum(self):
+        for on in (True, False):
+            packet = build_gradient(on)
+            self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+
+class TestMusicModeWithColor(unittest.TestCase):
+    def test_without_color(self):
+        packet = build_music_mode_with_color(0x05, sensitivity=80)
+        self.assertEqual(packet[0], 0x33)
+        self.assertEqual(packet[1], 0x05)
+        self.assertEqual(packet[2], 0x13)
+        self.assertEqual(packet[3], 0x05)  # energic
+        self.assertEqual(packet[4], 80)     # sensitivity
+        self.assertEqual(packet[5], 0x00)   # no color flag
+
+    def test_with_color(self):
+        packet = build_music_mode_with_color(0x04, sensitivity=100, color=(255, 0, 128))
+        self.assertEqual(packet[5], 0x01)  # has_color flag
+        self.assertEqual(packet[6], 255)
+        self.assertEqual(packet[7], 0)
+        self.assertEqual(packet[8], 128)
+
+    def test_sensitivity_clamp(self):
+        packet = build_music_mode_with_color(0x03, sensitivity=150)
+        self.assertEqual(packet[4], 100)
+
+    def test_length_and_checksum(self):
+        for color in [None, (0, 128, 255)]:
+            packet = build_music_mode_with_color(0x05, color=color)
+            self.assertEqual(len(packet), 20)
+            self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+
+class TestStatusQuery(unittest.TestCase):
+    def test_power_query(self):
+        packet = build_status_query_for(PacketType.POWER)
+        self.assertEqual(packet[0], 0xAA)
+        self.assertEqual(packet[1], 0x01)
+        self.assertEqual(len(packet), 20)
+
+    def test_brightness_query(self):
+        packet = build_status_query_for(PacketType.BRIGHTNESS)
+        self.assertEqual(packet[0], 0xAA)
+        self.assertEqual(packet[1], 0x04)
+
+    def test_color_query(self):
+        packet = build_status_query_for(PacketType.COLOR)
+        self.assertEqual(packet[0], 0xAA)
+        self.assertEqual(packet[1], 0x05)
+
+
+class TestResponseParsers(unittest.TestCase):
+    def test_parse_power_on(self):
+        self.assertTrue(parse_power_response(bytes([0x01, 0x00])))
+
+    def test_parse_power_off(self):
+        self.assertFalse(parse_power_response(bytes([0x00, 0x00])))
+
+    def test_parse_brightness(self):
+        self.assertEqual(parse_brightness_response(bytes([75, 0x00])), 75)
+
+    def test_parse_color_mode_video(self):
+        result = parse_color_mode_response(bytes([0x00, 0x01, 0x00, 0x64]))
+        self.assertEqual(result["mode"], "video")
+        self.assertTrue(result["full_screen"])
+        self.assertFalse(result["game_mode"])
+        self.assertEqual(result["saturation"], 100)
+
+    def test_parse_color_mode_video_game(self):
+        result = parse_color_mode_response(bytes([0x00, 0x00, 0x01, 50]))
+        self.assertEqual(result["mode"], "video")
+        self.assertTrue(result["game_mode"])
+        self.assertEqual(result["saturation"], 50)
+
+    def test_parse_color_mode_music(self):
+        result = parse_color_mode_response(bytes([0x13, 0x05]))
+        self.assertEqual(result["mode"], "music")
+        self.assertEqual(result["music_mode"], 0x05)
+
+    def test_parse_color_mode_static(self):
+        result = parse_color_mode_response(bytes([0x15]))
+        self.assertEqual(result["mode"], "static")
+
+    def test_parse_color_mode_unknown(self):
+        result = parse_color_mode_response(bytes([0xFF]))
+        self.assertEqual(result["mode"], "unknown")
+        self.assertEqual(result["raw"], 0xFF)
+
+    def test_parse_color_mode_video_short_payload(self):
+        result = parse_color_mode_response(bytes([0x00]))
+        self.assertEqual(result["mode"], "video")
+        self.assertTrue(result["full_screen"])
+
+
+class TestEnums(unittest.TestCase):
+    def test_packet_header_values(self):
+        self.assertEqual(PacketHeader.COMMAND, 0x33)
+        self.assertEqual(PacketHeader.STATUS, 0xAA)
+
+    def test_packet_type_values(self):
+        self.assertEqual(PacketType.POWER, 0x01)
+        self.assertEqual(PacketType.BRIGHTNESS, 0x04)
+        self.assertEqual(PacketType.COLOR, 0x05)
+        self.assertEqual(PacketType.GRADIENT, 0x14)
+
+    def test_color_mode_values(self):
+        self.assertEqual(ColorMode.VIDEO, 0x00)
+        self.assertEqual(ColorMode.MUSIC, 0x13)
+        self.assertEqual(ColorMode.STATIC, 0x15)

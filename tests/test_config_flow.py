@@ -94,3 +94,22 @@ async def test_user_step_creates_entry(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == "Govee H617A"
     assert result["data"][CONF_MODEL] == "H617A"
+
+
+def test_extract_model_returns_none_for_unknown():
+    """Test _extract_model returns None for unknown device names."""
+    from custom_components.govee_ble_lights.config_flow import _extract_model
+
+    assert _extract_model("SomeOtherDevice") is None
+    assert _extract_model("Govee_H9999_ABCD") is None
+    assert _extract_model("") is None
+
+
+def test_extract_model_recognizes_all_prefixes():
+    """Test _extract_model handles all known BLE name prefixes."""
+    from custom_components.govee_ble_lights.config_flow import _extract_model
+
+    assert _extract_model("ihoment_H617A_ABCD") == "H617A"
+    assert _extract_model("Govee_H617A_ABCD") == "H617A"
+    assert _extract_model("GBK_H617A_ABCD") == "H617A"
+    assert _extract_model("GVH_H617A_ABCD") == "H617A"
