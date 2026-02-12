@@ -1,0 +1,70 @@
+name: Dependency Auto-Update
+on:
+  schedule:
+    # Run daily at 04:00 UTC
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Upgrade lockfile dependencies
+        run: uv lock --upgrade
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "### Updated packages" >> "$GITHUB_STEP_SUMMARY"
+            git diff uv.lock | grep '^[+-].*version' | head -30 >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Run tests
+        if: steps.changes.outputs.changed == 'true'
+        run: uv run pytest tests/ -q
+
+      - name: Create or update PR
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="auto/uv-lock-upgrade"
+          git checkout -B "$BRANCH"
+          git add uv.lock
+          git commit -m "deps: Auto-upgrade uv.lock transitive dependencies"
+          git push --force origin "$BRANCH"
+
+          # Create PR if one doesn't already exist
+          EXISTING=$(gh pr list --head "$BRANCH" --json number -q '.[0].number')
+          if [ -z "$EXISTING" ]; then
+            gh pr create \
+              --title "deps: Auto-upgrade uv.lock dependencies" \
+              --body "Automated daily lockfile upgrade to address Dependabot vulnerability alerts in transitive dependencies.
+
+          This PR was created by the dependency auto-update workflow. Tests have passed.
+
+          **Auto-merges** if all CI checks pass." \
+              --label "dependencies" \
+              --head "$BRANCH"
+          fi
+
+          # Enable auto-merge
+          PR_NUM=$(gh pr list --head "$BRANCH" --json number -q '.[0].number')
+          gh pr merge "$PR_NUM" --auto --squash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
