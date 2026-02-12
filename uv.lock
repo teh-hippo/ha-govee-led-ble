@@ -1891,6 +1891,9 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "aiousbwatcher" },
+    { name = "coverage", version = "7.6.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "coverage", version = "7.6.12", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13' and python_full_version < '3.13.2'" },
+    { name = "coverage", version = "7.10.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13.2'" },
     { name = "pyserial" },
     { name = "pytest", version = "8.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
     { name = "pytest", version = "8.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13' and python_full_version < '3.13.2'" },
@@ -1913,6 +1916,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "aiousbwatcher", specifier = ">=1.1.1" },
+    { name = "coverage", specifier = ">=7.0" },
     { name = "pyserial", specifier = ">=3.5" },
     { name = "pytest", specifier = ">=7.0" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },

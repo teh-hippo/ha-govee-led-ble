@@ -1,7 +1,7 @@
 [project]
 name = "govee-ble-lights"
 version = "1.0.0"
-description = "Home Assistant custom integration for Govee H617A BLE LED strips"
+description = "Home Assistant custom integration for Govee BLE LED lights"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
@@ -11,6 +11,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "coverage>=7.0",
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",
     "pytest-homeassistant-custom-component>=0.13.0",

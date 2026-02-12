@@ -16,15 +16,27 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.13"
-      - run: uv run pytest tests/ -v --tb=short
+          python-version: ${{ matrix.python-version }}
+      - run: uv run coverage run -m pytest tests/ -v --tb=short
+      - run: uv run coverage report --include="custom_components/govee_ble_lights/*" --fail-under=90
 
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: "home-assistant/actions/hassfest@master"
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
