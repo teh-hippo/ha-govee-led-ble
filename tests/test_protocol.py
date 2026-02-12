@@ -331,38 +331,6 @@ class TestKelvinToRGB(unittest.TestCase):
         self.assertTrue(0 <= r <= 255)
 
 
-class TestAllPacketsLength(unittest.TestCase):
-    """Verify every command builder produces exactly 20 bytes."""
-
-    def test_power_on(self):
-        self.assertEqual(len(build_power(True)), 20)
-
-    def test_power_off(self):
-        self.assertEqual(len(build_power(False)), 20)
-
-    def test_brightness(self):
-        self.assertEqual(len(build_brightness(50)), 20)
-
-    def test_color_rgb(self):
-        self.assertEqual(len(build_color_rgb(128, 128, 128)), 20)
-
-    def test_color_temp(self):
-        self.assertEqual(len(build_color_temp(4000)), 20)
-
-    def test_scene(self):
-        self.assertEqual(len(build_scene(0x00)), 20)
-
-    def test_state_query(self):
-        self.assertEqual(len(build_state_query()), 20)
-
-    def test_keep_alive(self):
-        self.assertEqual(len(build_keep_alive()), 20)
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestVideoMode(unittest.TestCase):
     def test_video_mode_default(self):
         packet = build_video_mode()

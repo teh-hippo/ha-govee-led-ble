@@ -48,8 +48,6 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the user step for manual setup."""
-        errors: dict[str, str] = {}
-
         if user_input is not None:
             address = user_input[CONF_ADDRESS].upper().strip()
             await self.async_set_unique_id(address)
@@ -69,5 +67,4 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_MODEL, default=model_list[0]): vol.In(model_list),
                 }
             ),
-            errors=errors,
         )

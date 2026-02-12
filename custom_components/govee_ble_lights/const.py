@@ -13,8 +13,6 @@ class ModelProfile:
     """Describes a Govee BLE device model's capabilities."""
 
     name: str
-    segments: int
-    brightness_pct: bool = True
     state_readable: bool = False
     scene_source: str = "none"  # "api" for cloud scenes, "none" for no scenes
     effects: list[str] = field(default_factory=list)
@@ -24,13 +22,11 @@ class ModelProfile:
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617A": ModelProfile(
         name="H617A LED Strip",
-        segments=15,
         scene_source="api",
         ble_name_prefixes=["ihoment_H617A", "Govee_H617A", "GBK_H617A", "GVH_H617A"],
     ),
     "H6199": ModelProfile(
         name="H6199 DreamView T1",
-        segments=15,
         state_readable=True,
         effects=["video: movie", "video: game", "music: energic", "music: rhythm", "music: spectrum", "music: rolling"],
         ble_name_prefixes=["Govee_H6199", "ihoment_H6199", "GBK_H6199", "GVH_H6199"],

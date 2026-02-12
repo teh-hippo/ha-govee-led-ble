@@ -10,7 +10,6 @@ import math
 from enum import IntEnum
 
 # BLE UUIDs (shared across all known Govee BLE models)
-SERVICE_UUID = "00010203-0405-0607-0809-0a0b0c0d1910"
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 
@@ -46,10 +45,7 @@ class ColorMode(IntEnum):
 MULTI_PACKET_PREFIX = 0xA3
 
 # Model-specific multi-packet parameters (from AlgoClaw/Govee analysis).
-# scenceParam data is prefixed with this before splitting into packets.
 SCENE_HEX_PREFIX_ADD = bytes([0x02])
-# No prefix to remove from scenceParam (empty string in API data).
-SCENE_HEX_PREFIX_REMOVE = b""
 
 
 def xor_checksum(data: bytes) -> int:
@@ -184,11 +180,7 @@ def build_scene_multi(scene_param_b64: str, scene_code: int) -> list[bytes]:
 
     param_hex = base64.b64decode(scene_param_b64)
 
-    # Apply model-specific prefix transforms
-    data = param_hex
-    if SCENE_HEX_PREFIX_REMOVE and data.startswith(SCENE_HEX_PREFIX_REMOVE):
-        data = data[len(SCENE_HEX_PREFIX_REMOVE) :]
-    data = SCENE_HEX_PREFIX_ADD + data
+    data = SCENE_HEX_PREFIX_ADD + param_hex
 
     # Prepend 0x01 and num_lines
     # Each a3 packet carries 17 bytes of payload (20 - prefix(1) - index(1) - checksum(1))
