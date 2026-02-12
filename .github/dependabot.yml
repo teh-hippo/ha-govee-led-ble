@@ -1,8 +1,8 @@
 version: 2
 
 updates:
-  # Python dependencies (pip)
-  - package-ecosystem: "pip"
+  # Python dependencies (uv lockfile)
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "daily"
