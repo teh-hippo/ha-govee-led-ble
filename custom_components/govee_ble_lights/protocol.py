@@ -234,19 +234,24 @@ def build_video_mode(
     full_screen: bool = True,
     game_mode: bool = False,
     saturation: int = 100,
+    sound_effects: bool = False,
+    sound_effects_softness: int = 0,
 ) -> bytes:
     """Build video/camera sync mode command.
 
     The device's onboard camera reads the TV screen and drives the LEDs.
-    Format: 33 05 00 [full_screen] [game_mode] [saturation] 00...00 [xor]
+    Format: 33 05 00 [full_screen] [game_mode] [saturation] [se_flag] [se_softness] 00...00 [xor]
     """
     saturation = max(0, min(100, saturation))
+    sound_effects_softness = max(0, min(100, sound_effects_softness))
     params = [
         ColorMode.VIDEO,
         0x01 if full_screen else 0x00,
         0x01 if game_mode else 0x00,
         saturation,
     ]
+    if sound_effects:
+        params.extend([0x01, sound_effects_softness])
     return build_packet(0x33, 0x05, params)
 
 
@@ -263,13 +268,15 @@ def build_music_mode_with_color(
     mode_id: int,
     sensitivity: int = 100,
     color: tuple[int, int, int] | None = None,
+    calm: bool = False,
 ) -> bytes:
     """Build music mode command with optional accent color.
 
-    Format: 33 05 13 [mode_id] [sensitivity] [has_color] [R] [G] [B] 00...00 [xor]
+    Format: 33 05 13 [mode_id] [sensitivity] [calm] [has_color] [R] [G] [B] 00...00 [xor]
+    The calm flag (byte after sensitivity) is only meaningful for rhythm mode (0x03).
     """
     sensitivity = max(0, min(100, sensitivity))
-    params = [0x13, mode_id, sensitivity]
+    params = [0x13, mode_id, sensitivity, 0x01 if calm else 0x00]
     if color is not None:
         r, g, b = color
         params.extend([0x01, max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))])

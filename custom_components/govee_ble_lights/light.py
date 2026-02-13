@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_TEMP_KELVIN,
@@ -16,12 +17,21 @@ from homeassistant.components.light import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, ModelProfile
 from .coordinator import GoveeBLECoordinator
+from .h6199_effects import (
+    MUSIC_MODE_IDS,
+    apply_video_mode_from_state,
+    music_mode_id_from_effect,
+    video_game_mode_from_effect,
+)
 from .protocol import (
     build_brightness,
     build_color_rgb,
@@ -40,13 +50,9 @@ _LOGGER = logging.getLogger(__name__)
 MIN_COLOR_TEMP_KELVIN = 2000
 MAX_COLOR_TEMP_KELVIN = 9000
 
-# H6199 music mode sub-IDs
-_MUSIC_MODES: dict[str, int] = {
-    "music: energic": 0x05,
-    "music: rhythm": 0x03,
-    "music: spectrum": 0x04,
-    "music: rolling": 0x06,
-}
+# Service names
+SERVICE_SET_VIDEO_MODE = "set_video_mode"
+SERVICE_SET_MUSIC_MODE = "set_music_mode"
 
 
 def _build_effect_list(profile: ModelProfile) -> list[str]:
@@ -66,6 +72,42 @@ async def async_setup_entry(
     """Set up Govee BLE light from a config entry."""
     coordinator: GoveeBLECoordinator = hass.data[DOMAIN][config_entry.entry_id]
     async_add_entities([GoveeBLELight(coordinator, config_entry)])
+
+    platform = entity_platform.async_get_current_platform()
+
+    platform.async_register_entity_service(
+        SERVICE_SET_VIDEO_MODE,
+        {
+            vol.Required("mode"): vol.In(["movie", "game"]),
+            vol.Optional("saturation", default=100): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=100)
+            ),
+            vol.Optional("brightness", default=100): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=100)
+            ),
+            vol.Optional("capture_region"): vol.In(["full", "part"]),
+            vol.Optional("full_screen", default=True): cv.boolean,
+            vol.Optional("sound_effects", default=False): cv.boolean,
+            vol.Optional("sound_effects_softness", default=0): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=100)
+            ),
+        },
+        "async_set_video_mode",
+    )
+
+    platform.async_register_entity_service(
+        SERVICE_SET_MUSIC_MODE,
+        {
+            vol.Required("mode"): vol.In(["energic", "rhythm", "spectrum", "rolling"]),
+            vol.Optional("sensitivity", default=100): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=100)
+            ),
+            vol.Optional("color"): vol.All(
+                vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple)
+            ),
+        },
+        "async_set_music_mode",
+    )
 
 
 class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
@@ -134,18 +176,23 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
 
     async def _apply_effect(self, effect_name: str) -> bool:
         """Apply an effect by name. Returns True if handled."""
-        # Video modes (H6199)
-        if effect_name == "video: movie":
-            await self.coordinator.send_command(build_video_mode(full_screen=True, game_mode=False))
-            return True
-        if effect_name == "video: game":
-            await self.coordinator.send_command(build_video_mode(full_screen=True, game_mode=True))
+        game_mode = video_game_mode_from_effect(effect_name)
+        if game_mode is not None:
+            await apply_video_mode_from_state(self.coordinator, game_mode=game_mode)
+            await self.coordinator.send_command(build_brightness(self.coordinator.video_brightness))
+            self.coordinator.brightness_pct = self.coordinator.video_brightness
             return True
 
         # Music modes (H6199)
-        music_id = _MUSIC_MODES.get(effect_name)
+        music_id = music_mode_id_from_effect(effect_name)
         if music_id is not None:
-            await self.coordinator.send_command(build_music_mode_with_color(music_id))
+            await self.coordinator.send_command(
+                build_music_mode_with_color(
+                    music_id,
+                    sensitivity=self.coordinator.music_sensitivity,
+                    color=self.coordinator.music_color,
+                )
+            )
             return True
 
         # Scenes (H617A)
@@ -209,6 +256,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             raise
 
         self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
@@ -220,3 +268,98 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             self.coordinator.is_on = prev_on
             raise
         self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})
+
+    async def async_set_video_mode(
+        self,
+        mode: str,
+        saturation: int = 100,
+        brightness: int = 100,
+        capture_region: str | None = None,
+        full_screen: bool = True,
+        sound_effects: bool = False,
+        sound_effects_softness: int = 0,
+    ) -> None:
+        """Handle set_video_mode service call."""
+        if self._model != "H6199":
+            raise ServiceValidationError(
+                f"set_video_mode is only supported on H6199, not {self._model}",
+                translation_domain=DOMAIN,
+                translation_key="unsupported_model",
+            )
+        prev_on = self.coordinator.is_on
+        prev_effect = self.coordinator.effect
+        prev_brightness = self.coordinator.brightness_pct
+        prev_video_sat = self.coordinator.video_saturation
+        prev_video_brightness = self.coordinator.video_brightness
+        prev_video_fs = self.coordinator.video_full_screen
+        prev_video_se = self.coordinator.video_sound_effects
+        prev_video_ses = self.coordinator.video_sound_effects_softness
+        try:
+            resolved_full_screen = full_screen if capture_region is None else capture_region == "full"
+            game_mode = mode == "game"
+            packet = build_video_mode(
+                full_screen=resolved_full_screen,
+                game_mode=game_mode,
+                saturation=saturation,
+                sound_effects=sound_effects,
+                sound_effects_softness=sound_effects_softness,
+            )
+            await self.coordinator.send_command(build_power(True))
+            self.coordinator.is_on = True
+            await self.coordinator.send_command(packet)
+            await self.coordinator.send_command(build_brightness(brightness))
+            self.coordinator.effect = f"video: {mode}"
+            self.coordinator.video_saturation = saturation
+            self.coordinator.video_brightness = brightness
+            self.coordinator.brightness_pct = brightness
+            self.coordinator.video_full_screen = resolved_full_screen
+            self.coordinator.video_sound_effects = sound_effects
+            self.coordinator.video_sound_effects_softness = sound_effects_softness
+        except Exception:
+            self.coordinator.is_on = prev_on
+            self.coordinator.effect = prev_effect
+            self.coordinator.brightness_pct = prev_brightness
+            self.coordinator.video_saturation = prev_video_sat
+            self.coordinator.video_brightness = prev_video_brightness
+            self.coordinator.video_full_screen = prev_video_fs
+            self.coordinator.video_sound_effects = prev_video_se
+            self.coordinator.video_sound_effects_softness = prev_video_ses
+            raise
+        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})
+
+    async def async_set_music_mode(
+        self,
+        mode: str,
+        sensitivity: int = 100,
+        color: tuple[int, int, int] | None = None,
+    ) -> None:
+        """Handle set_music_mode service call."""
+        if self._model != "H6199":
+            raise ServiceValidationError(
+                f"set_music_mode is only supported on H6199, not {self._model}",
+                translation_domain=DOMAIN,
+                translation_key="unsupported_model",
+            )
+        prev_on = self.coordinator.is_on
+        prev_effect = self.coordinator.effect
+        prev_sensitivity = self.coordinator.music_sensitivity
+        prev_color = self.coordinator.music_color
+        try:
+            mode_id = MUSIC_MODE_IDS[mode]
+            packet = build_music_mode_with_color(mode_id, sensitivity=sensitivity, color=color)
+            await self.coordinator.send_command(build_power(True))
+            self.coordinator.is_on = True
+            await self.coordinator.send_command(packet)
+            self.coordinator.effect = f"music: {mode}"
+            self.coordinator.music_sensitivity = sensitivity
+            self.coordinator.music_color = color
+        except Exception:
+            self.coordinator.is_on = prev_on
+            self.coordinator.effect = prev_effect
+            self.coordinator.music_sensitivity = prev_sensitivity
+            self.coordinator.music_color = prev_color
+            raise
+        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})

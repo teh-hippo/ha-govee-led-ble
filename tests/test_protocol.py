@@ -361,6 +361,36 @@ class TestVideoMode(unittest.TestCase):
     def test_video_mode_length(self):
         self.assertEqual(len(build_video_mode()), 20)
 
+    def test_video_mode_sound_effects(self):
+        packet = build_video_mode(sound_effects=True, sound_effects_softness=50)
+        self.assertEqual(packet[6], 0x01)  # sound_effects flag
+        self.assertEqual(packet[7], 50)  # softness
+        self.assertEqual(len(packet), 20)
+        self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+    def test_video_mode_sound_effects_off_no_bytes(self):
+        packet = build_video_mode(sound_effects=False)
+        self.assertEqual(packet[6], 0x00)  # no flag byte appended, zero-padded
+
+    def test_video_mode_sound_effects_softness_clamp(self):
+        packet = build_video_mode(sound_effects=True, sound_effects_softness=200)
+        self.assertEqual(packet[7], 100)
+        packet2 = build_video_mode(sound_effects=True, sound_effects_softness=-5)
+        self.assertEqual(packet2[7], 0)
+
+    def test_video_mode_all_params(self):
+        packet = build_video_mode(
+            full_screen=False, game_mode=True, saturation=60,
+            sound_effects=True, sound_effects_softness=75,
+        )
+        self.assertEqual(packet[2], 0x00)  # VIDEO
+        self.assertEqual(packet[3], 0x00)  # partial
+        self.assertEqual(packet[4], 0x01)  # game
+        self.assertEqual(packet[5], 60)    # saturation
+        self.assertEqual(packet[6], 0x01)  # sound_effects
+        self.assertEqual(packet[7], 75)    # softness
+        self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
 
 class TestGradient(unittest.TestCase):
     def test_gradient_on(self):
@@ -388,14 +418,15 @@ class TestMusicModeWithColor(unittest.TestCase):
         self.assertEqual(packet[2], 0x13)
         self.assertEqual(packet[3], 0x05)  # energic
         self.assertEqual(packet[4], 80)  # sensitivity
-        self.assertEqual(packet[5], 0x00)  # no color flag
+        self.assertEqual(packet[5], 0x00)  # calm=False
 
     def test_with_color(self):
         packet = build_music_mode_with_color(0x04, sensitivity=100, color=(255, 0, 128))
-        self.assertEqual(packet[5], 0x01)  # has_color flag
-        self.assertEqual(packet[6], 255)
-        self.assertEqual(packet[7], 0)
-        self.assertEqual(packet[8], 128)
+        self.assertEqual(packet[5], 0x00)  # calm=False
+        self.assertEqual(packet[6], 0x01)  # has_color flag
+        self.assertEqual(packet[7], 255)
+        self.assertEqual(packet[8], 0)
+        self.assertEqual(packet[9], 128)
 
     def test_sensitivity_clamp(self):
         packet = build_music_mode_with_color(0x03, sensitivity=150)
@@ -406,6 +437,24 @@ class TestMusicModeWithColor(unittest.TestCase):
             packet = build_music_mode_with_color(0x05, color=color)
             self.assertEqual(len(packet), 20)
             self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+    def test_calm_flag(self):
+        packet = build_music_mode_with_color(0x03, sensitivity=80, calm=True)
+        self.assertEqual(packet[4], 80)   # sensitivity
+        self.assertEqual(packet[5], 0x01)  # calm=True
+        self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+    def test_calm_with_color(self):
+        packet = build_music_mode_with_color(0x03, sensitivity=50, calm=True, color=(128, 64, 32))
+        self.assertEqual(packet[5], 0x01)  # calm
+        self.assertEqual(packet[6], 0x01)  # has_color
+        self.assertEqual(packet[7], 128)
+        self.assertEqual(packet[8], 64)
+        self.assertEqual(packet[9], 32)
+
+    def test_calm_default_false(self):
+        packet = build_music_mode_with_color(0x05)
+        self.assertEqual(packet[5], 0x00)  # calm defaults to False
 
 
 class TestResponseParsers(unittest.TestCase):

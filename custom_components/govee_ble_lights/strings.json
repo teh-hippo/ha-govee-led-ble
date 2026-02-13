@@ -14,5 +14,59 @@
     "abort": {
       "already_configured": "Device is already configured"
     }
+  },
+  "services": {
+    "set_video_mode": {
+      "name": "Set video mode",
+      "description": "Configure the H6199 video (camera sync) mode with adjustable parameters.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Video sub-mode: movie or game."
+        },
+        "saturation": {
+          "name": "Saturation",
+          "description": "Color saturation (0–100)."
+        },
+        "brightness": {
+          "name": "Brightness",
+          "description": "Video mode brightness level (0–100)."
+        },
+        "capture_region": {
+          "name": "Capture region",
+          "description": "Capture region: full screen or partial screen."
+        },
+        "full_screen": {
+          "name": "Full screen",
+          "description": "Capture full screen (true) or partial (false)."
+        },
+        "sound_effects": {
+          "name": "Sound effects",
+          "description": "Enable audio-reactive overlay on top of video mode."
+        },
+        "sound_effects_softness": {
+          "name": "Sound effects softness",
+          "description": "Softness of the sound-reactive overlay (0–100)."
+        }
+      }
+    },
+    "set_music_mode": {
+      "name": "Set music mode",
+      "description": "Configure the H6199 music mode with adjustable parameters.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Music sub-mode: energic, rhythm, spectrum, or rolling."
+        },
+        "sensitivity": {
+          "name": "Sensitivity",
+          "description": "Microphone sensitivity (0–100)."
+        },
+        "color": {
+          "name": "Color",
+          "description": "Optional accent color as [R, G, B]."
+        }
+      }
+    }
   }
 }

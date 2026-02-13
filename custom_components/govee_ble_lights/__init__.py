@@ -12,7 +12,7 @@ from .coordinator import GoveeBLECoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["light"]
+PLATFORMS: list[str] = ["light", "number", "select", "switch"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

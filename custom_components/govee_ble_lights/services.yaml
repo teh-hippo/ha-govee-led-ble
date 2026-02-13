@@ -1,0 +1,80 @@
+set_video_mode:
+  target:
+    entity:
+      integration: govee_ble_lights
+  fields:
+    mode:
+      required: true
+      example: "movie"
+      selector:
+        select:
+          options:
+            - "movie"
+            - "game"
+    saturation:
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    brightness:
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    capture_region:
+      required: false
+      selector:
+        select:
+          options:
+            - "full"
+            - "part"
+    full_screen:
+      default: true
+      selector:
+        boolean:
+    sound_effects:
+      default: false
+      selector:
+        boolean:
+    sound_effects_softness:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+
+set_music_mode:
+  target:
+    entity:
+      integration: govee_ble_lights
+  fields:
+    mode:
+      required: true
+      example: "energic"
+      selector:
+        select:
+          options:
+            - "energic"
+            - "rhythm"
+            - "spectrum"
+            - "rolling"
+    sensitivity:
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    color:
+      required: false
+      selector:
+        color_rgb:

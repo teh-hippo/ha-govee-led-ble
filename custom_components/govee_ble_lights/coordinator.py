@@ -55,6 +55,14 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
         self.effect: str | None = None
+        # Per-effect parameters (H6199)
+        self.video_saturation: int = 100
+        self.video_brightness: int = 100
+        self.video_full_screen: bool = True
+        self.video_sound_effects: bool = False
+        self.video_sound_effects_softness: int = 0
+        self.music_sensitivity: int = 100
+        self.music_color: tuple[int, int, int] | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Return current state dict."""

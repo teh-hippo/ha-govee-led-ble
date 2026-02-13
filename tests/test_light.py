@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from bleak import BleakError
 from homeassistant.components.light import ColorMode
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.govee_ble_lights.const import MODEL_PROFILES
 from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
@@ -50,6 +51,13 @@ def mock_h6199_coordinator():
     coordinator.rgb_color = (255, 255, 255)
     coordinator.color_temp_kelvin = None
     coordinator.effect = None
+    coordinator.video_saturation = 100
+    coordinator.video_brightness = 100
+    coordinator.video_full_screen = True
+    coordinator.video_sound_effects = False
+    coordinator.video_sound_effects_softness = 0
+    coordinator.music_sensitivity = 100
+    coordinator.music_color = None
     coordinator.send_command = AsyncMock()
     coordinator.send_commands = AsyncMock()
     return coordinator
@@ -295,8 +303,9 @@ async def test_h6199_video_movie(h6199_light, mock_h6199_coordinator):
     """Test H6199 video: movie effect sends video mode command."""
     await h6199_light.async_turn_on(effect="video: movie")
     calls = mock_h6199_coordinator.send_command.call_args_list
-    assert len(calls) == 2  # power + video mode
+    assert len(calls) == 3  # power + video mode + brightness
     assert calls[1].args[0] == build_video_mode(full_screen=True, game_mode=False)
+    assert calls[2].args[0] == build_brightness(100)
     assert mock_h6199_coordinator.effect == "video: movie"
 
 
@@ -306,6 +315,7 @@ async def test_h6199_video_game(h6199_light, mock_h6199_coordinator):
     await h6199_light.async_turn_on(effect="video: game")
     calls = mock_h6199_coordinator.send_command.call_args_list
     assert calls[1].args[0] == build_video_mode(full_screen=True, game_mode=True)
+    assert calls[2].args[0] == build_brightness(100)
     assert mock_h6199_coordinator.effect == "video: game"
 
 
@@ -340,6 +350,44 @@ async def test_h6199_music_rolling(h6199_light, mock_h6199_coordinator):
     await h6199_light.async_turn_on(effect="music: rolling")
     calls = mock_h6199_coordinator.send_command.call_args_list
     assert calls[1].args[0] == build_music_mode_with_color(0x06)
+
+
+@pytest.mark.asyncio
+async def test_h6199_video_effect_uses_stored_parameters(h6199_light, mock_h6199_coordinator):
+    """Test effect dropdown uses current coordinator video parameter values."""
+    mock_h6199_coordinator.video_saturation = 42
+    mock_h6199_coordinator.video_brightness = 37
+    mock_h6199_coordinator.video_full_screen = False
+    mock_h6199_coordinator.video_sound_effects = True
+    mock_h6199_coordinator.video_sound_effects_softness = 55
+
+    await h6199_light.async_turn_on(effect="video: game")
+
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_video_mode(
+        full_screen=False,
+        game_mode=True,
+        saturation=42,
+        sound_effects=True,
+        sound_effects_softness=55,
+    )
+    assert calls[2].args[0] == build_brightness(37)
+
+
+@pytest.mark.asyncio
+async def test_h6199_music_effect_uses_stored_parameters(h6199_light, mock_h6199_coordinator):
+    """Test effect dropdown uses current coordinator music parameter values."""
+    mock_h6199_coordinator.music_sensitivity = 33
+    mock_h6199_coordinator.music_color = (10, 20, 30)
+
+    await h6199_light.async_turn_on(effect="music: spectrum")
+
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(
+        0x04,
+        sensitivity=33,
+        color=(10, 20, 30),
+    )
 
 
 @pytest.mark.asyncio
@@ -379,3 +427,190 @@ def test_h6199_device_info(h6199_light):
     info = h6199_light.device_info
     assert info["model"] == "H6199"
     assert "Govee H6199" in info["name"]
+
+
+# --- H6199 service handler tests ---
+
+
+@pytest.mark.asyncio
+async def test_set_video_mode_movie(h6199_light, mock_h6199_coordinator):
+    """Test set_video_mode service with movie mode."""
+    await h6199_light.async_set_video_mode(mode="movie", saturation=80, brightness=65)
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert len(calls) == 3  # power + video mode + brightness
+    assert calls[0].args[0] == build_power(True)
+    assert calls[1].args[0] == build_video_mode(
+        full_screen=True, game_mode=False, saturation=80,
+    )
+    assert calls[2].args[0] == build_brightness(65)
+    assert mock_h6199_coordinator.effect == "video: movie"
+    assert mock_h6199_coordinator.video_saturation == 80
+    assert mock_h6199_coordinator.video_brightness == 65
+
+
+@pytest.mark.asyncio
+async def test_set_video_mode_game_with_sound(h6199_light, mock_h6199_coordinator):
+    """Test set_video_mode with game mode and sound effects."""
+    await h6199_light.async_set_video_mode(
+        mode="game", saturation=60, brightness=75, full_screen=False,
+        sound_effects=True, sound_effects_softness=50,
+    )
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_video_mode(
+        full_screen=False, game_mode=True, saturation=60,
+        sound_effects=True, sound_effects_softness=50,
+    )
+    assert calls[2].args[0] == build_brightness(75)
+    assert mock_h6199_coordinator.effect == "video: game"
+    assert mock_h6199_coordinator.video_sound_effects is True
+    assert mock_h6199_coordinator.video_sound_effects_softness == 50
+
+
+@pytest.mark.asyncio
+async def test_set_video_mode_updates_state(h6199_light, mock_h6199_coordinator):
+    """Test set_video_mode updates coordinator state fields."""
+    await h6199_light.async_set_video_mode(
+        mode="movie", saturation=42, brightness=33, full_screen=False
+    )
+    assert mock_h6199_coordinator.is_on is True
+    assert mock_h6199_coordinator.video_full_screen is False
+    assert mock_h6199_coordinator.video_saturation == 42
+    assert mock_h6199_coordinator.video_brightness == 33
+    assert mock_h6199_coordinator.brightness_pct == 33
+    h6199_light.async_write_ha_state.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_set_video_mode_capture_region_overrides_full_screen(
+    h6199_light, mock_h6199_coordinator
+):
+    """Test capture_region field takes precedence over full_screen boolean."""
+    await h6199_light.async_set_video_mode(
+        mode="movie",
+        saturation=50,
+        brightness=60,
+        full_screen=True,
+        capture_region="part",
+    )
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_video_mode(
+        full_screen=False,
+        game_mode=False,
+        saturation=50,
+    )
+    assert mock_h6199_coordinator.video_full_screen is False
+
+
+@pytest.mark.asyncio
+async def test_set_music_mode_energic(h6199_light, mock_h6199_coordinator):
+    """Test set_music_mode service with energic mode."""
+    await h6199_light.async_set_music_mode(mode="energic", sensitivity=75)
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert len(calls) == 2
+    assert calls[1].args[0] == build_music_mode_with_color(0x05, sensitivity=75)
+    assert mock_h6199_coordinator.effect == "music: energic"
+    assert mock_h6199_coordinator.music_sensitivity == 75
+
+
+@pytest.mark.asyncio
+async def test_set_music_mode_with_color(h6199_light, mock_h6199_coordinator):
+    """Test set_music_mode with accent color."""
+    await h6199_light.async_set_music_mode(
+        mode="spectrum", sensitivity=90, color=(255, 0, 128),
+    )
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(
+        0x04, sensitivity=90, color=(255, 0, 128),
+    )
+    assert mock_h6199_coordinator.music_color == (255, 0, 128)
+
+
+@pytest.mark.asyncio
+async def test_set_music_mode_rhythm(h6199_light, mock_h6199_coordinator):
+    """Test set_music_mode with rhythm mode."""
+    await h6199_light.async_set_music_mode(mode="rhythm", sensitivity=50)
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(0x03, sensitivity=50)
+    assert mock_h6199_coordinator.effect == "music: rhythm"
+
+
+@pytest.mark.asyncio
+async def test_set_music_mode_rolling_with_color(h6199_light, mock_h6199_coordinator):
+    """Test set_music_mode rolling with color."""
+    await h6199_light.async_set_music_mode(
+        mode="rolling", sensitivity=100, color=(0, 255, 0),
+    )
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(
+        0x06, sensitivity=100, color=(0, 255, 0),
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_music_mode_no_color(h6199_light, mock_h6199_coordinator):
+    """Test set_music_mode without color."""
+    await h6199_light.async_set_music_mode(mode="energic")
+    calls = mock_h6199_coordinator.send_command.call_args_list
+    assert calls[1].args[0] == build_music_mode_with_color(0x05, sensitivity=100)
+    assert mock_h6199_coordinator.music_color is None
+
+
+# --- Model guard tests ---
+
+
+@pytest.mark.asyncio
+async def test_set_video_mode_rejected_on_h617a(light):
+    """Test set_video_mode raises error on H617A entity."""
+    with pytest.raises(ServiceValidationError, match="H617A"):
+        await light.async_set_video_mode(mode="movie")
+
+
+@pytest.mark.asyncio
+async def test_set_music_mode_rejected_on_h617a(light):
+    """Test set_music_mode raises error on H617A entity."""
+    with pytest.raises(ServiceValidationError, match="H617A"):
+        await light.async_set_music_mode(mode="energic")
+
+
+# --- Rollback tests for services ---
+
+
+@pytest.mark.asyncio
+async def test_set_video_mode_rollback_on_failure(h6199_light, mock_h6199_coordinator):
+    """Test set_video_mode rolls back state when BLE command fails."""
+    mock_h6199_coordinator.is_on = False
+    mock_h6199_coordinator.effect = None
+    mock_h6199_coordinator.video_saturation = 100
+    # Fail on the second send_command (the video mode packet)
+    mock_h6199_coordinator.send_command = AsyncMock(
+        side_effect=[None, BleakError("connection lost")]
+    )
+
+    with pytest.raises(BleakError):
+        await h6199_light.async_set_video_mode(mode="movie", saturation=42)
+
+    # is_on was set to True after power-on succeeded, but should be rolled back
+    assert mock_h6199_coordinator.is_on is False
+    assert mock_h6199_coordinator.effect is None
+    assert mock_h6199_coordinator.video_saturation == 100
+    assert mock_h6199_coordinator.video_brightness == 100
+
+
+@pytest.mark.asyncio
+async def test_set_music_mode_rollback_on_failure(h6199_light, mock_h6199_coordinator):
+    """Test set_music_mode rolls back state when BLE command fails."""
+    mock_h6199_coordinator.is_on = False
+    mock_h6199_coordinator.effect = None
+    mock_h6199_coordinator.music_sensitivity = 100
+    mock_h6199_coordinator.music_color = None
+    mock_h6199_coordinator.send_command = AsyncMock(
+        side_effect=[None, BleakError("timeout")]
+    )
+
+    with pytest.raises(BleakError):
+        await h6199_light.async_set_music_mode(mode="spectrum", sensitivity=50, color=(255, 0, 0))
+
+    assert mock_h6199_coordinator.is_on is False
+    assert mock_h6199_coordinator.effect is None
+    assert mock_h6199_coordinator.music_sensitivity == 100
+    assert mock_h6199_coordinator.music_color is None
