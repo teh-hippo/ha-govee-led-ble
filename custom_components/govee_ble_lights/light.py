@@ -79,18 +79,12 @@ async def async_setup_entry(
         SERVICE_SET_VIDEO_MODE,
         {
             vol.Required("mode"): vol.In(["movie", "game"]),
-            vol.Optional("saturation", default=100): vol.All(
-                vol.Coerce(int), vol.Range(min=0, max=100)
-            ),
-            vol.Optional("brightness", default=100): vol.All(
-                vol.Coerce(int), vol.Range(min=0, max=100)
-            ),
+            vol.Optional("saturation", default=100): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+            vol.Optional("brightness", default=100): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
             vol.Optional("capture_region"): vol.In(["full", "part"]),
             vol.Optional("full_screen", default=True): cv.boolean,
             vol.Optional("sound_effects", default=False): cv.boolean,
-            vol.Optional("sound_effects_softness", default=0): vol.All(
-                vol.Coerce(int), vol.Range(min=0, max=100)
-            ),
+            vol.Optional("sound_effects_softness", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
         },
         "async_set_video_mode",
     )
@@ -99,12 +93,8 @@ async def async_setup_entry(
         SERVICE_SET_MUSIC_MODE,
         {
             vol.Required("mode"): vol.In(["energic", "rhythm", "spectrum", "rolling"]),
-            vol.Optional("sensitivity", default=100): vol.All(
-                vol.Coerce(int), vol.Range(min=0, max=100)
-            ),
-            vol.Optional("color"): vol.All(
-                vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple)
-            ),
+            vol.Optional("sensitivity", default=100): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
+            vol.Optional("color"): vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple)),
         },
         "async_set_music_mode",
     )

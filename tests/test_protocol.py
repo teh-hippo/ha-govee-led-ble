@@ -380,15 +380,18 @@ class TestVideoMode(unittest.TestCase):
 
     def test_video_mode_all_params(self):
         packet = build_video_mode(
-            full_screen=False, game_mode=True, saturation=60,
-            sound_effects=True, sound_effects_softness=75,
+            full_screen=False,
+            game_mode=True,
+            saturation=60,
+            sound_effects=True,
+            sound_effects_softness=75,
         )
         self.assertEqual(packet[2], 0x00)  # VIDEO
         self.assertEqual(packet[3], 0x00)  # partial
         self.assertEqual(packet[4], 0x01)  # game
-        self.assertEqual(packet[5], 60)    # saturation
+        self.assertEqual(packet[5], 60)  # saturation
         self.assertEqual(packet[6], 0x01)  # sound_effects
-        self.assertEqual(packet[7], 75)    # softness
+        self.assertEqual(packet[7], 75)  # softness
         self.assertEqual(xor_checksum(packet[:19]), packet[19])
 
 
@@ -440,7 +443,7 @@ class TestMusicModeWithColor(unittest.TestCase):
 
     def test_calm_flag(self):
         packet = build_music_mode_with_color(0x03, sensitivity=80, calm=True)
-        self.assertEqual(packet[4], 80)   # sensitivity
+        self.assertEqual(packet[4], 80)  # sensitivity
         self.assertEqual(packet[5], 0x01)  # calm=True
         self.assertEqual(xor_checksum(packet[:19]), packet[19])
 

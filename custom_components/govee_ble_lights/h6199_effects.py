@@ -27,9 +27,7 @@ MUSIC_MODE_IDS: dict[str, int] = {
     "rolling": 0x06,
 }
 
-MUSIC_EFFECT_MODE_IDS: dict[str, int] = {
-    f"music: {name}": mode_id for name, mode_id in MUSIC_MODE_IDS.items()
-}
+MUSIC_EFFECT_MODE_IDS: dict[str, int] = {f"music: {name}": mode_id for name, mode_id in MUSIC_MODE_IDS.items()}
 
 
 def video_game_mode_from_effect(effect: str | None) -> bool | None:
