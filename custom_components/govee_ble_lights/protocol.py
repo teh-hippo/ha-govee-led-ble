@@ -255,6 +255,33 @@ def build_video_mode(
     return build_packet(0x33, 0x05, params)
 
 
+def build_white_brightness(percent: int) -> bytes:
+    """Build white-channel brightness command (H6199).
+
+    Reverse-engineering sources suggest a `33 05 15 02` sub-command that adjusts the
+    white (warm/cool) channel intensity separately from the global brightness.
+
+    Note: setting this to 0 may effectively disable the white LEDs until re-enabled.
+    """
+    percent = max(0, min(100, percent))
+    raw = round(percent * 255 / 100)
+    params = [
+        ColorMode.STATIC,
+        0x02,
+        raw,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0xFF,
+        0x7F,
+    ]
+    return build_packet(0x33, 0x05, params)
+
+
 def build_gradient(on: bool) -> bytes:
     """Build gradient toggle command.
 

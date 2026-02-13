@@ -23,6 +23,7 @@ from protocol import (
     build_scene_multi,
     build_state_query,
     build_video_mode,
+    build_white_brightness,
     kelvin_to_rgb,
     parse_brightness_response,
     parse_power_response,
@@ -100,6 +101,25 @@ class TestBrightness(unittest.TestCase):
     def test_brightness_checksum(self):
         packet = build_brightness(50)
         self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+
+class TestWhiteBrightness(unittest.TestCase):
+    def test_white_brightness_100(self):
+        packet = build_white_brightness(100)
+        self.assertEqual(packet[0], 0x33)
+        self.assertEqual(packet[1], 0x05)
+        self.assertEqual(packet[2], 0x15)  # static/segment mode
+        self.assertEqual(packet[3], 0x02)  # white brightness sub-command
+        self.assertEqual(packet[4], 0xFF)  # 100% -> 255
+        self.assertEqual(packet[12], 0xFF)  # seg_lo (all)
+        self.assertEqual(packet[13], 0x7F)  # seg_hi (15 segments)
+        self.assertEqual(xor_checksum(packet[:19]), packet[19])
+
+    def test_white_brightness_clamp_high(self):
+        self.assertEqual(build_white_brightness(200)[4], 0xFF)
+
+    def test_white_brightness_clamp_low(self):
+        self.assertEqual(build_white_brightness(-10)[4], 0x00)
 
 
 class TestColorRGB(unittest.TestCase):

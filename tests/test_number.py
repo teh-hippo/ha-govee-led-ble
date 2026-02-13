@@ -13,6 +13,7 @@ from custom_components.govee_ble_lights.protocol import (
     build_brightness,
     build_music_mode_with_color,
     build_video_mode,
+    build_white_brightness,
 )
 
 
@@ -27,6 +28,7 @@ def mock_h6199_coordinator():
     coordinator.brightness_pct = 100
     coordinator.video_saturation = 100
     coordinator.video_brightness = 100
+    coordinator.white_brightness = 100
     coordinator.video_full_screen = True
     coordinator.video_sound_effects = False
     coordinator.video_sound_effects_softness = 0
@@ -100,6 +102,24 @@ async def test_video_brightness_number_applies_to_active_video_mode(mock_h6199_c
     assert mock_h6199_coordinator.video_brightness == 28
     assert mock_h6199_coordinator.brightness_pct == 28
     mock_h6199_coordinator.send_command.assert_called_once_with(build_brightness(28))
+
+
+@pytest.mark.asyncio
+async def test_white_brightness_number_sends_white_brightness_packet(mock_h6199_coordinator):
+    """Test white brightness helper sends the white brightness packet."""
+    entity = H6199ParameterNumber(
+        mock_h6199_coordinator,
+        key="white_brightness",
+        name="White brightness",
+        minimum=1,
+        maximum=100,
+    )
+
+    await entity.async_set_native_value(50)
+
+    assert mock_h6199_coordinator.white_brightness == 50
+    assert mock_h6199_coordinator.brightness_pct == 100  # does not mirror global brightness
+    mock_h6199_coordinator.send_command.assert_called_once_with(build_white_brightness(50))
 
 
 @pytest.mark.asyncio

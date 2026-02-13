@@ -15,6 +15,7 @@ from .h6199_effects import (
     apply_active_music_mode_from_state,
     apply_active_video_brightness_from_state,
     apply_active_video_mode_from_state,
+    apply_white_brightness_from_state,
 )
 
 
@@ -42,6 +43,13 @@ async def async_setup_entry(
                 key="video_brightness",
                 name="Video brightness",
                 minimum=0,
+                maximum=100,
+            ),
+            H6199ParameterNumber(
+                coordinator,
+                key="white_brightness",
+                name="White brightness",
+                minimum=1,
                 maximum=100,
             ),
             H6199ParameterNumber(
@@ -116,6 +124,10 @@ class H6199ParameterNumber(CoordinatorEntity[GoveeBLECoordinator], NumberEntity)
 
     async def _async_apply_if_active_effect(self) -> None:
         """Apply updated number values when the corresponding mode is active."""
+        if self._key == "white_brightness":
+            await apply_white_brightness_from_state(self.coordinator)
+            return
+
         if self._key == "video_brightness":
             await apply_active_video_brightness_from_state(self.coordinator)
             return
