@@ -10,7 +10,6 @@ build/
 .venv/
 venv/
 pythonenv*
-.python-version
 .coverage
 htmlcov/
 .pytest_cache/
