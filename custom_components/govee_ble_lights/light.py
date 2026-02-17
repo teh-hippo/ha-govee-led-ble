@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import voluptuous as vol
 from homeassistant.components.light import (
@@ -164,24 +164,58 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         """Return the list of supported effects."""
         return self._effect_list
 
+    async def _refresh_state_with_retry(
+        self,
+        *,
+        expected_effect: str | None = None,
+        expected_on: bool | None = None,
+        retry_command: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """Refresh state for state-readable devices and retry once if needed."""
+        if not self._profile.state_readable:
+            return
+        if await self.coordinator.refresh_state(expected_effect=expected_effect, expected_on=expected_on):
+            return
+        if retry_command is not None:
+            await retry_command()
+        if await self.coordinator.refresh_state(expected_effect=expected_effect, expected_on=expected_on):
+            return
+        raise RuntimeError(f"Failed to confirm state for {self._model}: effect={expected_effect} power={expected_on}")
+
     async def _apply_effect(self, effect_name: str) -> bool:
         """Apply an effect by name. Returns True if handled."""
         game_mode = video_game_mode_from_effect(effect_name)
         if game_mode is not None:
-            await apply_video_mode_from_state(self.coordinator, game_mode=game_mode)
-            await self.coordinator.send_command(build_brightness(self.coordinator.video_brightness))
+
+            async def _send_video_mode() -> None:
+                await apply_video_mode_from_state(self.coordinator, game_mode=game_mode)
+                await self.coordinator.send_command(build_brightness(self.coordinator.video_brightness))
+
+            await _send_video_mode()
             self.coordinator.brightness_pct = self.coordinator.video_brightness
+            await self._refresh_state_with_retry(
+                expected_effect=effect_name,
+                retry_command=_send_video_mode,
+            )
             return True
 
         # Music modes (H6199)
         music_id = music_mode_id_from_effect(effect_name)
         if music_id is not None:
-            await self.coordinator.send_command(
-                build_music_mode_with_color(
-                    music_id,
-                    sensitivity=self.coordinator.music_sensitivity,
-                    color=self.coordinator.music_color,
+
+            async def _send_music_mode() -> None:
+                await self.coordinator.send_command(
+                    build_music_mode_with_color(
+                        music_id,
+                        sensitivity=self.coordinator.music_sensitivity,
+                        color=self.coordinator.music_color,
+                    )
                 )
+
+            await _send_music_mode()
+            await self._refresh_state_with_retry(
+                expected_effect=effect_name,
+                retry_command=_send_music_mode,
             )
             return True
 
@@ -207,9 +241,14 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         prev_mode = self._attr_color_mode
 
         try:
-            await self.coordinator.send_command(build_power(True))
+
+            async def _send_power_on() -> None:
+                await self.coordinator.send_command(build_power(True))
+
+            await _send_power_on()
             self.coordinator.is_on = True
             self.coordinator.effect = None
+            await self._refresh_state_with_retry(expected_on=True, retry_command=_send_power_on)
 
             if ATTR_BRIGHTNESS in kwargs:
                 brightness_255 = kwargs[ATTR_BRIGHTNESS]
@@ -252,8 +291,13 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         """Turn the light off."""
         prev_on = self.coordinator.is_on
         try:
-            await self.coordinator.send_command(build_power(False))
+
+            async def _send_power_off() -> None:
+                await self.coordinator.send_command(build_power(False))
+
+            await _send_power_off()
             self.coordinator.is_on = False
+            await self._refresh_state_with_retry(expected_on=False, retry_command=_send_power_off)
         except Exception:
             self.coordinator.is_on = prev_on
             raise
@@ -295,10 +339,18 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 sound_effects=sound_effects,
                 sound_effects_softness=sound_effects_softness,
             )
+
+            async def _send_video_mode() -> None:
+                await self.coordinator.send_command(packet)
+                await self.coordinator.send_command(build_brightness(brightness))
+
             await self.coordinator.send_command(build_power(True))
             self.coordinator.is_on = True
-            await self.coordinator.send_command(packet)
-            await self.coordinator.send_command(build_brightness(brightness))
+            await _send_video_mode()
+            await self._refresh_state_with_retry(
+                expected_effect=f"video: {mode}",
+                retry_command=_send_video_mode,
+            )
             self.coordinator.effect = f"video: {mode}"
             self.coordinator.video_saturation = saturation
             self.coordinator.video_brightness = brightness
@@ -339,9 +391,17 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         try:
             mode_id = MUSIC_MODE_IDS[mode]
             packet = build_music_mode_with_color(mode_id, sensitivity=sensitivity, color=color)
+
+            async def _send_music_mode() -> None:
+                await self.coordinator.send_command(packet)
+
             await self.coordinator.send_command(build_power(True))
             self.coordinator.is_on = True
-            await self.coordinator.send_command(packet)
+            await _send_music_mode()
+            await self._refresh_state_with_retry(
+                expected_effect=f"music: {mode}",
+                retry_command=_send_music_mode,
+            )
             self.coordinator.effect = f"music: {mode}"
             self.coordinator.music_sensitivity = sensitivity
             self.coordinator.music_color = color

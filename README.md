@@ -47,6 +47,33 @@ Once installed, the integration will automatically discover nearby Govee BLE dev
 - If the device is unresponsive, power cycle it and restart HA
 - Check **Settings → System → Logs** for BLE connection errors
 
+## H6199 UAT Harness
+
+For repeatable hardware checks, run:
+
+```bash
+python scripts/h6199_harness.py \
+  --base-url http://homeassistant.local:8123 \
+  --token "<HA_LONG_LIVED_TOKEN>" \
+  --light-entity-id light.govee_h6199 \
+  --capture-region-entity-id select.govee_h6199_video_capture_region \
+  --video-saturation-entity-id number.govee_h6199_video_saturation \
+  --music-sensitivity-entity-id number.govee_h6199_music_sensitivity
+```
+
+It executes a fixed scenario (video movie -> video game/part -> music spectrum -> off), polls HA state until convergence, and writes a JSON report in `artifacts/`.
+
+## Developer Preflight (before push/release)
+
+Run the same local checks used by CI:
+
+```bash
+uv run ruff check custom_components/ tests/
+uv run ruff format --check custom_components/ tests/
+uv run coverage run -m pytest tests/ -v --tb=short
+uv run coverage report --include="custom_components/govee_ble_lights/*" --fail-under=90
+```
+
 ## License
 
 MIT

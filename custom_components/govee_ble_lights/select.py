@@ -28,10 +28,10 @@ async def async_setup_entry(
 
 
 class H6199VideoCaptureSelect(CoordinatorEntity[GoveeBLECoordinator], SelectEntity):
-    """Select entity for H6199 video capture region."""
+    """Select entity for H6199 video color-mapping mode."""
 
     _attr_has_entity_name = True
-    _attr_name = "Video capture region"
+    _attr_name = "Video color mapping"
     _attr_options = ["full", "part"]
 
     def __init__(self, coordinator: GoveeBLECoordinator) -> None:
@@ -48,11 +48,11 @@ class H6199VideoCaptureSelect(CoordinatorEntity[GoveeBLECoordinator], SelectEnti
 
     @property
     def current_option(self) -> str:
-        """Return current capture region option."""
+        """Return current color-mapping option."""
         return "full" if self.coordinator.video_full_screen else "part"
 
     async def async_select_option(self, option: str) -> None:
-        """Select video capture region."""
+        """Select video color-mapping mode."""
         full_screen = option == "full"
         prev_value = self.coordinator.video_full_screen
         if prev_value == full_screen:

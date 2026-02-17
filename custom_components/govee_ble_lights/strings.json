@@ -33,12 +33,12 @@
           "description": "Video mode brightness level (0–100)."
         },
         "capture_region": {
-          "name": "Capture region",
-          "description": "Capture region: full screen or partial screen."
+          "name": "Color mapping",
+          "description": "How screen colors are mapped to the strip: full applies a single dominant screen color across the strip, part maps colors by screen zones."
         },
         "full_screen": {
-          "name": "Full screen",
-          "description": "Capture full screen (true) or partial (false)."
+          "name": "Use full mapping",
+          "description": "true = full mapping (single dominant color across strip), false = part mapping (zoned screen-to-strip mapping)."
         },
         "sound_effects": {
           "name": "Sound effects",

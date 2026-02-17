@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .protocol import build_brightness, build_music_mode_with_color, build_video_mode, build_white_brightness
+from .protocol import build_brightness, build_color_rgb, build_music_mode_with_color, build_video_mode
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
@@ -87,7 +87,12 @@ async def apply_white_brightness_from_state(coordinator: GoveeBLECoordinator) ->
     """Apply white-channel brightness using coordinator values."""
     if not coordinator.is_on:
         return False
-    await coordinator.send_command(build_white_brightness(coordinator.white_brightness))
+    await coordinator.send_command(build_color_rgb(255, 255, 255))
+    await coordinator.send_command(build_brightness(coordinator.white_brightness))
+    coordinator.brightness_pct = coordinator.white_brightness
+    coordinator.rgb_color = (255, 255, 255)
+    coordinator.color_temp_kelvin = None
+    coordinator.effect = None
     return True
 
 

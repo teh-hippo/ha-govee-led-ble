@@ -60,6 +60,7 @@ def mock_h6199_coordinator():
     coordinator.music_color = None
     coordinator.send_command = AsyncMock()
     coordinator.send_commands = AsyncMock()
+    coordinator.refresh_state = AsyncMock(return_value=True)
     return coordinator
 
 
@@ -307,6 +308,20 @@ async def test_h6199_video_movie(h6199_light, mock_h6199_coordinator):
     assert calls[1].args[0] == build_video_mode(full_screen=True, game_mode=False)
     assert calls[2].args[0] == build_brightness(100)
     assert mock_h6199_coordinator.effect == "video: movie"
+
+
+@pytest.mark.asyncio
+async def test_h6199_turn_on_confirms_power_state(h6199_light, mock_h6199_coordinator):
+    """Test H6199 turn_on confirms power state via refresh."""
+    await h6199_light.async_turn_on()
+    mock_h6199_coordinator.refresh_state.assert_awaited_once_with(expected_effect=None, expected_on=True)
+
+
+@pytest.mark.asyncio
+async def test_h6199_turn_off_confirms_power_state(h6199_light, mock_h6199_coordinator):
+    """Test H6199 turn_off confirms power state via refresh."""
+    await h6199_light.async_turn_off()
+    mock_h6199_coordinator.refresh_state.assert_awaited_once_with(expected_effect=None, expected_on=False)
 
 
 @pytest.mark.asyncio

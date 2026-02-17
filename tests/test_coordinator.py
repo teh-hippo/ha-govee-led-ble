@@ -9,7 +9,13 @@ from bleak import BleakError
 
 from custom_components.govee_ble_lights.const import MODEL_PROFILES
 from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
-from custom_components.govee_ble_lights.protocol import build_power
+from custom_components.govee_ble_lights.protocol import (
+    WRITE_UUID,
+    build_brightness_query,
+    build_color_mode_query,
+    build_keep_alive,
+    build_power,
+)
 
 
 @pytest.fixture
@@ -183,6 +189,26 @@ def test_notify_callback_brightness(h6199_coordinator):
     assert h6199_coordinator.brightness_pct == 75
 
 
+def test_notify_callback_video_mode(h6199_coordinator):
+    """Test notify callback parses video mode response."""
+    # mode=video, full_screen=0(part), game_mode=1, saturation=42
+    data = bytearray([0xAA, 0x05, 0x00, 0x00, 0x01, 42])
+    h6199_coordinator._notify_callback(None, data)
+    assert h6199_coordinator.effect == "video: game"
+    assert h6199_coordinator.video_full_screen is False
+    assert h6199_coordinator.video_saturation == 42
+
+
+def test_notify_callback_music_mode(h6199_coordinator):
+    """Test notify callback parses music mode response."""
+    # mode=music, mode_id=spectrum(0x04), sensitivity=66, has_color=1, rgb=(1,2,3)
+    data = bytearray([0xAA, 0x05, 0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])
+    h6199_coordinator._notify_callback(None, data)
+    assert h6199_coordinator.effect == "music: spectrum"
+    assert h6199_coordinator.music_sensitivity == 66
+    assert h6199_coordinator.music_color == (1, 2, 3)
+
+
 def test_notify_callback_ignores_short_data(h6199_coordinator):
     """Test notify callback ignores packets shorter than 3 bytes."""
     h6199_coordinator.is_on = False
@@ -216,6 +242,9 @@ async def test_start_notify_called_for_state_readable(h6199_coordinator):
         client = await h6199_coordinator._ensure_connected()
 
     mock_client.start_notify.assert_called_once()
+    mock_client.write_gatt_char.assert_any_await(WRITE_UUID, build_keep_alive(), response=False)
+    mock_client.write_gatt_char.assert_any_await(WRITE_UUID, build_brightness_query(), response=False)
+    mock_client.write_gatt_char.assert_any_await(WRITE_UUID, build_color_mode_query(), response=False)
     assert client is mock_client
     await h6199_coordinator.disconnect()
 

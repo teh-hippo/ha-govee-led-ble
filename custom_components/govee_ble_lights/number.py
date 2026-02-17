@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -29,6 +30,13 @@ async def async_setup_entry(
     if coordinator.model != "H6199":
         return
 
+    entity_registry = er.async_get(hass)
+    for entry in er.async_entries_for_config_entry(entity_registry, config_entry.entry_id):
+        if entry.domain != "number":
+            continue
+        if entry.unique_id.endswith("_video_brightness") or entry.unique_id.endswith("_white_brightness"):
+            entity_registry.async_remove(entry.entity_id)
+
     async_add_entities(
         [
             H6199ParameterNumber(
@@ -36,20 +44,6 @@ async def async_setup_entry(
                 key="video_saturation",
                 name="Video saturation",
                 minimum=0,
-                maximum=100,
-            ),
-            H6199ParameterNumber(
-                coordinator,
-                key="video_brightness",
-                name="Video brightness",
-                minimum=0,
-                maximum=100,
-            ),
-            H6199ParameterNumber(
-                coordinator,
-                key="white_brightness",
-                name="White brightness",
-                minimum=1,
                 maximum=100,
             ),
             H6199ParameterNumber(

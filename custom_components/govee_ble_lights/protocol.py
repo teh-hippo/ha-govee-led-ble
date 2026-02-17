@@ -7,6 +7,7 @@ Supports H617A, H6199, and future models sharing the same base protocol.
 
 import base64
 import math
+from dataclasses import dataclass
 from enum import IntEnum
 
 # BLE UUIDs (shared across all known Govee BLE models)
@@ -39,6 +40,14 @@ class ColorMode(IntEnum):
     VIDEO = 0x00
     MUSIC = 0x13
     STATIC = 0x15
+
+
+MUSIC_EFFECT_BY_ID: dict[int, str] = {
+    0x05: "music: energic",
+    0x03: "music: rhythm",
+    0x04: "music: spectrum",
+    0x06: "music: rolling",
+}
 
 
 # Multi-packet scene prefix byte (0xA3)
@@ -214,12 +223,24 @@ def build_scene_multi(scene_param_b64: str, scene_code: int) -> list[bytes]:
     return packets
 
 
-def build_state_query() -> bytes:
-    """Build state query packet.
+def build_status_query(domain: int) -> bytes:
+    """Build a status query packet for a specific domain."""
+    return build_packet(PacketHeader.STATUS, domain, [])
 
-    Format: AA 01 00...00 AB
-    """
-    return build_packet(0xAA, 0x01, [])
+
+def build_state_query() -> bytes:
+    """Build power-state query packet (AA 01 ...)."""
+    return build_status_query(PacketType.POWER)
+
+
+def build_brightness_query() -> bytes:
+    """Build brightness-state query packet (AA 04 ...)."""
+    return build_status_query(PacketType.BRIGHTNESS)
+
+
+def build_color_mode_query() -> bytes:
+    """Build color/mode query packet (AA 05 ...)."""
+    return build_status_query(PacketType.COLOR)
 
 
 def build_keep_alive() -> bytes:
@@ -321,3 +342,66 @@ def parse_power_response(payload: bytes) -> bool:
 def parse_brightness_response(payload: bytes) -> int:
     """Parse brightness percentage from status response payload."""
     return payload[0]
+
+
+@dataclass(frozen=True)
+class ParsedColorModeResponse:
+    """Parsed color-mode response values from a 0xAA 0x05 notify payload."""
+
+    effect: str | None = None
+    video_full_screen: bool | None = None
+    video_saturation: int | None = None
+    video_sound_effects: bool | None = None
+    video_sound_effects_softness: int | None = None
+    music_sensitivity: int | None = None
+    music_color: tuple[int, int, int] | None = None
+    rgb_color: tuple[int, int, int] | None = None
+    white_brightness: int | None = None
+
+
+def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
+    """Parse a color/mode status payload (domain 0x05)."""
+    if not payload:
+        raise ValueError("Color mode payload is empty")
+
+    mode = payload[0]
+    if mode == ColorMode.VIDEO:
+        full_screen = bool(payload[1]) if len(payload) > 1 else None
+        game_mode = bool(payload[2]) if len(payload) > 2 else False
+        saturation = payload[3] if len(payload) > 3 else None
+        sound_effects = bool(payload[4]) if len(payload) > 4 else None
+        sound_effects_softness = payload[5] if len(payload) > 5 else None
+        return ParsedColorModeResponse(
+            effect="video: game" if game_mode else "video: movie",
+            video_full_screen=full_screen,
+            video_saturation=saturation,
+            video_sound_effects=sound_effects,
+            video_sound_effects_softness=sound_effects_softness,
+        )
+
+    if mode == ColorMode.MUSIC:
+        effect = MUSIC_EFFECT_BY_ID.get(payload[1]) if len(payload) > 1 else None
+        sensitivity = payload[2] if len(payload) > 2 else None
+        color: tuple[int, int, int] | None = None
+        if len(payload) > 7 and payload[4] == 0x01:
+            color = (payload[5], payload[6], payload[7])
+        return ParsedColorModeResponse(
+            effect=effect,
+            music_sensitivity=sensitivity,
+            music_color=color,
+        )
+
+    if mode == ColorMode.STATIC:
+        rgb_color: tuple[int, int, int] | None = None
+        white_brightness: int | None = None
+        if len(payload) > 4 and payload[1] == 0x01:
+            rgb_color = (payload[2], payload[3], payload[4])
+        if len(payload) > 2 and payload[1] == 0x02:
+            white_brightness = round(payload[2] * 100 / 255)
+        return ParsedColorModeResponse(
+            effect=None,
+            rgb_color=rgb_color,
+            white_brightness=white_brightness,
+        )
+
+    return ParsedColorModeResponse()

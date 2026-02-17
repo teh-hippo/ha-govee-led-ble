@@ -11,9 +11,9 @@ from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
 from custom_components.govee_ble_lights.number import H6199ParameterNumber
 from custom_components.govee_ble_lights.protocol import (
     build_brightness,
+    build_color_rgb,
     build_music_mode_with_color,
     build_video_mode,
-    build_white_brightness,
 )
 
 
@@ -118,8 +118,12 @@ async def test_white_brightness_number_sends_white_brightness_packet(mock_h6199_
     await entity.async_set_native_value(50)
 
     assert mock_h6199_coordinator.white_brightness == 50
-    assert mock_h6199_coordinator.brightness_pct == 100  # does not mirror global brightness
-    mock_h6199_coordinator.send_command.assert_called_once_with(build_white_brightness(50))
+    assert mock_h6199_coordinator.brightness_pct == 50
+    assert mock_h6199_coordinator.rgb_color == (255, 255, 255)
+    assert mock_h6199_coordinator.effect is None
+    assert mock_h6199_coordinator.send_command.call_count == 2
+    mock_h6199_coordinator.send_command.assert_any_call(build_color_rgb(255, 255, 255))
+    mock_h6199_coordinator.send_command.assert_any_call(build_brightness(50))
 
 
 @pytest.mark.asyncio

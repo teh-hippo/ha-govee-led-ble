@@ -12,6 +12,8 @@ from protocol import (
     PacketHeader,
     PacketType,
     build_brightness,
+    build_brightness_query,
+    build_color_mode_query,
     build_color_rgb,
     build_color_temp,
     build_gradient,
@@ -26,6 +28,7 @@ from protocol import (
     build_white_brightness,
     kelvin_to_rgb,
     parse_brightness_response,
+    parse_color_mode_response,
     parse_power_response,
     xor_checksum,
 )
@@ -318,6 +321,14 @@ class TestStateQuery(unittest.TestCase):
     def test_state_query_length(self):
         self.assertEqual(len(build_state_query()), 20)
 
+    def test_brightness_query(self):
+        expected = bytes.fromhex("AA040000000000000000000000000000000000AE")
+        self.assertEqual(build_brightness_query(), expected)
+
+    def test_color_mode_query(self):
+        expected = bytes.fromhex("AA050000000000000000000000000000000000AF")
+        self.assertEqual(build_color_mode_query(), expected)
+
 
 class TestKelvinToRGB(unittest.TestCase):
     def test_warm_1000k(self):
@@ -489,6 +500,33 @@ class TestResponseParsers(unittest.TestCase):
 
     def test_parse_brightness(self):
         self.assertEqual(parse_brightness_response(bytes([75, 0x00])), 75)
+
+    def test_parse_color_mode_video(self):
+        parsed = parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]))
+        self.assertEqual(parsed.effect, "video: game")
+        self.assertFalse(parsed.video_full_screen)
+        self.assertEqual(parsed.video_saturation, 42)
+        self.assertTrue(parsed.video_sound_effects)
+        self.assertEqual(parsed.video_sound_effects_softness, 55)
+
+    def test_parse_color_mode_music_with_color(self):
+        parsed = parse_color_mode_response(bytes([0x13, 0x04, 77, 0x00, 0x01, 1, 2, 3]))
+        self.assertEqual(parsed.effect, "music: spectrum")
+        self.assertEqual(parsed.music_sensitivity, 77)
+        self.assertEqual(parsed.music_color, (1, 2, 3))
+
+    def test_parse_color_mode_static_rgb(self):
+        parsed = parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30]))
+        self.assertIsNone(parsed.effect)
+        self.assertEqual(parsed.rgb_color, (10, 20, 30))
+
+    def test_parse_color_mode_static_white_brightness(self):
+        parsed = parse_color_mode_response(bytes([0x15, 0x02, 0x80]))
+        self.assertEqual(parsed.white_brightness, 50)
+
+    def test_parse_color_mode_empty_payload_raises(self):
+        with self.assertRaises(ValueError):
+            parse_color_mode_response(bytes())
 
 
 class TestEnums(unittest.TestCase):
