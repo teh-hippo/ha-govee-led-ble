@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import GoveeBLECoordinator
-from .h6199_effects import apply_active_video_mode_from_state
+from .light import apply_active_video_mode
 
 
 async def async_setup_entry(
@@ -17,49 +17,34 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Govee BLE select entities."""
     coordinator: GoveeBLECoordinator = config_entry.runtime_data
-    if coordinator.model != "H6199":
-        return
-
-    async_add_entities([H6199VideoCaptureSelect(coordinator)])
+    if coordinator.model == "H6199":
+        async_add_entities([H6199VideoCaptureSelect(coordinator)])
 
 
 class H6199VideoCaptureSelect(CoordinatorEntity[GoveeBLECoordinator], SelectEntity):
-    """Select entity for H6199 video color-mapping mode."""
-
     _attr_has_entity_name = True
     _attr_name = "Video color mapping"
     _attr_options = ["full", "part"]
 
     def __init__(self, coordinator: GoveeBLECoordinator) -> None:
-        """Initialize the select entity."""
         super().__init__(coordinator)
-        addr = coordinator.address.replace(":", "").lower()
-        self._attr_unique_id = f"{addr}_video_capture_region"
+        self._attr_unique_id = f"{coordinator.address.replace(':', '').lower()}_video_capture_region"
         self._attr_device_info = coordinator.device_info
 
     @property
     def current_option(self) -> str:
-        """Return current color-mapping option."""
         return "full" if self.coordinator.video_full_screen else "part"
 
     async def async_select_option(self, option: str) -> None:
-        """Select video color-mapping mode."""
         full_screen = option == "full"
-        prev_value = self.coordinator.video_full_screen
-        if prev_value == full_screen:
+        prev = self.coordinator.video_full_screen
+        if prev == full_screen:
             return
-
         self.coordinator.video_full_screen = full_screen
         try:
-            await self._async_apply_if_active_video_effect()
+            await apply_active_video_mode(self.coordinator)
         except Exception:
-            self.coordinator.video_full_screen = prev_value
+            self.coordinator.video_full_screen = prev
             raise
-
         self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})
-
-    async def _async_apply_if_active_video_effect(self) -> None:
-        """Apply updated region when a video mode is active."""
-        await apply_active_video_mode_from_state(self.coordinator)

@@ -17,25 +17,27 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import DOMAIN, ModelProfile, get_profile
+# fmt: off
+from .const import DOMAIN, get_profile
 from .protocol import (
+    BRIGHTNESS_QUERY,
+    COLOR_MODE_QUERY,
+    KEEP_ALIVE,
     READ_UUID,
     WRITE_UUID,
-    build_brightness_query,
-    build_color_mode_query,
-    build_keep_alive,
     parse_brightness_response,
     parse_color_mode_response,
     parse_power_response,
 )
+
+# fmt: on
 
 _LOGGER = logging.getLogger(__name__)
 
 DISCONNECT_DELAY = 120
 KEEP_ALIVE_INTERVAL = 5
 STATE_QUERY_EVERY_N_KEEP_ALIVES = 3
-SHUTDOWN_RETRY_BACKOFF_SECONDS = 4
-DEVICE_DISCOVERY_RETRY_SECONDS = 2
+RETRY_BACKOFF_SECONDS = 2
 DEVICE_DISCOVERY_ATTEMPTS = 4
 
 
@@ -50,39 +52,31 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=f"Govee {model} ({address})",
             update_interval=timedelta(seconds=30) if profile.state_readable else None,
         )
-        self.address = address
-        self.model = model
-        self.profile: ModelProfile = profile
+        self.address, self.model, self.profile = address, model, profile
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
         self._cancel_disconnect: CALLBACK_TYPE | None = None
         self._keep_alive_task: asyncio.Task | None = None
-        self._keep_alive_ticks: int = 0
+        self._keep_alive_ticks = 0
         # Optimistic state
-        self.is_on: bool = False
-        self.brightness_pct: int = 100
+        self.is_on = False
+        self.brightness_pct = 100
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
         self.effect: str | None = None
         # H6199 parameters
-        self.video_saturation: int = 100
-        self.video_brightness: int = 100
-        self.white_brightness: int = 100
-        self.video_full_screen: bool = True
-        self.video_sound_effects: bool = False
-        self.video_sound_effects_softness: int = 0
-        self.music_sensitivity: int = 100
+        self.video_saturation = self.video_brightness = self.white_brightness = self.music_sensitivity = 100
+        self.video_full_screen, self.video_sound_effects = True, False
+        self.video_sound_effects_softness = 0
         self.music_color: tuple[int, int, int] | None = None
         self._unsub_stop = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.address)},
-            name=f"Govee {self.model}",
-            manufacturer="Govee",
-            model=self.model,
-        )
+        # fmt: off
+        return DeviceInfo(identifiers={(DOMAIN, self.address)}, name=f"Govee {self.model}",
+                          manufacturer="Govee", model=self.model)
+        # fmt: on
 
     @callback
     def _handle_hass_stop(self, _event: Event) -> None:
@@ -98,13 +92,10 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._send_state_queries()
             except BleakError:
                 _LOGGER.debug("State refresh skipped for %s", self.address)
-        return {
-            "is_on": self.is_on,
-            "brightness_pct": self.brightness_pct,
-            "rgb_color": self.rgb_color,
-            "color_temp_kelvin": self.color_temp_kelvin,
-            "effect": self.effect,
-        }
+        # fmt: off
+        return {"is_on": self.is_on, "brightness_pct": self.brightness_pct, "rgb_color": self.rgb_color,
+                "color_temp_kelvin": self.color_temp_kelvin, "effect": self.effect}
+        # fmt: on
 
     async def _ensure_connected(self) -> BleakClient:
         if self._client and self._client.is_connected:
@@ -116,7 +107,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if ble_device is not None:
                 break
             if attempt < DEVICE_DISCOVERY_ATTEMPTS - 1:
-                await asyncio.sleep(DEVICE_DISCOVERY_RETRY_SECONDS)
+                await asyncio.sleep(RETRY_BACKOFF_SECONDS)
         if not ble_device:
             raise BleakError(f"Device {self.address} not found")
         self._client = await establish_connection(BleakClient, ble_device, self.address)
@@ -166,34 +157,24 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "music_color",
                     "white_brightness",
                 ):
-                    val = getattr(p, attr)
-                    if val is not None:
+                    if (val := getattr(p, attr)) is not None:
                         setattr(self, attr, val)
                 if p.rgb_color is not None:
-                    self.rgb_color = p.rgb_color
-                    self.color_temp_kelvin = None
+                    self.rgb_color, self.color_temp_kelvin = p.rgb_color, None
             self.async_set_updated_data(self.data or {})
         except (IndexError, ValueError):
             _LOGGER.debug("Failed to parse notify from %s: %s", self.address, data.hex())
 
-    async def _send_state_queries(self, *, include_keep_alive: bool = True) -> bool:
+    async def _send_state_queries(self, *, include_keep_alive: bool = True, full_query: bool = True) -> bool:
         if not self._client or not self._client.is_connected:
             return False
         try:
-            write = self._client.write_gatt_char
+            w = self._client.write_gatt_char
             if include_keep_alive:
-                await write(WRITE_UUID, build_keep_alive(), response=False)
-            await write(WRITE_UUID, build_brightness_query(), response=False)
-            await write(WRITE_UUID, build_color_mode_query(), response=False)
-            return True
-        except BleakError:
-            return False
-
-    async def _send_keep_alive_only(self) -> bool:
-        if not self._client or not self._client.is_connected:
-            return False
-        try:
-            await self._client.write_gatt_char(WRITE_UUID, build_keep_alive(), response=False)
+                await w(WRITE_UUID, KEEP_ALIVE, response=False)
+            if full_query:
+                await w(WRITE_UUID, BRIGHTNESS_QUERY, response=False)
+                await w(WRITE_UUID, COLOR_MODE_QUERY, response=False)
             return True
         except BleakError:
             return False
@@ -224,16 +205,13 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _keep_alive_loop(self) -> None:
         try:
-            while True:
+            while self._client and self._client.is_connected:
                 await asyncio.sleep(KEEP_ALIVE_INTERVAL)
                 if not (self._client and self._client.is_connected):
                     break
                 self._keep_alive_ticks += 1
-                if self._keep_alive_ticks % STATE_QUERY_EVERY_N_KEEP_ALIVES == 0:
-                    ok = await self._send_state_queries(include_keep_alive=True)
-                else:
-                    ok = await self._send_keep_alive_only()
-                if not ok:
+                full = self._keep_alive_ticks % STATE_QUERY_EVERY_N_KEEP_ALIVES == 0
+                if not await self._send_state_queries(include_keep_alive=True, full_query=full):
                     break
         except asyncio.CancelledError:
             pass
@@ -250,11 +228,9 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if attempt == 2:
                         _LOGGER.error("Failed to send to %s after 3 attempts", self.address)
                         raise
-                    err_str = str(err).lower()
-                    if "already shutdown" in err_str:
-                        await asyncio.sleep(SHUTDOWN_RETRY_BACKOFF_SECONDS * (attempt + 1))
-                    elif "not found" in err_str:
-                        await asyncio.sleep(DEVICE_DISCOVERY_RETRY_SECONDS * (attempt + 1))
+                    s = str(err).lower()
+                    if "already shutdown" in s or "not found" in s:
+                        await asyncio.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
 
     async def send_commands(self, packets: list[bytes]) -> None:
         for packet in packets:
@@ -271,5 +247,4 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._client.disconnect()
             except BleakError:
                 _LOGGER.debug("Error disconnecting from %s", self.address)
-            finally:
-                self._client = None
+        self._client = None

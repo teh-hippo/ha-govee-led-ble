@@ -96,9 +96,7 @@ def _is_step_satisfied(
     attrs = light_state.get("attributes", {})
 
     if step.expected_light_state is not None and light_state.get("state") != step.expected_light_state:
-        errors.append(
-            f"light.state expected={step.expected_light_state} actual={light_state.get('state')}"
-        )
+        errors.append(f"light.state expected={step.expected_light_state} actual={light_state.get('state')}")
 
     if step.expected_effect is not None and attrs.get("effect") != step.expected_effect:
         errors.append(f"light.effect expected={step.expected_effect} actual={attrs.get('effect')}")
@@ -112,9 +110,7 @@ def _is_step_satisfied(
         if capture_state is None:
             errors.append("capture_region entity not configured")
         elif capture_state.get("state") != step.expected_capture_region:
-            errors.append(
-                f"capture_region expected={step.expected_capture_region} actual={capture_state.get('state')}"
-            )
+            errors.append(f"capture_region expected={step.expected_capture_region} actual={capture_state.get('state')}")
 
     if step.expected_video_saturation is not None:
         if video_sat_state is None:

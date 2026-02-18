@@ -12,58 +12,41 @@ from homeassistant.const import CONF_ADDRESS
 
 from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES
 
-# Pattern to extract model from BLE local name
 MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
 
 
 def _extract_model(name: str) -> str | None:
-    """Extract model from BLE advertisement name."""
-    match = MODEL_PATTERN.search(name)
-    if match:
-        model = match.group(1)
-        for known in MODEL_PROFILES:
-            if model.startswith(known):
-                return known
+    if (m := MODEL_PATTERN.search(name)) and any(m.group(1).startswith(k) for k in MODEL_PROFILES):
+        return next(k for k in MODEL_PROFILES if m.group(1).startswith(k))
     return None
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Govee BLE Lights."""
-
     VERSION = 1
 
     async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfo) -> ConfigFlowResult:
-        """Handle the bluetooth discovery step."""
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
-
-        model = _extract_model(discovery_info.name) or "H617A"
         self.context["title_placeholders"] = {"name": discovery_info.name}
-
         return self.async_create_entry(
-            title=discovery_info.name,
-            data={CONF_MODEL: model},
+            title=discovery_info.name, data={CONF_MODEL: _extract_model(discovery_info.name) or "H617A"}
         )
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Handle the user step for manual setup."""
         if user_input is not None:
             address = user_input[CONF_ADDRESS].upper().strip()
             await self.async_set_unique_id(address)
             self._abort_if_unique_id_configured()
-
             return self.async_create_entry(
-                title=f"Govee {user_input[CONF_MODEL]}",
-                data={CONF_MODEL: user_input[CONF_MODEL]},
+                title=f"Govee {user_input[CONF_MODEL]}", data={CONF_MODEL: user_input[CONF_MODEL]}
             )
-
-        model_list = list(MODEL_PROFILES.keys())
+        models = list(MODEL_PROFILES.keys())
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): str,
-                    vol.Required(CONF_MODEL, default=model_list[0]): vol.In(model_list),
+                    vol.Required(CONF_MODEL, default=models[0]): vol.In(models),
                 }
             ),
         )
