@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Run the same checks as CI — use before every push.
-# Usage: ./scripts/preflight.sh
+# Local preflight — mirrors CI exactly. Run before every push.
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
 echo "=== Lint ==="
-uv run ruff check custom_components/ tests/
+uv run ruff check .
+uv run ruff format --check .
 
-echo "=== Format ==="
-uv run ruff format --check custom_components/ tests/
+echo "=== Mypy ==="
+uv run mypy custom_components/govee_ble_lights tests
 
 echo "=== Test + Coverage ==="
 uv run coverage run -m pytest tests/ -v --tb=short

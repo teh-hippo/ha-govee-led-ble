@@ -1,5 +1,7 @@
 name: Dependabot Auto-Merge
-on: pull_request
+
+on:
+  pull_request:
 
 permissions:
   contents: write
@@ -7,6 +9,7 @@ permissions:
 
 jobs:
   auto-merge:
+    name: Auto-Merge
     runs-on: ubuntu-latest
     if: github.actor == 'dependabot[bot]'
     steps:

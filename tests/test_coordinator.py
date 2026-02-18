@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak import BleakError
 
-from custom_components.govee_ble_lights import protocol as P
+from custom_components.govee_ble_lights import protocol as proto
 from custom_components.govee_ble_lights.const import MODEL_PROFILES
 from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
 
@@ -39,15 +39,15 @@ async def test_initial_state_and_update(coord, h6199):
 async def test_send_commands(coord):
     c = _c(write_gatt_char=AsyncMock(side_effect=[BleakError("f"), BleakError("f"), None]))
     with patch.object(coord, "_ensure_connected", return_value=c):
-        await coord.send_command(P.build_power(True))
+        await coord.send_command(proto.build_power(True))
     assert c.write_gatt_char.call_count == 3
     c2 = _c(write_gatt_char=AsyncMock(side_effect=BleakError("f")))
     with patch.object(coord, "_ensure_connected", return_value=c2), pytest.raises(BleakError):
-        await coord.send_command(P.build_power(True))
+        await coord.send_command(proto.build_power(True))
     assert c2.write_gatt_char.call_count == 3 and coord._client is None
     c3 = _c(write_gatt_char=AsyncMock())
     with patch.object(coord, "_ensure_connected", return_value=c3):
-        await coord.send_commands([P.build_power(True), P.build_power(False)])
+        await coord.send_commands([proto.build_power(True), proto.build_power(False)])
     assert c3.write_gatt_char.call_count == 2
 
 
@@ -106,8 +106,8 @@ async def test_start_notify(coord, h6199):
         bt.async_ble_device_from_address.return_value = MagicMock()
         assert await h6199._ensure_connected() is c
     c.start_notify.assert_called_once()
-    for q in (P.KEEP_ALIVE, P.BRIGHTNESS_QUERY, P.COLOR_MODE_QUERY):
-        c.write_gatt_char.assert_any_await(P.WRITE_UUID, q, response=False)
+    for q in (proto.KEEP_ALIVE, proto.BRIGHTNESS_QUERY, proto.COLOR_MODE_QUERY):
+        c.write_gatt_char.assert_any_await(proto.WRITE_UUID, q, response=False)
     await h6199.disconnect()
     c2 = _c(start_notify=AsyncMock(), disconnect=AsyncMock())
     with patch(f"{M}.bluetooth") as bt, patch(f"{M}.establish_connection", return_value=c2):

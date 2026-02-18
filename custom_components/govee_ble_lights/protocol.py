@@ -34,7 +34,7 @@ MULTI_PACKET_PREFIX = 0xA3
 SCENE_HEX_PREFIX_ADD = bytes([0x02])
 
 
-def xor_checksum(data: bytes) -> int:
+def xor_checksum(data: bytes | bytearray) -> int:
     r = 0
     for b in data:
         r ^= b
@@ -168,20 +168,21 @@ class ParsedColorModeResponse:
 def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
     if not payload:
         raise ValueError("Color mode payload is empty")
-    mode, P = payload[0], ParsedColorModeResponse
+    mode, parsed = payload[0], ParsedColorModeResponse
     if mode == ColorMode.VIDEO:
-        return P(effect="video: game" if (len(payload) > 2 and bool(payload[2])) else "video: movie",
+        return parsed(effect="video: game" if (len(payload) > 2 and bool(payload[2])) else "video: movie",
                  video_full_screen=bool(payload[1]) if len(payload) > 1 else None,
                  video_saturation=payload[3] if len(payload) > 3 else None,
                  video_sound_effects=bool(payload[4]) if len(payload) > 4 else None,
                  video_sound_effects_softness=payload[5] if len(payload) > 5 else None)
     if mode == ColorMode.MUSIC:
         color = (payload[5], payload[6], payload[7]) if len(payload) > 7 and payload[4] == 0x01 else None
-        return P(effect=MUSIC_EFFECT_BY_ID.get(payload[1]) if len(payload) > 1 else None,
+        return parsed(effect=MUSIC_EFFECT_BY_ID.get(payload[1]) if len(payload) > 1 else None,
                  music_sensitivity=payload[2] if len(payload) > 2 else None, music_color=color)
     if mode == ColorMode.STATIC:
-        return P(rgb_color=(payload[2], payload[3], payload[4]) if len(payload) > 4 and payload[1] == 0x01 else None,
-                 white_brightness=round(payload[2] * 100 / 255) if len(payload) > 2 and payload[1] == 0x02 else None)
-    return P()
+        return parsed(
+            rgb_color=(payload[2], payload[3], payload[4]) if len(payload) > 4 and payload[1] == 0x01 else None,
+            white_brightness=round(payload[2] * 100 / 255) if len(payload) > 2 and payload[1] == 0x02 else None,
+        )
+    return parsed()
 # fmt: on
-    return ParsedColorModeResponse()

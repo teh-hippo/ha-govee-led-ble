@@ -36,10 +36,10 @@ class H6199ParameterSwitch(CoordinatorEntity[GoveeBLECoordinator], SwitchEntity)
     def is_on(self) -> bool:
         return bool(getattr(self.coordinator, self._key))
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs: object) -> None:
         await self._async_set_state(True)
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs: object) -> None:
         await self._async_set_state(False)
 
     async def _async_set_state(self, value: bool) -> None:

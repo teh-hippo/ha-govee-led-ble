@@ -4,50 +4,50 @@ import base64
 
 import pytest
 
-from custom_components.govee_ble_lights import protocol as P
+from custom_components.govee_ble_lights import protocol as proto
 
 H = bytes.fromhex
 
 
 def _valid(pkt):
-    assert len(pkt) == 20 and P.xor_checksum(pkt[:19]) == pkt[19]
+    assert len(pkt) == 20 and proto.xor_checksum(pkt[:19]) == pkt[19]
 
 
 def test_xor_checksum():
-    assert P.xor_checksum(bytes(19)) == 0x00
-    assert P.xor_checksum(bytearray([0x33, 0x01, 0x01] + [0x00] * 16)) == 0x33
-    assert P.xor_checksum(bytearray([0x33, 0x01, 0x00] + [0x00] * 16)) == 0x32
-    assert P.xor_checksum(bytearray([0xAA, 0x01] + [0x00] * 17)) == 0xAB
+    assert proto.xor_checksum(bytes(19)) == 0x00
+    assert proto.xor_checksum(bytearray([0x33, 0x01, 0x01] + [0x00] * 16)) == 0x33
+    assert proto.xor_checksum(bytearray([0x33, 0x01, 0x00] + [0x00] * 16)) == 0x32
+    assert proto.xor_checksum(bytearray([0xAA, 0x01] + [0x00] * 17)) == 0xAB
 
 
 def test_packet_basics():
-    _valid(P.build_packet(0x33, 0x01, [0x01]))
-    pkt = P.build_packet(0x33, 0x01, [])
+    _valid(proto.build_packet(0x33, 0x01, [0x01]))
+    pkt = proto.build_packet(0x33, 0x01, [])
     assert all(pkt[i] == 0x00 for i in range(2, 19))
-    assert len(P.build_packet(0x33, 0x01, list(range(20)))) == 20
+    assert len(proto.build_packet(0x33, 0x01, list(range(20)))) == 20
 
 
 @pytest.mark.parametrize(
     "on,h", [(True, "3301010000000000000000000000000000000033"), (False, "3301000000000000000000000000000000000032")]
 )
 def test_power(on, h):
-    pkt = P.build_power(on)
+    pkt = proto.build_power(on)
     assert pkt == H(h) and len(pkt) == 20
 
 
 @pytest.mark.parametrize("val,exp", [(100, 100), (0, 0), (200, 100), (-10, 0)])
 def test_brightness(val, exp):
-    pkt = P.build_brightness(val)
+    pkt = proto.build_brightness(val)
     assert pkt[0:2] == bytes([0x33, 0x04]) and pkt[2] == exp
     _valid(pkt)
 
 
 def test_color():
-    pkt = P.build_color_rgb(255, 0, 0)
+    pkt = proto.build_color_rgb(255, 0, 0)
     assert pkt[:14] == bytes([0x33, 0x05, 0x15, 0x01, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0x7F])
     assert len(pkt) == 20
-    assert tuple(P.build_color_rgb(300, -10, 128)[4:7]) == (255, 0, 128)
-    pkt = P.build_color_temp(4000)
+    assert tuple(proto.build_color_rgb(300, -10, 128)[4:7]) == (255, 0, 128)
+    pkt = proto.build_color_temp(4000)
     assert len(pkt) == 20 and pkt[2] == 0x15
 
 
@@ -64,31 +64,31 @@ def test_color():
     ],
 )
 def test_kelvin_to_rgb(kelvin, check):
-    r, g, b = P.kelvin_to_rgb(kelvin)
+    r, g, b = proto.kelvin_to_rgb(kelvin)
     assert check(r, g, b), f"Failed at {kelvin}K: ({r},{g},{b})"
 
 
 def test_kelvin_output_range():
     for k in range(1000, 10001, 500):
-        assert all(0 <= c <= 255 for c in P.kelvin_to_rgb(k)), f"Out of range at {k}K"
+        assert all(0 <= c <= 255 for c in proto.kelvin_to_rgb(k)), f"Out of range at {k}K"
 
 
 def test_scene():
-    assert P.build_scene(0x00) == H("3305040000000000000000000000000000000032")
-    assert P.build_scene(0x01) == H("3305040100000000000000000000000000000033")
-    assert P.build_scene(0x04) == H("3305040400000000000000000000000000000036")
-    assert P.build_scene(0x16) == H("3305041600000000000000000000000000000024")
-    assert P.build_scene(0x08) == H("330504080000000000000000000000000000003a")
-    assert P.build_scene(0x0A) == H("3305040a00000000000000000000000000000038")
-    assert P.build_scene(0x10) == H("3305041000000000000000000000000000000022")
+    assert proto.build_scene(0x00) == H("3305040000000000000000000000000000000032")
+    assert proto.build_scene(0x01) == H("3305040100000000000000000000000000000033")
+    assert proto.build_scene(0x04) == H("3305040400000000000000000000000000000036")
+    assert proto.build_scene(0x16) == H("3305041600000000000000000000000000000024")
+    assert proto.build_scene(0x08) == H("330504080000000000000000000000000000003a")
+    assert proto.build_scene(0x0A) == H("3305040a00000000000000000000000000000038")
+    assert proto.build_scene(0x10) == H("3305041000000000000000000000000000000022")
 
 
 def test_scene_multi():
-    pkt = P.build_scene(2163)
+    pkt = proto.build_scene(2163)
     assert (pkt[2], pkt[3], pkt[4]) == (0x04, 0x73, 0x08)
     _valid(pkt)
-    assert P.build_scene_multi("", 22) == [P.build_scene(22)]
-    pkts = P.build_scene_multi(base64.b64encode(bytes(20)).decode(), 100)
+    assert proto.build_scene_multi("", 22) == [proto.build_scene(22)]
+    pkts = proto.build_scene_multi(base64.b64encode(bytes(20)).decode(), 100)
     assert len(pkts) > 1
     for p in pkts:
         _valid(p)
@@ -100,7 +100,7 @@ def test_scene_multi():
         "AgH/FAH7AAAB+goEBP8AtP8AR///4/8AAAAAAAAAABoAAAABAgH/BQHIFBQC"
         "7hQBAP8AAAAAAAAAAA=="
     )
-    pkts = P.build_scene_multi(forest, 2163)
+    pkts = proto.build_scene_multi(forest, 2163)
     assert len(pkts) > 2
     for p in pkts:
         _valid(p)
@@ -109,18 +109,18 @@ def test_scene_multi():
 
 
 def test_constants():
-    assert P.STATE_QUERY == H("AA010000000000000000000000000000000000AB")
-    assert P.BRIGHTNESS_QUERY == H("AA040000000000000000000000000000000000AE")
-    assert P.COLOR_MODE_QUERY == H("AA050000000000000000000000000000000000AF")
-    assert P.KEEP_ALIVE == P.STATE_QUERY
-    assert (P.PacketHeader.COMMAND, P.PacketHeader.STATUS) == (0x33, 0xAA)
-    assert (P.PacketType.POWER, P.PacketType.BRIGHTNESS, P.PacketType.COLOR) == (0x01, 0x04, 0x05)
-    assert (P.ColorMode.VIDEO, P.ColorMode.MUSIC, P.ColorMode.STATIC) == (0x00, 0x13, 0x15)
+    assert proto.STATE_QUERY == H("AA010000000000000000000000000000000000AB")
+    assert proto.BRIGHTNESS_QUERY == H("AA040000000000000000000000000000000000AE")
+    assert proto.COLOR_MODE_QUERY == H("AA050000000000000000000000000000000000AF")
+    assert proto.KEEP_ALIVE == proto.STATE_QUERY
+    assert (proto.PacketHeader.COMMAND, proto.PacketHeader.STATUS) == (0x33, 0xAA)
+    assert (proto.PacketType.POWER, proto.PacketType.BRIGHTNESS, proto.PacketType.COLOR) == (0x01, 0x04, 0x05)
+    assert (proto.ColorMode.VIDEO, proto.ColorMode.MUSIC, proto.ColorMode.STATIC) == (0x00, 0x13, 0x15)
 
 
 def test_video_mode():
     def chk(kw, idx, exp):
-        pkt = P.build_video_mode(**kw)
+        pkt = proto.build_video_mode(**kw)
         assert (tuple(pkt[idx]) if isinstance(idx, slice) else pkt[idx]) == exp
         _valid(pkt)
 
@@ -141,7 +141,7 @@ def test_video_mode():
 
 def test_music_mode():
     def chk(mode, kw, idx, exp):
-        pkt = P.build_music_mode_with_color(mode, **kw)
+        pkt = proto.build_music_mode_with_color(mode, **kw)
         assert (tuple(pkt[idx]) if isinstance(idx, slice) else pkt[idx]) == exp
         _valid(pkt)
 
@@ -153,15 +153,15 @@ def test_music_mode():
 
 
 def test_parse():
-    assert P.parse_power_response(bytes([0x01, 0x00])) is True
-    assert P.parse_power_response(bytes([0x00, 0x00])) is False
-    assert P.parse_brightness_response(bytes([75, 0x00])) == 75
-    p = P.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]))
+    assert proto.parse_power_response(bytes([0x01, 0x00])) is True
+    assert proto.parse_power_response(bytes([0x00, 0x00])) is False
+    assert proto.parse_brightness_response(bytes([75, 0x00])) == 75
+    p = proto.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]))
     assert p.effect == "video: game" and not p.video_full_screen
     assert (p.video_saturation, p.video_sound_effects, p.video_sound_effects_softness) == (42, True, 55)
-    p = P.parse_color_mode_response(bytes([0x13, 0x04, 77, 0x00, 0x01, 1, 2, 3]))
+    p = proto.parse_color_mode_response(bytes([0x13, 0x04, 77, 0x00, 0x01, 1, 2, 3]))
     assert p.effect == "music: spectrum" and p.music_sensitivity == 77 and p.music_color == (1, 2, 3)
-    assert P.parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30])).rgb_color == (10, 20, 30)
-    assert P.parse_color_mode_response(bytes([0x15, 0x02, 0x80])).white_brightness == 50
+    assert proto.parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30])).rgb_color == (10, 20, 30)
+    assert proto.parse_color_mode_response(bytes([0x15, 0x02, 0x80])).white_brightness == 50
     with pytest.raises(ValueError):
-        P.parse_color_mode_response(bytes())
+        proto.parse_color_mode_response(b"")

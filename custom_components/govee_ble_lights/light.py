@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.components.light import (
+from homeassistant.components.light import (  # type: ignore[attr-defined]
     ATTR_BRIGHTNESS,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_EFFECT,
@@ -142,7 +143,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self._effect_list = _build_effect_list(self._profile)
 
     @contextmanager
-    def _rollback(self):
+    def _rollback(self) -> Generator[None, None, None]:
         snap = {f: getattr(self.coordinator, f) for f in _STATE_FIELDS}
         mode_snap = self._attr_color_mode
         try:
@@ -177,7 +178,13 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
     def effect_list(self) -> list[str]:
         return self._effect_list
 
-    async def _refresh_with_retry(self, *, expected_effect=None, expected_on=None, retry_command=None):
+    async def _refresh_with_retry(
+        self,
+        *,
+        expected_effect: str | None = None,
+        expected_on: bool | None = None,
+        retry_command: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         if not self._profile.state_readable:
             return
         if await self.coordinator.refresh_state(expected_effect=expected_effect, expected_on=expected_on):
@@ -203,7 +210,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         gm = video_game_mode_from_effect(effect_name)
         if gm is not None:
 
-            async def _send():
+            async def _send() -> None:
                 await apply_video_mode_from_state(self.coordinator, game_mode=gm)
                 await self.coordinator.send_command(build_brightness(self.coordinator.video_brightness))
 
@@ -214,7 +221,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         mid = music_mode_id_from_effect(effect_name)
         if mid is not None:
 
-            async def _send():
+            async def _send() -> None:
                 await self.coordinator.send_command(
                     build_music_mode_with_color(
                         mid, sensitivity=self.coordinator.music_sensitivity, color=self.coordinator.music_color
@@ -238,7 +245,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             await self.coordinator.send_command(build_power(True))
             self.coordinator.is_on, self.coordinator.effect = True, None
 
-            async def _power_on():
+            async def _power_on() -> None:
                 await self.coordinator.send_command(build_power(True))
 
             await self._refresh_with_retry(expected_on=True, retry_command=_power_on)
@@ -266,7 +273,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             await self.coordinator.send_command(build_power(False))
             self.coordinator.is_on = False
 
-            async def _power_off():
+            async def _power_off() -> None:
                 await self.coordinator.send_command(build_power(False))
 
             await self._refresh_with_retry(expected_on=False, retry_command=_power_off)
@@ -284,7 +291,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             packet = build_video_mode(full_screen=resolved_fs, game_mode=mode == "game", saturation=saturation,
                 sound_effects=sound_effects, sound_effects_softness=sound_effects_softness)
             # fmt: on
-            async def _send():
+            async def _send() -> None:
                 await self.coordinator.send_command(packet)
                 await self.coordinator.send_command(build_brightness(brightness))
             await self.coordinator.send_command(build_power(True))
@@ -302,7 +309,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self._require_h6199("set_music_mode")
         with self._rollback():
             packet = build_music_mode_with_color(MUSIC_MODE_IDS[mode], sensitivity=sensitivity, color=color)
-            async def _send(): await self.coordinator.send_command(packet)
+            async def _send() -> None: await self.coordinator.send_command(packet)
             await self.coordinator.send_command(build_power(True))
             self.coordinator.is_on = True
             await _send()

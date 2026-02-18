@@ -17,6 +17,7 @@ PLATFORMS = [Platform.LIGHT, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
+    assert entry.unique_id is not None
     coordinator = GoveeBLECoordinator(hass, entry.unique_id, entry.data.get(CONF_MODEL, "H617A"))
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

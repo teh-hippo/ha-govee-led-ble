@@ -1,6 +1,6 @@
 # Govee BLE Lights for Home Assistant
 
-[![CI](https://github.com/teh-hippo/govee_ble_lights/actions/workflows/ci.yml/badge.svg)](https://github.com/teh-hippo/govee_ble_lights/actions/workflows/ci.yml)
+[![Validate](https://github.com/teh-hippo/govee_ble_lights/actions/workflows/validate.yml/badge.svg)](https://github.com/teh-hippo/govee_ble_lights/actions/workflows/validate.yml)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![HA](https://img.shields.io/badge/HA-2024.12%2B-blue.svg)](https://www.home-assistant.io)
 
@@ -43,25 +43,11 @@ The integration auto-discovers nearby Govee BLE devices. To add manually:
 
 ## Development
 
-### Preflight checks
-
-Run **before every push** — mirrors CI exactly:
-
 ```bash
-./scripts/preflight.sh
+bash scripts/check.sh
 ```
 
-### Releasing
-
-1. Run preflight: `./scripts/preflight.sh`
-2. Tag and push:
-
-```bash
-git tag v1.5.0
-git push origin v1.5.0
-```
-
-The release workflow validates, stamps the version into `manifest.json`, and creates a GitHub release automatically.
+Requires [uv](https://docs.astral.sh/uv/). Uses [Conventional Commits](https://www.conventionalcommits.org/).
 
 ### H6199 UAT harness
 

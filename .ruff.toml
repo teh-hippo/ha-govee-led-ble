@@ -1,0 +1,24 @@
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = [
+    "B",   # flake8-bugbear
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "S",   # flake8-bandit
+    "UP",  # pyupgrade
+    "W",   # pycodestyle warnings
+]
+ignore = [
+    "S101",  # assert used (fine in tests)
+]
+
+[lint.per-file-ignores]
+"custom_components/govee_ble_lights/scenes.py" = ["E501"]
+"scripts/h6199_harness.py" = ["S310"]  # urlopen is intentional in this HA test harness
+
+[lint.isort]
+known-first-party = ["custom_components.govee_ble_lights"]

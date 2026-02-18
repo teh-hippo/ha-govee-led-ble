@@ -1,25 +1,26 @@
 version: 2
 
 updates:
-  # Python dependencies (uv lockfile)
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
+    groups:
+      python-deps:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     commit-message:
-      prefix: "deps"
+      prefix: "build"
+      include: "scope"
 
-  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     commit-message:
-      prefix: "ci"
+      prefix: "build"
+      include: "scope"

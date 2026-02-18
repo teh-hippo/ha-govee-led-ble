@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
-from bleak import BleakClient, BleakError
+from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
 from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
@@ -56,7 +56,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
         self._cancel_disconnect: CALLBACK_TYPE | None = None
-        self._keep_alive_task: asyncio.Task | None = None
+        self._keep_alive_task: asyncio.Task[None] | None = None
         self._keep_alive_ticks = 0
         # Optimistic state
         self.is_on = False
@@ -69,7 +69,9 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 0
         self.music_color: tuple[int, int, int] | None = None
-        self._unsub_stop = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
+        self._unsub_stop: CALLBACK_TYPE | None = hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop
+        )
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -122,7 +124,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._cancel_disconnect()
 
         @callback
-        def _on_timeout(_now):
+        def _on_timeout(_now: datetime) -> None:
             self.hass.async_create_task(self.disconnect())
 
         self._cancel_disconnect = async_call_later(self.hass, DISCONNECT_DELAY, _on_timeout)
@@ -179,7 +181,9 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except BleakError:
             return False
 
-    async def refresh_state(self, *, expected_effect=None, expected_on=None, timeout: float = 2.0) -> bool:
+    async def refresh_state(
+        self, *, expected_effect: str | None = None, expected_on: bool | None = None, timeout: float = 2.0
+    ) -> bool:
         if not self.profile.state_readable:
             return False
         await self._ensure_connected()
