@@ -45,21 +45,23 @@ The integration auto-discovers nearby Govee BLE devices. To add manually:
 
 ### Preflight checks
 
+Run **before every push** — mirrors CI exactly:
+
 ```bash
-uv run ruff check custom_components/ tests/
-uv run ruff format --check custom_components/ tests/
-uv run coverage run -m pytest tests/ -v --tb=short
-uv run coverage report --include="custom_components/govee_ble_lights/*" --fail-under=90
+./scripts/preflight.sh
 ```
 
 ### Releasing
 
-Push a semver tag to trigger the release workflow:
+1. Run preflight: `./scripts/preflight.sh`
+2. Tag and push:
 
 ```bash
-git tag v1.4.0
-git push origin v1.4.0
+git tag v1.5.0
+git push origin v1.5.0
 ```
+
+The release workflow validates, stamps the version into `manifest.json`, and creates a GitHub release automatically.
 
 ### H6199 UAT harness
 
