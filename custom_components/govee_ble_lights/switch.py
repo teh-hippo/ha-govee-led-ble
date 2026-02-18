@@ -5,11 +5,9 @@ from __future__ import annotations
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import GoveeBLECoordinator
 from .h6199_effects import apply_active_video_mode_from_state
 
@@ -23,25 +21,7 @@ async def async_setup_entry(
     coordinator: GoveeBLECoordinator = config_entry.runtime_data
     if coordinator.model != "H6199":
         return
-
-    registry = er.async_get(hass)
-    legacy_unique_id = f"{coordinator.address.replace(':', '').lower()}_video_full_screen"
-    legacy_entity_id = registry.async_get_entity_id("switch", DOMAIN, legacy_unique_id)
-    if legacy_entity_id is not None:
-        registry.async_update_entity(
-            legacy_entity_id,
-            disabled_by=er.RegistryEntryDisabler.INTEGRATION,
-        )
-
-    async_add_entities(
-        [
-            H6199ParameterSwitch(
-                coordinator,
-                key="video_sound_effects",
-                name="Video sound effects",
-            ),
-        ]
-    )
+    async_add_entities([H6199ParameterSwitch(coordinator, key="video_sound_effects", name="Video sound effects")])
 
 
 class H6199ParameterSwitch(CoordinatorEntity[GoveeBLECoordinator], SwitchEntity):

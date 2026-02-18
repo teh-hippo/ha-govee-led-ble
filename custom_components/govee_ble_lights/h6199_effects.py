@@ -26,25 +26,14 @@ MUSIC_EFFECT_MODE_IDS: dict[str, int] = {f"music: {name}": mode_id for name, mod
 
 
 def video_game_mode_from_effect(effect: str | None) -> bool | None:
-    """Return game_mode bool for a video effect string."""
-    if effect is None:
-        return None
-    return VIDEO_EFFECT_GAME_MODE.get(effect)
+    return VIDEO_EFFECT_GAME_MODE.get(effect) if effect else None
 
 
 def music_mode_id_from_effect(effect: str | None) -> int | None:
-    """Return music mode ID for a music effect string."""
-    if effect is None:
-        return None
-    return MUSIC_EFFECT_MODE_IDS.get(effect)
+    return MUSIC_EFFECT_MODE_IDS.get(effect) if effect else None
 
 
-async def apply_video_mode_from_state(
-    coordinator: GoveeBLECoordinator,
-    *,
-    game_mode: bool,
-) -> None:
-    """Send the video-mode packet using coordinator state values."""
+async def apply_video_mode_from_state(coordinator: GoveeBLECoordinator, *, game_mode: bool) -> None:
     await coordinator.send_command(
         build_video_mode(
             full_screen=coordinator.video_full_screen,
@@ -57,7 +46,6 @@ async def apply_video_mode_from_state(
 
 
 async def apply_active_video_mode_from_state(coordinator: GoveeBLECoordinator) -> bool:
-    """Reapply active video mode using coordinator values."""
     if not coordinator.is_on:
         return False
     game_mode = video_game_mode_from_effect(coordinator.effect)
@@ -68,7 +56,6 @@ async def apply_active_video_mode_from_state(coordinator: GoveeBLECoordinator) -
 
 
 async def apply_active_music_mode_from_state(coordinator: GoveeBLECoordinator) -> bool:
-    """Reapply active music mode using coordinator values."""
     if not coordinator.is_on:
         return False
     mode_id = music_mode_id_from_effect(coordinator.effect)

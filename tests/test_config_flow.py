@@ -26,13 +26,11 @@ GOVEE_SERVICE_INFO = BluetoothServiceInfo(
 
 @pytest.fixture(autouse=True)
 async def mock_bluetooth(hass, enable_custom_integrations):
-    """Pre-register bluetooth components as loaded to skip real BLE setup."""
     hass.config.components.add("bluetooth")
     hass.config.components.add("bluetooth_adapters")
 
 
 async def test_bluetooth_discovery(hass: HomeAssistant) -> None:
-    """Test bluetooth discovery creates entry automatically."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_BLUETOOTH},
@@ -44,7 +42,6 @@ async def test_bluetooth_discovery(hass: HomeAssistant) -> None:
 
 
 async def test_bluetooth_discovery_abort_duplicate(hass: HomeAssistant) -> None:
-    """Test bluetooth discovery aborts if already configured."""
     entry = MagicMock(spec=config_entries.ConfigEntry)
     entry.unique_id = "AA:BB:CC:DD:EE:FF"
     entry.domain = DOMAIN
@@ -57,7 +54,6 @@ async def test_bluetooth_discovery_abort_duplicate(hass: HomeAssistant) -> None:
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
 
-    # Second discovery should abort
     result2 = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_BLUETOOTH},
@@ -68,7 +64,6 @@ async def test_bluetooth_discovery_abort_duplicate(hass: HomeAssistant) -> None:
 
 
 async def test_user_step_shows_form(hass: HomeAssistant) -> None:
-    """Test user step shows form when no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
@@ -78,7 +73,6 @@ async def test_user_step_shows_form(hass: HomeAssistant) -> None:
 
 
 async def test_user_step_creates_entry(hass: HomeAssistant) -> None:
-    """Test user step creates entry with valid input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
@@ -92,20 +86,19 @@ async def test_user_step_creates_entry(hass: HomeAssistant) -> None:
     assert result["data"][CONF_MODEL] == "H617A"
 
 
-def test_extract_model_returns_none_for_unknown():
-    """Test _extract_model returns None for unknown device names."""
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("SomeOtherDevice", None),
+        ("Govee_H9999_ABCD", None),
+        ("", None),
+        ("ihoment_H617A_ABCD", "H617A"),
+        ("Govee_H617A_ABCD", "H617A"),
+        ("GBK_H617A_ABCD", "H617A"),
+        ("GVH_H617A_ABCD", "H617A"),
+    ],
+)
+def test_extract_model(name, expected):
     from custom_components.govee_ble_lights.config_flow import _extract_model
 
-    assert _extract_model("SomeOtherDevice") is None
-    assert _extract_model("Govee_H9999_ABCD") is None
-    assert _extract_model("") is None
-
-
-def test_extract_model_recognizes_all_prefixes():
-    """Test _extract_model handles all known BLE name prefixes."""
-    from custom_components.govee_ble_lights.config_flow import _extract_model
-
-    assert _extract_model("ihoment_H617A_ABCD") == "H617A"
-    assert _extract_model("Govee_H617A_ABCD") == "H617A"
-    assert _extract_model("GBK_H617A_ABCD") == "H617A"
-    assert _extract_model("GVH_H617A_ABCD") == "H617A"
+    assert _extract_model(name) == expected

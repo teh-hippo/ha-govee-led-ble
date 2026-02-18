@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable
+from contextlib import contextmanager
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.components.light import (
@@ -45,13 +46,23 @@ from .scenes import SCENES, get_scene_names
 
 _LOGGER = logging.getLogger(__name__)
 
-# Color temp range (Kelvin)
 MIN_COLOR_TEMP_KELVIN = 2000
 MAX_COLOR_TEMP_KELVIN = 9000
 
-# Service names
-SERVICE_SET_VIDEO_MODE = "set_video_mode"
-SERVICE_SET_MUSIC_MODE = "set_music_mode"
+_STATE_FIELDS = (
+    "is_on",
+    "brightness_pct",
+    "rgb_color",
+    "color_temp_kelvin",
+    "effect",
+    "video_saturation",
+    "video_brightness",
+    "video_full_screen",
+    "video_sound_effects",
+    "video_sound_effects_softness",
+    "music_sensitivity",
+    "music_color",
+)
 
 
 def _build_effect_list(profile: ModelProfile) -> list[str]:
@@ -71,11 +82,9 @@ async def async_setup_entry(
     """Set up Govee BLE light from a config entry."""
     coordinator: GoveeBLECoordinator = config_entry.runtime_data
     async_add_entities([GoveeBLELight(coordinator, config_entry)])
-
     platform = entity_platform.async_get_current_platform()
-
     platform.async_register_entity_service(
-        SERVICE_SET_VIDEO_MODE,
+        "set_video_mode",
         {
             vol.Required("mode"): vol.In(["movie", "game"]),
             vol.Optional("saturation", default=100): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
@@ -87,9 +96,8 @@ async def async_setup_entry(
         },
         "async_set_video_mode",
     )
-
     platform.async_register_entity_service(
-        SERVICE_SET_MUSIC_MODE,
+        "set_music_mode",
         {
             vol.Required("mode"): vol.In(["energic", "rhythm", "spectrum", "rolling"]),
             vol.Optional("sensitivity", default=100): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
@@ -109,11 +117,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
     _attr_min_color_temp_kelvin = MIN_COLOR_TEMP_KELVIN
     _attr_max_color_temp_kelvin = MAX_COLOR_TEMP_KELVIN
 
-    def __init__(
-        self,
-        coordinator: GoveeBLECoordinator,
-        config_entry: ConfigEntry,
-    ) -> None:
+    def __init__(self, coordinator: GoveeBLECoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the light."""
         super().__init__(coordinator)
         self._address = coordinator.address
@@ -124,47 +128,44 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self._attr_color_mode = ColorMode.RGB
         self._effect_list = _build_effect_list(self._profile)
 
+    @contextmanager
+    def _rollback(self):
+        """Save coordinator + entity state; restore on exception."""
+        snap = {f: getattr(self.coordinator, f) for f in _STATE_FIELDS}
+        mode_snap = self._attr_color_mode
+        try:
+            yield
+        except Exception:
+            for f, v in snap.items():
+                setattr(self.coordinator, f, v)
+            self._attr_color_mode = mode_snap
+            raise
+
     @property
     def is_on(self) -> bool:
-        """Return true if light is on."""
         return self.coordinator.is_on
 
     @property
     def brightness(self) -> int | None:
-        """Return the brightness (0-255)."""
         return round(self.coordinator.brightness_pct * 255 / 100)
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
-        """Return the RGB color."""
-        if self._attr_color_mode == ColorMode.RGB:
-            return self.coordinator.rgb_color
-        return None
+        return self.coordinator.rgb_color if self._attr_color_mode == ColorMode.RGB else None
 
     @property
     def color_temp_kelvin(self) -> int | None:
-        """Return the color temperature in Kelvin."""
-        if self._attr_color_mode == ColorMode.COLOR_TEMP:
-            return self.coordinator.color_temp_kelvin
-        return None
+        return self.coordinator.color_temp_kelvin if self._attr_color_mode == ColorMode.COLOR_TEMP else None
 
     @property
     def effect(self) -> str | None:
-        """Return the current effect."""
         return self.coordinator.effect
 
     @property
     def effect_list(self) -> list[str]:
-        """Return the list of supported effects."""
         return self._effect_list
 
-    async def _refresh_state_with_retry(
-        self,
-        *,
-        expected_effect: str | None = None,
-        expected_on: bool | None = None,
-        retry_command: Callable[[], Awaitable[None]] | None = None,
-    ) -> None:
+    async def _refresh_with_retry(self, *, expected_effect=None, expected_on=None, retry_command=None):
         """Refresh state for state-readable devices and retry once if needed."""
         if not self._profile.state_readable:
             return
@@ -174,87 +175,72 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             await retry_command()
         if await self.coordinator.refresh_state(expected_effect=expected_effect, expected_on=expected_on):
             return
-        raise RuntimeError(f"Failed to confirm state for {self._model}: effect={expected_effect} power={expected_on}")
+        raise RuntimeError(f"Failed to confirm state for {self._model}")
 
     def _notify_state_changed(self) -> None:
-        """Sync HA state after an optimistic update."""
         self.async_write_ha_state()
         self.coordinator.async_set_updated_data(self.coordinator.data or {})
 
+    def _require_h6199(self, service: str) -> None:
+        if self._model != "H6199":
+            raise ServiceValidationError(
+                f"{service} is only supported on H6199, not {self._model}",
+                translation_domain=DOMAIN,
+                translation_key="unsupported_model",
+            )
+
     async def _apply_effect(self, effect_name: str) -> bool:
-        """Apply an effect by name. Returns True if handled."""
         game_mode = video_game_mode_from_effect(effect_name)
         if game_mode is not None:
 
-            async def _send_video_mode() -> None:
+            async def _send():
                 await apply_video_mode_from_state(self.coordinator, game_mode=game_mode)
                 await self.coordinator.send_command(build_brightness(self.coordinator.video_brightness))
 
-            await _send_video_mode()
+            await _send()
             self.coordinator.brightness_pct = self.coordinator.video_brightness
-            await self._refresh_state_with_retry(
-                expected_effect=effect_name,
-                retry_command=_send_video_mode,
-            )
+            await self._refresh_with_retry(expected_effect=effect_name, retry_command=_send)
             return True
 
-        # Music modes (H6199)
         music_id = music_mode_id_from_effect(effect_name)
         if music_id is not None:
 
-            async def _send_music_mode() -> None:
+            async def _send():
                 await self.coordinator.send_command(
                     build_music_mode_with_color(
-                        music_id,
-                        sensitivity=self.coordinator.music_sensitivity,
-                        color=self.coordinator.music_color,
+                        music_id, sensitivity=self.coordinator.music_sensitivity, color=self.coordinator.music_color
                     )
                 )
 
-            await _send_music_mode()
-            await self._refresh_state_with_retry(
-                expected_effect=effect_name,
-                retry_command=_send_music_mode,
-            )
+            await _send()
+            await self._refresh_with_retry(expected_effect=effect_name, retry_command=_send)
             return True
 
-        # Scenes (H617A)
         scene = SCENES.get(effect_name)
         if scene is not None:
             if scene.is_simple:
                 await self.coordinator.send_command(build_scene(scene.code))
             else:
-                packets = build_scene_multi(scene.param, scene.code)
-                await self.coordinator.send_commands(packets)
+                await self.coordinator.send_commands(build_scene_multi(scene.param, scene.code))
             return True
-
         return False
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on."""
-        prev_on = self.coordinator.is_on
-        prev_brightness = self.coordinator.brightness_pct
-        prev_rgb = self.coordinator.rgb_color
-        prev_temp = self.coordinator.color_temp_kelvin
-        prev_effect = self.coordinator.effect
-        prev_mode = self._attr_color_mode
+        with self._rollback():
 
-        try:
-
-            async def _send_power_on() -> None:
+            async def _power_on():
                 await self.coordinator.send_command(build_power(True))
 
-            await _send_power_on()
+            await _power_on()
             self.coordinator.is_on = True
             self.coordinator.effect = None
-            await self._refresh_state_with_retry(expected_on=True, retry_command=_send_power_on)
+            await self._refresh_with_retry(expected_on=True, retry_command=_power_on)
 
             if ATTR_BRIGHTNESS in kwargs:
-                brightness_255 = kwargs[ATTR_BRIGHTNESS]
-                brightness_pct = max(1, min(100, round(brightness_255 * 100 / 255)))
-                await self.coordinator.send_command(build_brightness(brightness_pct))
-                self.coordinator.brightness_pct = brightness_pct
-
+                pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
+                await self.coordinator.send_command(build_brightness(pct))
+                self.coordinator.brightness_pct = pct
             if ATTR_RGB_COLOR in kwargs:
                 r, g, b = kwargs[ATTR_RGB_COLOR]
                 await self.coordinator.send_command(build_color_rgb(r, g, b))
@@ -262,43 +248,28 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 self._attr_color_mode = ColorMode.RGB
                 self.coordinator.color_temp_kelvin = None
                 self.coordinator.effect = None
-
             if ATTR_COLOR_TEMP_KELVIN in kwargs:
                 kelvin = kwargs[ATTR_COLOR_TEMP_KELVIN]
                 await self.coordinator.send_command(build_color_temp(kelvin))
                 self.coordinator.color_temp_kelvin = kelvin
                 self._attr_color_mode = ColorMode.COLOR_TEMP
                 self.coordinator.effect = None
-
             if ATTR_EFFECT in kwargs:
                 effect_name = kwargs[ATTR_EFFECT]
                 if await self._apply_effect(effect_name):
                     self.coordinator.effect = effect_name
-        except Exception:
-            self.coordinator.is_on = prev_on
-            self.coordinator.brightness_pct = prev_brightness
-            self.coordinator.rgb_color = prev_rgb
-            self.coordinator.color_temp_kelvin = prev_temp
-            self.coordinator.effect = prev_effect
-            self._attr_color_mode = prev_mode
-            raise
-
         self._notify_state_changed()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
-        prev_on = self.coordinator.is_on
-        try:
+        with self._rollback():
 
-            async def _send_power_off() -> None:
+            async def _power_off():
                 await self.coordinator.send_command(build_power(False))
 
-            await _send_power_off()
+            await _power_off()
             self.coordinator.is_on = False
-            await self._refresh_state_with_retry(expected_on=False, retry_command=_send_power_off)
-        except Exception:
-            self.coordinator.is_on = prev_on
-            raise
+            await self._refresh_with_retry(expected_on=False, retry_command=_power_off)
         self._notify_state_changed()
 
     async def async_set_video_mode(
@@ -312,59 +283,32 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         sound_effects_softness: int = 0,
     ) -> None:
         """Handle set_video_mode service call."""
-        if self._model != "H6199":
-            raise ServiceValidationError(
-                f"set_video_mode is only supported on H6199, not {self._model}",
-                translation_domain=DOMAIN,
-                translation_key="unsupported_model",
-            )
-        prev_on = self.coordinator.is_on
-        prev_effect = self.coordinator.effect
-        prev_brightness = self.coordinator.brightness_pct
-        prev_video_sat = self.coordinator.video_saturation
-        prev_video_brightness = self.coordinator.video_brightness
-        prev_video_fs = self.coordinator.video_full_screen
-        prev_video_se = self.coordinator.video_sound_effects
-        prev_video_ses = self.coordinator.video_sound_effects_softness
-        try:
-            resolved_full_screen = full_screen if capture_region is None else capture_region == "full"
-            game_mode = mode == "game"
+        self._require_h6199("set_video_mode")
+        with self._rollback():
+            resolved_fs = full_screen if capture_region is None else capture_region == "full"
             packet = build_video_mode(
-                full_screen=resolved_full_screen,
-                game_mode=game_mode,
+                full_screen=resolved_fs,
+                game_mode=mode == "game",
                 saturation=saturation,
                 sound_effects=sound_effects,
                 sound_effects_softness=sound_effects_softness,
             )
 
-            async def _send_video_mode() -> None:
+            async def _send():
                 await self.coordinator.send_command(packet)
                 await self.coordinator.send_command(build_brightness(brightness))
 
             await self.coordinator.send_command(build_power(True))
             self.coordinator.is_on = True
-            await _send_video_mode()
-            await self._refresh_state_with_retry(
-                expected_effect=f"video: {mode}",
-                retry_command=_send_video_mode,
-            )
+            await _send()
+            await self._refresh_with_retry(expected_effect=f"video: {mode}", retry_command=_send)
             self.coordinator.effect = f"video: {mode}"
             self.coordinator.video_saturation = saturation
             self.coordinator.video_brightness = brightness
             self.coordinator.brightness_pct = brightness
-            self.coordinator.video_full_screen = resolved_full_screen
+            self.coordinator.video_full_screen = resolved_fs
             self.coordinator.video_sound_effects = sound_effects
             self.coordinator.video_sound_effects_softness = sound_effects_softness
-        except Exception:
-            self.coordinator.is_on = prev_on
-            self.coordinator.effect = prev_effect
-            self.coordinator.brightness_pct = prev_brightness
-            self.coordinator.video_saturation = prev_video_sat
-            self.coordinator.video_brightness = prev_video_brightness
-            self.coordinator.video_full_screen = prev_video_fs
-            self.coordinator.video_sound_effects = prev_video_se
-            self.coordinator.video_sound_effects_softness = prev_video_ses
-            raise
         self._notify_state_changed()
 
     async def async_set_music_mode(
@@ -374,37 +318,19 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         color: tuple[int, int, int] | None = None,
     ) -> None:
         """Handle set_music_mode service call."""
-        if self._model != "H6199":
-            raise ServiceValidationError(
-                f"set_music_mode is only supported on H6199, not {self._model}",
-                translation_domain=DOMAIN,
-                translation_key="unsupported_model",
-            )
-        prev_on = self.coordinator.is_on
-        prev_effect = self.coordinator.effect
-        prev_sensitivity = self.coordinator.music_sensitivity
-        prev_color = self.coordinator.music_color
-        try:
+        self._require_h6199("set_music_mode")
+        with self._rollback():
             mode_id = MUSIC_MODE_IDS[mode]
             packet = build_music_mode_with_color(mode_id, sensitivity=sensitivity, color=color)
 
-            async def _send_music_mode() -> None:
+            async def _send():
                 await self.coordinator.send_command(packet)
 
             await self.coordinator.send_command(build_power(True))
             self.coordinator.is_on = True
-            await _send_music_mode()
-            await self._refresh_state_with_retry(
-                expected_effect=f"music: {mode}",
-                retry_command=_send_music_mode,
-            )
+            await _send()
+            await self._refresh_with_retry(expected_effect=f"music: {mode}", retry_command=_send)
             self.coordinator.effect = f"music: {mode}"
             self.coordinator.music_sensitivity = sensitivity
             self.coordinator.music_color = color
-        except Exception:
-            self.coordinator.is_on = prev_on
-            self.coordinator.effect = prev_effect
-            self.coordinator.music_sensitivity = prev_sensitivity
-            self.coordinator.music_color = prev_color
-            raise
         self._notify_state_changed()
