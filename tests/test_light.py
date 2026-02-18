@@ -47,6 +47,8 @@ def mock_coordinator():
         )
     )
     return coordinator
+
+
 @pytest.fixture
 def mock_h6199_coordinator():
     """Create a mock coordinator for H6199."""

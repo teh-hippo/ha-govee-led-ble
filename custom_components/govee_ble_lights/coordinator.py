@@ -153,9 +153,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         def _on_disconnect_timeout(_now) -> None:
             self.hass.async_create_task(self.disconnect())
 
-        self._cancel_disconnect = async_call_later(
-            self.hass, DISCONNECT_DELAY, _on_disconnect_timeout
-        )
+        self._cancel_disconnect = async_call_later(self.hass, DISCONNECT_DELAY, _on_disconnect_timeout)
 
     # --- Notify / state reading (for state_readable models) ---
 
