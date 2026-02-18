@@ -6,7 +6,6 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -21,7 +20,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Govee BLE switch entities."""
-    coordinator: GoveeBLECoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: GoveeBLECoordinator = config_entry.runtime_data
     if coordinator.model != "H6199":
         return
 
@@ -63,12 +62,7 @@ class H6199ParameterSwitch(CoordinatorEntity[GoveeBLECoordinator], SwitchEntity)
         self._attr_name = name
         addr = coordinator.address.replace(":", "").lower()
         self._attr_unique_id = f"{addr}_{key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=f"Govee {coordinator.model}",
-            manufacturer="Govee",
-            model=coordinator.model,
-        )
+        self._attr_device_info = coordinator.device_info
 
     @property
     def is_on(self) -> bool:

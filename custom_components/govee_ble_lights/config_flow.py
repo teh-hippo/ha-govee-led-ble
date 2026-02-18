@@ -7,9 +7,8 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.components.bluetooth import BluetoothServiceInfo
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
-from homeassistant.data_entry_flow import FlowResult
 
 from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES
 
@@ -33,7 +32,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfo) -> FlowResult:
+    async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfo) -> ConfigFlowResult:
         """Handle the bluetooth discovery step."""
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
@@ -46,7 +45,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             data={CONF_MODEL: model},
         )
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the user step for manual setup."""
         if user_input is not None:
             address = user_input[CONF_ADDRESS].upper().strip()

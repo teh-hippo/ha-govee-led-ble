@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -12,10 +12,12 @@ from bleak import BleakClient, BleakError
 from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import ModelProfile, get_profile
+from .const import DOMAIN, ModelProfile, get_profile
 from .protocol import (
     READ_UUID,
     WRITE_UUID,
@@ -59,7 +61,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.profile: ModelProfile = profile
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
-        self._disconnect_timer: asyncio.TimerHandle | None = None
+        self._cancel_disconnect: CALLBACK_TYPE | None = None
         self._keep_alive_task: asyncio.Task | None = None
         self._trace_seq: int = 0
         self._keep_alive_ticks: int = 0
@@ -83,13 +85,23 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._handle_hass_stop,
         )
 
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info for this Govee device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.address)},
+            name=f"Govee {self.model}",
+            manufacturer="Govee",
+            model=self.model,
+        )
+
     @callback
     def _handle_hass_stop(self, _event: Event) -> None:
         """Ensure BLE tasks are cancelled before Home Assistant shutdown."""
         self._stop_keep_alive()
-        if self._disconnect_timer:
-            self._disconnect_timer.cancel()
-            self._disconnect_timer = None
+        if self._cancel_disconnect:
+            self._cancel_disconnect()
+            self._cancel_disconnect = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Return current state dict."""
@@ -134,10 +146,15 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _reset_disconnect_timer(self) -> None:
         """Reset the auto-disconnect timer."""
-        if self._disconnect_timer:
-            self._disconnect_timer.cancel()
-        self._disconnect_timer = self.hass.loop.call_later(
-            DISCONNECT_DELAY, lambda: self.hass.async_create_task(self.disconnect())
+        if self._cancel_disconnect:
+            self._cancel_disconnect()
+
+        @callback
+        def _on_disconnect_timeout(_now) -> None:
+            self.hass.async_create_task(self.disconnect())
+
+        self._cancel_disconnect = async_call_later(
+            self.hass, DISCONNECT_DELAY, _on_disconnect_timeout
         )
 
     # --- Notify / state reading (for state_readable models) ---
@@ -258,8 +275,8 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return False
 
         await self._ensure_connected()
-        deadline = self.hass.loop.time() + timeout
-        while self.hass.loop.time() < deadline:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
             if not await self._send_state_queries(include_keep_alive=False):
                 return False
             effect_ok = expected_effect is None or self.effect == expected_effect
@@ -352,14 +369,12 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Disconnect from the BLE device."""
         self._stop_keep_alive()
         self._unsub_stop = None
-        if self._disconnect_timer:
-            self._disconnect_timer.cancel()
-            self._disconnect_timer = None
+        if self._cancel_disconnect:
+            self._cancel_disconnect()
+            self._cancel_disconnect = None
         if self._client and self._client.is_connected:
             try:
-                disconnect_result = self._client.disconnect()
-                if inspect.isawaitable(disconnect_result):
-                    await disconnect_result
+                await self._client.disconnect()
             except BleakError:
                 _LOGGER.debug("Error disconnecting from %s", self.address)
             finally:

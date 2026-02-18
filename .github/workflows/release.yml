@@ -1,16 +1,8 @@
 name: Release
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (e.g. 1.1.0)"
-        required: true
-        type: string
-      prerelease:
-        description: "Mark as pre-release"
-        required: false
-        type: boolean
-        default: false
+  push:
+    tags:
+      - "v*"
 
 jobs:
   release:
@@ -19,15 +11,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: astral-sh/setup-uv@v6
 
+      - name: Extract version from tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Validate version format
         run: |
-          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Version must be in semver format (e.g. 1.2.3)"
+          if ! echo "${{ steps.version.outputs.value }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag must be semver (e.g. v1.2.3)"
             exit 1
           fi
 
@@ -38,48 +32,20 @@ jobs:
           uv run coverage run -m pytest tests/ -v --tb=short
           uv run coverage report --include="custom_components/govee_ble_lights/*" --fail-under=90
 
-      - name: Update manifest.json version
+      - name: Stamp version into manifest.json
         run: |
           python3 -c "
-          import json
-          with open('custom_components/govee_ble_lights/manifest.json', 'r') as f:
-              data = json.load(f)
-          data['version'] = '${{ inputs.version }}'
-          with open('custom_components/govee_ble_lights/manifest.json', 'w') as f:
-              json.dump(data, f, indent=4)
-              f.write('\n')
+          import json, pathlib
+          p = pathlib.Path('custom_components/govee_ble_lights/manifest.json')
+          data = json.loads(p.read_text())
+          data['version'] = '${{ steps.version.outputs.value }}'
+          p.write_text(json.dumps(data, indent=4) + '\n')
           "
-
-      - name: Update pyproject.toml version
-        run: sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' pyproject.toml
-
-      - name: Verify versions match
-        run: |
-          MANIFEST=$(python3 -c "import json; print(json.load(open('custom_components/govee_ble_lights/manifest.json'))['version'])")
-          PYPROJECT=$(grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)
-          if [ "$MANIFEST" != "${{ inputs.version }}" ] || [ "$PYPROJECT" != "${{ inputs.version }}" ]; then
-            echo "::error::Version mismatch: manifest=$MANIFEST pyproject=$PYPROJECT expected=${{ inputs.version }}"
-            exit 1
-          fi
-          echo "✅ Both versions set to ${{ inputs.version }}"
-
-      - name: Commit version bump
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add custom_components/govee_ble_lights/manifest.json pyproject.toml
-          git commit -m "release: v${{ inputs.version }}"
-          git push
-
-      - name: Create and push tag
-        run: |
-          git tag "v${{ inputs.version }}"
-          git push origin "v${{ inputs.version }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ inputs.version }}"
-          name: "v${{ inputs.version }}"
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           generate_release_notes: true
-          prerelease: ${{ inputs.prerelease }}
+          prerelease: ${{ contains(github.ref_name, '-') }}

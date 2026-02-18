@@ -10,8 +10,6 @@ from bleak import BleakError
 from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
 from custom_components.govee_ble_lights.number import H6199ParameterNumber
 from custom_components.govee_ble_lights.protocol import (
-    build_brightness,
-    build_color_rgb,
     build_music_mode_with_color,
     build_video_mode,
 )
@@ -40,7 +38,6 @@ def mock_h6199_coordinator():
     return coordinator
 
 
-@pytest.mark.asyncio
 async def test_video_saturation_number_applies_to_active_video_mode(mock_h6199_coordinator):
     """Test video saturation helper reapplies active video mode."""
     entity = H6199ParameterNumber(
@@ -65,7 +62,6 @@ async def test_video_saturation_number_applies_to_active_video_mode(mock_h6199_c
     )
 
 
-@pytest.mark.asyncio
 async def test_music_sensitivity_number_applies_to_active_music_mode(mock_h6199_coordinator):
     """Test music sensitivity helper reapplies active music mode."""
     mock_h6199_coordinator.effect = "music: rolling"
@@ -86,47 +82,6 @@ async def test_music_sensitivity_number_applies_to_active_music_mode(mock_h6199_
     )
 
 
-@pytest.mark.asyncio
-async def test_video_brightness_number_applies_to_active_video_mode(mock_h6199_coordinator):
-    """Test video brightness helper sends brightness while video mode is active."""
-    entity = H6199ParameterNumber(
-        mock_h6199_coordinator,
-        key="video_brightness",
-        name="Video brightness",
-        minimum=0,
-        maximum=100,
-    )
-
-    await entity.async_set_native_value(28)
-
-    assert mock_h6199_coordinator.video_brightness == 28
-    assert mock_h6199_coordinator.brightness_pct == 28
-    mock_h6199_coordinator.send_command.assert_called_once_with(build_brightness(28))
-
-
-@pytest.mark.asyncio
-async def test_white_brightness_number_sends_white_brightness_packet(mock_h6199_coordinator):
-    """Test white brightness helper sends the white brightness packet."""
-    entity = H6199ParameterNumber(
-        mock_h6199_coordinator,
-        key="white_brightness",
-        name="White brightness",
-        minimum=1,
-        maximum=100,
-    )
-
-    await entity.async_set_native_value(50)
-
-    assert mock_h6199_coordinator.white_brightness == 50
-    assert mock_h6199_coordinator.brightness_pct == 50
-    assert mock_h6199_coordinator.rgb_color == (255, 255, 255)
-    assert mock_h6199_coordinator.effect is None
-    assert mock_h6199_coordinator.send_command.call_count == 2
-    mock_h6199_coordinator.send_command.assert_any_call(build_color_rgb(255, 255, 255))
-    mock_h6199_coordinator.send_command.assert_any_call(build_brightness(50))
-
-
-@pytest.mark.asyncio
 async def test_number_rolls_back_on_send_failure(mock_h6199_coordinator):
     """Test helper value rolls back if BLE command fails."""
     mock_h6199_coordinator.send_command = AsyncMock(side_effect=BleakError("timeout"))

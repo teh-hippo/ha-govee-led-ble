@@ -5,11 +5,9 @@ from __future__ import annotations
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import GoveeBLECoordinator
 from .h6199_effects import apply_active_video_mode_from_state
 
@@ -20,7 +18,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Govee BLE select entities."""
-    coordinator: GoveeBLECoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: GoveeBLECoordinator = config_entry.runtime_data
     if coordinator.model != "H6199":
         return
 
@@ -39,12 +37,7 @@ class H6199VideoCaptureSelect(CoordinatorEntity[GoveeBLECoordinator], SelectEnti
         super().__init__(coordinator)
         addr = coordinator.address.replace(":", "").lower()
         self._attr_unique_id = f"{addr}_video_capture_region"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=f"Govee {coordinator.model}",
-            manufacturer="Govee",
-            model=coordinator.model,
-        )
+        self._attr_device_info = coordinator.device_info
 
     @property
     def current_option(self) -> str:

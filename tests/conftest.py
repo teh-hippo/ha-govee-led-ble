@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.core import HomeAssistant
 
 
 @pytest.fixture(autouse=True)
@@ -30,3 +31,11 @@ def mock_ble_device():
     device.address = "AA:BB:CC:DD:EE:FF"
     device.name = "ihoment_H617A_ABCD"
     return device
+
+
+@pytest.fixture
+def mock_config_entry(hass: HomeAssistant):
+    """Return a mock config entry registered with hass."""
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    return entry

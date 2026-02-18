@@ -6,17 +6,13 @@ from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
 from .coordinator import GoveeBLECoordinator
 from .h6199_effects import (
     apply_active_music_mode_from_state,
-    apply_active_video_brightness_from_state,
     apply_active_video_mode_from_state,
-    apply_white_brightness_from_state,
 )
 
 
@@ -26,7 +22,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Govee BLE number entities."""
-    coordinator: GoveeBLECoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: GoveeBLECoordinator = config_entry.runtime_data
     if coordinator.model != "H6199":
         return
 
@@ -88,12 +84,7 @@ class H6199ParameterNumber(CoordinatorEntity[GoveeBLECoordinator], NumberEntity)
         self._attr_native_max_value = maximum
         addr = coordinator.address.replace(":", "").lower()
         self._attr_unique_id = f"{addr}_{key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=f"Govee {coordinator.model}",
-            manufacturer="Govee",
-            model=coordinator.model,
-        )
+        self._attr_device_info = coordinator.device_info
 
     @property
     def native_value(self) -> float:
@@ -118,14 +109,6 @@ class H6199ParameterNumber(CoordinatorEntity[GoveeBLECoordinator], NumberEntity)
 
     async def _async_apply_if_active_effect(self) -> None:
         """Apply updated number values when the corresponding mode is active."""
-        if self._key == "white_brightness":
-            await apply_white_brightness_from_state(self.coordinator)
-            return
-
-        if self._key == "video_brightness":
-            await apply_active_video_brightness_from_state(self.coordinator)
-            return
-
         if self._key in {"video_saturation", "video_sound_effects_softness"}:
             await apply_active_video_mode_from_state(self.coordinator)
             return

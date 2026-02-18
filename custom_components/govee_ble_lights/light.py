@@ -20,7 +20,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -70,7 +69,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Govee BLE light from a config entry."""
-    coordinator: GoveeBLECoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: GoveeBLECoordinator = config_entry.runtime_data
     async_add_entities([GoveeBLELight(coordinator, config_entry)])
 
     platform = entity_platform.async_get_current_platform()
@@ -121,12 +120,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self._model = coordinator.model
         self._profile = coordinator.profile
         self._attr_unique_id = coordinator.address.replace(":", "").lower()
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.address)},
-            name=f"Govee {self._model}",
-            manufacturer="Govee",
-            model=self._model,
-        )
+        self._attr_device_info = coordinator.device_info
         self._attr_color_mode = ColorMode.RGB
         self._effect_list = _build_effect_list(self._profile)
 
@@ -181,6 +175,11 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         if await self.coordinator.refresh_state(expected_effect=expected_effect, expected_on=expected_on):
             return
         raise RuntimeError(f"Failed to confirm state for {self._model}: effect={expected_effect} power={expected_on}")
+
+    def _notify_state_changed(self) -> None:
+        """Sync HA state after an optimistic update."""
+        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(self.coordinator.data or {})
 
     async def _apply_effect(self, effect_name: str) -> bool:
         """Apply an effect by name. Returns True if handled."""
@@ -284,8 +283,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             self._attr_color_mode = prev_mode
             raise
 
-        self.async_write_ha_state()
-        self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})
+        self._notify_state_changed()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""
@@ -301,8 +299,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         except Exception:
             self.coordinator.is_on = prev_on
             raise
-        self.async_write_ha_state()
-        self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})
+        self._notify_state_changed()
 
     async def async_set_video_mode(
         self,
@@ -368,8 +365,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             self.coordinator.video_sound_effects = prev_video_se
             self.coordinator.video_sound_effects_softness = prev_video_ses
             raise
-        self.async_write_ha_state()
-        self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})
+        self._notify_state_changed()
 
     async def async_set_music_mode(
         self,
@@ -411,5 +407,4 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             self.coordinator.music_sensitivity = prev_sensitivity
             self.coordinator.music_color = prev_color
             raise
-        self.async_write_ha_state()
-        self.coordinator.async_set_updated_data(getattr(self.coordinator, "data", {}) or {})
+        self._notify_state_changed()

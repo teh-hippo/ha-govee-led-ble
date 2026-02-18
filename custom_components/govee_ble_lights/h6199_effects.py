@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .protocol import build_brightness, build_color_rgb, build_music_mode_with_color, build_video_mode
+from .protocol import build_music_mode_with_color, build_video_mode
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
@@ -13,11 +13,6 @@ if TYPE_CHECKING:
 VIDEO_EFFECT_GAME_MODE: dict[str, bool] = {
     "video: movie": False,
     "video: game": True,
-}
-
-VIDEO_MODE_GAME_MODE: dict[str, bool] = {
-    "movie": False,
-    "game": True,
 }
 
 MUSIC_MODE_IDS: dict[str, int] = {
@@ -69,30 +64,6 @@ async def apply_active_video_mode_from_state(coordinator: GoveeBLECoordinator) -
     if game_mode is None:
         return False
     await apply_video_mode_from_state(coordinator, game_mode=game_mode)
-    return True
-
-
-async def apply_active_video_brightness_from_state(coordinator: GoveeBLECoordinator) -> bool:
-    """Reapply active video brightness using coordinator values."""
-    if not coordinator.is_on:
-        return False
-    if video_game_mode_from_effect(coordinator.effect) is None:
-        return False
-    await coordinator.send_command(build_brightness(coordinator.video_brightness))
-    coordinator.brightness_pct = coordinator.video_brightness
-    return True
-
-
-async def apply_white_brightness_from_state(coordinator: GoveeBLECoordinator) -> bool:
-    """Apply white-channel brightness using coordinator values."""
-    if not coordinator.is_on:
-        return False
-    await coordinator.send_command(build_color_rgb(255, 255, 255))
-    await coordinator.send_command(build_brightness(coordinator.white_brightness))
-    coordinator.brightness_pct = coordinator.white_brightness
-    coordinator.rgb_color = (255, 255, 255)
-    coordinator.color_temp_kelvin = None
-    coordinator.effect = None
     return True
 
 

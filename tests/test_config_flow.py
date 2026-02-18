@@ -31,7 +31,6 @@ async def mock_bluetooth(hass, enable_custom_integrations):
     hass.config.components.add("bluetooth_adapters")
 
 
-@pytest.mark.asyncio
 async def test_bluetooth_discovery(hass: HomeAssistant) -> None:
     """Test bluetooth discovery creates entry automatically."""
     result = await hass.config_entries.flow.async_init(
@@ -44,7 +43,6 @@ async def test_bluetooth_discovery(hass: HomeAssistant) -> None:
     assert result["data"][CONF_MODEL] == "H617A"
 
 
-@pytest.mark.asyncio
 async def test_bluetooth_discovery_abort_duplicate(hass: HomeAssistant) -> None:
     """Test bluetooth discovery aborts if already configured."""
     entry = MagicMock(spec=config_entries.ConfigEntry)
@@ -69,7 +67,6 @@ async def test_bluetooth_discovery_abort_duplicate(hass: HomeAssistant) -> None:
     assert result2["reason"] == "already_configured"
 
 
-@pytest.mark.asyncio
 async def test_user_step_shows_form(hass: HomeAssistant) -> None:
     """Test user step shows form when no input."""
     result = await hass.config_entries.flow.async_init(
@@ -80,7 +77,6 @@ async def test_user_step_shows_form(hass: HomeAssistant) -> None:
     assert result["step_id"] == "user"
 
 
-@pytest.mark.asyncio
 async def test_user_step_creates_entry(hass: HomeAssistant) -> None:
     """Test user step creates entry with valid input."""
     result = await hass.config_entries.flow.async_init(

@@ -38,7 +38,6 @@ def test_capture_select_current_option(mock_h6199_coordinator):
     assert entity.current_option == "part"
 
 
-@pytest.mark.asyncio
 async def test_capture_select_reapplies_active_video_mode(mock_h6199_coordinator):
     """Test selecting part/full reapplies the active video mode."""
     entity = H6199VideoCaptureSelect(mock_h6199_coordinator)
@@ -57,7 +56,6 @@ async def test_capture_select_reapplies_active_video_mode(mock_h6199_coordinator
     )
 
 
-@pytest.mark.asyncio
 async def test_capture_select_rolls_back_on_failure(mock_h6199_coordinator):
     """Test select rolls back state if BLE command fails."""
     mock_h6199_coordinator.send_command = AsyncMock(side_effect=BleakError("timeout"))

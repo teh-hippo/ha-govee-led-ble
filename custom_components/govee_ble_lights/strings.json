@@ -15,6 +15,34 @@
       "already_configured": "Device is already configured"
     }
   },
+  "entity": {
+    "number": {
+      "video_saturation": {
+        "name": "Video saturation"
+      },
+      "video_sound_effects_softness": {
+        "name": "Video sound effects softness"
+      },
+      "music_sensitivity": {
+        "name": "Music sensitivity"
+      }
+    },
+    "select": {
+      "video_capture_region": {
+        "name": "Video color mapping"
+      }
+    },
+    "switch": {
+      "video_sound_effects": {
+        "name": "Video sound effects"
+      }
+    }
+  },
+  "exceptions": {
+    "unsupported_model": {
+      "message": "{service} is only supported on H6199, not {model}"
+    }
+  },
   "services": {
     "set_video_mode": {
       "name": "Set video mode",

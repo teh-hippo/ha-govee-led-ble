@@ -30,7 +30,6 @@ def mock_h6199_coordinator():
     return coordinator
 
 
-@pytest.mark.asyncio
 async def test_video_sound_effects_switch_reapplies_active_video_mode(mock_h6199_coordinator):
     """Test sound-effects switch reapplies active video mode."""
     entity = H6199ParameterSwitch(
@@ -53,7 +52,6 @@ async def test_video_sound_effects_switch_reapplies_active_video_mode(mock_h6199
     )
 
 
-@pytest.mark.asyncio
 async def test_switch_rolls_back_on_send_failure(mock_h6199_coordinator):
     """Test helper switch rolls back if BLE command fails."""
     mock_h6199_coordinator.send_command = AsyncMock(side_effect=BleakError("timeout"))

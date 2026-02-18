@@ -49,7 +49,6 @@ def test_profile_loaded(coordinator, h6199_coordinator):
     assert h6199_coordinator.profile.state_readable is True
 
 
-@pytest.mark.asyncio
 async def test_send_command_retries_on_failure(coordinator):
     """Test that send_command retries up to 3 times."""
     mock_client = MagicMock()
@@ -62,7 +61,6 @@ async def test_send_command_retries_on_failure(coordinator):
     assert mock_client.write_gatt_char.call_count == 3
 
 
-@pytest.mark.asyncio
 async def test_send_command_raises_after_retries_exhausted(coordinator):
     """Test that send_command raises after 3 failed attempts."""
     mock_client = MagicMock()
@@ -78,7 +76,6 @@ async def test_send_command_raises_after_retries_exhausted(coordinator):
     assert mock_client.write_gatt_char.call_count == 3
 
 
-@pytest.mark.asyncio
 async def test_send_command_clears_client_on_error(coordinator):
     """Test that client is cleared after a BLE error for reconnection."""
     mock_client = MagicMock()
@@ -94,7 +91,6 @@ async def test_send_command_clears_client_on_error(coordinator):
     assert coordinator._client is None
 
 
-@pytest.mark.asyncio
 async def test_disconnect_cleans_up(coordinator):
     """Test disconnect clears client and timer."""
     mock_client = MagicMock()
@@ -102,18 +98,17 @@ async def test_disconnect_cleans_up(coordinator):
     mock_client.disconnect = AsyncMock()
     coordinator._client = mock_client
 
-    mock_timer = MagicMock()
-    coordinator._disconnect_timer = mock_timer
+    mock_cancel = MagicMock()
+    coordinator._cancel_disconnect = mock_cancel
 
     await coordinator.disconnect()
 
     mock_client.disconnect.assert_called_once()
-    mock_timer.cancel.assert_called_once()
+    mock_cancel.assert_called_once()
     assert coordinator._client is None
-    assert coordinator._disconnect_timer is None
+    assert coordinator._cancel_disconnect is None
 
 
-@pytest.mark.asyncio
 async def test_disconnect_handles_bleak_error(coordinator):
     """Test disconnect handles BleakError gracefully."""
     mock_client = MagicMock()
@@ -126,7 +121,6 @@ async def test_disconnect_handles_bleak_error(coordinator):
     assert coordinator._client is None
 
 
-@pytest.mark.asyncio
 async def test_disconnect_noop_when_not_connected(coordinator):
     """Test disconnect is safe when no client exists."""
     coordinator._client = None
@@ -134,7 +128,6 @@ async def test_disconnect_noop_when_not_connected(coordinator):
     await coordinator.disconnect()  # Should not raise
 
 
-@pytest.mark.asyncio
 async def test_send_commands_sends_all_packets(coordinator):
     """Test send_commands sends every packet in sequence."""
     mock_client = MagicMock()
@@ -148,7 +141,6 @@ async def test_send_commands_sends_all_packets(coordinator):
     assert mock_client.write_gatt_char.call_count == 2
 
 
-@pytest.mark.asyncio
 async def test_async_update_data_returns_state(coordinator):
     """Test _async_update_data returns current optimistic state."""
     coordinator.is_on = True
@@ -224,7 +216,6 @@ def test_notify_callback_ignores_non_status_header(h6199_coordinator):
     assert h6199_coordinator.is_on is False  # unchanged
 
 
-@pytest.mark.asyncio
 async def test_start_notify_called_for_state_readable(h6199_coordinator):
     """Test that _start_notify is called when connecting state_readable device."""
     mock_client = MagicMock()
@@ -249,7 +240,6 @@ async def test_start_notify_called_for_state_readable(h6199_coordinator):
     await h6199_coordinator.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_start_notify_not_called_for_write_only(coordinator):
     """Test that _start_notify is NOT called for write-only H617A."""
     mock_client = MagicMock()
@@ -269,7 +259,6 @@ async def test_start_notify_not_called_for_write_only(coordinator):
     await coordinator.disconnect()
 
 
-@pytest.mark.asyncio
 async def test_disconnect_stops_keep_alive(h6199_coordinator):
     """Test that disconnect stops the keep-alive task."""
     mock_task = MagicMock()
@@ -287,14 +276,12 @@ async def test_disconnect_stops_keep_alive(h6199_coordinator):
     mock_task.cancel.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_stop_keep_alive_noop_when_no_task(h6199_coordinator):
     """Test _stop_keep_alive is safe when no task exists."""
     h6199_coordinator._keep_alive_task = None
     h6199_coordinator._stop_keep_alive()  # Should not raise
 
 
-@pytest.mark.asyncio
 async def test_start_notify_handles_bleak_error(h6199_coordinator):
     """Test that _start_notify handles BleakError gracefully."""
     mock_client = MagicMock()
@@ -303,3 +290,73 @@ async def test_start_notify_handles_bleak_error(h6199_coordinator):
     h6199_coordinator._client = mock_client
 
     await h6199_coordinator._start_notify()  # Should not raise
+
+
+# --- Edge-case tests (T5) ---
+
+
+async def test_ensure_connected_raises_when_device_not_found(coordinator):
+    """Test _ensure_connected raises BleakError after discovery retries."""
+    with (
+        patch("custom_components.govee_ble_lights.coordinator.bluetooth") as mock_bt,
+        patch("custom_components.govee_ble_lights.coordinator.asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(BleakError, match="not found"),
+    ):
+        mock_bt.async_ble_device_from_address.return_value = None
+        await coordinator._ensure_connected()
+
+
+async def test_ensure_connected_reuses_existing_client(coordinator):
+    """Test _ensure_connected returns existing client without reconnecting."""
+    mock_client = MagicMock()
+    mock_client.is_connected = True
+    coordinator._client = mock_client
+
+    result = await coordinator._ensure_connected()
+
+    assert result is mock_client
+
+
+async def test_keep_alive_loop_exits_on_disconnected_client(h6199_coordinator):
+    """Test keep-alive loop exits when client disconnects."""
+    mock_client = MagicMock()
+    mock_client.is_connected = False
+    h6199_coordinator._client = mock_client
+
+    await h6199_coordinator._keep_alive_loop()  # Should exit without error
+
+
+async def test_send_state_queries_returns_false_when_no_client(h6199_coordinator):
+    """Test _send_state_queries returns False when no client."""
+    h6199_coordinator._client = None
+    result = await h6199_coordinator._send_state_queries()
+    assert result is False
+
+
+async def test_refresh_state_returns_false_for_non_state_readable(coordinator):
+    """Test refresh_state returns False for write-only models."""
+    result = await coordinator.refresh_state()
+    assert result is False
+
+
+async def test_send_keep_alive_only_returns_false_when_no_client(h6199_coordinator):
+    """Test _send_keep_alive_only returns False with no client."""
+    h6199_coordinator._client = None
+    result = await h6199_coordinator._send_keep_alive_only()
+    assert result is False
+
+
+async def test_reset_disconnect_timer_cancels_previous(coordinator):
+    """Test that resetting disconnect timer cancels the previous one."""
+    mock_cancel = MagicMock()
+    coordinator._cancel_disconnect = mock_cancel
+
+    mock_client = MagicMock()
+    mock_client.is_connected = True
+    coordinator._client = mock_client
+
+    coordinator._reset_disconnect_timer()
+
+    mock_cancel.assert_called_once()
+    assert coordinator._cancel_disconnect is not None
+    assert coordinator._cancel_disconnect is not mock_cancel
