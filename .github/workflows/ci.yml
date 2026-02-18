@@ -35,10 +35,9 @@ jobs:
 
   hacs:
     runs-on: ubuntu-latest
-    # Requires PR to hacs/brands — non-blocking until registered
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: hacs/action@main
         with:
           category: integration
+          ignore: brands
