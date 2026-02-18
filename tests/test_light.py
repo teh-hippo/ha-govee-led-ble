@@ -1,5 +1,3 @@
-"""Tests for the Govee BLE light entity."""
-
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -9,150 +7,88 @@ from bleak import BleakError
 from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import ServiceValidationError
 
+from custom_components.govee_ble_lights import protocol as P
 from custom_components.govee_ble_lights.const import MODEL_PROFILES
-from custom_components.govee_ble_lights.light import GoveeBLELight, _build_effect_list
-from custom_components.govee_ble_lights.protocol import (
-    build_brightness,
-    build_color_rgb,
-    build_color_temp,
-    build_music_mode_with_color,
-    build_power,
-    build_scene,
-    build_video_mode,
-)
+from custom_components.govee_ble_lights.light import MUSIC_MODE_IDS, GoveeBLELight, _build_effect_list
 from custom_components.govee_ble_lights.scenes import SCENES
 
 
 @pytest.fixture
 def light(mock_coordinator, mock_config_entry):
-    entity = GoveeBLELight(mock_coordinator, mock_config_entry)
-    entity.async_write_ha_state = MagicMock()
-    return entity
+    e = GoveeBLELight(mock_coordinator, mock_config_entry)
+    e.async_write_ha_state = MagicMock()
+    return e
 
 
 @pytest.fixture
 def h6199_light(mock_h6199_coordinator, mock_config_entry):
     mock_h6199_coordinator.is_on = False
     mock_h6199_coordinator.effect = None
-    entity = GoveeBLELight(mock_h6199_coordinator, mock_config_entry)
-    entity.async_write_ha_state = MagicMock()
-    return entity
+    e = GoveeBLELight(mock_h6199_coordinator, mock_config_entry)
+    e.async_write_ha_state = MagicMock()
+    return e
 
 
-# --- Basic properties ---
-
-
-def test_unique_id(light):
-    assert light.unique_id == "aabbccddeeff"
-
-
-def test_is_off_initially(light):
-    assert light.is_on is False
-
-
-def test_brightness_conversion(light, mock_coordinator):
+def test_basic_and_color_props(light, mock_coordinator):
+    assert light.unique_id == "aabbccddeeff" and light.is_on is False
     mock_coordinator.brightness_pct = 50
     assert light.brightness == 128
-
-
-def test_effect_list(light):
-    effects = light.effect_list
-    assert len(effects) == len(SCENES)
-    assert effects == sorted(SCENES.keys())
-
-
-def test_effect_property(light, mock_coordinator):
+    assert light.effect_list == sorted(SCENES.keys()) and len(light.effect_list) == len(SCENES)
     mock_coordinator.effect = "rainbow"
     assert light.effect == "rainbow"
     mock_coordinator.effect = None
     assert light.effect is None
-
-
-@pytest.mark.parametrize(
-    "mode,rgb,temp",
-    [
-        (ColorMode.RGB, (128, 64, 32), None),
-        (ColorMode.COLOR_TEMP, None, 4000),
-    ],
-)
-def test_color_properties(light, mock_coordinator, mode, rgb, temp):
     mock_coordinator.rgb_color = (128, 64, 32)
     mock_coordinator.color_temp_kelvin = 4000
-    light._attr_color_mode = mode
-    assert light.rgb_color == rgb
-    assert light.color_temp_kelvin == temp
+    light._attr_color_mode = ColorMode.RGB
+    assert light.rgb_color == (128, 64, 32) and light.color_temp_kelvin is None
+    light._attr_color_mode = ColorMode.COLOR_TEMP
+    assert light.rgb_color is None and light.color_temp_kelvin == 4000
 
 
-# --- Turn on/off ---
+@pytest.mark.parametrize("on", [True, False])
+async def test_power(light, mock_coordinator, on):
+    await (light.async_turn_on() if on else light.async_turn_off())
+    mock_coordinator.send_command.assert_called_with(P.build_power(on))
+    assert mock_coordinator.is_on is on
 
 
-async def test_turn_on(light, mock_coordinator):
-    await light.async_turn_on()
-    mock_coordinator.send_command.assert_called_with(build_power(True))
-    assert mock_coordinator.is_on is True
+async def test_turn_on_variants(light, mock_coordinator):
+    co = mock_coordinator
 
+    async def _on(**kw):
+        co.send_command.reset_mock()
+        co.is_on = False
+        await light.async_turn_on(**kw)
+        return co.send_command.call_args_list
 
-async def test_turn_off(light, mock_coordinator):
-    await light.async_turn_off()
-    mock_coordinator.send_command.assert_called_with(build_power(False))
-    assert mock_coordinator.is_on is False
-
-
-async def test_turn_on_with_brightness(light, mock_coordinator):
     await light.async_turn_on(brightness=128)
-    calls = mock_coordinator.send_command.call_args_list
-    assert len(calls) == 2
-    assert calls[1].args[0] == build_brightness(50)
-
-
-async def test_turn_on_with_rgb(light, mock_coordinator):
-    await light.async_turn_on(rgb_color=(255, 0, 128))
-    calls = mock_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_color_rgb(255, 0, 128)
-    assert mock_coordinator.rgb_color == (255, 0, 128)
-
-
-async def test_turn_on_with_color_temp(light, mock_coordinator):
-    await light.async_turn_on(color_temp_kelvin=4000)
-    calls = mock_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_color_temp(4000)
-    assert mock_coordinator.color_temp_kelvin == 4000
+    c = co.send_command.call_args_list
+    assert len(c) == 2 and c[1].args[0] == P.build_brightness(50)
+    c = await _on(rgb_color=(255, 0, 128))
+    assert len(c) == 2 and c[1].args[0] == P.build_color_rgb(255, 0, 128) and co.rgb_color == (255, 0, 128)
+    c = await _on(color_temp_kelvin=4000)
+    assert c[1].args[0] == P.build_color_temp(4000) and co.color_temp_kelvin == 4000
     assert light._attr_color_mode == ColorMode.COLOR_TEMP
-    # Also clears active effect
-    mock_coordinator.effect = "rainbow"
-    await light.async_turn_on(color_temp_kelvin=5000)
-    assert mock_coordinator.effect is None
-
-
-async def test_turn_on_with_simple_effect(light, mock_coordinator):
-    await light.async_turn_on(effect="rainbow")
-    calls = mock_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_scene(SCENES["rainbow"].code)
-    assert mock_coordinator.effect == "rainbow"
-
-
-async def test_turn_on_with_complex_effect(light, mock_coordinator):
-    mock_coordinator.send_commands = AsyncMock()
+    co.effect = "rainbow"
+    await _on(color_temp_kelvin=5000)
+    assert co.effect is None
+    c = await _on(effect="rainbow")
+    assert c[1].args[0] == P.build_scene(SCENES["rainbow"].code) and co.effect == "rainbow"
+    co.send_command.reset_mock()
+    co.send_commands = AsyncMock()
+    co.is_on = False
     await light.async_turn_on(effect="forest")
-    mock_coordinator.send_command.assert_called_once_with(build_power(True))
-    packets = mock_coordinator.send_commands.call_args.args[0]
-    assert len(packets) > 1
-    assert packets[0][0] == 0xA3
-    assert packets[-1][0] == 0x33
+    co.send_command.assert_called_once_with(P.build_power(True))
+    pkts = co.send_commands.call_args.args[0]
+    assert len(pkts) > 1 and pkts[0][0] == 0xA3 and pkts[-1][0] == 0x33
 
 
-# --- Rollback ---
-
-
-async def test_turn_on_rollback_on_failure(light, mock_coordinator):
+async def test_power_rollback(light, mock_coordinator):
     mock_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
     with pytest.raises(BleakError):
         await light.async_turn_on(brightness=128)
-    assert mock_coordinator.is_on is False
-    assert mock_coordinator.brightness_pct == 100
-
-
-async def test_turn_off_rollback_on_failure(light, mock_coordinator):
+    assert mock_coordinator.is_on is False and mock_coordinator.brightness_pct == 100
     mock_coordinator.is_on = True
     mock_coordinator.send_command = AsyncMock(side_effect=BleakError("timeout"))
     with pytest.raises(BleakError):
@@ -160,187 +96,105 @@ async def test_turn_off_rollback_on_failure(light, mock_coordinator):
     assert mock_coordinator.is_on is True
 
 
-# --- H6199 effects ---
-
-
-def test_build_effect_list_api_model():
+def test_effect_lists(h6199_light, light):
     assert len(_build_effect_list(MODEL_PROFILES["H617A"])) == len(SCENES)
-
-
-def test_build_effect_list_none_model():
     assert len(_build_effect_list(MODEL_PROFILES["H6199"])) == len(MODEL_PROFILES["H6199"].effects)
-
-
-def test_h6199_effect_list(h6199_light):
-    effects = h6199_light.effect_list
-    assert "video: movie" in effects and "music: energic" in effects
-    assert "rainbow" not in effects
-
-
-def test_h617a_no_video_effects(light):
+    fx = h6199_light.effect_list
+    assert "video: movie" in fx and "music: energic" in fx and "rainbow" not in fx
     assert "video: movie" not in light.effect_list
 
 
-async def test_h6199_video_movie(h6199_light, mock_h6199_coordinator):
-    await h6199_light.async_turn_on(effect="video: movie")
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_video_mode(full_screen=True, game_mode=False)
-    assert calls[2].args[0] == build_brightness(100)
-    assert mock_h6199_coordinator.effect == "video: movie"
+@pytest.mark.parametrize("effect,game,has_bri", [("video: movie", False, True), ("video: game", True, False)])
+async def test_h6199_video(h6199_light, mock_h6199_coordinator, effect, game, has_bri):
+    await h6199_light.async_turn_on(effect=effect)
+    c = mock_h6199_coordinator.send_command.call_args_list
+    assert c[1].args[0] == P.build_video_mode(full_screen=True, game_mode=game)
+    if has_bri:
+        assert c[2].args[0] == P.build_brightness(100)
+    assert mock_h6199_coordinator.effect == effect
 
 
-async def test_h6199_video_game(h6199_light, mock_h6199_coordinator):
-    await h6199_light.async_turn_on(effect="video: game")
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_video_mode(full_screen=True, game_mode=True)
-    assert mock_h6199_coordinator.effect == "video: game"
-
-
-@pytest.mark.parametrize(
-    "mode,mode_id",
-    [
-        ("music: energic", 0x05),
-        ("music: rhythm", 0x03),
-        ("music: spectrum", 0x04),
-        ("music: rolling", 0x06),
-    ],
-)
-async def test_h6199_music_effects(h6199_light, mock_h6199_coordinator, mode, mode_id):
+@pytest.mark.parametrize("mode,mid", [(f"music: {n}", i) for n, i in MUSIC_MODE_IDS.items()])
+async def test_h6199_music(h6199_light, mock_h6199_coordinator, mode, mid):
     await h6199_light.async_turn_on(effect=mode)
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_music_mode_with_color(mode_id)
-    assert mock_h6199_coordinator.effect == mode
+    c = mock_h6199_coordinator.send_command.call_args_list
+    assert c[1].args[0] == P.build_music_mode_with_color(mid) and mock_h6199_coordinator.effect == mode
 
 
-async def test_h6199_video_uses_stored_params(h6199_light, mock_h6199_coordinator):
-    mock_h6199_coordinator.video_saturation = 42
-    mock_h6199_coordinator.video_brightness = 37
-    mock_h6199_coordinator.video_full_screen = False
-    mock_h6199_coordinator.video_sound_effects = True
-    mock_h6199_coordinator.video_sound_effects_softness = 55
+async def test_h6199_stored_params(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+    co.video_saturation, co.video_brightness = 42, 37
+    co.video_full_screen, co.video_sound_effects, co.video_sound_effects_softness = False, True, 55
     await h6199_light.async_turn_on(effect="video: game")
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_video_mode(
-        full_screen=False,
-        game_mode=True,
-        saturation=42,
-        sound_effects=True,
-        sound_effects_softness=55,
+    c = co.send_command.call_args_list
+    exp = P.build_video_mode(
+        full_screen=False, game_mode=True, saturation=42, sound_effects=True, sound_effects_softness=55
     )
-    assert calls[2].args[0] == build_brightness(37)
-
-
-async def test_h6199_music_uses_stored_params(h6199_light, mock_h6199_coordinator):
-    mock_h6199_coordinator.music_sensitivity = 33
-    mock_h6199_coordinator.music_color = (10, 20, 30)
+    assert c[1].args[0] == exp and c[2].args[0] == P.build_brightness(37)
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
+    co.music_sensitivity, co.music_color = 33, (10, 20, 30)
     await h6199_light.async_turn_on(effect="music: spectrum")
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_music_mode_with_color(0x04, sensitivity=33, color=(10, 20, 30))
-
-
-async def test_h6199_unknown_effect_ignored(h6199_light, mock_h6199_coordinator):
+    c = co.send_command.call_args_list
+    assert c[1].args[0] == P.build_music_mode_with_color(0x04, sensitivity=33, color=(10, 20, 30))
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
     await h6199_light.async_turn_on(effect="nonexistent_effect")
-    assert mock_h6199_coordinator.send_command.call_count == 1
-    assert mock_h6199_coordinator.effect is None
+    assert co.send_command.call_count == 1 and co.effect is None
 
 
-async def test_h6199_confirms_power_state(h6199_light, mock_h6199_coordinator):
-    await h6199_light.async_turn_on()
-    mock_h6199_coordinator.refresh_state.assert_awaited_once_with(expected_effect=None, expected_on=True)
-    mock_h6199_coordinator.refresh_state.reset_mock()
-    await h6199_light.async_turn_off()
-    mock_h6199_coordinator.refresh_state.assert_awaited_once_with(expected_effect=None, expected_on=False)
+async def test_h6199_confirms_power(h6199_light, mock_h6199_coordinator):
+    for on in (True, False):
+        await (h6199_light.async_turn_on() if on else h6199_light.async_turn_off())
+        mock_h6199_coordinator.refresh_state.assert_awaited_once_with(expected_effect=None, expected_on=on)
+        mock_h6199_coordinator.refresh_state.reset_mock()
 
 
-# --- H6199 services ---
-
-
-async def test_set_video_mode_movie(h6199_light, mock_h6199_coordinator):
-    await h6199_light.async_set_video_mode(mode="movie", saturation=80, brightness=65)
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[0].args[0] == build_power(True)
-    assert calls[1].args[0] == build_video_mode(full_screen=True, game_mode=False, saturation=80)
-    assert calls[2].args[0] == build_brightness(65)
-    assert mock_h6199_coordinator.effect == "video: movie"
-    assert mock_h6199_coordinator.video_saturation == 80
-
-
-async def test_set_video_mode_game_with_sound(h6199_light, mock_h6199_coordinator):
-    await h6199_light.async_set_video_mode(
-        mode="game",
-        saturation=60,
-        brightness=75,
-        full_screen=False,
-        sound_effects=True,
-        sound_effects_softness=50,
+async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
+    lt, co = h6199_light, mock_h6199_coordinator
+    await lt.async_set_video_mode(mode="movie", saturation=80, brightness=65)
+    c = co.send_command.call_args_list
+    assert c[0].args[0] == P.build_power(True)
+    assert c[1].args[0] == P.build_video_mode(full_screen=True, game_mode=False, saturation=80)
+    assert c[2].args[0] == P.build_brightness(65) and co.effect == "video: movie" and co.video_saturation == 80
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
+    await lt.async_set_video_mode(
+        mode="game", saturation=60, brightness=75, full_screen=False, sound_effects=True, sound_effects_softness=50
     )
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_video_mode(
-        full_screen=False,
-        game_mode=True,
-        saturation=60,
-        sound_effects=True,
-        sound_effects_softness=50,
+    c = co.send_command.call_args_list
+    exp = P.build_video_mode(
+        full_screen=False, game_mode=True, saturation=60, sound_effects=True, sound_effects_softness=50
     )
-    assert mock_h6199_coordinator.video_sound_effects is True
+    assert c[1].args[0] == exp and co.video_sound_effects is True
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
+    await lt.async_set_video_mode(mode="movie", saturation=50, brightness=60, full_screen=True, capture_region="part")
+    c = co.send_command.call_args_list
+    assert c[1].args[0] == P.build_video_mode(full_screen=False, game_mode=False, saturation=50)
+    assert co.video_full_screen is False
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
+    _bm = P.build_music_mode_with_color
+    await lt.async_set_music_mode(mode="energic", sensitivity=75)
+    assert co.send_command.call_args_list[1].args[0] == _bm(0x05, sensitivity=75) and co.effect == "music: energic"
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
+    await lt.async_set_music_mode(mode="spectrum", sensitivity=90, color=(255, 0, 128))
+    assert co.send_command.call_args_list[1].args[0] == _bm(0x04, sensitivity=90, color=(255, 0, 128))
+    assert co.music_color == (255, 0, 128)
 
 
-async def test_set_video_mode_capture_region_overrides(h6199_light, mock_h6199_coordinator):
-    await h6199_light.async_set_video_mode(
-        mode="movie",
-        saturation=50,
-        brightness=60,
-        full_screen=True,
-        capture_region="part",
-    )
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_video_mode(full_screen=False, game_mode=False, saturation=50)
-    assert mock_h6199_coordinator.video_full_screen is False
-
-
-async def test_set_music_mode_energic(h6199_light, mock_h6199_coordinator):
-    await h6199_light.async_set_music_mode(mode="energic", sensitivity=75)
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_music_mode_with_color(0x05, sensitivity=75)
-    assert mock_h6199_coordinator.effect == "music: energic"
-
-
-async def test_set_music_mode_with_color(h6199_light, mock_h6199_coordinator):
-    await h6199_light.async_set_music_mode(mode="spectrum", sensitivity=90, color=(255, 0, 128))
-    calls = mock_h6199_coordinator.send_command.call_args_list
-    assert calls[1].args[0] == build_music_mode_with_color(0x04, sensitivity=90, color=(255, 0, 128))
-    assert mock_h6199_coordinator.music_color == (255, 0, 128)
-
-
-# --- Model guards ---
-
-
-@pytest.mark.parametrize(
-    "service,kwargs",
-    [
-        ("async_set_video_mode", {"mode": "movie"}),
-        ("async_set_music_mode", {"mode": "energic"}),
-    ],
-)
-async def test_service_rejected_on_h617a(light, service, kwargs):
-    with pytest.raises(ServiceValidationError, match="H617A"):
-        await getattr(light, service)(**kwargs)
-
-
-# --- Service rollback ---
-
-
-async def test_set_video_mode_rollback(h6199_light, mock_h6199_coordinator):
-    mock_h6199_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
-    with pytest.raises(BleakError):
-        await h6199_light.async_set_video_mode(mode="movie", saturation=42)
-    assert mock_h6199_coordinator.is_on is False
-    assert mock_h6199_coordinator.video_saturation == 100
-
-
-async def test_set_music_mode_rollback(h6199_light, mock_h6199_coordinator):
-    mock_h6199_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("timeout")])
-    with pytest.raises(BleakError):
-        await h6199_light.async_set_music_mode(mode="spectrum", sensitivity=50, color=(255, 0, 0))
-    assert mock_h6199_coordinator.is_on is False
-    assert mock_h6199_coordinator.music_sensitivity == 100
+async def test_h617a_rejection_and_rollback(light, h6199_light, mock_h6199_coordinator):
+    for svc, kw in [("async_set_video_mode", {"mode": "movie"}), ("async_set_music_mode", {"mode": "energic"})]:
+        with pytest.raises(ServiceValidationError, match="H617A"):
+            await getattr(light, svc)(**kw)
+    for method, kw, attr, val in [
+        ("async_set_video_mode", dict(mode="movie", saturation=42), "video_saturation", 100),
+        ("async_set_music_mode", dict(mode="spectrum", sensitivity=50, color=(255, 0, 0)), "music_sensitivity", 100),
+    ]:
+        mock_h6199_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
+        mock_h6199_coordinator.is_on = False
+        with pytest.raises(BleakError):
+            await getattr(h6199_light, method)(**kw)
+        assert mock_h6199_coordinator.is_on is False and getattr(mock_h6199_coordinator, attr) == val
