@@ -1,6 +1,69 @@
 # CHANGELOG
 
 
+## v1.7.0 (2026-02-19)
+
+### Bug Fixes
+
+- Add formatted runtime translations
+  ([`c8e9539`](https://github.com/teh-hippo/govee_ble_lights/commit/c8e9539d4994424b494d4f0ae18806202bd6e1c9))
+
+- Add service validation placeholders
+  ([`8686ff6`](https://github.com/teh-hippo/govee_ble_lights/commit/8686ff62e2aefb8efb080b16bc2a36dab6b5e946))
+
+- Keep optional name arg compatibility
+  ([`57269ba`](https://github.com/teh-hippo/govee_ble_lights/commit/57269ba813538d48dbaaf743d3625a977111c886))
+
+- Use translation keys for parameter entities
+  ([`31acd51`](https://github.com/teh-hippo/govee_ble_lights/commit/31acd517618f7d279f5026a1f0b2e4e97ece4be9))
+
+### Chores
+
+- Refresh uv lockfile
+  ([`a41dc69`](https://github.com/teh-hippo/govee_ble_lights/commit/a41dc6946fc57c8d79f30b773d314ef3f0b7ade8))
+
+### Continuous Integration
+
+- Minimal 4-line .gitignore
+  ([`3f50c9b`](https://github.com/teh-hippo/govee_ble_lights/commit/3f50c9ba44310e1b220b0e60f6865e77cf4e24c1))
+
+### Documentation
+
+- Standardize section naming
+  ([`2e11868`](https://github.com/teh-hippo/govee_ble_lights/commit/2e11868c2716b81b7fedf25eba517491bc8ef694))
+
+- Standardize status badge set
+  ([`c667bcc`](https://github.com/teh-hippo/govee_ble_lights/commit/c667bcccaf62087e6ac1a12c450111e36eb8a0a5))
+
+### Features
+
+- Add diagnostics endpoint
+  ([`a245df0`](https://github.com/teh-hippo/govee_ble_lights/commit/a245df0493162577b3fe7104bd041b72fd144784))
+
+- Add entity icon mappings
+  ([`a7bd668`](https://github.com/teh-hippo/govee_ble_lights/commit/a7bd668c9535a59631923011258abe9fc4831684))
+
+- Add quality scale declaration
+  ([`ffb9749`](https://github.com/teh-hippo/govee_ble_lights/commit/ffb97498fb5d49bd3808b2cc948de4932f030bfa))
+
+- Declare integration logger namespaces
+  ([`a481ae6`](https://github.com/teh-hippo/govee_ble_lights/commit/a481ae6c7fff04094fdde5cfed7ea1b461a60077))
+
+- Declare parallel updates for platforms
+  ([`312790a`](https://github.com/teh-hippo/govee_ble_lights/commit/312790a2e88833fae5aea780e268a0dd39c9292a))
+
+### Refactoring
+
+- Add coverage config section
+  ([`9dfa8eb`](https://github.com/teh-hippo/govee_ble_lights/commit/9dfa8ebad3c640b95d5c1a08a7df300f42526b3a))
+
+- Drop redundant mypy warn_return_any
+  ([`49cdce7`](https://github.com/teh-hippo/govee_ble_lights/commit/49cdce7320a7ad186a99b307ca19f69e06ba0504))
+
+- Simplify hacs metadata
+  ([`5aafe9e`](https://github.com/teh-hippo/govee_ble_lights/commit/5aafe9eb3e893af6b0572108e65d8abd23a847e1))
+
+
 ## v1.6.1 (2026-02-18)
 
 ### Bug Fixes

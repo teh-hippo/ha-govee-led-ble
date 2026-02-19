@@ -1,6 +1,6 @@
 [project]
 name = "govee-ble-lights"
-version = "1.6.1"
+version = "1.7.0"
 description = "Home Assistant custom integration for Govee BLE LED lights"
 requires-python = ">=3.12"
 license = "MIT"
