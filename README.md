@@ -28,7 +28,7 @@ Both models support on/off, brightness, RGB color, and color temperature (2000Kâ
 
 Copy `custom_components/govee_ble_lights/` into your HA `custom_components/` directory and restart.
 
-## Setup
+## Configuration
 
 The integration auto-discovers nearby Govee BLE devices. To add manually:
 
