@@ -1,0 +1,8 @@
+rules:
+  config-flow: done
+  config-entry-unloading: done
+  diagnostics: done
+  has-entity-name: done
+  parallel-updates: done
+  runtime-data: done
+  test-coverage: todo
