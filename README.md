@@ -1,8 +1,9 @@
 # Govee BLE Lights for Home Assistant
 
-[![Validate](https://github.com/teh-hippo/govee_ble_lights/actions/workflows/validate.yml/badge.svg)](https://github.com/teh-hippo/govee_ble_lights/actions/workflows/validate.yml)
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
-[![HA](https://img.shields.io/badge/HA-2024.12%2B-blue.svg)](https://www.home-assistant.io)
+[![HACS][hacs-badge]][hacs-url]
+[![GitHub Release][release-badge]][release-url]
+[![Validate][validate-badge]][validate-url]
+[![Home Assistant][ha-badge]][ha-url]
 
 Control Govee LED strips via Bluetooth Low Energy (BLE) from Home Assistant.
 
@@ -66,3 +67,12 @@ python scripts/h6199_harness.py \
 ## License
 
 MIT
+
+[hacs-badge]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg
+[hacs-url]: https://github.com/hacs/integration
+[release-badge]: https://img.shields.io/github/v/release/teh-hippo/govee_ble_lights
+[release-url]: https://github.com/teh-hippo/govee_ble_lights/releases
+[validate-badge]: https://img.shields.io/github/actions/workflow/status/teh-hippo/govee_ble_lights/validate.yml?branch=master&label=validate
+[validate-url]: https://github.com/teh-hippo/govee_ble_lights/actions/workflows/validate.yml
+[ha-badge]: https://img.shields.io/badge/HA-2026.2%2B-blue.svg
+[ha-url]: https://www.home-assistant.io
