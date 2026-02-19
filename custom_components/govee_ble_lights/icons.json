@@ -1,0 +1,25 @@
+{
+  "entity": {
+    "number": {
+      "video_saturation": {
+        "default": "mdi:palette"
+      },
+      "video_sound_effects_softness": {
+        "default": "mdi:tune-variant"
+      },
+      "music_sensitivity": {
+        "default": "mdi:microphone"
+      }
+    },
+    "select": {
+      "video_capture_region": {
+        "default": "mdi:fit-to-screen"
+      }
+    },
+    "switch": {
+      "video_sound_effects": {
+        "default": "mdi:music-note-eighth"
+      }
+    }
+  }
+}
