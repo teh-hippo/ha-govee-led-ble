@@ -11,6 +11,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import GoveeBLECoordinator
 from .light import apply_active_music_mode, apply_active_video_mode
 
+PARALLEL_UPDATES = 0
+
 _PARAMS = ["video_saturation", "video_sound_effects_softness", "music_sensitivity"]
 
 

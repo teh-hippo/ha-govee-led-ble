@@ -44,6 +44,8 @@ from .scenes import SCENES, get_scene_names
 
 _LOGGER = logging.getLogger(__name__)
 
+PARALLEL_UPDATES = 0
+
 MIN_COLOR_TEMP_KELVIN = 2000
 MAX_COLOR_TEMP_KELVIN = 9000
 
