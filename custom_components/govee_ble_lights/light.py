@@ -204,6 +204,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 f"{service} is only supported on H6199, not {self._model}",
                 translation_domain=DOMAIN,
                 translation_key="unsupported_model",
+                translation_placeholders={"service": service, "model": self._model},
             )
 
     async def _apply_effect(self, effect_name: str) -> bool:
