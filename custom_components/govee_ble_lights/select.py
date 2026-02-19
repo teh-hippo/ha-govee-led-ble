@@ -24,7 +24,7 @@ async def async_setup_entry(
 
 class H6199VideoCaptureSelect(CoordinatorEntity[GoveeBLECoordinator], SelectEntity):
     _attr_has_entity_name = True
-    _attr_name = "Video color mapping"
+    _attr_translation_key = "video_capture_region"
     _attr_options = ["full", "part"]
 
     def __init__(self, coordinator: GoveeBLECoordinator) -> None:

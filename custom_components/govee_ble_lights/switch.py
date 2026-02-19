@@ -19,16 +19,16 @@ async def async_setup_entry(
 ) -> None:
     coordinator: GoveeBLECoordinator = config_entry.runtime_data
     if coordinator.model == "H6199":
-        async_add_entities([H6199ParameterSwitch(coordinator, key="video_sound_effects", name="Video sound effects")])
+        async_add_entities([H6199ParameterSwitch(coordinator, key="video_sound_effects")])
 
 
 class H6199ParameterSwitch(CoordinatorEntity[GoveeBLECoordinator], SwitchEntity):
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str, name: str) -> None:
+    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str) -> None:
         super().__init__(coordinator)
         self._key = key
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_unique_id = f"{coordinator.address.replace(':', '').lower()}_{key}"
         self._attr_device_info = coordinator.device_info
 
