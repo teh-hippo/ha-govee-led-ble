@@ -27,8 +27,9 @@ async def async_setup_entry(
 class H6199ParameterSwitch(CoordinatorEntity[GoveeBLECoordinator], SwitchEntity):
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str) -> None:
+    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str, name: str | None = None) -> None:
         super().__init__(coordinator)
+        _ = name
         self._key = key
         self._attr_translation_key = key
         self._attr_unique_id = f"{coordinator.address.replace(':', '').lower()}_{key}"

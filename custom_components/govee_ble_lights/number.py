@@ -33,8 +33,9 @@ class H6199ParameterNumber(CoordinatorEntity[GoveeBLECoordinator], NumberEntity)
     _attr_native_min_value = 0
     _attr_native_max_value = 100
 
-    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str) -> None:
+    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str, name: str | None = None) -> None:
         super().__init__(coordinator)
+        _ = name
         self._key = key
         self._attr_translation_key = key
         self._attr_unique_id = f"{coordinator.address.replace(':', '').lower()}_{key}"
