@@ -25,6 +25,12 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+
 [tool.mypy]
 python_version = "3.13"
 strict = true
