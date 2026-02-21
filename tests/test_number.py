@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock
 import pytest
 from bleak import BleakError
 
-from custom_components.govee_ble_lights.number import H6199ParameterNumber as N
-from custom_components.govee_ble_lights.protocol import build_music_mode_with_color as bmc
-from custom_components.govee_ble_lights.protocol import build_video_mode as bv
+from custom_components.ha_govee_led_ble.number import H6199ParameterNumber as N
+from custom_components.ha_govee_led_ble.protocol import build_music_mode_with_color as bmc
+from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
 
 
 async def test_video_saturation(mock_h6199_coordinator):

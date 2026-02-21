@@ -1,10 +1,10 @@
-"""Constants for Govee BLE Lights."""
+"""Constants for HA Govee LED BLE."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-DOMAIN = "govee_ble_lights"
+DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
 
 

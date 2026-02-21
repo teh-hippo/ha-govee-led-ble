@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for Govee BLE Lights."""
+"""DataUpdateCoordinator for HA Govee LED BLE."""
 
 from __future__ import annotations
 

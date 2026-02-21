@@ -1,6 +1,6 @@
 [project]
-name = "govee-ble-lights"
-version = "1.7.1"
+name = "ha-govee-led-ble"
+version = "1.8.0"
 description = "Home Assistant custom integration for Govee BLE LED lights"
 requires-python = ">=3.12"
 license = "MIT"
@@ -57,7 +57,7 @@ disable_error_code = ["arg-type", "attr-defined", "no-untyped-call", "typeddict-
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
-version_variables = ["custom_components/govee_ble_lights/manifest.json:version"]
+version_variables = ["custom_components/ha_govee_led_ble/manifest.json:version"]
 build_command = ""
 commit_message = "chore(release): {version}"
 tag_format = "v{version}"

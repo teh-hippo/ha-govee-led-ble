@@ -5,8 +5,8 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.govee_ble_lights.config_flow import _extract_model
-from custom_components.govee_ble_lights.const import CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.config_flow import _extract_model
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
 
 SVC = BluetoothServiceInfo("ihoment_H617A_ABCD", "AA:BB:CC:DD:EE:FF", -60, {}, {}, [], "local")
 

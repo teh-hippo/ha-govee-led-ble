@@ -4,8 +4,8 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from custom_components.govee_ble_lights.const import DOMAIN, MODEL_PROFILES
-from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 
 
 @pytest.fixture(autouse=True)

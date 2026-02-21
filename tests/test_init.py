@@ -4,8 +4,8 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from custom_components.govee_ble_lights import async_setup_entry, async_unload_entry
-from custom_components.govee_ble_lights.const import CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble import async_setup_entry, async_unload_entry
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
 
 
 def _entry(**kw):
@@ -17,7 +17,7 @@ def _entry(**kw):
 async def test_setup_entry(hass: HomeAssistant, data):
     entry = _entry(data=data)
     with (
-        patch("custom_components.govee_ble_lights.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock) as fwd,
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()

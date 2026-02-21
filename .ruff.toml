@@ -17,8 +17,7 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"custom_components/govee_ble_lights/scenes.py" = ["E501"]
-"scripts/h6199_harness.py" = ["S310"]  # urlopen is intentional in this HA test harness
+"custom_components/ha_govee_led_ble/scenes.py" = ["E501"]
 
 [lint.isort]
-known-first-party = ["custom_components.govee_ble_lights"]
+known-first-party = ["custom_components.ha_govee_led_ble"]

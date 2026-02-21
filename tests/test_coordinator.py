@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak import BleakError
 
-from custom_components.govee_ble_lights import protocol as proto
-from custom_components.govee_ble_lights.const import MODEL_PROFILES
-from custom_components.govee_ble_lights.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 
-M = "custom_components.govee_ble_lights.coordinator"
+M = "custom_components.ha_govee_led_ble.coordinator"
 
 
 @pytest.fixture

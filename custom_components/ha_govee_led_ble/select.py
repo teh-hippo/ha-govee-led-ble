@@ -1,4 +1,4 @@
-"""Select entities for Govee BLE Lights."""
+"""Select entities for HA Govee LED BLE."""
 
 from __future__ import annotations
 

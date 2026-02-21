@@ -1,6 +1,6 @@
 import pytest
 
-from custom_components.govee_ble_lights.scenes import SCENES, SceneEntry, get_scene_names
+from custom_components.ha_govee_led_ble.scenes import SCENES, SceneEntry, get_scene_names
 
 
 def test_catalogue_valid():

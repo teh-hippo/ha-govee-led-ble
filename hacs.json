@@ -1,4 +1,4 @@
 {
-  "name": "Govee BLE Lights",
+  "name": "HA Govee LED BLE",
   "homeassistant": "2026.2.0"
 }

@@ -1,4 +1,4 @@
-"""Config flow for Govee BLE Lights."""
+"""Config flow for HA Govee LED BLE."""
 
 from __future__ import annotations
 

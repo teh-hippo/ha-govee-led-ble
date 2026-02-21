@@ -7,10 +7,10 @@ from bleak import BleakError
 from homeassistant.components.light import ColorMode
 from homeassistant.exceptions import ServiceValidationError
 
-from custom_components.govee_ble_lights import protocol as proto
-from custom_components.govee_ble_lights.const import MODEL_PROFILES
-from custom_components.govee_ble_lights.light import MUSIC_MODE_IDS, GoveeBLELight, _build_effect_list
-from custom_components.govee_ble_lights.scenes import SCENES
+from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.light import MUSIC_MODE_IDS, GoveeBLELight, _build_effect_list
+from custom_components.ha_govee_led_ble.scenes import SCENES
 
 
 @pytest.fixture

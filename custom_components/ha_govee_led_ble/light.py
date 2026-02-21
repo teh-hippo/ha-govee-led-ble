@@ -1,4 +1,4 @@
-"""Light entity for Govee BLE Lights."""
+"""Light entity for HA Govee LED BLE."""
 
 # fmt: off
 from __future__ import annotations

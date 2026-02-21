@@ -1,6 +1,6 @@
 {
-    "domain": "govee_ble_lights",
-    "name": "Govee BLE Lights",
+    "domain": "ha_govee_led_ble",
+    "name": "HA Govee LED BLE",
     "bluetooth": [
         {
             "local_name": "ihoment_H617A*"
@@ -34,10 +34,10 @@
     "dependencies": [
         "bluetooth_adapters"
     ],
-    "documentation": "https://github.com/teh-hippo/govee_ble_lights",
+    "documentation": "https://github.com/teh-hippo/ha-govee-led-ble",
     "integration_type": "device",
     "iot_class": "local_push",
-    "issue_tracker": "https://github.com/teh-hippo/govee_ble_lights/issues",
+    "issue_tracker": "https://github.com/teh-hippo/ha-govee-led-ble/issues",
     "loggers": [
         "bleak",
         "bleak_retry_connector"
@@ -46,5 +46,5 @@
         "bleak>=0.21.0",
         "bleak-retry-connector>=3.0.0"
     ],
-    "version": "1.7.1"
+    "version": "1.8.0"
 }

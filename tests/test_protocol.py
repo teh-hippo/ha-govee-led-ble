@@ -4,7 +4,7 @@ import base64
 
 import pytest
 
-from custom_components.govee_ble_lights import protocol as proto
+from custom_components.ha_govee_led_ble import protocol as proto
 
 H = bytes.fromhex
 

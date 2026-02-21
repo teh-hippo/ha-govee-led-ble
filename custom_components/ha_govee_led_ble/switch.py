@@ -1,19 +1,17 @@
-"""Number entities for Govee BLE Lights."""
+"""Switch entities for HA Govee LED BLE."""
 
 from __future__ import annotations
 
-from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import GoveeBLECoordinator
-from .light import apply_active_music_mode, apply_active_video_mode
+from .light import apply_active_video_mode
 
 PARALLEL_UPDATES = 0
-
-_PARAMS = ["video_saturation", "video_sound_effects_softness", "music_sensitivity"]
 
 
 async def async_setup_entry(
@@ -23,15 +21,11 @@ async def async_setup_entry(
 ) -> None:
     coordinator: GoveeBLECoordinator = config_entry.runtime_data
     if coordinator.model == "H6199":
-        async_add_entities([H6199ParameterNumber(coordinator, key=key) for key in _PARAMS])
+        async_add_entities([H6199ParameterSwitch(coordinator, key="video_sound_effects")])
 
 
-class H6199ParameterNumber(CoordinatorEntity[GoveeBLECoordinator], NumberEntity):
+class H6199ParameterSwitch(CoordinatorEntity[GoveeBLECoordinator], SwitchEntity):
     _attr_has_entity_name = True
-    _attr_mode = NumberMode.SLIDER
-    _attr_native_step = 1
-    _attr_native_min_value = 0
-    _attr_native_max_value = 100
 
     def __init__(self, coordinator: GoveeBLECoordinator, *, key: str, name: str | None = None) -> None:
         super().__init__(coordinator)
@@ -42,19 +36,22 @@ class H6199ParameterNumber(CoordinatorEntity[GoveeBLECoordinator], NumberEntity)
         self._attr_device_info = coordinator.device_info
 
     @property
-    def native_value(self) -> float:
-        return float(getattr(self.coordinator, self._key))
+    def is_on(self) -> bool:
+        return bool(getattr(self.coordinator, self._key))
 
-    async def async_set_native_value(self, value: float) -> None:
-        prev, nxt = int(getattr(self.coordinator, self._key)), int(round(value))
-        if nxt == prev:
+    async def async_turn_on(self, **kwargs: object) -> None:
+        await self._async_set_state(True)
+
+    async def async_turn_off(self, **kwargs: object) -> None:
+        await self._async_set_state(False)
+
+    async def _async_set_state(self, value: bool) -> None:
+        prev = bool(getattr(self.coordinator, self._key))
+        if prev == value:
             return
-        setattr(self.coordinator, self._key, nxt)
+        setattr(self.coordinator, self._key, value)
         try:
-            if self._key in {"video_saturation", "video_sound_effects_softness"}:
-                await apply_active_video_mode(self.coordinator)
-            elif self._key == "music_sensitivity":
-                await apply_active_music_mode(self.coordinator)
+            await apply_active_video_mode(self.coordinator)
         except Exception:
             setattr(self.coordinator, self._key, prev)
             raise

@@ -1,4 +1,4 @@
-"""Diagnostics for Govee BLE Lights."""
+"""Diagnostics for HA Govee LED BLE."""
 
 from __future__ import annotations
 
