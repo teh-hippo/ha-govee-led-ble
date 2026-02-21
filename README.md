@@ -1,4 +1,4 @@
-# HA Govee LED BLE for Home Assistant
+# Govee LED BLE for Home Assistant
 
 [![HACS][hacs-badge]][hacs-url]
 [![GitHub Release][release-badge]][release-url]
@@ -29,7 +29,7 @@ Both models support on/off, brightness, RGB color, and color temperature (2000K�
 
 1. Open **HACS** → three-dot menu → **Custom repositories**
 2. Add `https://github.com/teh-hippo/ha-govee-led-ble` as **Integration**
-3. Install **HA Govee LED BLE** and restart Home Assistant
+3. Install **Govee LED BLE** and restart Home Assistant
 
 ### Manual
 
@@ -41,7 +41,7 @@ The integration auto-discovers nearby supported devices.
 
 To add manually in Home Assistant:
 
-**Settings → Devices & Services → Add Integration → HA Govee LED BLE**
+**Settings → Devices & Services → Add Integration → Govee LED BLE**
 
 ## Development
 
