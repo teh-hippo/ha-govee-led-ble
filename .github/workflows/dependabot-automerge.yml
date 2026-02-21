@@ -2,16 +2,19 @@ name: Dependabot Auto-Merge
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  auto-merge:
-    name: Auto-Merge
+  request-review:
+    name: Request Copilot Review
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
@@ -19,25 +22,43 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Auto-approve patch and minor updates
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr review --approve "$PR_URL"
+      - name: Request Copilot review
+        run: gh pr edit "$PR_URL" --add-reviewer "Copilot"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Auto-merge patch and minor updates
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Flag major updates for review
+      - name: Flag major updates for human review
         if: steps.metadata.outputs.update-type == 'version-update:semver-major'
         run: |
-          gh pr comment "$PR_URL" --body "⚠️ **Major version update** — requires manual review before merging."
-          gh pr edit "$PR_URL" --add-label "major-update"
+          gh pr edit "$PR_URL" --add-label "major-update" --add-reviewer "teh-hippo"
+          gh pr comment "$PR_URL" --body "⚠️ **Major version update** — Copilot is reviewing, but this also requires manual review by @teh-hippo before merging."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  handle-copilot-review:
+    name: Handle Copilot Review
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'pull_request_review' &&
+      github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Approve and enable auto-merge on Copilot approval
+        if: github.event.review.state == 'approved'
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --rebase "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Escalate on Copilot changes requested
+        if: github.event.review.state == 'changes_requested'
+        run: |
+          gh pr edit "$PR_URL" --add-reviewer "teh-hippo"
+          gh pr comment "$PR_URL" --body "🔍 **Copilot requested changes** — code changes may be needed beyond a version bump. Assigning @teh-hippo for review."
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

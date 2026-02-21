@@ -2,12 +2,16 @@ name: Validate
 
 on:
   push:
-    branches: [master]
+    branches: [master, "copilot/**", "dependabot/**"]
   pull_request:
     branches: [master]
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: validate-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
