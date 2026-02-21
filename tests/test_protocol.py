@@ -153,9 +153,6 @@ def test_music_mode():
 
 
 def test_parse():
-    assert proto.parse_power_response(bytes([0x01, 0x00])) is True
-    assert proto.parse_power_response(bytes([0x00, 0x00])) is False
-    assert proto.parse_brightness_response(bytes([75, 0x00])) == 75
     p = proto.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]))
     assert p.effect == "video: game" and not p.video_full_screen
     assert (p.video_saturation, p.video_sound_effects, p.video_sound_effects_softness) == (42, True, 55)

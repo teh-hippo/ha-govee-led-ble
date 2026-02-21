@@ -1,7 +1,5 @@
 """Number entities for HA Govee LED BLE."""
 
-from __future__ import annotations
-
 from . import h6199_controls
 
 PARALLEL_UPDATES = 0

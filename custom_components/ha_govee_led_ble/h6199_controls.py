@@ -1,7 +1,5 @@
 """Shared H6199 control entities."""
 
-from __future__ import annotations
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -38,7 +36,7 @@ async def _set_with_rollback(
 class _H6199ControlEntity(CoordinatorEntity[GoveeBLECoordinator]):
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str) -> None:
+    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str, **_: object) -> None:
         super().__init__(coordinator)
         self._key = key
         base = coordinator.address.replace(":", "").lower()
@@ -52,10 +50,6 @@ class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
     _attr_native_step = 1
     _attr_native_min_value = 0
     _attr_native_max_value = 100
-
-    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str, name: str | None = None) -> None:
-        _ = name
-        super().__init__(coordinator, key=key)
 
     @property
     def native_value(self) -> float:
@@ -72,10 +66,6 @@ class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
 
 
 class H6199ParameterSwitch(_H6199ControlEntity, SwitchEntity):
-    def __init__(self, coordinator: GoveeBLECoordinator, *, key: str, name: str | None = None) -> None:
-        _ = name
-        super().__init__(coordinator, key=key)
-
     @property
     def is_on(self) -> bool:
         return bool(getattr(self.coordinator, self._key))

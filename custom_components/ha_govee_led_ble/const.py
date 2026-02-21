@@ -1,7 +1,5 @@
 """Constants for HA Govee LED BLE."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 DOMAIN = "ha_govee_led_ble"

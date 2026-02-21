@@ -1,7 +1,5 @@
 """H617A scene catalogue — generated from Govee API for H617A."""
 
-from __future__ import annotations
-
 import base64
 import json
 import zlib

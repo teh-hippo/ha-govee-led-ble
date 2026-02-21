@@ -1,7 +1,5 @@
 """Config flow for HA Govee LED BLE."""
 
-from __future__ import annotations
-
 import re
 from typing import Any
 

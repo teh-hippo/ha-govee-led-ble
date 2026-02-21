@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,22 +7,22 @@ from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
-from custom_components.ha_govee_led_ble.light import MUSIC_MODE_IDS, GoveeBLELight, _build_effect_list
+from custom_components.ha_govee_led_ble.light import MUSIC_MODE_IDS, GoveeBLELight
 from custom_components.ha_govee_led_ble.scenes import SCENES
 
 
 @pytest.fixture
-def light(mock_coordinator, mock_config_entry):
-    e = GoveeBLELight(mock_coordinator, mock_config_entry)
+def light(mock_coordinator):
+    e = GoveeBLELight(mock_coordinator)
     e.async_write_ha_state = MagicMock()
     return e
 
 
 @pytest.fixture
-def h6199_light(mock_h6199_coordinator, mock_config_entry):
+def h6199_light(mock_h6199_coordinator):
     mock_h6199_coordinator.is_on = False
     mock_h6199_coordinator.effect = None
-    e = GoveeBLELight(mock_h6199_coordinator, mock_config_entry)
+    e = GoveeBLELight(mock_h6199_coordinator)
     e.async_write_ha_state = MagicMock()
     return e
 
@@ -97,8 +95,8 @@ async def test_power_rollback(light, mock_coordinator):
 
 
 def test_effect_lists(h6199_light, light):
-    assert len(_build_effect_list(MODEL_PROFILES["H617A"])) == len(SCENES)
-    assert len(_build_effect_list(MODEL_PROFILES["H6199"])) == len(MODEL_PROFILES["H6199"].effects)
+    assert len(light.effect_list) == len(SCENES)
+    assert len(h6199_light.effect_list) == len(MODEL_PROFILES["H6199"].effects)
     fx = h6199_light.effect_list
     assert "video: movie" in fx and "music: energic" in fx and "rainbow" not in fx
     assert "video: movie" not in light.effect_list

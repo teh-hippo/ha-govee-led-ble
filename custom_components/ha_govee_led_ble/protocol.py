@@ -140,14 +140,6 @@ def build_music_mode_with_color(
     return build_packet(0x33, 0x05, params)
 
 
-def parse_power_response(payload: bytes) -> bool:
-    return bool(payload[0])
-
-
-def parse_brightness_response(payload: bytes) -> int:
-    return payload[0]
-
-
 @dataclass(frozen=True)
 class ParsedColorModeResponse:
     effect: str | None = None

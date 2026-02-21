@@ -1,7 +1,5 @@
 """DataUpdateCoordinator for HA Govee LED BLE."""
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import time
@@ -17,7 +15,6 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-# fmt: off
 from .const import DOMAIN, get_profile
 from .protocol import (
     BRIGHTNESS_QUERY,
@@ -25,12 +22,10 @@ from .protocol import (
     KEEP_ALIVE,
     READ_UUID,
     WRITE_UUID,
-    parse_brightness_response,
+    PacketHeader,
+    PacketType,
     parse_color_mode_response,
-    parse_power_response,
 )
-
-# fmt: on
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +34,17 @@ KEEP_ALIVE_INTERVAL = 5
 STATE_QUERY_EVERY_N_KEEP_ALIVES = 3
 RETRY_BACKOFF_SECONDS = 2
 DEVICE_DISCOVERY_ATTEMPTS = 4
+
+_CORE_STATE_FIELDS = ("is_on", "brightness_pct", "rgb_color", "color_temp_kelvin", "effect")
+_COLOR_MODE_FIELDS = (
+    "video_full_screen",
+    "video_saturation",
+    "video_sound_effects",
+    "video_sound_effects_softness",
+    "music_sensitivity",
+    "music_color",
+    "white_brightness",
+)
 
 
 class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -75,10 +81,12 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def device_info(self) -> DeviceInfo:
-        # fmt: off
-        return DeviceInfo(identifiers={(DOMAIN, self.address)}, name=f"Govee {self.model}",
-                          manufacturer="Govee", model=self.model)
-        # fmt: on
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.address)},
+            name=f"Govee {self.model}",
+            manufacturer="Govee",
+            model=self.model,
+        )
 
     @callback
     def _handle_hass_stop(self, _event: Event) -> None:
@@ -94,10 +102,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._send_state_queries()
             except BleakError:
                 _LOGGER.debug("State refresh skipped for %s", self.address)
-        # fmt: off
-        return {"is_on": self.is_on, "brightness_pct": self.brightness_pct, "rgb_color": self.rgb_color,
-                "color_temp_kelvin": self.color_temp_kelvin, "effect": self.effect}
-        # fmt: on
+        return {field: getattr(self, field) for field in _CORE_STATE_FIELDS}
 
     async def _ensure_connected(self) -> BleakClient:
         if self._client and self._client.is_connected:
@@ -130,39 +135,35 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cancel_disconnect = async_call_later(self.hass, DISCONNECT_DELAY, _on_timeout)
 
     async def _start_notify(self) -> None:
-        if self._client and self._client.is_connected:
-            try:
-                await self._client.start_notify(READ_UUID, self._notify_callback)
-                self._start_keep_alive()
-            except BleakError:
-                _LOGGER.debug("Failed to start notify for %s", self.address)
+        if not (self._client and self._client.is_connected):
+            return
+        try:
+            await self._client.start_notify(READ_UUID, self._notify_callback)
+            self._start_keep_alive()
+        except BleakError:
+            _LOGGER.debug("Failed to start notify for %s", self.address)
+
+    def _apply_color_mode_payload(self, payload: bytes) -> None:
+        parsed = parse_color_mode_response(payload)
+        self.effect = parsed.effect
+        for attr in _COLOR_MODE_FIELDS:
+            if (value := getattr(parsed, attr)) is not None:
+                setattr(self, attr, value)
+        if parsed.rgb_color is not None:
+            self.rgb_color, self.color_temp_kelvin = parsed.rgb_color, None
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
-        if len(data) < 3 or data[0] != 0xAA:
+        if len(data) < 3 or data[0] != PacketHeader.STATUS:
             return
         domain, payload = data[1], bytes(data[2:])
         _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.address, domain, payload.hex())
         try:
-            if domain == 0x01:
-                self.is_on = parse_power_response(payload)
-            elif domain == 0x04:
-                self.brightness_pct = parse_brightness_response(payload)
-            elif domain == 0x05:
-                p = parse_color_mode_response(payload)
-                self.effect = p.effect
-                for attr in (
-                    "video_full_screen",
-                    "video_saturation",
-                    "video_sound_effects",
-                    "video_sound_effects_softness",
-                    "music_sensitivity",
-                    "music_color",
-                    "white_brightness",
-                ):
-                    if (val := getattr(p, attr)) is not None:
-                        setattr(self, attr, val)
-                if p.rgb_color is not None:
-                    self.rgb_color, self.color_temp_kelvin = p.rgb_color, None
+            if domain == PacketType.POWER:
+                self.is_on = bool(payload[0])
+            elif domain == PacketType.BRIGHTNESS:
+                self.brightness_pct = payload[0]
+            elif domain == PacketType.COLOR:
+                self._apply_color_mode_payload(payload)
             self.async_set_updated_data(self.data or {})
         except (IndexError, ValueError):
             _LOGGER.debug("Failed to parse notify from %s: %s", self.address, data.hex())
@@ -171,12 +172,11 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self._client or not self._client.is_connected:
             return False
         try:
-            w = self._client.write_gatt_char
-            if include_keep_alive:
-                await w(WRITE_UUID, KEEP_ALIVE, response=False)
+            queries = [KEEP_ALIVE] if include_keep_alive else []
             if full_query:
-                await w(WRITE_UUID, BRIGHTNESS_QUERY, response=False)
-                await w(WRITE_UUID, COLOR_MODE_QUERY, response=False)
+                queries.extend((BRIGHTNESS_QUERY, COLOR_MODE_QUERY))
+            for query in queries:
+                await self._client.write_gatt_char(WRITE_UUID, query, response=False)
             return True
         except BleakError:
             return False
