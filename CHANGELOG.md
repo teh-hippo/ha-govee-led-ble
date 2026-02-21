@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v1.7.1 (2026-02-21)
+
+### Bug Fixes
+
+- **ci**: Detect Copilot review outcome via body text, not review state
+  ([`8ee8d76`](https://github.com/teh-hippo/govee_ble_lights/commit/8ee8d76d73c7e48f71f9cdf31b7162c999f4b5ce))
+
+### Continuous Integration
+
+- Add copilot/dependabot push triggers, concurrency, devcontainer, and auto-merge flow
+  ([`7d89542`](https://github.com/teh-hippo/govee_ble_lights/commit/7d89542a8e5054762eedc6ac64b5f7cfd8a768a3))
+
+
 ## v1.7.0 (2026-02-19)
 
 ### Bug Fixes
