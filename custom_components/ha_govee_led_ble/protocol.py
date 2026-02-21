@@ -3,28 +3,20 @@
 import base64
 import math
 from dataclasses import dataclass
-from enum import IntEnum
 from typing import cast
 
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 
 
-class PacketHeader(IntEnum):
-    COMMAND = 0x33
-    STATUS = 0xAA
-
-
-class PacketType(IntEnum):
-    POWER = 0x01
-    BRIGHTNESS = 0x04
-    COLOR = 0x05
-
-
-class ColorMode(IntEnum):
-    VIDEO = 0x00
-    MUSIC = 0x13
-    STATIC = 0x15
+COMMAND_HEADER = 0x33
+STATUS_HEADER = 0xAA
+POWER_PACKET_TYPE = 0x01
+BRIGHTNESS_PACKET_TYPE = 0x04
+COLOR_PACKET_TYPE = 0x05
+COLOR_MODE_VIDEO = 0x00
+COLOR_MODE_MUSIC = 0x13
+COLOR_MODE_STATIC = 0x15
 
 
 MUSIC_EFFECT_BY_ID: dict[int, str] = {
@@ -109,9 +101,9 @@ def build_scene_multi(scene_param_b64: str, scene_code: int) -> list[bytes]:
     return [*packets, build_scene(scene_code)]
 
 
-STATE_QUERY = build_packet(PacketHeader.STATUS, PacketType.POWER, [])
-BRIGHTNESS_QUERY = build_packet(PacketHeader.STATUS, PacketType.BRIGHTNESS, [])
-COLOR_MODE_QUERY = build_packet(PacketHeader.STATUS, PacketType.COLOR, [])
+STATE_QUERY = build_packet(STATUS_HEADER, POWER_PACKET_TYPE, [])
+BRIGHTNESS_QUERY = build_packet(STATUS_HEADER, BRIGHTNESS_PACKET_TYPE, [])
+COLOR_MODE_QUERY = build_packet(STATUS_HEADER, COLOR_PACKET_TYPE, [])
 KEEP_ALIVE = STATE_QUERY
 
 
@@ -122,7 +114,7 @@ def build_video_mode(
     sound_effects: bool = False,
     sound_effects_softness: int = 0,
 ) -> bytes:
-    params = [ColorMode.VIDEO, int(full_screen), int(game_mode), _clamp(saturation, 0, 100)]
+    params = [COLOR_MODE_VIDEO, int(full_screen), int(game_mode), _clamp(saturation, 0, 100)]
     if sound_effects:
         params.extend([0x01, _clamp(sound_effects_softness, 0, 100)])
     return build_packet(0x33, 0x05, params)
@@ -157,7 +149,7 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
     if not payload:
         raise ValueError("Color mode payload is empty")
     mode = payload[0]
-    if mode == ColorMode.VIDEO:
+    if mode == COLOR_MODE_VIDEO:
         return ParsedColorModeResponse(
             effect="video: game" if bool(_get(payload, 2)) else "video: movie",
             video_full_screen=bool(v) if (v := _get(payload, 1)) is not None else None,
@@ -165,7 +157,7 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
             video_sound_effects=bool(v) if (v := _get(payload, 4)) is not None else None,
             video_sound_effects_softness=_get(payload, 5),
         )
-    if mode == ColorMode.MUSIC:
+    if mode == COLOR_MODE_MUSIC:
         color_parts = (_get(payload, 5), _get(payload, 6), _get(payload, 7))
         music_color = (
             cast(tuple[int, int, int], color_parts) if _get(payload, 4) == 0x01 and None not in color_parts else None
@@ -175,7 +167,7 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
             music_sensitivity=_get(payload, 2),
             music_color=music_color,
         )
-    if mode != ColorMode.STATIC:
+    if mode != COLOR_MODE_STATIC:
         return ParsedColorModeResponse()
     rgb_parts = (_get(payload, 2), _get(payload, 3), _get(payload, 4))
     rgb_color = cast(tuple[int, int, int], rgb_parts) if _get(payload, 1) == 0x01 and None not in rgb_parts else None

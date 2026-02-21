@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock
 import pytest
 from bleak import BleakError
 
+from custom_components.ha_govee_led_ble.h6199_controls import H6199VideoCaptureSelect as E
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
-from custom_components.ha_govee_led_ble.select import H6199VideoCaptureSelect as E
 
 
 def test_current_option(mock_h6199_coordinator):

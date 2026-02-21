@@ -113,9 +113,9 @@ def test_constants():
     assert proto.BRIGHTNESS_QUERY == H("AA040000000000000000000000000000000000AE")
     assert proto.COLOR_MODE_QUERY == H("AA050000000000000000000000000000000000AF")
     assert proto.KEEP_ALIVE == proto.STATE_QUERY
-    assert (proto.PacketHeader.COMMAND, proto.PacketHeader.STATUS) == (0x33, 0xAA)
-    assert (proto.PacketType.POWER, proto.PacketType.BRIGHTNESS, proto.PacketType.COLOR) == (0x01, 0x04, 0x05)
-    assert (proto.ColorMode.VIDEO, proto.ColorMode.MUSIC, proto.ColorMode.STATIC) == (0x00, 0x13, 0x15)
+    assert (proto.COMMAND_HEADER, proto.STATUS_HEADER) == (0x33, 0xAA)
+    assert (proto.POWER_PACKET_TYPE, proto.BRIGHTNESS_PACKET_TYPE, proto.COLOR_PACKET_TYPE) == (0x01, 0x04, 0x05)
+    assert (proto.COLOR_MODE_VIDEO, proto.COLOR_MODE_MUSIC, proto.COLOR_MODE_STATIC) == (0x00, 0x13, 0x15)
 
 
 def test_video_mode():

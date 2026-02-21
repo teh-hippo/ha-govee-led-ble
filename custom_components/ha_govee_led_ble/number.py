@@ -1,7 +1,4 @@
-"""Number entities for HA Govee LED BLE."""
-
-from . import h6199_controls
+from . import h6199_controls as c
 
 PARALLEL_UPDATES = 0
-H6199ParameterNumber = h6199_controls.H6199ParameterNumber
-async_setup_entry = h6199_controls.async_setup_number_entry
+async_setup_entry = c.async_setup_number_entry

@@ -89,8 +89,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Govee BLE light from a config entry."""
-    coordinator: GoveeBLECoordinator = config_entry.runtime_data
-    async_add_entities([GoveeBLELight(coordinator)])
+    async_add_entities([GoveeBLELight(config_entry.runtime_data)])
     p = entity_platform.async_get_current_platform()
     _pct = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
     # fmt: off
@@ -221,7 +220,8 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             if scene.is_simple:
                 await self.coordinator.send_command(build_scene(scene.code))
             else:
-                await self.coordinator.send_commands(build_scene_multi(scene.param, scene.code))
+                for packet in build_scene_multi(scene.param, scene.code):
+                    await self.coordinator.send_command(packet)
             return True
         return False
 

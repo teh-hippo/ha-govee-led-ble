@@ -1,7 +1,5 @@
 """HA Govee LED BLE integration."""
 
-import logging
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -9,7 +7,6 @@ from homeassistant.core import HomeAssistant
 from .const import CONF_MODEL
 from .coordinator import GoveeBLECoordinator
 
-_LOGGER = logging.getLogger(__name__)
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 PLATFORMS = [Platform.LIGHT, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
 

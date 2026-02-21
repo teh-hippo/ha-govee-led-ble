@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 from bleak import BleakError
 
-from custom_components.ha_govee_led_ble.number import H6199ParameterNumber as N
+from custom_components.ha_govee_led_ble.h6199_controls import H6199ParameterNumber as N
 from custom_components.ha_govee_led_ble.protocol import build_music_mode_with_color as bmc
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
 

@@ -17,13 +17,15 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN, get_profile
 from .protocol import (
+    BRIGHTNESS_PACKET_TYPE,
     BRIGHTNESS_QUERY,
     COLOR_MODE_QUERY,
+    COLOR_PACKET_TYPE,
     KEEP_ALIVE,
+    POWER_PACKET_TYPE,
     READ_UUID,
+    STATUS_HEADER,
     WRITE_UUID,
-    PacketHeader,
-    PacketType,
     parse_color_mode_response,
 )
 
@@ -75,9 +77,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 0
         self.music_color: tuple[int, int, int] | None = None
-        self._unsub_stop: CALLBACK_TYPE | None = hass.bus.async_listen_once(
-            EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop
-        )
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -153,16 +153,16 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.rgb_color, self.color_temp_kelvin = parsed.rgb_color, None
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
-        if len(data) < 3 or data[0] != PacketHeader.STATUS:
+        if len(data) < 3 or data[0] != STATUS_HEADER:
             return
         domain, payload = data[1], bytes(data[2:])
         _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.address, domain, payload.hex())
         try:
-            if domain == PacketType.POWER:
+            if domain == POWER_PACKET_TYPE:
                 self.is_on = bool(payload[0])
-            elif domain == PacketType.BRIGHTNESS:
+            elif domain == BRIGHTNESS_PACKET_TYPE:
                 self.brightness_pct = payload[0]
-            elif domain == PacketType.COLOR:
+            elif domain == COLOR_PACKET_TYPE:
                 self._apply_color_mode_payload(payload)
             self.async_set_updated_data(self.data or {})
         except (IndexError, ValueError):
@@ -236,13 +236,8 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if "already shutdown" in s or "not found" in s:
                         await asyncio.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
 
-    async def send_commands(self, packets: list[bytes]) -> None:
-        for packet in packets:
-            await self.send_command(packet)
-
     async def disconnect(self) -> None:
         self._stop_keep_alive()
-        self._unsub_stop = None
         if self._cancel_disconnect:
             self._cancel_disconnect()
             self._cancel_disconnect = None

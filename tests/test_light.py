@@ -74,12 +74,11 @@ async def test_turn_on_variants(light, mock_coordinator):
     c = await _on(effect="rainbow")
     assert c[1].args[0] == proto.build_scene(SCENES["rainbow"].code) and co.effect == "rainbow"
     co.send_command.reset_mock()
-    co.send_commands = AsyncMock()
     co.is_on = False
     await light.async_turn_on(effect="forest")
-    co.send_command.assert_called_once_with(proto.build_power(True))
-    pkts = co.send_commands.call_args.args[0]
-    assert len(pkts) > 1 and pkts[0][0] == 0xA3 and pkts[-1][0] == 0x33
+    packets = [call.args[0] for call in co.send_command.call_args_list]
+    assert packets[0] == proto.build_power(True)
+    assert len(packets) > 2 and packets[1][0] == 0xA3 and packets[-1][0] == 0x33
 
 
 async def test_power_rollback(light, mock_coordinator):

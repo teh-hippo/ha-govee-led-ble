@@ -34,7 +34,7 @@ async def test_initial_state_and_update(coord, h6199):
     assert await coord._async_update_data() == exp
 
 
-async def test_send_commands(coord):
+async def test_send_command(coord):
     c = _c(write_gatt_char=AsyncMock(side_effect=[BleakError("f"), BleakError("f"), None]))
     with patch.object(coord, "_ensure_connected", return_value=c):
         await coord.send_command(proto.build_power(True))
@@ -43,10 +43,6 @@ async def test_send_commands(coord):
     with patch.object(coord, "_ensure_connected", return_value=c2), pytest.raises(BleakError):
         await coord.send_command(proto.build_power(True))
     assert c2.write_gatt_char.call_count == 3 and coord._client is None
-    c3 = _c(write_gatt_char=AsyncMock())
-    with patch.object(coord, "_ensure_connected", return_value=c3):
-        await coord.send_commands([proto.build_power(True), proto.build_power(False)])
-    assert c3.write_gatt_char.call_count == 2
 
 
 async def test_disconnect(coord, h6199):
