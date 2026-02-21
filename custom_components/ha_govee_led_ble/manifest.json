@@ -1,6 +1,6 @@
 {
     "domain": "ha_govee_led_ble",
-    "name": "HA Govee LED BLE",
+    "name": "Govee LED BLE",
     "bluetooth": [
         {
             "local_name": "ihoment_H617A*"

@@ -25,12 +25,11 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfo) -> ConfigFlowResult:
+        model = _extract_model(discovery_info.name) or "H617A"
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
-        self.context["title_placeholders"] = {"name": discovery_info.name}
-        return self.async_create_entry(
-            title=discovery_info.name, data={CONF_MODEL: _extract_model(discovery_info.name) or "H617A"}
-        )
+        self.context["title_placeholders"] = {"name": model}
+        return self.async_create_entry(title=f"Govee {model}", data={CONF_MODEL: model})
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

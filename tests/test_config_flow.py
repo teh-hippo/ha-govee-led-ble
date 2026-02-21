@@ -22,7 +22,7 @@ async def _init(hass, source, data=None):
 
 async def test_bluetooth_discovery(hass: HomeAssistant):
     r = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
-    assert r["type"] == FlowResultType.CREATE_ENTRY and r["title"] == "ihoment_H617A_ABCD"
+    assert r["type"] == FlowResultType.CREATE_ENTRY and r["title"] == "Govee H617A"
     assert r["data"][CONF_MODEL] == "H617A"
 
 
