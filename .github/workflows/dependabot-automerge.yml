@@ -45,8 +45,10 @@ jobs:
       github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' &&
       github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
-      - name: Approve and enable auto-merge on Copilot approval
-        if: github.event.review.state == 'approved'
+      # Copilot always submits COMMENTED reviews (never APPROVED/CHANGES_REQUESTED).
+      # Use the review body to detect outcome: "generated no comments" = clean.
+      - name: Approve and enable auto-merge when Copilot found no issues
+        if: contains(github.event.review.body, 'generated no comments')
         run: |
           gh pr review --approve "$PR_URL"
           gh pr merge --auto --rebase "$PR_URL"
@@ -54,11 +56,11 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Escalate on Copilot changes requested
-        if: github.event.review.state == 'changes_requested'
+      - name: Escalate when Copilot flagged issues
+        if: "!contains(github.event.review.body, 'generated no comments')"
         run: |
           gh pr edit "$PR_URL" --add-reviewer "teh-hippo"
-          gh pr comment "$PR_URL" --body "🔍 **Copilot requested changes** — code changes may be needed beyond a version bump. Assigning @teh-hippo for review."
+          gh pr comment "$PR_URL" --body "🔍 **Copilot flagged issues** — review comments need attention before merging. Assigning @teh-hippo."
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
