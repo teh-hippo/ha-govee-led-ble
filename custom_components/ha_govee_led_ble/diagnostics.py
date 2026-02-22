@@ -35,6 +35,7 @@ async def async_get_config_entry_diagnostics(
             "color_temp_kelvin": coordinator.color_temp_kelvin,
             "effect": coordinator.effect,
             "video_saturation": coordinator.video_saturation,
+            "video_brightness": coordinator.video_brightness,
             "video_sound_effects": coordinator.video_sound_effects,
             "video_sound_effects_softness": coordinator.video_sound_effects_softness,
             "music_sensitivity": coordinator.music_sensitivity,

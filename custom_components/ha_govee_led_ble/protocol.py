@@ -81,6 +81,11 @@ def build_color_temp(kelvin: int) -> bytes:
     return build_color_rgb(*kelvin_to_rgb(kelvin))
 
 
+def build_white_brightness(percent: int) -> bytes:
+    level = round(_clamp(percent, 0, 100) * 255 / 100)
+    return build_packet(0x33, 0x05, [0x15, 0x02, level])
+
+
 def build_scene(scene_id: int) -> bytes:
     width = max(1, (scene_id.bit_length() + 7) // 8)
     return build_packet(0x33, 0x05, [0x04, *scene_id.to_bytes(width, "little")])

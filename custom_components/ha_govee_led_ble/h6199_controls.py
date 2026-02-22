@@ -12,10 +12,16 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import GoveeBLECoordinator
-from .light import apply_active_music_mode, apply_active_video_mode
+from .light import apply_active_music_mode, apply_active_video_mode, apply_active_white_mode
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
-_NUMBER_PARAMS = ["video_saturation", "video_sound_effects_softness", "music_sensitivity"]
+_NUMBER_PARAMS = [
+    "video_saturation",
+    "video_brightness",
+    "video_sound_effects_softness",
+    "music_sensitivity",
+    "white_brightness",
+]
 
 
 async def _set_with_rollback(
@@ -57,11 +63,12 @@ class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         next_value = int(round(value))
-        reapply = (
-            apply_active_video_mode
-            if self._key in {"video_saturation", "video_sound_effects_softness"}
-            else apply_active_music_mode
-        )
+        if self._key in {"video_saturation", "video_brightness", "video_sound_effects_softness"}:
+            reapply = apply_active_video_mode
+        elif self._key == "white_brightness":
+            reapply = apply_active_white_mode
+        else:
+            reapply = apply_active_music_mode
         await _set_with_rollback(self.coordinator, key=self._key, value=next_value, reapply=reapply)
 
 

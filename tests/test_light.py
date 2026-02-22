@@ -191,15 +191,27 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     await lt.async_set_music_mode(mode="rhythm", sensitivity=55, color=(1, 2, 3), calm=True)
     assert co.send_command.call_args_list[1].args[0] == _bm(0x03, sensitivity=55, color=(1, 2, 3), calm=True)
     assert co.music_calm is True
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
+    await lt.async_set_white_brightness(brightness=47)
+    c = co.send_command.call_args_list
+    assert c[0].args[0] == proto.build_power(True)
+    assert c[1].args[0] == proto.build_white_brightness(47)
+    assert co.white_brightness == 47 and co.brightness_pct == 47 and co.effect is None
 
 
 async def test_h617a_rejection_and_rollback(light, h6199_light, mock_h6199_coordinator):
-    for svc, kw in [("async_set_video_mode", {"mode": "movie"}), ("async_set_music_mode", {"mode": "energic"})]:
+    for svc, kw in [
+        ("async_set_video_mode", {"mode": "movie"}),
+        ("async_set_music_mode", {"mode": "energic"}),
+        ("async_set_white_brightness", {"brightness": 50}),
+    ]:
         with pytest.raises(ServiceValidationError, match="H617A"):
             await getattr(light, svc)(**kw)
     for method, kw, attr, val in [
         ("async_set_video_mode", dict(mode="movie", saturation=42), "video_saturation", 100),
         ("async_set_music_mode", dict(mode="spectrum", sensitivity=50, color=(255, 0, 0)), "music_sensitivity", 100),
+        ("async_set_white_brightness", dict(brightness=60), "white_brightness", 100),
     ]:
         mock_h6199_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
         mock_h6199_coordinator.is_on = False

@@ -20,11 +20,17 @@
       "video_saturation": {
         "name": "Video saturation"
       },
+      "video_brightness": {
+        "name": "Video brightness"
+      },
       "video_sound_effects_softness": {
         "name": "Video sound effects softness"
       },
       "music_sensitivity": {
         "name": "Music sensitivity"
+      },
+      "white_brightness": {
+        "name": "White brightness"
       }
     },
     "select": {
@@ -100,6 +106,16 @@
         "color": {
           "name": "Color",
           "description": "Optional accent color as [R, G, B]."
+        }
+      }
+    },
+    "set_white_brightness": {
+      "name": "Set white brightness",
+      "description": "Set H6199 static white brightness (0-100).",
+      "fields": {
+        "brightness": {
+          "name": "Brightness",
+          "description": "White brightness level (0-100)."
         }
       }
     }

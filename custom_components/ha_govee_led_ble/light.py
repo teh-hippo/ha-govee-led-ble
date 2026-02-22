@@ -35,6 +35,7 @@ from .protocol import (
     build_scene,
     build_scene_multi,
     build_video_mode,
+    build_white_brightness,
 )
 from .scenes import SCENES, get_scene_names
 
@@ -64,6 +65,7 @@ async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
     if gm is None:
         return False
     await apply_video_mode_from_state(coord, game_mode=gm)
+    await coord.send_command(build_brightness(coord.video_brightness))
     return True
 
 
@@ -82,9 +84,17 @@ async def apply_active_music_mode(coord: GoveeBLECoordinator) -> bool:
     return True
 
 
+async def apply_active_white_mode(coord: GoveeBLECoordinator) -> bool:
+    if not coord.is_on or (coord.effect is not None and coord.effect.startswith(("video:", "music:"))):
+        return False
+    await coord.send_command(build_white_brightness(coord.white_brightness))
+    coord.brightness_pct = coord.white_brightness
+    return True
+
+
 _STATE_FIELDS = (
     "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation video_brightness "
-    "video_full_screen video_sound_effects video_sound_effects_softness music_sensitivity "
+    "video_full_screen video_sound_effects video_sound_effects_softness white_brightness music_sensitivity "
     "music_calm music_color"
 ).split()
 
@@ -113,6 +123,9 @@ async def async_setup_entry(
         vol.Optional("calm"): cv.boolean,
         vol.Optional("color"): vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple)),
     }, "async_set_music_mode")
+    p.async_register_entity_service("set_white_brightness", {
+        vol.Optional("brightness", default=100): _pct,
+    }, "async_set_white_brightness")
     # fmt: on
 
 
@@ -243,6 +256,8 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
                 await self.coordinator.send_command(build_brightness(pct))
                 self.coordinator.brightness_pct = pct
+                if self.coordinator.effect and self.coordinator.effect.startswith("video:"):
+                    self.coordinator.video_brightness = pct
             if ATTR_RGB_COLOR in kwargs:
                 r, g, b = kwargs[ATTR_RGB_COLOR]
                 await self.coordinator.send_command(build_color_rgb(r, g, b))
@@ -254,6 +269,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 await self.coordinator.send_command(build_color_temp(kelvin))
                 self.coordinator.color_temp_kelvin = kelvin
                 self._attr_color_mode, self.coordinator.effect = ColorMode.COLOR_TEMP, None
+                self.coordinator.white_brightness = self.coordinator.brightness_pct
             if ATTR_EFFECT in kwargs and await self._apply_effect(kwargs[ATTR_EFFECT]):
                 self.coordinator.effect = kwargs[ATTR_EFFECT]
         self._notify_state_changed()
@@ -313,4 +329,18 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             self.coordinator.music_sensitivity, self.coordinator.music_color = sensitivity, color
             if mode_id == RHYTHM_MODE_ID:
                 self.coordinator.music_calm = resolved_calm
+        self._notify_state_changed()
+
+    async def async_set_white_brightness(self, brightness: int = 100) -> None:
+        self._require_h6199("set_white_brightness")
+        with self._rollback():
+            send = partial(self.coordinator.send_command, build_white_brightness(brightness))
+            await self.coordinator.send_command(build_power(True))
+            self.coordinator.is_on = True
+            await send()
+            await self._refresh_with_retry(expected_on=True, retry_command=send)
+            self.coordinator.effect = None
+            self.coordinator.white_brightness = brightness
+            self.coordinator.brightness_pct = brightness
+            self._attr_color_mode = ColorMode.COLOR_TEMP
         self._notify_state_changed()

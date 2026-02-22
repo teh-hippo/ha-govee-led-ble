@@ -42,6 +42,13 @@ def test_brightness(val, exp):
     _valid(pkt)
 
 
+@pytest.mark.parametrize("val,raw", [(0, 0), (50, 128), (100, 255), (120, 255), (-1, 0)])
+def test_white_brightness(val, raw):
+    pkt = proto.build_white_brightness(val)
+    assert pkt[0:5] == bytes([0x33, 0x05, 0x15, 0x02, raw])
+    _valid(pkt)
+
+
 def test_color():
     pkt = proto.build_color_rgb(255, 0, 0)
     assert pkt[:14] == bytes([0x33, 0x05, 0x15, 0x01, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0x7F])

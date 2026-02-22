@@ -15,3 +15,7 @@ set_music_mode:
     sensitivity: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
     calm: {required: false, selector: {boolean:}}
     color: {required: false, selector: {color_rgb:}}
+set_white_brightness:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    brightness: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
