@@ -4,9 +4,6 @@
       "video_saturation": {
         "default": "mdi:palette"
       },
-      "video_brightness": {
-        "default": "mdi:brightness-6"
-      },
       "video_sound_effects_softness": {
         "default": "mdi:tune-variant"
       },

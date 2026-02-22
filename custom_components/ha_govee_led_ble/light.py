@@ -65,7 +65,7 @@ async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
         return False
     gm = VIDEO_EFFECT_GAME_MODE.get(coord.effect or "", False)
     await apply_video_mode_from_state(coord, game_mode=gm)
-    await coord.send_command(build_brightness(coord.video_brightness))
+    coord.effect = "video: game" if gm else "video: movie"
     return True
 
 
@@ -93,7 +93,7 @@ async def apply_active_white_mode(coord: GoveeBLECoordinator) -> bool:
 
 
 _STATE_FIELDS = (
-    "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation video_brightness "
+    "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
     "video_full_screen video_sound_effects video_sound_effects_softness white_brightness music_sensitivity "
     "music_calm music_color"
 ).split()
@@ -111,7 +111,7 @@ async def async_setup_entry(
     # fmt: off
     p.async_register_entity_service("set_video_mode", {
         vol.Required("mode"): vol.In(["movie", "game"]),
-        vol.Optional("saturation", default=100): _pct, vol.Optional("brightness", default=100): _pct,
+        vol.Optional("saturation", default=100): _pct,
         vol.Optional("capture_region"): vol.In(["full", "part"]),
         vol.Optional("full_screen", default=True): cv.boolean,
         vol.Optional("sound_effects", default=False): cv.boolean,
@@ -217,10 +217,8 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
 
             async def send() -> None:
                 await apply_video_mode_from_state(self.coordinator, game_mode=gm)
-                await self.coordinator.send_command(build_brightness(self.coordinator.video_brightness))
 
             await send()
-            self.coordinator.brightness_pct = self.coordinator.video_brightness
             await self._refresh_with_retry(expected_effect=effect_name, retry_command=send)
             return True
         mid = MUSIC_EFFECT_MODE_IDS.get(effect_name)
@@ -282,7 +280,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self._notify_state_changed()
 
     # fmt: off
-    async def async_set_video_mode(self, mode: str, saturation: int = 100, brightness: int = 100,
+    async def async_set_video_mode(self, mode: str, saturation: int = 100,
             capture_region: str | None = None, full_screen: bool = True,
             sound_effects: bool = False, sound_effects_softness: int = 0) -> None:
         # fmt: on
@@ -295,15 +293,14 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             # fmt: on
             async def send() -> None:
                 await self.coordinator.send_command(packet)
-                await self.coordinator.send_command(build_brightness(brightness))
 
             await self.coordinator.send_command(build_power(True))
             self.coordinator.is_on = True
             await send()
             await self._refresh_with_retry(expected_effect=f"video: {mode}", retry_command=send)
             c = self.coordinator
-            c.effect, c.video_saturation, c.video_brightness = f"video: {mode}", saturation, brightness
-            c.brightness_pct, c.video_full_screen = brightness, resolved_fs
+            c.effect, c.video_saturation = f"video: {mode}", saturation
+            c.video_full_screen = resolved_fs
             c.video_sound_effects, c.video_sound_effects_softness = sound_effects, sound_effects_softness
         self._notify_state_changed()
 

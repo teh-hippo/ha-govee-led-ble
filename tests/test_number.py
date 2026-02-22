@@ -5,7 +5,6 @@ from bleak import BleakError
 
 from custom_components.ha_govee_led_ble.h6199_controls import H6199ParameterNumber as N
 from custom_components.ha_govee_led_ble.h6199_controls import async_setup_number_entry
-from custom_components.ha_govee_led_ble.protocol import build_brightness as bb
 from custom_components.ha_govee_led_ble.protocol import build_music_mode_with_color as bmc
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
 from custom_components.ha_govee_led_ble.protocol import build_white_brightness as bw
@@ -17,16 +16,6 @@ async def test_video_saturation(mock_h6199_coordinator):
     c.send_command.assert_any_call(
         bv(full_screen=True, game_mode=False, saturation=42, sound_effects=False, sound_effects_softness=0)
     )
-    c.send_command.assert_any_call(bb(100))
-
-
-async def test_video_brightness(mock_h6199_coordinator):
-    await N(c := mock_h6199_coordinator, key="video_brightness", name="T").async_set_native_value(61)
-    assert c.video_brightness == 61
-    c.send_command.assert_any_call(
-        bv(full_screen=True, game_mode=False, saturation=100, sound_effects=False, sound_effects_softness=0)
-    )
-    c.send_command.assert_any_call(bb(61))
 
 
 async def test_music_sensitivity(mock_h6199_coordinator):
@@ -64,7 +53,6 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
     keys = [entity._key for entity in add.call_args.args[0]]
     assert keys == [
         "video_saturation",
-        "video_brightness",
         "video_sound_effects_softness",
         "music_sensitivity",
         "white_brightness",

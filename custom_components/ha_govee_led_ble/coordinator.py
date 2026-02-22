@@ -74,7 +74,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.color_temp_kelvin: int | None = None
         self.effect: str | None = None
         # H6199 parameters
-        self.video_saturation = self.video_brightness = self.white_brightness = self.music_sensitivity = 100
+        self.video_saturation = self.white_brightness = self.music_sensitivity = 100
         self.music_calm = False
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 0

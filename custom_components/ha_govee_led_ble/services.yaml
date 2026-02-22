@@ -3,7 +3,6 @@ set_video_mode:
   fields:
     mode: {required: true, example: "movie", selector: {select: {options: ["movie", "game"]}}}
     saturation: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
-    brightness: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
     capture_region: {required: false, selector: {select: {options: ["full", "part"]}}}
     full_screen: {default: true, selector: {boolean:}}
     sound_effects: {default: false, selector: {boolean:}}

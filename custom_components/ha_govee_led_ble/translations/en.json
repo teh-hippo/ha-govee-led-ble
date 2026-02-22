@@ -20,9 +20,6 @@
       "video_saturation": {
         "name": "Video saturation"
       },
-      "video_brightness": {
-        "name": "Video brightness"
-      },
       "video_sound_effects_softness": {
         "name": "Video sound effects softness"
       },
@@ -64,10 +61,6 @@
         "saturation": {
           "name": "Saturation",
           "description": "Color saturation (0-100)."
-        },
-        "brightness": {
-          "name": "Brightness",
-          "description": "Brightness level (0-100)."
         },
         "capture_region": {
           "name": "Color mapping",

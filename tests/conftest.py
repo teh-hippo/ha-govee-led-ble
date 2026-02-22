@@ -23,7 +23,6 @@ def _make_coord(**ov) -> MagicMock:
         rgb_color=(255, 255, 255),
         color_temp_kelvin=None,
         video_saturation=100,
-        video_brightness=100,
         white_brightness=100,
         video_full_screen=True,
         video_sound_effects=False,

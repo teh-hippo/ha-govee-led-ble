@@ -5,7 +5,6 @@ from bleak import BleakError
 
 from custom_components.ha_govee_led_ble.h6199_controls import H6199ParameterSwitch as S
 from custom_components.ha_govee_led_ble.h6199_controls import async_setup_switch_entry
-from custom_components.ha_govee_led_ble.protocol import build_brightness as bb
 from custom_components.ha_govee_led_ble.protocol import build_music_mode_with_color as bmc
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
 
@@ -17,7 +16,6 @@ async def test_reapplies(mock_h6199_coordinator):
     c.send_command.assert_any_call(
         bv(full_screen=True, game_mode=True, saturation=80, sound_effects=True, sound_effects_softness=25)
     )
-    c.send_command.assert_any_call(bb(100))
 
 
 async def test_rollback(mock_h6199_coordinator):

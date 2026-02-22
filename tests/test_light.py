@@ -102,13 +102,11 @@ def test_effect_lists(h6199_light, light):
     assert "video: movie" in fx and "music: energic" in fx and "rainbow" not in fx
 
 
-@pytest.mark.parametrize("effect,game,has_bri", [("video: movie", False, True), ("video: game", True, False)])
-async def test_h6199_video(h6199_light, mock_h6199_coordinator, effect, game, has_bri):
+@pytest.mark.parametrize("effect,game", [("video: movie", False), ("video: game", True)])
+async def test_h6199_video(h6199_light, mock_h6199_coordinator, effect, game):
     await h6199_light.async_turn_on(effect=effect)
     c = mock_h6199_coordinator.send_command.call_args_list
     assert c[1].args[0] == proto.build_video_mode(full_screen=True, game_mode=game)
-    if has_bri:
-        assert c[2].args[0] == proto.build_brightness(100)
     assert mock_h6199_coordinator.effect == effect
 
 
@@ -121,14 +119,14 @@ async def test_h6199_music(h6199_light, mock_h6199_coordinator, mode, mid):
 
 async def test_h6199_stored_params(h6199_light, mock_h6199_coordinator):
     co = mock_h6199_coordinator
-    co.video_saturation, co.video_brightness = 42, 37
+    co.video_saturation = 42
     co.video_full_screen, co.video_sound_effects, co.video_sound_effects_softness = False, True, 55
     await h6199_light.async_turn_on(effect="video: game")
     c = co.send_command.call_args_list
     exp = proto.build_video_mode(
         full_screen=False, game_mode=True, saturation=42, sound_effects=True, sound_effects_softness=55
     )
-    assert c[1].args[0] == exp and c[2].args[0] == proto.build_brightness(37)
+    assert c[1].args[0] == exp
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
     co.music_sensitivity, co.music_color = 33, (10, 20, 30)
@@ -156,15 +154,15 @@ async def test_h6199_confirms_power(h6199_light, mock_h6199_coordinator):
 
 async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     lt, co = h6199_light, mock_h6199_coordinator
-    await lt.async_set_video_mode(mode="movie", saturation=80, brightness=65)
+    await lt.async_set_video_mode(mode="movie", saturation=80)
     c = co.send_command.call_args_list
     assert c[0].args[0] == proto.build_power(True)
     assert c[1].args[0] == proto.build_video_mode(full_screen=True, game_mode=False, saturation=80)
-    assert c[2].args[0] == proto.build_brightness(65) and co.effect == "video: movie" and co.video_saturation == 80
+    assert co.effect == "video: movie" and co.video_saturation == 80
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
     await lt.async_set_video_mode(
-        mode="game", saturation=60, brightness=75, full_screen=False, sound_effects=True, sound_effects_softness=50
+        mode="game", saturation=60, full_screen=False, sound_effects=True, sound_effects_softness=50
     )
     c = co.send_command.call_args_list
     exp = proto.build_video_mode(
@@ -173,7 +171,7 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     assert c[1].args[0] == exp and co.video_sound_effects is True
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
-    await lt.async_set_video_mode(mode="movie", saturation=50, brightness=60, full_screen=True, capture_region="part")
+    await lt.async_set_video_mode(mode="movie", saturation=50, full_screen=True, capture_region="part")
     c = co.send_command.call_args_list
     assert c[1].args[0] == proto.build_video_mode(full_screen=False, game_mode=False, saturation=50)
     assert co.video_full_screen is False
