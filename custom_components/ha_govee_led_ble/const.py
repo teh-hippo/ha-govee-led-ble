@@ -18,6 +18,7 @@ class ModelProfile:
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617A": ModelProfile(
         "H617A LED Strip",
+        state_readable=True,
         scene_source="api",
         ble_name_prefixes=["ihoment_H617A", "Govee_H617A", "GBK_H617A", "GVH_H617A"],
     ),

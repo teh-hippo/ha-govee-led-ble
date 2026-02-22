@@ -11,7 +11,7 @@ Control supported Govee LED strips over Bluetooth Low Energy (BLE) from Home Ass
 
 | Model | Name | Scenes | Video/Music Modes | State Reading |
 |-------|------|:------:|:-----------------:|:-------------:|
-| H617A | LED Strip | ✅ 80+ | — | — |
+| H617A | LED Strip | ✅ 80+ | — | ✅ |
 | H6199 | DreamView T1 | — | ✅ | ✅ |
 
 Both models support on/off, brightness, RGB color, and color temperature (2000K–9000K).
