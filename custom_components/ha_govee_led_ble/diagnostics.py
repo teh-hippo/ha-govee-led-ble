@@ -16,6 +16,15 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     coordinator = entry.runtime_data
+    packet_log = coordinator.packet_log
+    last_rx_aa05_raw = next(
+        (
+            raw
+            for e in reversed(packet_log)
+            if e.get("dir") == "rx" and isinstance((raw := e.get("raw")), str) and raw.startswith("aa05")
+        ),
+        None,
+    )
     return {
         "entry": async_redact_data(
             {
@@ -46,6 +55,7 @@ async def async_get_config_entry_diagnostics(
             "music_color": coordinator.music_color,
             "white_brightness": coordinator.white_brightness,
             "video_full_screen": coordinator.video_full_screen,
-            "packet_log": coordinator.packet_log,
+            "packet_log": packet_log,
+            "last_rx_aa05_raw": last_rx_aa05_raw,
         },
     }
