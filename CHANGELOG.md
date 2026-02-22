@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v1.12.1 (2026-02-22)
+
+### Bug Fixes
+
+- **h6199**: Make video saturation reapply deterministic
+  ([`02d73c2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/02d73c2ff00263c4453bf75c70d064f2b37532ad))
+
+- **h6199**: Normalize white brightness payload semantics
+  ([`1a186f6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1a186f696256e4c3e2fc1cc05084ec9210366ad4))
+
+### Refactoring
+
+- **h6199**: Remove duplicated video brightness control
+  ([`a97c286`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a97c28683c9c680fb38b00c3baff3ae874384e1d))
+
+
 ## v1.12.0 (2026-02-22)
 
 ### Features
