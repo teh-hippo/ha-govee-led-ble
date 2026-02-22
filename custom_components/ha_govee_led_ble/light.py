@@ -61,9 +61,9 @@ async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: 
 
 
 async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
-    gm = VIDEO_EFFECT_GAME_MODE.get(coord.effect) if coord.is_on and coord.effect else None
-    if gm is None:
+    if not coord.is_on:
         return False
+    gm = VIDEO_EFFECT_GAME_MODE.get(coord.effect or "", False)
     await apply_video_mode_from_state(coord, game_mode=gm)
     await coord.send_command(build_brightness(coord.video_brightness))
     return True
