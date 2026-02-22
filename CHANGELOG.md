@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v1.12.4 (2026-02-22)
+
+### Bug Fixes
+
+- Expose last AA05 in diagnostics
+  ([`c3c5ce7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c3c5ce7ab2503d8f991d8bb72f173edf05d26859))
+
+### Chores
+
+- Add diagnostics AA05 extractor
+  ([`3b7e799`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3b7e7993128a32c5b722010baa07c9c9eec68d7f))
+
+- Add packet trace tooling
+  ([`ac7e7e2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ac7e7e2ca1d0e53fb8a9675e22d4795409b1909e))
+
+
 ## v1.12.3 (2026-02-22)
 
 ### Bug Fixes
