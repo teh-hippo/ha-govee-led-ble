@@ -36,6 +36,7 @@ KEEP_ALIVE_INTERVAL = 5
 STATE_QUERY_EVERY_N_KEEP_ALIVES = 3
 RETRY_BACKOFF_SECONDS = 2
 DEVICE_DISCOVERY_ATTEMPTS = 4
+PACKET_LOG_LIMIT = 50
 
 _CORE_STATE_FIELDS = ("is_on", "brightness_pct", "rgb_color", "color_temp_kelvin", "effect")
 _COLOR_MODE_FIELDS = (
@@ -79,6 +80,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 0
         self.music_color: tuple[int, int, int] | None = None
+        self.packet_log: list[dict[str, Any]] = []
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
 
     @property
@@ -158,6 +160,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if len(data) < 3 or data[0] != STATUS_HEADER:
             return
         domain, payload = data[1], bytes(data[2:])
+        self._record_packet("rx", bytes(data))
         _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.address, domain, payload.hex())
         try:
             if domain == POWER_PACKET_TYPE:
@@ -178,6 +181,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if full_query:
                 queries.extend((BRIGHTNESS_QUERY, COLOR_MODE_QUERY))
             for query in queries:
+                self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
             return True
         except BleakError:
@@ -227,6 +231,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for attempt in range(3):
                 try:
                     client = await self._ensure_connected()
+                    self._record_packet("tx", packet)
                     await client.write_gatt_char(WRITE_UUID, packet, response=False)
                     return
                 except BleakError as err:
@@ -237,6 +242,23 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     s = str(err).lower()
                     if "already shutdown" in s or "not found" in s:
                         await asyncio.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+
+    def _record_packet(self, direction: str, data: bytes) -> None:
+        if not data:
+            return
+        header = data[0]
+        action = data[1] if len(data) > 1 else None
+        self.packet_log.append(
+            {
+                "ts": datetime.now().isoformat(),
+                "dir": direction,
+                "header": f"0x{header:02x}",
+                "action": f"0x{action:02x}" if action is not None else None,
+                "raw": data.hex(),
+            }
+        )
+        if len(self.packet_log) > PACKET_LOG_LIMIT:
+            del self.packet_log[:-PACKET_LOG_LIMIT]
 
     async def disconnect(self) -> None:
         self._stop_keep_alive()

@@ -46,5 +46,6 @@ async def async_get_config_entry_diagnostics(
             "music_color": coordinator.music_color,
             "white_brightness": coordinator.white_brightness,
             "video_full_screen": coordinator.video_full_screen,
+            "packet_log": coordinator.packet_log,
         },
     }
