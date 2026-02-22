@@ -196,7 +196,7 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     c = co.send_command.call_args_list
     assert c[0].args[0] == proto.build_power(True)
     assert c[1].args[0] == proto.build_white_brightness(47)
-    assert co.white_brightness == 47 and co.brightness_pct == 47 and co.effect is None
+    assert co.white_brightness == 47 and co.brightness_pct == 100 and co.effect is None
 
 
 async def test_h617a_rejection_and_rollback(light, h6199_light, mock_h6199_coordinator):

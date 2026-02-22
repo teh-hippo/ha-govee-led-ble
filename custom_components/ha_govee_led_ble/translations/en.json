@@ -27,7 +27,7 @@
         "name": "Music sensitivity"
       },
       "white_brightness": {
-        "name": "White brightness"
+        "name": "White balance"
       }
     },
     "select": {
@@ -103,12 +103,12 @@
       }
     },
     "set_white_brightness": {
-      "name": "Set white brightness",
-      "description": "Set H6199 static white brightness (0-100).",
+      "name": "Set white balance",
+      "description": "Set H6199 static white warm/cool balance level (0-100).",
       "fields": {
         "brightness": {
-          "name": "Brightness",
-          "description": "White brightness level (0-100)."
+          "name": "Balance",
+          "description": "White warm/cool balance level (0-100)."
         }
       }
     }

@@ -91,7 +91,6 @@ async def apply_active_white_mode(coord: GoveeBLECoordinator) -> bool:
         coord.is_on = True
     await coord.send_command(build_white_brightness(coord.white_brightness))
     coord.effect = None
-    coord.brightness_pct = coord.white_brightness
     return True
 
 
@@ -269,7 +268,6 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 await self.coordinator.send_command(build_color_temp(kelvin))
                 self.coordinator.color_temp_kelvin = kelvin
                 self._attr_color_mode, self.coordinator.effect = ColorMode.COLOR_TEMP, None
-                self.coordinator.white_brightness = self.coordinator.brightness_pct
             if ATTR_EFFECT in kwargs and await self._apply_effect(kwargs[ATTR_EFFECT]):
                 self.coordinator.effect = kwargs[ATTR_EFFECT]
         self._notify_state_changed()
@@ -340,6 +338,5 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             await self._refresh_with_retry(expected_on=True, retry_command=send)
             self.coordinator.effect = None
             self.coordinator.white_brightness = brightness
-            self.coordinator.brightness_pct = brightness
             self._attr_color_mode = ColorMode.COLOR_TEMP
         self._notify_state_changed()

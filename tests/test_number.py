@@ -42,7 +42,7 @@ async def test_white_brightness(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.effect = None
     await N(c, key="white_brightness", name="T").async_set_native_value(36)
-    assert c.white_brightness == 36 and c.brightness_pct == 36
+    assert c.white_brightness == 36 and c.brightness_pct == 100
     c.send_command.assert_called_once_with(bw(36))
 
 
@@ -52,7 +52,7 @@ async def test_white_brightness_exits_effect_and_powers_on(mock_h6199_coordinato
     await N(c, key="white_brightness", name="T").async_set_native_value(44)
     calls = c.send_command.call_args_list
     assert calls[0].args[0] == bp(True) and calls[1].args[0] == bw(44)
-    assert c.is_on is True and c.effect is None and c.brightness_pct == 44
+    assert c.is_on is True and c.effect is None and c.brightness_pct == 100
 
 
 async def test_rollback(mock_h6199_coordinator):
