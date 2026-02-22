@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.12.0 (2026-02-22)
+
+### Features
+
+- Expose model music control entities
+  ([`397e81d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/397e81deb6cd5d7bab335e92caba85f4bdfcdd4c))
+
+
 ## v1.11.0 (2026-02-22)
 
 ### Features
