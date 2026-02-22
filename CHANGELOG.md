@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.11.0 (2026-02-22)
+
+### Features
+
+- Enable H617A music controls
+  ([`3d3f416`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3d3f416f1eb6258c582f9a26e79b76acda612aca))
+
+
 ## v1.10.0 (2026-02-22)
 
 ### Bug Fixes
