@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v1.10.0 (2026-02-22)
+
+### Bug Fixes
+
+- Finalize H6199 control updates
+  ([`04f31b7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/04f31b75a8ceae680a56b053fe8ae2a685e3fa72))
+
+### Features
+
+- Add H6199 calm rhythm controls
+  ([`ba44736`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ba44736ad2e24daf9b1c890347b436d217c74546))
+
+- Expand H6199 parameter support
+  ([`9638d48`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9638d4813d966baaa3d5478bd79c8eefd92f51fa))
+
+
 ## v1.9.0 (2026-02-22)
 
 ### Features
