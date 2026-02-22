@@ -1,17 +1,57 @@
 # CHANGELOG
 
 
+## v1.9.0 (2026-02-22)
+
+### Features
+
+- Enable H617A state reading
+  ([`3c44554`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3c44554bad36afa3bda9bc8b47c99e68cb5d60b4))
+
+
+## v1.8.1 (2026-02-22)
+
+### Bug Fixes
+
+- Align HACS display naming metadata
+  ([`b4e28a5`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b4e28a5f92a29fb4906256324e8d96cd036065d2))
+
+### Chores
+
+- Align integration naming labels
+  ([`7eefcbe`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7eefcbe2d1b34f063c314d3936ee2cdd2b3f018b))
+
+### Refactoring
+
+- Simplify BLE source paths
+  ([`60c619f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/60c619fa19e6b8c559498f5cac74278db46cffea))
+
+- Simplify H6199 controls and scene data
+  ([`2a07250`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2a07250cd0a892385832bf62d270c50a7e1077c9))
+
+- Tighten core BLE source paths
+  ([`bb6b54f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/bb6b54f28ff11d0cfc1427660db6843cc655e1f6))
+
+
+## v1.8.0 (2026-02-21)
+
+### Features
+
+- Rename integration to ha-govee-led-ble
+  ([`53d9e89`](https://github.com/teh-hippo/ha-govee-led-ble/commit/53d9e89d6d76267d6434ee6ea8cd9d03a82f9e73))
+
+
 ## v1.7.1 (2026-02-21)
 
 ### Bug Fixes
 
 - **ci**: Detect Copilot review outcome via body text, not review state
-  ([`8ee8d76`](https://github.com/teh-hippo/govee_ble_lights/commit/8ee8d76d73c7e48f71f9cdf31b7162c999f4b5ce))
+  ([`8ee8d76`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8ee8d76d73c7e48f71f9cdf31b7162c999f4b5ce))
 
 ### Continuous Integration
 
 - Add copilot/dependabot push triggers, concurrency, devcontainer, and auto-merge flow
-  ([`7d89542`](https://github.com/teh-hippo/govee_ble_lights/commit/7d89542a8e5054762eedc6ac64b5f7cfd8a768a3))
+  ([`7d89542`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7d89542a8e5054762eedc6ac64b5f7cfd8a768a3))
 
 
 ## v1.7.0 (2026-02-19)
@@ -19,62 +59,62 @@
 ### Bug Fixes
 
 - Add formatted runtime translations
-  ([`c8e9539`](https://github.com/teh-hippo/govee_ble_lights/commit/c8e9539d4994424b494d4f0ae18806202bd6e1c9))
+  ([`c8e9539`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c8e9539d4994424b494d4f0ae18806202bd6e1c9))
 
 - Add service validation placeholders
-  ([`8686ff6`](https://github.com/teh-hippo/govee_ble_lights/commit/8686ff62e2aefb8efb080b16bc2a36dab6b5e946))
+  ([`8686ff6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8686ff62e2aefb8efb080b16bc2a36dab6b5e946))
 
 - Keep optional name arg compatibility
-  ([`57269ba`](https://github.com/teh-hippo/govee_ble_lights/commit/57269ba813538d48dbaaf743d3625a977111c886))
+  ([`57269ba`](https://github.com/teh-hippo/ha-govee-led-ble/commit/57269ba813538d48dbaaf743d3625a977111c886))
 
 - Use translation keys for parameter entities
-  ([`31acd51`](https://github.com/teh-hippo/govee_ble_lights/commit/31acd517618f7d279f5026a1f0b2e4e97ece4be9))
+  ([`31acd51`](https://github.com/teh-hippo/ha-govee-led-ble/commit/31acd517618f7d279f5026a1f0b2e4e97ece4be9))
 
 ### Chores
 
 - Refresh uv lockfile
-  ([`a41dc69`](https://github.com/teh-hippo/govee_ble_lights/commit/a41dc6946fc57c8d79f30b773d314ef3f0b7ade8))
+  ([`a41dc69`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a41dc6946fc57c8d79f30b773d314ef3f0b7ade8))
 
 ### Continuous Integration
 
 - Minimal 4-line .gitignore
-  ([`3f50c9b`](https://github.com/teh-hippo/govee_ble_lights/commit/3f50c9ba44310e1b220b0e60f6865e77cf4e24c1))
+  ([`3f50c9b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3f50c9ba44310e1b220b0e60f6865e77cf4e24c1))
 
 ### Documentation
 
 - Standardize section naming
-  ([`2e11868`](https://github.com/teh-hippo/govee_ble_lights/commit/2e11868c2716b81b7fedf25eba517491bc8ef694))
+  ([`2e11868`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2e11868c2716b81b7fedf25eba517491bc8ef694))
 
 - Standardize status badge set
-  ([`c667bcc`](https://github.com/teh-hippo/govee_ble_lights/commit/c667bcccaf62087e6ac1a12c450111e36eb8a0a5))
+  ([`c667bcc`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c667bcccaf62087e6ac1a12c450111e36eb8a0a5))
 
 ### Features
 
 - Add diagnostics endpoint
-  ([`a245df0`](https://github.com/teh-hippo/govee_ble_lights/commit/a245df0493162577b3fe7104bd041b72fd144784))
+  ([`a245df0`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a245df0493162577b3fe7104bd041b72fd144784))
 
 - Add entity icon mappings
-  ([`a7bd668`](https://github.com/teh-hippo/govee_ble_lights/commit/a7bd668c9535a59631923011258abe9fc4831684))
+  ([`a7bd668`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a7bd668c9535a59631923011258abe9fc4831684))
 
 - Add quality scale declaration
-  ([`ffb9749`](https://github.com/teh-hippo/govee_ble_lights/commit/ffb97498fb5d49bd3808b2cc948de4932f030bfa))
+  ([`ffb9749`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ffb97498fb5d49bd3808b2cc948de4932f030bfa))
 
 - Declare integration logger namespaces
-  ([`a481ae6`](https://github.com/teh-hippo/govee_ble_lights/commit/a481ae6c7fff04094fdde5cfed7ea1b461a60077))
+  ([`a481ae6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a481ae6c7fff04094fdde5cfed7ea1b461a60077))
 
 - Declare parallel updates for platforms
-  ([`312790a`](https://github.com/teh-hippo/govee_ble_lights/commit/312790a2e88833fae5aea780e268a0dd39c9292a))
+  ([`312790a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/312790a2e88833fae5aea780e268a0dd39c9292a))
 
 ### Refactoring
 
 - Add coverage config section
-  ([`9dfa8eb`](https://github.com/teh-hippo/govee_ble_lights/commit/9dfa8ebad3c640b95d5c1a08a7df300f42526b3a))
+  ([`9dfa8eb`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9dfa8ebad3c640b95d5c1a08a7df300f42526b3a))
 
 - Drop redundant mypy warn_return_any
-  ([`49cdce7`](https://github.com/teh-hippo/govee_ble_lights/commit/49cdce7320a7ad186a99b307ca19f69e06ba0504))
+  ([`49cdce7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/49cdce7320a7ad186a99b307ca19f69e06ba0504))
 
 - Simplify hacs metadata
-  ([`5aafe9e`](https://github.com/teh-hippo/govee_ble_lights/commit/5aafe9eb3e893af6b0572108e65d8abd23a847e1))
+  ([`5aafe9e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5aafe9eb3e893af6b0572108e65d8abd23a847e1))
 
 
 ## v1.6.1 (2026-02-18)
@@ -82,12 +122,12 @@
 ### Bug Fixes
 
 - Standardise CI tooling to uv, ruff, mypy strict; correct type annotations
-  ([`73a0198`](https://github.com/teh-hippo/govee_ble_lights/commit/73a0198e146df2c0bbb7e391fe522405566574dc))
+  ([`73a0198`](https://github.com/teh-hippo/ha-govee-led-ble/commit/73a0198e146df2c0bbb7e391fe522405566574dc))
 
 ### Continuous Integration
 
 - Standardise tooling — uv, ruff, mypy strict, PSR, dependabot
-  ([`32a05dc`](https://github.com/teh-hippo/govee_ble_lights/commit/32a05dcfaec588ec245be4f8ebd724d181089005))
+  ([`32a05dc`](https://github.com/teh-hippo/ha-govee-led-ble/commit/32a05dcfaec588ec245be4f8ebd724d181089005))
 
 
 ## v1.6.0 (2026-02-19)
@@ -95,7 +135,7 @@
 ### Refactoring
 
 - Aggressive codebase reduction — 2864 to 1996 lines (30%)
-  ([`5911c75`](https://github.com/teh-hippo/govee_ble_lights/commit/5911c757eaeb016719adccbdb516e75e8e6ebc38))
+  ([`5911c75`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5911c757eaeb016719adccbdb516e75e8e6ebc38))
 
 
 ## v1.5.0 (2026-02-19)
@@ -103,7 +143,7 @@
 ### Refactoring
 
 - Reduce codebase by 30% (4098→2864 lines)
-  ([`77c11e3`](https://github.com/teh-hippo/govee_ble_lights/commit/77c11e3ca1ebc25624f5d999b91b71d17c5f3571))
+  ([`77c11e3`](https://github.com/teh-hippo/ha-govee-led-ble/commit/77c11e3ca1ebc25624f5d999b91b71d17c5f3571))
 
 
 ## v1.4.1 (2026-02-19)
@@ -111,7 +151,7 @@
 ### Chores
 
 - Add preflight script mirroring CI checks
-  ([`6071c6c`](https://github.com/teh-hippo/govee_ble_lights/commit/6071c6c6519b7c8b491d9456c1049baa9404ada3))
+  ([`6071c6c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/6071c6c6519b7c8b491d9456c1049baa9404ada3))
 
 
 ## v1.4.0 (2026-02-19)
@@ -119,25 +159,25 @@
 ### Bug Fixes
 
 - Ruff format + restore HACS continue-on-error until brands PR
-  ([`9c605c8`](https://github.com/teh-hippo/govee_ble_lights/commit/9c605c81578e743e4338f067f71072c850bf7b0c))
+  ([`9c605c8`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9c605c81578e743e4338f067f71072c850bf7b0c))
 
 ### Continuous Integration
 
 - Ignore HACS brands check until registered upstream
-  ([`30d999f`](https://github.com/teh-hippo/govee_ble_lights/commit/30d999ff2ea0607f9376e4c707003dc0310c379b))
+  ([`30d999f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/30d999ff2ea0607f9376e4c707003dc0310c379b))
 
 - Pass GITHUB_TOKEN to release action explicitly
-  ([`06212d3`](https://github.com/teh-hippo/govee_ble_lights/commit/06212d3d7f722f33b1f453863ea7cec15029a220))
+  ([`06212d3`](https://github.com/teh-hippo/ha-govee-led-ble/commit/06212d3d7f722f33b1f453863ea7cec15029a220))
 
 ### Documentation
 
 - Tighten README — badges, device table, release flow
-  ([`a2c725c`](https://github.com/teh-hippo/govee_ble_lights/commit/a2c725c1e5bec915b68e5c1e560b67fb14e51c7f))
+  ([`a2c725c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a2c725c1e5bec915b68e5c1e560b67fb14e51c7f))
 
 ### Refactoring
 
 - Comprehensive quality uplift across HA patterns, tests, and CI
-  ([`152685d`](https://github.com/teh-hippo/govee_ble_lights/commit/152685df0b3f9e4c37787b47772a56895c17e105))
+  ([`152685d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/152685df0b3f9e4c37787b47772a56895c17e105))
 
 
 ## v1.3.3 (2026-02-18)
@@ -145,7 +185,7 @@
 ### Chores
 
 - Prefer managed Python 3.13
-  ([`9240ca0`](https://github.com/teh-hippo/govee_ble_lights/commit/9240ca02c23cf2c879704d621d2c1db8a0adab27))
+  ([`9240ca0`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9240ca02c23cf2c879704d621d2c1db8a0adab27))
 
 
 ## v1.3.2 (2026-02-13)
@@ -153,7 +193,7 @@
 ### Features
 
 - **h6199**: Add white brightness control
-  ([`9085381`](https://github.com/teh-hippo/govee_ble_lights/commit/90853814a59b1e6833bad2bb0dd976eb076d5397))
+  ([`9085381`](https://github.com/teh-hippo/ha-govee-led-ble/commit/90853814a59b1e6833bad2bb0dd976eb076d5397))
 
 
 ## v1.3.1 (2026-02-13)
@@ -161,7 +201,7 @@
 ### Bug Fixes
 
 - **ci**: Format code and release v1.3.1
-  ([`668c9b1`](https://github.com/teh-hippo/govee_ble_lights/commit/668c9b153e939a893b048f75cefad50514234dc1))
+  ([`668c9b1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/668c9b153e939a893b048f75cefad50514234dc1))
 
 
 ## v1.3.0 (2026-02-13)
@@ -169,7 +209,7 @@
 ### Features
 
 - **h6199**: Add per-effect helper UX and release v1.3.0
-  ([`72e7019`](https://github.com/teh-hippo/govee_ble_lights/commit/72e7019303dcfcc983dac7c77854993067f5b0db))
+  ([`72e7019`](https://github.com/teh-hippo/ha-govee-led-ble/commit/72e7019303dcfcc983dac7c77854993067f5b0db))
 
 
 ## v1.2.1 (2026-02-13)
@@ -177,7 +217,7 @@
 ### Bug Fixes
 
 - **ci**: Run dependabot updates daily
-  ([`924b73c`](https://github.com/teh-hippo/govee_ble_lights/commit/924b73cb43110f88c6fad582e59e61c22d407e2d))
+  ([`924b73c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/924b73cb43110f88c6fad582e59e61c22d407e2d))
 
 
 ## v1.2.0 (2026-02-12)
@@ -185,7 +225,7 @@
 ### Refactoring
 
 - Remove more dead code and redundant tests
-  ([`fa7d449`](https://github.com/teh-hippo/govee_ble_lights/commit/fa7d44902bec3573ee08d1285822b3771e0448da))
+  ([`fa7d449`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fa7d44902bec3573ee08d1285822b3771e0448da))
 
 
 ## v1.1.0 (2026-02-12)
