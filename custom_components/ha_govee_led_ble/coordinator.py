@@ -44,6 +44,7 @@ _COLOR_MODE_FIELDS = (
     "video_sound_effects",
     "video_sound_effects_softness",
     "music_sensitivity",
+    "music_calm",
     "music_color",
     "white_brightness",
 )
@@ -74,6 +75,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.effect: str | None = None
         # H6199 parameters
         self.video_saturation = self.video_brightness = self.white_brightness = self.music_sensitivity = 100
+        self.music_calm = False
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 0
         self.music_color: tuple[int, int, int] | None = None

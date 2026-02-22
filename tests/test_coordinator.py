@@ -78,7 +78,12 @@ def test_notify_callback(h6199):
     cb(None, bytearray([0xAA, 0x05, 0x00, 0x00, 0x01, 42]))
     assert (h6199.effect, h6199.video_full_screen, h6199.video_saturation) == ("video: game", False, 42)
     cb(None, bytearray([0xAA, 0x05, 0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3]))
-    assert (h6199.effect, h6199.music_sensitivity, h6199.music_color) == ("music: spectrum", 66, (1, 2, 3))
+    assert (h6199.effect, h6199.music_sensitivity, h6199.music_calm, h6199.music_color) == (
+        "music: spectrum",
+        66,
+        False,
+        (1, 2, 3),
+    )
     h6199.is_on = False
     cb(None, bytearray([0xAA]))
     cb(None, bytearray([0x33, 0x01, 0x01, 0x00]))

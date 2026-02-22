@@ -19,6 +19,9 @@
     "switch": {
       "video_sound_effects": {
         "default": "mdi:music-note-eighth"
+      },
+      "music_calm": {
+        "default": "mdi:music-clef-treble"
       }
     }
   }

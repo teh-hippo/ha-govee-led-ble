@@ -38,6 +38,9 @@ async def async_get_config_entry_diagnostics(
             "video_sound_effects": coordinator.video_sound_effects,
             "video_sound_effects_softness": coordinator.video_sound_effects_softness,
             "music_sensitivity": coordinator.music_sensitivity,
+            "music_calm": coordinator.music_calm,
+            "music_color": coordinator.music_color,
+            "white_brightness": coordinator.white_brightness,
             "video_full_screen": coordinator.video_full_screen,
         },
     }

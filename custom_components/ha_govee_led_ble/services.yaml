@@ -13,4 +13,5 @@ set_music_mode:
   fields:
     mode: {required: true, example: "energic", selector: {select: {options: ["energic", "rhythm", "spectrum", "rolling"]}}}
     sensitivity: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+    calm: {required: false, selector: {boolean:}}
     color: {required: false, selector: {color_rgb:}}

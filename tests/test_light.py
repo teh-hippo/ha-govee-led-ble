@@ -136,6 +136,12 @@ async def test_h6199_stored_params(h6199_light, mock_h6199_coordinator):
     assert c[1].args[0] == proto.build_music_mode_with_color(0x04, sensitivity=33, color=(10, 20, 30))
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
+    co.music_sensitivity, co.music_color, co.music_calm = 44, (11, 22, 33), True
+    await h6199_light.async_turn_on(effect="music: rhythm")
+    c = co.send_command.call_args_list
+    assert c[1].args[0] == proto.build_music_mode_with_color(0x03, sensitivity=44, color=(11, 22, 33), calm=True)
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
     await h6199_light.async_turn_on(effect="nonexistent_effect")
     assert co.send_command.call_count == 1 and co.effect is None
 
@@ -180,6 +186,11 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     await lt.async_set_music_mode(mode="spectrum", sensitivity=90, color=(255, 0, 128))
     assert co.send_command.call_args_list[1].args[0] == _bm(0x04, sensitivity=90, color=(255, 0, 128))
     assert co.music_color == (255, 0, 128)
+    co.send_command.reset_mock()
+    co.is_on, co.effect = False, None
+    await lt.async_set_music_mode(mode="rhythm", sensitivity=55, color=(1, 2, 3), calm=True)
+    assert co.send_command.call_args_list[1].args[0] == _bm(0x03, sensitivity=55, color=(1, 2, 3), calm=True)
+    assert co.music_calm is True
 
 
 async def test_h617a_rejection_and_rollback(light, h6199_light, mock_h6199_coordinator):

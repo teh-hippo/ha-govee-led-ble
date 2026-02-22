@@ -29,6 +29,7 @@ def _make_coord(**ov) -> MagicMock:
         video_sound_effects=False,
         video_sound_effects_softness=0,
         music_sensitivity=100,
+        music_calm=False,
         music_color=None,
         data={},
     )

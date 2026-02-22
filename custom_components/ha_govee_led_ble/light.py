@@ -48,6 +48,7 @@ MAX_COLOR_TEMP_KELVIN = 9000
 VIDEO_EFFECT_GAME_MODE: dict[str, bool] = {"video: movie": False, "video: game": True}
 MUSIC_MODE_IDS: dict[str, int] = {"energic": 0x05, "rhythm": 0x03, "spectrum": 0x04, "rolling": 0x06}
 MUSIC_EFFECT_MODE_IDS: dict[str, int] = {f"music: {n}": i for n, i in MUSIC_MODE_IDS.items()}
+RHYTHM_MODE_ID = MUSIC_MODE_IDS["rhythm"]
 
 
 # fmt: off
@@ -71,7 +72,12 @@ async def apply_active_music_mode(coord: GoveeBLECoordinator) -> bool:
     if mid is None:
         return False
     await coord.send_command(
-        build_music_mode_with_color(mid, sensitivity=coord.music_sensitivity, color=coord.music_color)
+        build_music_mode_with_color(
+            mid,
+            sensitivity=coord.music_sensitivity,
+            color=coord.music_color,
+            calm=coord.music_calm if mid == RHYTHM_MODE_ID else False,
+        )
     )
     return True
 
@@ -79,7 +85,7 @@ async def apply_active_music_mode(coord: GoveeBLECoordinator) -> bool:
 _STATE_FIELDS = (
     "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation video_brightness "
     "video_full_screen video_sound_effects video_sound_effects_softness music_sensitivity "
-    "music_color"
+    "music_calm music_color"
 ).split()
 
 
@@ -104,6 +110,7 @@ async def async_setup_entry(
     p.async_register_entity_service("set_music_mode", {
         vol.Required("mode"): vol.In(["energic", "rhythm", "spectrum", "rolling"]),
         vol.Optional("sensitivity", default=100): _pct,
+        vol.Optional("calm"): cv.boolean,
         vol.Optional("color"): vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple)),
     }, "async_set_music_mode")
     # fmt: on
@@ -210,6 +217,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                     mid,
                     sensitivity=self.coordinator.music_sensitivity,
                     color=self.coordinator.music_color,
+                    calm=self.coordinator.music_calm if mid == RHYTHM_MODE_ID else False,
                 ),
             )
             await send()
@@ -285,10 +293,17 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self._notify_state_changed()
 
     async def async_set_music_mode(self, mode: str, sensitivity: int = 100,
-            color: tuple[int, int, int] | None = None) -> None:
+            color: tuple[int, int, int] | None = None, calm: bool | None = None) -> None:
         self._require_h6199("set_music_mode")
         with self._rollback():
-            packet = build_music_mode_with_color(MUSIC_MODE_IDS[mode], sensitivity=sensitivity, color=color)
+            mode_id = MUSIC_MODE_IDS[mode]
+            resolved_calm = self.coordinator.music_calm if calm is None else calm
+            packet = build_music_mode_with_color(
+                mode_id,
+                sensitivity=sensitivity,
+                color=color,
+                calm=resolved_calm if mode_id == RHYTHM_MODE_ID else False,
+            )
             send = partial(self.coordinator.send_command, packet)
             await self.coordinator.send_command(build_power(True))
             self.coordinator.is_on = True
@@ -296,4 +311,6 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             await self._refresh_with_retry(expected_effect=f"music: {mode}", retry_command=send)
             self.coordinator.effect = f"music: {mode}"
             self.coordinator.music_sensitivity, self.coordinator.music_color = sensitivity, color
+            if mode_id == RHYTHM_MODE_ID:
+                self.coordinator.music_calm = resolved_calm
         self._notify_state_changed()

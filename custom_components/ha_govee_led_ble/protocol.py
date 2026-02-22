@@ -140,6 +140,7 @@ class ParsedColorModeResponse:
     video_sound_effects: bool | None = None
     video_sound_effects_softness: int | None = None
     music_sensitivity: int | None = None
+    music_calm: bool | None = None
     music_color: tuple[int, int, int] | None = None
     rgb_color: tuple[int, int, int] | None = None
     white_brightness: int | None = None
@@ -165,6 +166,7 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
         return ParsedColorModeResponse(
             effect=MUSIC_EFFECT_BY_ID.get(_get(payload, 1) or -1),
             music_sensitivity=_get(payload, 2),
+            music_calm=bool(v) if (v := _get(payload, 3)) is not None else None,
             music_color=music_color,
         )
     if mode != COLOR_MODE_STATIC:

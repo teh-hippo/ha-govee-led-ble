@@ -35,6 +35,9 @@
     "switch": {
       "video_sound_effects": {
         "name": "Video sound effects"
+      },
+      "music_calm": {
+        "name": "Music calm rhythm"
       }
     }
   },
@@ -89,6 +92,10 @@
         "sensitivity": {
           "name": "Sensitivity",
           "description": "Microphone sensitivity (0-100)."
+        },
+        "calm": {
+          "name": "Calm rhythm",
+          "description": "Enable calm rhythm variant (rhythm mode only)."
         },
         "color": {
           "name": "Color",

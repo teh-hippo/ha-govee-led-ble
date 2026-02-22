@@ -77,7 +77,8 @@ class H6199ParameterSwitch(_H6199ControlEntity, SwitchEntity):
         await self._set_state(False)
 
     async def _set_state(self, value: bool) -> None:
-        await _set_with_rollback(self.coordinator, key=self._key, value=value, reapply=apply_active_video_mode)
+        reapply = apply_active_video_mode if self._key == "video_sound_effects" else apply_active_music_mode
+        await _set_with_rollback(self.coordinator, key=self._key, value=value, reapply=reapply)
 
 
 class H6199VideoCaptureSelect(_H6199ControlEntity, SelectEntity):
@@ -124,4 +125,9 @@ async def async_setup_switch_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     if (coordinator := config_entry.runtime_data).model == "H6199":
-        async_add_entities([H6199ParameterSwitch(coordinator, key="video_sound_effects")])
+        async_add_entities(
+            [
+                H6199ParameterSwitch(coordinator, key="video_sound_effects"),
+                H6199ParameterSwitch(coordinator, key="music_calm"),
+            ]
+        )
