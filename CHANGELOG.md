@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.12.2 (2026-02-22)
+
+### Bug Fixes
+
+- **h6199**: Cleanup stale controls and apply updates reliably
+  ([`e58f334`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e58f3347fea987c1b06d2a87edc62227adf6f9fb))
+
+
 ## v1.12.1 (2026-02-22)
 
 ### Bug Fixes
