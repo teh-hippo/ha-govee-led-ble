@@ -49,7 +49,7 @@
   },
   "exceptions": {
     "unsupported_model": {
-      "message": "{service} is only supported on H6199, not {model}"
+      "message": "{service} is not supported on {model}"
     }
   },
   "services": {
@@ -89,7 +89,7 @@
     },
     "set_music_mode": {
       "name": "Set music mode",
-      "description": "Configure the H6199 music mode.",
+      "description": "Configure the music mode on supported models (H617A/H6199).",
       "fields": {
         "mode": {
           "name": "Mode",

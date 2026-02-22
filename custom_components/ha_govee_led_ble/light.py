@@ -200,15 +200,16 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self.async_write_ha_state()
         self.coordinator.async_set_updated_data(self.coordinator.data or {})
 
-    def _require_h6199(self, service: str) -> None:
+    def _require_support(self, service: str, *, supported: bool) -> None:
+        if supported:
+            return
         model = self.coordinator.model
-        if model != "H6199":
-            raise ServiceValidationError(
-                f"{service} is only supported on H6199, not {model}",
-                translation_domain=DOMAIN,
-                translation_key="unsupported_model",
-                translation_placeholders={"service": service, "model": model},
-            )
+        raise ServiceValidationError(
+            f"{service} is not supported on {model}",
+            translation_domain=DOMAIN,
+            translation_key="unsupported_model",
+            translation_placeholders={"service": service, "model": model},
+        )
 
     async def _apply_effect(self, effect_name: str) -> bool:
         gm = VIDEO_EFFECT_GAME_MODE.get(effect_name)
@@ -285,7 +286,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             capture_region: str | None = None, full_screen: bool = True,
             sound_effects: bool = False, sound_effects_softness: int = 0) -> None:
         # fmt: on
-        self._require_h6199("set_video_mode")
+        self._require_support("set_video_mode", supported=self.coordinator.profile.supports_video_mode)
         with self._rollback():
             resolved_fs = full_screen if capture_region is None else capture_region == "full"
             # fmt: off
@@ -308,7 +309,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
 
     async def async_set_music_mode(self, mode: str, sensitivity: int = 100,
             color: tuple[int, int, int] | None = None, calm: bool | None = None) -> None:
-        self._require_h6199("set_music_mode")
+        self._require_support("set_music_mode", supported=self.coordinator.profile.supports_music_mode)
         with self._rollback():
             mode_id = MUSIC_MODE_IDS[mode]
             resolved_calm = self.coordinator.music_calm if calm is None else calm
@@ -330,7 +331,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self._notify_state_changed()
 
     async def async_set_white_brightness(self, brightness: int = 100) -> None:
-        self._require_h6199("set_white_brightness")
+        self._require_support("set_white_brightness", supported=self.coordinator.profile.supports_white_brightness)
         with self._rollback():
             send = partial(self.coordinator.send_command, build_white_brightness(brightness))
             await self.coordinator.send_command(build_power(True))

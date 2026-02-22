@@ -29,6 +29,10 @@ async def async_get_config_entry_diagnostics(
         "coordinator": {
             "model": coordinator.model,
             "state_readable": coordinator.profile.state_readable,
+            "supports_video_mode": coordinator.profile.supports_video_mode,
+            "supports_music_mode": coordinator.profile.supports_music_mode,
+            "supports_white_brightness": coordinator.profile.supports_white_brightness,
+            "supports_advanced_controls": coordinator.profile.supports_advanced_controls,
             "is_on": coordinator.is_on,
             "brightness_pct": coordinator.brightness_pct,
             "rgb_color": coordinator.rgb_color,

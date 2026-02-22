@@ -113,7 +113,7 @@ async def async_setup_number_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    if (coordinator := config_entry.runtime_data).model == "H6199":
+    if (coordinator := config_entry.runtime_data).profile.supports_advanced_controls:
         async_add_entities([H6199ParameterNumber(coordinator, key=key) for key in _NUMBER_PARAMS])
 
 
@@ -122,7 +122,7 @@ async def async_setup_select_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    if (coordinator := config_entry.runtime_data).model == "H6199":
+    if (coordinator := config_entry.runtime_data).profile.supports_advanced_controls:
         async_add_entities([H6199VideoCaptureSelect(coordinator)])
 
 
@@ -131,7 +131,7 @@ async def async_setup_switch_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    if (coordinator := config_entry.runtime_data).model == "H6199":
+    if (coordinator := config_entry.runtime_data).profile.supports_advanced_controls:
         async_add_entities(
             [
                 H6199ParameterSwitch(coordinator, key="video_sound_effects"),

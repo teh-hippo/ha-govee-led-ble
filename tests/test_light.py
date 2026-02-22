@@ -31,7 +31,8 @@ def test_basic_and_color_props(light, mock_coordinator):
     assert light.unique_id == "aabbccddeeff" and light.is_on is False
     mock_coordinator.brightness_pct = 50
     assert light.brightness == 128
-    assert light.effect_list == sorted(SCENES.keys()) and len(light.effect_list) == len(SCENES)
+    exp = sorted(SCENES.keys()) + MODEL_PROFILES["H617A"].effects
+    assert light.effect_list == exp
     mock_coordinator.effect = "rainbow"
     assert light.effect == "rainbow"
     mock_coordinator.effect = None
@@ -94,11 +95,11 @@ async def test_power_rollback(light, mock_coordinator):
 
 
 def test_effect_lists(h6199_light, light):
-    assert len(light.effect_list) == len(SCENES)
+    assert len(light.effect_list) == len(SCENES) + len(MODEL_PROFILES["H617A"].effects)
     assert len(h6199_light.effect_list) == len(MODEL_PROFILES["H6199"].effects)
+    assert "music: energic" in light.effect_list and "video: movie" not in light.effect_list
     fx = h6199_light.effect_list
     assert "video: movie" in fx and "music: energic" in fx and "rainbow" not in fx
-    assert "video: movie" not in light.effect_list
 
 
 @pytest.mark.parametrize("effect,game,has_bri", [("video: movie", False, True), ("video: game", True, False)])
@@ -201,16 +202,21 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
 
 
 async def test_h617a_rejection_and_rollback(light, h6199_light, mock_h6199_coordinator):
+    c = light.coordinator
+    await light.async_set_music_mode(mode="energic", sensitivity=75)
+    assert c.send_command.call_args_list[0].args[0] == proto.build_power(True)
+    assert c.send_command.call_args_list[1].args[0] == proto.build_music_mode_with_color(0x05, sensitivity=75)
+    assert c.effect == "music: energic"
+    c.send_command.reset_mock()
+    c.is_on, c.effect = False, None
     for svc, kw in [
         ("async_set_video_mode", {"mode": "movie"}),
-        ("async_set_music_mode", {"mode": "energic"}),
         ("async_set_white_brightness", {"brightness": 50}),
     ]:
         with pytest.raises(ServiceValidationError, match="H617A"):
             await getattr(light, svc)(**kw)
     for method, kw, attr, val in [
         ("async_set_video_mode", dict(mode="movie", saturation=42), "video_saturation", 100),
-        ("async_set_music_mode", dict(mode="spectrum", sensitivity=50, color=(255, 0, 0)), "music_sensitivity", 100),
         ("async_set_white_brightness", dict(brightness=60), "white_brightness", 100),
     ]:
         mock_h6199_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("fail")])
