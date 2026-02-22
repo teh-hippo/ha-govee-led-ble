@@ -13,7 +13,9 @@ async def test_reapplies(mock_h6199_coordinator):
     (c := mock_h6199_coordinator).effect, c.video_saturation, c.video_sound_effects_softness = "video: game", 80, 25
     await S(c, key="video_sound_effects", name="V").async_turn_on()
     assert c.video_sound_effects is True
-    c.send_command.assert_any_call(bv(full_screen=True, game_mode=True, saturation=80, sound_effects=True, sound_effects_softness=25))
+    c.send_command.assert_any_call(
+        bv(full_screen=True, game_mode=True, saturation=80, sound_effects=True, sound_effects_softness=25)
+    )
     c.send_command.assert_any_call(bb(100))
 
 

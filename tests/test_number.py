@@ -13,14 +13,18 @@ from custom_components.ha_govee_led_ble.protocol import build_white_brightness a
 async def test_video_saturation(mock_h6199_coordinator):
     await N(c := mock_h6199_coordinator, key="video_saturation", name="T").async_set_native_value(42)
     assert c.video_saturation == 42
-    c.send_command.assert_any_call(bv(full_screen=True, game_mode=False, saturation=42, sound_effects=False, sound_effects_softness=0))
+    c.send_command.assert_any_call(
+        bv(full_screen=True, game_mode=False, saturation=42, sound_effects=False, sound_effects_softness=0)
+    )
     c.send_command.assert_any_call(bb(100))
 
 
 async def test_video_brightness(mock_h6199_coordinator):
     await N(c := mock_h6199_coordinator, key="video_brightness", name="T").async_set_native_value(61)
     assert c.video_brightness == 61
-    c.send_command.assert_any_call(bv(full_screen=True, game_mode=False, saturation=100, sound_effects=False, sound_effects_softness=0))
+    c.send_command.assert_any_call(
+        bv(full_screen=True, game_mode=False, saturation=100, sound_effects=False, sound_effects_softness=0)
+    )
     c.send_command.assert_any_call(bb(61))
 
 

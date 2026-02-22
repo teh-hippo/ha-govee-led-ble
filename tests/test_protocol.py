@@ -164,7 +164,12 @@ def test_parse():
     assert p.effect == "video: game" and not p.video_full_screen
     assert (p.video_saturation, p.video_sound_effects, p.video_sound_effects_softness) == (42, True, 55)
     p = proto.parse_color_mode_response(bytes([0x13, 0x04, 77, 0x00, 0x01, 1, 2, 3]))
-    assert p.effect == "music: spectrum" and p.music_sensitivity == 77 and p.music_calm is False and p.music_color == (1, 2, 3)
+    assert (
+        p.effect == "music: spectrum"
+        and p.music_sensitivity == 77
+        and p.music_calm is False
+        and p.music_color == (1, 2, 3)
+    )
     p = proto.parse_color_mode_response(bytes([0x13, 0x03, 88, 0x01, 0x00]))
     assert p.effect == "music: rhythm" and p.music_sensitivity == 88 and p.music_calm is True
     assert proto.parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30])).rgb_color == (10, 20, 30)

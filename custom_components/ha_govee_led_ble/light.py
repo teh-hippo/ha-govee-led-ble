@@ -256,8 +256,6 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
                 await self.coordinator.send_command(build_brightness(pct))
                 self.coordinator.brightness_pct = pct
-                if self.coordinator.effect and self.coordinator.effect.startswith("video:"):
-                    self.coordinator.video_brightness = pct
             if ATTR_RGB_COLOR in kwargs:
                 r, g, b = kwargs[ATTR_RGB_COLOR]
                 await self.coordinator.send_command(build_color_rgb(r, g, b))
