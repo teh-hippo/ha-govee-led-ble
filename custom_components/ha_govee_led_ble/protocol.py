@@ -82,8 +82,7 @@ def build_color_temp(kelvin: int) -> bytes:
 
 
 def build_white_brightness(percent: int) -> bytes:
-    level = round(_clamp(percent, 0, 100) * 255 / 100)
-    return build_packet(0x33, 0x05, [0x15, 0x02, level])
+    return build_packet(0x33, 0x05, [0x15, 0x02, _clamp(percent, 0, 100)])
 
 
 def build_scene(scene_id: int) -> bytes:
@@ -180,5 +179,7 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
     rgb_color = cast(tuple[int, int, int], rgb_parts) if _get(payload, 1) == 0x01 and None not in rgb_parts else None
     return ParsedColorModeResponse(
         rgb_color=rgb_color,
-        white_brightness=round((payload[2] * 100) / 255) if _get(payload, 1) == 0x02 and len(payload) > 2 else None,
+        white_brightness=(
+            _clamp(v, 0, 100) if _get(payload, 1) == 0x02 and (v := _get(payload, 2)) is not None else None
+        ),
     )

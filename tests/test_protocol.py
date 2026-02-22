@@ -42,7 +42,7 @@ def test_brightness(val, exp):
     _valid(pkt)
 
 
-@pytest.mark.parametrize("val,raw", [(0, 0), (50, 128), (100, 255), (120, 255), (-1, 0)])
+@pytest.mark.parametrize("val,raw", [(0, 0), (50, 50), (100, 100), (120, 100), (-1, 0)])
 def test_white_brightness(val, raw):
     pkt = proto.build_white_brightness(val)
     assert pkt[0:5] == bytes([0x33, 0x05, 0x15, 0x02, raw])
@@ -173,6 +173,6 @@ def test_parse():
     p = proto.parse_color_mode_response(bytes([0x13, 0x03, 88, 0x01, 0x00]))
     assert p.effect == "music: rhythm" and p.music_sensitivity == 88 and p.music_calm is True
     assert proto.parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30])).rgb_color == (10, 20, 30)
-    assert proto.parse_color_mode_response(bytes([0x15, 0x02, 0x80])).white_brightness == 50
+    assert proto.parse_color_mode_response(bytes([0x15, 0x02, 50])).white_brightness == 50
     with pytest.raises(ValueError):
         proto.parse_color_mode_response(b"")
