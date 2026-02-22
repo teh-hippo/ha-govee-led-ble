@@ -28,9 +28,17 @@ async def test_initial_state_and_update(coord, h6199):
     assert (coord.is_on, coord.brightness_pct, coord.rgb_color) == (False, 100, (255, 255, 255))
     assert coord.effect is None and coord.address == "AA:BB:CC:DD:EE:FF" and coord.model == "H617A"
     assert coord.profile == MODEL_PROFILES["H617A"] and coord.profile.state_readable
-    assert coord.profile.supports_music_mode and not coord.profile.supports_video_mode
+    assert (
+        coord.profile.supports_music_mode
+        and coord.profile.supports_music_calm
+        and not coord.profile.supports_video_mode
+    )
     assert h6199.profile == MODEL_PROFILES["H6199"] and h6199.profile.state_readable
-    assert h6199.profile.supports_video_mode and h6199.profile.supports_white_brightness
+    assert (
+        h6199.profile.supports_video_mode
+        and h6199.profile.supports_white_brightness
+        and h6199.profile.supports_music_calm
+    )
     coord.is_on, coord.brightness_pct, coord.rgb_color = True, 75, (255, 0, 128)
     exp = {"is_on": True, "brightness_pct": 75, "rgb_color": (255, 0, 128), "color_temp_kelvin": None, "effect": None}
     with (

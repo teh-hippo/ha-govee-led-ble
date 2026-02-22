@@ -1,4 +1,4 @@
-"""Shared H6199 control entities."""
+"""Shared model control entities."""
 
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -22,6 +22,17 @@ _NUMBER_PARAMS = [
     "music_sensitivity",
     "white_brightness",
 ]
+
+
+def _supports_number_param(coordinator: GoveeBLECoordinator, key: str) -> bool:
+    profile = coordinator.profile
+    if key in {"video_saturation", "video_brightness", "video_sound_effects_softness"}:
+        return profile.supports_video_mode
+    if key == "white_brightness":
+        return profile.supports_white_brightness
+    if key == "music_sensitivity":
+        return profile.supports_music_mode
+    return False
 
 
 async def _set_with_rollback(
@@ -113,8 +124,12 @@ async def async_setup_number_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    if (coordinator := config_entry.runtime_data).profile.supports_advanced_controls:
-        async_add_entities([H6199ParameterNumber(coordinator, key=key) for key in _NUMBER_PARAMS])
+    coordinator = config_entry.runtime_data
+    entities = [
+        H6199ParameterNumber(coordinator, key=key) for key in _NUMBER_PARAMS if _supports_number_param(coordinator, key)
+    ]
+    if entities:
+        async_add_entities(entities)
 
 
 async def async_setup_select_entry(
@@ -122,7 +137,7 @@ async def async_setup_select_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    if (coordinator := config_entry.runtime_data).profile.supports_advanced_controls:
+    if (coordinator := config_entry.runtime_data).profile.supports_video_mode:
         async_add_entities([H6199VideoCaptureSelect(coordinator)])
 
 
@@ -131,10 +146,11 @@ async def async_setup_switch_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    if (coordinator := config_entry.runtime_data).profile.supports_advanced_controls:
-        async_add_entities(
-            [
-                H6199ParameterSwitch(coordinator, key="video_sound_effects"),
-                H6199ParameterSwitch(coordinator, key="music_calm"),
-            ]
-        )
+    coordinator = config_entry.runtime_data
+    entities: list[H6199ParameterSwitch] = []
+    if coordinator.profile.supports_video_mode:
+        entities.append(H6199ParameterSwitch(coordinator, key="video_sound_effects"))
+    if coordinator.profile.supports_music_calm:
+        entities.append(H6199ParameterSwitch(coordinator, key="music_calm"))
+    if entities:
+        async_add_entities(entities)

@@ -19,7 +19,7 @@ Both models support on/off, brightness, RGB color, and color temperature (2000Kâ
 ## Features
 
 - Local BLE control (no cloud dependency)
-- H617A scene selection + music mode controls
+- H617A scene selection + music mode controls (effect modes, music sensitivity, calm rhythm switch)
 - H6199 DreamView video/music mode controls (including rhythm calm and white brightness)
 - Config flow discovery in Home Assistant
 

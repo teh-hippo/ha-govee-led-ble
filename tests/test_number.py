@@ -1,9 +1,10 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak import BleakError
 
 from custom_components.ha_govee_led_ble.h6199_controls import H6199ParameterNumber as N
+from custom_components.ha_govee_led_ble.h6199_controls import async_setup_number_entry
 from custom_components.ha_govee_led_ble.protocol import build_brightness as bb
 from custom_components.ha_govee_led_ble.protocol import build_music_mode_with_color as bmc
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
@@ -48,3 +49,23 @@ async def test_rollback(mock_h6199_coordinator):
     with pytest.raises(BleakError):
         await N(c, key="video_saturation", name="T").async_set_native_value(20)
     assert c.video_saturation == 100
+
+
+async def test_setup_number_entry_h617a(mock_coordinator):
+    add = MagicMock()
+    await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_coordinator), add)
+    entities = add.call_args.args[0]
+    assert len(entities) == 1 and entities[0]._key == "music_sensitivity"
+
+
+async def test_setup_number_entry_h6199(mock_h6199_coordinator):
+    add = MagicMock()
+    await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_h6199_coordinator), add)
+    keys = [entity._key for entity in add.call_args.args[0]]
+    assert keys == [
+        "video_saturation",
+        "video_brightness",
+        "video_sound_effects_softness",
+        "music_sensitivity",
+        "white_brightness",
+    ]

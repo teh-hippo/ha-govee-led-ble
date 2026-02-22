@@ -15,6 +15,7 @@ class ModelProfile:
     ble_name_prefixes: list[str] = field(default_factory=list)
     supports_video_mode: bool = False
     supports_music_mode: bool = False
+    supports_music_calm: bool = False
     supports_white_brightness: bool = False
     supports_advanced_controls: bool = False
 
@@ -31,6 +32,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effects=[*MUSIC_EFFECTS],
         ble_name_prefixes=["ihoment_H617A", "Govee_H617A", "GBK_H617A", "GVH_H617A"],
         supports_music_mode=True,
+        supports_music_calm=True,
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
@@ -39,6 +41,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ble_name_prefixes=["Govee_H6199", "ihoment_H6199", "GBK_H6199", "GVH_H6199"],
         supports_video_mode=True,
         supports_music_mode=True,
+        supports_music_calm=True,
         supports_white_brightness=True,
         supports_advanced_controls=True,
     ),
