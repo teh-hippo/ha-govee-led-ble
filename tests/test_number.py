@@ -6,6 +6,7 @@ from bleak import BleakError
 from custom_components.ha_govee_led_ble.h6199_controls import H6199ParameterNumber as N
 from custom_components.ha_govee_led_ble.h6199_controls import async_setup_number_entry
 from custom_components.ha_govee_led_ble.protocol import build_music_mode_with_color as bmc
+from custom_components.ha_govee_led_ble.protocol import build_power as bp
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
 from custom_components.ha_govee_led_ble.protocol import build_white_brightness as bw
 
@@ -16,6 +17,18 @@ async def test_video_saturation(mock_h6199_coordinator):
     c.send_command.assert_any_call(
         bv(full_screen=True, game_mode=False, saturation=42, sound_effects=False, sound_effects_softness=0)
     )
+
+
+async def test_video_saturation_powers_on(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.is_on, c.effect = False, None
+    await N(c, key="video_saturation", name="T").async_set_native_value(58)
+    calls = c.send_command.call_args_list
+    assert calls[0].args[0] == bp(True)
+    assert calls[1].args[0] == bv(
+        full_screen=True, game_mode=False, saturation=58, sound_effects=False, sound_effects_softness=0
+    )
+    assert c.is_on is True and c.effect == "video: movie"
 
 
 async def test_music_sensitivity(mock_h6199_coordinator):
@@ -31,6 +44,15 @@ async def test_white_brightness(mock_h6199_coordinator):
     await N(c, key="white_brightness", name="T").async_set_native_value(36)
     assert c.white_brightness == 36 and c.brightness_pct == 36
     c.send_command.assert_called_once_with(bw(36))
+
+
+async def test_white_brightness_exits_effect_and_powers_on(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.is_on, c.effect = False, "video: game"
+    await N(c, key="white_brightness", name="T").async_set_native_value(44)
+    calls = c.send_command.call_args_list
+    assert calls[0].args[0] == bp(True) and calls[1].args[0] == bw(44)
+    assert c.is_on is True and c.effect is None and c.brightness_pct == 44
 
 
 async def test_rollback(mock_h6199_coordinator):

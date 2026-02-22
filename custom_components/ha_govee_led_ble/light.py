@@ -62,7 +62,8 @@ async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: 
 
 async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
     if not coord.is_on:
-        return False
+        await coord.send_command(build_power(True))
+        coord.is_on = True
     gm = VIDEO_EFFECT_GAME_MODE.get(coord.effect or "", False)
     await apply_video_mode_from_state(coord, game_mode=gm)
     coord.effect = "video: game" if gm else "video: movie"
@@ -85,9 +86,11 @@ async def apply_active_music_mode(coord: GoveeBLECoordinator) -> bool:
 
 
 async def apply_active_white_mode(coord: GoveeBLECoordinator) -> bool:
-    if not coord.is_on or (coord.effect is not None and coord.effect.startswith(("video:", "music:"))):
-        return False
+    if not coord.is_on:
+        await coord.send_command(build_power(True))
+        coord.is_on = True
     await coord.send_command(build_white_brightness(coord.white_brightness))
+    coord.effect = None
     coord.brightness_pct = coord.white_brightness
     return True
 
