@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v1.12.3 (2026-02-22)
+
+### Bug Fixes
+
+- **h6199**: Treat white setting as balance, not brightness
+  ([`8f1be35`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8f1be357f96eec2248226612ba06e8bc91805ad3))
+
+
 ## v1.12.2 (2026-02-22)
 
 ### Bug Fixes
