@@ -43,6 +43,32 @@ def _h4_view(data: bytes) -> bytes | None:
     return None
 
 
+def _h4_packet_len(h4: bytes) -> int | None:
+    """Return full H:4 packet length (including packet type byte)."""
+    if not h4:
+        return None
+    ptype = h4[0]
+    if ptype == 0x01:  # command
+        if len(h4) < 4:
+            return None
+        return 1 + 3 + h4[3]
+    if ptype == 0x02:  # ACL
+        if len(h4) < 5:
+            return None
+        dlen = struct.unpack_from("<H", h4, 3)[0]
+        return 1 + 4 + dlen
+    if ptype == 0x03:  # SCO
+        if len(h4) < 4:
+            return None
+        return 1 + 3 + h4[3]
+    if ptype == 0x04:  # event
+        if len(h4) < 3:
+            return None
+        return 1 + 2 + h4[2]
+    # ISO (0x05) and unknown are ignored for now.
+    return None
+
+
 def _iter_btsnoop_records(blob: bytes) -> tuple[int, int, int, bytes]:
     if len(blob) < 16 or blob[:8] != b"btsnoop\0":
         raise ValueError("Not a btsnoop file")
@@ -54,6 +80,27 @@ def _iter_btsnoop_records(blob: bytes) -> tuple[int, int, int, bytes]:
             break
         yield flags, ts, incl_len, blob[pos : pos + incl_len]
         pos += incl_len
+
+
+def _iter_pklg_packets(blob: bytes) -> tuple[int, bytes]:
+    """Yield (timestamp_us, h4_packet) from an Apple PacketLogger .pklg file."""
+    pos = 0
+    while pos + 4 <= len(blob):
+        rec_len = struct.unpack_from(">I", blob, pos)[0]
+        pos += 4
+        if rec_len == 0 or pos + rec_len > len(blob):
+            break
+        rec = blob[pos : pos + rec_len]
+        pos += rec_len
+        if rec_len < 9:
+            continue
+        sec = struct.unpack_from(">I", rec, 0)[0]
+        usec = struct.unpack_from(">I", rec, 4)[0]
+        h4 = rec[8:]
+        plen = _h4_packet_len(h4)
+        if plen is None or plen > len(h4):
+            continue
+        yield sec * 1_000_000 + usec, h4[:plen]
 
 
 def _extract_att_frames(data: bytes) -> tuple[int, int, int, bytes] | None:
@@ -87,30 +134,46 @@ def _is_govee_frame(value: bytes) -> bool:
 
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("btsnoop", type=Path, help="Path to btsnoop_hci.log")
+    p.add_argument("capture", type=Path, help="Path to btsnoop_hci.log or bluetoothd-hci-latest.pklg")
     p.add_argument("--handle", type=lambda s: int(s, 0), help="Filter by ATT handle (e.g. 0x0025)")
     args = p.parse_args(argv)
 
-    blob = args.btsnoop.read_bytes()
-    t0: int | None = None
+    blob = args.capture.read_bytes()
+    t0_us: int | None = None
 
-    for flags, ts, _incl_len, record in _iter_btsnoop_records(blob):
-        if t0 is None:
-            t0 = ts
+    def emit(ts_us: int, record: bytes, *, direction_hint: str | None = None) -> None:
+        nonlocal t0_us
+        if t0_us is None:
+            t0_us = ts_us
         att = _extract_att_frames(record)
         if att is None:
-            continue
+            return
         opcode, handle, _cid, value = att
         if args.handle is not None and handle != args.handle:
-            continue
+            return
         if not _is_govee_frame(value):
-            continue
-        dt = 0.0 if t0 is None else (ts - t0) / 1_000_000.0
-        direction = "rx" if (flags & 0x01) else "tx"
+            return
+        dt = 0.0 if t0_us is None else (ts_us - t0_us) / 1_000_000.0
+        direction = (
+            direction_hint
+            if direction_hint is not None
+            else "rx"
+            if opcode == ATT_HANDLE_NOTIFY
+            else "tx"
+            if opcode in {ATT_WRITE_REQ, ATT_WRITE_CMD}
+            else "?"
+        )
         print(
             f"{dt:9.3f}s {direction} att=0x{opcode:02x} handle=0x{handle:04x} "
             f"govee=0x{value[0]:02x}/0x{value[1]:02x} raw={value.hex()}"
         )
+
+    if blob[:8] == b"btsnoop\0":
+        for flags, ts, _incl_len, record in _iter_btsnoop_records(blob):
+            emit(ts, record, direction_hint="rx" if (flags & 0x01) else "tx")
+    else:
+        for ts_us, h4 in _iter_pklg_packets(blob):
+            emit(ts_us, h4)
 
     return 0
 
