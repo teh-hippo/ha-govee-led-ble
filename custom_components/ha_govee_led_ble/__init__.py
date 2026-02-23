@@ -10,7 +10,7 @@ from .coordinator import GoveeBLECoordinator
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 PLATFORMS = [Platform.LIGHT, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
-_LEGACY_ENTITY_SUFFIXES = {"_video_brightness"}
+_LEGACY_ENTITY_SUFFIXES = {"_video_brightness", "_white_brightness"}
 
 
 async def _async_cleanup_legacy_entities(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:

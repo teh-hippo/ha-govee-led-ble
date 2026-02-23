@@ -16,7 +16,6 @@ from .light import (
     apply_active_music_mode,
     apply_active_video_mode,
     apply_active_video_white_balance,
-    apply_active_white_mode,
 )
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
@@ -25,7 +24,6 @@ _NUMBER_PARAMS = [
     "video_white_balance",
     "video_sound_effects_softness",
     "music_sensitivity",
-    "white_brightness",
 ]
 
 
@@ -33,8 +31,6 @@ def _supports_number_param(coordinator: GoveeBLECoordinator, key: str) -> bool:
     profile = coordinator.profile
     if key in {"video_saturation", "video_white_balance", "video_sound_effects_softness"}:
         return profile.supports_video_mode
-    if key == "white_brightness":
-        return profile.supports_white_brightness
     if key == "music_sensitivity":
         return profile.supports_music_mode
     return False
@@ -84,8 +80,6 @@ class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
             reapply = apply_active_video_mode
         elif self._key == "video_white_balance":
             reapply = apply_active_video_white_balance
-        elif self._key == "white_brightness":
-            reapply = apply_active_white_mode
         else:
             reapply = apply_active_music_mode
         await _set_with_rollback(self.coordinator, key=self._key, value=next_value, reapply=reapply)

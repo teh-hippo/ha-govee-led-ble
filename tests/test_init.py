@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -41,10 +41,17 @@ async def test_cleanup_legacy_entities(hass: HomeAssistant):
     entry = _entry()
     registry = MagicMock()
     stale = MagicMock(unique_id="112233445566_video_brightness", entity_id="number.govee_video_brightness")
+    stale2 = MagicMock(unique_id="112233445566_white_brightness", entity_id="number.govee_white_brightness")
     keep = MagicMock(unique_id="112233445566_video_saturation", entity_id="number.govee_video_saturation")
     with (
         patch("custom_components.ha_govee_led_ble.er.async_get", return_value=registry),
-        patch("custom_components.ha_govee_led_ble.er.async_entries_for_config_entry", return_value=[stale, keep]),
+        patch(
+            "custom_components.ha_govee_led_ble.er.async_entries_for_config_entry",
+            return_value=[stale, stale2, keep],
+        ),
     ):
         await _async_cleanup_legacy_entities(hass, entry)
-    registry.async_remove.assert_called_once_with("number.govee_video_brightness")
+    registry.async_remove.assert_has_calls(
+        [call("number.govee_video_brightness"), call("number.govee_white_brightness")]
+    )
+    assert registry.async_remove.call_count == 2
