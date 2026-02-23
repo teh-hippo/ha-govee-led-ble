@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.0.0 (2026-02-23)
+
+### Refactoring
+
+- Remove static white balance number
+  ([`2e16788`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2e1678824f720d637dd5d7729d03286989f579a3))
+
+### Breaking Changes
+
+- The white_brightness number entity is no longer created; existing entities are cleaned up from the
+  entity registry on startup.
+
+
 ## v1.13.0 (2026-02-23)
 
 ### Chores
