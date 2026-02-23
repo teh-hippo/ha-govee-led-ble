@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v1.13.0 (2026-02-23)
+
+### Chores
+
+- Support iOS .pklg captures
+  ([`154f9e9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/154f9e9a9cbec3d58e4ab4645113aea947f6fea4))
+
+### Features
+
+- Add DreamView white balance control
+  ([`9ce743e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9ce743ec28f8e2d8540e889a38e6358b2b6bd225))
+
+
 ## v1.12.4 (2026-02-22)
 
 ### Bug Fixes
