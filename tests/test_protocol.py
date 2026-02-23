@@ -146,6 +146,15 @@ def test_video_mode():
     )
 
 
+def test_video_white_balance():
+    # Captured from iOS app (bluetoothd-hci-latest.pklg) while moving DreamView WB slider.
+    assert proto.build_video_white_balance(0) == H("33a9000301070a00000000000000000000000095")
+    assert proto.build_video_white_balance(100) == H("33a9000301150500000000000000000000000088")
+    assert proto.build_video_white_balance(-1) == proto.build_video_white_balance(0)
+    assert proto.build_video_white_balance(120) == proto.build_video_white_balance(100)
+    _valid(proto.build_video_white_balance(0))
+
+
 def test_music_mode():
     def chk(mode, kw, idx, exp):
         pkt = proto.build_music_mode_with_color(mode, **kw)

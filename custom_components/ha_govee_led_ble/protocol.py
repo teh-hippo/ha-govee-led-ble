@@ -124,6 +124,23 @@ def build_video_mode(
     return build_packet(0x33, 0x05, params)
 
 
+def build_video_white_balance(balance: int) -> bytes:
+    """Build H6199 DreamView white balance calibration packet (0=blue, 100=red).
+
+    Captured from iOS app (BluetoothLogging profile):
+    - 0%  -> 33a9000301070a...95
+    - 100%-> 33a90003011505...88
+    """
+
+    pct = _clamp(balance, 0, 100) / 100.0
+    # Observed endpoints (red, blue) at extremes.
+    red_min, blue_min = 0x07, 0x0A
+    red_max, blue_max = 0x15, 0x05
+    red = _clamp(round(red_min + (red_max - red_min) * pct), 0, 255)
+    blue = _clamp(round(blue_min + (blue_max - blue_min) * pct), 0, 255)
+    return build_packet(0x33, 0xA9, [0x00, 0x03, 0x01, red, blue])
+
+
 def build_music_mode_with_color(
     mode_id: int,
     sensitivity: int = 100,

@@ -20,6 +20,9 @@
       "video_saturation": {
         "name": "Video saturation"
       },
+      "video_white_balance": {
+        "name": "Video white balance"
+      },
       "video_sound_effects_softness": {
         "name": "Video sound effects softness"
       },

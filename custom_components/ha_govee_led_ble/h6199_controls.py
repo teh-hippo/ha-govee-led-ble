@@ -12,11 +12,17 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import GoveeBLECoordinator
-from .light import apply_active_music_mode, apply_active_video_mode, apply_active_white_mode
+from .light import (
+    apply_active_music_mode,
+    apply_active_video_mode,
+    apply_active_video_white_balance,
+    apply_active_white_mode,
+)
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
 _NUMBER_PARAMS = [
     "video_saturation",
+    "video_white_balance",
     "video_sound_effects_softness",
     "music_sensitivity",
     "white_brightness",
@@ -25,7 +31,7 @@ _NUMBER_PARAMS = [
 
 def _supports_number_param(coordinator: GoveeBLECoordinator, key: str) -> bool:
     profile = coordinator.profile
-    if key in {"video_saturation", "video_sound_effects_softness"}:
+    if key in {"video_saturation", "video_white_balance", "video_sound_effects_softness"}:
         return profile.supports_video_mode
     if key == "white_brightness":
         return profile.supports_white_brightness
@@ -68,13 +74,16 @@ class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
     _attr_native_max_value = 100
 
     @property
-    def native_value(self) -> float:
-        return float(getattr(self.coordinator, self._key))
+    def native_value(self) -> float | None:
+        value = getattr(self.coordinator, self._key)
+        return float(value) if value is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
         next_value = int(round(value))
         if self._key in {"video_saturation", "video_sound_effects_softness"}:
             reapply = apply_active_video_mode
+        elif self._key == "video_white_balance":
+            reapply = apply_active_video_white_balance
         elif self._key == "white_brightness":
             reapply = apply_active_white_mode
         else:

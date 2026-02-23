@@ -8,6 +8,7 @@ from custom_components.ha_govee_led_ble.h6199_controls import async_setup_number
 from custom_components.ha_govee_led_ble.protocol import build_music_mode_with_color as bmc
 from custom_components.ha_govee_led_ble.protocol import build_power as bp
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
+from custom_components.ha_govee_led_ble.protocol import build_video_white_balance as bvw
 from custom_components.ha_govee_led_ble.protocol import build_white_brightness as bw
 
 
@@ -17,6 +18,14 @@ async def test_video_saturation(mock_h6199_coordinator):
     c.send_command.assert_any_call(
         bv(full_screen=True, game_mode=False, saturation=42, sound_effects=False, sound_effects_softness=0)
     )
+
+
+async def test_video_white_balance(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    assert c.video_white_balance is None
+    await N(c, key="video_white_balance", name="T").async_set_native_value(100)
+    assert c.video_white_balance == 100
+    c.send_command.assert_called_once_with(bvw(100))
 
 
 async def test_video_saturation_powers_on(mock_h6199_coordinator):
@@ -75,6 +84,7 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
     keys = [entity._key for entity in add.call_args.args[0]]
     assert keys == [
         "video_saturation",
+        "video_white_balance",
         "video_sound_effects_softness",
         "music_sensitivity",
         "white_brightness",

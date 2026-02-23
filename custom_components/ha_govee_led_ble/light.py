@@ -35,6 +35,7 @@ from .protocol import (
     build_scene,
     build_scene_multi,
     build_video_mode,
+    build_video_white_balance,
     build_white_brightness,
 )
 from .scenes import SCENES, get_scene_names
@@ -70,6 +71,16 @@ async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
     return True
 
 
+async def apply_active_video_white_balance(coord: GoveeBLECoordinator) -> bool:
+    if coord.video_white_balance is None:
+        return False
+    if not coord.is_on:
+        await coord.send_command(build_power(True))
+        coord.is_on = True
+    await coord.send_command(build_video_white_balance(coord.video_white_balance))
+    return True
+
+
 async def apply_active_music_mode(coord: GoveeBLECoordinator) -> bool:
     mid = MUSIC_EFFECT_MODE_IDS.get(coord.effect) if coord.is_on and coord.effect else None
     if mid is None:
@@ -96,6 +107,7 @@ async def apply_active_white_mode(coord: GoveeBLECoordinator) -> bool:
 
 _STATE_FIELDS = (
     "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
+    "video_white_balance "
     "video_full_screen video_sound_effects video_sound_effects_softness white_brightness music_sensitivity "
     "music_calm music_color"
 ).split()
