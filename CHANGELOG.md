@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.0.1 (2026-02-24)
+
+### Bug Fixes
+
+- **light**: Remove invalid ONOFF color mode
+  ([`766bfa8`](https://github.com/teh-hippo/ha-govee-led-ble/commit/766bfa8897b4a178c292ab8d3676c7cdbee9e0f1))
+
+
 ## v2.0.0 (2026-02-23)
 
 ### Refactoring
