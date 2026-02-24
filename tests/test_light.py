@@ -64,6 +64,13 @@ async def test_turn_on_variants(light, mock_coordinator):
     await light.async_turn_on(brightness=128)
     c = co.send_command.call_args_list
     assert len(c) == 2 and c[1].args[0] == proto.build_brightness(50)
+    co.send_command.reset_mock()
+    co.refresh_state.reset_mock()
+    co.is_on = True
+    await light.async_turn_on(brightness=128)
+    assert co.send_command.call_count == 1
+    assert co.send_command.call_args_list[0].args[0] == proto.build_brightness(50)
+    co.refresh_state.assert_not_awaited()
     c = await _on(rgb_color=(255, 0, 128))
     assert len(c) == 2 and c[1].args[0] == proto.build_color_rgb(255, 0, 128) and co.rgb_color == (255, 0, 128)
     c = await _on(color_temp_kelvin=4000)

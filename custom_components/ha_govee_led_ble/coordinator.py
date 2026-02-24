@@ -37,6 +37,7 @@ STATE_QUERY_EVERY_N_KEEP_ALIVES = 3
 RETRY_BACKOFF_SECONDS = 2
 DEVICE_DISCOVERY_ATTEMPTS = 4
 PACKET_LOG_LIMIT = 50
+EXPECTED_BRIGHTNESS_TTL = 2.0
 
 _CORE_STATE_FIELDS = ("is_on", "brightness_pct", "rgb_color", "color_temp_kelvin", "effect")
 _COLOR_MODE_FIELDS = (
@@ -82,6 +83,8 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.video_sound_effects_softness = 0
         self.music_color: tuple[int, int, int] | None = None
         self.packet_log: list[dict[str, Any]] = []
+        self._expected_brightness_pct: int | None = None
+        self._expected_brightness_deadline = 0.0
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
 
     @property
@@ -103,8 +106,9 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         if self.profile.state_readable:
             try:
-                await self._ensure_connected()
-                await self._send_state_queries()
+                async with self._lock:
+                    await self._ensure_connected()
+                    await self._send_state_queries()
             except BleakError:
                 _LOGGER.debug("State refresh skipped for %s", self.address)
         return {field: getattr(self, field) for field in _CORE_STATE_FIELDS}
@@ -167,20 +171,44 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if domain == POWER_PACKET_TYPE:
                 self.is_on = bool(payload[0])
             elif domain == BRIGHTNESS_PACKET_TYPE:
-                self.brightness_pct = payload[0]
+                pct = payload[0]
+                if self._expected_brightness_pct is not None:
+                    if time.monotonic() >= self._expected_brightness_deadline:
+                        self._expected_brightness_pct = None
+                    elif pct != self._expected_brightness_pct:
+                        _LOGGER.debug(
+                            "Ignoring stale brightness for %s: %s (expecting %s)",
+                            self.address,
+                            pct,
+                            self._expected_brightness_pct,
+                        )
+                        return
+                    else:
+                        self._expected_brightness_pct = None
+                self.brightness_pct = pct
             elif domain == COLOR_PACKET_TYPE:
                 self._apply_color_mode_payload(payload)
             self.async_set_updated_data(self.data or {})
         except (IndexError, ValueError):
             _LOGGER.debug("Failed to parse notify from %s: %s", self.address, data.hex())
 
-    async def _send_state_queries(self, *, include_keep_alive: bool = True, full_query: bool = True) -> bool:
+    async def _send_state_queries(
+        self,
+        *,
+        query_power: bool = True,
+        query_brightness: bool = True,
+        query_color_mode: bool = True,
+    ) -> bool:
         if not self._client or not self._client.is_connected:
             return False
         try:
-            queries = [KEEP_ALIVE] if include_keep_alive else []
-            if full_query:
-                queries.extend((BRIGHTNESS_QUERY, COLOR_MODE_QUERY))
+            queries: list[bytes] = []
+            if query_power:
+                queries.append(KEEP_ALIVE)
+            if query_brightness:
+                queries.append(BRIGHTNESS_QUERY)
+            if query_color_mode:
+                queries.append(COLOR_MODE_QUERY)
             for query in queries:
                 self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
@@ -193,10 +221,21 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> bool:
         if not self.profile.state_readable:
             return False
-        await self._ensure_connected()
+        async with self._lock:
+            await self._ensure_connected()
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if not await self._send_state_queries(include_keep_alive=False):
+            # Avoid querying brightness as part of verification to reduce stale/out-of-order
+            # updates overriding optimistic writes.
+            query_power = expected_on is not None
+            query_color = expected_effect is not None
+            if expected_on is None and expected_effect is None:
+                query_power = query_color = True
+            async with self._lock:
+                ok = await self._send_state_queries(
+                    query_power=query_power, query_brightness=False, query_color_mode=query_color
+                )
+            if not ok:
                 return False
             if (expected_effect is None or self.effect == expected_effect) and (
                 expected_on is None or self.is_on == expected_on
@@ -222,7 +261,9 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     break
                 self._keep_alive_ticks += 1
                 full = self._keep_alive_ticks % STATE_QUERY_EVERY_N_KEEP_ALIVES == 0
-                if not await self._send_state_queries(include_keep_alive=True, full_query=full):
+                async with self._lock:
+                    ok = await self._send_state_queries(query_power=True, query_brightness=full, query_color_mode=full)
+                if not ok:
                     break
         except asyncio.CancelledError:
             pass
@@ -233,6 +274,9 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 try:
                     client = await self._ensure_connected()
                     self._record_packet("tx", packet)
+                    if len(packet) > 2 and packet[0] == 0x33 and packet[1] == 0x04:
+                        self._expected_brightness_deadline = time.monotonic() + EXPECTED_BRIGHTNESS_TTL
+                        self._expected_brightness_pct = packet[2]
                     await client.write_gatt_char(WRITE_UUID, packet, response=False)
                     return
                 except BleakError as err:

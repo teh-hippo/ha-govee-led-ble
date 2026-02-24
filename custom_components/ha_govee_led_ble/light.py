@@ -262,9 +262,10 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         power_on = partial(self.coordinator.send_command, build_power(True))
         with self._rollback():
-            await power_on()
-            self.coordinator.is_on, self.coordinator.effect = True, None
-            await self._refresh_with_retry(expected_on=True, retry_command=power_on)
+            if not self.coordinator.is_on:
+                await power_on()
+                self.coordinator.is_on = True
+                await self._refresh_with_retry(expected_on=True, retry_command=power_on)
             if ATTR_BRIGHTNESS in kwargs:
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
                 await self.coordinator.send_command(build_brightness(pct))

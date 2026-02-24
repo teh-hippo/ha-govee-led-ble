@@ -25,6 +25,8 @@ async def async_get_config_entry_diagnostics(
         ),
         None,
     )
+    client = coordinator._client
+    lock = coordinator._lock
     return {
         "entry": async_redact_data(
             {
@@ -36,12 +38,15 @@ async def async_get_config_entry_diagnostics(
             REDACT_KEYS,
         ),
         "coordinator": {
+            "address": coordinator.address,
             "model": coordinator.model,
             "state_readable": coordinator.profile.state_readable,
             "supports_video_mode": coordinator.profile.supports_video_mode,
             "supports_music_mode": coordinator.profile.supports_music_mode,
             "supports_white_brightness": coordinator.profile.supports_white_brightness,
             "supports_advanced_controls": coordinator.profile.supports_advanced_controls,
+            "connected": bool(client and client.is_connected),
+            "lock_locked": lock.locked(),
             "is_on": coordinator.is_on,
             "brightness_pct": coordinator.brightness_pct,
             "rgb_color": coordinator.rgb_color,
@@ -56,6 +61,7 @@ async def async_get_config_entry_diagnostics(
             "music_color": coordinator.music_color,
             "white_brightness": coordinator.white_brightness,
             "video_full_screen": coordinator.video_full_screen,
+            "expected_brightness_pct": getattr(coordinator, "_expected_brightness_pct", None),
             "packet_log": packet_log,
             "last_rx_aa05_raw": last_rx_aa05_raw,
         },

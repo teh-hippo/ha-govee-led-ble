@@ -1,3 +1,4 @@
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -150,3 +151,63 @@ async def test_misc_helpers(coord, h6199):
     coord._reset_disconnect_timer()
     cancel.assert_called_once()
     assert coord._cancel_disconnect is not cancel
+
+
+async def test_send_state_queries_selective(coord):
+    c = _c(write_gatt_char=AsyncMock())
+    coord._client = c
+
+    assert await coord._send_state_queries(query_power=False, query_brightness=True, query_color_mode=False) is True
+    c.write_gatt_char.assert_awaited_once_with(proto.WRITE_UUID, proto.BRIGHTNESS_QUERY, response=False)
+
+    c.write_gatt_char.reset_mock()
+    assert await coord._send_state_queries(query_power=True, query_brightness=False, query_color_mode=True) is True
+    calls = [args.args[1] for args in c.write_gatt_char.await_args_list]
+    assert calls == [proto.KEEP_ALIVE, proto.COLOR_MODE_QUERY]
+
+
+async def test_send_command_sets_expected_brightness(coord):
+    c = _c(write_gatt_char=AsyncMock())
+    with patch.object(coord, "_ensure_connected", return_value=c):
+        assert coord._expected_brightness_pct is None
+        await coord.send_command(proto.build_brightness(42))
+        assert coord._expected_brightness_pct == 42
+
+
+def test_notify_callback_brightness_expectation(h6199):
+    cb = h6199._notify_callback
+    h6199.brightness_pct = 99
+    h6199._expected_brightness_pct = 10
+    h6199._expected_brightness_deadline = time.monotonic() + 60
+    cb(None, bytearray([0xAA, 0x04, 0x4B] + [0x00] * 5))
+    assert h6199.brightness_pct == 99  # ignored
+
+    h6199._expected_brightness_pct = 75
+    h6199._expected_brightness_deadline = time.monotonic() + 60
+    cb(None, bytearray([0xAA, 0x04, 0x4B] + [0x00] * 5))
+    assert h6199.brightness_pct == 75 and h6199._expected_brightness_pct is None
+
+    with patch(f"{M}.time.monotonic", return_value=1000):
+        h6199._expected_brightness_pct = 10
+        h6199._expected_brightness_deadline = 0
+        cb(None, bytearray([0xAA, 0x04, 0x01] + [0x00] * 5))
+        assert h6199.brightness_pct == 1 and h6199._expected_brightness_pct is None
+
+
+async def test_refresh_state_query_selection(coord):
+    coord.is_on = True
+    coord.effect = "video: movie"
+    with (
+        patch.object(coord, "_ensure_connected", new_callable=AsyncMock),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)) as sq,
+    ):
+        assert await coord.refresh_state(expected_effect=None, expected_on=True) is True
+        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False)
+        sq.reset_mock()
+
+        assert await coord.refresh_state(expected_effect="video: movie", expected_on=None) is True
+        sq.assert_awaited_with(query_power=False, query_brightness=False, query_color_mode=True)
+        sq.reset_mock()
+
+        assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
+        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
