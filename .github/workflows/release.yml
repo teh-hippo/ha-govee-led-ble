@@ -29,3 +29,16 @@ jobs:
         uses: python-semantic-release/python-semantic-release@v10
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update latest tag
+        run: |
+          latest_stable_tag="$(git tag --list 'v*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+          if [ -z "$latest_stable_tag" ]; then
+            echo "No stable release tags found; skipping latest tag update."
+            exit 0
+          fi
+
+          release_sha="$(git rev-list -n 1 "$latest_stable_tag")"
+          echo "Pointing latest tag to ${latest_stable_tag} (${release_sha})"
+          git tag -f latest "$release_sha"
+          git push origin refs/tags/latest --force
