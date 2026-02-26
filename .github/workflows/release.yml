@@ -26,19 +26,21 @@ jobs:
       - uses: astral-sh/setup-uv@v6
 
       - name: Python Semantic Release
+        id: semantic_release
         uses: python-semantic-release/python-semantic-release@v10
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update latest tag
-        run: |
-          latest_stable_tag="$(git tag --list 'v*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
-          if [ -z "$latest_stable_tag" ]; then
-            echo "No stable release tags found; skipping latest tag update."
-            exit 0
-          fi
-
-          release_sha="$(git rev-list -n 1 "$latest_stable_tag")"
-          echo "Pointing latest tag to ${latest_stable_tag} (${release_sha})"
-          git tag -f latest "$release_sha"
-          git push origin refs/tags/latest --force
+      - name: Create/Update latest GitHub Release
+        if: ${{ steps.semantic_release.outputs.released == 'true' && steps.semantic_release.outputs.is_prerelease == 'false' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: latest
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: false
+          prerelease: false
+          overwrite_files: true
+          body: |
+            Alias release for tooling that resolves by `latest`.
+            Current stable tag: ${{ steps.semantic_release.outputs.tag }}
