@@ -9,6 +9,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import GoveeBLECoordinator
@@ -63,7 +64,7 @@ class _H6199ControlEntity(CoordinatorEntity[GoveeBLECoordinator]):
         self._attr_device_info = coordinator.device_info
 
 
-class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
+class H6199ParameterNumber(_H6199ControlEntity, RestoreEntity, NumberEntity):
     _attr_mode = NumberMode.SLIDER
     _attr_native_step = 1
     _attr_native_min_value = 0
@@ -73,6 +74,23 @@ class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
     def native_value(self) -> float | None:
         value = getattr(self.coordinator, self._key)
         return float(value) if value is not None else None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        await self._async_restore_value()
+
+    async def _async_restore_value(self) -> None:
+        if self._key != "video_white_balance" or getattr(self.coordinator, self._key) is not None:
+            return
+        if (last_state := await self.async_get_last_state()) is None:
+            return
+        try:
+            restored = int(round(float(last_state.state)))
+        except (TypeError, ValueError):
+            return
+        restored = min(max(restored, int(self._attr_native_min_value)), int(self._attr_native_max_value))
+        setattr(self.coordinator, self._key, restored)
+        self.coordinator.async_set_updated_data(self.coordinator.data or {})
 
     async def async_set_native_value(self, value: float) -> None:
         next_value = int(round(value))

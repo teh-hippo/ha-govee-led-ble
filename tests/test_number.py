@@ -27,6 +27,15 @@ async def test_video_white_balance(mock_h6199_coordinator):
     c.send_command.assert_called_once_with(bvw(100))
 
 
+async def test_video_white_balance_restore(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    entity = N(c, key="video_white_balance", name="T")
+    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="73"))
+    await entity._async_restore_value()
+    assert c.video_white_balance == 73
+    c.async_set_updated_data.assert_called_once_with(c.data)
+
+
 async def test_video_saturation_powers_on(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.is_on, c.effect = False, None
