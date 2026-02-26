@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.0.2 (2026-02-26)
+
+### Bug Fixes
+
+- Restore white-balance number value
+  ([`4202d66`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4202d66a78744119322ef375242d2791c99265a7))
+
+### Continuous Integration
+
+- Update latest tag during release
+  ([`d535fba`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d535fbadcc08e47725c812f7eff253a5764f8bc0))
+
+
 ## v2.0.1 (2026-02-24)
 
 ### Bug Fixes
