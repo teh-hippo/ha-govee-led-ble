@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.0.3 (2026-02-28)
+
+### Bug Fixes
+
+- Normalize H617A effects and parse scene status
+  ([`469742b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/469742b617b23a5d38e7fb0201168c0a116c17c5))
+
+### Continuous Integration
+
+- Publish latest release alias
+  ([`75cfd40`](https://github.com/teh-hippo/ha-govee-led-ble/commit/75cfd40fcdd0d7b2a0f17ae49e55663a5fc71e16))
+
+
 ## v2.0.2 (2026-02-26)
 
 ### Bug Fixes
