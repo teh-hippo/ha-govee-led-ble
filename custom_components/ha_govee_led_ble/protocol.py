@@ -5,6 +5,8 @@ import math
 from dataclasses import dataclass
 from typing import cast
 
+from .scenes import SCENES
+
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 
@@ -14,6 +16,7 @@ STATUS_HEADER = 0xAA
 POWER_PACKET_TYPE = 0x01
 BRIGHTNESS_PACKET_TYPE = 0x04
 COLOR_PACKET_TYPE = 0x05
+COLOR_MODE_SCENE = 0x04
 COLOR_MODE_VIDEO = 0x00
 COLOR_MODE_MUSIC = 0x13
 COLOR_MODE_STATIC = 0x15
@@ -25,6 +28,7 @@ MUSIC_EFFECT_BY_ID: dict[int, str] = {
     0x04: "music: spectrum",
     0x06: "music: rolling",
 }
+SCENE_EFFECT_BY_ID: dict[int, str] = {scene.code: name for name, scene in SCENES.items()}
 MULTI_PACKET_PREFIX = 0xA3
 SCENE_HEX_PREFIX_ADD = bytes([0x02])
 
@@ -171,6 +175,11 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
     if not payload:
         raise ValueError("Color mode payload is empty")
     mode = payload[0]
+    if mode == COLOR_MODE_SCENE:
+        scene_bytes = payload[1:] or b"\x00"
+        while len(scene_bytes) > 1 and scene_bytes[-1] == 0:
+            scene_bytes = scene_bytes[:-1]
+        return ParsedColorModeResponse(effect=SCENE_EFFECT_BY_ID.get(int.from_bytes(scene_bytes, "little")))
     if mode == COLOR_MODE_VIDEO:
         return ParsedColorModeResponse(
             effect="video: game" if bool(_get(payload, 2)) else "video: movie",

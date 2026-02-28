@@ -95,6 +95,8 @@ def test_notify_callback(h6199):
         False,
         (1, 2, 3),
     )
+    cb(None, bytearray([0xAA, 0x05, 0x04, 0x9D, 0x08]))
+    assert h6199.effect == "candy"
     h6199.is_on = False
     cb(None, bytearray([0xAA]))
     cb(None, bytearray([0x33, 0x01, 0x01, 0x00]))

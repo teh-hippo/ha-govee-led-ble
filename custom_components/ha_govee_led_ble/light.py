@@ -51,6 +51,11 @@ VIDEO_EFFECT_GAME_MODE: dict[str, bool] = {"video: movie": False, "video: game":
 MUSIC_MODE_IDS: dict[str, int] = {"energic": 0x05, "rhythm": 0x03, "spectrum": 0x04, "rolling": 0x06}
 MUSIC_EFFECT_MODE_IDS: dict[str, int] = {f"music: {n}": i for n, i in MUSIC_MODE_IDS.items()}
 RHYTHM_MODE_ID = MUSIC_MODE_IDS["rhythm"]
+_EFFECT_QUOTE_CHARS = "\"'“”‘’"
+
+
+def _normalize_effect_name(effect_name: str) -> str:
+    return effect_name.strip().strip(_EFFECT_QUOTE_CHARS).strip().lower()
 
 
 # fmt: off
@@ -226,16 +231,17 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         )
 
     async def _apply_effect(self, effect_name: str) -> bool:
-        gm = VIDEO_EFFECT_GAME_MODE.get(effect_name)
+        normalized_effect = _normalize_effect_name(effect_name)
+        gm = VIDEO_EFFECT_GAME_MODE.get(normalized_effect)
         if gm is not None:
 
             async def send() -> None:
                 await apply_video_mode_from_state(self.coordinator, game_mode=gm)
 
             await send()
-            await self._refresh_with_retry(expected_effect=effect_name, retry_command=send)
+            await self._refresh_with_retry(expected_effect=normalized_effect, retry_command=send)
             return True
-        mid = MUSIC_EFFECT_MODE_IDS.get(effect_name)
+        mid = MUSIC_EFFECT_MODE_IDS.get(normalized_effect)
         if mid is not None:
             send = partial(
                 self.coordinator.send_command,
@@ -247,9 +253,9 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 ),
             )
             await send()
-            await self._refresh_with_retry(expected_effect=effect_name, retry_command=send)
+            await self._refresh_with_retry(expected_effect=normalized_effect, retry_command=send)
             return True
-        scene = SCENES.get(effect_name)
+        scene = SCENES.get(normalized_effect)
         if scene is not None:
             if scene.is_simple:
                 await self.coordinator.send_command(build_scene(scene.code))
@@ -281,8 +287,10 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 await self.coordinator.send_command(build_color_temp(kelvin))
                 self.coordinator.color_temp_kelvin = kelvin
                 self._attr_color_mode, self.coordinator.effect = ColorMode.COLOR_TEMP, None
-            if ATTR_EFFECT in kwargs and await self._apply_effect(kwargs[ATTR_EFFECT]):
-                self.coordinator.effect = kwargs[ATTR_EFFECT]
+            if ATTR_EFFECT in kwargs:
+                normalized_effect = _normalize_effect_name(str(kwargs[ATTR_EFFECT]))
+                if await self._apply_effect(normalized_effect):
+                    self.coordinator.effect = normalized_effect
         self._notify_state_changed()
 
     async def async_turn_off(self, **kwargs: Any) -> None:

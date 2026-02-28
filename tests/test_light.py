@@ -81,6 +81,12 @@ async def test_turn_on_variants(light, mock_coordinator):
     assert co.effect is None
     c = await _on(effect="rainbow")
     assert c[1].args[0] == proto.build_scene(SCENES["rainbow"].code) and co.effect == "rainbow"
+    c = await _on(effect="Candy")
+    packets = [call.args[0] for call in c]
+    assert packets[1][0] == 0xA3 and packets[-1] == proto.build_scene(SCENES["candy"].code) and co.effect == "candy"
+    c = await _on(effect="“candy”")
+    packets = [call.args[0] for call in c]
+    assert packets[1][0] == 0xA3 and packets[-1] == proto.build_scene(SCENES["candy"].code) and co.effect == "candy"
     co.send_command.reset_mock()
     co.is_on = False
     await light.async_turn_on(effect="forest")

@@ -122,7 +122,12 @@ def test_constants():
     assert proto.KEEP_ALIVE == proto.STATE_QUERY
     assert (proto.COMMAND_HEADER, proto.STATUS_HEADER) == (0x33, 0xAA)
     assert (proto.POWER_PACKET_TYPE, proto.BRIGHTNESS_PACKET_TYPE, proto.COLOR_PACKET_TYPE) == (0x01, 0x04, 0x05)
-    assert (proto.COLOR_MODE_VIDEO, proto.COLOR_MODE_MUSIC, proto.COLOR_MODE_STATIC) == (0x00, 0x13, 0x15)
+    assert (proto.COLOR_MODE_SCENE, proto.COLOR_MODE_VIDEO, proto.COLOR_MODE_MUSIC, proto.COLOR_MODE_STATIC) == (
+        0x04,
+        0x00,
+        0x13,
+        0x15,
+    )
 
 
 def test_video_mode():
@@ -169,6 +174,7 @@ def test_music_mode():
 
 
 def test_parse():
+    assert proto.parse_color_mode_response(bytes([0x04, 0x9D, 0x08])).effect == "candy"
     p = proto.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]))
     assert p.effect == "video: game" and not p.video_full_screen
     assert (p.video_saturation, p.video_sound_effects, p.video_sound_effects_softness) == (42, True, 55)
