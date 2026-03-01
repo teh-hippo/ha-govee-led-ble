@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v2.0.4 (2026-03-01)
+
+### Build System
+
+- Constrain coverage for uv resolver stability
+  ([`2d60db9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2d60db96d605eb0f7a3757f9acddf582fc58dfe0))
+
+### Chores
+
+- Bound python compatibility for lock resolution
+  ([`de1bfea`](https://github.com/teh-hippo/ha-govee-led-ble/commit/de1bfea2fdc72741c7faa72780f9b052e0398788))
+
+- Sync uv.lock project version
+  ([`8882e30`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8882e305875ab046364c8ea758dea87157c9f4ac))
+
+
 ## v2.0.3 (2026-02-28)
 
 ### Bug Fixes
