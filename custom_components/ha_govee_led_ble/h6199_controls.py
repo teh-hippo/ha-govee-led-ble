@@ -26,6 +26,7 @@ _NUMBER_PARAMS = [
     "video_sound_effects_softness",
     "music_sensitivity",
 ]
+_DEFAULT_VIDEO_WHITE_BALANCE = 100
 
 
 def _supports_number_param(coordinator: GoveeBLECoordinator, key: str) -> bool:
@@ -82,12 +83,12 @@ class H6199ParameterNumber(_H6199ControlEntity, RestoreEntity, NumberEntity):
     async def _async_restore_value(self) -> None:
         if self._key != "video_white_balance" or getattr(self.coordinator, self._key) is not None:
             return
-        if (last_state := await self.async_get_last_state()) is None:
-            return
-        try:
-            restored = int(round(float(last_state.state)))
-        except (TypeError, ValueError):
-            return
+        restored = _DEFAULT_VIDEO_WHITE_BALANCE
+        if (last_state := await self.async_get_last_state()) is not None:
+            try:
+                restored = int(round(float(last_state.state)))
+            except (TypeError, ValueError):
+                restored = _DEFAULT_VIDEO_WHITE_BALANCE
         restored = min(max(restored, int(self._attr_native_min_value)), int(self._attr_native_max_value))
         setattr(self.coordinator, self._key, restored)
         self.coordinator.async_set_updated_data(self.coordinator.data or {})
