@@ -45,6 +45,24 @@ async def test_video_white_balance_restore_default_on_unknown(mock_h6199_coordin
     c.async_set_updated_data.assert_called_once_with(c.data)
 
 
+async def test_video_white_balance_restore_default_without_last_state(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    entity = N(c, key="video_white_balance", name="T")
+    entity.async_get_last_state = AsyncMock(return_value=None)
+    await entity._async_restore_value()
+    assert c.video_white_balance == 100
+    c.async_set_updated_data.assert_called_once_with(c.data)
+
+
+async def test_video_white_balance_restore_clamps_out_of_range(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    entity = N(c, key="video_white_balance", name="T")
+    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="999"))
+    await entity._async_restore_value()
+    assert c.video_white_balance == 100
+    c.async_set_updated_data.assert_called_once_with(c.data)
+
+
 async def test_video_saturation_powers_on(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.is_on, c.effect = False, None
