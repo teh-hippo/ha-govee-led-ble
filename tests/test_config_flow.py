@@ -9,6 +9,7 @@ from custom_components.ha_govee_led_ble.config_flow import _extract_model
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
 
 SVC = BluetoothServiceInfo("ihoment_H617A_ABCD", "AA:BB:CC:DD:EE:FF", -60, {}, {}, [], "local")
+SVC_LOWER = BluetoothServiceInfo("ihoment_H617A_ABCD", "aa:bb:cc:dd:ee:ff", -60, {}, {}, [], "local")
 
 
 @pytest.fixture(autouse=True)
@@ -26,10 +27,21 @@ async def test_bluetooth_discovery(hass: HomeAssistant):
     assert r["data"][CONF_MODEL] == "H617A"
 
 
+async def test_bluetooth_discovery_normalizes_unique_id(hass: HomeAssistant):
+    await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_LOWER)
+    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id == "AA:BB:CC:DD:EE:FF"
+
+
 async def test_bluetooth_discovery_abort_duplicate(hass: HomeAssistant):
     await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
     r2 = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
     assert r2["type"] == FlowResultType.ABORT and r2["reason"] == "already_configured"
+
+
+async def test_bluetooth_discovery_abort_duplicate_with_user_entry(hass: HomeAssistant):
+    await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: "H617A"})
+    r = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_LOWER)
+    assert r["type"] == FlowResultType.ABORT and r["reason"] == "already_configured"
 
 
 async def test_user_step_shows_form(hass: HomeAssistant):
