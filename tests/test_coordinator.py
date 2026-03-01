@@ -103,6 +103,14 @@ def test_notify_callback(h6199):
     assert h6199.is_on is False
 
 
+def test_notify_callback_parses_full_frame_with_checksum(h6199):
+    cb = h6199._notify_callback
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x9D, 0x08])))
+    assert h6199.effect == "candy"
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09])))
+    assert h6199.effect == "candlelight"
+
+
 async def test_ensure_connected(coord):
     coord._client = (c := _c())
     assert await coord._ensure_connected() is c

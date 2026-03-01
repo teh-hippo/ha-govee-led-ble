@@ -27,6 +27,7 @@ from .protocol import (
     STATUS_HEADER,
     WRITE_UUID,
     parse_color_mode_response,
+    xor_checksum,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -162,10 +163,12 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.rgb_color, self.color_temp_kelvin = parsed.rgb_color, None
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
-        if len(data) < 3 or data[0] != STATUS_HEADER:
+        frame = bytes(data)
+        if len(frame) < 3 or frame[0] != STATUS_HEADER:
             return
-        domain, payload = data[1], bytes(data[2:])
-        self._record_packet("rx", bytes(data))
+        domain = frame[1]
+        payload = bytes(frame[2:-1]) if len(frame) == 20 and xor_checksum(frame[:-1]) == frame[-1] else bytes(frame[2:])
+        self._record_packet("rx", frame)
         _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.address, domain, payload.hex())
         try:
             if domain == POWER_PACKET_TYPE:
