@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.0.7 (2026-03-01)
+
+### Bug Fixes
+
+- Trigger patch release for H617A retention fix
+  ([`d5ccddf`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d5ccddfaee5397c81ac9130321b93ecfcfd1f2bb))
+
+
 ## v2.0.6 (2026-03-01)
 
 ### Bug Fixes
