@@ -1,9 +1,10 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak import BleakError
 
 from custom_components.ha_govee_led_ble.h6199_controls import H6199VideoCaptureSelect as E
+from custom_components.ha_govee_led_ble.h6199_controls import async_setup_select_entry
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
 
 
@@ -27,3 +28,16 @@ async def test_rollback(mock_h6199_coordinator):
     with pytest.raises(BleakError):
         await E(c).async_select_option("part")
     assert c.video_full_screen is True
+
+
+async def test_setup_select_entry_h617a(mock_coordinator):
+    add = MagicMock()
+    await async_setup_select_entry(MagicMock(), MagicMock(runtime_data=mock_coordinator), add)
+    add.assert_not_called()
+
+
+async def test_setup_select_entry_h6199(mock_h6199_coordinator):
+    add = MagicMock()
+    await async_setup_select_entry(MagicMock(), MagicMock(runtime_data=mock_h6199_coordinator), add)
+    entities = add.call_args.args[0]
+    assert len(entities) == 1 and isinstance(entities[0], E)

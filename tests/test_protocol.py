@@ -191,3 +191,8 @@ def test_parse():
     assert proto.parse_color_mode_response(bytes([0x15, 0x02, 50])).white_brightness == 50
     with pytest.raises(ValueError):
         proto.parse_color_mode_response(b"")
+
+
+def test_parse_padded_scene_and_unknown_mode():
+    assert proto.parse_color_mode_response(bytes([0x04, 0x9D, 0x08, 0x00, 0x00])).effect == "candy"
+    assert proto.parse_color_mode_response(bytes([0x99, 0x01, 0x02])) == proto.ParsedColorModeResponse()

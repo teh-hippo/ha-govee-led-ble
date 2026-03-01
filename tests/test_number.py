@@ -1,10 +1,15 @@
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak import BleakError
 
 from custom_components.ha_govee_led_ble.h6199_controls import H6199ParameterNumber as N
-from custom_components.ha_govee_led_ble.h6199_controls import async_setup_number_entry
+from custom_components.ha_govee_led_ble.h6199_controls import (
+    _set_with_rollback,
+    _supports_number_param,
+    async_setup_number_entry,
+)
 from custom_components.ha_govee_led_ble.protocol import build_music_mode_with_color as bmc
 from custom_components.ha_govee_led_ble.protocol import build_power as bp
 from custom_components.ha_govee_led_ble.protocol import build_video_mode as bv
@@ -25,6 +30,14 @@ async def test_video_white_balance(mock_h6199_coordinator):
     await N(c, key="video_white_balance", name="T").async_set_native_value(100)
     assert c.video_white_balance == 100
     c.send_command.assert_called_once_with(bvw(100))
+
+
+def test_native_value_property(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.video_saturation = 42
+    assert N(c, key="video_saturation", name="T").native_value == 42.0
+    c.video_white_balance = None
+    assert N(c, key="video_white_balance", name="T").native_value is None
 
 
 async def test_video_white_balance_restore(mock_h6199_coordinator):
@@ -63,6 +76,25 @@ async def test_video_white_balance_restore_clamps_out_of_range(mock_h6199_coordi
     c.async_set_updated_data.assert_called_once_with(c.data)
 
 
+async def test_video_white_balance_restore_skips_when_already_set(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.video_white_balance = 55
+    entity = N(c, key="video_white_balance", name="T")
+    entity.async_get_last_state = AsyncMock()
+    await entity._async_restore_value()
+    entity.async_get_last_state.assert_not_called()
+    c.async_set_updated_data.assert_not_called()
+
+
+async def test_restore_value_skips_non_white_balance(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    entity = N(c, key="video_saturation", name="T")
+    entity.async_get_last_state = AsyncMock()
+    await entity._async_restore_value()
+    entity.async_get_last_state.assert_not_called()
+    c.async_set_updated_data.assert_not_called()
+
+
 async def test_video_saturation_powers_on(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.is_on, c.effect = False, None
@@ -89,6 +121,18 @@ async def test_rollback(mock_h6199_coordinator):
     assert c.video_saturation == 100
 
 
+def test_supports_number_param_unknown_key(mock_h6199_coordinator):
+    assert _supports_number_param(mock_h6199_coordinator, "unknown") is False
+
+
+async def test_set_with_rollback_noop(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    reapply = AsyncMock()
+    await _set_with_rollback(c, key="video_saturation", value=c.video_saturation, reapply=reapply)
+    reapply.assert_not_called()
+    c.async_set_updated_data.assert_not_called()
+
+
 async def test_setup_number_entry_h617a(mock_coordinator):
     add = MagicMock()
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_coordinator), add)
@@ -106,3 +150,11 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
         "video_sound_effects_softness",
         "music_sensitivity",
     ]
+
+
+async def test_setup_number_entry_without_supported_params(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.profile = replace(c.profile, supports_video_mode=False, supports_music_mode=False)
+    add = MagicMock()
+    await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=c), add)
+    add.assert_not_called()

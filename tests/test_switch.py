@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -32,6 +33,30 @@ async def test_music_calm_reapplies(mock_h6199_coordinator):
     c.send_command.assert_called_once_with(bmc(0x03, sensitivity=88, color=(1, 2, 3), calm=True))
 
 
+def test_is_on_reflects_coordinator_value(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.music_calm = True
+    assert S(c, key="music_calm", name="M").is_on is True
+    c.music_calm = False
+    assert S(c, key="music_calm", name="M").is_on is False
+
+
+async def test_music_calm_turn_off_reapplies(mock_h6199_coordinator):
+    (c := mock_h6199_coordinator).effect, c.music_sensitivity, c.music_color, c.music_calm = (
+        "music: rhythm",
+        88,
+        (
+            1,
+            2,
+            3,
+        ),
+        True,
+    )
+    await S(c, key="music_calm", name="M").async_turn_off()
+    assert c.music_calm is False
+    c.send_command.assert_called_once_with(bmc(0x03, sensitivity=88, color=(1, 2, 3), calm=False))
+
+
 async def test_setup_switch_entry_h617a(mock_coordinator):
     add = MagicMock()
     await async_setup_switch_entry(MagicMock(), MagicMock(runtime_data=mock_coordinator), add)
@@ -44,3 +69,20 @@ async def test_setup_switch_entry_h6199(mock_h6199_coordinator):
     await async_setup_switch_entry(MagicMock(), MagicMock(runtime_data=mock_h6199_coordinator), add)
     keys = [entity._key for entity in add.call_args.args[0]]
     assert keys == ["video_sound_effects", "music_calm"]
+
+
+async def test_setup_switch_entry_video_only(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.profile = replace(c.profile, supports_music_calm=False)
+    add = MagicMock()
+    await async_setup_switch_entry(MagicMock(), MagicMock(runtime_data=c), add)
+    entities = add.call_args.args[0]
+    assert len(entities) == 1 and entities[0]._key == "video_sound_effects"
+
+
+async def test_setup_switch_entry_without_supported_controls(mock_coordinator):
+    c = mock_coordinator
+    c.profile = replace(c.profile, supports_music_calm=False)
+    add = MagicMock()
+    await async_setup_switch_entry(MagicMock(), MagicMock(runtime_data=c), add)
+    add.assert_not_called()
