@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.0.5 (2026-03-01)
+
+### Build System
+
+- Cap pytest range for Dependabot resolver
+  ([`2c0d257`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2c0d2576483ec3c4c6bfd79d35aecf647537e4eb))
+
+### Continuous Integration
+
+- Ignore ruff in Dependabot uv updates
+  ([`bb6e1d5`](https://github.com/teh-hippo/ha-govee-led-ble/commit/bb6e1d5c424950a92f1ec12d86f7fa2d604ba510))
+
+
 ## v2.0.4 (2026-03-01)
 
 ### Build System
