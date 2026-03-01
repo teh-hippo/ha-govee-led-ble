@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v2.0.6 (2026-03-01)
+
+### Bug Fixes
+
+- Normalize config-flow addresses
+  ([`0f7ef95`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0f7ef959977185c08c9dd11fb34a9f038baf2888))
+
+### Documentation
+
+- Add copilot instructions for this repo
+  ([`7f38c0c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7f38c0c7d14392461f59e8bc571f9b24a77d6848))
+
+### Testing
+
+- Improve uncovered edge coverage
+  ([`a657b42`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a657b42ec1332b0b59804185c8945bc75a2e9473))
+
+
 ## v2.0.5 (2026-03-01)
 
 ### Build System
