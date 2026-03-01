@@ -5,23 +5,14 @@
 [![Validate][validate-badge]][validate-url]
 [![Home Assistant][ha-badge]][ha-url]
 
-Control supported Govee LED strips over Bluetooth Low Energy (BLE) from Home Assistant.
+Local BLE control of supported Govee LED strips from Home Assistant — no cloud dependency.
 
 ## Supported Devices
 
-| Model | Name | Scenes | Video/Music Modes | State Reading |
-|-------|------|:------:|:-----------------:|:-------------:|
-| H617A | LED Strip | ✅ 80+ | Music ✅ | ✅ |
-| H6199 | DreamView T1 | — | Video ✅ / Music ✅ | ✅ |
+All models support on/off, brightness, RGB color, color temperature, and state readback.
 
-Both models support on/off, brightness, RGB color, and color temperature (2000K–9000K).
-
-## Features
-
-- Local BLE control (no cloud dependency)
-- H617A scene selection + music mode controls (effect modes, music sensitivity, calm rhythm switch)
-- H6199 DreamView video/music mode controls (including rhythm calm and video white balance)
-- Config flow discovery in Home Assistant
+- **H617A** — LED Strip · 80+ scenes · music mode
+- **H6199** — DreamView T1 · video & music modes · advanced controls
 
 ## Installation
 
