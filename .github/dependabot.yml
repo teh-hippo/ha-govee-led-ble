@@ -9,6 +9,8 @@ updates:
       python-deps:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "ruff"
     commit-message:
       prefix: "build"
       include: "scope"
