@@ -5,4 +5,4 @@ rules:
   has-entity-name: done
   parallel-updates: done
   runtime-data: done
-  test-coverage: todo
+  test-coverage: done

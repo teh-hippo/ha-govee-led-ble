@@ -32,7 +32,6 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          ignore: brands
           comment: false
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -42,6 +41,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14"
       - run: uv run ruff check .
       - run: uv run ruff format --check .
 
@@ -51,6 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14"
       - run: uv run mypy custom_components/ha_govee_led_ble tests
 
   test:
@@ -59,5 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14"
       - run: uv run coverage run -m pytest tests/ -v --tb=short
       - run: uv run coverage report --include="custom_components/ha_govee_led_ble/*" --fail-under=90

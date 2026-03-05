@@ -168,7 +168,7 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         )
 
     @contextmanager
-    def _rollback(self) -> Generator[None, None, None]:
+    def _rollback(self) -> Generator[None]:
         snap = {f: getattr(self.coordinator, f) for f in _STATE_FIELDS}
         mode_snap = self._attr_color_mode
         try:

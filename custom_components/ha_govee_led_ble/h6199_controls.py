@@ -87,7 +87,7 @@ class H6199ParameterNumber(_H6199ControlEntity, RestoreEntity, NumberEntity):
         if (last_state := await self.async_get_last_state()) is not None:
             try:
                 restored = int(round(float(last_state.state)))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 restored = default_balance
         restored = min(max(restored, int(self._attr_native_min_value)), int(self._attr_native_max_value))
         setattr(self.coordinator, self._key, restored)

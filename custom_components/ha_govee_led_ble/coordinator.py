@@ -192,7 +192,7 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             elif domain == COLOR_PACKET_TYPE:
                 self._apply_color_mode_payload(payload)
             self.async_set_updated_data(self.data or {})
-        except (IndexError, ValueError):
+        except IndexError, ValueError:
             _LOGGER.debug("Failed to parse notify from %s: %s", self.address, data.hex())
 
     async def _send_state_queries(
