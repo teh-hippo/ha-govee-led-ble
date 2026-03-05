@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.3 (2026-03-05)
+
+### Bug Fixes
+
+- Scope major-update label creation to repository
+  ([`163c3bb`](https://github.com/teh-hippo/ha-govee-led-ble/commit/163c3bb8d5204d182d8689a4781840d877a734ed))
+
+
 ## v2.1.2 (2026-03-05)
 
 ### Bug Fixes
