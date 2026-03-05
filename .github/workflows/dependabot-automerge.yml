@@ -31,6 +31,7 @@ jobs:
       - name: Flag major updates for human review
         if: steps.metadata.outputs.update-type == 'version-update:semver-major'
         run: |
+          gh label create "major-update" --color "d73a4a" --description "Manual review required for major dependency updates." || true
           gh pr edit "$PR_URL" --add-label "major-update" --add-reviewer "teh-hippo"
           gh pr comment "$PR_URL" --body "⚠️ **Major version update** — Copilot is reviewing, but this also requires manual review by @teh-hippo before merging."
         env:
