@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.1.5 (2026-03-05)
+
+### Build System
+
+- **deps**: Bump actions/checkout from 4 to 6
+  ([#1](https://github.com/teh-hippo/ha-govee-led-ble/pull/1),
+  [`8d2d34a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8d2d34a67487c46d4f3ad529f4f51c4992f8bb89))
+
+- **deps**: Bump github/codeql-action from 3 to 4
+  ([#2](https://github.com/teh-hippo/ha-govee-led-ble/pull/2),
+  [`3e48145`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3e48145f8ba31bebd33eb6be07ca61021b7c117a))
+
+
 ## v2.1.4 (2026-03-05)
 
 ### Build System
