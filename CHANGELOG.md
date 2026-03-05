@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.7 (2026-03-05)
+
+### Bug Fixes
+
+- **security**: Override vulnerable pillow in dev lock
+  ([`e10a089`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e10a089b12bad6013cd853a97181085150603863))
+
+
 ## v2.1.6 (2026-03-05)
 
 ### Build System
