@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.6 (2026-03-05)
+
+### Build System
+
+- **deps**: Bump astral-sh/setup-uv from 6 to 7
+  ([`11c720d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/11c720ddcaab05f0adaad1612acb625a1ffbbf93))
+
+
 ## v2.1.5 (2026-03-05)
 
 ### Build System
