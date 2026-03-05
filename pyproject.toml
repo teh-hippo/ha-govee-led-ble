@@ -21,6 +21,9 @@ dev = [
     "ruff>=0.9",
 ]
 
+[tool.uv]
+override-dependencies = ["pillow>=12.1.1"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
