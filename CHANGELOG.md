@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.2 (2026-03-05)
+
+### Bug Fixes
+
+- Bootstrap major-update label in dependabot workflow
+  ([`be88331`](https://github.com/teh-hippo/ha-govee-led-ble/commit/be8833183fcce6bd8a51d1889439635d88748ed5))
+
+
 ## v2.1.1 (2026-03-05)
 
 ### Bug Fixes
