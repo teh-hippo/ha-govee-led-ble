@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.1.0 (2026-03-05)
+
+### Documentation
+
+- Simplify README, replace table with concise list
+  ([`13bf628`](https://github.com/teh-hippo/ha-govee-led-ble/commit/13bf62893beb238212e3e546c86ca3d3765e905e))
+
+### Features
+
+- Add local brand assets and Python 3.14 support
+  ([`d66495d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d66495dab6cfe75f2130e36234badd26a4adc910))
+
+
 ## v2.0.7 (2026-03-01)
 
 ### Bug Fixes
