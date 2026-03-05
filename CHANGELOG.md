@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.1.4 (2026-03-05)
+
+### Build System
+
+- Refresh test deps for python 3.14
+  ([`1fdce7e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1fdce7ed9f70a2a30df6c20bdcde00807bb4cee1))
+
+### Continuous Integration
+
+- Harden dependabot and release flow
+  ([`fe9416b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fe9416b645678232cae0ef70e3b10eb6ba0d1312))
+
+
 ## v2.1.3 (2026-03-05)
 
 ### Bug Fixes
