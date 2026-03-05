@@ -23,7 +23,7 @@ jobs:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Request Copilot review
-        run: gh pr edit "$PR_URL" --add-reviewer "Copilot"
+        run: gh pr edit "$PR_URL" --add-reviewer "copilot-pull-request-reviewer"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
