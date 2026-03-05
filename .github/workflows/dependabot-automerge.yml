@@ -28,12 +28,12 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Flag major updates for human review
+      - name: Flag major updates for visibility
         if: steps.metadata.outputs.update-type == 'version-update:semver-major'
         run: |
-          gh label create "major-update" --repo "$REPO" --color "d73a4a" --description "Manual review required for major dependency updates." || true
-          gh pr edit "$PR_URL" --add-label "major-update" --add-reviewer "teh-hippo"
-          gh pr comment "$PR_URL" --body "⚠️ **Major version update** — Copilot is reviewing, but this also requires manual review by @teh-hippo before merging."
+          gh label create "major-update" --repo "$REPO" --color "d73a4a" --description "Major dependency update." || true
+          gh pr edit "$PR_URL" --add-label "major-update" || echo "::warning::Unable to add major-update label."
+          gh pr comment "$PR_URL" --body "INFO: **Major version update** - auto-merge will proceed when Copilot and CI are both green."
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           REPO: ${{ github.repository }}
