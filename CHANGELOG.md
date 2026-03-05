@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.1 (2026-03-05)
+
+### Bug Fixes
+
+- Correct Copilot reviewer login
+  ([`76e8376`](https://github.com/teh-hippo/ha-govee-led-ble/commit/76e8376216870b52dc203b62ac92f62de739e6ab))
+
+
 ## v2.1.0 (2026-03-05)
 
 ### Documentation
