@@ -1,68 +1,26 @@
 name: Dependabot Auto-Merge
 
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  pull_request_review:
-    types: [submitted]
+on: pull_request
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  request-review:
-    name: Request Copilot Review
+  automerge:
+    name: Auto-Merge
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    if: github.actor == 'dependabot[bot]'
     steps:
-      - name: Fetch Dependabot metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@v2
-        with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-
       - name: Request Copilot review
         run: gh pr edit "$PR_URL" --add-reviewer "copilot-pull-request-reviewer"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Flag major updates for visibility
-        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
-        run: |
-          gh label create "major-update" --repo "$REPO" --color "d73a4a" --description "Major dependency update." || true
-          gh pr edit "$PR_URL" --add-label "major-update" || echo "::warning::Unable to add major-update label."
-          gh pr comment "$PR_URL" --body "INFO: **Major version update** - auto-merge will proceed when Copilot and CI are both green."
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  handle-copilot-review:
-    name: Handle Copilot Review
-    runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'pull_request_review' &&
-      github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' &&
-      github.event.pull_request.user.login == 'dependabot[bot]'
-    steps:
-      # Copilot always submits COMMENTED reviews (never APPROVED/CHANGES_REQUESTED).
-      # Use the review body to detect outcome: "generated no comments" = clean.
-      - name: Approve and enable auto-merge when Copilot found no issues
-        if: contains(github.event.review.body, 'generated no comments')
-        run: |
-          gh pr review --approve "$PR_URL"
-          gh pr merge --auto --rebase "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Escalate when Copilot flagged issues
-        if: "!contains(github.event.review.body, 'generated no comments')"
-        run: |
-          gh pr edit "$PR_URL" --add-reviewer "teh-hippo"
-          gh pr comment "$PR_URL" --body "🔍 **Copilot flagged issues** — review comments need attention before merging. Assigning @teh-hippo."
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Approve and auto-merge
+        uses: fastify/github-action-merge-dependabot@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-method: rebase
+          target: major
