@@ -8,13 +8,7 @@ updates:
     groups:
       python-deps:
         patterns: ["*"]
-        exclude-patterns: ["coverage", "pytest"]
         update-types: ["minor", "patch"]
-    ignore:
-      - dependency-name: "coverage"
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "pytest"
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     commit-message:
       prefix: "build"
       include: "scope"
