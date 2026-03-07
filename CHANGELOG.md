@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.8 (2026-03-07)
+
+### Build System
+
+- **deps**: Exclude coverage/pytest from Dependabot group
+  ([`f083167`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f083167b0991657586a05e61a25b8042bc5cdc2a))
+
+
 ## v2.1.7 (2026-03-05)
 
 ### Bug Fixes
