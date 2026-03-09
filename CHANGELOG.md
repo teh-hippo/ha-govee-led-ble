@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.1.9 (2026-03-09)
+
+### Bug Fixes
+
+- Guard send_command and refresh against HA shutdown
+  ([`8537c8c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8537c8c827265819158672b2a6f7df0125484614))
+
+### Continuous Integration
+
+- Replace Copilot-gated auto-merge with fastify action
+  ([`937fa11`](https://github.com/teh-hippo/ha-govee-led-ble/commit/937fa11e26aa00c5e4eff1ce704221dcf169fd44))
+
+
 ## v2.1.8 (2026-03-07)
 
 ### Build System
