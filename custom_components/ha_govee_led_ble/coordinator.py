@@ -105,6 +105,8 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._cancel_disconnect = None
 
     async def _async_update_data(self) -> dict[str, Any]:
+        if self.hass.is_stopping:
+            return {field: getattr(self, field) for field in _CORE_STATE_FIELDS}
         if self.profile.state_readable:
             try:
                 async with self._lock:
@@ -272,6 +274,9 @@ class GoveeBLECoordinator(DataUpdateCoordinator[dict[str, Any]]):
             pass
 
     async def send_command(self, packet: bytes) -> None:
+        if self.hass.is_stopping:
+            _LOGGER.debug("Ignoring command during shutdown for %s", self.address)
+            return
         async with self._lock:
             for attempt in range(3):
                 try:

@@ -221,3 +221,23 @@ async def test_refresh_state_query_selection(coord):
 
         assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
         sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
+
+
+async def test_send_command_noop_during_shutdown(coord):
+    """Commands must be silently dropped once HA is shutting down."""
+    c = _c(write_gatt_char=AsyncMock())
+    coord.hass.is_stopping = True
+    with patch.object(coord, "_ensure_connected", return_value=c):
+        await coord.send_command(proto.build_power(True))
+    c.write_gatt_char.assert_not_awaited()
+
+
+async def test_update_data_noop_during_shutdown(coord):
+    """_async_update_data must return cached state without BLE activity during shutdown."""
+    coord.is_on, coord.brightness_pct = True, 50
+    coord.hass.is_stopping = True
+    ensure = AsyncMock()
+    with patch.object(coord, "_ensure_connected", ensure):
+        result = await coord._async_update_data()
+    ensure.assert_not_awaited()
+    assert result["is_on"] is True and result["brightness_pct"] == 50
