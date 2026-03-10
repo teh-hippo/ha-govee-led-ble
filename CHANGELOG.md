@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v2.1.11 (2026-03-10)
+
+### Bug Fixes
+
+- Auto-merge exits cleanly when checks still running
+  ([`fd306b7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fd306b7d9e3858e7b3a5ec5028931de3f03e0b78))
+
+### Chores
+
+- **deps**: Weekly lockfile update
+  ([`766d6e0`](https://github.com/teh-hippo/ha-govee-led-ble/commit/766d6e04d36ace90b7393c5feeae1ebc3589a464))
+
+### Continuous Integration
+
+- Replace dependabot-automerge with smart auto-merge
+  ([`eb33467`](https://github.com/teh-hippo/ha-govee-led-ble/commit/eb334671a4eeea38528ed4e504b87958d4e07485))
+
+
 ## v2.1.10 (2026-03-10)
 
 ### Build System
