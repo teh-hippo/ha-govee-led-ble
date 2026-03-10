@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.10 (2026-03-10)
+
+### Build System
+
+- **deps**: Bump the python-deps group across 1 directory with 2 updates
+  ([`b9349ae`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b9349aedbb0dcf45ac94becd2f20374c9d6720e8))
+
+
 ## v2.1.9 (2026-03-09)
 
 ### Bug Fixes
