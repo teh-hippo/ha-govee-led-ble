@@ -54,6 +54,7 @@ jobs:
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Verify ALL checks passed
+        id: checks
         if: steps.pr.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.CI_PAT }}
@@ -67,8 +68,9 @@ jobs:
 
           INCOMPLETE=$(echo "$FILTERED" | jq '[.[] | select(.status != "completed")] | length')
           if [[ "$INCOMPLETE" -gt 0 ]]; then
-            echo "::notice::$INCOMPLETE check(s) still running — will re-trigger"
-            exit 1
+            echo "::notice::$INCOMPLETE check(s) still running — will re-trigger when they complete"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           FAILED=$(echo "$FILTERED" | jq '[.[] | select(
@@ -76,13 +78,14 @@ jobs:
           )] | length')
           if [[ "$FAILED" -gt 0 ]]; then
             echo "::error::$FAILED check(s) failed"
-            exit 1
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "✅ All checks passed"
 
       - name: Check Copilot review
-        if: steps.pr.outputs.skip != 'true'
         id: copilot
+        if: steps.pr.outputs.skip != 'true' && steps.checks.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.CI_PAT }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -93,7 +96,10 @@ jobs:
           [ "$COMMENTS" -gt 0 ] && echo "🔍 Copilot: $COMMENTS concern(s)" || echo "✅ Copilot clean"
 
       - name: Approve and merge
-        if: steps.pr.outputs.skip != 'true' && steps.copilot.outputs.count == '0'
+        if: >-
+          steps.pr.outputs.skip != 'true'
+          && steps.checks.outputs.skip != 'true'
+          && steps.copilot.outputs.count == '0'
         env:
           GH_TOKEN: ${{ secrets.CI_PAT }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -103,7 +109,10 @@ jobs:
           echo "✅ PR #$PR_NUMBER merged"
 
       - name: Flag for human review
-        if: steps.pr.outputs.skip != 'true' && steps.copilot.outputs.count != '0'
+        if: >-
+          steps.pr.outputs.skip != 'true'
+          && steps.checks.outputs.skip != 'true'
+          && steps.copilot.outputs.count != '0'
         env:
           GH_TOKEN: ${{ secrets.CI_PAT }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
