@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v2.1.13 (2026-03-10)
+
+### Bug Fixes
+
+- Correct HA version badge to match hacs.json (2026.3+)
+  ([`7861361`](https://github.com/teh-hippo/ha-govee-led-ble/commit/78613611b84c6133792c748485d5d413a08094fd))
+
+### Chores
+
+- **deps**: Weekly lockfile update
+  ([`739aa64`](https://github.com/teh-hippo/ha-govee-led-ble/commit/739aa64001f7fb5123d90c3760bc6500c193e21e))
+
+- **deps**: Weekly lockfile update
+  ([`56e0fdf`](https://github.com/teh-hippo/ha-govee-led-ble/commit/56e0fdf58151451f916fc899920a8818eaf6fcbc))
+
+
 ## v2.1.12 (2026-03-10)
 
 ### Bug Fixes
