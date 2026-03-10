@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.1.14 (2026-03-10)
+
+### Build System
+
+- **deps**: Bump peter-evans/create-pull-request from 7 to 8
+  ([`184d860`](https://github.com/teh-hippo/ha-govee-led-ble/commit/184d86069f4675790145d51b740653aa5b00cff0))
+
+### Chores
+
+- **deps**: Weekly lockfile update
+  ([`e98670b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e98670b5557dc5088d65f7c4c2944c0f3797293b))
+
+
 ## v2.1.13 (2026-03-10)
 
 ### Bug Fixes
