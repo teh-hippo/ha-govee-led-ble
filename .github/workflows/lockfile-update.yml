@@ -1,0 +1,53 @@
+name: Lockfile Update
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Auto-Merge Automated PRs]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Update Lockfile
+    runs-on: ubuntu-latest
+    # Skip if triggered by auto-merge of our own lockfile PR (prevent loop)
+    if: >-
+      github.event_name != 'workflow_run'
+      || !startsWith(github.event.workflow_run.head_branch, 'auto/')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.CI_PAT }}
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Update lockfile
+        id: update
+        run: |
+          uv lock --upgrade 2>&1 | tee /tmp/uv-output.txt
+          if git diff --quiet uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.CI_PAT }}
+          commit-message: "chore(deps): weekly lockfile update"
+          title: "chore(deps): weekly lockfile update"
+          body-path: /tmp/uv-output.txt
+          branch: auto/lockfile-update
+          base: master
+          labels: dependencies
+          delete-branch: true
+          add-paths: uv.lock
