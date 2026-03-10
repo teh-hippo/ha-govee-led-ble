@@ -52,5 +52,5 @@ MIT
 [release-url]: https://github.com/teh-hippo/ha-govee-led-ble/releases
 [validate-badge]: https://img.shields.io/github/actions/workflow/status/teh-hippo/ha-govee-led-ble/validate.yml?branch=master&label=validate
 [validate-url]: https://github.com/teh-hippo/ha-govee-led-ble/actions/workflows/validate.yml
-[ha-badge]: https://img.shields.io/badge/HA-2026.2%2B-blue.svg
+[ha-badge]: https://img.shields.io/badge/HA-2026.3%2B-blue.svg
 [ha-url]: https://www.home-assistant.io
