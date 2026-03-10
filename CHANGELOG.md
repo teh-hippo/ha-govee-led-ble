@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.12 (2026-03-10)
+
+### Bug Fixes
+
+- Exit 1 on real CI failures, exit 0 on pending checks
+  ([`cd402cf`](https://github.com/teh-hippo/ha-govee-led-ble/commit/cd402cfacaeb7c08c420e71ed0280237b1758573))
+
+
 ## v2.1.11 (2026-03-10)
 
 ### Bug Fixes
