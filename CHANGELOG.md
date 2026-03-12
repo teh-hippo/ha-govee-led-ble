@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v2.1.15 (2026-03-12)
+
+### Build System
+
+- Tighten requires-python to >=3.14.2 for HA 2026.3.1 compatibility
+  ([`9e6c508`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9e6c508d794654ed8cacc4befe6458b3edcadc00))
+
+### Chores
+
+- **deps**: Weekly lockfile update
+  ([`c657c10`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c657c1053ade30c69da53fa6b722ba4142fde67b))
+
+- **deps**: Weekly lockfile update
+  ([`d7ab1c2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d7ab1c2b480dd4c7e094f4c2fc555dbb29bc33be))
+
+
 ## v2.1.14 (2026-03-10)
 
 ### Build System
