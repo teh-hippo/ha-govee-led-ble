@@ -63,8 +63,8 @@ commit_message = "chore(release): {version}"
 tag_format = "v{version}"
 
 [tool.semantic_release.commit_parser_options]
-patch_tags = ["fix", "perf", "build"]
-other_allowed_tags = ["chore", "ci", "docs", "style", "refactor", "test"]
+patch_tags = ["fix", "perf"]
+other_allowed_tags = ["build", "chore", "ci", "docs", "style", "refactor", "test"]
 
 [tool.semantic_release.branches.master]
 match = "master"

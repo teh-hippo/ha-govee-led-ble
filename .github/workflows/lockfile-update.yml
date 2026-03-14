@@ -4,10 +4,6 @@ on:
   schedule:
     - cron: "0 8 * * 1"
   workflow_dispatch:
-  workflow_run:
-    workflows: [Auto-Merge Automated PRs]
-    types: [completed]
-    branches: [master]
 
 permissions:
   contents: write
@@ -17,10 +13,6 @@ jobs:
   update:
     name: Update Lockfile
     runs-on: ubuntu-latest
-    # Skip if triggered by auto-merge of our own lockfile PR (prevent loop)
-    if: >-
-      github.event_name != 'workflow_run'
-      || !startsWith(github.event.workflow_run.head_branch, 'auto/')
     steps:
       - uses: actions/checkout@v6
         with:
