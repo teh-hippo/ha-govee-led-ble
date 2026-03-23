@@ -1,6 +1,6 @@
 {
   "name": "Python Dev",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "image": "mcr.microsoft.com/devcontainers/python:3.14",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
