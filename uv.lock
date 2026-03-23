@@ -927,7 +927,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "aiousbwatcher", specifier = ">=1.1.1" },
-    { name = "coverage", specifier = ">=7.10.6,<7.11" },
+    { name = "coverage", specifier = ">=7.10.6" },
     { name = "mypy", specifier = ">=1.15" },
     { name = "pyserial", specifier = ">=3.5" },
     { name = "pytest", specifier = ">=9.0.0,<9.1" },
