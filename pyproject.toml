@@ -58,7 +58,7 @@ disable_error_code = ["arg-type", "attr-defined", "no-untyped-call", "typeddict-
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
 version_variables = ["custom_components/ha_govee_led_ble/manifest.json:version"]
-build_command = "uv lock"
+build_command = "pip install uv && uv lock"
 commit_message = "chore(release): {version}"
 tag_format = "v{version}"
 
