@@ -1,6 +1,74 @@
 # CHANGELOG
 
 
+## v2.1.16 (2026-03-23)
+
+### Bug Fixes
+
+- **ci**: Pass RELEASE_TOKEN to checkout for git push auth
+  ([`95c0a70`](https://github.com/teh-hippo/ha-govee-led-ble/commit/95c0a703d090d692e874830beb267470abe09b7f))
+
+- **ci**: Use RELEASE_TOKEN for semantic-release push
+  ([`3852ba9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3852ba97751cb408e444ce6fe8fc1c282625f902))
+
+### Build System
+
+- Loosen coverage version constraint
+  ([`0cea2c2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0cea2c2346e9f14eaa99f863b267f040707fb749))
+
+- Loosen dev dependency version constraints
+  ([`f070cd3`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f070cd3a12a8215dce374762c7977d0517228ef2))
+
+- **deps**: Bump pyopenssl from 25.3.0 to 26.0.0
+  ([`fa68d9b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fa68d9b22e27c3fa7f7b64a6fb8cd6e1a5dd61ff))
+
+- **deps**: Update mcr.microsoft.com/devcontainers/python Docker tag to v3.14
+  ([`f8fe564`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f8fe564b83cfcae5f6396db745e47fc999705451))
+
+- **deps**: Upgrade
+  ([`5461bb9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5461bb9ec93168d40907d222376ed925687b869c))
+
+- **deps**: Upgrade
+  ([`ec20e52`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ec20e522a98ddfec73f2402908a3eab3a10440b8))
+
+- **deps**: Upgrade
+  ([`c5fe710`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c5fe7102ed69cf196aeb4c6ed4766c0e282836a2))
+
+### Chores
+
+- **deps**: Weekly lockfile update
+  ([`cd103a2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/cd103a24f68f008a0f45b4795f593cceb9544e2d))
+
+- **deps**: Weekly lockfile update
+  ([`aad70cf`](https://github.com/teh-hippo/ha-govee-led-ble/commit/aad70cf3d3fa07f28fd1547f038eb3c2317f7deb))
+
+- **deps**: Weekly lockfile update
+  ([`f4bc167`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f4bc167809be76b651a3177203f61ac442f646b6))
+
+- **deps**: Weekly lockfile update
+  ([`e6080fd`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e6080fda212bd0a9179aaa1c4ffb51e076eab7b8))
+
+- **deps**: Weekly lockfile update
+  ([`56a3952`](https://github.com/teh-hippo/ha-govee-led-ble/commit/56a39523a76a10bc2118c94ebd9689caead6913e))
+
+### Continuous Integration
+
+- Fix automerge config for all update types
+  ([`f02ba3f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f02ba3fcd2ff4921743c730d2dc7ff07e1f30840))
+
+- Fix build_command, remove lockfile-update workflow
+  ([`06496f6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/06496f6be262d7e458197d8505a88306a4f6c285))
+
+- Migrate from Dependabot to Renovate
+  ([`ee59536`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ee59536de05c34b319a2248bc356c54020250b68))
+
+- Standardise renovate.json with forkProcessing
+  ([`3c79ee4`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3c79ee4d74ac33aeb901d037eb6c0cc8b1513fb3))
+
+- Stop cascade of lockfile/release chore commits
+  ([`5526462`](https://github.com/teh-hippo/ha-govee-led-ble/commit/55264622d5e93b5a1b7df9ccceeb1e780cf7400a))
+
+
 ## v2.1.15 (2026-03-12)
 
 ### Build System
