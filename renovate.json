@@ -3,18 +3,13 @@
   "extends": ["config:recommended"],
   "labels": ["dependencies"],
   "forkProcessing": "enabled",
+  "automerge": true,
+  "platformAutomerge": true,
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 7am on Monday"],
-    "commitMessageAction": "upgrade",
-    "automerge": true
+    "commitMessageAction": "upgrade"
   },
-  "packageRules": [
-    {
-      "matchUpdateTypes": ["minor", "patch"],
-      "automerge": true
-    }
-  ],
   "commitMessagePrefix": "build(deps):",
   "dependencyDashboard": true
 }
