@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.1.17 (2026-03-30)
+
+### Build System
+
+- **deps**: Upgrade
+  ([`75f6aac`](https://github.com/teh-hippo/ha-govee-led-ble/commit/75f6aac1e4288713d1f42bc20cc89cfd7f26241d))
+
+### Continuous Integration
+
+- Enable global automerge and fix semantic-release patch_tags
+  ([`eb16491`](https://github.com/teh-hippo/ha-govee-led-ble/commit/eb1649129607deebe7ee7a8026b949ab48d85cd1))
+
+
 ## v2.1.16 (2026-03-23)
 
 ### Bug Fixes
