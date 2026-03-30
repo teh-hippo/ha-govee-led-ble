@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.20 (2026-03-30)
+
+### Build System
+
+- **deps**: Upgrade
+  ([`cc748bc`](https://github.com/teh-hippo/ha-govee-led-ble/commit/cc748bcc2ed1875f52fc490fc792e79856b829f8))
+
+
 ## v2.1.19 (2026-03-30)
 
 ### Build System
