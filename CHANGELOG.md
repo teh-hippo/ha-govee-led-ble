@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.21 (2026-04-05)
+
+### Build System
+
+- Update Renovate config for weekly grouped updates
+  ([`83f30f5`](https://github.com/teh-hippo/ha-govee-led-ble/commit/83f30f56f8d53b2ed0ed52ba6527c12afa35404e))
+
+
 ## v2.1.20 (2026-03-30)
 
 ### Build System
