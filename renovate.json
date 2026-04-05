@@ -2,7 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "labels": ["dependencies"],
-  "forkProcessing": "enabled",
+  "timezone": "Australia/Sydney",
+  "schedule": ["before 7am on Monday"],
   "automerge": true,
   "platformAutomerge": true,
   "lockFileMaintenance": {
@@ -10,6 +11,11 @@
     "schedule": ["before 7am on Monday"],
     "commitMessageAction": "upgrade"
   },
-  "commitMessagePrefix": "build(deps):",
-  "dependencyDashboard": true
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "all non-major"
+    }
+  ],
+  "commitMessagePrefix": "build(deps):"
 }
