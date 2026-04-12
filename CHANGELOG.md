@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v2.1.24 (2026-04-12)
+
+### Build System
+
+- **deps**: Update softprops/action-gh-release action to v3
+  ([`2559451`](https://github.com/teh-hippo/ha-govee-led-ble/commit/25594515315b793aa15df2259fe782de5ff9633c))
+
+- **deps**: Upgrade
+  ([`c4397f3`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c4397f3836757db7bdf096eee53d8498a04cebe9))
+
+
 ## v2.1.23 (2026-04-05)
 
 ### Build System
