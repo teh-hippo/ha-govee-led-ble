@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.25 (2026-04-14)
+
+### Build System
+
+- **deps**: Update dependency pytest to v9.0.3 [SECURITY]
+  ([`804348f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/804348f2b41895a2feca7eb7dcb0b794a896b76e))
+
+
 ## v2.1.24 (2026-04-12)
 
 ### Build System
