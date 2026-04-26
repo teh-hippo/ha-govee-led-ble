@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v2.1.28 (2026-04-26)
+
+### Build System
+
+- **deps**: Update astral-sh/setup-uv action to v8
+  ([`c7873af`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c7873af06fbdc7c1506c1dc6257870f2e7a24224))
+
+- **deps**: Upgrade
+  ([`21f9ce1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/21f9ce10c4a969c7a38b8281ecbdef8284f42eb3))
+
+
 ## v2.1.27 (2026-04-19)
 
 ### Build System
