@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.29 (2026-05-03)
+
+### Build System
+
+- **deps**: Upgrade
+  ([`2894281`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2894281d4f076fc27e6beda45abdc9f65f8e8ac3))
+
+
 ## v2.1.28 (2026-04-26)
 
 ### Build System
