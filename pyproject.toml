@@ -52,6 +52,12 @@ check_untyped_defs = false
 warn_return_any = false
 disable_error_code = ["arg-type", "attr-defined", "no-untyped-call", "typeddict-item"]
 
+[tool.uv]
+override-dependencies = [
+    "PyJWT>=2.12.0",
+    "pytest>=9.0.3",
+]
+
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
 version_variables = ["custom_components/ha_govee_led_ble/manifest.json:version"]
