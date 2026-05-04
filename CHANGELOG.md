@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.31 (2026-05-04)
+
+### Build System
+
+- Drop redundant pytest/pytest-asyncio/coverage pins
+  ([`804bfe5`](https://github.com/teh-hippo/ha-govee-led-ble/commit/804bfe5ccde32900138ea87abc7ec1234b92c9a3))
+
+
 ## v2.1.30 (2026-05-03)
 
 ### Build System
