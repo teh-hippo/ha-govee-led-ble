@@ -12,10 +12,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "aiousbwatcher>=1.1.1",
-    "coverage>=7.10.6",
     "mypy>=1.15",
-    "pytest>=9.0.0",
-    "pytest-asyncio>=1.3.0",
     "pytest-homeassistant-custom-component>=0.13.316",
     "pyserial>=3.5",
     "ruff>=0.9",
