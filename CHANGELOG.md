@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.32 (2026-05-04)
+
+### Build System
+
+- **renovate**: Group and auto-merge major updates
+  ([`c1484e8`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c1484e84c7c6b7e288340a3e3e6b1515cc7f7dd0))
+
+
 ## v2.1.31 (2026-05-04)
 
 ### Build System
