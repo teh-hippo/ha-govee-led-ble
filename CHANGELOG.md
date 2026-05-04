@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.33 (2026-05-04)
+
+### Bug Fixes
+
+- **deps**: Force PyJWT>=2.12.0 and pytest>=9.0.3 via uv overrides
+  ([`3d0357a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3d0357a4ba16017f784e71ba3f6eff5d65a9d4c7))
+
+
 ## v2.1.32 (2026-05-04)
 
 ### Build System
