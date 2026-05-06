@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [master]
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "26 6 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -22,14 +22,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: home-assistant/actions/hassfest@master
+      - uses: home-assistant/actions/hassfest@f6f29a7ee3fa0eccadf3620a7b9ee00ab54ec03b  # master pinned 2026-05-07
 
   hacs:
     name: HACS
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: hacs/action@main
+      - uses: hacs/action@dcb30e72781db3f207d5236b861172774ab0b485  # main pinned 2026-05-07
         with:
           category: integration
           comment: false

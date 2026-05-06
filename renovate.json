@@ -36,5 +36,6 @@
       "groupName": "all major"
     }
   ],
-  "commitMessagePrefix": "build(deps):"
+  "commitMessagePrefix": "build(deps):",
+  "pinDigests": true
 }
