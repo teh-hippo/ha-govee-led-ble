@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.1.34 (2026-05-14)
+
+### Build System
+
+- **deps**: Bump urllib3 in the uv group across 1 directory
+  ([`396924e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/396924ea1dd0e9418026b1ecd777bee6759b54ec))
+
+### Continuous Integration
+
+- Stagger cron and pin floating action refs
+  ([`bf60136`](https://github.com/teh-hippo/ha-govee-led-ble/commit/bf6013630c9401eb9f05ec5b1a5998cc40bf4faf))
+
+
 ## v2.1.33 (2026-05-04)
 
 ### Bug Fixes
