@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.35 (2026-05-17)
+
+### Build System
+
+- **deps**: Pin dependencies
+  ([`74fb055`](https://github.com/teh-hippo/ha-govee-led-ble/commit/74fb05530b462acc442d54db736893ea0afbd0b7))
+
+
 ## v2.1.34 (2026-05-14)
 
 ### Build System
