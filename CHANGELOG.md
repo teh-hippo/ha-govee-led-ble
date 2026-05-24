@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.36 (2026-05-24)
+
+### Build System
+
+- **deps**: Update all non-major
+  ([`319f5dc`](https://github.com/teh-hippo/ha-govee-led-ble/commit/319f5dc910cfaa072881f74e38c6a2d5f165b5b6))
+
+
 ## v2.1.35 (2026-05-17)
 
 ### Build System
