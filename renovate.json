@@ -1,41 +1,4 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ],
-  "labels": [
-    "dependencies"
-  ],
-  "timezone": "Australia/Sydney",
-  "schedule": [
-    "before 7am on Monday"
-  ],
-  "automerge": true,
-  "platformAutomerge": true,
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": [
-      "before 7am on Monday"
-    ],
-    "commitMessageAction": "upgrade"
-  },
-  "packageRules": [
-    {
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "pin",
-        "digest"
-      ],
-      "groupName": "all non-major"
-    },
-    {
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "groupName": "all major"
-    }
-  ],
-  "commitMessagePrefix": "build(deps):",
-  "pinDigests": true
+  "extends": ["github>teh-hippo/common-repo-configs//renovate/slots/mon-0900.json5"]
 }
