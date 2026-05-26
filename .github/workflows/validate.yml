@@ -2,11 +2,9 @@ name: Validate
 
 on:
   push:
-    branches: [master, "copilot/**", "dependabot/**"]
+    branches: [master]
   pull_request:
     branches: [master]
-  schedule:
-    - cron: "26 6 * * *"
   workflow_dispatch:
 
 concurrency:
