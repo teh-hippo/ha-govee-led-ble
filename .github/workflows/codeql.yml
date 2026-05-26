@@ -3,28 +3,14 @@ name: CodeQL
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
   schedule:
-    - cron: "26 6 * * 1"
-
-permissions:
-  contents: read
-  security-events: write
+    - cron: "0 14 * * 2"
 
 jobs:
   analyze:
-    name: Analyze
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
-        with:
-          languages: python
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
-        with:
-          category: "/language:python"
+    uses: teh-hippo/common-repo-configs/.github/workflows/codeql.yml@56896768e571739c98d1054d430a0914d3138679  # main
+    permissions:
+      contents: read
+      security-events: write
+    with:
+      language: python
