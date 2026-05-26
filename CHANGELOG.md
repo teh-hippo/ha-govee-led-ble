@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v2.1.37 (2026-05-26)
+
+### Build System
+
+- **deps**: Adopt shared Renovate preset
+  ([`eb714d7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/eb714d7dbb9d69424944e8c8a62e2d24fb519c55))
+
+- **deps**: Bump idna in the uv group across 1 directory
+  ([`7027754`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7027754fbbe51cd2cb76839f511ddee457298f5b))
+
+
 ## v2.1.36 (2026-05-24)
 
 ### Build System
