@@ -64,6 +64,7 @@ version_variables = ["custom_components/ha_govee_led_ble/manifest.json:version"]
 build_command = "pip install uv && uv lock"
 commit_message = "chore(release): {version}"
 tag_format = "v{version}"
+assets = ["uv.lock"]
 
 [tool.semantic_release.commit_parser_options]
 patch_tags = ["fix", "perf", "build"]
