@@ -8,7 +8,7 @@ on:
 
 jobs:
   analyze:
-    uses: teh-hippo/common-repo-configs/.github/workflows/codeql.yml@b3d0a782aa320db32e090a312e42e8da717e29b5  # main
+    uses: teh-hippo/common-repo-configs/.github/workflows/codeql.yml@564e27e4b612eaabed5f9e0dd6294b2b92b9f5b0  # main
     permissions:
       contents: read
       security-events: write
