@@ -16,6 +16,7 @@ dev = [
     "pytest-homeassistant-custom-component>=0.13.316",
     "pyserial>=3.5",
     "ruff>=0.9",
+    "serialx[esphome]>=1.8.2",
 ]
 
 [tool.pytest.ini_options]
