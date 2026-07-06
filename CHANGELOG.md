@@ -1,6 +1,68 @@
 # CHANGELOG
 
 
+## v2.1.38 (2026-07-06)
+
+### Build System
+
+- **deps**: Pin hub reusable workflows to v2
+  ([`e093718`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e093718e8afcb4b8ed9c6f5adeb4a57fcb27b48e))
+
+### Chores
+
+- **deps**: Lock file maintenance
+  ([`bfae328`](https://github.com/teh-hippo/ha-govee-led-ble/commit/bfae3280301330e7c2d8baf7498d4878e0912e9c))
+
+- **deps**: Update actions/checkout action to v7
+  ([`cff5f92`](https://github.com/teh-hippo/ha-govee-led-ble/commit/cff5f926628a4b75bfa1c9eb14b37f9f0efa2f8c))
+
+- **deps**: Update actions/checkout digest to df4cb1c
+  ([`f7febf0`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f7febf0ced911445668e82133ced0d77696d8040))
+
+- **deps**: Update astral-sh/setup-uv action to v8.2.0
+  ([`7a86955`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7a86955f8a5de0972137ce2c01ee7ae125d4be0b))
+
+- **deps**: Update mcr.microsoft.com/devcontainers/python:3.14 docker digest to 1c3a630
+  ([`66e7158`](https://github.com/teh-hippo/ha-govee-led-ble/commit/66e71583ac1fc088cc08981c380fef3ee6b6c1e3))
+
+- **deps**: Update mcr.microsoft.com/devcontainers/python:3.14 docker digest to 66af9ee
+  ([`82c86d9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/82c86d91f9df14541604ba45b5b6705d3be31f00))
+
+- **deps**: Update python-semantic-release/python-semantic-release digest to 37a30a7
+  ([`ff07639`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ff07639b45368772c1525e822e9788a1a6072421))
+
+- **deps**: Update softprops/action-gh-release digest to 718ea10
+  ([`2158b75`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2158b75b1ef9a3623aea471665973445b92076ad))
+
+- **deps**: Update teh-hippo/common-repo-configs digest to 564e27e
+  ([`119c925`](https://github.com/teh-hippo/ha-govee-led-ble/commit/119c925aa65f278cb42f803a7425dae870478aad))
+
+- **deps**: Update teh-hippo/common-repo-configs digest to b3d0a78
+  ([`8185bd9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8185bd95516ae59d2cee4734bc940259c0c8e02e))
+
+- **renovate**: Extend base preset directly (retire weekly slot)
+  ([`4488813`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4488813874123eb6eaeadd8b9865d8f9a4354c53))
+
+### Continuous Integration
+
+- Adopt shared CodeQL workflow
+  ([`f062882`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f06288281cea7fce6c3df3be50381150ea275833))
+
+- Adopt uv sync --locked pattern
+  ([`8fa135c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8fa135c258c99b1633aa8a65fbce0e92ee75a210))
+
+- **release**: Commit uv.lock from build_command via assets
+  ([`ec1dd68`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ec1dd68a9a101d70e5f58682e672f61409c8ef1b))
+
+- **validate**: Drop daily cron and Dependabot/Copilot branch push triggers
+  ([`31a4a57`](https://github.com/teh-hippo/ha-govee-led-ble/commit/31a4a57fcf395c510f2fd013909b7c5dcbed3e78))
+
+### Testing
+
+- Add serialx[esphome] dev dependency for HA usb component
+  ([`6b1dbaf`](https://github.com/teh-hippo/ha-govee-led-ble/commit/6b1dbaf7e835eaa76f755175b660a467d6a8ac4f))
+
+
 ## v2.1.37 (2026-05-26)
 
 ### Build System
