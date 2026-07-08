@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: [Validate]
     types: [completed]
-    branches: [master]
+    branches: [master, segments]
 
 concurrency:
   group: release
@@ -21,6 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
