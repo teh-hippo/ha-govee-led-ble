@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract the most recent rx AA05 payload from HA diagnostics.
 
-This is a small helper for reverse-engineering: download HA diagnostics for a
+A small helper to inspect captured frames: download HA diagnostics for a
 device (Settings -> Devices & Services -> ... -> Download diagnostics), then run
 this script to print the latest `rx aa05...` frame captured in
 `coordinator.packet_log`.
