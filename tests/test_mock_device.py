@@ -58,17 +58,23 @@ def test_color_temp_default_readback_is_static_rgb(model):
     assert sim.color_mode == "ct"
     assert sim.color_temp_kelvin == 4000
     parsed = parse_color_reply(sim)
-    # Honest gap: kelvin is not reconstructable, so read-back is the static rgb.
-    assert parsed.rgb_color == sim.rgb_color
+    # A colour-temp state reads back as its white-point RGB (no kelvin field); the coordinator
+    # recognises the white point and keeps CT (see test_ct_readback_keeps_coordinator_kelvin).
+    assert parsed.rgb_color == sim.rgb_color == proto.kelvin_to_rgb(4000)
     assert parsed.white_brightness is None
 
 
-@pytest.mark.parametrize("model", MODELS)
-def test_color_temp_sticky_readback_preserves_kelvin(model):
-    sim = GoveeDeviceSim(model, ct_readback="sticky")
-    sim.handle_write(proto.build_color_temp(5200))
-    # Empty parse -> the coordinator keeps its optimistic kelvin.
-    assert parse_color_reply(sim) == proto.ParsedColorModeResponse(mode=proto.ParsedMode.COLOUR)
+async def test_ct_readback_keeps_coordinator_kelvin(mock_ble):
+    """A colour-temp read-back echoes the white point; the coordinator keeps CT, not RGB."""
+    sim, coord = mock_ble.sim, mock_ble.coordinator
+    sim.handle_write(proto.build_color_temp(4000))
+    coord.color_temp_kelvin, coord.rgb_color = 4000, proto.kelvin_to_rgb(4000)
+    (frame,) = sim.handle_write(proto.COLOR_MODE_QUERY)
+    coord._apply_color_mode_payload(frame[2:-1])
+    assert coord.color_temp_kelvin == 4000
+    # A genuinely different RGB read still drops CT and switches to RGB.
+    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_STATIC, 0x01, 10, 20, 30]))
+    assert coord.color_temp_kelvin is None and coord.rgb_color == (10, 20, 30)
 
 
 @pytest.mark.parametrize("model", MODELS)

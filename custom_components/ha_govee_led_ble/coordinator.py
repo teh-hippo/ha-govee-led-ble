@@ -49,6 +49,7 @@ from .protocol import (
     ParsedTimerSchedule,
     SegmentColorGroup,
     build_segment_paint,
+    kelvin_to_rgb,
     parse_color_mode_response,
     parse_fw_version,
     parse_hw_version,
@@ -349,6 +350,10 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             if (value := getattr(parsed, attr)) is not None:
                 setattr(self, attr, value)
         if parsed.rgb_color is not None:
+            # A colour-temp state reads back as its white-point RGB with no kelvin field; recognising it
+            # keeps the light in CT mode instead of clobbering kelvin and dropping to a near-white RGB.
+            if self.color_temp_kelvin is not None and parsed.rgb_color == kelvin_to_rgb(self.color_temp_kelvin):
+                return
             accept_rgb = self._accept_expected("rgb_color", parsed.rgb_color)
             accept_kelvin = self._accept_expected("color_temp_kelvin", None)
             if accept_rgb and accept_kelvin:

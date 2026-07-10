@@ -34,7 +34,6 @@ from custom_components.ha_govee_led_ble.protocol import (
 RGB = tuple[int, int, int]
 NotifyCallback = Callable[[object, bytearray], None]
 ColorMode = Literal["rgb", "ct", "white", "scene", "video", "music"]
-CtReadback = Literal["rgb", "sticky"]
 
 ALL_SEGMENTS_MASK = 0x7FFF
 STATIC_SUB = 0x01
@@ -58,10 +57,9 @@ SCHEDULE_SLOTS = 4
 class GoveeDeviceSim:
     """Model-parametrised Govee strip state machine driven by wire frames."""
 
-    def __init__(self, model: str = "H617A", *, ct_readback: CtReadback = "rgb") -> None:
+    def __init__(self, model: str = "H617A") -> None:
         self.model = model
         self.profile = get_profile(model)
-        self.ct_readback = ct_readback
         self.is_on = False
         self.brightness_pct = 100
         # Identity replies for the aa 06/aa 07 handshake (H617A live values; VAL).
@@ -147,14 +145,8 @@ class GoveeDeviceSim:
             return payload
         if self.color_mode == "white":
             return [COLOR_MODE_STATIC, WHITE_SUB, self.white_brightness]
-        if self.color_mode == "ct" and self.ct_readback == "sticky":
-            # OPEN: pending live capture. The real aa 05 reply for a colour-temp
-            # state is unconfirmed; "sticky" emits an unhandled static sub-mode so
-            # parse_color_mode_response returns empty and the coordinator keeps its
-            # optimistic kelvin rather than the sim inventing a frame.
-            return [COLOR_MODE_STATIC, 0x00]
-        # rgb, and ct with the default "rgb" read-back: OPEN — colour-temp kelvin
-        # is not reconstructable today, so fall back to the last whole-strip colour.
+        # A colour-temp state reads back as its white-point RGB with no kelvin field (live-confirmed
+        # 2026-07-10); the coordinator recognises that and keeps CT. rgb and ct both report the rgb.
         return [COLOR_MODE_STATIC, STATIC_SUB, *self.rgb_color]
 
     def _apply_command(self, frame: bytes) -> None:
