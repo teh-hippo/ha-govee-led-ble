@@ -1,0 +1,328 @@
+# Example Govee LED strip dashboard (stock Lovelace cards only).
+#
+# Paste this whole file into Settings > Dashboards > (new dashboard) > Edit >
+# three-dot menu > Raw configuration editor, then save.
+#
+# Replace every `govee_strip` entity id with your own. Find them under
+# Settings > Devices & Services > your Govee device. `light.govee_strip` is the
+# example light; the number/select/switch ids follow your light's device name.
+#
+# Model fit: Comfort, Music and Timers suit H617A and H6199. Scenes are H617A
+# only. Video and static white are H6199 only. Segment painting is not here; it
+# uses the integration's separate custom card.
+title: Govee LED strip
+views:
+  # --- Comfort: everyday control (H617A and H6199) ---
+  - title: Comfort
+    path: comfort
+    icon: mdi:lightbulb
+    cards:
+      - type: markdown
+        content: >-
+          Everyday control for H617A and H6199. Tap the light icon for the full
+          colour wheel and effect list. Saved custom effects appear in that same
+          effect list under the names you give them.
+      - type: light
+        entity: light.govee_strip
+        name: Govee strip
+      - type: tile
+        entity: light.govee_strip
+        name: Govee strip
+        features:
+          - type: light-brightness
+          - type: light-color-temp
+          - type: light-color-favorites
+      - type: tile
+        entity: sensor.govee_strip_active_mode
+        name: Active mode
+      - type: picture
+        image_entity: image.govee_strip_effect_preview
+        tap_action:
+          action: none
+        hold_action:
+          action: none
+      - type: tile
+        entity: switch.govee_strip_reduce_preview_motion
+        name: Reduce preview motion
+
+  # --- Scenes: built-in effect catalogue (H617A only) ---
+  - title: Scenes
+    path: scenes
+    icon: mdi:palette
+    cards:
+      - type: markdown
+        content: >-
+          Built-in scenes are H617A only. These buttons are a starter set; tap
+          the light on the Comfort view for all 79 scenes in the effect list.
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: button
+            name: Aurora
+            icon: mdi:weather-night
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target:
+                entity_id: light.govee_strip
+              data:
+                effect: aurora
+          - type: button
+            name: Sunset
+            icon: mdi:weather-sunset
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target:
+                entity_id: light.govee_strip
+              data:
+                effect: sunset
+          - type: button
+            name: Forest
+            icon: mdi:pine-tree
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target:
+                entity_id: light.govee_strip
+              data:
+                effect: forest
+          - type: button
+            name: Candlelight
+            icon: mdi:candle
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target:
+                entity_id: light.govee_strip
+              data:
+                effect: candlelight
+          - type: button
+            name: Fireworks
+            icon: mdi:firework
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target:
+                entity_id: light.govee_strip
+              data:
+                effect: fireworks
+          - type: button
+            name: Rainbow
+            icon: mdi:looks
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target:
+                entity_id: light.govee_strip
+              data:
+                effect: rainbow
+          - type: button
+            name: Romantic
+            icon: mdi:heart
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target:
+                entity_id: light.govee_strip
+              data:
+                effect: romantic
+          - type: button
+            name: Party
+            icon: mdi:party-popper
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target:
+                entity_id: light.govee_strip
+              data:
+                effect: party
+
+  # --- Music: reactive modes (H617A and H6199) ---
+  - title: Music
+    path: music
+    icon: mdi:music
+    cards:
+      - type: markdown
+        content: >-
+          Music reactive modes for H617A and H6199. Choose a mode with the Music
+          mode selector; set it to Off to leave music mode. Music style (Dynamic
+          or Calm) is H617A only and affects the Rhythm mode. The per-mode tuning
+          entities are disabled by default; enable them in their entity settings
+          to fine-tune a mode.
+      - type: tile
+        entity: select.govee_strip_music_mode
+        name: Music mode
+        features:
+          - type: select-options
+      - type: tile
+        entity: select.govee_strip_music_style
+        name: Music style
+        features:
+          - type: select-options
+      - type: entities
+        title: Per-mode tuning (enable to use)
+        entities:
+          - entity: number.govee_strip_music_sensitivity
+          - entity: number.govee_strip_music_separation_point
+          - entity: switch.govee_strip_music_separation_gradient
+          - entity: number.govee_strip_music_hopping_relative_brightness
+          - entity: number.govee_strip_music_piano_key_count
+          - entity: select.govee_strip_music_fountain_direction
+          - entity: number.govee_strip_music_day_and_night_segments
+          - entity: number.govee_strip_music_day_and_night_speed
+      - type: markdown
+        content: >-
+          Advanced: the `set_music_mode` service applies a mode with a one-shot
+          sensitivity and accent colour in a single call. The button below starts
+          Rhythm with a red accent (H617A).
+      - type: button
+        name: Rhythm with red accent
+        icon: mdi:invert-colors
+        tap_action:
+          action: perform-action
+          perform_action: ha_govee_led_ble.set_music_mode
+          target:
+            entity_id: light.govee_strip
+          data:
+            mode: rhythm
+            sensitivity: 80
+            calm: false
+            color: [255, 0, 0]
+
+  # --- Video: camera-sync modes (H6199 only) ---
+  - title: Video
+    path: video
+    icon: mdi:television-ambient-light
+    cards:
+      - type: markdown
+        content: >-
+          H6199 only. Pick Movie or Game below. Saturation and sound effects are
+          set through the `set_video_mode` service, shown on the buttons.
+          Colour mapping reapplies the active video mode live.
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: button
+            name: Movie (full)
+            icon: mdi:movie-open
+            tap_action:
+              action: perform-action
+              perform_action: ha_govee_led_ble.set_video_mode
+              target:
+                entity_id: light.govee_strip
+              data:
+                mode: movie
+                capture_region: full
+                saturation: 100
+          - type: button
+            name: Game (part)
+            icon: mdi:gamepad-variant
+            tap_action:
+              action: perform-action
+              perform_action: ha_govee_led_ble.set_video_mode
+              target:
+                entity_id: light.govee_strip
+              data:
+                mode: game
+                capture_region: part
+                saturation: 100
+      - type: tile
+        entity: select.govee_strip_video_color_mapping
+        name: Colour mapping
+        features:
+          - type: select-options
+      - type: entities
+        title: Video controls
+        entities:
+          - entity: number.govee_strip_video_white_balance
+      - type: markdown
+        content: >-
+          Video white balance is disabled by default; enable the
+          `number.govee_strip_video_white_balance` entity in its settings to use
+          it. Saturation and sound effects are set only through the
+          `set_video_mode` service.
+      - type: markdown
+        content: >-
+          Static white is a separate H6199 warm/cool white mode set by the
+          `set_white_brightness` service. It is distinct from Video white
+          balance above.
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: button
+            name: Warm white
+            icon: mdi:white-balance-incandescent
+            tap_action:
+              action: perform-action
+              perform_action: ha_govee_led_ble.set_white_brightness
+              target:
+                entity_id: light.govee_strip
+              data:
+                brightness: 0
+          - type: button
+            name: Neutral
+            icon: mdi:white-balance-sunny
+            tap_action:
+              action: perform-action
+              perform_action: ha_govee_led_ble.set_white_brightness
+              target:
+                entity_id: light.govee_strip
+              data:
+                brightness: 50
+          - type: button
+            name: Cool white
+            icon: mdi:snowflake
+            tap_action:
+              action: perform-action
+              perform_action: ha_govee_led_ble.set_white_brightness
+              target:
+                entity_id: light.govee_strip
+              data:
+                brightness: 100
+
+  # --- Timers: sleep and wake-up (H617A and H6199) ---
+  - title: Timers
+    path: timers
+    icon: mdi:timer-outline
+    cards:
+      - type: markdown
+        content: >-
+          Sleep and wake-up timers for H617A and H6199. These entities are
+          disabled by default; enable them in their entity settings first. The
+          sleep timer turns the strip off after its duration; the wake-up timer
+          turns it on at the set time.
+      - type: entities
+        title: Sleep timer
+        entities:
+          - entity: switch.govee_strip_sleep_timer
+          - entity: number.govee_strip_sleep_timer_duration
+      - type: entities
+        title: Wake-up timer
+        entities:
+          - entity: switch.govee_strip_wake_up_timer
+          - entity: time.govee_strip_wake_up_time
+
+  # --- Advanced: switches and custom effects (mixed model support) ---
+  - title: Advanced
+    path: advanced
+    icon: mdi:tune
+    cards:
+      - type: markdown
+        content: >-
+          Switches. Power-off memory is disabled by default; enable the switch
+          entity in its settings to use it.
+      - type: entities
+        title: Switches
+        entities:
+          - entity: switch.govee_strip_power_off_memory
+      - type: markdown
+        content: >-
+          Custom effects. Save the current look as a named effect with the
+          `ha_govee_led_ble.save_effect` service (or the bundled segment card's
+          Save button); rename or remove one with `rename_effect` or
+          `delete_effect`. Saved effects then appear in the light's effect list
+          on the Comfort view.
