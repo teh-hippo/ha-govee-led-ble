@@ -1,30 +1,75 @@
 {
   "entity": {
+    "image": {
+      "effect_preview": {
+        "default": "mdi:animation-play"
+      }
+    },
     "number": {
-      "video_saturation": {
-        "default": "mdi:palette"
-      },
-      "video_sound_effects_softness": {
-        "default": "mdi:tune-variant"
+      "video_white_balance": {
+        "default": "mdi:white-balance-sunny"
       },
       "music_sensitivity": {
         "default": "mdi:microphone"
       },
-      "white_brightness": {
-        "default": "mdi:white-balance-sunny"
+      "music_separation_point": {
+        "default": "mdi:arrow-split-vertical"
+      },
+      "music_hopping_brightness": {
+        "default": "mdi:brightness-6"
+      },
+      "music_piano_key_count": {
+        "default": "mdi:piano"
+      },
+      "music_daynight_segments": {
+        "default": "mdi:view-grid"
+      },
+      "music_daynight_speed": {
+        "default": "mdi:speedometer"
+      },
+      "sleep_timer_duration": {
+        "default": "mdi:timer-sand"
       }
     },
     "select": {
+      "music_mode": {
+        "default": "mdi:music"
+      },
+      "music_style": {
+        "default": "mdi:sine-wave"
+      },
+      "music_fountain_direction": {
+        "default": "mdi:fountain"
+      },
       "video_capture_region": {
         "default": "mdi:fit-to-screen"
       }
     },
+    "sensor": {
+      "active_mode": {
+        "default": "mdi:auto-mode"
+      }
+    },
     "switch": {
-      "video_sound_effects": {
-        "default": "mdi:music-note-eighth"
+      "effect_preview_reduce_motion": {
+        "default": "mdi:motion-pause"
       },
-      "music_calm": {
-        "default": "mdi:music-clef-treble"
+      "music_separation_gradient": {
+        "default": "mdi:gradient-vertical"
+      },
+      "poweroff_memory": {
+        "default": "mdi:memory"
+      },
+      "sleep_timer": {
+        "default": "mdi:power-sleep"
+      },
+      "wakeup_timer": {
+        "default": "mdi:weather-sunset-up"
+      }
+    },
+    "time": {
+      "wakeup_time": {
+        "default": "mdi:alarm"
       }
     }
   }

@@ -1,6 +1,7 @@
 """Light entity for HA Govee LED BLE."""
 
 # fmt: off
+import logging
 from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
 from functools import partial
@@ -21,22 +22,29 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, MUSIC_MODES
 from .coordinator import GoveeBLECoordinator
+from .entity import GoveeBLEEntity
+from .light_services import (
+    MUSIC_MODE_ALIASES,
+    _GoveeLightServicesMixin,
+)
+from .light_services import MUSIC_MODE_IDS as MUSIC_MODE_IDS
+from .light_services import apply_active_music_mode as apply_active_music_mode
+from .light_services import apply_active_video_mode as apply_active_video_mode
+from .light_services import apply_active_video_white_balance as apply_active_video_white_balance
 from .protocol import (
     build_brightness,
     build_color_rgb,
     build_color_temp,
-    build_music_mode_with_color,
     build_power,
-    build_scene,
     build_scene_multi,
-    build_video_mode,
-    build_video_white_balance,
-    build_white_brightness,
+    kelvin_to_rgb,
 )
 from .scenes import SCENES, get_scene_names
 
@@ -44,13 +52,11 @@ from .scenes import SCENES, get_scene_names
 
 PARALLEL_UPDATES = 0
 
+_LOGGER = logging.getLogger(__name__)
+
 MIN_COLOR_TEMP_KELVIN = 2000
 MAX_COLOR_TEMP_KELVIN = 9000
 
-VIDEO_EFFECT_GAME_MODE: dict[str, bool] = {"video: movie": False, "video: game": True}
-MUSIC_MODE_IDS: dict[str, int] = {"energic": 0x05, "rhythm": 0x03, "spectrum": 0x04, "rolling": 0x06}
-MUSIC_EFFECT_MODE_IDS: dict[str, int] = {f"music: {n}": i for n, i in MUSIC_MODE_IDS.items()}
-RHYTHM_MODE_ID = MUSIC_MODE_IDS["rhythm"]
 _EFFECT_QUOTE_CHARS = "\"'“”‘’"
 
 
@@ -58,63 +64,40 @@ def _normalize_effect_name(effect_name: str) -> str:
     return effect_name.strip().strip(_EFFECT_QUOTE_CHARS).strip().lower()
 
 
-# fmt: off
-async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: bool) -> None:
-    await coord.send_command(build_video_mode(full_screen=coord.video_full_screen, game_mode=game_mode,
-        saturation=coord.video_saturation, sound_effects=coord.video_sound_effects,
-        sound_effects_softness=coord.video_sound_effects_softness))
-# fmt: on
+# Old ``effect`` strings that now route through their replacement control (spec §5.3). Music
+# names map to underscored ``select.music_mode`` slugs; video stays on the EXPERIMENTAL service.
+_DEPRECATED_EFFECT_MAP: dict[str, tuple[str, str]] = {
+    **{f"music: {name}": ("music", name.replace(" ", "_")) for name in MUSIC_MODES},
+    "music: energic": ("music", "energetic"),
+    "video: movie": ("video", "movie"),
+    "video: game": ("video", "game"),
+}
 
 
-async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
-    if not coord.is_on:
-        await coord.send_command(build_power(True))
-        coord.is_on = True
-    gm = VIDEO_EFFECT_GAME_MODE.get(coord.effect or "", False)
-    await apply_video_mode_from_state(coord, game_mode=gm)
-    coord.effect = "video: game" if gm else "video: movie"
-    return True
+_DEFAULT_SEGMENT_COLOR: tuple[int, int, int] = (255, 255, 255)
 
 
-async def apply_active_video_white_balance(coord: GoveeBLECoordinator) -> bool:
-    if coord.video_white_balance is None:
-        return False
-    if not coord.is_on:
-        await coord.send_command(build_power(True))
-        coord.is_on = True
-    await coord.send_command(build_video_white_balance(coord.video_white_balance))
-    return True
-
-
-async def apply_active_music_mode(coord: GoveeBLECoordinator) -> bool:
-    mid = MUSIC_EFFECT_MODE_IDS.get(coord.effect) if coord.is_on and coord.effect else None
-    if mid is None:
-        return False
-    await coord.send_command(
-        build_music_mode_with_color(
-            mid,
-            sensitivity=coord.music_sensitivity,
-            color=coord.music_color,
-            calm=coord.music_calm if mid == RHYTHM_MODE_ID else False,
-        )
-    )
-    return True
-
-
-async def apply_active_white_mode(coord: GoveeBLECoordinator) -> bool:
-    if not coord.is_on:
-        await coord.send_command(build_power(True))
-        coord.is_on = True
-    await coord.send_command(build_white_brightness(coord.white_brightness))
-    coord.effect = None
-    return True
+def _coerce_segment_colors(raw: Any, count: int) -> list[tuple[int, int, int]] | None:
+    """Validate a restored ``segment_colors`` attribute into RGB tuples, or None if malformed."""
+    if not isinstance(raw, list) or len(raw) != count:
+        return None
+    colors: list[tuple[int, int, int]] = []
+    for item in raw:
+        if not isinstance(item, list | tuple) or len(item) != 3:
+            return None
+        try:
+            r, g, b = int(item[0]), int(item[1]), int(item[2])
+        except TypeError, ValueError:
+            return None
+        colors.append((max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))))
+    return colors
 
 
 _STATE_FIELDS = (
     "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
-    "video_white_balance "
+    "video_white_balance segment_colors "
     "video_full_screen video_sound_effects video_sound_effects_softness white_brightness music_sensitivity "
-    "music_calm music_color"
+    "music_calm music_color active_custom_id music_mode video_mode"
 ).split()
 
 
@@ -123,10 +106,11 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Govee BLE light from a config entry."""
     async_add_entities([GoveeBLELight(config_entry.runtime_data)])
     p = entity_platform.async_get_current_platform()
     _pct = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
+    _segment = vol.All(vol.Coerce(int), vol.Range(min=1, max=15))
+    _rgb = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
     # fmt: off
     p.async_register_entity_service("set_video_mode", {
         vol.Required("mode"): vol.In(["movie", "game"]),
@@ -137,21 +121,46 @@ async def async_setup_entry(
         vol.Optional("sound_effects_softness", default=0): _pct,
     }, "async_set_video_mode")
     p.async_register_entity_service("set_music_mode", {
-        vol.Required("mode"): vol.In(["energic", "rhythm", "spectrum", "rolling"]),
-        vol.Optional("sensitivity", default=100): _pct,
+        vol.Required("mode"): vol.In([*MUSIC_MODE_IDS, *MUSIC_MODE_ALIASES]),
+        vol.Optional("sensitivity", default=99): _pct,
         vol.Optional("calm"): cv.boolean,
         vol.Optional("color"): vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple)),
     }, "async_set_music_mode")
     p.async_register_entity_service("set_white_brightness", {
         vol.Optional("brightness", default=100): _pct,
     }, "async_set_white_brightness")
+    p.async_register_entity_service("paint_segments", {
+        vol.Required("groups"): [{
+            vol.Required("segments"): [_segment],
+            vol.Required("rgb_color"): _rgb,
+        }],
+    }, "async_paint_segments")
+    p.async_register_entity_service("set_segment_color", {
+        vol.Required("segments"): [_segment],
+        vol.Required("color"): _rgb,
+    }, "async_set_segment_color")
+    p.async_register_entity_service("set_segment_brightness", {
+        vol.Required("segments"): [_segment],
+        vol.Required("brightness"): _pct,
+    }, "async_set_segment_brightness")
+    p.async_register_entity_service("save_effect", {
+        vol.Required("name"): cv.string,
+        vol.Optional("content"): dict,
+        vol.Optional("capture_current", default=False): cv.boolean,
+    }, "async_save_effect")
+    p.async_register_entity_service("delete_effect", {
+        vol.Optional("id"): cv.string,
+        vol.Optional("name"): cv.string,
+    }, "async_delete_effect")
+    p.async_register_entity_service("rename_effect", {
+        vol.Optional("id"): cv.string,
+        vol.Optional("from_name"): cv.string,
+        vol.Required("to"): cv.string,
+    }, "async_rename_effect")
     # fmt: on
 
 
-class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
-    """Representation of a Govee BLE light."""
-
-    _attr_has_entity_name = True
+class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, LightEntity):
     _attr_name = None
     _attr_supported_color_modes = {ColorMode.RGB, ColorMode.COLOR_TEMP}
     _attr_supported_features = LightEntityFeature.EFFECT
@@ -163,9 +172,6 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
         self._attr_unique_id = coordinator.address.replace(":", "").lower()
         self._attr_device_info = coordinator.device_info
         self._attr_color_mode = ColorMode.RGB
-        self._attr_effect_list = (list(get_scene_names()) if coordinator.profile.scene_source == "api" else []) + list(
-            coordinator.profile.effects
-        )
 
     @contextmanager
     def _rollback(self) -> Generator[None]:
@@ -199,20 +205,79 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
     def effect(self) -> str | None:
         return self.coordinator.effect
 
+    @property
+    def effect_list(self) -> list[str]:
+        scenes = get_scene_names() if self.coordinator.profile.scene_source == "api" else []
+        return [*scenes, *self.coordinator.custom_effect_display_names()]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attrs: dict[str, Any] = {"custom_effects": self.coordinator.custom_effect_index()}
+        if self.coordinator.profile.supports_segments:
+            attrs["segment_colors"] = [list(color) for color in self.coordinator.segment_colors]
+        return attrs
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        await self._async_restore_effect()
+        await self._async_restore_segments()
+
+    async def _async_restore_effect(self) -> None:
+        coordinator = self.coordinator
+        if (
+            coordinator.effect is not None
+            or coordinator.active_custom_id is not None
+            or coordinator.music_mode != "off"
+            or coordinator.video_mode != "off"
+        ):
+            return
+        if (last_state := await self.async_get_last_state()) is None:
+            return
+        if not (restored := last_state.attributes.get(ATTR_EFFECT)):
+            return
+        key = _normalize_effect_name(str(restored))
+        if (effect := coordinator.resolve_custom(key)) is not None:
+            coordinator.active_custom_id, coordinator.effect = effect.id, effect.display_name
+        elif key in SCENES:
+            coordinator.effect = key
+
+    async def _async_restore_segments(self) -> None:
+        coordinator = self.coordinator
+        count = coordinator.profile.segment_count
+        if not count or coordinator.segment_colors != [_DEFAULT_SEGMENT_COLOR] * count:
+            return
+        if (last_state := await self.async_get_last_state()) is None:
+            return
+        restored = _coerce_segment_colors(last_state.attributes.get("segment_colors"), count)
+        if restored is None:
+            return
+        coordinator.segment_colors = restored
+        coordinator.async_set_updated_data(coordinator.data or {})
+
     async def _refresh_with_retry(
         self,
         *,
         expected_effect: str | None = None,
         expected_on: bool | None = None,
+        expected_music_mode: str | None = None,
+        expected_video_mode: str | None = None,
         retry_command: Callable[[], Awaitable[None]] | None = None,
+        required: bool = True,
     ) -> None:
         if not self.coordinator.profile.state_readable:
             return
-        if await self.coordinator.refresh_state(expected_effect=expected_effect, expected_on=expected_on):
+        confirm = partial(
+            self.coordinator.refresh_state,
+            expected_effect=expected_effect,
+            expected_on=expected_on,
+            expected_music_mode=expected_music_mode,
+            expected_video_mode=expected_video_mode,
+        )
+        if await confirm():
             return
         if retry_command is not None:
             await retry_command()
-        if not await self.coordinator.refresh_state(expected_effect=expected_effect, expected_on=expected_on):
+        if not await confirm() and required:
             raise RuntimeError(f"Failed to confirm state for {self.coordinator.model}")
 
     def _notify_state_changed(self) -> None:
@@ -230,40 +295,51 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             translation_placeholders={"service": service, "model": model},
         )
 
-    async def _apply_effect(self, effect_name: str) -> bool:
-        normalized_effect = _normalize_effect_name(effect_name)
-        gm = VIDEO_EFFECT_GAME_MODE.get(normalized_effect)
-        if gm is not None:
-
-            async def send() -> None:
-                await apply_video_mode_from_state(self.coordinator, game_mode=gm)
-
-            await send()
-            await self._refresh_with_retry(expected_effect=normalized_effect, retry_command=send)
-            return True
-        mid = MUSIC_EFFECT_MODE_IDS.get(normalized_effect)
-        if mid is not None:
-            send = partial(
-                self.coordinator.send_command,
-                build_music_mode_with_color(
-                    mid,
-                    sensitivity=self.coordinator.music_sensitivity,
-                    color=self.coordinator.music_color,
-                    calm=self.coordinator.music_calm if mid == RHYTHM_MODE_ID else False,
-                ),
-            )
-            await send()
-            await self._refresh_with_retry(expected_effect=normalized_effect, retry_command=send)
-            return True
-        scene = SCENES.get(normalized_effect)
+    async def _apply_effect(self, effect_name: str) -> None:
+        key = _normalize_effect_name(effect_name)
+        coordinator = self.coordinator
+        if (effect := coordinator.resolve_custom(key)) is not None:
+            await coordinator.async_apply_custom_effect(effect.id)
+            return
+        scene = SCENES.get(key)
         if scene is not None:
-            if scene.is_simple:
-                await self.coordinator.send_command(build_scene(scene.code))
-            else:
-                for packet in build_scene_multi(scene.param, scene.code):
-                    await self.coordinator.send_command(packet)
-            return True
-        return False
+            for packet in build_scene_multi(scene.param, scene.code, scene.scene_type):
+                await coordinator.send_command(packet)
+            coordinator.effect, coordinator.active_custom_id = key, None
+            coordinator.music_mode = coordinator.video_mode = "off"
+            return
+        if await self._deprecated_effect_shim(key):
+            return
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_effect",
+            translation_placeholders={"effect": key},
+        )
+
+    async def _deprecated_effect_shim(self, key: str) -> bool:
+        target = _DEPRECATED_EFFECT_MAP.get(key)
+        if target is None:
+            return False
+        domain, slug = target
+        entity_id = self._resolve_entity_id("select", "_music_mode") if domain == "music" else None
+        _LOGGER.warning("Effect '%s' is deprecated; use %s instead", key, entity_id or domain)
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            f"deprecated_effect_{domain}",
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="deprecated_effect",
+            translation_placeholders={"effect": key, "target": entity_id or domain},
+        )
+        if domain == "music":
+            await self.coordinator.async_select_music_slug(slug)
+        else:
+            await self.async_set_video_mode(mode=slug)
+        return True
+
+    def _resolve_entity_id(self, entity_domain: str, suffix: str) -> str | None:
+        return er.async_get(self.hass).async_get_entity_id(entity_domain, DOMAIN, f"{self._attr_unique_id}{suffix}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         power_on = partial(self.coordinator.send_command, build_power(True))
@@ -280,17 +356,18 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
                 r, g, b = kwargs[ATTR_RGB_COLOR]
                 await self.coordinator.send_command(build_color_rgb(r, g, b))
                 self.coordinator.rgb_color = (r, g, b)
+                self.coordinator.segment_colors = [(r, g, b)] * len(self.coordinator.segment_colors)
                 self._attr_color_mode, self.coordinator.color_temp_kelvin = ColorMode.RGB, None
-                self.coordinator.effect = None
+                self.coordinator._enter_static_mode()
             if ATTR_COLOR_TEMP_KELVIN in kwargs:
                 kelvin = kwargs[ATTR_COLOR_TEMP_KELVIN]
                 await self.coordinator.send_command(build_color_temp(kelvin))
                 self.coordinator.color_temp_kelvin = kelvin
-                self._attr_color_mode, self.coordinator.effect = ColorMode.COLOR_TEMP, None
+                self.coordinator.segment_colors = [kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors)
+                self._attr_color_mode = ColorMode.COLOR_TEMP
+                self.coordinator._enter_static_mode()
             if ATTR_EFFECT in kwargs:
-                normalized_effect = _normalize_effect_name(str(kwargs[ATTR_EFFECT]))
-                if await self._apply_effect(normalized_effect):
-                    self.coordinator.effect = normalized_effect
+                await self._apply_effect(str(kwargs[ATTR_EFFECT]))
         self._notify_state_changed()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -299,65 +376,4 @@ class GoveeBLELight(CoordinatorEntity[GoveeBLECoordinator], LightEntity):
             await power_off()
             self.coordinator.is_on = False
             await self._refresh_with_retry(expected_on=False, retry_command=power_off)
-        self._notify_state_changed()
-
-    # fmt: off
-    async def async_set_video_mode(self, mode: str, saturation: int = 100,
-            capture_region: str | None = None, full_screen: bool = True,
-            sound_effects: bool = False, sound_effects_softness: int = 0) -> None:
-        # fmt: on
-        self._require_support("set_video_mode", supported=self.coordinator.profile.supports_video_mode)
-        with self._rollback():
-            resolved_fs = full_screen if capture_region is None else capture_region == "full"
-            # fmt: off
-            packet = build_video_mode(full_screen=resolved_fs, game_mode=mode == "game", saturation=saturation,
-                sound_effects=sound_effects, sound_effects_softness=sound_effects_softness)
-            # fmt: on
-            async def send() -> None:
-                await self.coordinator.send_command(packet)
-
-            await self.coordinator.send_command(build_power(True))
-            self.coordinator.is_on = True
-            await send()
-            await self._refresh_with_retry(expected_effect=f"video: {mode}", retry_command=send)
-            c = self.coordinator
-            c.effect, c.video_saturation = f"video: {mode}", saturation
-            c.video_full_screen = resolved_fs
-            c.video_sound_effects, c.video_sound_effects_softness = sound_effects, sound_effects_softness
-        self._notify_state_changed()
-
-    async def async_set_music_mode(self, mode: str, sensitivity: int = 100,
-            color: tuple[int, int, int] | None = None, calm: bool | None = None) -> None:
-        self._require_support("set_music_mode", supported=self.coordinator.profile.supports_music_mode)
-        with self._rollback():
-            mode_id = MUSIC_MODE_IDS[mode]
-            resolved_calm = self.coordinator.music_calm if calm is None else calm
-            packet = build_music_mode_with_color(
-                mode_id,
-                sensitivity=sensitivity,
-                color=color,
-                calm=resolved_calm if mode_id == RHYTHM_MODE_ID else False,
-            )
-            send = partial(self.coordinator.send_command, packet)
-            await self.coordinator.send_command(build_power(True))
-            self.coordinator.is_on = True
-            await send()
-            await self._refresh_with_retry(expected_effect=f"music: {mode}", retry_command=send)
-            self.coordinator.effect = f"music: {mode}"
-            self.coordinator.music_sensitivity, self.coordinator.music_color = sensitivity, color
-            if mode_id == RHYTHM_MODE_ID:
-                self.coordinator.music_calm = resolved_calm
-        self._notify_state_changed()
-
-    async def async_set_white_brightness(self, brightness: int = 100) -> None:
-        self._require_support("set_white_brightness", supported=self.coordinator.profile.supports_white_brightness)
-        with self._rollback():
-            send = partial(self.coordinator.send_command, build_white_brightness(brightness))
-            await self.coordinator.send_command(build_power(True))
-            self.coordinator.is_on = True
-            await send()
-            await self._refresh_with_retry(expected_on=True, retry_command=send)
-            self.coordinator.effect = None
-            self.coordinator.white_brightness = brightness
-            self._attr_color_mode = ColorMode.COLOR_TEMP
         self._notify_state_changed()

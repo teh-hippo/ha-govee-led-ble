@@ -1,0 +1,16 @@
+{
+  "name": "govee-led-ble-card",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lovelace custom card for the ha_govee_led_ble integration (segment painter). Bundles vendored lit; HA runtime stays dependency-free.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && bun build src/govee-led-ble-card.ts --outfile dist/govee-led-ble-card.js --minify --format esm --target browser"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  }
+}

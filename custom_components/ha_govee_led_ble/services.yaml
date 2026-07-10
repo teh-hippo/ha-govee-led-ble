@@ -10,11 +10,48 @@ set_video_mode:
 set_music_mode:
   target: {entity: {integration: ha_govee_led_ble}}
   fields:
-    mode: {required: true, example: "energic", selector: {select: {options: ["energic", "rhythm", "spectrum", "rolling"]}}}
-    sensitivity: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+    mode: {required: true, example: "energetic", selector: {select: {options: ["energetic", "rhythm", "spectrum", "rolling", "separation", "hopping", "piano keys", "fountain", "day and night", "bloom", "shiny", "energic"]}}}
+    sensitivity: {default: 99, selector: {number: {min: 0, max: 99, step: 1, unit_of_measurement: "%"}}}
     calm: {required: false, selector: {boolean:}}
     color: {required: false, selector: {color_rgb:}}
 set_white_brightness:
   target: {entity: {integration: ha_govee_led_ble}}
   fields:
     brightness: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+paint_segments:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    groups:
+      required: true
+      example: '[{"segments": [1, 2, 3], "rgb_color": [255, 0, 0]}, {"segments": [4, 5, 6], "rgb_color": [0, 0, 255]}]'
+      selector: {object:}
+set_segment_color:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    segments: {required: true, selector: {select: {multiple: true, options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]}}}
+    color: {required: true, selector: {color_rgb:}}
+set_segment_brightness:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    segments: {required: true, selector: {select: {multiple: true, options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]}}}
+    brightness: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+save_effect:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    name: {required: true, example: "Sunset", selector: {text:}}
+    content:
+      required: false
+      example: '{"kind": "vibrant", "stops": [[255, 120, 0], [0, 0, 255]]}'
+      selector: {object:}
+    capture_current: {default: false, selector: {boolean:}}
+delete_effect:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    id: {required: false, example: "a1b2c3d4", selector: {text:}}
+    name: {required: false, example: "Sunset", selector: {text:}}
+rename_effect:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    id: {required: false, example: "a1b2c3d4", selector: {text:}}
+    from_name: {required: false, example: "Sunset", selector: {text:}}
+    to: {required: true, example: "Dawn", selector: {text:}}
