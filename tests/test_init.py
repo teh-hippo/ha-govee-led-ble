@@ -4,7 +4,12 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_govee_led_ble import _async_cleanup_legacy_entities, async_setup_entry, async_unload_entry
+from custom_components.ha_govee_led_ble import (
+    _async_cleanup_legacy_entities,
+    async_setup,
+    async_setup_entry,
+    async_unload_entry,
+)
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
 
 
@@ -42,16 +47,39 @@ async def test_cleanup_legacy_entities(hass: HomeAssistant):
     registry = MagicMock()
     stale = MagicMock(unique_id="112233445566_video_brightness", entity_id="number.govee_video_brightness")
     stale2 = MagicMock(unique_id="112233445566_white_brightness", entity_id="number.govee_white_brightness")
-    keep = MagicMock(unique_id="112233445566_video_saturation", entity_id="number.govee_video_saturation")
+    stale3 = MagicMock(unique_id="112233445566_video_saturation", entity_id="number.govee_video_saturation")
+    stale4 = MagicMock(unique_id="112233445566_music_calm", entity_id="switch.govee_music_calm")
+    keep = MagicMock(unique_id="112233445566_music_sensitivity", entity_id="number.govee_music_sensitivity")
     with (
         patch("custom_components.ha_govee_led_ble.er.async_get", return_value=registry),
         patch(
             "custom_components.ha_govee_led_ble.er.async_entries_for_config_entry",
-            return_value=[stale, stale2, keep],
+            return_value=[stale, stale2, stale3, stale4, keep],
         ),
     ):
         await _async_cleanup_legacy_entities(hass, entry)
     registry.async_remove.assert_has_calls(
-        [call("number.govee_video_brightness"), call("number.govee_white_brightness")]
+        [
+            call("number.govee_video_brightness"),
+            call("number.govee_white_brightness"),
+            call("number.govee_video_saturation"),
+            call("switch.govee_music_calm"),
+        ]
     )
-    assert registry.async_remove.call_count == 2
+    assert registry.async_remove.call_count == 4
+
+
+async def test_async_setup_registers_card():
+    hass = MagicMock()
+    hass.data = {}
+    hass.http.async_register_static_paths = AsyncMock()
+    with (
+        patch("custom_components.ha_govee_led_ble.async_get_integration", new_callable=AsyncMock) as gi,
+        patch("custom_components.ha_govee_led_ble.frontend.add_extra_js_url") as addjs,
+    ):
+        gi.return_value.version = "9.9.9"
+        assert await async_setup(hass, {}) is True
+        hass.http.async_register_static_paths.assert_awaited_once()
+        addjs.assert_called_once()
+        assert await async_setup(hass, {}) is True
+        hass.http.async_register_static_paths.assert_awaited_once()

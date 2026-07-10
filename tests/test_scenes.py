@@ -23,3 +23,9 @@ def test_scene_type(name, simple):
 
 def test_known_codes():
     assert SCENES["forest"].code == 2163 and SCENES["rainbow"].code == 22
+
+
+def test_scene_type_prefix():
+    assert SCENES["halloween"].scene_type == 1 and SCENES["sweet"].scene_type == 1
+    assert SCENES["forest"].scene_type == 2
+    assert SCENES["sunrise"].scene_type == 0
