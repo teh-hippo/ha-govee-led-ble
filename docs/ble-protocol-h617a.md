@@ -522,7 +522,9 @@ The full, current worklist of what remains to verify or discover is in
 3. **Segment mask**: whole-strip white brightness uses the all-segments mask `0x7FFF`; the builders
    no longer emit `0x0000`.
 4. **Colour temperature**: the Kelvin frame drives true white across 2000-9000K (five-point sweep,
-   essentially linear); confirmed live and shipped in `build_color_temp`.
+   essentially linear); confirmed live and shipped in `build_color_temp`. The `aa 05` read-back of a
+   CT state returns the white-point RGB with no Kelvin field, so the coordinator recognises that white
+   point and keeps colour-temp mode instead of dropping to a near-white RGB (confirmed 2026-07-10).
 
 Still open:
 

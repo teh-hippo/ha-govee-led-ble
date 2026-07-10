@@ -15,6 +15,19 @@ Priority order below is roughly the order to work through them.
 > closed with the new guided **live validation harness** `tools/ble/validate_protocol.py` (prompts
 > one action at a time, watches the sniff, and diffs the app's frame against our `protocol.py`).
 
+> **Update 2026-07-10 (live app-sniff capture) — remaining items CLOSED.** The daytime capture
+> session closed the outstanding device-behaviour items:
+> - Item 1: music classic-band codes are **{Energetic 5, Rhythm 3, Spectrum 4, Rolling 6}**; `byte[5]`
+>   is style (Rhythm dynamic 0 / calm 1) and `byte[6]` is colour count (0 = auto). Encoder confirmed.
+> - Items 2/6: timer `repeat` weekday order is **Mon=bit0 … Sun=bit6** (Mon-only `0x81`, Sun-only `0xC0`).
+> - Item 3: **moot** — the integration uses mask `0x7FFF` everywhere, so no builder emits `0x0000`.
+> - Item 4: colour-temp reads back as its white-point RGB with **no kelvin field**; the coordinator now
+>   recognises that and keeps CT mode instead of dropping to RGB (fixed).
+> - Per-segment read-back frame decoded: **`aa a5 <group 1-5> + 3×[bri,R,G,B]`**, 15 segments.
+> - H6199 encoders validated (see `ble-protocol-h6199.md`); power-off memory is not an H617A feature
+>   (its app has no such setting).
+> Remaining work is the DIY authoring UI and wider multi-SKU capture, not protocol gaps.
+
 ## 1. Music mode, per-mode parameters (mostly CLOSED; classic-band codes need live confirm)
 
 Fully mapped by live capture. See `ble-protocol-h617a.md` "Music mode layout" for the

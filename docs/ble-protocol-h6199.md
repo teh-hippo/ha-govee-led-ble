@@ -1,10 +1,9 @@
 # Govee H6199 "DreamView T1" BLE protocol and integration audit
 
-Expected H6199 protocol determined by protocol analysis of the app's BLE traffic, and the concrete
-discrepancies against our integration. **We hold no dedicated H6199 captures** (all our captures are
-H617A) and must **never direct-drive the H6199** (device policy) — so H6199 fixes are confirmed by
-*passively sniffing the app* controlling the TV (compare-mode of `tools/ble/validate_protocol.py`),
-not by driving it. The frame layouts below are pending live confirmation on the wire.
+H6199 protocol, **confirmed by passively sniffing the Govee app** driving the TV (live app-sniff
+2026-07-10; we never direct-drive the H6199, per device policy). The capture **validated the
+integration's H6199 encoders on the wire**: the pre-capture "discrepancies" below were mostly wrong
+hypotheses and are now marked resolved. Frame layouts are confirmed unless noted otherwise.
 
 ## Module and framing
 
@@ -12,58 +11,52 @@ H6199 = goodsType **24** (TV-backlight SKU); 15 segments; sibling SKU H6198.
 Frame `[proType][commandType][ext…][XOR@19]`; proType `0x33`
 write / `0xAA` read; multi-function commandType `0x05`. Sub-mode byte:
 `00`=Video, `04`=Scenes, `0a`=DIY, `0b`=Colour(old), `0c`=Music(old), `13`=MusicV2, `15`=ColourV2.
-Old vs new encoders are **firmware-generation gated**.
+Old vs new encoders are firmware-generation gated; the captured device (fw 1.10.04) is **V2**
+(all frames were `00`/`13`/`15`/`a9`), so V2 is the correct baseline.
 
-## Expected frame layouts
+## Frame layouts (confirmed on the wire 2026-07-10)
 
-The frames the app emits on the wire for each feature (observable by passively sniffing the app):
-
-| Feature | App frame | Notes |
+| Feature | Frame | Notes |
 |---|---|---|
-| Video mode | `33 05 00 <region> <dynamic> <sat> <sound> <voice> <bri>` (fixed 7-byte body) | fixed 7-byte body including brightness at `byte[8]` |
+| Video mode | `33 05 00 <region> <sub-mode> <sat>` | region **1=full / 0=part**; sub-mode movie(0)/game(1); brightness is NOT in this frame |
 | Colour | `33 05 15 01 <R G B> <Khi Klo> <wR wG wB> <mL mH>` | V2 colour frame |
-| Colour temp | `33 05 15 01 FF FF FF <Khi Klo> <wR wG wB> FF 7F` (Kelvin big-endian at `[7:9]`) | Kelvin big-endian at `[7:9]` |
+| Colour temp | `33 05 15 01 FF FF FF <Khi Klo> <wR wG wB> FF 7F` | Kelvin big-endian at `[7:9]`; reads back as the white-point RGB (no kelvin) |
+| Brightness | `33 04 <pct>` | whole-strip brightness is its own command, not a video-frame byte |
 | Segment brightness | `33 05 15 02 <bri> <mL mH>` (all = `FF 7F`) | mask `FF 7F` = all segments |
-| Music V2 | `33 05 13 <mode> <sens> <subvariant> <!auto> <R G B>` | V2 music frame |
-| Scenes | `33 05 04 <lo hi>` (2-byte LE) | 2-byte little-endian scene id |
-| White balance | `33 A9 05 03 <v1 v2 v3>` (basic) / `33 A9 05 04 <v1..v4>` (advanced) | basic vs advanced calibration |
+| Music V2 | `33 05 13 <mode> <sens> <style> <count> <R G B>` | style at `byte[5]`, colour count/auto at `byte[6]` |
+| Scenes | `33 05 04 <lo hi>` (2-byte LE) | the H6199 does expose scenes on the wire |
+| White balance | `33 A9 00 03 01 <v2 v3>` | selector `00 03`; the app does **not** use `A9 05 03` |
 
-Video field meanings: `region` **0=full / 1=part**; `dynamic` =
-power vs soft (*not* game/movie); `sat` default 50; `sound` on/off; `voice`
-default 50; `bri` = whole-strip brightness (firmware-gated). Music mode
-codes: 3=Rhythm, 5=Energic, 6=Rolling, else Spectrum; `byte[5]` is
-a mode-specific sub-variant (default 1), not a global "calm". Additional TV commands exist that
-we do not implement: light direction `0x30`, camera position `0x31`, camera check `0x32`, and an
-`0xA9` family (saturation, sensitivity, HDR, auto-WB, AI filter, black-screen/border).
+Video field meanings: `region` **1=full / 0=part**; `sub-mode` = movie(0)/game(1) (the app's
+DreamView video modes); `sat` default. Whole-strip brightness is a separate `33 04` write, not a
+video-frame byte. Music mode codes: 3=Rhythm, 5=Energic, 6=Rolling, 4=Spectrum; `byte[5]` is the
+style (for Rhythm: dynamic 0 / calm 1) and `byte[6]` is the colour count (0 = auto-colour). Additional
+TV commands exist that we do not implement: light direction `0x30`, camera position `0x31`, camera
+check `0x32`, and an `0xA9` family (saturation, sensitivity, HDR, auto-WB, AI filter,
+black-screen/border).
 
-## Discrepancies vs our integration (prioritised)
+## Integration audit vs the 2026-07-10 capture
 
-| Sev | Our code | We send | App sends | Action |
-|---|---|---|---|---|
-| HIGH | `protocol.py` `build_video_mode` (region) | full → `byte[3]=1` | full → `0` | **Verify live**, then invert polarity + parse |
-| HIGH | `build_video_mode` (body) | 4/6-byte body, `byte[8]` omitted → bri 0 | fixed 7-byte incl. `byte[8]` brightness | **Verify live**, then emit full body (bri default 50) |
-| HIGH | `build_white_brightness` | `15 02 <pct>` (mask `00 00` = no-op) | `15 02 <pct> FF 7F` | **Safe fix**: append `FF 7F` |
-| HIGH | `build_video_white_balance` | `A9 00 03 01 <r b>` (cites an iOS capture) | `A9 05 03 <v1 v2 v3>` | **Conflict — re-capture live** before changing |
-| MED | `light.py` video "game/movie" | `byte[4]` = game/movie | `byte[4]` = power/soft dynamic | Relabel after live confirm |
-| MED | `const.py` H6199 profile | no scenes/DIY exposed | scenes `04 lo hi`, DIY `0a` | Add scene source or document omission |
-| MED | `build_music_mode_with_color` | `byte[5]` = calm(0/1) | `byte[5]` = sub-variant (default 1) | Relabel; default 1; stop gating on rhythm |
-| MED | `protocol.py` (encoders) | V2 encoders only | older firmware uses old `0x0c` colour/music encoders | Detect older firmware or document V2+ baseline |
-| LOW | video defaults | sat 100 / voice 0 | sat 50 / voice 50 | Align or document |
+The pre-capture audit predicted several HIGH-severity discrepancies. The live capture **disproved
+them**: the integration's encoders match the app. Do **not** "fix" these against an older hypothesis.
 
-**Resolved (encoder now matches the app's on-wire frames; H6199 still needs a live confirm):**
-`build_color_temp` sends the Kelvin field `byte[7:9]` (shared with H617A); music sensitivity clamps
-0-99 (MIN 0 / MAX 99, shared across models); `build_scene` emits a fixed 2-byte LE id.
+| Prior claim (pre-capture) | Capture result | Status |
+|---|---|---|
+| `build_video_mode` region polarity inverted (full should be `0`) | app sends full=`1`, part=`0` — same as our code | RESOLVED: our code correct |
+| `build_video_mode` must emit a 7-byte body incl. `byte[8]` brightness | video frame carries no brightness; brightness is a separate `33 04` write | RESOLVED: our code correct |
+| `build_video_white_balance` should be `A9 05 03` (conflict) | app sends `A9 00 03 01 <v2 v3>` — matches our `A9 00 03` | RESOLVED: our code correct |
+| `build_music_mode_with_color` `byte[5]` mislabelled | `byte[5]` = style, `byte[6]` = colour count/auto — matches our encoder | RESOLVED: our code correct |
+| H6199 exposes no scenes | scenes `33 05 04 <lo hi>` seen on the wire | scenes exist (effect surface can add them later) |
+| Older firmware uses `0x0c` colour/music | captured device is V2 (`0x13`/`0x15`) | V2 baseline confirmed for fw 1.10.04 |
 
-**Verified correct:** `build_color_rgb`, `build_power`, `build_brightness`, music mode IDs
-(energic 5 / rhythm 3 / rolling 6), white-balance command type `0xA9`, `!autoColor` marker `0x01`,
-sub-mode constants.
+**Verified correct (unchanged):** `build_color_rgb`, `build_power`, `build_brightness`,
+`build_color_temp` (shared Kelvin field), `build_scene` (2-byte LE id), music mode IDs
+(energic 5 / rhythm 3 / rolling 6 / spectrum 4), white-balance command type `0xA9`, `!autoColor`
+marker `0x01`, sub-mode constants. The H6199 answers `aa 01/04/05` reads (confirmed 2026-07-10).
 
-## Needs live H6199 capture to confirm (passive app-sniff only)
+## Remaining (low priority, not blocking)
 
-- White-balance payload: our `A9 00 03 01 r b` vs app `A9 05 03 v1 v2 v3` — confirm sub-selector,
-  value count and order before changing (this is a genuine conflict, not a clear bug).
-- Video: `byte[8]` brightness honoured? region polarity? `byte[4]` power/soft?
-- Segment mask: `15 02 pct 00 00` truly a no-op vs `… FF 7F` = all segments (also H617A open-q #3).
-- Music `byte[5]` sub-variant effect; Spectrum code `0x04`.
-- Device firmware generation (old vs new) → decides `0x13` vs `0x0c` music, V2 vs old colour.
-- Whether H6199 answers `aa 01/04/05` reads or only `0xA9` video-extended reads.
+- `byte[4]` movie/game is exposed as the two DreamView sub-modes; a final on-TV visual confirm of the
+  game sub-mode is a nice-to-have, not a blocker (both values engage video and were seen on the wire).
+- Older (pre-V2) H6199 firmware `0x0c` colour/music encoders remain unimplemented (out of scope; the
+  supported devices are V2).

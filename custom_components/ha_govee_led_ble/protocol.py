@@ -321,8 +321,7 @@ def build_video_mode(
     sound_effects: bool = False,
     sound_effects_softness: int = 0,
 ) -> bytes:
-    # EXPERIMENTAL: harness=TBD encoding=decode-only
-    # H6199 video frame (docs/ble-protocol-h6199.md); region polarity + body length unreconciled, no capture.
+    # H6199 video frame (docs/ble-protocol-h6199.md); region 1=full/0=part, validated app-sniff 2026-07-10.
     params = [COLOR_MODE_VIDEO, int(full_screen), int(game_mode), _clamp(saturation, 0, 100)]
     if sound_effects:
         params.extend([0x01, _clamp(sound_effects_softness, 0, 100)])
@@ -336,8 +335,7 @@ def build_video_white_balance(balance: int) -> bytes:
     - 0%  -> 33a9000301070a...95
     - 100%-> 33a90003011505...88
     """
-    # EXPERIMENTAL: harness=TBD encoding=capture-pending
-    # H6199 33 a9: this 00 03 prefix conflicts with an alternative 05 03 mapping (docs/ble-protocol-h6199.md).
+    # H6199 33 a9 00 03 01; selector 00 03 validated app-sniff 2026-07-10.
     pct = _clamp(balance, 0, 100) / 100.0
     # Observed endpoints (red, blue) at extremes.
     red_min, blue_min = 0x07, 0x0A
@@ -741,8 +739,8 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_music_params_a3": Evidence(
         "EXPERIMENTAL", "VAL a3 music body §2.3 (H617A 217-234); capture-pinned, volatile bytes replayed"
     ),
-    "build_video_mode": Evidence("EXPERIMENTAL", "H6199 video 33 05 00; polarity/body unreconciled, no capture"),
-    "build_video_white_balance": Evidence("EXPERIMENTAL", "H6199 33 a9; 00 03 vs alternative 05 03, capture-pending"),
+    "build_video_mode": Evidence("VALIDATED", "H6199 video 33 05 00 <region><sub><sat>; app-sniff 2026-07-10"),
+    "build_video_white_balance": Evidence("VALIDATED", "H6199 33 a9 00 03 01; selector 00 03 app-sniff 2026-07-10"),
     "build_timer_schedule": Evidence("EXPERIMENTAL", "H617A §4 timer 33 23; write live, ships gated Tier-2"),
     "build_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 sleep 33 11; reply captured (OBSERVE)"),
     "build_timer_wakeup": Evidence("EXPERIMENTAL", "H617A §4 wake-up 33 12; reply captured (OBSERVE)"),
