@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Extract likely Govee BLE frames from a btsnoop HCI log.
 
-This is intended for reverse-engineering: capture a phone's btsnoop log while
-changing one control in the Govee app, then diff the extracted frames.
+Capture a phone's btsnoop log while changing one control in the Govee app,
+then diff the extracted frames to identify the matching BLE frame.
 
 We look for ATT writes/notifications that contain a 20-byte Govee frame:
   - byte[0] in {0x33, 0xAA, 0xA3}

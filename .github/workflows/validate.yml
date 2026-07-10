@@ -2,7 +2,7 @@ name: Validate
 
 on:
   push:
-    branches: [master]
+    branches: [master, segments]
   pull_request:
     branches: [master]
   workflow_dispatch:
