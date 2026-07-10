@@ -22,8 +22,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -64,15 +62,10 @@ def _normalize_effect_name(effect_name: str) -> str:
     return effect_name.strip().strip(_EFFECT_QUOTE_CHARS).strip().lower()
 
 
-# First-class video effects on the light effect list (H6199): display label -> video mode slug.
+# First-class mode effects on the light effect list: display label -> mode slug. The light's effect
+# list is the single mode selector (scene/custom/music/video); there is no parallel mode Select.
 _VIDEO_EFFECTS: dict[str, str] = {"Video: Movie": "movie", "Video: Game": "game"}
-
-# Deprecated music ``effect`` strings that route to the music_mode select (spec §5.3). Music names
-# map to underscored slugs; video is now a first-class effect (see ``_VIDEO_EFFECTS``).
-_DEPRECATED_EFFECT_MAP: dict[str, str] = {
-    **{f"music: {name}": name.replace(" ", "_") for name in MUSIC_MODES},
-    "music: energic": "energetic",
-}
+_MUSIC_EFFECTS: dict[str, str] = {f"Music: {name.title()}": name.replace(" ", "_") for name in MUSIC_MODES}
 
 
 _DEFAULT_SEGMENT_COLOR: tuple[int, int, int] = (255, 255, 255)
@@ -207,13 +200,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         for label, mode in _VIDEO_EFFECTS.items():
             if mode == self.coordinator.video_mode:
                 return label
+        for label, slug in _MUSIC_EFFECTS.items():
+            if slug == self.coordinator.music_mode:
+                return label
         return self.coordinator.effect
 
     @property
     def effect_list(self) -> list[str]:
-        scenes = get_scene_names() if self.coordinator.profile.scene_source == "api" else []
-        video = list(_VIDEO_EFFECTS) if self.coordinator.profile.supports_video_mode else []
-        return [*scenes, *self.coordinator.custom_effect_display_names(), *video]
+        p = self.coordinator.profile
+        scenes = get_scene_names() if p.scene_source == "api" else []
+        music = list(_MUSIC_EFFECTS) if p.supports_music_mode else []
+        video = list(_VIDEO_EFFECTS) if p.supports_video_mode else []
+        return [*scenes, *self.coordinator.custom_effect_display_names(), *music, *video]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -313,39 +311,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             coordinator.effect, coordinator.active_custom_id = key, None
             coordinator.music_mode = coordinator.video_mode = "off"
             return
-        if self.coordinator.profile.supports_video_mode:
+        if coordinator.profile.supports_video_mode:
             mode = next((m for label, m in _VIDEO_EFFECTS.items() if _normalize_effect_name(label) == key), None)
             if mode is not None:
                 await self.async_set_video_mode(mode=mode)
                 return
-        if await self._deprecated_effect_shim(key):
-            return
+        if coordinator.profile.supports_music_mode:
+            slug = next((s for label, s in _MUSIC_EFFECTS.items() if _normalize_effect_name(label) == key), None)
+            if slug is not None:
+                await coordinator.async_select_music_slug(slug)
+                return
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="unknown_effect",
             translation_placeholders={"effect": key},
         )
-
-    async def _deprecated_effect_shim(self, key: str) -> bool:
-        slug = _DEPRECATED_EFFECT_MAP.get(key)
-        if slug is None:
-            return False
-        entity_id = self._resolve_entity_id("select", "_music_mode")
-        _LOGGER.warning("Effect '%s' is deprecated; use %s instead", key, entity_id or "music")
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            "deprecated_effect_music",
-            is_fixable=False,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key="deprecated_effect",
-            translation_placeholders={"effect": key, "target": entity_id or "music"},
-        )
-        await self.coordinator.async_select_music_slug(slug)
-        return True
-
-    def _resolve_entity_id(self, entity_domain: str, suffix: str) -> str | None:
-        return er.async_get(self.hass).async_get_entity_id(entity_domain, DOMAIN, f"{self._attr_unique_id}{suffix}")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         power_on = partial(self.coordinator.send_command, build_power(True))

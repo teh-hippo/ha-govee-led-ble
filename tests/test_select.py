@@ -5,7 +5,6 @@ from bleak import BleakError
 from homeassistant.const import EntityCategory
 
 from custom_components.ha_govee_led_ble.coordinator_modes import MUSIC_PARAM_SPECS as _MPS
-from custom_components.ha_govee_led_ble.h6199_controls import GoveeMusicModeSelect as M
 from custom_components.ha_govee_led_ble.h6199_controls import GoveeMusicStyleSelect as MusicStyle
 from custom_components.ha_govee_led_ble.h6199_controls import H6199VideoCaptureSelect as E
 from custom_components.ha_govee_led_ble.h6199_controls import (
@@ -44,37 +43,16 @@ async def test_setup_select_entry_h617a(mock_coordinator):
     add = MagicMock()
     await async_setup_select_entry(MagicMock(), MagicMock(runtime_data=mock_coordinator), add)
     entities = add.call_args.args[0]
-    assert [type(e) for e in entities] == [M, MusicStyle, MusicParamSelect]
-    assert entities[1]._key == "music_style"
-    assert entities[2]._key == "music_fountain_direction"
+    assert [type(e) for e in entities] == [MusicStyle, MusicParamSelect]
+    assert entities[0]._key == "music_style"
+    assert entities[1]._key == "music_fountain_direction"
 
 
 async def test_setup_select_entry_h6199(mock_h6199_coordinator):
     add = MagicMock()
     await async_setup_select_entry(MagicMock(), MagicMock(runtime_data=mock_h6199_coordinator), add)
     entities = add.call_args.args[0]
-    assert [type(e) for e in entities] == [M, E]
-
-
-def test_music_mode_options_and_current(mock_h6199_coordinator):
-    select = M(mock_h6199_coordinator)
-    assert select.options[0] == "off" and "piano_keys" in select.options and "rhythm" in select.options
-    assert select._attr_unique_id == "112233445566_music_mode"
-    assert select.current_option == "off"
-    mock_h6199_coordinator.music_mode = "rhythm"
-    assert select.current_option == "rhythm"
-
-
-async def test_music_mode_select_routes_to_slug(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    await M(c).async_select_option("rhythm")
-    c.async_select_music_slug.assert_awaited_once_with("rhythm")
-
-
-async def test_music_mode_select_off_restores(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    await M(c).async_select_option("off")
-    c.async_select_music_slug.assert_awaited_once_with("off")
+    assert [type(e) for e in entities] == [E]
 
 
 def test_music_style_options_and_current(mock_coordinator):

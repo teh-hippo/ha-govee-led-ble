@@ -40,7 +40,7 @@ def test_basic_and_color_props(light, mock_coordinator):
     assert light.unique_id == "aabbccddeeff" and light.is_on is False
     mock_coordinator.brightness_pct = 50
     assert light.brightness == 128
-    assert light.effect_list == sorted(SCENES.keys())
+    assert light.effect_list[: len(SCENES)] == sorted(SCENES.keys())
     mock_coordinator.effect = "rainbow"
     assert light.effect == "rainbow"
     mock_coordinator.effect = None
@@ -117,11 +117,15 @@ async def test_power_rollback(light, mock_coordinator):
 
 def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinator):
     mock_coordinator.custom_effect_display_names.return_value = ["My Custom"]
-    assert light.effect_list == sorted(SCENES.keys()) + ["My Custom"]
-    assert "music: energetic" not in light.effect_list and "Video: Movie" not in light.effect_list
-    # H6199 ships no scene catalogue (scene_source "none"): customs + first-class video effects.
+    el = light.effect_list
+    # H617A: scenes + customs + first-class music effects (no video).
+    assert el[: len(SCENES) + 1] == sorted(SCENES.keys()) + ["My Custom"]
+    assert "Music: Energetic" in el and "Music: Piano Keys" in el
+    assert "Video: Movie" not in el and "music: energetic" not in el
+    # H6199: no scene catalogue (scene_source "none"): customs + music + video effects.
     mock_h6199_coordinator.custom_effect_display_names.return_value = ["Solo"]
-    assert h6199_light.effect_list == ["Solo", "Video: Movie", "Video: Game"]
+    h = h6199_light.effect_list
+    assert h[0] == "Solo" and "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
 
 
 async def test_turn_on_custom_effect_applies(light, mock_coordinator):
@@ -151,50 +155,24 @@ async def test_turn_on_unknown_effect_raises(light, mock_coordinator):
         await light.async_turn_on(effect="does not exist")
 
 
-@pytest.mark.parametrize("effect,slug", [("music: rhythm", "rhythm"), ("music: piano keys", "piano_keys")])
-async def test_turn_on_music_effect_routes_through_shim(light, mock_coordinator, caplog, effect, slug):
+@pytest.mark.parametrize(
+    "effect,slug", [("Music: Rhythm", "rhythm"), ("Music: Piano Keys", "piano_keys"), ("music: rhythm", "rhythm")]
+)
+async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effect, slug):
     co = mock_coordinator
     co.is_on = True
-    light.hass = MagicMock()
-    registry = MagicMock()
-    registry.async_get_entity_id.return_value = None
-    with (
-        patch("custom_components.ha_govee_led_ble.light.er.async_get", return_value=registry),
-        patch("custom_components.ha_govee_led_ble.light.ir.async_create_issue") as create_issue,
-        caplog.at_level(logging.WARNING, logger="custom_components.ha_govee_led_ble.light"),
-    ):
-        await light.async_turn_on(effect=effect)
+    await light.async_turn_on(effect=effect)
     co.async_select_music_slug.assert_awaited_once_with(slug)
-    assert create_issue.call_args.args[2] == "deprecated_effect_music"
-    assert create_issue.call_args.kwargs["translation_placeholders"] == {"effect": effect, "target": "music"}
-    assert any("deprecated" in r.getMessage() for r in caplog.records if r.levelno == logging.WARNING)
-
-
-async def test_turn_on_music_shim_names_registered_entity(light, mock_coordinator):
-    co = mock_coordinator
-    co.is_on = True
-    light.hass = MagicMock()
-    registry = MagicMock()
-    registry.async_get_entity_id.return_value = "select.govee_music_mode"
-    with (
-        patch("custom_components.ha_govee_led_ble.light.er.async_get", return_value=registry),
-        patch("custom_components.ha_govee_led_ble.light.ir.async_create_issue") as create_issue,
-    ):
-        await light.async_turn_on(effect="music: rhythm")
-    registry.async_get_entity_id.assert_called_once_with("select", "ha_govee_led_ble", "aabbccddeeff_music_mode")
-    assert create_issue.call_args.kwargs["translation_placeholders"]["target"] == "select.govee_music_mode"
 
 
 @pytest.mark.parametrize("effect,mode", [("Video: Movie", "movie"), ("Video: Game", "game"), ("video: game", "game")])
 async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coordinator, effect, mode):
     co = mock_h6199_coordinator
     co.is_on = True
-    with patch("custom_components.ha_govee_led_ble.light.ir.async_create_issue") as create_issue:
-        await h6199_light.async_turn_on(effect=effect)
+    await h6199_light.async_turn_on(effect=effect)
     sent = [call.args[0] for call in co.send_command.call_args_list]
     assert proto.build_video_mode(full_screen=True, game_mode=mode == "game") in sent
     assert co.video_mode == mode and co.effect is None
-    create_issue.assert_not_called()
 
 
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):

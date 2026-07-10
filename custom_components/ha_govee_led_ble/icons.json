@@ -32,9 +32,6 @@
       }
     },
     "select": {
-      "music_mode": {
-        "default": "mdi:music"
-      },
       "music_style": {
         "default": "mdi:sine-wave"
       },

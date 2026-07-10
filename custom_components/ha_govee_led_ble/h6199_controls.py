@@ -154,35 +154,6 @@ class PowerOffMemorySwitch(_H6199ControlEntity, RestoreEntity, SwitchEntity):
         await _set_with_rollback(self.coordinator, key="poweroff_memory", value=value, reapply=_apply_poweroff_memory)
 
 
-class GoveeMusicModeSelect(_H6199ControlEntity, SelectEntity):
-    _attr_entity_category = None
-    _attr_translation_key = "music_mode"
-    _attr_options = [
-        "off",
-        "energetic",
-        "rhythm",
-        "spectrum",
-        "rolling",
-        "separation",
-        "hopping",
-        "piano_keys",
-        "fountain",
-        "day_and_night",
-        "bloom",
-        "shiny",
-    ]
-
-    def __init__(self, coordinator: GoveeBLECoordinator) -> None:
-        super().__init__(coordinator, key="music_mode")
-
-    @property
-    def current_option(self) -> str:
-        return self.coordinator.music_mode
-
-    async def async_select_option(self, option: str) -> None:
-        await self.coordinator.async_select_music_slug(option)
-
-
 class GoveeMusicStyleSelect(_H6199ControlEntity, SelectEntity):
     """Dynamic/Calm music style for Rhythm (§2.1); H617A only, replaces the old ``music_calm`` switch."""
 
@@ -300,8 +271,6 @@ async def async_setup_select_entry(
 ) -> None:
     coordinator = config_entry.runtime_data
     entities: list[SelectEntity] = []
-    if coordinator.profile.supports_music_mode:
-        entities.append(GoveeMusicModeSelect(coordinator))
     if coordinator.profile.supports_music_style:
         entities.append(GoveeMusicStyleSelect(coordinator))
     if coordinator.profile.supports_music_params:

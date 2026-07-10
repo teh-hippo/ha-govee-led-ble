@@ -53,23 +53,6 @@
       }
     },
     "select": {
-      "music_mode": {
-        "name": "Music mode",
-        "state": {
-          "off": "Off",
-          "energetic": "Energetic",
-          "rhythm": "Rhythm",
-          "spectrum": "Spectrum",
-          "rolling": "Rolling",
-          "separation": "Separation",
-          "hopping": "Hopping",
-          "piano_keys": "Piano keys",
-          "fountain": "Fountain",
-          "day_and_night": "Day and night",
-          "bloom": "Bloom",
-          "shiny": "Shiny"
-        }
-      },
       "music_style": {
         "name": "Music style",
         "state": {
@@ -168,9 +151,9 @@
       "title": "Music calm switch replaced",
       "description": "The switch {old} has been replaced by {new}. Update any automations or scripts that used the old switch to use the new music style control."
     },
-    "deprecated_effect": {
-      "title": "Deprecated Govee effect in use",
-      "description": "The effect \"{effect}\" is deprecated and will be removed in a future release. Use {target} instead."
+    "music_mode_replaced": {
+      "title": "Music mode select replaced",
+      "description": "The select {old} has been removed. Choose a music mode from the light's effect list instead, and update any automations or scripts that used the old select."
     },
     "custom_effect_scene_shadow": {
       "title": "Custom effect hides a built-in scene",

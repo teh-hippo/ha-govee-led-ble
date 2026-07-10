@@ -36,6 +36,7 @@ _LEGACY_ENTITY_SUFFIXES = {
     "_video_sound_effects",
     "_video_sound_effects_softness",
     "_music_calm",
+    "_music_mode",
 }
 # The 2.x experimental options flag, removed in 3.0.0; stripped from migrated entries.
 _LEGACY_EXPERIMENTAL_OPTION = "experimental"
@@ -95,6 +96,22 @@ def _maybe_flag_music_calm_replaced(hass: HomeAssistant, entry: GoveeBLEConfigEn
     )
 
 
+def _maybe_flag_music_mode_replaced(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
+    """Warn that select.music_mode is gone: music is now chosen from the light effect list."""
+    old_id = er.async_get(hass).async_get_entity_id("select", DOMAIN, f"{_addr(entry)}_music_mode")
+    if old_id is None:
+        return
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        "music_mode_replaced",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="music_mode_replaced",
+        translation_placeholders={"old": old_id},
+    )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
     assert entry.unique_id is not None
     coordinator = GoveeBLECoordinator(hass, entry.unique_id, entry.data.get(CONF_MODEL, "H617A"))
@@ -102,6 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     entry.runtime_data = coordinator
     coordinator.attach_effect_store(build_effect_store(hass, entry.entry_id))
     await coordinator.async_load_effects()
+    _maybe_flag_music_mode_replaced(hass, entry)
     await _async_cleanup_legacy_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _maybe_flag_music_calm_replaced(hass, entry)
