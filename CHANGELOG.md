@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v3.0.2 (2026-07-10)
+
+### Bug Fixes
+
+- Drop over-claimed H617A power-off-memory capability
+  ([`4fe1713`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4fe1713232fb68d1a1bda529c19d8a8cf1b15852))
+
+- Keep colour-temp mode on read-back instead of dropping to RGB
+  ([`848ca42`](https://github.com/teh-hippo/ha-govee-led-ble/commit/848ca4216bb8311ce8891268280c22546d16c43a))
+
+### Chores
+
+- **deps**: Update dependency typescript to v6
+  ([`05d5a77`](https://github.com/teh-hippo/ha-govee-led-ble/commit/05d5a7782720800aaec78fef2748ca12595c0af6))
+
+- **deps**: Update dependency vitest to v3 [security]
+  ([`8081a92`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8081a926145d2a704574f7ae9a123fe695145251))
+
+### Documentation
+
+- Promote H6199/H617A protocol findings from the 2026-07-10 capture
+  ([`142f7f4`](https://github.com/teh-hippo/ha-govee-led-ble/commit/142f7f4757508fcd801d08be4682a3061a017857))
+
+
 ## v3.0.1 (2026-07-10)
 
 ### Bug Fixes
