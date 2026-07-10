@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v4.0.0 (2026-07-10)
+
+### Chores
+
+- **deps**: Update dependency vitest to v3.2.7
+  ([`bd70be5`](https://github.com/teh-hippo/ha-govee-led-ble/commit/bd70be582830e33b6c3cf1baed02d4970c54e632))
+
+### Features
+
+- Fold music into the light effect list and remove the music Select
+  ([`430da4d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/430da4d33c239e037fa7913d46a711d6dd54ca3d))
+
+### Breaking Changes
+
+- Select.music_mode is removed. Choose a music mode from the light's effect list, or use the
+  set_music_mode service. Automations and dashboards that referenced select.music_mode must be
+  updated.
+
+
 ## v3.0.2 (2026-07-10)
 
 ### Bug Fixes
