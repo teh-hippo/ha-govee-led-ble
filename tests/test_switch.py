@@ -28,7 +28,7 @@ async def test_setup_switch_entry_h617a(mock_coordinator):
     add = MagicMock()
     await async_setup_switch_entry(MagicMock(), _entry(mock_coordinator), add)
     keys = [entity._key for entity in add.call_args.args[0]]
-    assert keys == ["music_separation_gradient", "poweroff_memory"]
+    assert keys == ["music_separation_gradient"]
 
 
 async def test_setup_switch_entry_h6199(mock_h6199_coordinator):
@@ -58,14 +58,12 @@ async def test_setup_switch_entry_poweroff_memory_created_disabled(mock_h6199_co
     assert poweroff._attr_entity_registry_enabled_default is False
 
 
-async def test_setup_switch_entry_poweroff_memory_on_h617a(mock_coordinator):
-    """Power-off memory is supported on H617A too, so it appears there."""
-    c = mock_coordinator
-    c.profile = replace(c.profile, supports_music_style=False, supports_music_params=False)
+async def test_setup_switch_entry_no_poweroff_on_h617a(mock_coordinator):
+    """The H617A app has no power-off-memory setting, so no such switch is created."""
     add = MagicMock()
-    await async_setup_switch_entry(MagicMock(), _entry(c), add)
-    entities = add.call_args.args[0]
-    assert len(entities) == 1 and isinstance(entities[0], PowerOffMemorySwitch)
+    await async_setup_switch_entry(MagicMock(), _entry(mock_coordinator), add)
+    entities = add.call_args.args[0] if add.call_args else []
+    assert all(not isinstance(entity, PowerOffMemorySwitch) for entity in entities)
 
 
 async def test_setup_switch_entry_poweroff_memory_absent_when_unsupported(mock_h6199_coordinator):

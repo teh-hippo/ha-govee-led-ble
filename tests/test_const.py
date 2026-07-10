@@ -20,7 +20,9 @@ def test_get_profile_unknown_falls_back_to_h617a():
 def test_timer_and_poweroff_capabilities():
     for model in ("H617A", "H6199"):
         assert MODEL_PROFILES[model].supports_timers
-        assert MODEL_PROFILES[model].supports_poweroff_memory
+    # Power-off memory: H6199 exposes it; the H617A app has no such setting (confirmed 2026-07-10).
+    assert MODEL_PROFILES["H6199"].supports_poweroff_memory
+    assert not MODEL_PROFILES["H617A"].supports_poweroff_memory
 
 
 def test_timer_and_poweroff_capabilities_default_false():

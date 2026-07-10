@@ -68,7 +68,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_params=True,
         supports_diy=True,
         supports_timers=True,
-        supports_poweroff_memory=True,
         segment_count=15,
     ),
     "H6199": ModelProfile(
