@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v3.0.1 (2026-07-10)
+
+### Bug Fixes
+
+- Expose H6199 video mode in the light effect list
+  ([`285bcf5`](https://github.com/teh-hippo/ha-govee-led-ble/commit/285bcf5f7ada572823534110e54f1745422d1271))
+
+### Chores
+
+- **deps**: Pin dependency typescript to 5.9.3
+  ([`e4f4e10`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e4f4e1006a2db74ddd6a4dca89776988b5699246))
+
+- **deps**: Pin dependency vitest to 2.1.9 [security]
+  ([`210eeac`](https://github.com/teh-hippo/ha-govee-led-ble/commit/210eeace96a1d61e4224f687520580328b02141f))
+
+
 ## v3.0.0 (2026-07-10)
 
 ### Chores
