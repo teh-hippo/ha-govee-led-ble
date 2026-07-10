@@ -64,13 +64,14 @@ def _normalize_effect_name(effect_name: str) -> str:
     return effect_name.strip().strip(_EFFECT_QUOTE_CHARS).strip().lower()
 
 
-# Old ``effect`` strings that now route through their replacement control (spec §5.3). Music
-# names map to underscored ``select.music_mode`` slugs; video stays on the EXPERIMENTAL service.
-_DEPRECATED_EFFECT_MAP: dict[str, tuple[str, str]] = {
-    **{f"music: {name}": ("music", name.replace(" ", "_")) for name in MUSIC_MODES},
-    "music: energic": ("music", "energetic"),
-    "video: movie": ("video", "movie"),
-    "video: game": ("video", "game"),
+# First-class video effects on the light effect list (H6199): display label -> video mode slug.
+_VIDEO_EFFECTS: dict[str, str] = {"Video: Movie": "movie", "Video: Game": "game"}
+
+# Deprecated music ``effect`` strings that route to the music_mode select (spec §5.3). Music names
+# map to underscored slugs; video is now a first-class effect (see ``_VIDEO_EFFECTS``).
+_DEPRECATED_EFFECT_MAP: dict[str, str] = {
+    **{f"music: {name}": name.replace(" ", "_") for name in MUSIC_MODES},
+    "music: energic": "energetic",
 }
 
 
@@ -203,12 +204,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def effect(self) -> str | None:
+        for label, mode in _VIDEO_EFFECTS.items():
+            if mode == self.coordinator.video_mode:
+                return label
         return self.coordinator.effect
 
     @property
     def effect_list(self) -> list[str]:
         scenes = get_scene_names() if self.coordinator.profile.scene_source == "api" else []
-        return [*scenes, *self.coordinator.custom_effect_display_names()]
+        video = list(_VIDEO_EFFECTS) if self.coordinator.profile.supports_video_mode else []
+        return [*scenes, *self.coordinator.custom_effect_display_names(), *video]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -308,6 +313,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             coordinator.effect, coordinator.active_custom_id = key, None
             coordinator.music_mode = coordinator.video_mode = "off"
             return
+        if self.coordinator.profile.supports_video_mode:
+            mode = next((m for label, m in _VIDEO_EFFECTS.items() if _normalize_effect_name(label) == key), None)
+            if mode is not None:
+                await self.async_set_video_mode(mode=mode)
+                return
         if await self._deprecated_effect_shim(key):
             return
         raise ServiceValidationError(
@@ -317,25 +327,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
 
     async def _deprecated_effect_shim(self, key: str) -> bool:
-        target = _DEPRECATED_EFFECT_MAP.get(key)
-        if target is None:
+        slug = _DEPRECATED_EFFECT_MAP.get(key)
+        if slug is None:
             return False
-        domain, slug = target
-        entity_id = self._resolve_entity_id("select", "_music_mode") if domain == "music" else None
-        _LOGGER.warning("Effect '%s' is deprecated; use %s instead", key, entity_id or domain)
+        entity_id = self._resolve_entity_id("select", "_music_mode")
+        _LOGGER.warning("Effect '%s' is deprecated; use %s instead", key, entity_id or "music")
         ir.async_create_issue(
             self.hass,
             DOMAIN,
-            f"deprecated_effect_{domain}",
+            "deprecated_effect_music",
             is_fixable=False,
             severity=ir.IssueSeverity.WARNING,
             translation_key="deprecated_effect",
-            translation_placeholders={"effect": key, "target": entity_id or domain},
+            translation_placeholders={"effect": key, "target": entity_id or "music"},
         )
-        if domain == "music":
-            await self.coordinator.async_select_music_slug(slug)
-        else:
-            await self.async_set_video_mode(mode=slug)
+        await self.coordinator.async_select_music_slug(slug)
         return True
 
     def _resolve_entity_id(self, entity_domain: str, suffix: str) -> str | None:

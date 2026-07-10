@@ -118,10 +118,10 @@ async def test_power_rollback(light, mock_coordinator):
 def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinator):
     mock_coordinator.custom_effect_display_names.return_value = ["My Custom"]
     assert light.effect_list == sorted(SCENES.keys()) + ["My Custom"]
-    assert "music: energetic" not in light.effect_list and "video: movie" not in light.effect_list
-    # H6199 ships no scene catalogue (scene_source "none"), so its list is customs only.
+    assert "music: energetic" not in light.effect_list and "Video: Movie" not in light.effect_list
+    # H6199 ships no scene catalogue (scene_source "none"): customs + first-class video effects.
     mock_h6199_coordinator.custom_effect_display_names.return_value = ["Solo"]
-    assert h6199_light.effect_list == ["Solo"]
+    assert h6199_light.effect_list == ["Solo", "Video: Movie", "Video: Game"]
 
 
 async def test_turn_on_custom_effect_applies(light, mock_coordinator):
@@ -185,21 +185,27 @@ async def test_turn_on_music_shim_names_registered_entity(light, mock_coordinato
     assert create_issue.call_args.kwargs["translation_placeholders"]["target"] == "select.govee_music_mode"
 
 
-@pytest.mark.parametrize("effect,mode", [("video: movie", "movie"), ("video: game", "game")])
-async def test_turn_on_video_effect_routes_through_shim(h6199_light, mock_h6199_coordinator, effect, mode):
+@pytest.mark.parametrize("effect,mode", [("Video: Movie", "movie"), ("Video: Game", "game"), ("video: game", "game")])
+async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coordinator, effect, mode):
     co = mock_h6199_coordinator
     co.is_on = True
-    h6199_light.hass = MagicMock()
-    with (
-        patch("custom_components.ha_govee_led_ble.light.er.async_get"),
-        patch("custom_components.ha_govee_led_ble.light.ir.async_create_issue") as create_issue,
-    ):
+    with patch("custom_components.ha_govee_led_ble.light.ir.async_create_issue") as create_issue:
         await h6199_light.async_turn_on(effect=effect)
     sent = [call.args[0] for call in co.send_command.call_args_list]
     assert proto.build_video_mode(full_screen=True, game_mode=mode == "game") in sent
     assert co.video_mode == mode and co.effect is None
-    assert create_issue.call_args.args[2] == "deprecated_effect_video"
-    assert create_issue.call_args.kwargs["translation_placeholders"] == {"effect": effect, "target": "video"}
+    create_issue.assert_not_called()
+
+
+async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):
+    mock_h6199_coordinator.effect = None
+    mock_h6199_coordinator.video_mode = "movie"
+    assert h6199_light.effect == "Video: Movie"
+    mock_h6199_coordinator.video_mode = "game"
+    assert h6199_light.effect == "Video: Game"
+    mock_h6199_coordinator.video_mode = "off"
+    mock_h6199_coordinator.effect = "rainbow"
+    assert h6199_light.effect == "rainbow"
 
 
 @pytest.mark.parametrize("mode,slug", [(m, m.replace(" ", "_")) for m in MUSIC_MODE_IDS])
