@@ -10,7 +10,7 @@
     "build": "tsc --noEmit && bun build src/govee-led-ble-card.ts --outfile dist/govee-led-ble-card.js --minify --format esm --target browser"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
+    "typescript": "5.9.3",
     "vitest": "^2.0.0"
   }
 }

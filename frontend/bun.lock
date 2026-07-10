@@ -5,7 +5,7 @@
     "": {
       "name": "govee-led-ble-card",
       "devDependencies": {
-        "typescript": "^5.6.0",
+        "typescript": "5.9.3",
         "vitest": "^2.0.0",
       },
     },
