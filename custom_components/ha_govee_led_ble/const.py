@@ -1,6 +1,6 @@
 """Constants for HA Govee LED BLE."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
@@ -11,17 +11,51 @@ class ModelProfile:
     name: str
     state_readable: bool = False
     scene_source: str = "none"
-    effects: list[str] = field(default_factory=list)
-    ble_name_prefixes: list[str] = field(default_factory=list)
     supports_video_mode: bool = False
     supports_music_mode: bool = False
-    supports_music_calm: bool = False
+    supports_music_style: bool = False
+    supports_music_params: bool = False
     supports_white_brightness: bool = False
-    supports_advanced_controls: bool = False
+    supports_diy: bool = False
+    supports_timers: bool = False
+    supports_poweroff_memory: bool = False
+    segment_count: int = 0
+
+    @property
+    def supports_segments(self) -> bool:
+        return self.segment_count > 0
 
 
-MUSIC_EFFECTS: tuple[str, ...] = ("music: energic", "music: rhythm", "music: spectrum", "music: rolling")
-VIDEO_EFFECTS: tuple[str, ...] = ("video: movie", "video: game")
+MUSIC_MODES: dict[str, int] = {
+    "energetic": 0x05,
+    "rhythm": 0x03,
+    "spectrum": 0x04,
+    "rolling": 0x06,
+    "separation": 0x32,
+    "hopping": 0x33,
+    "piano keys": 0x34,
+    "fountain": 0x35,
+    "day and night": 0x37,
+    "bloom": 0x30,
+    "shiny": 0x31,
+}
+
+# Single source of truth for the ``select.music_mode`` options: HA slugs (underscored, no
+# "off") mapped to their live-confirmed mode codes. Distinct from ``MUSIC_MODES`` above, whose
+# spaced display names remain the parse/service vocabulary.
+MUSIC_MODE_SLUGS: dict[str, int] = {
+    "energetic": 0x05,
+    "rhythm": 0x03,
+    "spectrum": 0x04,
+    "rolling": 0x06,
+    "separation": 0x32,
+    "hopping": 0x33,
+    "piano_keys": 0x34,
+    "fountain": 0x35,
+    "day_and_night": 0x37,
+    "bloom": 0x30,
+    "shiny": 0x31,
+}
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
@@ -29,21 +63,24 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H617A LED Strip",
         state_readable=True,
         scene_source="api",
-        effects=[*MUSIC_EFFECTS],
-        ble_name_prefixes=["ihoment_H617A", "Govee_H617A", "GBK_H617A", "GVH_H617A"],
         supports_music_mode=True,
-        supports_music_calm=True,
+        supports_music_style=True,
+        supports_music_params=True,
+        supports_diy=True,
+        supports_timers=True,
+        supports_poweroff_memory=True,
+        segment_count=15,
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
-        effects=[*VIDEO_EFFECTS, *MUSIC_EFFECTS],
-        ble_name_prefixes=["Govee_H6199", "ihoment_H6199", "GBK_H6199", "GVH_H6199"],
         supports_video_mode=True,
         supports_music_mode=True,
-        supports_music_calm=True,
         supports_white_brightness=True,
-        supports_advanced_controls=True,
+        supports_diy=True,
+        supports_timers=True,
+        supports_poweroff_memory=True,
+        segment_count=15,
     ),
 }
 

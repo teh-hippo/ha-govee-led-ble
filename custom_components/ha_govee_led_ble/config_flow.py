@@ -24,14 +24,27 @@ def _normalize_address(address: str) -> str:
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 2
+
+    _discovered: dict[str, str]
 
     async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfo) -> ConfigFlowResult:
-        model = _extract_model(discovery_info.name) or "H617A"
+        model = _extract_model(discovery_info.name)
+        if model is None:
+            return self.async_abort(reason="not_supported")
         await self.async_set_unique_id(_normalize_address(discovery_info.address))
         self._abort_if_unique_id_configured()
+        self._discovered = {CONF_MODEL: model}
+        # Model only, never the BLE name/MAC (no PII).
         self.context["title_placeholders"] = {"name": model}
-        return self.async_create_entry(title=f"Govee {model}", data={CONF_MODEL: model})
+        return await self.async_step_bluetooth_confirm()
+
+    async def async_step_bluetooth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        model = self._discovered[CONF_MODEL]
+        if user_input is None:
+            self._set_confirm_only()
+            return self.async_show_form(step_id="bluetooth_confirm", description_placeholders={"model": model})
+        return self.async_create_entry(title=f"Govee {model}", data=self._discovered)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:

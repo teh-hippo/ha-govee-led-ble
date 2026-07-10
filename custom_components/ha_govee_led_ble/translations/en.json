@@ -4,6 +4,10 @@
       "bluetooth": {
         "description": "Govee {name} found via Bluetooth"
       },
+      "bluetooth_confirm": {
+        "title": "Govee {model}",
+        "description": "Do you want to set up the Govee {model} found via Bluetooth?"
+      },
       "user": {
         "data": {
           "address": "BLE Address",
@@ -12,44 +16,169 @@
       }
     },
     "abort": {
-      "already_configured": "Device is already configured"
+      "already_configured": "Device is already configured",
+      "not_supported": "This device is not a supported Govee model"
     }
   },
   "entity": {
+    "image": {
+      "effect_preview": {
+        "name": "Effect preview"
+      }
+    },
     "number": {
-      "video_saturation": {
-        "name": "Video saturation"
-      },
       "video_white_balance": {
         "name": "Video white balance"
-      },
-      "video_sound_effects_softness": {
-        "name": "Video sound effects softness"
       },
       "music_sensitivity": {
         "name": "Music sensitivity"
       },
-      "white_brightness": {
-        "name": "White balance"
+      "music_separation_point": {
+        "name": "Music separation point"
+      },
+      "music_hopping_brightness": {
+        "name": "Music hopping relative brightness"
+      },
+      "music_piano_key_count": {
+        "name": "Music piano key count"
+      },
+      "music_daynight_segments": {
+        "name": "Music day and night segments"
+      },
+      "music_daynight_speed": {
+        "name": "Music day and night speed"
+      },
+      "sleep_timer_duration": {
+        "name": "Sleep timer duration"
       }
     },
     "select": {
+      "music_mode": {
+        "name": "Music mode",
+        "state": {
+          "off": "Off",
+          "energetic": "Energetic",
+          "rhythm": "Rhythm",
+          "spectrum": "Spectrum",
+          "rolling": "Rolling",
+          "separation": "Separation",
+          "hopping": "Hopping",
+          "piano_keys": "Piano keys",
+          "fountain": "Fountain",
+          "day_and_night": "Day and night",
+          "bloom": "Bloom",
+          "shiny": "Shiny"
+        }
+      },
+      "music_style": {
+        "name": "Music style",
+        "state": {
+          "dynamic": "Dynamic",
+          "calm": "Calm"
+        }
+      },
+      "music_fountain_direction": {
+        "name": "Music fountain direction",
+        "state": {
+          "clockwise": "Clockwise",
+          "counterclockwise": "Counterclockwise",
+          "two_way": "Two-way"
+        }
+      },
       "video_capture_region": {
         "name": "Video color mapping"
       }
     },
+    "sensor": {
+      "active_mode": {
+        "name": "Active mode",
+        "state": {
+          "off": "Off",
+          "colour": "Colour",
+          "scene": "Scene",
+          "music": "Music",
+          "video": "Video",
+          "custom": "Custom"
+        }
+      }
+    },
     "switch": {
-      "video_sound_effects": {
-        "name": "Video sound effects"
+      "effect_preview_reduce_motion": {
+        "name": "Reduce preview motion"
       },
-      "music_calm": {
-        "name": "Music calm rhythm"
+      "music_separation_gradient": {
+        "name": "Music separation gradient"
+      },
+      "poweroff_memory": {
+        "name": "Power-off memory"
+      },
+      "sleep_timer": {
+        "name": "Sleep timer"
+      },
+      "wakeup_timer": {
+        "name": "Wake-up timer"
+      }
+    },
+    "time": {
+      "wakeup_time": {
+        "name": "Wake-up time"
       }
     }
   },
   "exceptions": {
     "unsupported_model": {
       "message": "{service} is not supported on {model}"
+    },
+    "unknown_effect": {
+      "message": "Unknown effect \"{effect}\"."
+    },
+    "content_xor_capture": {
+      "message": "Provide exactly one of content or capture current."
+    },
+    "delete_needs_id_or_name": {
+      "message": "Provide exactly one of id or name."
+    },
+    "rename_needs_id_or_from": {
+      "message": "Provide exactly one of id or current name."
+    },
+    "content_required": {
+      "message": "Provide effect content to save."
+    },
+    "segments_unsupported": {
+      "message": "This device does not support segment effects."
+    },
+    "diy_unsupported": {
+      "message": "This device does not support DIY effects."
+    },
+    "unknown_kind_not_saveable": {
+      "message": "This effect type cannot be saved."
+    },
+    "empty_name": {
+      "message": "Provide a non-empty effect name."
+    },
+    "scene_name_collision": {
+      "message": "That name matches a built-in scene. Choose a different name."
+    },
+    "duplicate_name": {
+      "message": "An effect with that name already exists."
+    }
+  },
+  "issues": {
+    "music_calm_replaced": {
+      "title": "Music calm switch replaced",
+      "description": "The switch {old} has been replaced by {new}. Update any automations or scripts that used the old switch to use the new music style control."
+    },
+    "deprecated_effect": {
+      "title": "Deprecated Govee effect in use",
+      "description": "The effect \"{effect}\" is deprecated and will be removed in a future release. Use {target} instead."
+    },
+    "custom_effect_scene_shadow": {
+      "title": "Custom effect hides a built-in scene",
+      "description": "The saved custom effect \"{effect}\" has the same name as a built-in scene, so the scene can no longer be chosen from the effect list. Rename the custom effect to reach the scene again."
+    },
+    "custom_effect_unknown_kind": {
+      "title": "Unsupported custom effect stored",
+      "description": "A saved custom effect uses a format this version cannot apply. It has been kept as-is but cannot be used until it is saved again."
     }
   },
   "services": {
@@ -89,7 +218,7 @@
       "fields": {
         "mode": {
           "name": "Mode",
-          "description": "Music sub-mode: energic, rhythm, spectrum, or rolling."
+          "description": "Music sub-mode: energetic, rhythm, spectrum, rolling, separation, hopping, piano keys, fountain, day and night, bloom, or shiny. 'energic' is accepted as a deprecated alias for 'energetic'."
         },
         "sensitivity": {
           "name": "Sensitivity",
@@ -106,12 +235,100 @@
       }
     },
     "set_white_brightness": {
-      "name": "Set white balance",
-      "description": "Set H6199 static white warm/cool balance level (0-100).",
+      "name": "Set white brightness",
+      "description": "Set the whole-strip white brightness (0-100).",
       "fields": {
         "brightness": {
-          "name": "Balance",
-          "description": "White warm/cool balance level (0-100)."
+          "name": "Brightness",
+          "description": "White brightness level (0-100)."
+        }
+      }
+    },
+    "paint_segments": {
+      "name": "Paint segments",
+      "description": "Paint one or more color groups onto the addressable segments (H617A).",
+      "fields": {
+        "groups": {
+          "name": "Groups",
+          "description": "List of {segments: [1-15], rgb_color: [R, G, B]} groups; each color is sent as one packet."
+        }
+      }
+    },
+    "set_segment_color": {
+      "name": "Set segment color",
+      "description": "Set a single color on the given segments (1-15).",
+      "fields": {
+        "segments": {
+          "name": "Segments",
+          "description": "Segment indices to color (1-15)."
+        },
+        "color": {
+          "name": "Color",
+          "description": "Color as [R, G, B]."
+        }
+      }
+    },
+    "set_segment_brightness": {
+      "name": "Set segment brightness",
+      "description": "Set brightness on the given segments (1-15).",
+      "fields": {
+        "segments": {
+          "name": "Segments",
+          "description": "Segment indices to adjust (1-15)."
+        },
+        "brightness": {
+          "name": "Brightness",
+          "description": "Brightness level (0-100)."
+        }
+      }
+    },
+    "save_effect": {
+      "name": "Save effect",
+      "description": "Save the supplied effect content, or a snapshot of the current segment colours, as a named custom effect.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Display name for the saved effect."
+        },
+        "content": {
+          "name": "Content",
+          "description": "Effect content object to save. Provide this or enable capture current, not both."
+        },
+        "capture_current": {
+          "name": "Capture current",
+          "description": "Save a snapshot of the current segment colours instead of supplying content."
+        }
+      }
+    },
+    "delete_effect": {
+      "name": "Delete effect",
+      "description": "Delete a saved custom effect by its id or name.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Stable id of the effect to delete. Provide this or the name, not both."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Current name of the effect to delete. Provide this or the id, not both."
+        }
+      }
+    },
+    "rename_effect": {
+      "name": "Rename effect",
+      "description": "Rename a saved custom effect, keeping its stable id.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Stable id of the effect to rename. Provide this or the current name, not both."
+        },
+        "from_name": {
+          "name": "Current name",
+          "description": "Current name of the effect to rename. Provide this or the id, not both."
+        },
+        "to": {
+          "name": "New name",
+          "description": "New display name for the effect."
         }
       }
     }

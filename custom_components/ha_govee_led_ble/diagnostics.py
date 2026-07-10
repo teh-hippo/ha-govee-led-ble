@@ -14,7 +14,6 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: GoveeBLEConfigEntry,
 ) -> dict[str, Any]:
-    """Return diagnostics for a config entry."""
     coordinator = entry.runtime_data
     packet_log = coordinator.packet_log
     last_rx_aa05_raw = next(
@@ -27,6 +26,7 @@ async def async_get_config_entry_diagnostics(
     )
     client = coordinator._client
     lock = coordinator._lock
+    expected_brightness = coordinator._expected_state.get("brightness_pct")
     return {
         "entry": async_redact_data(
             {
@@ -44,14 +44,22 @@ async def async_get_config_entry_diagnostics(
             "supports_video_mode": coordinator.profile.supports_video_mode,
             "supports_music_mode": coordinator.profile.supports_music_mode,
             "supports_white_brightness": coordinator.profile.supports_white_brightness,
-            "supports_advanced_controls": coordinator.profile.supports_advanced_controls,
+            "supports_diy": coordinator.profile.supports_diy,
+            "supports_segments": coordinator.profile.supports_segments,
+            "segment_count": coordinator.profile.segment_count,
             "connected": bool(client and client.is_connected),
+            "available": coordinator.available,
+            "fw_version": coordinator.fw_version,
+            "hw_version": coordinator.hw_version,
             "lock_locked": lock.locked(),
             "is_on": coordinator.is_on,
             "brightness_pct": coordinator.brightness_pct,
             "rgb_color": coordinator.rgb_color,
+            "segment_colors": coordinator.segment_colors,
             "color_temp_kelvin": coordinator.color_temp_kelvin,
             "effect": coordinator.effect,
+            "active_custom_id": coordinator.active_custom_id,
+            "custom_effect_count": len(coordinator.custom_effects),
             "video_saturation": coordinator.video_saturation,
             "video_white_balance": coordinator.video_white_balance,
             "video_sound_effects": coordinator.video_sound_effects,
@@ -61,7 +69,7 @@ async def async_get_config_entry_diagnostics(
             "music_color": coordinator.music_color,
             "white_brightness": coordinator.white_brightness,
             "video_full_screen": coordinator.video_full_screen,
-            "expected_brightness_pct": getattr(coordinator, "_expected_brightness_pct", None),
+            "expected_brightness_pct": expected_brightness[0] if expected_brightness is not None else None,
             "packet_log": packet_log,
             "last_rx_aa05_raw": last_rx_aa05_raw,
         },

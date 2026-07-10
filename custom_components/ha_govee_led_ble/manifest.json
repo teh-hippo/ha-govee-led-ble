@@ -1,6 +1,9 @@
 {
     "domain": "ha_govee_led_ble",
     "name": "Govee LED BLE",
+    "after_dependencies": [
+        "frontend"
+    ],
     "bluetooth": [
         {
             "local_name": "ihoment_H617A*"
@@ -32,7 +35,8 @@
     ],
     "config_flow": true,
     "dependencies": [
-        "bluetooth_adapters"
+        "bluetooth_adapters",
+        "http"
     ],
     "documentation": "https://github.com/teh-hippo/ha-govee-led-ble",
     "integration_type": "device",
@@ -46,5 +50,5 @@
         "bleak>=0.21.0",
         "bleak-retry-connector>=3.0.0"
     ],
-    "version": "2.1.38"
+    "version": "3.0.0-beta.4"
 }
