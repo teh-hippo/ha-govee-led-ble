@@ -1,0 +1,9 @@
+{
+    "domain": "mock_ble",
+    "name": "Mock BLE (dev)",
+    "codeowners": ["@teh-hippo"],
+    "dependencies": [],
+    "documentation": "https://github.com/teh-hippo/ha-govee-led-ble",
+    "iot_class": "local_push",
+    "version": "0.0.0"
+}
