@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v4.0.1 (2026-07-11)
+
+### Bug Fixes
+
+- Recover stale BLE notification sessions
+  ([`f1747f4`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f1747f4354e9084c8d99d1eb8ca42ef2e93250f9))
+
+### Chores
+
+- **deps**: Update dependency vitest to v4
+  ([`e5b33ed`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e5b33ed5109de442499a16be428ff88329ce4cfa))
+
+
 ## v4.0.0 (2026-07-10)
 
 ### Chores
