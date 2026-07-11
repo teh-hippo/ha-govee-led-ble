@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.1.0-beta.2 (2026-07-11)
+
+### Bug Fixes
+
+- Recover stale BLE notification sessions
+  ([`28dd9e2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/28dd9e2877c0211220c923fb3e116ae7592f60a3))
+
+
 ## v4.1.0-beta.1 (2026-07-11)
 
 ### Chores
