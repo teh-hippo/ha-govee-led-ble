@@ -263,7 +263,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         expected_effect: str | None = None,
         expected_on: bool | None = None,
         expected_music_mode: str | None = None,
+        expected_music_sensitivity: int | None = None,
+        expected_music_calm: bool | None = None,
+        expected_music_color: tuple[int, int, int] | None = None,
+        expected_music_auto_color: bool = False,
         expected_video_mode: str | None = None,
+        expected_video_full_screen: bool | None = None,
+        expected_video_saturation: int | None = None,
+        expected_video_sound_effects: bool | None = None,
+        expected_video_sound_effects_softness: int | None = None,
+        expected_white_brightness: int | None = None,
         retry_command: Callable[[], Awaitable[None]] | None = None,
         required: bool = True,
     ) -> None:
@@ -274,7 +283,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             expected_effect=expected_effect,
             expected_on=expected_on,
             expected_music_mode=expected_music_mode,
+            expected_music_sensitivity=expected_music_sensitivity,
+            expected_music_calm=expected_music_calm,
+            expected_music_color=expected_music_color,
+            expected_music_auto_color=expected_music_auto_color,
             expected_video_mode=expected_video_mode,
+            expected_video_full_screen=expected_video_full_screen,
+            expected_video_saturation=expected_video_saturation,
+            expected_video_sound_effects=expected_video_sound_effects,
+            expected_video_sound_effects_softness=expected_video_sound_effects_softness,
+            expected_white_brightness=expected_white_brightness,
         )
         if await confirm():
             return

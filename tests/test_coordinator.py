@@ -11,7 +11,11 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
-from custom_components.ha_govee_led_ble.coordinator import IDENTITY_RETRY_TICKS, GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator import (
+    IDENTITY_RETRY_TICKS,
+    RX_STALE_TIMEOUT,
+    GoveeBLECoordinator,
+)
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -76,12 +80,35 @@ async def test_disconnect(coord, h6199):
     coord._client = _c(disconnect=AsyncMock(side_effect=BleakError("e")))
     await coord.disconnect()
     assert coord._client is None
+    coord._client = _c(disconnect=AsyncMock(side_effect=TimeoutError))
+    await coord.disconnect()
+    assert coord._client is None
     coord._client = None
     await coord.disconnect()
     task = MagicMock(done=MagicMock(return_value=False), cancel=MagicMock())
     h6199._keep_alive_task, h6199._client = task, _c(disconnect=AsyncMock())
     await h6199.disconnect()
     task.cancel.assert_called_once()
+
+
+async def test_disconnect_does_not_clear_replacement_client(coord):
+    replacement = _c(disconnect=AsyncMock())
+
+    async def _replace() -> None:
+        coord._client = replacement
+        coord._notify_started_monotonic = 10
+        coord._last_rx_monotonic = 11
+        coord._expected_state["is_on"] = (True, 12)
+
+    original = _c(disconnect=AsyncMock(side_effect=_replace))
+    coord._client = original
+
+    await coord.disconnect()
+
+    assert coord._client is replacement
+    assert coord._notify_started_monotonic == 10
+    assert coord._last_rx_monotonic == 11
+    assert coord._expected_state["is_on"] == (True, 12)
 
 
 def test_notify_callback(h6199):
@@ -149,7 +176,22 @@ async def test_start_notify(coord, h6199):
         c2.write_gatt_char.assert_any_await(proto.WRITE_UUID, q, response=False)
     await coord.disconnect()
     h6199._client = _c(start_notify=AsyncMock(side_effect=BleakError("fail")))
-    await h6199._start_notify()
+    with pytest.raises(BleakError, match="fail"):
+        await h6199._start_notify()
+    assert h6199._notify_started_monotonic is None
+
+
+async def test_ensure_connected_cleans_up_notify_failure(coord):
+    client = _c(start_notify=AsyncMock(side_effect=BleakError("notify failed")), disconnect=AsyncMock())
+    with (
+        patch(f"{M}.bluetooth") as bt,
+        patch(f"{M}.establish_connection", return_value=client),
+        pytest.raises(BleakError, match="notify failed"),
+    ):
+        bt.async_ble_device_from_address.return_value = MagicMock()
+        await coord._ensure_connected()
+    client.disconnect.assert_awaited_once()
+    assert coord._client is None
 
 
 async def test_misc_helpers(coord, h6199):
@@ -159,7 +201,7 @@ async def test_misc_helpers(coord, h6199):
     await h6199._keep_alive_loop()
     h6199._client = None
     assert await h6199._send_state_queries() is False
-    failing_client = _c(write_gatt_char=AsyncMock(side_effect=BleakError("fail")))
+    failing_client = _c(write_gatt_char=AsyncMock(side_effect=BleakError("fail")), disconnect=AsyncMock())
     coord._client = failing_client
     with patch.object(coord, "_ensure_connected", return_value=failing_client):
         assert await coord.refresh_state() is False
@@ -168,6 +210,56 @@ async def test_misc_helpers(coord, h6199):
     coord._reset_disconnect_timer()
     cancel.assert_called_once()
     assert coord._cancel_disconnect is not cancel
+
+
+async def test_ensure_connected_replaces_receive_stale_client(coord):
+    old = _c(disconnect=AsyncMock())
+    new = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coord._client = old
+    coord._notify_started_monotonic = 1.0
+    with (
+        patch(f"{M}.time.monotonic", return_value=RX_STALE_TIMEOUT + 2),
+        patch(f"{M}.bluetooth") as bt,
+        patch(f"{M}.establish_connection", return_value=new),
+    ):
+        bt.async_ble_device_from_address.return_value = MagicMock()
+        assert await coord._ensure_connected() is new
+    old.disconnect.assert_awaited_once()
+    new.start_notify.assert_awaited_once()
+    await coord.disconnect()
+
+
+async def test_keep_alive_retires_receive_stale_client(coord):
+    coord._client = _c()
+    scheduled = []
+
+    def _schedule(coro, *args, **kwargs):
+        scheduled.append(coro)
+        coro.close()
+        return MagicMock()
+
+    with (
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+        patch.object(coord, "_receive_is_stale", return_value=True),
+        patch.object(coord.hass, "async_create_task", side_effect=_schedule),
+    ):
+        await coord._keep_alive_loop()
+    assert len(scheduled) == 1
+
+
+async def test_disconnect_if_current_ignores_replaced_client(coord):
+    old = _c(disconnect=AsyncMock())
+    new = _c(disconnect=AsyncMock())
+    coord._client = new
+
+    await coord._disconnect_if_current(old)
+    assert coord._client is new
+    old.disconnect.assert_not_awaited()
+    new.disconnect.assert_not_awaited()
+
+    await coord._disconnect_if_current(new)
+    new.disconnect.assert_awaited_once()
+    assert coord._client is None
 
 
 async def test_send_state_queries_selective(coord):
@@ -208,6 +300,23 @@ def test_notify_callback_brightness_expectation(h6199):
         assert h6199.brightness_pct == 1 and "brightness_pct" not in h6199._expected_state
 
 
+def test_notify_callback_power_expectation(h6199):
+    cb = h6199._notify_callback
+    h6199.is_on = True
+    h6199._expected_state["is_on"] = (True, time.monotonic() + 60)
+    field_revision = h6199._field_revisions.get("is_on", 0)
+
+    cb(None, bytearray([0xAA, 0x01, 0x00, 0x00]))
+    assert h6199.is_on is True
+    assert h6199._field_revisions.get("is_on", 0) == field_revision
+    assert "is_on" in h6199._expected_state
+
+    cb(None, bytearray([0xAA, 0x01, 0x01, 0x00]))
+    assert h6199.is_on is True
+    assert h6199._field_revisions["is_on"] == field_revision + 1
+    assert "is_on" not in h6199._expected_state
+
+
 def test_notify_callback_color_temp_window(h6199):
     """A stale aa05 STATIC reply must not clear an optimistic color temp within the window."""
     cb = h6199._notify_callback
@@ -237,6 +346,19 @@ def test_notify_callback_effect_window(h6199):
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
     assert h6199.effect == "candy"
     assert "effect" in h6199._expected_state
+
+
+def test_notify_callback_music_auto_color_clears_manual_color(h6199):
+    h6199.music_color = (1, 2, 3)
+    revision = h6199._field_revisions.get("music_color", 0)
+
+    h6199._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x00])),
+    )
+
+    assert h6199.music_color is None
+    assert h6199._field_revisions["music_color"] == revision + 1
 
 
 def test_active_custom_id_sticky_clear(h6199):
@@ -294,6 +416,9 @@ def test_readback_mode_mutual_exclusion(h6199):
 async def test_send_command_arms_expected_state(coord):
     c = _c(write_gatt_char=AsyncMock())
     with patch.object(coord, "_ensure_connected", return_value=c):
+        await coord.send_command(proto.build_power(True))
+        assert coord._expected_state["is_on"][0] is True
+
         await coord.send_command(proto.build_color_temp(4000))
         assert coord._expected_state["color_temp_kelvin"][0] == 4000
 
@@ -304,24 +429,143 @@ async def test_send_command_arms_expected_state(coord):
         await coord.send_command(proto.build_music_mode_with_color(mode_id))
         assert coord._expected_state["music_mode"][0] == proto.MUSIC_SLUG_BY_ID[mode_id]
 
+        await coord.send_command(proto.build_video_mode(full_screen=False, game_mode=True, saturation=60))
+        assert coord._expected_state["video_mode"][0] == "game"
+
 
 async def test_refresh_state_query_selection(coord):
     coord.is_on = True
-    coord.effect = "video: movie"
+    coord.effect = "candy"
+    coord._client = client = _c()
+
+    async def _reply(
+        *,
+        query_power: bool,
+        query_brightness: bool,
+        query_color_mode: bool,
+    ) -> bool:
+        if query_power:
+            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+        if query_color_mode:
+            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x9D, 0x08])))
+        return True
+
     with (
-        patch.object(coord, "_ensure_connected", new_callable=AsyncMock),
-        patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)) as sq,
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_reply)) as sq,
     ):
         assert await coord.refresh_state(expected_effect=None, expected_on=True) is True
         sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False)
         sq.reset_mock()
 
-        assert await coord.refresh_state(expected_effect="video: movie", expected_on=None) is True
+        assert await coord.refresh_state(expected_effect="candy", expected_on=None) is True
         sq.assert_awaited_with(query_power=False, query_brightness=False, query_color_mode=True)
         sq.reset_mock()
 
         assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
         sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
+
+
+async def test_refresh_state_rejects_optimistic_value_without_fresh_reply(coord):
+    coord.is_on = True
+    coord._client = client = _c(disconnect=AsyncMock())
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)),
+        patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
+    ):
+        assert await coord.refresh_state(expected_on=True, timeout=0.01) is False
+    disconnect.assert_awaited_once_with(client)
+
+
+async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord):
+    coord.music_mode = "rhythm"
+    coord._client = client = _c()
+    coord._expected_state["music_mode"] = ("rhythm", time.monotonic() + 60)
+
+    async def _stale_reply(**kwargs) -> bool:
+        coord._notify_callback(
+            None,
+            bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])),
+        )
+        return True
+
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_stale_reply)),
+        patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
+    ):
+        assert await coord.refresh_state(expected_music_mode="rhythm", timeout=0.01) is False
+    disconnect.assert_not_awaited()
+
+
+async def test_refresh_state_requires_fresh_power_and_video_replies(coord):
+    coord.is_on = True
+    coord.video_mode = "game"
+    coord._client = client = _c()
+
+    async def _video_only(**kwargs) -> bool:
+        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 60])))
+        return True
+
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_video_only)),
+        patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
+    ):
+        assert await coord.refresh_state(expected_on=True, expected_video_mode="game", timeout=0.01) is False
+    disconnect.assert_awaited_once_with(client)
+
+
+async def test_refresh_state_rejects_wrong_video_parameters(coord):
+    coord._client = client = _c()
+
+    async def _wrong_video(**kwargs) -> bool:
+        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+        coord._notify_callback(
+            None,
+            bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x01, 0x01, 100, 0, 0])),
+        )
+        return True
+
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_wrong_video)),
+        patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
+    ):
+        assert (
+            await coord.refresh_state(
+                expected_on=True,
+                expected_video_mode="game",
+                expected_video_full_screen=False,
+                expected_video_saturation=60,
+                expected_video_sound_effects=True,
+                expected_video_sound_effects_softness=50,
+                timeout=0.01,
+            )
+            is False
+        )
+    disconnect.assert_not_awaited()
+
+
+async def test_refresh_state_does_not_disconnect_replacement_client(coord):
+    original = _c(disconnect=AsyncMock())
+    replacement = _c(disconnect=AsyncMock())
+    coord._client = original
+
+    async def _replace(**kwargs) -> bool:
+        coord._client = replacement
+        return True
+
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=original)),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_replace)),
+    ):
+        assert await coord.refresh_state(expected_on=True, timeout=0.01) is False
+
+    assert coord._client is replacement
+    original.disconnect.assert_not_awaited()
+    replacement.disconnect.assert_not_awaited()
 
 
 async def test_send_command_noop_during_shutdown(coord):

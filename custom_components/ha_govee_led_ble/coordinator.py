@@ -34,6 +34,7 @@ from .protocol import (
     COLOR_MODE_MUSIC,
     COLOR_MODE_QUERY,
     COLOR_MODE_STATIC,
+    COLOR_MODE_VIDEO,
     COLOR_PACKET_TYPE,
     COMMAND_HEADER,
     FIRMWARE_PACKET_TYPE,
@@ -65,6 +66,7 @@ _LOGGER = logging.getLogger(__name__)
 DISCONNECT_DELAY = 120
 KEEP_ALIVE_INTERVAL = 5
 STATE_QUERY_EVERY_N_KEEP_ALIVES = 3
+RX_STALE_TIMEOUT = KEEP_ALIVE_INTERVAL * 4
 IDENTITY_RETRY_TICKS = 6
 RETRY_BACKOFF_SECONDS = 2
 DEVICE_DISCOVERY_ATTEMPTS = 4
@@ -88,12 +90,16 @@ def _expected_from_packet(packet: bytes) -> tuple[str, Any] | None:
     """Map an outgoing command to the optimistic (field, value) its reply should confirm."""
     if len(packet) < 3 or packet[0] != COMMAND_HEADER:
         return None
+    if packet[1] == POWER_PACKET_TYPE:
+        return "is_on", bool(packet[2])
     if packet[1] == BRIGHTNESS_PACKET_TYPE:
         return "brightness_pct", packet[2]
     if packet[1] != COLOR_PACKET_TYPE or len(packet) < 4:
         return None
     if packet[2] == COLOR_MODE_MUSIC:
         return "music_mode", MUSIC_SLUG_BY_ID.get(packet[3])
+    if packet[2] == COLOR_MODE_VIDEO and len(packet) >= 5:
+        return "video_mode", "game" if packet[4] else "movie"
     if packet[2] == COLOR_MODE_STATIC and packet[3] == 0x01 and len(packet) >= 9:
         if packet[4] or packet[5] or packet[6]:
             return "rgb_color", (packet[4], packet[5], packet[6])
@@ -163,6 +169,10 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.schedule_timers: list[ParsedTimerSchedule | None] = [None] * TIMER_SCHEDULE_SLOTS
         self.packet_log: list[dict[str, Any]] = []
         self._expected_state: dict[str, tuple[Any, float]] = {}
+        self._notify_started_monotonic: float | None = None
+        self._last_rx_monotonic: float | None = None
+        self._domain_revisions: dict[int, int] = {}
+        self._field_revisions: dict[str, int] = {}
         # BLE presence (advertisement-driven) and first-refresh gate for ConfigEntryNotReady.
         self._present = False
         self._first_refresh_done = False
@@ -267,8 +277,11 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
 
     async def _ensure_connected(self) -> BleakClient:
         if self._client and self._client.is_connected:
-            self._reset_disconnect_timer()
-            return self._client
+            if not self._receive_is_stale():
+                self._reset_disconnect_timer()
+                return self._client
+            _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
+            await self.disconnect()
         ble_device = None
         for attempt in range(DEVICE_DISCOVERY_ATTEMPTS):
             ble_device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
@@ -281,9 +294,14 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self._client = await establish_connection(BleakClient, ble_device, self.address)
         self._reset_disconnect_timer()
         if self.profile.state_readable:
-            await self._start_notify()
-            await self._send_identity_queries()
-            await self._send_state_queries()
+            try:
+                await self._start_notify()
+                await self._send_identity_queries()
+                if not await self._send_state_queries():
+                    raise BleakError(f"Initial state query failed for {self.address}")
+            except BleakError:
+                await self.disconnect()
+                raise
         return self._client
 
     def _reset_disconnect_timer(self) -> None:
@@ -299,11 +317,21 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
     async def _start_notify(self) -> None:
         if not (self._client and self._client.is_connected):
             return
-        try:
-            await self._client.start_notify(READ_UUID, self._notify_callback)
-            self._start_keep_alive()
-        except BleakError:
-            _LOGGER.debug("Failed to start notify for %s", self.address)
+        await self._client.start_notify(READ_UUID, self._notify_callback)
+        self._notify_started_monotonic = time.monotonic()
+        self._last_rx_monotonic = None
+        self._start_keep_alive()
+
+    def _receive_is_stale(self) -> bool:
+        baseline = self._last_rx_monotonic
+        if baseline is None:
+            baseline = self._notify_started_monotonic
+        return baseline is not None and time.monotonic() - baseline >= RX_STALE_TIMEOUT
+
+    def _mark_received(self, domain: int, *fields: str) -> None:
+        self._domain_revisions[domain] = self._domain_revisions.get(domain, 0) + 1
+        for field in fields:
+            self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
 
     def _arm_expected(self, packet: bytes) -> None:
         expectation = _expected_from_packet(packet)
@@ -327,37 +355,53 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         _LOGGER.debug("Ignoring stale %s for %s: %r (expecting %r)", field, self.address, value, expected)
         return False
 
-    def _apply_color_mode_payload(self, payload: bytes) -> None:
+    def _apply_color_mode_payload(self, payload: bytes) -> tuple[str, ...]:
         parsed = parse_color_mode_response(payload)
+        observed: list[str] = []
+        accept_parameters = True
         # Readback mirror of _enter_static_mode: committing one mode clears the others so exactly one
         # is ever truthful. A bare COLOUR reply keeps active_custom_id (a custom effect reads back as static).
         if parsed.mode is ParsedMode.MUSIC:
             if parsed.music_mode is not None and self._accept_expected("music_mode", parsed.music_mode):
                 self.music_mode = parsed.music_mode
                 self.video_mode, self.effect, self.active_custom_id = "off", None, None
+                observed.append("music_mode")
+            else:
+                accept_parameters = False
         elif parsed.mode is ParsedMode.VIDEO:
-            if parsed.video_mode is not None:
+            if parsed.video_mode is not None and self._accept_expected("video_mode", parsed.video_mode):
                 self.video_mode = parsed.video_mode
                 self.music_mode, self.effect, self.active_custom_id = "off", None, None
+                observed.append("video_mode")
+            else:
+                accept_parameters = False
         elif parsed.mode is ParsedMode.SCENE:
             if self._accept_expected("effect", parsed.effect):
                 self.effect = parsed.effect
                 self.music_mode, self.video_mode, self.active_custom_id = "off", "off", None
+                observed.append("effect")
         elif parsed.mode is ParsedMode.COLOUR:
             if self._accept_expected("effect", parsed.effect):
                 self.effect, self.music_mode, self.video_mode = None, "off", "off"
-        for attr in _COLOR_MODE_FIELDS:
-            if (value := getattr(parsed, attr)) is not None:
-                setattr(self, attr, value)
+                observed.append("effect")
+        if accept_parameters:
+            if parsed.mode is ParsedMode.MUSIC and len(payload) > 4 and payload[4] == 0:
+                self.music_color = None
+                observed.append("music_color")
+            for attr in _COLOR_MODE_FIELDS:
+                if (value := getattr(parsed, attr)) is not None:
+                    setattr(self, attr, value)
+                    observed.append(attr)
         if parsed.rgb_color is not None:
             # A colour-temp state reads back as its white-point RGB with no kelvin field; recognising it
             # keeps the light in CT mode instead of clobbering kelvin and dropping to a near-white RGB.
             if self.color_temp_kelvin is not None and parsed.rgb_color == kelvin_to_rgb(self.color_temp_kelvin):
-                return
+                return tuple(observed)
             accept_rgb = self._accept_expected("rgb_color", parsed.rgb_color)
             accept_kelvin = self._accept_expected("color_temp_kelvin", None)
             if accept_rgb and accept_kelvin:
                 self.rgb_color, self.color_temp_kelvin = parsed.rgb_color, None
+        return tuple(observed)
 
     def _apply_sleep_timer_payload(self, payload: bytes) -> None:
         parsed = parse_timer_sleep(payload)
@@ -384,16 +428,20 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             return
         domain, payload = split
         self._record_packet("rx", frame)
+        self._last_rx_monotonic = time.monotonic()
         _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.address, domain, payload.hex())
         try:
+            observed: tuple[str, ...] = ()
             if domain == POWER_PACKET_TYPE:
-                self.is_on = bool(payload[0])
+                value = bool(payload[0])
+                if self._accept_expected("is_on", value):
+                    self.is_on = value
+                    observed = ("is_on",)
             elif domain == BRIGHTNESS_PACKET_TYPE:
-                if not self._accept_expected("brightness_pct", payload[0]):
-                    return
-                self.brightness_pct = payload[0]
+                if self._accept_expected("brightness_pct", payload[0]):
+                    self.brightness_pct = payload[0]
             elif domain == COLOR_PACKET_TYPE:
-                self._apply_color_mode_payload(payload)
+                observed = self._apply_color_mode_payload(payload)
             elif domain == FIRMWARE_PACKET_TYPE:
                 self._note_identity(fw_version=parse_fw_version(payload))
             elif domain == HARDWARE_PACKET_TYPE:
@@ -406,6 +454,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 self._apply_wakeup_timer_payload(payload)
             elif domain == SCHEDULE_TIMER_PACKET_TYPE:
                 self._apply_schedule_timer_payload(payload)
+            self._mark_received(domain, *observed)
             self.async_set_updated_data(self.data or {})
         except IndexError, ValueError:
             _LOGGER.debug("Failed to parse notify from %s: %s", self.address, data.hex())
@@ -461,38 +510,96 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         expected_effect: str | None = None,
         expected_on: bool | None = None,
         expected_music_mode: str | None = None,
+        expected_music_sensitivity: int | None = None,
+        expected_music_calm: bool | None = None,
+        expected_music_color: tuple[int, int, int] | None = None,
+        expected_music_auto_color: bool = False,
         expected_video_mode: str | None = None,
+        expected_video_full_screen: bool | None = None,
+        expected_video_saturation: int | None = None,
+        expected_video_sound_effects: bool | None = None,
+        expected_video_sound_effects_softness: int | None = None,
+        expected_white_brightness: int | None = None,
         timeout: float = 2.0,
     ) -> bool:
         if not self.profile.state_readable:
             return False
         async with self._lock:
-            await self._ensure_connected()
-        expectations = (expected_effect, expected_on, expected_music_mode, expected_video_mode)
-        color_expectations = (expected_effect, expected_music_mode, expected_video_mode)
+            client = await self._ensure_connected()
+        expectations: dict[str, Any] = {
+            field: value
+            for field, value in (
+                ("effect", expected_effect),
+                ("is_on", expected_on),
+                ("music_mode", expected_music_mode),
+                ("music_sensitivity", expected_music_sensitivity),
+                ("music_calm", expected_music_calm),
+                ("music_color", expected_music_color),
+                ("video_mode", expected_video_mode),
+                ("video_full_screen", expected_video_full_screen),
+                ("video_saturation", expected_video_saturation),
+                ("video_sound_effects", expected_video_sound_effects),
+                ("video_sound_effects_softness", expected_video_sound_effects_softness),
+                ("white_brightness", expected_white_brightness),
+            )
+            if value is not None
+        }
+        if expected_music_auto_color:
+            expectations["music_color"] = None
+        color_expectations = (
+            expected_effect,
+            expected_music_mode,
+            expected_music_sensitivity,
+            expected_music_calm,
+            expected_music_color,
+            expected_video_mode,
+            expected_video_full_screen,
+            expected_video_saturation,
+            expected_video_sound_effects,
+            expected_video_sound_effects_softness,
+            expected_white_brightness,
+        )
+        field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
         deadline = time.monotonic() + timeout
+        query_power = expected_on is not None
+        query_color = expected_music_auto_color or any(value is not None for value in color_expectations)
+        if not query_power and not query_color:
+            query_power = query_color = True
+        queried_domains = {
+            domain
+            for domain, enabled in (
+                (POWER_PACKET_TYPE, query_power),
+                (COLOR_PACKET_TYPE, query_color),
+            )
+            if enabled
+        }
+        domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in queried_domains}
         while time.monotonic() < deadline:
             # Avoid querying brightness as part of verification to reduce stale/out-of-order
             # updates overriding optimistic writes.
-            query_power = expected_on is not None
-            query_color = any(value is not None for value in color_expectations)
-            if not query_power and not query_color:
-                query_power = query_color = True
             async with self._lock:
+                if self._client is not client:
+                    return False
                 ok = await self._send_state_queries(
                     query_power=query_power, query_brightness=False, query_color_mode=query_color
                 )
             if not ok:
+                await self._disconnect_if_current(client)
                 return False
-            if (
-                (expected_effect is None or self.effect == expected_effect)
-                and (expected_on is None or self.is_on == expected_on)
-                and (expected_music_mode is None or self.music_mode == expected_music_mode)
-                and (expected_video_mode is None or self.video_mode == expected_video_mode)
+            if expectations and all(
+                self._field_revisions.get(field, 0) > field_baselines[field] and getattr(self, field) == expected
+                for field, expected in expectations.items()
             ):
                 return True
-            await asyncio.sleep(0.25)
-        return all(expectation is None for expectation in expectations)
+            if not expectations and all(
+                self._domain_revisions.get(domain, 0) > domain_baselines[domain] for domain in queried_domains
+            ):
+                return True
+            if (remaining := deadline - time.monotonic()) > 0:
+                await asyncio.sleep(min(0.25, remaining))
+        if any(self._domain_revisions.get(domain, 0) <= baseline for domain, baseline in domain_baselines.items()):
+            await self._disconnect_if_current(client)
+        return False
 
     def _start_keep_alive(self) -> None:
         self._stop_keep_alive()
@@ -512,6 +619,11 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 await asyncio.sleep(KEEP_ALIVE_INTERVAL)
                 if not (self._client and self._client.is_connected):
                     break
+                if self._receive_is_stale():
+                    _LOGGER.debug("Disconnecting unresponsive notification stream for %s", self.address)
+                    client = self._client
+                    self.hass.async_create_task(self._disconnect_if_current(client))
+                    break
                 self._keep_alive_ticks += 1
                 if self.fw_version is None and self._identity_retries < IDENTITY_RETRY_TICKS:
                     self._identity_retries += 1
@@ -524,6 +636,10 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     break
         except asyncio.CancelledError:
             pass
+
+    async def _disconnect_if_current(self, client: BleakClient) -> None:
+        if self._client is client:
+            await self.disconnect()
 
     async def send_command(self, packet: bytes) -> None:
         if self.hass.is_stopping:
@@ -538,7 +654,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     await client.write_gatt_char(WRITE_UUID, packet, response=False)
                     return
                 except BleakError as err:
-                    self._client = None
+                    await self.disconnect()
                     if attempt == 2:
                         _LOGGER.error("Failed to send to %s after 3 attempts", self.address)
                         raise
@@ -589,13 +705,19 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             del self.packet_log[:-PACKET_LOG_LIMIT]
 
     async def disconnect(self) -> None:
+        client = self._client
         self._stop_keep_alive()
         if self._cancel_disconnect:
             self._cancel_disconnect()
             self._cancel_disconnect = None
-        if self._client and self._client.is_connected:
-            try:
-                await self._client.disconnect()
-            except BleakError:
-                _LOGGER.debug("Error disconnecting from %s", self.address)
-        self._client = None
+        try:
+            if client and client.is_connected:
+                await client.disconnect()
+        except BleakError, TimeoutError:
+            _LOGGER.debug("Error disconnecting from %s", self.address)
+        finally:
+            if self._client is client:
+                self._client = None
+                self._notify_started_monotonic = None
+                self._last_rx_monotonic = None
+                self._expected_state.clear()
