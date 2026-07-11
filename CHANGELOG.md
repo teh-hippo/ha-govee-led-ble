@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v4.1.0-beta.3 (2026-07-11)
+
+### Features
+
+- Complete the Effect Studio
+  ([`0c91e7d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0c91e7d503f9d24bd7bf975396b4165628834cde))
+
+
 ## v4.1.0-beta.2 (2026-07-11)
 
 ### Bug Fixes
