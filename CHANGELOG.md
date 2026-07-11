@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v4.1.0-beta.1 (2026-07-11)
+
+### Chores
+
+- **deps**: Update dependency vitest to v4
+  ([`e5b33ed`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e5b33ed5109de442499a16be428ff88329ce4cfa))
+
+### Features
+
+- Add the Effect Studio card
+  ([`f754c70`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f754c70b2e81d36591f71c4b950a62bda9f1ebeb))
+
+
 ## v4.0.0 (2026-07-10)
 
 ### Chores
