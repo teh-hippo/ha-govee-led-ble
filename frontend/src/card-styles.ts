@@ -68,9 +68,19 @@ export const cardStyles = css`
     }
     .cell .cell-num {
       font-size: 9px;
-      color: rgba(0, 0, 0, 0.55);
-      padding-bottom: 2px;
+      line-height: 1.2;
+      font-weight: 600;
+      padding: 1px 4px;
+      margin-bottom: 2px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.4);
+      color: #fff;
       pointer-events: none;
+    }
+    .cell.off .cell-num,
+    .cell.unchanged .cell-num {
+      background: var(--card-background-color);
+      color: var(--secondary-text-color);
     }
     .cell.sel {
       outline: 3px solid var(--primary-color);
@@ -186,6 +196,13 @@ export const cardStyles = css`
       opacity: 0.4;
       cursor: not-allowed;
     }
+    .btn.primary[disabled] {
+      opacity: 1;
+      background: var(--disabled-color, var(--divider-color));
+      color: var(--disabled-text-color, var(--secondary-text-color));
+      border-color: var(--divider-color);
+      cursor: not-allowed;
+    }
     input[type="color"] {
       width: 42px;
       height: 30px;
@@ -246,22 +263,238 @@ export const cardStyles = css`
       align-items: center;
       gap: 8px;
     }
-    .effect-apply {
-      flex: 1 1 auto;
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      text-align: left;
-    }
     .effect-label {
+      flex: 1 1 auto;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .effect.active .effect-apply {
+    /* Studio shell: header, status band, tabs */
+    .card-head {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 16px 16px 0;
+    }
+    .title {
+      font-size: 1.15em;
+      font-weight: 600;
+      color: var(--primary-text-color);
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--secondary-text-color);
+      font-size: 0.9em;
+      min-width: 0;
+    }
+    .status .current {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--primary-text-color);
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--divider-color);
+      border-radius: 22px;
+      padding: 4px;
+    }
+    .tab {
+      flex: 1 1 0;
+      border: none;
+      background: transparent;
+      color: var(--secondary-text-color);
+      border-radius: 18px;
+      padding: 8px 12px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab:hover {
+      color: var(--primary-text-color);
+    }
+    .tab.active {
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    }
+    .tab:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--primary-color);
+    }
+    /* Studio: kind pill picker */
+    .kinds {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .kind {
+      border: 1px solid var(--divider-color);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      border-radius: 16px;
+      padding: 6px 14px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .kind:hover {
+      border-color: var(--primary-color);
+    }
+    .kind.active {
       background: var(--primary-color);
       color: var(--text-primary-color, #fff);
       border-color: var(--primary-color);
+    }
+    .kind.soon,
+    .kind:disabled {
+      opacity: 1;
+      border-style: dashed;
+      background: var(--secondary-background-color);
+      color: var(--secondary-text-color);
+      cursor: default;
+    }
+    .kind.soon:hover,
+    .kind:disabled:hover {
+      border-color: var(--divider-color);
+    }
+    .kind .soon-tag {
+      font-size: 0.7em;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: var(--divider-color);
+      color: var(--secondary-text-color);
+      border-radius: 8px;
+      padding: 1px 6px;
+      margin-left: 6px;
+    }
+    .kind:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--primary-color);
+    }
+    /* Studio: unchanged (leave-as-is) segment cells */
+    .cell.unchanged {
+      background:
+        repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 5px,
+          var(--divider-color) 5px,
+          var(--divider-color) 6px
+        ),
+        var(--card-background-color);
+      border: 1px solid var(--divider-color);
+    }
+    /* Studio: "coming next" caption row of disabled kinds */
+    .kinds-soon {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      color: var(--secondary-text-color);
+      font-size: 0.85em;
+    }
+    /* Scope band: does this workspace touch the strip? */
+    .scope-band {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 0.85em;
+      font-weight: 600;
+      background: var(--secondary-background-color);
+    }
+    .scope-band.live {
+      border-left: 3px solid var(--primary-color);
+      color: var(--primary-text-color);
+    }
+    .scope-band.draft {
+      border-left: 3px solid var(--secondary-text-color);
+      color: var(--secondary-text-color);
+    }
+    .scope-band .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+    .scope-band.live .dot {
+      background: var(--primary-color);
+    }
+    .scope-band.draft .dot {
+      border: 2px solid var(--secondary-text-color);
+    }
+    /* Horizontal scroll guard for the 15-cell strip on narrow cards */
+    .strip-scroll {
+      position: relative;
+      overflow-x: auto;
+    }
+    .strip-scroll .strip {
+      min-width: 336px;
+    }
+    .strip-scroll::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 24px;
+      pointer-events: none;
+      background: linear-gradient(to left, var(--card-background-color), transparent);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .strip-scroll.clipped::after {
+      opacity: 1;
+    }
+    /* Non-interactive resolved preview strip */
+    .strip.preview-strip {
+      pointer-events: none;
+    }
+    /* Gradient track padding so end handles never clip */
+    .gradient-track {
+      padding: 0 12px;
+    }
+    /* Library: active row + inline delete confirm */
+    .effect .badge-active {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 18px;
+      padding: 6px 14px;
+      font: inherit;
+      font-weight: 600;
+      background: transparent;
+      color: var(--primary-color);
+      border: 1px solid var(--primary-color);
+      cursor: default;
+    }
+    .effect.active {
+      border-left: 3px solid var(--primary-color);
+      padding-left: 8px;
+      border-radius: 4px;
+    }
+    .effect .btn.danger {
+      border-color: var(--error-color);
+      color: var(--error-color);
+    }
+    .effect .btn.danger.primary {
+      background: var(--error-color);
+      color: var(--text-primary-color, #fff);
+    }
+    .effect .confirm-text {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--primary-text-color);
+      font-size: 0.9em;
+    }
+    @media (max-width: 360px) {
+      .cell .cell-num {
+        display: none;
+      }
     }
 `;
