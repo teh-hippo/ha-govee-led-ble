@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak import BleakError
 from homeassistant.components.light import ColorMode
+from homeassistant.core import SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble import protocol as proto
@@ -169,10 +170,34 @@ async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effe
 async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coordinator, effect, mode):
     co = mock_h6199_coordinator
     co.is_on = True
+    co.video_full_screen = False
+    co.video_saturation = 63
+    co.video_sound_effects = True
+    co.video_sound_effects_softness = 27
+    co.video_white_balance = 44
+    co.refresh_state = AsyncMock(side_effect=[False, True])
     await h6199_light.async_turn_on(effect=effect)
-    sent = [call.args[0] for call in co.send_command.call_args_list]
-    assert proto.build_video_mode(full_screen=True, game_mode=mode == "game") in sent
+    packet = proto.build_video_mode(
+        full_screen=False,
+        game_mode=mode == "game",
+        saturation=63,
+        sound_effects=True,
+        sound_effects_softness=27,
+    )
+    assert [call.args[0] for call in co.send_command.call_args_list] == [
+        proto.build_power(True),
+        packet,
+        proto.build_power(True),
+        packet,
+    ]
+    for call in co.refresh_state.await_args_list:
+        assert call.kwargs["expected_video_mode"] == mode
+        assert call.kwargs["expected_video_full_screen"] is False
+        assert call.kwargs["expected_video_saturation"] == 63
+        assert call.kwargs["expected_video_sound_effects"] is True
+        assert call.kwargs["expected_video_sound_effects_softness"] == 27
     assert co.video_mode == mode and co.effect is None
+    assert co.video_white_balance == 44
 
 
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):
@@ -644,6 +669,12 @@ async def test_setup_entry_registers_effect_services(mock_coordinator):
     assert handlers["save_effect"] == "async_save_effect"
     assert handlers["delete_effect"] == "async_delete_effect"
     assert handlers["rename_effect"] == "async_rename_effect"
+    assert handlers["update_effect"] == "async_update_effect"
+    assert handlers["export_effect"] == "async_export_effect"
+    export_call = next(
+        call for call in platform.async_register_entity_service.call_args_list if call.args[0] == "export_effect"
+    )
+    assert export_call.kwargs["supports_response"] is SupportsResponse.ONLY
 
 
 async def test_save_effect_with_content_parses_and_delegates(light, mock_coordinator):
@@ -733,6 +764,74 @@ async def test_rename_effect_maps_effect_errors(light, mock_coordinator, key):
     with pytest.raises(ServiceValidationError) as exc:
         await light.async_rename_effect(to="Dawn", id="a1b2c3d4")
     assert exc.value.translation_key == key
+
+
+async def test_update_effect_delegates_name_and_content(light, mock_coordinator):
+    content = {"kind": "vibrant", "stops": [[255, 120, 0], [0, 0, 255]]}
+    await light.async_update_effect(id="a1b2c3d4", name="Dawn", content=content)
+    mock_coordinator.async_update_effect.assert_awaited_once_with(
+        "a1b2c3d4", display_name="Dawn", content=content_from_dict(content)
+    )
+
+
+async def test_update_effect_name_only_passes_content_none(light, mock_coordinator):
+    await light.async_update_effect(id="a1b2c3d4", name="Dawn")
+    mock_coordinator.async_update_effect.assert_awaited_once_with("a1b2c3d4", display_name="Dawn", content=None)
+
+
+async def test_update_effect_content_only_passes_name_none(light, mock_coordinator):
+    content = {"kind": "vibrant", "stops": [[1, 2, 3], [4, 5, 6]]}
+    await light.async_update_effect(id="a1b2c3d4", content=content)
+    mock_coordinator.async_update_effect.assert_awaited_once_with(
+        "a1b2c3d4", display_name=None, content=content_from_dict(content)
+    )
+
+
+async def test_update_effect_requires_a_change(light, mock_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_update_effect(id="a1b2c3d4")
+    assert exc.value.translation_key == "update_needs_name_or_content"
+    mock_coordinator.async_update_effect.assert_not_awaited()
+
+
+async def test_update_effect_maps_malformed_content(light, mock_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_update_effect(
+            id="a1b2c3d4",
+            content={"kind": "vibrant", "stops": [[1, 2]]},
+        )
+    assert exc.value.translation_key == "invalid_effect_content"
+    mock_coordinator.async_update_effect.assert_not_awaited()
+
+
+@pytest.mark.parametrize("key", ["duplicate_name", "unknown_effect", "too_many_segments", "diy_unsupported"])
+async def test_update_effect_maps_effect_errors(light, mock_coordinator, key):
+    mock_coordinator.async_update_effect = AsyncMock(side_effect=EffectValidationError(key))
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_update_effect(id="a1b2c3d4", name="Dawn")
+    assert exc.value.translation_key == key
+
+
+async def test_export_effect_returns_coordinator_payload(light, mock_coordinator):
+    payload = {
+        "id": "a1b2c3d4",
+        "name": "Sunset",
+        "model": "H617A",
+        "segment_count": 15,
+        "content": {"kind": "vibrant", "stops": [[255, 120, 0], [0, 0, 255]]},
+    }
+    mock_coordinator.async_export_effect = AsyncMock(return_value=payload)
+    result = await light.async_export_effect(id="a1b2c3d4")
+    assert result == payload
+    mock_coordinator.async_export_effect.assert_awaited_once_with("a1b2c3d4")
+
+
+async def test_export_effect_unknown_maps_error(light, mock_coordinator):
+    mock_coordinator.async_export_effect = AsyncMock(side_effect=EffectValidationError("unknown_effect"))
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_export_effect(id="missing")
+    assert exc.value.translation_key == "unknown_effect"
+    assert exc.value.translation_placeholders == {"effect": "missing"}
 
 
 def test_custom_effects_attribute_maps_id_to_name(light, mock_coordinator):

@@ -59,7 +59,7 @@ Services:
 - `ha_govee_led_ble.set_music_mode`
 - `ha_govee_led_ble.set_video_mode`
 - `ha_govee_led_ble.set_white_brightness`
-- `ha_govee_led_ble.save_effect`, `rename_effect`, `delete_effect`
+- `ha_govee_led_ble.save_effect`, `rename_effect`, `update_effect`, `delete_effect`, `export_effect`
 
 ## Behaviour notes
 
@@ -73,8 +73,10 @@ Services:
   talks to the device. Turn on `switch.govee_strip_reduce_preview_motion` to
   render it as a still instead of an animation.
 - Saved custom effects appear in the light's effect list under their given
-  names; save, rename, or remove them with the `save_effect`, `rename_effect`,
-  and `delete_effect` services (or the bundled segment card's Save button).
+  names; save, rename, update, or remove them with the `save_effect`,
+  `rename_effect`, `update_effect`, and `delete_effect` services (or the bundled
+  segment card's Save button). `export_effect` returns a portable snapshot of a
+  saved effect by its stable id.
 - Colour mapping reapplies the active video mode as you change it, so switching
   it moves the strip into video mode. Saturation and sound effects are set only
   through the `set_video_mode` service.

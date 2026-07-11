@@ -18,7 +18,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
@@ -151,6 +151,14 @@ async def async_setup_entry(
         vol.Optional("from_name"): cv.string,
         vol.Required("to"): cv.string,
     }, "async_rename_effect")
+    p.async_register_entity_service("update_effect", {
+        vol.Required("id"): cv.string,
+        vol.Optional("name"): cv.string,
+        vol.Optional("content"): dict,
+    }, "async_update_effect")
+    p.async_register_entity_service("export_effect", {
+        vol.Required("id"): cv.string,
+    }, "async_export_effect", supports_response=SupportsResponse.ONLY)
     # fmt: on
 
 
@@ -332,7 +340,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if coordinator.profile.supports_video_mode:
             mode = next((m for label, m in _VIDEO_EFFECTS.items() if _normalize_effect_name(label) == key), None)
             if mode is not None:
-                await self.async_set_video_mode(mode=mode)
+                await self.async_set_video_mode(
+                    mode=mode,
+                    saturation=coordinator.video_saturation,
+                    full_screen=coordinator.video_full_screen,
+                    sound_effects=coordinator.video_sound_effects,
+                    sound_effects_softness=coordinator.video_sound_effects_softness,
+                )
                 return
         if coordinator.profile.supports_music_mode:
             slug = next((s for label, s in _MUSIC_EFFECTS.items() if _normalize_effect_name(label) == key), None)

@@ -14,9 +14,9 @@ describe("TABS / STUDIO_KINDS", () => {
     expect(TABS.map((t) => t.id)).toEqual(["now", "studio", "library"]);
   });
 
-  it("marks only Static and Gradient available in cycle 1", () => {
+  it("marks completed authoring kinds available", () => {
     const available = STUDIO_KINDS.filter((k) => k.available).map((k) => k.id);
-    expect(available).toEqual(["static", "gradient"]);
+    expect(available).toEqual(["static", "gradient", "sketch", "flat", "combo"]);
     expect(STUDIO_KINDS.map((k) => k.id)).toEqual([
       "static",
       "gradient",

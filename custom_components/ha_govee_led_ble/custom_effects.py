@@ -80,6 +80,8 @@ _SKETCH_MOTION_CODES: frozenset[int] = frozenset({0x02, 0x09, 0x0A, 0x0F, 0x13, 
 # CAT 2.4/2.7: sketch speed and brightness are 0..100 percentage bytes (observed max 0x64).
 _SKETCH_SPEED_RANGE: range = range(0, 101)
 _SKETCH_BRIGHT_RANGE: range = range(0, 101)
+_DIY_SPEED_RANGE: range = range(0, 101)
+_BYTE_RANGE: range = range(0, 256)
 
 # CAT 2.6: confirmed flat (FAMILY, VARIANT) pairs, keyed by family (variants have catalogue gaps).
 _FLAT_VARIANTS_BY_FAMILY: dict[int, tuple[int, ...]] = {
@@ -122,6 +124,15 @@ def validate_content(content: AuthorableContent, *, segment_count: int) -> None:
         case SegmentContent():
             _require(len(content.colors) <= segment_count, "too_many_segments")
             _require(all(_is_rgb(c) for c in content.colors if c is not None), "bad_rgb")
+            _require(
+                content.brightness is None or len(content.brightness) <= segment_count,
+                "too_many_segment_brightness",
+            )
+            _require(
+                content.brightness is None
+                or all(level is None or isinstance(level, int) and 0 <= level <= 100 for level in content.brightness),
+                "segment_brightness_range",
+            )
         case VibrantContent():
             _require(2 <= len(content.stops) <= 5, "vibrant_stops_range")
             _require(all(_is_rgb(s) for s in content.stops), "vibrant_bad_rgb")
@@ -134,9 +145,12 @@ def validate_content(content: AuthorableContent, *, segment_count: int) -> None:
             _require(content.brightness in _SKETCH_BRIGHT_RANGE, "sketch_brightness_range")
         case FlatContent():
             _require((content.family, content.variant) in _FLAT_FAMILY_VARIANTS, "flat_family_variant_invalid")
+            _require(content.speed in _DIY_SPEED_RANGE, "flat_speed_range")
             _require(len(content.palette) <= _flat_palette_max(content.family), "palette_too_large")
             _require(all(_is_rgb(s) for s in content.palette), "flat_bad_rgb")
         case ComboContent():
+            _require(content.variant in _BYTE_RANGE, "combo_variant_range")
+            _require(content.speed in _DIY_SPEED_RANGE, "combo_speed_range")
             _require(len(content.effects) <= 4, "combo_too_many")
             _require(all(fv in _FLAT_FAMILY_VARIANTS for fv in content.effects), "combo_family_variant_invalid")
             _require(len(content.palette) <= 8, "palette_too_large")

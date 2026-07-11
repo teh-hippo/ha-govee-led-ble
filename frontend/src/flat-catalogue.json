@@ -1,0 +1,101 @@
+[
+  {
+    "id": "fade",
+    "label": "Fade",
+    "family": 0,
+    "palette_max": 8,
+    "control_label": "Speed",
+    "description": "Uses a Govee Fade pattern with the shared palette.",
+    "variants": [
+      { "id": "fade-1", "label": "Fade 1", "variant": 0 },
+      { "id": "fade-2", "label": "Fade 2", "variant": 1 },
+      { "id": "fade-3", "label": "Fade 3", "variant": 2 }
+    ]
+  },
+  {
+    "id": "jumping",
+    "label": "Jumping",
+    "family": 1,
+    "palette_max": 8,
+    "control_label": "Speed",
+    "description": "Uses a Govee Jumping pattern with the shared palette.",
+    "variants": [
+      { "id": "jumping-1", "label": "Jumping 1", "variant": 0 },
+      { "id": "jumping-2", "label": "Jumping 2", "variant": 2 }
+    ]
+  },
+  {
+    "id": "twinkle",
+    "label": "Twinkle",
+    "family": 2,
+    "palette_max": 8,
+    "control_label": "Speed",
+    "description": "Uses a Govee Twinkle pattern with the shared palette.",
+    "variants": [
+      { "id": "twinkle-1", "label": "Twinkle 1", "variant": 0 },
+      { "id": "twinkle-2", "label": "Twinkle 2", "variant": 1 },
+      { "id": "twinkle-3", "label": "Twinkle 3", "variant": 2 }
+    ]
+  },
+  {
+    "id": "marquee",
+    "label": "Marquee",
+    "family": 3,
+    "palette_max": 8,
+    "control_label": "Speed",
+    "description": "Uses a Govee Marquee pattern with the shared palette.",
+    "variants": [
+      { "id": "marquee-1", "label": "Marquee 1", "variant": 3 },
+      { "id": "marquee-2", "label": "Marquee 2", "variant": 4 },
+      { "id": "marquee-3", "label": "Marquee 3", "variant": 5 }
+    ]
+  },
+  {
+    "id": "music",
+    "label": "Music",
+    "family": 4,
+    "palette_max": 8,
+    "control_label": "Sensitivity",
+    "description": "Uses a Govee DIY Music pattern, separate from the light's Music mode.",
+    "variants": [
+      { "id": "music-1", "label": "Music 1", "variant": 8 },
+      { "id": "music-2", "label": "Music 2", "variant": 6 },
+      { "id": "music-3", "label": "Music 3", "variant": 7 }
+    ]
+  },
+  {
+    "id": "chasing",
+    "label": "Chasing",
+    "family": 8,
+    "palette_max": 8,
+    "control_label": "Speed",
+    "description": "Uses a Govee Chasing pattern with the shared palette.",
+    "variants": [
+      { "id": "chasing-1", "label": "Chasing 1", "variant": 9 },
+      { "id": "chasing-2", "label": "Chasing 2", "variant": 10 }
+    ]
+  },
+  {
+    "id": "rainbow",
+    "label": "Rainbow",
+    "family": 9,
+    "palette_max": 8,
+    "control_label": "Speed",
+    "description": "Uses a Govee Rainbow pattern with the shared palette.",
+    "variants": [
+      { "id": "rainbow-1", "label": "Rainbow 1", "variant": 9 },
+      { "id": "rainbow-2", "label": "Rainbow 2", "variant": 10 }
+    ]
+  },
+  {
+    "id": "crossing",
+    "label": "Crossing",
+    "family": 10,
+    "palette_max": 3,
+    "control_label": "Speed",
+    "description": "Uses the single Govee Crossing pattern with up to three colours.",
+    "variants": [
+      { "id": "crossing", "label": "Crossing", "variant": 0 }
+    ]
+  }
+]

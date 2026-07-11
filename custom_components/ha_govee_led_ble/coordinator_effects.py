@@ -162,6 +162,48 @@ class _CustomEffectMixin(_CoordinatorBase):
             await self._save_to_store()
             self._publish()
 
+    async def async_update_effect(
+        self, effect_id: str, *, display_name: str | None = None, content: EffectContent | None = None
+    ) -> None:
+        """Update a stored effect by its stable id, changing its display name, content, or both."""
+        if display_name is None and content is None:
+            raise EffectValidationError("update_needs_name_or_content")
+        async with self._store_lock:
+            await self._reload_from_store()
+            effect = self.custom_effects.get(effect_id)
+            if effect is None:
+                raise EffectValidationError("unknown_effect")
+            changes: dict[str, Any] = {}
+            if content is not None:
+                resolved = self._require_supported_kind(content)
+                validate_content(resolved, segment_count=self.profile.segment_count)
+                changes["content"] = resolved
+            if display_name is not None:
+                changes["name_key"] = self._validated_name_key(display_name, exclude_id=effect.id)
+                changes["display_name"] = display_name.strip()
+            updated = replace(effect, **changes)
+            self.custom_effects[effect.id] = updated
+            if self.active_custom_id == effect.id:
+                self.effect = updated.display_name
+            self._reconcile_scene_shadow(updated)
+            await self._save_to_store()
+            self._publish()
+
+    async def async_export_effect(self, effect_id: str) -> dict[str, Any]:
+        """Return a portable snapshot of a stored effect resolved by its stable id."""
+        async with self._store_lock:
+            await self._reload_from_store()
+            effect = self.custom_effects.get(effect_id)
+            if effect is None:
+                raise EffectValidationError("unknown_effect")
+            return {
+                "id": effect.id,
+                "name": effect.display_name,
+                "model": self.model,
+                "segment_count": self.profile.segment_count,
+                "content": content_to_dict(effect.content),
+            }
+
     def _content_for_save(self, content: EffectContent | None, *, capture_current: bool) -> EffectContent:
         if capture_current:
             return SegmentContent(colors=tuple(self.segment_colors))

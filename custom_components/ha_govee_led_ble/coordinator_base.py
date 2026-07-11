@@ -34,6 +34,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     brightness_pct: int
     profile: ModelProfile
     address: str
+    model: str
     is_on: bool
     effect: str | None
     fw_version: str | None

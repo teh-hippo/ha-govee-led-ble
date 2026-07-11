@@ -1,6 +1,6 @@
-var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,c=Symbol(),q0=new WeakMap;class i{constructor(z,J,Z){if(this._$cssResult$=!0,Z!==c)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=z,this.t=J}get styleSheet(){let z=this.i,J=this.t;if(o&&z===void 0){let Z=J!==void 0&&J.length===1;Z&&(z=q0.get(J)),z===void 0&&((this.i=z=new CSSStyleSheet).replaceSync(this.cssText),Z&&q0.set(J,z))}return z}toString(){return this.cssText}}var l0=(z)=>new i(typeof z=="string"?z:z+"",void 0,c),g=(z,...J)=>{let Z=z.length===1?z[0]:J.reduce((Q,Y,F)=>Q+((q)=>{if(q._$cssResult$===!0)return q.cssText;if(typeof q=="number")return q;throw Error("Value passed to 'css' function must be a 'css' function result: "+q+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(Y)+z[F+1],z[0]);return new i(Z,z,c)},a0=(z,J)=>{if(o)z.adoptedStyleSheets=J.map((Z)=>Z instanceof CSSStyleSheet?Z:Z.styleSheet);else for(let Z of J){let Q=document.createElement("style"),Y=v.litNonce;Y!==void 0&&Q.setAttribute("nonce",Y),Q.textContent=Z.cssText,z.appendChild(Q)}},j0=o?(z)=>z:(z)=>z instanceof CSSStyleSheet?((J)=>{let Z="";for(let Q of J.cssRules)Z+=Q.cssText;return l0(Z)})(z):z,{is:n0,defineProperty:o0,getOwnPropertyDescriptor:c0,getOwnPropertyNames:i0,getOwnPropertySymbols:r0,getPrototypeOf:s0}=Object,m=globalThis,V0=m.trustedTypes,e0=V0?V0.emptyScript:"",t0=m.reactiveElementPolyfillSupport,d=(z,J)=>z,n={toAttribute(z,J){switch(J){case Boolean:z=z?e0:null;break;case Object:case Array:z=z==null?z:JSON.stringify(z)}return z},fromAttribute(z,J){let Z=z;switch(J){case Boolean:Z=z!==null;break;case Number:Z=z===null?null:Number(z);break;case Object:case Array:try{Z=JSON.parse(z)}catch(Q){Z=null}}return Z}},R0=(z,J)=>!n0(z,J),W0={attribute:!0,type:String,converter:n,reflect:!1,useDefault:!1,hasChanged:R0};Symbol.metadata??=Symbol("metadata"),m.litPropertyMetadata??=new WeakMap;class I extends HTMLElement{static addInitializer(z){this.o(),(this.l??=[]).push(z)}static get observedAttributes(){return this.finalize(),this.u&&[...this.u.keys()]}static createProperty(z,J=W0){if(J.state&&(J.attribute=!1),this.o(),this.prototype.hasOwnProperty(z)&&((J=Object.create(J)).wrapped=!0),this.elementProperties.set(z,J),!J.noAccessor){let Z=Symbol(),Q=this.getPropertyDescriptor(z,Z,J);Q!==void 0&&o0(this.prototype,z,Q)}}static getPropertyDescriptor(z,J,Z){let{get:Q,set:Y}=c0(this.prototype,z)??{get(){return this[J]},set(F){this[J]=F}};return{get:Q,set(F){let q=Q?.call(this);Y?.call(this,F),this.requestUpdate(z,q,Z)},configurable:!0,enumerable:!0}}static getPropertyOptions(z){return this.elementProperties.get(z)??W0}static o(){if(this.hasOwnProperty(d("elementProperties")))return;let z=s0(this);z.finalize(),z.l!==void 0&&(this.l=[...z.l]),this.elementProperties=new Map(z.elementProperties)}static finalize(){if(this.hasOwnProperty(d("finalized")))return;if(this.finalized=!0,this.o(),this.hasOwnProperty(d("properties"))){let J=this.properties,Z=[...i0(J),...r0(J)];for(let Q of Z)this.createProperty(Q,J[Q])}let z=this[Symbol.metadata];if(z!==null){let J=litPropertyMetadata.get(z);if(J!==void 0)for(let[Z,Q]of J)this.elementProperties.set(Z,Q)}this.u=new Map;for(let[J,Z]of this.elementProperties){let Q=this.p(J,Z);Q!==void 0&&this.u.set(Q,J)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(z){let J=[];if(Array.isArray(z)){let Z=new Set(z.flat(1/0).reverse());for(let Q of Z)J.unshift(j0(Q))}else z!==void 0&&J.push(j0(z));return J}static p(z,J){let Z=J.attribute;return Z===!1?void 0:typeof Z=="string"?Z:typeof z=="string"?z.toLowerCase():void 0}constructor(){super(),this.v=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this.m=null,this._()}_(){this.S=new Promise((z)=>this.enableUpdating=z),this._$AL=new Map,this.$(),this.requestUpdate(),this.constructor.l?.forEach((z)=>z(this))}addController(z){(this.P??=new Set).add(z),this.renderRoot!==void 0&&this.isConnected&&z.hostConnected?.()}removeController(z){this.P?.delete(z)}$(){let z=new Map,J=this.constructor.elementProperties;for(let Z of J.keys())this.hasOwnProperty(Z)&&(z.set(Z,this[Z]),delete this[Z]);z.size>0&&(this.v=z)}createRenderRoot(){let z=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return a0(z,this.constructor.elementStyles),z}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this.P?.forEach((z)=>z.hostConnected?.())}enableUpdating(z){}disconnectedCallback(){this.P?.forEach((z)=>z.hostDisconnected?.())}attributeChangedCallback(z,J,Z){this._$AK(z,Z)}C(z,J){let Z=this.constructor.elementProperties.get(z),Q=this.constructor.p(z,Z);if(Q!==void 0&&Z.reflect===!0){let Y=(Z.converter?.toAttribute!==void 0?Z.converter:n).toAttribute(J,Z.type);this.m=z,Y==null?this.removeAttribute(Q):this.setAttribute(Q,Y),this.m=null}}_$AK(z,J){let Z=this.constructor,Q=Z.u.get(z);if(Q!==void 0&&this.m!==Q){let Y=Z.getPropertyOptions(Q),F=typeof Y.converter=="function"?{fromAttribute:Y.converter}:Y.converter?.fromAttribute!==void 0?Y.converter:n;this.m=Q;let q=F.fromAttribute(J,Y.type);this[Q]=q??this.T?.get(Q)??q,this.m=null}}requestUpdate(z,J,Z,Q=!1,Y){if(z!==void 0){let F=this.constructor;if(Q===!1&&(Y=this[z]),Z??=F.getPropertyOptions(z),!((Z.hasChanged??R0)(Y,J)||Z.useDefault&&Z.reflect&&Y===this.T?.get(z)&&!this.hasAttribute(F.p(z,Z))))return;this.M(z,J,Z)}this.isUpdatePending===!1&&(this.S=this.k())}M(z,J,{useDefault:Z,reflect:Q,wrapped:Y},F){Z&&!(this.T??=new Map).has(z)&&(this.T.set(z,F??J??this[z]),Y!==!0||F!==void 0)||(this._$AL.has(z)||(this.hasUpdated||Z||(J=void 0),this._$AL.set(z,J)),Q===!0&&this.m!==z&&(this.A??=new Set).add(z))}async k(){this.isUpdatePending=!0;try{await this.S}catch(J){Promise.reject(J)}let z=this.scheduleUpdate();return z!=null&&await z,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this.v){for(let[Q,Y]of this.v)this[Q]=Y;this.v=void 0}let Z=this.constructor.elementProperties;if(Z.size>0)for(let[Q,Y]of Z){let{wrapped:F}=Y,q=this[Q];F!==!0||this._$AL.has(Q)||q===void 0||this.M(Q,void 0,Y,q)}}let z=!1,J=this._$AL;try{z=this.shouldUpdate(J),z?(this.willUpdate(J),this.P?.forEach((Z)=>Z.hostUpdate?.()),this.update(J)):this.U()}catch(Z){throw z=!1,this.U(),Z}z&&this._$AE(J)}willUpdate(z){}_$AE(z){this.P?.forEach((J)=>J.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(z)),this.updated(z)}U(){this._$AL=new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this.S}shouldUpdate(z){return!0}update(z){this.A&&=this.A.forEach((J)=>this.C(J,this[J])),this.U()}updated(z){}firstUpdated(z){}}I.elementStyles=[],I.shadowRootOptions={mode:"open"},I[d("elementProperties")]=new Map,I[d("finalized")]=new Map,t0?.({ReactiveElement:I}),(m.reactiveElementVersions??=[]).push("2.1.2");var r=globalThis,$0=(z)=>z,b=r.trustedTypes,B0=b?b.createPolicy("lit-html",{createHTML:(z)=>z}):void 0,D0="$lit$",G=`lit$${Math.random().toFixed(9).slice(2)}$`,G0="?"+G,z8=`<${G0}>`,M=document,k=()=>M.createComment(""),N=(z)=>z===null||typeof z!="object"&&typeof z!="function",s=Array.isArray,J8=(z)=>s(z)||typeof z?.[Symbol.iterator]=="function",a=`[ 	
-\f\r]`,E=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,H0=/-->/g,L0=/>/g,K=RegExp(`>|${a}(?:([^\\s"'>=/]+)(${a}*=${a}*(?:[^ 	
-\f\r"'\`<>=]|("|')|))|$)`,"g"),P0=/'/g,X0=/"/g,C0=/^(?:script|style|textarea|title)$/i,e=(z)=>(J,...Z)=>({_$litType$:z,strings:J,values:Z}),V=e(1),$8=e(2),B8=e(3),_=Symbol.for("lit-noChange"),B=Symbol.for("lit-nothing"),w0=new WeakMap,U=M.createTreeWalker(M,129);function K0(z,J){if(!s(z)||!z.hasOwnProperty("raw"))throw Error("invalid template strings array");return B0!==void 0?B0.createHTML(J):J}var Z8=(z,J)=>{let Z=z.length-1,Q=[],Y,F=J===2?"<svg>":J===3?"<math>":"",q=E;for(let j=0;j<Z;j++){let $=z[j],C,W,H=-1,P=0;for(;P<$.length&&(q.lastIndex=P,W=q.exec($),W!==null);)P=q.lastIndex,q===E?W[1]==="!--"?q=H0:W[1]!==void 0?q=L0:W[2]!==void 0?(C0.test(W[2])&&(Y=RegExp("</"+W[2],"g")),q=K):W[3]!==void 0&&(q=K):q===K?W[0]===">"?(q=Y??E,H=-1):W[1]===void 0?H=-2:(H=q.lastIndex-W[2].length,C=W[1],q=W[3]===void 0?K:W[3]==='"'?X0:P0):q===X0||q===P0?q=K:q===H0||q===L0?q=E:(q=K,Y=void 0);let w=q===K&&z[j+1].startsWith("/>")?" ":"";F+=q===E?$+z8:H>=0?(Q.push(C),$.slice(0,H)+D0+$.slice(H)+G+w):$+G+(H===-2?j:w)}return[K0(z,F+(z[Z]||"<?>")+(J===2?"</svg>":J===3?"</math>":"")),Q]};class x{constructor({strings:z,_$litType$:J},Z){let Q;this.parts=[];let Y=0,F=0,q=z.length-1,j=this.parts,[$,C]=Z8(z,J);if(this.el=x.createElement($,Z),U.currentNode=this.el.content,J===2||J===3){let W=this.el.content.firstChild;W.replaceWith(...W.childNodes)}for(;(Q=U.nextNode())!==null&&j.length<q;){if(Q.nodeType===1){if(Q.hasAttributes())for(let W of Q.getAttributeNames())if(W.endsWith(D0)){let H=C[F++],P=Q.getAttribute(W).split(G),w=/([.?@])?(.*)/.exec(H);j.push({type:1,index:Y,name:w[2],strings:P,ctor:w[1]==="."?U0:w[1]==="?"?M0:w[1]==="@"?_0:T}),Q.removeAttribute(W)}else W.startsWith(G)&&(j.push({type:6,index:Y}),Q.removeAttribute(W));if(C0.test(Q.tagName)){let W=Q.textContent.split(G),H=W.length-1;if(H>0){Q.textContent=b?b.emptyScript:"";for(let P=0;P<H;P++)Q.append(W[P],k()),U.nextNode(),j.push({type:2,index:++Y});Q.append(W[H],k())}}}else if(Q.nodeType===8)if(Q.data===G0)j.push({type:2,index:Y});else{let W=-1;for(;(W=Q.data.indexOf(G,W+1))!==-1;)j.push({type:7,index:Y}),W+=G.length-1}Y++}}static createElement(z,J){let Z=M.createElement("template");return Z.innerHTML=z,Z}}function A(z,J,Z=z,Q){if(J===_)return J;let Y=Q!==void 0?Z.N?.[Q]:Z.O,F=N(J)?void 0:J._$litDirective$;return Y?.constructor!==F&&(Y?._$AO?.(!1),F===void 0?Y=void 0:(Y=new F(z),Y._$AT(z,Z,Q)),Q!==void 0?(Z.N??=[])[Q]=Y:Z.O=Y),Y!==void 0&&(J=A(z,Y._$AS(z,J.values),Y,Q)),J}class I0{constructor(z,J){this._$AV=[],this._$AN=void 0,this._$AD=z,this._$AM=J}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}R(z){let{el:{content:J},parts:Z}=this._$AD,Q=(z?.creationScope??M).importNode(J,!0);U.currentNode=Q;let Y=U.nextNode(),F=0,q=0,j=Z[0];for(;j!==void 0;){if(F===j.index){let $;j.type===2?$=new u(Y,Y.nextSibling,this,z):j.type===1?$=new j.ctor(Y,j.name,j.strings,this,z):j.type===6&&($=new A0(Y,this,z)),this._$AV.push($),j=Z[++q]}F!==j?.index&&(Y=U.nextNode(),F++)}return U.currentNode=M,Q}V(z){let J=0;for(let Z of this._$AV)Z!==void 0&&(Z.strings!==void 0?(Z._$AI(z,Z,J),J+=Z.strings.length-2):Z._$AI(z[J])),J++}}class u{get _$AU(){return this._$AM?._$AU??this.D}constructor(z,J,Z,Q){this.type=2,this._$AH=B,this._$AN=void 0,this._$AA=z,this._$AB=J,this._$AM=Z,this.options=Q,this.D=Q?.isConnected??!0}get parentNode(){let z=this._$AA.parentNode,J=this._$AM;return J!==void 0&&z?.nodeType===11&&(z=J.parentNode),z}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(z,J=this){z=A(this,z,J),N(z)?z===B||z==null||z===""?(this._$AH!==B&&this._$AR(),this._$AH=B):z!==this._$AH&&z!==_&&this.L(z):z._$litType$!==void 0?this.j(z):z.nodeType!==void 0?this.I(z):J8(z)?this.H(z):this.L(z)}B(z){return this._$AA.parentNode.insertBefore(z,this._$AB)}I(z){this._$AH!==z&&(this._$AR(),this._$AH=this.B(z))}L(z){this._$AH!==B&&N(this._$AH)?this._$AA.nextSibling.data=z:this.I(M.createTextNode(z)),this._$AH=z}j(z){let{values:J,_$litType$:Z}=z,Q=typeof Z=="number"?this._$AC(z):(Z.el===void 0&&(Z.el=x.createElement(K0(Z.h,Z.h[0]),this.options)),Z);if(this._$AH?._$AD===Q)this._$AH.V(J);else{let Y=new I0(Q,this),F=Y.R(this.options);Y.V(J),this.I(F),this._$AH=Y}}_$AC(z){let J=w0.get(z.strings);return J===void 0&&w0.set(z.strings,J=new x(z)),J}H(z){s(this._$AH)||(this._$AH=[],this._$AR());let J=this._$AH,Z,Q=0;for(let Y of z)Q===J.length?J.push(Z=new u(this.B(k()),this.B(k()),this,this.options)):Z=J[Q],Z._$AI(Y),Q++;Q<J.length&&(this._$AR(Z&&Z._$AB.nextSibling,Q),J.length=Q)}_$AR(z=this._$AA.nextSibling,J){for(this._$AP?.(!1,!0,J);z!==this._$AB;){let Z=$0(z).nextSibling;$0(z).remove(),z=Z}}setConnected(z){this._$AM===void 0&&(this.D=z,this._$AP?.(z))}}class T{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(z,J,Z,Q,Y){this.type=1,this._$AH=B,this._$AN=void 0,this.element=z,this.name=J,this._$AM=Q,this.options=Y,Z.length>2||Z[0]!==""||Z[1]!==""?(this._$AH=Array(Z.length-1).fill(new String),this.strings=Z):this._$AH=B}_$AI(z,J=this,Z,Q){let Y=this.strings,F=!1;if(Y===void 0)z=A(this,z,J,0),F=!N(z)||z!==this._$AH&&z!==_,F&&(this._$AH=z);else{let q=z,j,$;for(z=Y[0],j=0;j<Y.length-1;j++)$=A(this,q[Z+j],J,j),$===_&&($=this._$AH[j]),F||=!N($)||$!==this._$AH[j],$===B?z=B:z!==B&&(z+=($??"")+Y[j+1]),this._$AH[j]=$}F&&!Q&&this.W(z)}W(z){z===B?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,z??"")}}class U0 extends T{constructor(){super(...arguments),this.type=3}W(z){this.element[this.name]=z===B?void 0:z}}class M0 extends T{constructor(){super(...arguments),this.type=4}W(z){this.element.toggleAttribute(this.name,!!z&&z!==B)}}class _0 extends T{constructor(z,J,Z,Q,Y){super(z,J,Z,Q,Y),this.type=5}_$AI(z,J=this){if((z=A(this,z,J,0)??B)===_)return;let Z=this._$AH,Q=z===B&&Z!==B||z.capture!==Z.capture||z.once!==Z.once||z.passive!==Z.passive,Y=z!==B&&(Z===B||Q);Q&&this.element.removeEventListener(this.name,this,Z),Y&&this.element.addEventListener(this.name,this,z),this._$AH=z}handleEvent(z){typeof this._$AH=="function"?this._$AH.call(this.options?.host??this.element,z):this._$AH.handleEvent(z)}}class A0{constructor(z,J,Z){this.element=z,this.type=6,this._$AN=void 0,this._$AM=J,this.options=Z}get _$AU(){return this._$AM._$AU}_$AI(z){A(this,z)}}var Q8=r.litHtmlPolyfillSupport;Q8?.(x,u),(r.litHtmlVersions??=[]).push("3.3.3");var Y8=(z,J,Z)=>{let Q=Z?.renderBefore??J,Y=Q._$litPart$;if(Y===void 0){let F=Z?.renderBefore??null;Q._$litPart$=Y=new u(J.insertBefore(k(),F),F,void 0,Z??{})}return Y._$AI(z),Y},t=globalThis;class R extends I{constructor(){super(...arguments),this.renderOptions={host:this},this.rt=void 0}createRenderRoot(){let z=super.createRenderRoot();return this.renderOptions.renderBefore??=z.firstChild,z}update(z){let J=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(z),this.rt=Y8(J,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this.rt?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this.rt?.setConnected(!1)}render(){return _}}R._$litElement$=!0,R.finalized=!0,t.litElementHydrateSupport?.({LitElement:R});var F8=t.litElementPolyfillSupport;F8?.({LitElement:R});(t.litElementVersions??=[]).push("4.2.2");var y0=g`
+var i=globalThis,pr=i.ShadowRoot&&(i.ShadyCSS===void 0||i.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,$r=Symbol(),Cr=new WeakMap;class mr{constructor(r,u,w){if(this._$cssResult$=!0,w!==$r)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=r,this.t=u}get styleSheet(){let r=this.i,u=this.t;if(pr&&r===void 0){let w=u!==void 0&&u.length===1;w&&(r=Cr.get(u)),r===void 0&&((this.i=r=new CSSStyleSheet).replaceSync(this.cssText),w&&Cr.set(u,r))}return r}toString(){return this.cssText}}var Zu=(r)=>new mr(typeof r=="string"?r:r+"",void 0,$r),s=(r,...u)=>{let w=r.length===1?r[0]:u.reduce((o,n,b)=>o+((p)=>{if(p._$cssResult$===!0)return p.cssText;if(typeof p=="number")return p;throw Error("Value passed to 'css' function must be a 'css' function result: "+p+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(n)+r[b+1],r[0]);return new mr(w,r,$r)},Qu=(r,u)=>{if(pr)r.adoptedStyleSheets=u.map((w)=>w instanceof CSSStyleSheet?w:w.styleSheet);else for(let w of u){let o=document.createElement("style"),n=i.litNonce;n!==void 0&&o.setAttribute("nonce",n),o.textContent=w.cssText,r.appendChild(o)}},Xr=pr?(r)=>r:(r)=>r instanceof CSSStyleSheet?((u)=>{let w="";for(let o of u.cssRules)w+=o.cssText;return Zu(w)})(r):r,{is:Du,defineProperty:Vu,getOwnPropertyDescriptor:Fu,getOwnPropertyNames:Wu,getOwnPropertySymbols:Cu,getPrototypeOf:Xu}=Object,e=globalThis,gr=e.trustedTypes,gu=gr?gr.emptyScript:"",Gu=e.reactiveElementPolyfillSupport,O=(r,u)=>r,br={toAttribute(r,u){switch(u){case Boolean:r=r?gu:null;break;case Object:case Array:r=r==null?r:JSON.stringify(r)}return r},fromAttribute(r,u){let w=r;switch(u){case Boolean:w=r!==null;break;case Number:w=r===null?null:Number(r);break;case Object:case Array:try{w=JSON.parse(r)}catch(o){w=null}}return w}},lr=(r,u)=>!Du(r,u),Gr={attribute:!0,type:String,converter:br,reflect:!1,useDefault:!1,hasChanged:lr};Symbol.metadata??=Symbol("metadata"),e.litPropertyMetadata??=new WeakMap;class _ extends HTMLElement{static addInitializer(r){this.o(),(this.l??=[]).push(r)}static get observedAttributes(){return this.finalize(),this.u&&[...this.u.keys()]}static createProperty(r,u=Gr){if(u.state&&(u.attribute=!1),this.o(),this.prototype.hasOwnProperty(r)&&((u=Object.create(u)).wrapped=!0),this.elementProperties.set(r,u),!u.noAccessor){let w=Symbol(),o=this.getPropertyDescriptor(r,w,u);o!==void 0&&Vu(this.prototype,r,o)}}static getPropertyDescriptor(r,u,w){let{get:o,set:n}=Fu(this.prototype,r)??{get(){return this[u]},set(b){this[u]=b}};return{get:o,set(b){let p=o?.call(this);n?.call(this,b),this.requestUpdate(r,p,w)},configurable:!0,enumerable:!0}}static getPropertyOptions(r){return this.elementProperties.get(r)??Gr}static o(){if(this.hasOwnProperty(O("elementProperties")))return;let r=Xu(this);r.finalize(),r.l!==void 0&&(this.l=[...r.l]),this.elementProperties=new Map(r.elementProperties)}static finalize(){if(this.hasOwnProperty(O("finalized")))return;if(this.finalized=!0,this.o(),this.hasOwnProperty(O("properties"))){let u=this.properties,w=[...Wu(u),...Cu(u)];for(let o of w)this.createProperty(o,u[o])}let r=this[Symbol.metadata];if(r!==null){let u=litPropertyMetadata.get(r);if(u!==void 0)for(let[w,o]of u)this.elementProperties.set(w,o)}this.u=new Map;for(let[u,w]of this.elementProperties){let o=this.p(u,w);o!==void 0&&this.u.set(o,u)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(r){let u=[];if(Array.isArray(r)){let w=new Set(r.flat(1/0).reverse());for(let o of w)u.unshift(Xr(o))}else r!==void 0&&u.push(Xr(r));return u}static p(r,u){let w=u.attribute;return w===!1?void 0:typeof w=="string"?w:typeof r=="string"?r.toLowerCase():void 0}constructor(){super(),this.v=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this.m=null,this._()}_(){this.S=new Promise((r)=>this.enableUpdating=r),this._$AL=new Map,this.$(),this.requestUpdate(),this.constructor.l?.forEach((r)=>r(this))}addController(r){(this.P??=new Set).add(r),this.renderRoot!==void 0&&this.isConnected&&r.hostConnected?.()}removeController(r){this.P?.delete(r)}$(){let r=new Map,u=this.constructor.elementProperties;for(let w of u.keys())this.hasOwnProperty(w)&&(r.set(w,this[w]),delete this[w]);r.size>0&&(this.v=r)}createRenderRoot(){let r=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return Qu(r,this.constructor.elementStyles),r}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this.P?.forEach((r)=>r.hostConnected?.())}enableUpdating(r){}disconnectedCallback(){this.P?.forEach((r)=>r.hostDisconnected?.())}attributeChangedCallback(r,u,w){this._$AK(r,w)}C(r,u){let w=this.constructor.elementProperties.get(r),o=this.constructor.p(r,w);if(o!==void 0&&w.reflect===!0){let n=(w.converter?.toAttribute!==void 0?w.converter:br).toAttribute(u,w.type);this.m=r,n==null?this.removeAttribute(o):this.setAttribute(o,n),this.m=null}}_$AK(r,u){let w=this.constructor,o=w.u.get(r);if(o!==void 0&&this.m!==o){let n=w.getPropertyOptions(o),b=typeof n.converter=="function"?{fromAttribute:n.converter}:n.converter?.fromAttribute!==void 0?n.converter:br;this.m=o;let p=b.fromAttribute(u,n.type);this[o]=p??this.T?.get(o)??p,this.m=null}}requestUpdate(r,u,w,o=!1,n){if(r!==void 0){let b=this.constructor;if(o===!1&&(n=this[r]),w??=b.getPropertyOptions(r),!((w.hasChanged??lr)(n,u)||w.useDefault&&w.reflect&&n===this.T?.get(r)&&!this.hasAttribute(b.p(r,w))))return;this.M(r,u,w)}this.isUpdatePending===!1&&(this.S=this.k())}M(r,u,{useDefault:w,reflect:o,wrapped:n},b){w&&!(this.T??=new Map).has(r)&&(this.T.set(r,b??u??this[r]),n!==!0||b!==void 0)||(this._$AL.has(r)||(this.hasUpdated||w||(u=void 0),this._$AL.set(r,u)),o===!0&&this.m!==r&&(this.A??=new Set).add(r))}async k(){this.isUpdatePending=!0;try{await this.S}catch(u){Promise.reject(u)}let r=this.scheduleUpdate();return r!=null&&await r,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this.v){for(let[o,n]of this.v)this[o]=n;this.v=void 0}let w=this.constructor.elementProperties;if(w.size>0)for(let[o,n]of w){let{wrapped:b}=n,p=this[o];b!==!0||this._$AL.has(o)||p===void 0||this.M(o,void 0,n,p)}}let r=!1,u=this._$AL;try{r=this.shouldUpdate(u),r?(this.willUpdate(u),this.P?.forEach((w)=>w.hostUpdate?.()),this.update(u)):this.U()}catch(w){throw r=!1,this.U(),w}r&&this._$AE(u)}willUpdate(r){}_$AE(r){this.P?.forEach((u)=>u.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(r)),this.updated(r)}U(){this._$AL=new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this.S}shouldUpdate(r){return!0}update(r){this.A&&=this.A.forEach((u)=>this.C(u,this[u])),this.U()}updated(r){}firstUpdated(r){}}_.elementStyles=[],_.shadowRootOptions={mode:"open"},_[O("elementProperties")]=new Map,_[O("finalized")]=new Map,Gu?.({ReactiveElement:_}),(e.reactiveElementVersions??=[]).push("2.1.2");var kr=globalThis,_r=(r)=>r,x=kr.trustedTypes,Hr=x?x.createPolicy("lit-html",{createHTML:(r)=>r}):void 0,fr="$lit$",W=`lit$${Math.random().toFixed(9).slice(2)}$`,Ur="?"+W,_u=`<${Ur}>`,P=document,A=()=>P.createComment(""),N=(r)=>r===null||typeof r!="object"&&typeof r!="function",Er=Array.isArray,Hu=(r)=>Er(r)||typeof r?.[Symbol.iterator]=="function",nr=`[ 	
+\f\r]`,I=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,Pr=/-->/g,hr=/>/g,G=RegExp(`>|${nr}(?:([^\\s"'>=/]+)(${nr}*=${nr}*(?:[^ 	
+\f\r"'\`<>=]|("|')|))|$)`,"g"),Kr=/'/g,Lr=/"/g,yr=/^(?:script|style|textarea|title)$/i,qr=(r)=>(u,...w)=>({_$litType$:r,strings:u,values:w}),$=qr(1),Au=qr(2),Nu=qr(3),K=Symbol.for("lit-noChange"),q=Symbol.for("lit-nothing"),Mr=new WeakMap,H=P.createTreeWalker(P,129);function Ir(r,u){if(!Er(r)||!r.hasOwnProperty("raw"))throw Error("invalid template strings array");return Hr!==void 0?Hr.createHTML(u):u}var Pu=(r,u)=>{let w=r.length-1,o=[],n,b=u===2?"<svg>":u===3?"<math>":"",p=I;for(let k=0;k<w;k++){let m=r[k],B,E,R=-1,j=0;for(;j<m.length&&(p.lastIndex=j,E=p.exec(m),E!==null);)j=p.lastIndex,p===I?E[1]==="!--"?p=Pr:E[1]!==void 0?p=hr:E[2]!==void 0?(yr.test(E[2])&&(n=RegExp("</"+E[2],"g")),p=G):E[3]!==void 0&&(p=G):p===G?E[0]===">"?(p=n??I,R=-1):E[1]===void 0?R=-2:(R=p.lastIndex-E[2].length,B=E[1],p=E[3]===void 0?G:E[3]==='"'?Lr:Kr):p===Lr||p===Kr?p=G:p===Pr||p===hr?p=I:(p=G,n=void 0);let g=p===G&&r[k+1].startsWith("/>")?" ":"";b+=p===I?m+_u:R>=0?(o.push(B),m.slice(0,R)+fr+m.slice(R)+W+g):m+W+(R===-2?k:g)}return[Ir(r,b+(r[w]||"<?>")+(u===2?"</svg>":u===3?"</math>":"")),o]};class S{constructor({strings:r,_$litType$:u},w){let o;this.parts=[];let n=0,b=0,p=r.length-1,k=this.parts,[m,B]=Pu(r,u);if(this.el=S.createElement(m,w),H.currentNode=this.el.content,u===2||u===3){let E=this.el.content.firstChild;E.replaceWith(...E.childNodes)}for(;(o=H.nextNode())!==null&&k.length<p;){if(o.nodeType===1){if(o.hasAttributes())for(let E of o.getAttributeNames())if(E.endsWith(fr)){let R=B[b++],j=o.getAttribute(E).split(W),g=/([.?@])?(.*)/.exec(R);k.push({type:1,index:n,name:g[2],strings:j,ctor:g[1]==="."?Ar:g[1]==="?"?Nr:g[1]==="@"?Sr:v}),o.removeAttribute(E)}else E.startsWith(W)&&(k.push({type:6,index:n}),o.removeAttribute(E));if(yr.test(o.tagName)){let E=o.textContent.split(W),R=E.length-1;if(R>0){o.textContent=x?x.emptyScript:"";for(let j=0;j<R;j++)o.append(E[j],A()),H.nextNode(),k.push({type:2,index:++n});o.append(E[R],A())}}}else if(o.nodeType===8)if(o.data===Ur)k.push({type:2,index:n});else{let E=-1;for(;(E=o.data.indexOf(W,E+1))!==-1;)k.push({type:7,index:n}),E+=W.length-1}n++}}static createElement(r,u){let w=P.createElement("template");return w.innerHTML=r,w}}function L(r,u,w=r,o){if(u===K)return u;let n=o!==void 0?w.N?.[o]:w.O,b=N(u)?void 0:u._$litDirective$;return n?.constructor!==b&&(n?._$AO?.(!1),b===void 0?n=void 0:(n=new b(r),n._$AT(r,w,o)),o!==void 0?(w.N??=[])[o]=n:w.O=n),n!==void 0&&(u=L(r,n._$AS(r,u.values),n,o)),u}class Or{constructor(r,u){this._$AV=[],this._$AN=void 0,this._$AD=r,this._$AM=u}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}R(r){let{el:{content:u},parts:w}=this._$AD,o=(r?.creationScope??P).importNode(u,!0);H.currentNode=o;let n=H.nextNode(),b=0,p=0,k=w[0];for(;k!==void 0;){if(b===k.index){let m;k.type===2?m=new d(n,n.nextSibling,this,r):k.type===1?m=new k.ctor(n,k.name,k.strings,this,r):k.type===6&&(m=new dr(n,this,r)),this._$AV.push(m),k=w[++p]}b!==k?.index&&(n=H.nextNode(),b++)}return H.currentNode=P,o}V(r){let u=0;for(let w of this._$AV)w!==void 0&&(w.strings!==void 0?(w._$AI(r,w,u),u+=w.strings.length-2):w._$AI(r[u])),u++}}class d{get _$AU(){return this._$AM?._$AU??this.D}constructor(r,u,w,o){this.type=2,this._$AH=q,this._$AN=void 0,this._$AA=r,this._$AB=u,this._$AM=w,this.options=o,this.D=o?.isConnected??!0}get parentNode(){let r=this._$AA.parentNode,u=this._$AM;return u!==void 0&&r?.nodeType===11&&(r=u.parentNode),r}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(r,u=this){r=L(this,r,u),N(r)?r===q||r==null||r===""?(this._$AH!==q&&this._$AR(),this._$AH=q):r!==this._$AH&&r!==K&&this.L(r):r._$litType$!==void 0?this.j(r):r.nodeType!==void 0?this.I(r):Hu(r)?this.H(r):this.L(r)}B(r){return this._$AA.parentNode.insertBefore(r,this._$AB)}I(r){this._$AH!==r&&(this._$AR(),this._$AH=this.B(r))}L(r){this._$AH!==q&&N(this._$AH)?this._$AA.nextSibling.data=r:this.I(P.createTextNode(r)),this._$AH=r}j(r){let{values:u,_$litType$:w}=r,o=typeof w=="number"?this._$AC(r):(w.el===void 0&&(w.el=S.createElement(Ir(w.h,w.h[0]),this.options)),w);if(this._$AH?._$AD===o)this._$AH.V(u);else{let n=new Or(o,this),b=n.R(this.options);n.V(u),this.I(b),this._$AH=n}}_$AC(r){let u=Mr.get(r.strings);return u===void 0&&Mr.set(r.strings,u=new S(r)),u}H(r){Er(this._$AH)||(this._$AH=[],this._$AR());let u=this._$AH,w,o=0;for(let n of r)o===u.length?u.push(w=new d(this.B(A()),this.B(A()),this,this.options)):w=u[o],w._$AI(n),o++;o<u.length&&(this._$AR(w&&w._$AB.nextSibling,o),u.length=o)}_$AR(r=this._$AA.nextSibling,u){for(this._$AP?.(!1,!0,u);r!==this._$AB;){let w=_r(r).nextSibling;_r(r).remove(),r=w}}setConnected(r){this._$AM===void 0&&(this.D=r,this._$AP?.(r))}}class v{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(r,u,w,o,n){this.type=1,this._$AH=q,this._$AN=void 0,this.element=r,this.name=u,this._$AM=o,this.options=n,w.length>2||w[0]!==""||w[1]!==""?(this._$AH=Array(w.length-1).fill(new String),this.strings=w):this._$AH=q}_$AI(r,u=this,w,o){let n=this.strings,b=!1;if(n===void 0)r=L(this,r,u,0),b=!N(r)||r!==this._$AH&&r!==K,b&&(this._$AH=r);else{let p=r,k,m;for(r=n[0],k=0;k<n.length-1;k++)m=L(this,p[w+k],u,k),m===K&&(m=this._$AH[k]),b||=!N(m)||m!==this._$AH[k],m===q?r=q:r!==q&&(r+=(m??"")+n[k+1]),this._$AH[k]=m}b&&!o&&this.W(r)}W(r){r===q?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,r??"")}}class Ar extends v{constructor(){super(...arguments),this.type=3}W(r){this.element[this.name]=r===q?void 0:r}}class Nr extends v{constructor(){super(...arguments),this.type=4}W(r){this.element.toggleAttribute(this.name,!!r&&r!==q)}}class Sr extends v{constructor(r,u,w,o,n){super(r,u,w,o,n),this.type=5}_$AI(r,u=this){if((r=L(this,r,u,0)??q)===K)return;let w=this._$AH,o=r===q&&w!==q||r.capture!==w.capture||r.once!==w.once||r.passive!==w.passive,n=r!==q&&(w===q||o);o&&this.element.removeEventListener(this.name,this,w),n&&this.element.addEventListener(this.name,this,r),this._$AH=r}handleEvent(r){typeof this._$AH=="function"?this._$AH.call(this.options?.host??this.element,r):this._$AH.handleEvent(r)}}class dr{constructor(r,u,w){this.element=r,this.type=6,this._$AN=void 0,this._$AM=u,this.options=w}get _$AU(){return this._$AM._$AU}_$AI(r){L(this,r)}}var hu=kr.litHtmlPolyfillSupport;hu?.(S,d),(kr.litHtmlVersions??=[]).push("3.3.3");var Ku=(r,u,w)=>{let o=w?.renderBefore??u,n=o._$litPart$;if(n===void 0){let b=w?.renderBefore??null;o._$litPart$=n=new d(u.insertBefore(A(),b),b,void 0,w??{})}return n._$AI(r),n},Jr=globalThis;class V extends _{constructor(){super(...arguments),this.renderOptions={host:this},this.rt=void 0}createRenderRoot(){let r=super.createRenderRoot();return this.renderOptions.renderBefore??=r.firstChild,r}update(r){let u=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(r),this.rt=Ku(u,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this.rt?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this.rt?.setConnected(!1)}render(){return K}}V._$litElement$=!0,V.finalized=!0,Jr.litElementHydrateSupport?.({LitElement:V});var Lu=Jr.litElementPolyfillSupport;Lu?.({LitElement:V});(Jr.litElementVersions??=[]).push("4.2.2");var vr=s`
     ha-card {
       overflow: hidden;
     }
@@ -43,7 +43,8 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
       padding: 4px;
       border-radius: var(--ha-card-border-radius, 12px);
       background: var(--divider-color);
-      touch-action: none;
+      touch-action: pan-x pan-y;
+      user-select: none;
       outline: none;
     }
     .strip:focus-visible {
@@ -104,8 +105,8 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
     .handle {
       position: absolute;
       top: 50%;
-      width: 20px;
-      height: 20px;
+      width: 28px;
+      height: 28px;
       border-radius: 50%;
       transform: translate(-50%, -50%);
       border: 2px solid var(--card-background-color);
@@ -126,7 +127,11 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
     .stop {
       display: flex;
       align-items: center;
-      gap: 2px;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--divider-color);
+      border-radius: 9px;
+      background: var(--secondary-background-color);
     }
     /* Presets */
     .presets {
@@ -224,9 +229,67 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
       border-color: var(--primary-color);
       box-shadow: 0 0 0 1px var(--primary-color);
     }
+    textarea {
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      padding: 10px;
+      font: 0.85em/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+      resize: vertical;
+    }
+    textarea:focus-visible {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 1px var(--primary-color);
+    }
     .effect-name {
       flex: 1 1 12ch;
       min-width: 12ch;
+    }
+    .edit-band {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--primary-color);
+      border-radius: 8px;
+      color: var(--primary-text-color);
+      background: var(--secondary-background-color);
+      font-size: 0.85em;
+    }
+    .pending-author {
+      padding: 12px;
+      border: 1px dashed var(--divider-color);
+      border-radius: 10px;
+      background: var(--secondary-background-color);
+    }
+    .import-panel {
+      border: 1px solid var(--divider-color);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .import-panel summary {
+      padding: 10px 12px;
+      color: var(--primary-text-color);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .import-panel[open] summary {
+      border-bottom: 1px solid var(--divider-color);
+    }
+    .import-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+    }
+    .import-json {
+      min-height: 130px;
+    }
+    .import-file {
+      display: none;
     }
     /* Custom effects */
     .help {
@@ -249,6 +312,17 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
     .feedback.info {
       border-color: var(--success-color, var(--primary-color));
     }
+    .draft-confirm {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--warning-color, #f9a825);
+      border-radius: 8px;
+      background: var(--secondary-background-color);
+      color: var(--primary-text-color);
+      font-size: 0.9em;
+    }
     .effects {
       list-style: none;
       margin: 0;
@@ -261,6 +335,38 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
+    }
+    .effect-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1 1 220px;
+      min-width: 0;
+    }
+    .effect-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      flex: 1 1 auto;
+      flex-wrap: wrap;
+    }
+    .effect-more summary {
+      list-style: none;
+    }
+    .effect-more summary::-webkit-details-marker {
+      display: none;
+    }
+    .effect-more[open] {
+      flex-basis: 100%;
+    }
+    .more-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 6px;
+      flex-wrap: wrap;
     }
     .effect-label {
       flex: 1 1 auto;
@@ -268,6 +374,7 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      color: var(--primary-text-color);
     }
     /* Studio shell: header, status band, tabs */
     .card-head {
@@ -387,6 +494,196 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
         var(--card-background-color);
       border: 1px solid var(--divider-color);
     }
+    .cell.background {
+      background:
+        repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 5px,
+          rgba(255, 255, 255, 0.24) 5px,
+          rgba(255, 255, 255, 0.24) 6px
+        ),
+        var(--cell-background);
+      border: 1px solid var(--divider-color);
+    }
+    .colour-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--secondary-text-color);
+      font-size: 0.85em;
+    }
+    .motion-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .motion {
+      border: 1px solid var(--divider-color);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      border-radius: 10px;
+      padding: 9px 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .motion:hover {
+      border-color: var(--primary-color);
+    }
+    .motion.active {
+      border-color: var(--primary-color);
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+    }
+    .motion:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--primary-color);
+    }
+    .range-row {
+      display: grid;
+      grid-template-columns: minmax(80px, auto) minmax(120px, 1fr) 4ch;
+      align-items: center;
+      gap: 10px;
+      color: var(--primary-text-color);
+    }
+    .range-row input[type="range"] {
+      width: 100%;
+      accent-color: var(--primary-color);
+    }
+    .range-row output {
+      text-align: right;
+      color: var(--secondary-text-color);
+      font-variant-numeric: tabular-nums;
+    }
+    .preview-badge {
+      color: var(--secondary-text-color);
+      font-size: 0.78em;
+      border: 1px solid var(--divider-color);
+      border-radius: 10px;
+      padding: 2px 7px;
+    }
+    .family-grid,
+    .variant-grid {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    .family,
+    .variant {
+      border: 1px solid var(--divider-color);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      border-radius: 16px;
+      padding: 7px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .family:hover,
+    .variant:hover {
+      border-color: var(--primary-color);
+    }
+    .family.active,
+    .variant.active {
+      border-color: var(--primary-color);
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+    }
+    .family:focus-visible,
+    .variant:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--primary-color);
+    }
+    .palette-editor {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .palette-chip {
+      display: grid;
+      grid-template-columns: auto auto auto;
+      align-items: center;
+      gap: 4px;
+      padding: 5px;
+      border: 1px solid var(--divider-color);
+      border-radius: 10px;
+      background: var(--secondary-background-color);
+    }
+    .palette-chip input[type="color"] {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+    .palette-number {
+      color: var(--secondary-text-color);
+      font-size: 0.8em;
+      font-variant-numeric: tabular-nums;
+    }
+    .palette-chip .btn.danger {
+      border-color: var(--error-color);
+      color: var(--error-color);
+    }
+    .palette-add {
+      min-height: 76px;
+      border-style: dashed;
+    }
+    .combo-chain {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .combo-step {
+      display: grid;
+      grid-template-columns: auto minmax(100px, 1fr) minmax(120px, 1fr);
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--divider-color);
+      border-radius: 10px;
+      background: var(--secondary-background-color);
+    }
+    .combo-number {
+      color: var(--secondary-text-color);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .combo-step select {
+      width: 100%;
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      padding: 7px 9px;
+      font: inherit;
+    }
+    .combo-step select:focus-visible {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 1px var(--primary-color);
+    }
+    .combo-actions {
+      display: flex;
+      gap: 4px;
+      grid-column: 2 / -1;
+      justify-content: flex-end;
+    }
+    .combo-actions .btn.danger {
+      border-color: var(--error-color);
+      color: var(--error-color);
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
     /* Studio: "coming next" caption row of disabled kinds */
     .kinds-soon {
       display: flex;
@@ -436,14 +733,26 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
       min-width: 336px;
     }
     .strip-scroll::after {
-      content: "";
+      content: "›";
       position: absolute;
       top: 0;
       right: 0;
       bottom: 0;
-      width: 24px;
+      width: 34px;
       pointer-events: none;
-      background: linear-gradient(to left, var(--card-background-color), transparent);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 3px;
+      box-sizing: border-box;
+      color: var(--primary-color);
+      font-size: 24px;
+      font-weight: 700;
+      background: linear-gradient(
+        to left,
+        var(--card-background-color) 35%,
+        transparent
+      );
       opacity: 0;
       transition: opacity 0.15s ease;
     }
@@ -495,8 +804,17 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
       .cell .cell-num {
         display: none;
       }
+      .motion-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .range-row {
+        grid-template-columns: 1fr 4ch;
+      }
+      .range-row > span {
+        grid-column: 1 / -1;
+      }
     }
-`;class O0 extends R{static properties={hass:{attribute:!1},_config:{state:!0}};setConfig(z){this._config={...z}}render(){return V`
+`;class cr extends V{static properties={hass:{attribute:!1},_config:{state:!0}};setConfig(r){this._config={...r}}render(){return $`
       <div class="editor">
         <ha-entity-picker
           .hass=${this.hass}
@@ -511,7 +829,7 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
           <code>segment_colors</code> attribute).
         </p>
       </div>
-    `}_entityChanged(z){let J=z.detail?.value??"",Z={...this._config,entity:J};this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:Z},bubbles:!0,composed:!0}))}static styles=g`
+    `}_entityChanged(r){let u=r.detail?.value??"",w={...this._config,entity:u};this.dispatchEvent(new CustomEvent("config-changed",{detail:{config:w},bubbles:!0,composed:!0}))}static styles=s`
     .editor {
       padding: 8px;
     }
@@ -520,52 +838,64 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
       color: var(--secondary-text-color);
       font-size: 0.85em;
     }
-  `}customElements.define("govee-led-ble-card-editor",O0);var L=15;function X(z,J,Z){return Math.max(J,Math.min(Z,z))}function D(z){let J=z.replace("#","");return[parseInt(J.slice(0,2),16),parseInt(J.slice(2,4),16),parseInt(J.slice(4,6),16)]}function p(z){return"#"+z.map((J)=>X(Math.round(J),0,255).toString(16).padStart(2,"0")).join("")}function h(z,J){if(z.length===0)throw Error("no stops");if(z.length===1){let $=z[0];return[$[0],$[1],$[2]]}let Z=z.length-1,Q=X(J,0,1)*Z,Y=X(Math.floor(Q),0,Z-1),F=Q-Y,q=z[Y],j=z[Y+1];return[q[0]+(j[0]-q[0])*F,q[1]+(j[1]-q[1])*F,q[2]+(j[2]-q[2])*F]}function q8(z){let J=Math.floor(z),Z=z-J;if(Z<0.5)return J;if(Z>0.5)return J+1;return J%2===0?J:J+1}function f(z,J=15){if(z.length===0)throw Error("no stops");if(J<=0)return[];if(z.length===1){let Z=z[0];return Array.from({length:J},()=>[Z[0],Z[1],Z[2]])}return Array.from({length:J},(Z,Q)=>{let Y=J>1?Q/(J-1):0;return h(z,Y).map(q8)})}function J0(z){let J=new Map,Z=[];return z.forEach((Q,Y)=>{let F=`${Q[0]},${Q[1]},${Q[2]}`,q=J.get(F);if(q===void 0)q={segments:[],rgb_color:[Q[0],Q[1],Q[2]]},J.set(F,q),Z.push(q);q.segments.push(Y+1)}),Z}var E0=[{id:"sunset",name:"Sunset",stops:[[255,89,94],[255,146,76],[255,202,58]]},{id:"ocean",name:"Ocean",stops:[[15,32,89],[25,130,196],[112,193,179]]},{id:"forest",name:"Forest",stops:[[27,67,50],[45,106,79],[149,213,178]]},{id:"rainbow",name:"Rainbow",stops:[[255,0,0],[255,183,0],[0,200,83],[0,145,234],[170,0,255]]},{id:"warm-white",name:"Warm white",stops:[[255,183,107]]},{id:"cool-white",name:"Cool white",stops:[[188,220,255]]}];function d0(z,J=15){return J0(f(z.stops,J))}function k0(z){return[...new Set(z)].sort((J,Z)=>J-Z)}function N0(z,J){let Z=Math.min(z,J),Q=Math.max(z,J),Y=new Set;for(let F=Z;F<=Q;F++)Y.add(F);return Y}function x0(z,J){let Z=new Set(z);if(Z.has(J))Z.delete(J);else Z.add(J);return Z}function u0(z=15){let J=new Set;for(let Z=1;Z<=z;Z++)J.add(Z);return J}function S(){return new Set}function T0(z){if(z===null||typeof z!=="object"||Array.isArray(z))return[];let J=[];for(let[Z,Q]of Object.entries(z)){if(typeof Q!=="string")continue;let Y=Q.trim();if(Y==="")continue;J.push({id:Z,name:Y})}return J.sort((Z,Q)=>{let Y=Z.name.toLowerCase(),F=Q.name.toLowerCase();if(Y!==F)return Y<F?-1:1;if(Z.id!==Q.id)return Z.id<Q.id?-1:1;return 0}),J}var y=[{id:"now",label:"Now"},{id:"studio",label:"Studio"},{id:"library",label:"Library"}];function Z0(z,J,Z){if(Z<=0)return z;switch(J){case"ArrowRight":case"ArrowDown":return(z+1)%Z;case"ArrowLeft":case"ArrowUp":return(z-1+Z)%Z;case"Home":return 0;case"End":return Z-1;default:return z}}var Q0=[{id:"static",label:"Static",available:!0},{id:"gradient",label:"Gradient",available:!0},{id:"sketch",label:"Sketch",available:!1},{id:"flat",label:"Flat",available:!1},{id:"combo",label:"Combo",available:!1}];function S0(z,J=null){let Z=J!==null&&J.some((Q)=>Q!==null);return{kind:"segments",colors:z.map((Q)=>Q===null?null:[Q[0],Q[1],Q[2]]),brightness:Z?J.map((Q)=>Q===null?null:Q):null}}function v0(z,J=null){return z.some((Z)=>Z!==null)||J!==null&&J.some((Z)=>Z!==null)}function b0(z){return{kind:"vibrant",stops:z.map((J)=>[J[0],J[1],J[2]])}}function z0(z){if(z!==null&&typeof z==="object"){let J=z.message;if(typeof J==="string"&&J.trim()!=="")return J}return null}function O(z,J="Something went wrong."){if(typeof z==="string"&&z.trim()!=="")return z;let Z=z0(z);if(Z!==null)return Z;if(z!==null&&typeof z==="object"){let Q=z,Y=z0(Q.error)??z0(Q.body);if(Y!==null)return Y}return J}var g0=["#ff595e","#ffca3a","#1982c4"],j8="#33cc66",Y0=2,F0=5,m0="Govee Effect Studio",l=Q0.filter((z)=>z.available),V8=Q0.filter((z)=>!z.available);function W8(z){if(!Array.isArray(z))return null;let J=[];for(let Z of z){if(!Array.isArray(Z)||Z.length<3)return null;let[Q,Y,F]=Z;if(typeof Q!=="number"||typeof Y!=="number"||typeof F!=="number")return null;J.push([Q,Y,F])}return J}class p0 extends R{static properties={hass:{attribute:!1},_config:{state:!0},_tab:{state:!0},_studioKind:{state:!0},_selection:{state:!0},_cursor:{state:!0},_paintColor:{state:!0},_staticColors:{state:!0},_stops:{state:!0},_studioStops:{state:!0},_dragStop:{state:!0},_dragFrac:{state:!0},_reduce:{state:!0},_effectName:{state:!0},_studioName:{state:!0},_renamingId:{state:!0},_renameValue:{state:!0},_deletingId:{state:!0},_feedback:{state:!0}};_dragging=!1;_dragAnchor=1;_raf=null;_t0=0;_mq;_ro;constructor(){super();this._tab="now",this._studioKind="static",this._selection=new Set,this._cursor=1,this._paintColor=j8,this._staticColors=Array.from({length:L},()=>null),this._stops=[...g0],this._studioStops=[...g0],this._dragStop=null,this._dragFrac=null,this._reduce=!1,this._effectName="",this._studioName="",this._renamingId=null,this._renameValue="",this._deletingId=null,this._feedback=null}static getStubConfig(z){return{entity:(z?Object.keys(z.states).find((Z)=>Z.startsWith("light.")&&Array.isArray(z.states[Z].attributes?.segment_colors)):void 0)??""}}static getConfigElement(){return document.createElement("govee-led-ble-card-editor")}setConfig(z){if(!z)throw Error("Invalid configuration");this._config={...z}}getCardSize(){return 12}connectedCallback(){super.connectedCallback();let z=window.matchMedia("(prefers-reduced-motion: reduce)");this._reduce=z.matches,this._mq=z,z.addEventListener("change",this._onReduceChange),this._ro=new ResizeObserver(()=>this._updateClipped()),this._ro.observe(this),this._raf=requestAnimationFrame((J)=>this._tick(J))}disconnectedCallback(){if(super.disconnectedCallback(),this._raf!==null)cancelAnimationFrame(this._raf);this._raf=null,this._mq?.removeEventListener("change",this._onReduceChange),this._ro?.disconnect(),window.removeEventListener("pointermove",this._onMove),window.removeEventListener("pointerup",this._onUp),window.removeEventListener("pointermove",this._onStopMove),window.removeEventListener("pointerup",this._onStopUp)}updated(){this._updateClipped()}_updateClipped(){for(let z of this.renderRoot.querySelectorAll(".strip-scroll"))z.classList.toggle("clipped",z.scrollWidth>z.clientWidth+1)}_onReduceChange=(z)=>{this._reduce=z.matches};_selectTab(z){if(this._tab===z)return;this._tab=z,this._selection=S(),this._cursor=1}_onTabKey(z){let J=y.findIndex((Q)=>Q.id===this._tab),Z=Z0(J,z.key,y.length);if(Z===J)return;z.preventDefault(),this._selectTab(y[Z].id),this.updateComplete.then(()=>{this.renderRoot.querySelector(`#tab-${y[Z].id}`)?.focus()})}_selectKind(z){this._studioKind=z}_onKindKey(z){let J=l.findIndex((Q)=>Q.id===this._studioKind),Z=Z0(J,z.key,l.length);if(Z===J)return;z.preventDefault(),this._studioKind=l[Z].id,this.updateComplete.then(()=>{this.renderRoot.querySelector('.kinds .kind[aria-checked="true"]')?.focus()})}_segmentColors(){let z=this._config?.entity;if(!z||!this.hass)return null;let J=this.hass.states[z];if(!J)return null;return W8(J.attributes?.segment_colors)}_cellFromClientX(z){let J=this.renderRoot.querySelector(".strip");if(!J)return 1;let Z=J.getBoundingClientRect(),Q=Z.width/L;return X(Math.floor((z-Z.left)/Q),0,L-1)+1}_onDown(z){z.preventDefault(),this._dragging=!0,this._dragAnchor=this._cellFromClientX(z.clientX),this._cursor=this._dragAnchor,this._selection=new Set([this._dragAnchor]),this.renderRoot.querySelector(".strip")?.focus(),window.addEventListener("pointermove",this._onMove),window.addEventListener("pointerup",this._onUp)}_onMove=(z)=>{if(!this._dragging)return;let J=this._cellFromClientX(z.clientX);this._selection=N0(this._dragAnchor,J),this._cursor=J};_onUp=()=>{this._dragging=!1,window.removeEventListener("pointermove",this._onMove),window.removeEventListener("pointerup",this._onUp)};_onKey(z){let J=z.key,Z=["ArrowRight","ArrowDown","ArrowLeft","ArrowUp","Home","End"];if(J==="ArrowRight"||J==="ArrowDown")this._cursor=X(this._cursor+1,1,L),z.preventDefault();else if(J==="ArrowLeft"||J==="ArrowUp")this._cursor=X(this._cursor-1,1,L),z.preventDefault();else if(J==="Home")this._cursor=1,z.preventDefault();else if(J==="End")this._cursor=L,z.preventDefault();else if(J===" "||J==="Spacebar")this._selection=x0(this._selection,this._cursor),z.preventDefault();else if(J==="Enter"){if(this._tab==="studio")this._paintStatic();else this._applyPaint();z.preventDefault()}else if(J==="Escape")this._dragging=!1,this._selection=S(),z.preventDefault();if(Z.includes(J))this._scrollCursorIntoView()}_scrollCursorIntoView(){this.updateComplete.then(()=>{this.renderRoot.querySelector(".cell.cursor")?.scrollIntoView({inline:"nearest",block:"nearest"})})}_selectAll(){this._selection=u0(L)}_clear(){this._selection=S()}_applyPaint(){let z=this._config?.entity;if(!this.hass||!z||this._selection.size===0)return;let J=[{segments:k0(this._selection),rgb_color:D(this._paintColor)}];this.hass.callService("ha_govee_led_ble","paint_segments",{groups:J},{entity_id:z})}_paintStatic(){if(this._selection.size===0)return;let z=[...this._staticColors];for(let J of this._selection)z[J-1]=this._paintColor;this._staticColors=z}_setUnchangedStatic(){if(this._selection.size===0)return;let z=[...this._staticColors];for(let J of this._selection)z[J-1]=null;this._staticColors=z}_resetStatic(){this._staticColors=Array.from({length:L},()=>null),this._selection=S()}_activeStops(){return this._tab==="studio"?this._studioStops:this._stops}_setActiveStops(z){if(this._tab==="studio")this._studioStops=z;else this._stops=z}_addStop(){let z=this._activeStops();if(z.length>=F0)return;let J=h(z.map(D),0.5);this._setActiveStops([...z,p(J)])}_removeStop(z){let J=this._activeStops();if(J.length<=Y0)return;this._setActiveStops(J.filter((Z,Q)=>Q!==z))}_recolourStop(z,J){let Z=[...this._activeStops()];Z[z]=J,this._setActiveStops(Z)}_stopTargetIndex(z){let J=this.renderRoot.querySelector(".gradient-bar"),Z=this._activeStops();if(!J)return this._dragStop??0;let Q=J.getBoundingClientRect(),Y=X((z-Q.left)/Q.width,0,1);return X(Math.round(Y*(Z.length-1)),0,Z.length-1)}_startStopDrag(z,J){z.preventDefault(),this._dragStop=J,window.addEventListener("pointermove",this._onStopMove),window.addEventListener("pointerup",this._onStopUp)}_onStopMove=(z)=>{if(this._dragStop===null)return;let J=this.renderRoot.querySelector(".gradient-bar");if(!J)return;let Z=J.getBoundingClientRect();this._dragFrac=X((z.clientX-Z.left)/Z.width,0,1)};_onStopUp=(z)=>{if(this._dragStop===null)return;let J=this._dragStop,Z=this._stopTargetIndex(z.clientX);if(J!==Z){let Q=[...this._activeStops()],[Y]=Q.splice(J,1);Q.splice(Z,0,Y),this._setActiveStops(Q)}this._dragStop=null,this._dragFrac=null,window.removeEventListener("pointermove",this._onStopMove),window.removeEventListener("pointerup",this._onStopUp)};_applyGradient(){let z=this._config?.entity;if(!this.hass||!z)return;let J=J0(f(this._stops.map(D),L));this.hass.callService("ha_govee_led_ble","paint_segments",{groups:J},{entity_id:z})}_applyPreset(z){let J=this._config?.entity;if(!this.hass||!J)return;this.hass.callService("ha_govee_led_ble","paint_segments",{groups:d0(z)},{entity_id:J})}_presetSwatch(z){if(z.length===1){let[Z,Q,Y]=z[0];return`rgb(${Z},${Q},${Y})`}return`linear-gradient(90deg, ${z.map(([Z,Q,Y],F)=>`rgb(${Z},${Q},${Y}) ${F/(z.length-1)*100}%`).join(", ")})`}async _saveCurrent(){let z=this._config?.entity;if(!this.hass||!z)return;let J=this._effectName.trim();try{await this.hass.callService("ha_govee_led_ble","save_effect",{name:J,capture_current:!0},{entity_id:z}),this._effectName="",this._feedback={kind:"info",text:`Saved "${J}".`}}catch(Z){this._feedback={kind:"error",text:O(Z)}}}async _saveStudio(){let z=this._config?.entity;if(!this.hass||!z)return;let J=this._studioName.trim(),Z=this._studioKind==="static"?S0(this._staticColors.map((Q)=>Q===null?null:D(Q))):b0(this._studioStops.map(D));try{await this.hass.callService("ha_govee_led_ble","save_effect",{name:J,content:Z},{entity_id:z}),this._studioName="",this._feedback={kind:"info",text:`Saved "${J}".`}}catch(Q){this._feedback={kind:"error",text:O(Q)}}}async _applyEffect(z){let J=this._config?.entity;if(!this.hass||!J)return;this._feedback=null;try{await this.hass.callService("light","turn_on",{effect:z.name},{entity_id:J})}catch(Z){this._feedback={kind:"error",text:O(Z)}}}_startRename(z){this._feedback=null,this._deletingId=null,this._renamingId=z.id,this._renameValue=z.name,this.updateComplete.then(()=>{let J=this.renderRoot.querySelector(".rename-input");J?.focus(),J?.select()})}_cancelRename(){this._renamingId=null,this._renameValue=""}async _commitRename(z){let J=this._config?.entity;if(!this.hass||!J)return;let Z=this._renameValue.trim();try{await this.hass.callService("ha_govee_led_ble","rename_effect",{id:z.id,to:Z},{entity_id:J}),this._renamingId=null,this._renameValue="",this._feedback={kind:"info",text:`Renamed to "${Z}".`}}catch(Q){this._feedback={kind:"error",text:O(Q)}}}_askDelete(z){if(this._feedback=null,this._renamingId===z.id)this._cancelRename();this._deletingId=z.id,this.updateComplete.then(()=>{this.renderRoot.querySelector(".confirm-cancel")?.focus()})}_cancelDelete(){this._deletingId=null}_onDeleteKey(z){if(z.key==="Escape")z.preventDefault(),this._cancelDelete()}async _deleteEffect(z){let J=this._config?.entity;if(!this.hass||!J)return;this._deletingId=null;try{await this.hass.callService("ha_govee_led_ble","delete_effect",{id:z.id},{entity_id:J}),this._feedback={kind:"info",text:`Deleted "${z.name}".`}}catch(Z){this._feedback={kind:"error",text:O(Z)}}}_onSaveKey(z,J){if(z.key==="Enter")z.preventDefault(),J()}_onRenameKey(z,J){if(z.key==="Enter")z.preventDefault(),this._commitRename(J);else if(z.key==="Escape")z.preventDefault(),this._cancelRename()}_tick(z){if(!this._t0)this._t0=z;let J=this.renderRoot?.querySelector("canvas.preview");if(J)this._draw(J,(z-this._t0)/1000);this._raf=requestAnimationFrame((Z)=>this._tick(Z))}_draw(z,J){let Z=window.devicePixelRatio||1,Q=z.clientWidth||480,Y=z.clientHeight||44;if(z.width!==Math.round(Q*Z))z.width=Math.round(Q*Z),z.height=Math.round(Y*Z);let F=z.getContext("2d");if(!F)return;F.setTransform(Z,0,0,Z,0,0),F.clearRect(0,0,Q,Y);let q=this._stops.map(D),j=L,$=this._reduce?0:J*0.25,C=3,W=(Q-C*(j-1))/j;for(let H=0;H<j;H++){let P=this._reduce?H/(j-1):((H/j+$)%1+1)%1,w=h(q,P);F.fillStyle=`rgb(${w.map((f0)=>Math.round(f0)).join(",")})`;let h0=H*(W+C);F.beginPath(),F.roundRect(h0,0,W,Y,4),F.fill()}}render(){if(!this._config)return B;let z=this._config.entity;if(!z)return this._notice("Select a light entity in the card configuration.");let J=this.hass?.states?.[z];if(!J||J.state==="unavailable"||J.state==="unknown")return this._notice(`${z} is unavailable.`);let Z=this._segmentColors();if(!Z)return this._notice(`${z} exposes no segment colours; this model has no addressable segments.`);return V`
+  `}customElements.define("govee-led-ble-card-editor",cr);var Tr=[{id:"fade",label:"Fade",family:0,palette_max:8,control_label:"Speed",description:"Uses a Govee Fade pattern with the shared palette.",variants:[{id:"fade-1",label:"Fade 1",variant:0},{id:"fade-2",label:"Fade 2",variant:1},{id:"fade-3",label:"Fade 3",variant:2}]},{id:"jumping",label:"Jumping",family:1,palette_max:8,control_label:"Speed",description:"Uses a Govee Jumping pattern with the shared palette.",variants:[{id:"jumping-1",label:"Jumping 1",variant:0},{id:"jumping-2",label:"Jumping 2",variant:2}]},{id:"twinkle",label:"Twinkle",family:2,palette_max:8,control_label:"Speed",description:"Uses a Govee Twinkle pattern with the shared palette.",variants:[{id:"twinkle-1",label:"Twinkle 1",variant:0},{id:"twinkle-2",label:"Twinkle 2",variant:1},{id:"twinkle-3",label:"Twinkle 3",variant:2}]},{id:"marquee",label:"Marquee",family:3,palette_max:8,control_label:"Speed",description:"Uses a Govee Marquee pattern with the shared palette.",variants:[{id:"marquee-1",label:"Marquee 1",variant:3},{id:"marquee-2",label:"Marquee 2",variant:4},{id:"marquee-3",label:"Marquee 3",variant:5}]},{id:"music",label:"Music",family:4,palette_max:8,control_label:"Sensitivity",description:"Uses a Govee DIY Music pattern, separate from the light's Music mode.",variants:[{id:"music-1",label:"Music 1",variant:8},{id:"music-2",label:"Music 2",variant:6},{id:"music-3",label:"Music 3",variant:7}]},{id:"chasing",label:"Chasing",family:8,palette_max:8,control_label:"Speed",description:"Uses a Govee Chasing pattern with the shared palette.",variants:[{id:"chasing-1",label:"Chasing 1",variant:9},{id:"chasing-2",label:"Chasing 2",variant:10}]},{id:"rainbow",label:"Rainbow",family:9,palette_max:8,control_label:"Speed",description:"Uses a Govee Rainbow pattern with the shared palette.",variants:[{id:"rainbow-1",label:"Rainbow 1",variant:9},{id:"rainbow-2",label:"Rainbow 2",variant:10}]},{id:"crossing",label:"Crossing",family:10,palette_max:3,control_label:"Speed",description:"Uses the single Govee Crossing pattern with up to three colours.",variants:[{id:"crossing",label:"Crossing",variant:0}]}];var z=Tr,t=[{code:2,label:"Cycle"},{code:9,label:"Clockwise"},{code:10,label:"Counter-clockwise"},{code:15,label:"Twinkle"},{code:19,label:"Gradient"},{code:20,label:"Breathe"}];function C(r,u){if(r===null||typeof r!=="object"||Array.isArray(r))throw Error(`${u} must be an object.`);return r}function M(r,u){if(typeof r!=="string"||r.trim()==="")throw Error(`${u} must be a non-empty string.`);return r.trim()}function F(r,u){if(typeof r!=="number"||!Number.isInteger(r))throw Error(`${u} must be an integer.`);return r}function c(r,u){let w=F(r,u);if(w<0||w>100)throw Error(`${u} must be from 0 to 100.`);return w}function lu(r,u){let w=F(r,u);if(w<0||w>255)throw Error(`${u} must be from 0 to 255.`);return w}function l(r,u){if(!Array.isArray(r))throw Error(`${u} must be an array.`);return r}function Rr(r,u){let w=l(r,u);if(w.length!==3||w.some((o)=>typeof o!=="number"||!Number.isInteger(o)||o<0||o>255))throw Error(`${u} must contain three channels from 0 to 255.`);return[w[0],w[1],w[2]]}function fu(r,u){return r===null?null:Rr(r,u)}function Br(r,u){return l(r,u).map((w,o)=>Rr(w,`${u}[${o}]`))}function ir(r,u){return l(r,u).map((w,o)=>fu(w,`${u}[${o}]`))}function xr(r){let u=C(r,"Effect content"),w=M(u.kind,"Effect kind");switch(w){case"segments":{let o=u.brightness,n=null;if(o!==null)n=l(o,"Segment brightness").map((b,p)=>b===null?null:c(b,`Segment brightness[${p}]`));return{kind:w,colors:ir(u.colors,"Segment colours"),brightness:n}}case"vibrant":{let o=Br(u.stops,"Gradient stops");if(o.length<2||o.length>5)throw Error("Gradient stops must contain from 2 to 5 colours.");return{kind:w,stops:o}}case"sketch":{let o=F(u.motion,"Sketch motion");if(!t.some((n)=>n.code===o))throw Error("Sketch motion is not supported.");return{kind:w,motion:o,speed:c(u.speed,"Sketch speed"),brightness:c(u.brightness,"Sketch brightness"),background:Rr(u.background,"Sketch background"),colors:ir(u.colors,"Sketch colours")}}case"flat":{let o=F(u.family,"Flat family"),n=F(u.variant,"Flat variant");f(o,n);let b=Br(u.palette,"Flat palette"),p=Y(o);if(b.length>p.palette_max)throw Error(`${p.label} accepts up to ${p.palette_max} colours.`);return{kind:w,family:o,variant:n,speed:c(u.speed,"Flat speed"),palette:b}}case"combo":{let o=l(u.effects,"Combo effects").map((b,p)=>{let k=l(b,`Combo effects[${p}]`);if(k.length!==2)throw Error(`Combo effects[${p}] must contain a family and variant.`);let m=F(k[0],`Combo effects[${p}].family`),B=F(k[1],`Combo effects[${p}].variant`);return f(m,B),[m,B]});if(o.length>4)throw Error("Combo accepts up to four steps.");let n=Br(u.palette,"Combo palette");if(n.length>8)throw Error("Combo accepts up to 8 colours.");return{kind:w,variant:lu(u.variant,"Combo variant"),speed:c(u.speed,"Combo speed"),palette:n,effects:o}}default:throw Error(`Unsupported effect kind "${w}".`)}}function sr(r){let u=C(r,"Export response"),w=F(u.segment_count,"Export segment count");if(w<=0)throw Error("Export segment count must be positive.");return{id:M(u.id,"Effect ID"),name:M(u.name,"Effect name"),model:M(u.model,"Effect model"),segment_count:w,content:C(u.content,"Effect content")}}function Uu(r){let u=sr(r);return{...u,content:xr(u.content)}}function ar(r,u){let w=C(r,"Entity service response");if(!(u in w))throw Error(`The export response did not include ${u}.`);return Uu(w[u])}function er(r,u){let w=C(r,"Entity service response");if(!(u in w))throw Error(`The export response did not include ${u}.`);return sr(w[u])}function tr(r){return{schema_version:1,integration:"ha_govee_led_ble",source:{model:r.model,segment_count:r.segment_count},effect:{name:r.name,content:r.content}}}function ru(r,u){let w;try{w=JSON.parse(r)}catch{throw Error("This is not valid JSON.")}let o=C(w,"Effect document");if(o.schema_version!==1)throw Error("This effect uses an unsupported schema version.");if(o.integration!=="ha_govee_led_ble")throw Error("This file is not a Govee LED BLE effect.");let n=C(o.source,"Effect source"),b=M(n.model,"Source model"),p=F(n.segment_count,"Source segment count");if(p<=0)throw Error("Source segment count must be positive.");if(p!==u.segmentCount)throw Error(`This effect needs ${p} segments; this light has ${u.segmentCount}.`);if(u.model!==null&&u.model!==b)throw Error(`This effect was exported for ${b}; this light is ${u.model}.`);let k=C(o.effect,"Effect"),m=xr(k.content);if((m.kind==="segments"||m.kind==="sketch")&&m.colors.length>p)throw Error(`This effect contains more than ${p} segments.`);if(m.kind==="segments"&&m.brightness!==null&&m.brightness.length>p)throw Error(`This effect contains more than ${p} brightness values.`);return{schema_version:1,integration:"ha_govee_led_ble",source:{model:b,segment_count:p},effect:{name:M(k.name,"Effect name"),content:m}}}function uu(r){switch(r.kind){case"segments":return"static";case"vibrant":return"gradient";default:return r.kind}}function zr(r,u,w,o,n){return{kind:"sketch",motion:u,speed:w,brightness:o,background:[n[0],n[1],n[2]],colors:r.map((b)=>b===null?null:[b[0],b[1],b[2]])}}function Y(r){let u=z.find((w)=>w.family===r);if(u===void 0)throw Error(`Unknown Flat family ${r}.`);return u}function wu(r,u,w,o){let n=Y(r);if(!n.variants.some((b)=>b.variant===u))throw Error(`Unknown variant for ${n.label}.`);if(o.length===0)throw Error("Add at least one palette colour.");if(o.length>n.palette_max)throw Error(`${n.label} accepts up to ${n.palette_max} colours.`);return{kind:"flat",family:r,variant:u,speed:w,palette:o.map((b)=>[b[0],b[1],b[2]])}}function f(r,u){let w=Y(r),o=w.variants.find((n)=>n.variant===u);if(o===void 0)throw Error(`Unknown variant for ${w.label}.`);return o.label}function ou(r,u,w,o=0){if(!Number.isInteger(o)||o<0||o>255)throw Error("Combo variant must be from 0 to 255.");if(r.length===0)throw Error("Add at least one Combo step.");if(r.length>4)throw Error("Combo accepts up to four steps.");for(let[n,b]of r)f(n,b);if(w.length===0)throw Error("Add at least one palette colour.");if(w.length>8)throw Error("Combo accepts up to 8 colours.");return{kind:"combo",variant:o,speed:u,palette:w.map((n)=>[n[0],n[1],n[2]]),effects:r.map(([n,b])=>[n,b])}}function nu(r){let u=Math.max(0,Math.min(100,r.brightness))/100;return r.colors.map((w)=>{return(w??r.background).map((n)=>Math.round(n*u))})}function jr(r,u){let w=new Set(u.map(T)),o=`${bu(r)} copy`;if(!w.has(T(o)))return o;for(let n=2;;n+=1){let b=`${o} ${n}`;if(!w.has(T(b)))return b}}function bu(r){return r.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/gu,"").trim().replace(/\s+/gu," ")}function T(r){return bu(r).toLocaleLowerCase().replaceAll("ß","ss").replaceAll("ς","σ")}function pu(r,u){let w=r.trim();return u.some((n)=>T(n)===T(w))?jr(w,u):w}function $u(r){return`${r.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"")||"govee-effect"}.json`}var J=15;function D(r,u,w){return Math.max(u,Math.min(w,r))}function a(r){let u=r.replace("#","");return[parseInt(u.slice(0,2),16),parseInt(u.slice(2,4),16),parseInt(u.slice(4,6),16)]}function Z(r){return"#"+r.map((u)=>D(Math.round(u),0,255).toString(16).padStart(2,"0")).join("")}function rr(r,u){if(r.length===0)throw Error("no stops");if(r.length===1){let m=r[0];return[m[0],m[1],m[2]]}let w=r.length-1,o=D(u,0,1)*w,n=D(Math.floor(o),0,w-1),b=o-n,p=r[n],k=r[n+1];return[p[0]+(k[0]-p[0])*b,p[1]+(k[1]-p[1])*b,p[2]+(k[2]-p[2])*b]}function yu(r){let u=Math.floor(r),w=r-u;if(w<0.5)return u;if(w>0.5)return u+1;return u%2===0?u:u+1}function ur(r,u=15){if(r.length===0)throw Error("no stops");if(u<=0)return[];if(r.length===1){let w=r[0];return Array.from({length:u},()=>[w[0],w[1],w[2]])}return Array.from({length:u},(w,o)=>{let n=u>1?o/(u-1):0;return rr(r,n).map(yu)})}function Zr(r){let u=new Map,w=[];return r.forEach((o,n)=>{let b=`${o[0]},${o[1]},${o[2]}`,p=u.get(b);if(p===void 0)p={segments:[],rgb_color:[o[0],o[1],o[2]]},u.set(b,p),w.push(p);p.segments.push(n+1)}),w}var mu=[{id:"sunset",name:"Sunset",stops:[[255,89,94],[255,146,76],[255,202,58]]},{id:"ocean",name:"Ocean",stops:[[15,32,89],[25,130,196],[112,193,179]]},{id:"forest",name:"Forest",stops:[[27,67,50],[45,106,79],[149,213,178]]},{id:"rainbow",name:"Rainbow",stops:[[255,0,0],[255,183,0],[0,200,83],[0,145,234],[170,0,255]]},{id:"warm-white",name:"Warm white",stops:[[255,183,107]]},{id:"cool-white",name:"Cool white",stops:[[188,220,255]]}];function ku(r,u=15){return Zr(ur(r.stops,u))}function Eu(r){return[...new Set(r)].sort((u,w)=>u-w)}function qu(r,u){let w=Math.min(r,u),o=Math.max(r,u),n=new Set;for(let b=w;b<=o;b++)n.add(b);return n}function Qr(r,u){let w=new Set(r);if(w.has(u))w.delete(u);else w.add(u);return w}function Ju(r=15){let u=new Set;for(let w=1;w<=r;w++)u.add(w);return u}function X(){return new Set}function Dr(r){if(r===null||typeof r!=="object"||Array.isArray(r))return[];let u=[];for(let[w,o]of Object.entries(r)){if(typeof o!=="string")continue;let n=o.trim();if(n==="")continue;u.push({id:w,name:n})}return u.sort((w,o)=>{let n=w.name.toLowerCase(),b=o.name.toLowerCase();if(n!==b)return n<b?-1:1;if(w.id!==o.id)return w.id<o.id?-1:1;return 0}),u}var U=[{id:"now",label:"Now"},{id:"studio",label:"Studio"},{id:"library",label:"Library"}];function y(r,u,w){if(w<=0)return r;switch(u){case"ArrowRight":case"ArrowDown":return(r+1)%w;case"ArrowLeft":case"ArrowUp":return(r-1+w)%w;case"Home":return 0;case"End":return w-1;default:return r}}var wr=[{id:"static",label:"Static",available:!0},{id:"gradient",label:"Gradient",available:!0},{id:"sketch",label:"Sketch",available:!0},{id:"flat",label:"Flat",available:!0},{id:"combo",label:"Combo",available:!0}];function Bu(r,u=null){let w=u!==null&&u.some((o)=>o!==null);return{kind:"segments",colors:r.map((o)=>o===null?null:[o[0],o[1],o[2]]),brightness:w?u.map((o)=>o===null?null:o):null}}function Ru(r,u=null){return r.some((w)=>w!==null)||u!==null&&u.some((w)=>w!==null)}function au(r){return{kind:"vibrant",stops:r.map((u)=>[u[0],u[1],u[2]])}}function Yr(r){if(r!==null&&typeof r==="object"){let u=r.message;if(typeof u==="string"&&u.trim()!=="")return u}return null}function Q(r,u="Something went wrong."){if(typeof r==="string"&&r.trim()!=="")return r;let w=Yr(r);if(w!==null)return w;if(r!==null&&typeof r==="object"){let o=r,n=Yr(o.error)??Yr(o.body);if(n!==null)return n}return u}var h=["#ff595e","#ffca3a","#1982c4"],Vr="#33cc66",Fr=2,Wr=5,zu="Govee Effect Studio",or=wr.filter((r)=>r.available),ju=wr.filter((r)=>!r.available);function Iu(r){if(!Array.isArray(r))return null;let u=[];for(let w of r){if(!Array.isArray(w)||w.length<3)return null;let[o,n,b]=w;if(typeof o!=="number"||typeof n!=="number"||typeof b!=="number")return null;u.push([o,n,b])}return u}function Ou(r,u){let w=window.document.createElement("a");return w.download=r,w.href=u,w}class Yu extends V{static properties={hass:{attribute:!1},_config:{state:!0},_tab:{state:!0},_studioKind:{state:!0},_selection:{state:!0},_cursor:{state:!0},_paintColor:{state:!0},_staticColors:{state:!0},_staticBrightness:{state:!0},_sketchColors:{state:!0},_sketchMotion:{state:!0},_sketchSpeed:{state:!0},_sketchBrightness:{state:!0},_sketchBackground:{state:!0},_flatFamily:{state:!0},_flatVariant:{state:!0},_flatSpeed:{state:!0},_flatPalette:{state:!0},_comboEffects:{state:!0},_comboVariant:{state:!0},_comboSpeed:{state:!0},_comboPalette:{state:!0},_stops:{state:!0},_studioStops:{state:!0},_dragStop:{state:!0},_dragFrac:{state:!0},_effectName:{state:!0},_studioName:{state:!0},_editingId:{state:!0},_loadedContent:{state:!0},_pendingDraft:{state:!0},_importText:{state:!0},_busyKey:{state:!0},_renamingId:{state:!0},_renameValue:{state:!0},_deletingId:{state:!0},_feedback:{state:!0}};_dragging=!1;_dragAnchor=1;_touchStart=null;_ro;_draftBaseline="";_editingOriginalName=null;_editingOriginalContent=null;constructor(){super();this._tab="now",this._studioKind="static",this._selection=new Set,this._cursor=1,this._paintColor=Vr,this._staticColors=Array.from({length:J},()=>null),this._staticBrightness=null,this._sketchColors=Array.from({length:J},()=>null),this._sketchMotion=9,this._sketchSpeed=51,this._sketchBrightness=100,this._sketchBackground="#000000",this._flatFamily=z[0].family,this._flatVariant=z[0].variants[0].variant,this._flatSpeed=50,this._flatPalette=[...h],this._comboEffects=[{family:z[0].family,variant:z[0].variants[0].variant}],this._comboVariant=0,this._comboSpeed=50,this._comboPalette=[...h],this._stops=[...h],this._studioStops=[...h],this._dragStop=null,this._dragFrac=null,this._effectName="",this._studioName="",this._editingId=null,this._loadedContent=null,this._pendingDraft=null,this._importText="",this._busyKey=null,this._renamingId=null,this._renameValue="",this._deletingId=null,this._feedback=null,this._draftBaseline=this._draftSignature()}static getStubConfig(r){return{entity:(r?Object.keys(r.states).find((w)=>w.startsWith("light.")&&Array.isArray(r.states[w].attributes?.segment_colors)):void 0)??""}}static getConfigElement(){return document.createElement("govee-led-ble-card-editor")}setConfig(r){if(!r)throw Error("Invalid configuration");this._config={...r}}getCardSize(){return 12}connectedCallback(){super.connectedCallback(),this._ro=new ResizeObserver(()=>{this._updateClipped(),this._drawNowPreview()}),this._ro.observe(this)}disconnectedCallback(){super.disconnectedCallback(),this._ro?.disconnect(),window.removeEventListener("pointermove",this._onMove),window.removeEventListener("pointerup",this._onUp),window.removeEventListener("pointercancel",this._onUp),window.removeEventListener("pointerup",this._onTouchUp),window.removeEventListener("pointercancel",this._onTouchCancel),window.removeEventListener("pointermove",this._onStopMove),window.removeEventListener("pointerup",this._onStopUp)}updated(){this._reconcileDraftIds(),this._updateClipped(),this._drawNowPreview()}_reconcileDraftIds(){let r=this._config?.entity,u=r?this.hass?.states[r]:void 0;if(!u)return;let w=Dr(u.attributes?.custom_effects),o=new Set(w.map((n)=>n.id));if(this._editingId!==null){let n=w.find((b)=>b.id===this._editingId);if(n===void 0)this._editingId=null,this._editingOriginalName=null,this._editingOriginalContent=null,this._draftBaseline="",this._feedback={kind:"info",text:"The saved effect was removed elsewhere. Its Studio draft is now a new effect."};else if(this._editingOriginalName!==null&&this._studioName.trim()===this._editingOriginalName&&n.name!==this._editingOriginalName){let b=this._currentContentSignature()===this._editingOriginalContent;if(this._studioName=n.name,this._editingOriginalName=n.name,b)this._draftBaseline=this._draftSignature()}}if(this._pendingDraft?.editingId!==null&&this._pendingDraft?.editingId!==void 0&&!o.has(this._pendingDraft.editingId))this._pendingDraft={...this._pendingDraft,editingId:null,feedback:"The saved effect was removed elsewhere. Its loaded content will open as a new draft."}}_updateClipped(){for(let r of this.renderRoot.querySelectorAll(".strip-scroll"))r.classList.toggle("clipped",r.scrollWidth>r.clientWidth+1)}_selectTab(r){if(this._tab===r)return;this._tab=r,this._selection=X(),this._cursor=1}_onTabKey(r){let u=U.findIndex((o)=>o.id===this._tab),w=y(u,r.key,U.length);if(w===u)return;r.preventDefault(),this._selectTab(U[w].id),this.updateComplete.then(()=>{this.renderRoot.querySelector(`#tab-${U[w].id}`)?.focus()})}_draftSignature(){let r={kind:this._studioKind,name:this._studioName};switch(this._studioKind){case"static":return JSON.stringify({...r,colors:this._staticColors,brightness:this._staticBrightness});case"gradient":return JSON.stringify({...r,stops:this._studioStops});case"sketch":return JSON.stringify({...r,colors:this._sketchColors,motion:this._sketchMotion,speed:this._sketchSpeed,brightness:this._sketchBrightness,background:this._sketchBackground});case"flat":return JSON.stringify({...r,family:this._flatFamily,variant:this._flatVariant,speed:this._flatSpeed,palette:this._flatPalette});case"combo":return JSON.stringify({...r,effects:this._comboEffects,variant:this._comboVariant,speed:this._comboSpeed,palette:this._comboPalette})}}_hasUnsavedDraft(){return this._draftSignature()!==this._draftBaseline}_selectKind(r){if(this._editingId!==null&&r!==this._studioKind)return;let u=this._hasUnsavedDraft();if(this._studioKind=r,this._loadedContent=null,!u&&this._editingId===null)this._draftBaseline=this._draftSignature()}_onKindKey(r){if(this._editingId!==null)return;let u=or.findIndex((o)=>o.id===this._studioKind),w=y(u,r.key,or.length);if(w===u)return;r.preventDefault(),this._selectKind(or[w].id),this.updateComplete.then(()=>{this.renderRoot.querySelector('.kinds .kind[aria-checked="true"]')?.focus()})}_focusChecked(r){this.updateComplete.then(()=>{this.renderRoot.querySelector(`${r}[aria-checked="true"]`)?.focus()})}_onMotionKey(r){let u=t.map((n)=>n.code),w=u.indexOf(this._sketchMotion),o=y(w,r.key,u.length);if(o===w)return;r.preventDefault(),this._sketchMotion=u[o],this._focusChecked(".motion")}_onFlatFamilyKey(r){let u=z.map((n)=>n.family),w=u.indexOf(this._flatFamily),o=y(w,r.key,u.length);if(o===w)return;r.preventDefault(),this._selectFlatFamily(u[o]),this._focusChecked(".family")}_onFlatVariantKey(r){let u=Y(this._flatFamily).variants.map((n)=>n.variant),w=u.indexOf(this._flatVariant),o=y(w,r.key,u.length);if(o===w)return;r.preventDefault(),this._flatVariant=u[o],this._focusChecked(".variant")}_segmentColors(){let r=this._config?.entity;if(!r||!this.hass)return null;let u=this.hass.states[r];if(!u)return null;return Iu(u.attributes?.segment_colors)}_cellFromClientX(r){let u=this.renderRoot.querySelector(".strip");if(!u)return 1;let w=u.getBoundingClientRect(),o=w.width/J;return D(Math.floor((r-w.left)/o),0,J-1)+1}_onDown(r){if(r.pointerType==="touch"){this._touchStart={x:r.clientX,y:r.clientY,cell:this._cellFromClientX(r.clientX)},window.addEventListener("pointerup",this._onTouchUp),window.addEventListener("pointercancel",this._onTouchCancel);return}r.preventDefault(),this._dragging=!0,this._dragAnchor=this._cellFromClientX(r.clientX),this._cursor=this._dragAnchor,this._selection=new Set([this._dragAnchor]),this.renderRoot.querySelector(".strip")?.focus(),window.addEventListener("pointermove",this._onMove),window.addEventListener("pointerup",this._onUp),window.addEventListener("pointercancel",this._onUp)}_onMove=(r)=>{if(!this._dragging)return;let u=this._cellFromClientX(r.clientX);this._selection=qu(this._dragAnchor,u),this._cursor=u};_onUp=()=>{this._dragging=!1,window.removeEventListener("pointermove",this._onMove),window.removeEventListener("pointerup",this._onUp),window.removeEventListener("pointercancel",this._onUp)};_onTouchUp=(r)=>{let u=this._touchStart;if(this._clearTouchGesture(),u===null||Math.hypot(r.clientX-u.x,r.clientY-u.y)>10)return;this._cursor=u.cell,this._selection=Qr(this._selection,u.cell)};_onTouchCancel=()=>{this._clearTouchGesture()};_clearTouchGesture(){this._touchStart=null,window.removeEventListener("pointerup",this._onTouchUp),window.removeEventListener("pointercancel",this._onTouchCancel)}_onKey(r){let u=r.key,w=["ArrowRight","ArrowDown","ArrowLeft","ArrowUp","Home","End"];if(u==="ArrowRight"||u==="ArrowDown")this._cursor=D(this._cursor+1,1,J),r.preventDefault();else if(u==="ArrowLeft"||u==="ArrowUp")this._cursor=D(this._cursor-1,1,J),r.preventDefault();else if(u==="Home")this._cursor=1,r.preventDefault();else if(u==="End")this._cursor=J,r.preventDefault();else if(u===" "||u==="Spacebar")this._selection=Qr(this._selection,this._cursor),r.preventDefault();else if(u==="Enter"){if(this._tab==="studio")this._paintActiveDraft();else this._applyPaint();r.preventDefault()}else if(u==="Escape")this._dragging=!1,this._selection=X(),r.preventDefault();if(w.includes(u))this._scrollCursorIntoView()}_scrollCursorIntoView(){this.updateComplete.then(()=>{this.renderRoot.querySelector(".cell.cursor")?.scrollIntoView({inline:"nearest",block:"nearest"})})}_selectAll(){this._selection=Ju(J)}_clear(){this._selection=X()}_applyPaint(){let r=this._config?.entity;if(!this.hass||!r||this._selection.size===0)return;let u=[{segments:Eu(this._selection),rgb_color:a(this._paintColor)}];this.hass.callService("ha_govee_led_ble","paint_segments",{groups:u},{entity_id:r})}_paintStatic(){if(this._selection.size===0)return;let r=[...this._staticColors];for(let u of this._selection)r[u-1]=this._paintColor;this._staticColors=r}_paintSketch(){if(this._selection.size===0)return;let r=[...this._sketchColors];for(let u of this._selection)r[u-1]=this._paintColor;this._sketchColors=r}_paintActiveDraft(){if(this._studioKind==="sketch")this._paintSketch();else this._paintStatic()}_setUnchangedStatic(){if(this._selection.size===0)return;let r=[...this._staticColors];for(let u of this._selection)r[u-1]=null;this._staticColors=r}_clearSketchSelection(){if(this._selection.size===0)return;let r=[...this._sketchColors];for(let u of this._selection)r[u-1]=null;this._sketchColors=r}_resetStatic(){this._staticColors=Array.from({length:J},()=>null),this._staticBrightness=null,this._selection=X(),this._finishDraftReset()}_resetSketch(){this._sketchColors=Array.from({length:J},()=>null),this._sketchMotion=9,this._sketchSpeed=51,this._sketchBrightness=100,this._sketchBackground="#000000",this._selection=X(),this._finishDraftReset()}_selectFlatFamily(r){let u=Y(r);if(this._flatPalette.length>u.palette_max){this._feedback={kind:"error",text:`${u.label} accepts up to ${u.palette_max} colours. Remove some first.`};return}this._flatFamily=r,this._flatVariant=u.variants[0].variant,this._feedback=null}_setFlatPaletteColour(r,u){let w=[...this._flatPalette];w[r]=u,this._flatPalette=w}_addFlatPaletteColour(){let r=Y(this._flatFamily).palette_max;if(this._flatPalette.length>=r)return;this._flatPalette=[...this._flatPalette,Vr]}_removeFlatPaletteColour(r){this._flatPalette=this._flatPalette.filter((u,w)=>w!==r)}_moveFlatPaletteColour(r,u){let w=r+u;if(w<0||w>=this._flatPalette.length)return;let o=[...this._flatPalette];[o[r],o[w]]=[o[w],o[r]],this._flatPalette=o}_resetFlat(){this._flatFamily=z[0].family,this._flatVariant=z[0].variants[0].variant,this._flatSpeed=50,this._flatPalette=[...h],this._finishDraftReset()}_setComboFamily(r,u){let w=Y(u);this._comboEffects=this._comboEffects.map((o,n)=>n===r?{family:u,variant:w.variants[0].variant}:o)}_setComboVariant(r,u){let w=this._comboEffects[r];f(w.family,u),this._comboEffects=this._comboEffects.map((o,n)=>n===r?{...o,variant:u}:o)}_addComboStep(){if(this._comboEffects.length>=4)return;let r=z[0];this._comboEffects=[...this._comboEffects,{family:r.family,variant:r.variants[0].variant}]}_removeComboStep(r){this._comboEffects=this._comboEffects.filter((u,w)=>w!==r)}_moveComboStep(r,u){let w=r+u;if(w<0||w>=this._comboEffects.length)return;let o=[...this._comboEffects];[o[r],o[w]]=[o[w],o[r]],this._comboEffects=o}_setComboPaletteColour(r,u){let w=[...this._comboPalette];w[r]=u,this._comboPalette=w}_addComboPaletteColour(){if(this._comboPalette.length>=8)return;this._comboPalette=[...this._comboPalette,Vr]}_removeComboPaletteColour(r){this._comboPalette=this._comboPalette.filter((u,w)=>w!==r)}_moveComboPaletteColour(r,u){let w=r+u;if(w<0||w>=this._comboPalette.length)return;let o=[...this._comboPalette];[o[r],o[w]]=[o[w],o[r]],this._comboPalette=o}_resetCombo(){let r=z[0];this._comboEffects=[{family:r.family,variant:r.variants[0].variant}],this._comboVariant=0,this._comboSpeed=50,this._comboPalette=[...h],this._finishDraftReset()}_finishDraftReset(){if(this._editingId===null)this._draftBaseline=this._draftSignature()}_activeStops(){return this._tab==="studio"?this._studioStops:this._stops}_setActiveStops(r){if(this._tab==="studio")this._studioStops=r;else this._stops=r}_addStop(){let r=this._activeStops();if(r.length>=Wr)return;let u=rr(r.map(a),0.5);this._setActiveStops([...r,Z(u)])}_removeStop(r){let u=this._activeStops();if(u.length<=Fr)return;this._setActiveStops(u.filter((w,o)=>o!==r))}_moveStop(r,u){let w=r+u,o=this._activeStops();if(w<0||w>=o.length)return;let n=[...o];[n[r],n[w]]=[n[w],n[r]],this._setActiveStops(n)}_recolourStop(r,u){let w=[...this._activeStops()];w[r]=u,this._setActiveStops(w)}_stopTargetIndex(r){let u=this.renderRoot.querySelector(".gradient-bar"),w=this._activeStops();if(!u)return this._dragStop??0;let o=u.getBoundingClientRect(),n=D((r-o.left)/o.width,0,1);return D(Math.round(n*(w.length-1)),0,w.length-1)}_startStopDrag(r,u){r.preventDefault(),this._dragStop=u,window.addEventListener("pointermove",this._onStopMove),window.addEventListener("pointerup",this._onStopUp)}_onStopMove=(r)=>{if(this._dragStop===null)return;let u=this.renderRoot.querySelector(".gradient-bar");if(!u)return;let w=u.getBoundingClientRect();this._dragFrac=D((r.clientX-w.left)/w.width,0,1)};_onStopUp=(r)=>{if(this._dragStop===null)return;let u=this._dragStop,w=this._stopTargetIndex(r.clientX);if(u!==w){let o=[...this._activeStops()],[n]=o.splice(u,1);o.splice(w,0,n),this._setActiveStops(o)}this._dragStop=null,this._dragFrac=null,window.removeEventListener("pointermove",this._onStopMove),window.removeEventListener("pointerup",this._onStopUp)};_applyGradient(){let r=this._config?.entity;if(!this.hass||!r)return;let u=Zr(ur(this._stops.map(a),J));this.hass.callService("ha_govee_led_ble","paint_segments",{groups:u},{entity_id:r})}_applyPreset(r){let u=this._config?.entity;if(!this.hass||!u)return;this.hass.callService("ha_govee_led_ble","paint_segments",{groups:ku(r)},{entity_id:u})}_presetSwatch(r){if(r.length===1){let[w,o,n]=r[0];return`rgb(${w},${o},${n})`}return`linear-gradient(90deg, ${r.map(([w,o,n],b)=>`rgb(${w},${o},${n}) ${b/(r.length-1)*100}%`).join(", ")})`}async _saveCurrent(){let r=this._config?.entity;if(!this.hass||!r)return;let u=this._effectName.trim();try{await this.hass.callService("ha_govee_led_ble","save_effect",{name:u,capture_current:!0},{entity_id:r}),this._effectName="",this._feedback={kind:"info",text:`Saved "${u}".`}}catch(w){this._feedback={kind:"error",text:Q(w)}}}_currentStudioContent(){if(this._studioKind==="static")return Bu(this._staticColors.map((r)=>r===null?null:a(r)),this._staticBrightness);if(this._studioKind==="gradient")return au(this._studioStops.map(a));if(this._studioKind==="sketch")return zr(this._sketchColors.map((r)=>r===null?null:a(r)),this._sketchMotion,this._sketchSpeed,this._sketchBrightness,a(this._sketchBackground));if(this._studioKind==="flat")return wu(this._flatFamily,this._flatVariant,this._flatSpeed,this._flatPalette.map(a));if(this._studioKind==="combo")return ou(this._comboEffects.map((r)=>[r.family,r.variant]),this._comboSpeed,this._comboPalette.map(a),this._comboVariant);throw Error(`The ${this._studioKind} editor is not available yet.`)}_currentContentSignature(){try{return JSON.stringify(this._currentStudioContent())}catch{return null}}_targetModel(){let r=this._config?.entity;if(!r||!this.hass)return null;let u=this.hass.entities?.[r]?.device_id;if(!u)return null;return this.hass.devices?.[u]?.model??null}_knownEffectNames(r){let u=this._config?.entity,w=u?this.hass?.states[u]?.attributes?.effect_list:void 0;return[...Array.isArray(w)?w.filter((n)=>typeof n==="string"):[],...r.map((n)=>n.name)]}_loadDraft(r,u,w){if(this._editingId=w,this._loadedContent=u,this._studioName=r,this._studioKind=uu(u),this._selection=X(),this._cursor=1,u.kind==="segments")this._staticColors=Array.from({length:J},(o,n)=>{let b=u.colors[n];return b===void 0||b===null?null:Z(b)}),this._staticBrightness=u.brightness===null?null:Array.from({length:J},(o,n)=>u.brightness?.[n]??null);else if(u.kind==="vibrant")this._studioStops=u.stops.map(Z);else if(u.kind==="sketch")this._sketchColors=Array.from({length:J},(o,n)=>{let b=u.colors[n];return b===void 0||b===null?null:Z(b)}),this._sketchMotion=u.motion,this._sketchSpeed=u.speed,this._sketchBrightness=u.brightness,this._sketchBackground=Z(u.background);else if(u.kind==="flat")Y(u.family),this._flatFamily=u.family,this._flatVariant=u.variant,this._flatSpeed=u.speed,this._flatPalette=u.palette.map(Z);else if(u.kind==="combo"){for(let[o,n]of u.effects)f(o,n);this._comboEffects=u.effects.map(([o,n])=>({family:o,variant:n})),this._comboVariant=u.variant,this._comboSpeed=u.speed,this._comboPalette=u.palette.map(Z)}this._tab="studio",this._pendingDraft=null,this._editingOriginalName=w===null?null:r.trim(),this._editingOriginalContent=w===null?null:JSON.stringify(u),this._draftBaseline=w===null?"":this._draftSignature()}_resetStudioDraft(){this._editingId=null,this._editingOriginalName=null,this._editingOriginalContent=null,this._loadedContent=null,this._studioName="",this._staticColors=Array.from({length:J},()=>null),this._staticBrightness=null,this._studioStops=[...h],this._resetSketch(),this._resetFlat(),this._resetCombo(),this._selection=X(),this._cursor=1,this._pendingDraft=null,this._draftBaseline=this._draftSignature()}_cancelEdit(){this._resetStudioDraft(),this._feedback={kind:"info",text:"Edit cancelled."}}_offerDraft(r,u,w,o,n=!1){if(this._hasUnsavedDraft()){this._pendingDraft={name:r,content:u,editingId:w,feedback:o,clearImport:n},this.updateComplete.then(()=>{this.renderRoot.querySelector(".keep-draft")?.focus()});return}if(this._loadDraft(r,u,w),n)this._importText="";this._feedback={kind:"info",text:o}}_confirmDraftReplacement(){let r=this._pendingDraft;if(r===null)return;if(this._loadDraft(r.name,r.content,r.editingId),r.clearImport)this._importText="";this._feedback={kind:"info",text:r.feedback}}_keepDraft(){this._pendingDraft=null,this._feedback={kind:"info",text:"Kept the existing Studio draft."}}async _saveStudio(){let r=this._config?.entity;if(!this.hass||!r)return;let u=this._studioName.trim();try{let w=this._currentStudioContent(),o=this._editingId;if(o===null)await this.hass.callService("ha_govee_led_ble","save_effect",{name:u,content:w},{entity_id:r}),this._feedback={kind:"info",text:`Saved "${u}".`};else{let n={id:o};if(this._editingOriginalName===null||u!==this._editingOriginalName)n.name=u;if(this._editingOriginalContent===null||JSON.stringify(w)!==this._editingOriginalContent)n.content=w;if(Object.keys(n).length===1){this._feedback={kind:"info",text:"No changes to update."};return}await this.hass.callService("ha_govee_led_ble","update_effect",n,{entity_id:r}),this._feedback={kind:"info",text:`Updated "${u}".`}}this._resetStudioDraft()}catch(w){this._feedback={kind:"error",text:Q(w)}}}async _readEffect(r,u,w){let o=this._config?.entity;if(!this.hass||!o)throw Error("The light is unavailable.");this._busyKey=`${u}:${r.id}`;try{let n=await this.hass.callService("ha_govee_led_ble","export_effect",{id:r.id},{entity_id:o},!0,!0);return w(n.response,o)}finally{this._busyKey=null}}async _editEffect(r){this._feedback=null;try{let u=await this._readEffect(r,"edit",ar);this._offerDraft(u.name,u.content,u.id,`Editing "${u.name}".`)}catch(u){this._feedback={kind:"error",text:Q(u)}}}async _duplicateEffect(r,u){this._feedback=null;try{let w=await this._readEffect(r,"duplicate",ar),o=jr(w.name,this._knownEffectNames(u));this._offerDraft(o,w.content,null,`Loaded "${o}" as a new draft. Review it, then save.`)}catch(w){this._feedback={kind:"error",text:Q(w)}}}async _exportEffect(r){this._feedback=null;try{let u=await this._readEffect(r,"export",er),w=tr(u),o=new Blob([`${JSON.stringify(w,null,2)}
+`],{type:"application/json"}),n=URL.createObjectURL(o),b=Ou($u(u.name),n);window.document.body.append(b),b.click(),b.remove(),URL.revokeObjectURL(n),this._feedback={kind:"info",text:`Exported "${u.name}".`}}catch(u){this._feedback={kind:"error",text:Q(u)}}}_chooseImportFile(){this.renderRoot.querySelector(".import-file")?.click()}async _loadImportFile(r){let u=r.target,w=u.files?.[0];if(u.value="",!w)return;try{this._importText=await w.text(),this._feedback={kind:"info",text:`Loaded ${w.name}. Review the JSON, then import it.`}}catch(o){this._feedback={kind:"error",text:Q(o,"Could not read that file.")}}}_reviewImport(r){let u=this._segmentColors()?.length??J;try{let w=ru(this._importText,{model:this._targetModel(),segmentCount:u}),o=pu(w.effect.name,this._knownEffectNames(r));this._offerDraft(o,w.effect.content,null,o===w.effect.name?`Imported "${o}" as a draft. Review it, then save.`:`Imported as "${o}" because that name already exists. Review it, then save.`,!0)}catch(w){this._feedback={kind:"error",text:Q(w,"Could not import that effect.")}}}async _applyEffect(r){let u=this._config?.entity;if(!this.hass||!u)return;this._feedback=null;try{await this.hass.callService("light","turn_on",{effect:r.name},{entity_id:u})}catch(w){this._feedback={kind:"error",text:Q(w)}}}_startRename(r){this._feedback=null,this._deletingId=null,this._renamingId=r.id,this._renameValue=r.name,this.updateComplete.then(()=>{let u=this.renderRoot.querySelector(".rename-input");u?.focus(),u?.select()})}_cancelRename(){this._renamingId=null,this._renameValue=""}async _commitRename(r){let u=this._config?.entity;if(!this.hass||!u)return;let w=this._renameValue.trim();try{if(await this.hass.callService("ha_govee_led_ble","rename_effect",{id:r.id,to:w},{entity_id:u}),this._editingId===r.id&&this._editingOriginalName!==null&&this._studioName.trim()===this._editingOriginalName){let o=this._currentContentSignature()===this._editingOriginalContent;if(this._studioName=w,this._editingOriginalName=w,o)this._draftBaseline=this._draftSignature()}this._renamingId=null,this._renameValue="",this._feedback={kind:"info",text:`Renamed to "${w}".`}}catch(o){this._feedback={kind:"error",text:Q(o)}}}_askDelete(r){if(this._feedback=null,this._renamingId===r.id)this._cancelRename();this._deletingId=r.id,this.updateComplete.then(()=>{this.renderRoot.querySelector(".confirm-cancel")?.focus()})}_cancelDelete(){this._deletingId=null}_onDeleteKey(r){if(r.key==="Escape")r.preventDefault(),this._cancelDelete()}async _deleteEffect(r){let u=this._config?.entity;if(!this.hass||!u)return;this._deletingId=null;try{if(await this.hass.callService("ha_govee_led_ble","delete_effect",{id:r.id},{entity_id:u}),this._editingId===r.id)this._editingId=null,this._editingOriginalName=null,this._editingOriginalContent=null,this._draftBaseline="",this._feedback={kind:"info",text:`Deleted "${r.name}". Its Studio draft was kept as a new effect.`};else this._feedback={kind:"info",text:`Deleted "${r.name}".`};if(this._pendingDraft?.editingId===r.id)this._pendingDraft={...this._pendingDraft,editingId:null,feedback:`Loaded "${r.name}" as a new draft because the saved effect was deleted.`}}catch(w){this._feedback={kind:"error",text:Q(w)}}}_onSaveKey(r,u){if(r.key==="Enter")r.preventDefault(),u()}_onRenameKey(r,u){if(r.key==="Enter")r.preventDefault(),this._commitRename(u);else if(r.key==="Escape")r.preventDefault(),this._cancelRename()}_drawNowPreview(){let r=this.renderRoot?.querySelector("canvas.preview");if(r)this._draw(r)}_draw(r){let u=window.devicePixelRatio||1,w=r.clientWidth||480,o=r.clientHeight||44;if(r.width!==Math.round(w*u))r.width=Math.round(w*u),r.height=Math.round(o*u);let n=r.getContext("2d");if(!n)return;n.setTransform(u,0,0,u,0,0),n.clearRect(0,0,w,o);let b=this._stops.map(a),p=J,k=3,m=(w-k*(p-1))/p;for(let B=0;B<p;B++){let E=rr(b,B/(p-1));n.fillStyle=`rgb(${E.map((j)=>Math.round(j)).join(",")})`;let R=B*(m+k);n.beginPath(),n.roundRect(R,0,m,o,4),n.fill()}}render(){if(!this._config)return q;let r=this._config.entity;if(!r)return this._notice("Select a light entity in the card configuration.");let u=this.hass?.states?.[r];if(!u||u.state==="unavailable"||u.state==="unknown")return this._notice(`${r} is unavailable.`);let w=this._segmentColors();if(!w)return this._notice(`${r} exposes no segment colours; this model has no addressable segments.`);return $`
       <ha-card>
-        ${this._renderHeader(J)}
+        ${this._renderHeader(u)}
         <div class="body">
-          ${this._tab==="now"?this._renderNow(Z):B}
-          ${this._tab==="studio"?this._renderStudio():B}
-          ${this._tab==="library"?this._renderLibrary(J):B}
+          ${this._tab==="now"?this._renderNow(w):q}
+          ${this._tab==="studio"?this._renderStudio():q}
+          ${this._tab==="library"?this._renderLibrary(u):q}
         </div>
       </ha-card>
-    `}_notice(z){return V`
-      <ha-card header=${m0}>
-        <div class="notice">${z}</div>
+    `}_notice(r){return $`
+      <ha-card header=${zu}>
+        <div class="notice">${r}</div>
       </ha-card>
-    `}_renderHeader(z){let J=typeof z.attributes?.effect==="string"&&z.attributes.effect!==""?z.attributes.effect:z.state==="on"?"Colour":"Off";return V`
+    `}_renderHeader(r){let u=typeof r.attributes?.effect==="string"&&r.attributes.effect!==""?r.attributes.effect:r.state==="on"?"Colour":"Off";return $`
       <div class="card-head">
-        <div class="title">${m0}</div>
+        <div class="title">${zu}</div>
         <div class="status">
           <span>Current:</span>
-          <span class="current">${J}</span>
+          <span class="current">${u}</span>
         </div>
         <div class="tabs" role="tablist" aria-label="Effect Studio sections">
-          ${y.map((Z)=>V`
+          ${U.map((w)=>$`
               <button
-                class="tab ${this._tab===Z.id?"active":""}"
-                id=${`tab-${Z.id}`}
+                class="tab ${this._tab===w.id?"active":""}"
+                id=${`tab-${w.id}`}
                 role="tab"
-                aria-selected=${this._tab===Z.id?"true":"false"}
-                aria-controls=${`panel-${Z.id}`}
-                tabindex=${this._tab===Z.id?"0":"-1"}
-                @click=${()=>this._selectTab(Z.id)}
+                aria-selected=${this._tab===w.id?"true":"false"}
+                aria-controls=${`panel-${w.id}`}
+                tabindex=${this._tab===w.id?"0":"-1"}
+                @click=${()=>this._selectTab(w.id)}
                 @keydown=${this._onTabKey}
               >
-                ${Z.label}
+                ${w.label}
               </button>
             `)}
         </div>
-        ${this._feedback?V`<div class="feedback ${this._feedback.kind}" role="alert">
+        ${this._feedback?$`<div class="feedback ${this._feedback.kind}" role="alert">
               ${this._feedback.text}
-            </div>`:B}
+            </div>`:q}
+        ${this._pendingDraft?$`
+              <div class="draft-confirm" role="alertdialog" aria-label="Replace Studio draft">
+                <span>Replace your unsaved Studio draft with "${this._pendingDraft.name}"?</span>
+                <div class="row">
+                  <button class="btn keep-draft" @click=${this._keepDraft}>Keep draft</button>
+                  <button class="btn primary" @click=${this._confirmDraftReplacement}>
+                    Replace draft
+                  </button>
+                </div>
+              </div>
+            `:q}
       </div>
-    `}_renderScopeBand(z){return V`
-      <div class="scope-band ${z}" role="note">
+    `}_renderScopeBand(r){return $`
+      <div class="scope-band ${r}" role="note">
         <span class="dot" aria-hidden="true"></span>
-        <span>${z==="live"?"Applies to the strip — changes show instantly":"Draft — builds a saved effect and never changes the strip"}</span>
+        <span>${r==="live"?"Applies to the strip — changes show instantly":"Draft — builds a saved effect and never changes the strip"}</span>
       </div>
-    `}_renderNow(z){let J=Array.from({length:L},(Z,Q)=>{let Y=z[Q];return Y?p(Y):null});return V`
+    `}_renderNow(r){let u=Array.from({length:J},(w,o)=>{let n=r[o];return n?Z(n):null});return $`
       <div id="panel-now" role="tabpanel" aria-labelledby="tab-now">
         ${this._renderScopeBand("live")}
         <section>
@@ -573,13 +903,13 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
             <span class="label">Segment painter</span>
             <span class="hint">${this._selection.size} selected</span>
           </div>
-          ${this._renderStrip(J,"off")}
+          ${this._renderStrip(u,"off")}
           <div class="row controls">
             <input
               type="color"
               aria-label="Paint colour"
               .value=${this._paintColor}
-              @input=${(Z)=>this._paintColor=Z.target.value}
+              @input=${(w)=>this._paintColor=w.target.value}
             />
             <button class="btn primary" @click=${this._applyPaint}>
               Apply to selection
@@ -592,33 +922,35 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
         ${this._renderPresets()}
         ${this._renderSaveCurrent()}
       </div>
-    `}_renderStrip(z,J){let Z=[];for(let Q=1;Q<=L;Q++){let Y=z[Q-1]??null,F=this._selection.has(Q),q=Q===this._cursor,j=Y?"painted":J==="off"?"off":"unchanged";Z.push(V`
+    `}_renderStrip(r,u,w=null){let o=(b)=>`segment-cell-${this._tab}-${this._studioKind}-${b}`,n=[];for(let b=1;b<=J;b++){let p=r[b-1]??null,k=this._selection.has(b),m=b===this._cursor,B=p?"painted":u==="off"?"off":u==="background"?"background":"unchanged",E=p?`background:${p}`:u==="background"&&w!==null?`--cell-background:${w}`:"";n.push($`
         <div
-          class="cell ${F?"sel":""} ${q?"cursor":""} ${Y?"":J}"
-          style=${Y?`background:${Y}`:""}
+          id=${o(b)}
+          class="cell ${k?"sel":""} ${m?"cursor":""} ${p?"":u}"
+          style=${E}
           role="option"
-          aria-selected=${F?"true":"false"}
-          aria-label=${`Segment ${Q}, ${j}`}
-          title=${`Segment ${Q}`}
+          aria-selected=${k?"true":"false"}
+          aria-label=${`Segment ${b}, ${B}`}
+          title=${`Segment ${b}`}
         >
-          <span class="cell-num">${Q}</span>
+          <span class="cell-num">${b}</span>
         </div>
-      `)}return V`
+      `)}return $`
       <div class="strip-scroll">
         <div
           class="strip"
-          style="grid-template-columns: repeat(${L}, 1fr)"
+          style="grid-template-columns: repeat(${J}, 1fr)"
           tabindex="0"
           role="listbox"
           aria-multiselectable="true"
-          aria-label=${`Segment painter, ${L} segments`}
+          aria-activedescendant=${o(this._cursor)}
+          aria-label=${`Segment painter, ${J} segments`}
           @pointerdown=${this._onDown}
           @keydown=${this._onKey}
         >
-          ${Z}
+          ${n}
         </div>
       </div>
-    `}_renderGradient(){return V`
+    `}_renderGradient(){return $`
       <section>
         ${this._renderStopEditor()}
         <div class="row heading">
@@ -631,37 +963,53 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
           </button>
         </div>
       </section>
-    `}_renderStopEditor(){let z=this._activeStops(),J=z.length,Z=`linear-gradient(90deg, ${z.map((Q,Y)=>`${Q} ${Y/(J-1)*100}%`).join(", ")})`;return V`
+    `}_renderStopEditor(){let r=this._activeStops(),u=r.length,w=`linear-gradient(90deg, ${r.map((o,n)=>`${o} ${n/(u-1)*100}%`).join(", ")})`;return $`
       <div class="row heading">
         <span class="label">Gradient stops</span>
-        <span class="hint">${J} of ${Y0} to ${F0}</span>
+        <span class="hint">${u} of ${Fr} to ${Wr}</span>
       </div>
       <div class="gradient-track">
-        <div class="gradient-bar" style="background:${Z}">
-          ${z.map((Q,Y)=>V`
+        <div class="gradient-bar" style="background:${w}">
+          ${r.map((o,n)=>$`
               <div
-                class="handle ${this._dragStop===Y?"dragging":""}"
-                style="left:${this._dragStop===Y&&this._dragFrac!==null?this._dragFrac*100:Y/(J-1)*100}%;background:${Q}"
-                @pointerdown=${(F)=>this._startStopDrag(F,Y)}
-                title=${`Stop ${Y+1}`}
+                class="handle ${this._dragStop===n?"dragging":""}"
+                style="left:${this._dragStop===n&&this._dragFrac!==null?this._dragFrac*100:n/(u-1)*100}%;background:${o}"
+                @pointerdown=${(b)=>this._startStopDrag(b,n)}
+                title=${`Stop ${n+1}`}
               ></div>
             `)}
         </div>
       </div>
       <div class="stops">
-        ${z.map((Q,Y)=>V`
+        ${r.map((o,n)=>$`
             <div class="stop">
               <input
                 type="color"
-                aria-label=${`Stop ${Y+1} colour`}
-                .value=${Q}
-                @input=${(F)=>this._recolourStop(Y,F.target.value)}
+                aria-label=${`Stop ${n+1} colour`}
+                .value=${o}
+                @input=${(b)=>this._recolourStop(n,b.target.value)}
               />
               <button
                 class="btn tiny"
-                ?disabled=${J<=Y0}
-                @click=${()=>this._removeStop(Y)}
-                aria-label=${`Remove stop ${Y+1}`}
+                ?disabled=${n===0}
+                @click=${()=>this._moveStop(n,-1)}
+                aria-label=${`Move stop ${n+1} left`}
+              >
+                ←
+              </button>
+              <button
+                class="btn tiny"
+                ?disabled=${n===u-1}
+                @click=${()=>this._moveStop(n,1)}
+                aria-label=${`Move stop ${n+1} right`}
+              >
+                →
+              </button>
+              <button
+                class="btn tiny"
+                ?disabled=${u<=Fr}
+                @click=${()=>this._removeStop(n)}
+                aria-label=${`Remove stop ${n+1}`}
                 title="Remove stop"
               >
                 &times;
@@ -670,7 +1018,7 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
           `)}
         <button
           class="btn tiny add"
-          ?disabled=${J>=F0}
+          ?disabled=${u>=Wr}
           @click=${this._addStop}
           aria-label="Add stop"
           title="Add stop"
@@ -678,29 +1026,29 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
           +
         </button>
       </div>
-    `}_renderPresets(){return V`
+    `}_renderPresets(){return $`
       <section>
         <div class="row heading">
           <span class="label">Presets</span>
         </div>
         <div class="row presets">
-          ${E0.map((z)=>V`
+          ${mu.map((r)=>$`
               <button
                 class="preset"
-                @click=${()=>this._applyPreset(z)}
-                title=${z.name}
-                aria-label=${z.name}
+                @click=${()=>this._applyPreset(r)}
+                title=${r.name}
+                aria-label=${r.name}
               >
                 <span
                   class="swatch"
-                  style="background:${this._presetSwatch(z.stops)}"
+                  style="background:${this._presetSwatch(r.stops)}"
                 ></span>
-                <span class="preset-name">${z.name}</span>
+                <span class="preset-name">${r.name}</span>
               </button>
             `)}
         </div>
       </section>
-    `}_renderSaveCurrent(){return V`
+    `}_renderSaveCurrent(){return $`
       <section>
         <div class="row heading">
           <span class="label">Save current</span>
@@ -712,8 +1060,8 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
             aria-label="New effect name"
             placeholder="Name this look"
             .value=${this._effectName}
-            @input=${(z)=>this._effectName=z.target.value}
-            @keydown=${(z)=>this._onSaveKey(z,()=>void this._saveCurrent())}
+            @input=${(r)=>this._effectName=r.target.value}
+            @keydown=${(r)=>this._onSaveKey(r,()=>void this._saveCurrent())}
           />
           <button
             class="btn primary"
@@ -725,7 +1073,7 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
         </div>
         <p class="help">Snapshots the strip's current colours as a named effect.</p>
       </section>
-    `}_renderStudio(){return V`
+    `}_renderStudio(){return $`
       <div id="panel-studio" role="tabpanel" aria-labelledby="tab-studio">
         ${this._renderScopeBand("draft")}
         <section>
@@ -733,34 +1081,37 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
             <span class="label">Effect kind</span>
           </div>
           <div class="kinds" role="radiogroup" aria-label="Effect kind" @keydown=${this._onKindKey}>
-            ${l.map((z)=>V`
+            ${or.map((r)=>$`
                 <button
-                  class="kind ${this._studioKind===z.id?"active":""}"
+                  class="kind ${this._studioKind===r.id?"active":""}"
                   role="radio"
-                  aria-checked=${this._studioKind===z.id?"true":"false"}
-                  tabindex=${this._studioKind===z.id?"0":"-1"}
-                  @click=${()=>this._selectKind(z.id)}
+                  aria-checked=${this._studioKind===r.id?"true":"false"}
+                  tabindex=${this._studioKind===r.id?"0":"-1"}
+                  ?disabled=${this._editingId!==null&&this._studioKind!==r.id}
+                  @click=${()=>this._selectKind(r.id)}
                 >
-                  ${z.label}
+                  ${r.label}
                 </button>
               `)}
           </div>
-          <div class="kinds-soon">
-            <span>Coming next:</span>
-            ${V8.map((z)=>V`
-                <button class="kind soon" disabled aria-disabled="true">
-                  ${z.label}<span class="soon-tag">soon</span>
-                </button>
-              `)}
-          </div>
+          ${ju.length>0?$`
+                <div class="kinds-soon">
+                  <span>Coming next:</span>
+                  ${ju.map((r)=>$`
+                      <button class="kind soon" disabled aria-disabled="true">
+                        ${r.label}<span class="soon-tag">soon</span>
+                      </button>
+                    `)}
+                </div>
+              `:q}
         </section>
-        ${this._studioKind==="gradient"?this._renderGradientAuthor():this._renderStaticEditor()}
+        ${this._studioKind==="static"?this._renderStaticEditor():this._studioKind==="gradient"?this._renderGradientAuthor():this._studioKind==="sketch"?this._renderSketchAuthor():this._studioKind==="flat"?this._renderFlatAuthor():this._studioKind==="combo"?this._renderComboAuthor():this._renderPendingAuthor()}
       </div>
-    `}_renderStaticEditor(){let z=this._staticColors.filter((Z)=>Z!==null).length,J=v0(this._staticColors.map((Z)=>Z===null?null:D(Z)));return V`
+    `}_renderStaticEditor(){let r=this._staticColors.filter((w)=>w!==null).length,u=Ru(this._staticColors.map((w)=>w===null?null:a(w)),this._staticBrightness);return $`
       <section>
         <div class="row heading">
           <span class="label">Static segments</span>
-          <span class="hint">${z} painted · ${this._selection.size} selected</span>
+          <span class="hint">${r} painted · ${this._selection.size} selected</span>
         </div>
         ${this._renderStrip(this._staticColors,"unchanged")}
         <div class="row controls">
@@ -768,7 +1119,7 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
             type="color"
             aria-label="Paint colour"
             .value=${this._paintColor}
-            @input=${(Z)=>this._paintColor=Z.target.value}
+            @input=${(w)=>this._paintColor=w.target.value}
           />
           <button class="btn primary" @click=${this._paintStatic}>Paint selected</button>
           <button class="btn" @click=${this._setUnchangedStatic}>Clear selected</button>
@@ -778,33 +1129,358 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
         <p class="help">
           Paint a colour onto chosen segments; hatched segments are left as they are on the strip.
         </p>
-        ${this._renderStudioSave(J,"Paint at least one segment to save.")}
+        ${this._renderStudioSave(u,"Paint at least one segment to save.")}
       </section>
-    `}_renderGradientAuthor(){let z=f(this._studioStops.map(D),L).map(p);return V`
+    `}_renderSketchAuthor(){let r=this._sketchColors.filter((o)=>o!==null).length,u=zr(this._sketchColors.map((o)=>o===null?null:a(o)),this._sketchMotion,this._sketchSpeed,this._sketchBrightness,a(this._sketchBackground)),w=nu(u).map(Z);return $`
+      <section>
+        <div class="row heading">
+          <span class="label">Sketch foreground</span>
+          <span class="hint">${r} painted · ${this._selection.size} selected</span>
+        </div>
+        ${this._renderStrip(this._sketchColors,"background",this._sketchBackground)}
+        <div class="row controls">
+          <label class="colour-control">
+            <span>Foreground</span>
+            <input
+              type="color"
+              aria-label="Sketch foreground colour"
+              .value=${this._paintColor}
+              @input=${(o)=>this._paintColor=o.target.value}
+            />
+          </label>
+          <label class="colour-control">
+            <span>Background</span>
+            <input
+              type="color"
+              aria-label="Sketch background colour"
+              .value=${this._sketchBackground}
+              @input=${(o)=>this._sketchBackground=o.target.value}
+            />
+          </label>
+          <button class="btn primary" @click=${this._paintSketch}>Paint selected</button>
+          <button class="btn" @click=${this._clearSketchSelection}>Use background</button>
+          <button class="btn" @click=${this._selectAll}>Select all</button>
+          <button class="btn" @click=${this._resetSketch}>Reset</button>
+        </div>
+        <p class="help">
+          Hatched cells use the background; solid cells are the animated foreground palette.
+        </p>
+      </section>
+      <section>
+        <div class="row heading">
+          <span class="label">Motion</span>
+        </div>
+        <div
+          class="motion-grid"
+          role="radiogroup"
+          aria-label="Sketch motion"
+          @keydown=${this._onMotionKey}
+        >
+          ${t.map((o)=>$`
+              <button
+                class="motion ${this._sketchMotion===o.code?"active":""}"
+                role="radio"
+                aria-checked=${this._sketchMotion===o.code?"true":"false"}
+                tabindex=${this._sketchMotion===o.code?"0":"-1"}
+                @click=${()=>this._sketchMotion=o.code}
+              >
+                ${o.label}
+              </button>
+            `)}
+        </div>
+        <label class="range-row">
+          <span>Speed</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            .value=${String(this._sketchSpeed)}
+            aria-label=${`Sketch speed, ${this._sketchSpeed} percent`}
+            @input=${(o)=>this._sketchSpeed=Number(o.target.value)}
+          />
+          <output>${this._sketchSpeed}%</output>
+        </label>
+        <label class="range-row">
+          <span>Brightness</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            .value=${String(this._sketchBrightness)}
+            aria-label=${`Sketch brightness, ${this._sketchBrightness} percent`}
+            @input=${(o)=>this._sketchBrightness=Number(o.target.value)}
+          />
+          <output>${this._sketchBrightness}%</output>
+        </label>
+      </section>
+      <section>
+        <div class="row heading">
+          <span class="label">Representative preview</span>
+          <span class="preview-badge">Approximate · animated on device</span>
+        </div>
+        ${this._renderPreviewStrip(w)}
+        ${this._renderStudioSave(!0,"")}
+      </section>
+    `}_renderPaletteEditor(r,u,w,o,n,b,p){return $`
+      <div class="row heading">
+        <span class="label">${w}</span>
+        <span class="hint">${r.length} of ${u}</span>
+      </div>
+      <div class="palette-editor">
+        ${r.map((k,m)=>$`
+            <div class="palette-chip">
+              <span class="palette-number">${m+1}</span>
+              <input
+                type="color"
+                aria-label=${`${w} colour ${m+1}`}
+                .value=${k}
+                @input=${(B)=>o(m,B.target.value)}
+              />
+              <button
+                class="btn tiny"
+                ?disabled=${m===0}
+                @click=${()=>p(m,-1)}
+                aria-label=${`Move colour ${m+1} left`}
+              >
+                ←
+              </button>
+              <button
+                class="btn tiny"
+                ?disabled=${m===r.length-1}
+                @click=${()=>p(m,1)}
+                aria-label=${`Move colour ${m+1} right`}
+              >
+                →
+              </button>
+              <button
+                class="btn tiny danger"
+                @click=${()=>b(m)}
+                aria-label=${`Remove colour ${m+1}`}
+              >
+                ×
+              </button>
+            </div>
+          `)}
+        <button
+          class="btn palette-add"
+          ?disabled=${r.length>=u}
+          @click=${n}
+        >
+          Add colour
+        </button>
+      </div>
+    `}_renderFlatAuthor(){let r=Y(this._flatFamily),u=this._flatPalette.length===0?[]:Array.from({length:J},(w,o)=>this._flatPalette[o%this._flatPalette.length]);return $`
+      <section>
+        <div class="row heading">
+          <span class="label">Animation family</span>
+          <span class="hint">Human-labelled catalogue</span>
+        </div>
+        <div
+          class="family-grid"
+          role="radiogroup"
+          aria-label="Flat animation family"
+          @keydown=${this._onFlatFamilyKey}
+        >
+          ${z.map((w)=>$`
+              <button
+                class="family ${w.family===this._flatFamily?"active":""}"
+                role="radio"
+                aria-checked=${w.family===this._flatFamily?"true":"false"}
+                tabindex=${w.family===this._flatFamily?"0":"-1"}
+                @click=${()=>this._selectFlatFamily(w.family)}
+              >
+                ${w.label}
+              </button>
+            `)}
+        </div>
+        <div class="row heading">
+          <span class="label">Variant</span>
+          <span class="hint">Up to ${r.palette_max} colours</span>
+        </div>
+        <div
+          class="variant-grid"
+          role="radiogroup"
+          aria-label=${`${r.label} variant`}
+          @keydown=${this._onFlatVariantKey}
+        >
+          ${r.variants.map((w)=>$`
+              <button
+                class="variant ${w.variant===this._flatVariant?"active":""}"
+                role="radio"
+                aria-checked=${w.variant===this._flatVariant?"true":"false"}
+                tabindex=${w.variant===this._flatVariant?"0":"-1"}
+                @click=${()=>this._flatVariant=w.variant}
+              >
+                ${w.label}
+              </button>
+            `)}
+        </div>
+        <p class="help">${r.description}</p>
+      </section>
+      <section>
+        ${this._renderPaletteEditor(this._flatPalette,r.palette_max,"Shared palette order",(w,o)=>this._setFlatPaletteColour(w,o),()=>this._addFlatPaletteColour(),(w)=>this._removeFlatPaletteColour(w),(w,o)=>this._moveFlatPaletteColour(w,o))}
+        ${u.length>0?$`
+              <div class="row heading">
+                <span class="label">Representative preview</span>
+                <span class="preview-badge">Approximate · animated on device</span>
+              </div>
+              ${this._renderPreviewStrip(u)}
+            `:$`<p class="help">Add at least one colour to preview and save this effect.</p>`}
+      </section>
+      <section>
+        <label class="range-row">
+          <span>${r.control_label}</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            .value=${String(this._flatSpeed)}
+            aria-label=${`${r.control_label}, ${this._flatSpeed} percent`}
+            @input=${(w)=>this._flatSpeed=Number(w.target.value)}
+          />
+          <output>${this._flatSpeed}%</output>
+        </label>
+        <button class="btn" @click=${this._resetFlat}>Reset Flat draft</button>
+        ${this._renderStudioSave(this._flatPalette.length>0,"Add at least one palette colour to save.")}
+      </section>
+    `}_renderComboAuthor(){let r=this._comboPalette.length===0?[]:Array.from({length:J},(u,w)=>this._comboPalette[w%this._comboPalette.length]);return $`
+      <section>
+        <div class="row heading">
+          <span class="label">Effect chain</span>
+          <span class="hint">${this._comboEffects.length} of 4 steps</span>
+        </div>
+        ${this._comboEffects.length===0?$`<p class="help">Add at least one Flat effect to the chain.</p>`:$`
+              <ol class="combo-chain">
+                ${this._comboEffects.map((u,w)=>{let o=Y(u.family);return $`
+                    <li class="combo-step">
+                      <span class="combo-number">${w+1}</span>
+                      <label>
+                        <span class="sr-only">Step ${w+1} family</span>
+                        <select
+                          aria-label=${`Step ${w+1} family`}
+                          .value=${String(u.family)}
+                          @change=${(n)=>this._setComboFamily(w,Number(n.target.value))}
+                        >
+                          ${z.map((n)=>$`
+                              <option value=${String(n.family)}>${n.label}</option>
+                            `)}
+                        </select>
+                      </label>
+                      <label>
+                        <span class="sr-only">Step ${w+1} variant</span>
+                        <select
+                          aria-label=${`Step ${w+1} variant`}
+                          .value=${String(u.variant)}
+                          @change=${(n)=>this._setComboVariant(w,Number(n.target.value))}
+                        >
+                          ${o.variants.map((n)=>$`
+                              <option value=${String(n.variant)}>${n.label}</option>
+                            `)}
+                        </select>
+                      </label>
+                      <div class="combo-actions">
+                        <button
+                          class="btn tiny"
+                          ?disabled=${w===0}
+                          @click=${()=>this._moveComboStep(w,-1)}
+                          aria-label=${`Move step ${w+1} up`}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          class="btn tiny"
+                          ?disabled=${w===this._comboEffects.length-1}
+                          @click=${()=>this._moveComboStep(w,1)}
+                          aria-label=${`Move step ${w+1} down`}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          class="btn tiny danger"
+                          @click=${()=>this._removeComboStep(w)}
+                          aria-label=${`Remove step ${w+1}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </li>
+                  `})}
+              </ol>
+            `}
+        <button
+          class="btn"
+          ?disabled=${this._comboEffects.length>=4}
+          @click=${this._addComboStep}
+        >
+          Add step
+        </button>
+      </section>
+      <section>
+        ${this._renderPaletteEditor(this._comboPalette,8,"Shared palette order",(u,w)=>this._setComboPaletteColour(u,w),()=>this._addComboPaletteColour(),(u)=>this._removeComboPaletteColour(u),(u,w)=>this._moveComboPaletteColour(u,w))}
+        ${r.length>0?$`
+              <div class="row heading">
+                <span class="label">Sequence preview</span>
+                <span class="preview-badge">Approximate · animated on device</span>
+              </div>
+              ${this._renderPreviewStrip(r)}
+            `:$`<p class="help">Add at least one shared palette colour.</p>`}
+      </section>
+      <section>
+        <label class="range-row">
+          <span>Speed</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            .value=${String(this._comboSpeed)}
+            aria-label=${`Combo speed, ${this._comboSpeed} percent`}
+            @input=${(u)=>this._comboSpeed=Number(u.target.value)}
+          />
+          <output>${this._comboSpeed}%</output>
+        </label>
+        <button class="btn" @click=${this._resetCombo}>Reset Combo draft</button>
+        ${this._renderStudioSave(this._comboEffects.length>0&&this._comboPalette.length>0,this._comboEffects.length===0?"Add at least one effect step to save.":"Add at least one shared palette colour to save.")}
+      </section>
+    `}_renderPendingAuthor(){let r=wr.find((w)=>w.id===this._studioKind)?.label??this._studioKind,u=this._loadedContent?.kind===this._studioKind;return $`
+      <section class="pending-author">
+        <div class="row heading">
+          <span class="label">${r}</span>
+          <span class="hint">Editor coming next</span>
+        </div>
+        <p class="help">
+          ${u?`This ${r} effect is loaded safely, but this editor is not available in the current build.`:`The ${r} editor will be enabled in the next Studio phase.`}
+        </p>
+        ${this._editingId!==null?$`<button class="btn" @click=${this._cancelEdit}>Cancel edit</button>`:q}
+      </section>
+    `}_renderGradientAuthor(){let r=ur(this._studioStops.map(a),J).map(Z);return $`
       <section>
         ${this._renderStopEditor()}
         <div class="row heading">
-          <span class="label">Draft preview · ${L} segments</span>
+          <span class="label">Draft preview · ${J} segments</span>
         </div>
-        ${this._renderPreviewStrip(z)}
+        ${this._renderPreviewStrip(r)}
         <p class="help">Saves the colour stops as a gradient effect.</p>
         ${this._renderStudioSave(!0,"")}
       </section>
-    `}_renderPreviewStrip(z){return V`
+    `}_renderPreviewStrip(r){return $`
       <div class="strip-scroll">
         <div
           class="strip preview-strip"
-          style="grid-template-columns: repeat(${L}, 1fr)"
+          style="grid-template-columns: repeat(${J}, 1fr)"
           aria-hidden="true"
         >
-          ${z.map((J,Z)=>V`
-              <div class="cell" style="background:${J}" title=${`Segment ${Z+1}`}>
-                <span class="cell-num">${Z+1}</span>
+          ${r.map((u,w)=>$`
+              <div class="cell" style="background:${u}" title=${`Segment ${w+1}`}>
+                <span class="cell-num">${w+1}</span>
               </div>
             `)}
         </div>
       </div>
-    `}_renderStudioSave(z,J){let Z=this._studioName.trim()!=="";return V`
+    `}_renderStudioSave(r,u){let w=this._studioName.trim()!=="",o=this._editingId!==null;return $`
+      ${o?$`<div class="edit-band" role="status">
+            <span>Editing a saved effect. Update keeps its stable ID and effect kind.</span>
+            <button class="btn" @click=${this._cancelEdit}>Cancel edit</button>
+          </div>`:q}
       <div class="row controls">
         <input
           class="effect-name"
@@ -812,54 +1488,94 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
           aria-label="Effect name"
           placeholder="Name this effect"
           .value=${this._studioName}
-          @input=${(Q)=>this._studioName=Q.target.value}
-          @keydown=${(Q)=>this._onSaveKey(Q,()=>void this._saveStudio())}
+          @input=${(n)=>this._studioName=n.target.value}
+          @keydown=${(n)=>this._onSaveKey(n,()=>void this._saveStudio())}
         />
         <button
           class="btn primary"
-          ?disabled=${!Z||!z}
+          ?disabled=${!w||!r}
           @click=${this._saveStudio}
         >
-          Save effect
+          ${o?"Update effect":"Save effect"}
         </button>
       </div>
-      ${!z&&J!==""?V`<p class="help">${J}</p>`:B}
-    `}_renderLibrary(z){let J=T0(z.attributes?.custom_effects),Z=typeof z.attributes?.effect==="string"?z.attributes.effect:null;return V`
+      ${!r&&u!==""?$`<p class="help">${u}</p>`:q}
+    `}_renderLibrary(r){let u=Dr(r.attributes?.custom_effects),w=typeof r.attributes?.effect==="string"?r.attributes.effect:null;return $`
       <div id="panel-library" role="tabpanel" aria-labelledby="tab-library">
         <section>
           <div class="row heading">
             <span class="label">Saved effects</span>
-            <span class="hint">${J.length} saved</span>
+            <span class="hint">${u.length} saved</span>
           </div>
-          ${J.length===0?V`<p class="help">
+          ${u.length===0?$`<p class="help">
                 No custom effects saved yet. Create one in the Studio tab, or snapshot the strip from
                 the Now tab.
-              </p>`:V`
+              </p>`:$`
                 <p class="help">Select an effect to apply it.</p>
                 <ul class="effects" role="list">
-                  ${J.map((Q)=>this._renderEffectRow(Q,Z))}
+                  ${u.map((o)=>this._renderEffectRow(o,w,u))}
                 </ul>
               `}
         </section>
+        <section>
+          <details class="import-panel">
+            <summary>Import effect JSON</summary>
+            <div class="import-body">
+              <textarea
+                class="import-json"
+                aria-label="Effect JSON"
+                placeholder="Paste an exported Govee effect here"
+                .value=${this._importText}
+                @input=${(o)=>this._importText=o.target.value}
+              ></textarea>
+              <input
+                class="import-file"
+                type="file"
+                accept=".json,application/json"
+                @change=${this._loadImportFile}
+              />
+              <div class="row controls">
+                <button class="btn" @click=${this._chooseImportFile}>Load JSON file</button>
+                <button
+                  class="btn primary"
+                  ?disabled=${this._importText.trim()===""}
+                  @click=${()=>this._reviewImport(u)}
+                >
+                  Review import
+                </button>
+                <button
+                  class="btn"
+                  ?disabled=${this._importText===""}
+                  @click=${()=>this._importText=""}
+                >
+                  Clear
+                </button>
+              </div>
+              <p class="help">
+                Import opens an untrusted file as a Studio draft. Nothing is saved until you review it.
+              </p>
+            </div>
+          </details>
+        </section>
       </div>
-    `}_renderEffectRow(z,J){if(this._renamingId===z.id)return V`
+    `}_renderEffectRow(r,u,w){if(this._renamingId===r.id)return $`
         <li class="effect renaming">
           <input
             class="effect-name rename-input"
             type="text"
-            aria-label=${`New name for ${z.name}`}
+            aria-label=${`New name for ${r.name}`}
             .value=${this._renameValue}
-            @input=${(Q)=>this._renameValue=Q.target.value}
-            @keydown=${(Q)=>this._onRenameKey(Q,z)}
+            @input=${(b)=>this._renameValue=b.target.value}
+            @keydown=${(b)=>this._onRenameKey(b,r)}
           />
-          <button class="btn primary" @click=${()=>this._commitRename(z)}>
+          <button class="btn primary" @click=${()=>this._commitRename(r)}>
             Save
           </button>
           <button class="btn" @click=${this._cancelRename}>Cancel</button>
         </li>
-      `;if(this._deletingId===z.id)return V`
+      `;if(this._deletingId===r.id)return $`
         <li class="effect">
-          <span class="confirm-text">Delete "${z.name}"?</span>
+          <span class="confirm-text">Delete "${r.name}"?</span>
           <button
             class="btn confirm-cancel"
             @click=${this._cancelDelete}
@@ -869,35 +1585,68 @@ var v=globalThis,o=v.ShadowRoot&&(v.ShadyCSS===void 0||v.ShadyCSS.nativeShadow)&
           </button>
           <button
             class="btn danger primary"
-            @click=${()=>this._deleteEffect(z)}
+            @click=${()=>this._deleteEffect(r)}
             @keydown=${this._onDeleteKey}
           >
             Delete
           </button>
         </li>
-      `;let Z=J!==null&&J===z.name;return V`
-      <li class="effect ${Z?"active":""}">
-        ${Z?V`<span class="badge-active" aria-current="true">✓ Active</span>`:V`<button
-              class="btn primary"
-              @click=${()=>this._applyEffect(z)}
-              aria-label=${`Apply ${z.name}`}
-            >
-              Apply
-            </button>`}
-        <span class="effect-label" title=${z.name}>${z.name}</span>
-        <button
-          class="btn"
-          @click=${()=>this._startRename(z)}
-          aria-label=${`Rename ${z.name}`}
-        >
-          Rename
-        </button>
-        <button
-          class="btn danger"
-          @click=${()=>this._askDelete(z)}
-          aria-label=${`Delete ${z.name}`}
-        >
-          Delete
-        </button>
+      `;let o=u!==null&&u===r.name,n=this._busyKey?.endsWith(`:${r.id}`)??!1;return $`
+      <li class="effect ${o?"active":""}">
+        <div class="effect-main">
+          ${o?$`<span class="badge-active" aria-current="true">✓ Active</span>`:$`<button
+                class="btn primary"
+                @click=${()=>this._applyEffect(r)}
+                aria-label=${`Apply ${r.name}`}
+              >
+                Apply
+              </button>`}
+          <span class="effect-label" title=${r.name}>${r.name}</span>
+        </div>
+        <div class="effect-actions">
+          <button
+            class="btn"
+            ?disabled=${n}
+            @click=${()=>void this._editEffect(r)}
+            aria-label=${`Edit ${r.name}`}
+          >
+            Edit
+          </button>
+          <button
+            class="btn"
+            ?disabled=${n}
+            @click=${()=>void this._duplicateEffect(r,w)}
+            aria-label=${`Duplicate ${r.name}`}
+          >
+            Duplicate
+          </button>
+          <details class="effect-more">
+            <summary class="btn">More</summary>
+            <div class="more-actions">
+              <button
+                class="btn"
+                ?disabled=${n}
+                @click=${()=>void this._exportEffect(r)}
+                aria-label=${`Export ${r.name}`}
+              >
+                ${n?"Working…":"Export"}
+              </button>
+              <button
+                class="btn"
+                @click=${()=>this._startRename(r)}
+                aria-label=${`Rename ${r.name}`}
+              >
+                Rename
+              </button>
+              <button
+                class="btn danger"
+                @click=${()=>this._askDelete(r)}
+                aria-label=${`Delete ${r.name}`}
+              >
+                Delete
+              </button>
+            </div>
+          </details>
+        </div>
       </li>
-    `}static styles=y0}customElements.define("govee-led-ble-card",p0);window.customCards=window.customCards||[];window.customCards.push({type:"govee-led-ble-card",name:"Govee LED BLE",description:"Paint, compose and save custom effects for a segment-capable Govee LED BLE light.",preview:!1});console.info("%c govee-led-ble-card ","background:#1982c4;color:#fff;border-radius:3px","loaded");
+    `}static styles=vr}customElements.define("govee-led-ble-card",Yu);window.customCards=window.customCards||[];window.customCards.push({type:"govee-led-ble-card",name:"Govee LED BLE",description:"Paint, compose and save custom effects for a segment-capable Govee LED BLE light.",preview:!1});console.info("%c govee-led-ble-card ","background:#1982c4;color:#fff;border-radius:3px","loaded");

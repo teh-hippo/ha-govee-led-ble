@@ -11,14 +11,30 @@ export interface HassEntityState {
   attributes: Record<string, unknown>;
 }
 
+export interface HassServiceResponse<T> {
+  response?: T;
+}
+
+export interface HassEntityRegistryEntry {
+  device_id?: string | null;
+}
+
+export interface HassDeviceRegistryEntry {
+  model?: string | null;
+}
+
 export interface HassLike {
   states: Record<string, HassEntityState>;
-  callService(
+  entities?: Record<string, HassEntityRegistryEntry>;
+  devices?: Record<string, HassDeviceRegistryEntry>;
+  callService<T = unknown>(
     domain: string,
     service: string,
     data?: Record<string, unknown>,
     target?: HassServiceTarget,
-  ): Promise<unknown>;
+    notifyOnError?: boolean,
+    returnResponse?: boolean,
+  ): Promise<HassServiceResponse<T>>;
 }
 
 export interface GoveeLedBleCardConfig {

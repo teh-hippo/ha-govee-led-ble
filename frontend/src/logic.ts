@@ -326,16 +326,15 @@ export function nextTabIndex(current: number, key: string, count: number): numbe
 export type StudioKind = "static" | "gradient" | "sketch" | "flat" | "combo";
 
 /**
- * Studio kind descriptors. `available` gates cycle-1: Static and Gradient
- * author real typed content; Sketch/Flat/Combo render a "coming soon" panel
- * until their editors land.
+ * Studio kind descriptors. `available` gates kinds whose complete authoring
+ * surface has landed.
  */
 export const STUDIO_KINDS: readonly { id: StudioKind; label: string; available: boolean }[] = [
   { id: "static", label: "Static", available: true },
   { id: "gradient", label: "Gradient", available: true },
-  { id: "sketch", label: "Sketch", available: false },
-  { id: "flat", label: "Flat", available: false },
-  { id: "combo", label: "Combo", available: false },
+  { id: "sketch", label: "Sketch", available: true },
+  { id: "flat", label: "Flat", available: true },
+  { id: "combo", label: "Combo", available: true },
 ];
 
 // --- Studio: typed content builders (twins of custom_effects.content_from_dict) ---

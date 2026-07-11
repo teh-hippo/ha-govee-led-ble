@@ -144,6 +144,69 @@
     },
     "duplicate_name": {
       "message": "An effect with that name already exists."
+    },
+    "update_needs_name_or_content": {
+      "message": "Provide a new name or content to update."
+    },
+    "invalid_effect_content": {
+      "message": "The effect content is malformed."
+    },
+    "too_many_segment_brightness": {
+      "message": "Too many segment brightness values were provided."
+    },
+    "segment_brightness_range": {
+      "message": "Segment brightness must be from 0 to 100."
+    },
+    "too_many_segments": {
+      "message": "The effect contains more segments than this device supports."
+    },
+    "bad_rgb": {
+      "message": "A segment colour is not a valid RGB colour."
+    },
+    "vibrant_stops_range": {
+      "message": "A gradient needs 2 to 5 colour stops."
+    },
+    "vibrant_bad_rgb": {
+      "message": "A gradient stop is not a valid RGB colour."
+    },
+    "sketch_bad_background": {
+      "message": "The Sketch background is not a valid RGB colour."
+    },
+    "sketch_motion_invalid": {
+      "message": "The Sketch motion is not supported."
+    },
+    "sketch_speed_range": {
+      "message": "Sketch speed must be from 0 to 100."
+    },
+    "sketch_brightness_range": {
+      "message": "Sketch brightness must be from 0 to 100."
+    },
+    "flat_family_variant_invalid": {
+      "message": "The Flat family and variant combination is not supported."
+    },
+    "flat_speed_range": {
+      "message": "Flat speed must be from 0 to 100."
+    },
+    "palette_too_large": {
+      "message": "The effect palette contains too many colours."
+    },
+    "flat_bad_rgb": {
+      "message": "A Flat palette entry is not a valid RGB colour."
+    },
+    "combo_variant_range": {
+      "message": "Combo variant must be from 0 to 255."
+    },
+    "combo_speed_range": {
+      "message": "Combo speed must be from 0 to 100."
+    },
+    "combo_too_many": {
+      "message": "Combo accepts up to four effect steps."
+    },
+    "combo_family_variant_invalid": {
+      "message": "A Combo step uses an unsupported Flat family and variant."
+    },
+    "combo_bad_rgb": {
+      "message": "A Combo palette entry is not a valid RGB colour."
     }
   },
   "issues": {
@@ -312,6 +375,34 @@
         "to": {
           "name": "New name",
           "description": "New display name for the effect."
+        }
+      }
+    },
+    "update_effect": {
+      "name": "Update effect",
+      "description": "Update a saved custom effect by its stable id, changing its name, content, or both.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Stable id of the effect to update."
+        },
+        "name": {
+          "name": "New name",
+          "description": "New display name for the effect. Provide a new name, new content, or both."
+        },
+        "content": {
+          "name": "Content",
+          "description": "New effect content object. Provide a new name, new content, or both."
+        }
+      }
+    },
+    "export_effect": {
+      "name": "Export effect",
+      "description": "Return a portable snapshot of a saved custom effect by its stable id.",
+      "fields": {
+        "id": {
+          "name": "Id",
+          "description": "Stable id of the effect to export."
         }
       }
     }

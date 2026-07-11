@@ -43,3 +43,29 @@ def test_every_icon_key_maps_to_a_translation():
     for platform, entries in icons.items():
         for key in entries:
             assert key in strings.get(platform, {}), f"icon {platform}.{key} has no matching translation"
+
+
+def test_custom_effect_validation_errors_are_translated():
+    exceptions = json.loads(_STRINGS.read_text())["exceptions"]
+    keys = {
+        "too_many_segments",
+        "bad_rgb",
+        "too_many_segment_brightness",
+        "segment_brightness_range",
+        "vibrant_stops_range",
+        "vibrant_bad_rgb",
+        "sketch_bad_background",
+        "sketch_motion_invalid",
+        "sketch_speed_range",
+        "sketch_brightness_range",
+        "flat_family_variant_invalid",
+        "flat_speed_range",
+        "palette_too_large",
+        "flat_bad_rgb",
+        "combo_variant_range",
+        "combo_speed_range",
+        "combo_too_many",
+        "combo_family_variant_invalid",
+        "combo_bad_rgb",
+    }
+    assert keys <= exceptions.keys()

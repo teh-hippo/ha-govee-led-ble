@@ -6,6 +6,7 @@ from contextlib import AbstractContextManager, contextmanager
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.light import ColorMode  # type: ignore[attr-defined]
+from homeassistant.core import ServiceResponse
 from homeassistant.exceptions import ServiceValidationError
 
 from .const import DOMAIN, MUSIC_MODE_SLUGS, MUSIC_MODES
@@ -35,6 +36,11 @@ def _map_effect_errors(**placeholders: str) -> Iterator[None]:
     except EffectValidationError as err:
         raise ServiceValidationError(
             translation_domain=DOMAIN, translation_key=err.key, translation_placeholders=placeholders or None
+        ) from err
+    except (TypeError, ValueError, OverflowError) as err:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_effect_content",
         ) from err
 
 
@@ -243,3 +249,19 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         identifier = _single_effect_ref(id, from_name, "rename_needs_id_or_from")
         with _map_effect_errors(effect=identifier):
             await self.coordinator.async_rename_effect(identifier, to)
+
+    async def async_update_effect(
+        self, id: str, name: str | None = None, content: dict[str, Any] | None = None
+    ) -> None:
+        if name is None and content is None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="update_needs_name_or_content")
+        with _map_effect_errors(effect=id):
+            await self.coordinator.async_update_effect(
+                id,
+                display_name=name,
+                content=None if content is None else content_from_dict(content),
+            )
+
+    async def async_export_effect(self, id: str) -> ServiceResponse:
+        with _map_effect_errors(effect=id):
+            return await self.coordinator.async_export_effect(id)

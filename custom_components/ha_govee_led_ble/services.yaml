@@ -55,3 +55,16 @@ rename_effect:
     id: {required: false, example: "a1b2c3d4", selector: {text:}}
     from_name: {required: false, example: "Sunset", selector: {text:}}
     to: {required: true, example: "Dawn", selector: {text:}}
+update_effect:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    id: {required: true, example: "a1b2c3d4", selector: {text:}}
+    name: {required: false, example: "Dawn", selector: {text:}}
+    content:
+      required: false
+      example: '{"kind": "vibrant", "stops": [[255, 120, 0], [0, 0, 255]]}'
+      selector: {object:}
+export_effect:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    id: {required: true, example: "a1b2c3d4", selector: {text:}}

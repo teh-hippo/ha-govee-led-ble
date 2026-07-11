@@ -1,5 +1,7 @@
 """Unit tests for the pure custom-effect content model, validators and JSON codec."""
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -77,6 +79,8 @@ def test_validate_accepts_valid(content):
 _INVALID = [
     (SegmentContent(colors=((1, 1, 1),) * (SEG + 1)), "too_many_segments"),
     (SegmentContent(colors=((300, 0, 0),)), "bad_rgb"),
+    (SegmentContent(brightness=(50,) * (SEG + 1)), "too_many_segment_brightness"),
+    (SegmentContent(brightness=(101,)), "segment_brightness_range"),
     (VibrantContent(stops=((0, 0, 0),)), "vibrant_stops_range"),
     (VibrantContent(stops=((0, 0, 0),) * 6), "vibrant_stops_range"),
     (VibrantContent(stops=((0, 0, 0), (256, 0, 0))), "vibrant_bad_rgb"),
@@ -87,10 +91,13 @@ _INVALID = [
     (SketchContent(speed=101), "sketch_speed_range"),
     (SketchContent(brightness=101), "sketch_brightness_range"),
     (FlatContent(family=0x00, variant=0x05), "flat_family_variant_invalid"),
+    (FlatContent(family=0x00, variant=0x00, speed=101), "flat_speed_range"),
     (FlatContent(family=0x00, variant=0x00, palette=((1, 1, 1),) * 9), "palette_too_large"),
     (FlatContent(family=0x0A, variant=0x00, palette=((1, 1, 1),) * 4), "palette_too_large"),
     (FlatContent(family=0x00, variant=0x00, palette=((300, 0, 0),)), "flat_bad_rgb"),
     (ComboContent(effects=((0x00, 0x00),) * 5), "combo_too_many"),
+    (ComboContent(variant=256), "combo_variant_range"),
+    (ComboContent(speed=101), "combo_speed_range"),
     (ComboContent(effects=((0x00, 0x00), (0x00, 0x05))), "combo_family_variant_invalid"),
     (ComboContent(palette=((1, 1, 1),) * 9), "palette_too_large"),
     (ComboContent(palette=((300, 0, 0),)), "combo_bad_rgb"),
@@ -115,6 +122,14 @@ def test_flat_family_variants_cover_catalogue():
     assert len(_FLAT_FAMILY_VARIANTS) == 19
     assert (0x0A, 0x00) in _FLAT_FAMILY_VARIANTS
     assert (0x01, 0x01) not in _FLAT_FAMILY_VARIANTS  # Jumping variant gap
+
+
+def test_frontend_flat_catalogue_matches_backend():
+    path = Path(__file__).parents[1] / "frontend" / "src" / "flat-catalogue.json"
+    catalogue = json.loads(path.read_text())
+    frontend_pairs = {(family["family"], variant["variant"]) for family in catalogue for variant in family["variants"]}
+    assert frontend_pairs == _FLAT_FAMILY_VARIANTS
+    assert {family["family"]: family["palette_max"] for family in catalogue}[0x0A] == 3
 
 
 # --------------------------------------------------------------------------- #
