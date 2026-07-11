@@ -220,18 +220,144 @@ async def test_set_music_mode_energic_alias(h6199_light, mock_h6199_coordinator,
 async def test_h6199_confirms_power(h6199_light, mock_h6199_coordinator):
     for on in (True, False):
         await (h6199_light.async_turn_on() if on else h6199_light.async_turn_off())
-        mock_h6199_coordinator.refresh_state.assert_awaited_once_with(
-            expected_effect=None, expected_on=on, expected_music_mode=None, expected_video_mode=None
-        )
+        mock_h6199_coordinator.refresh_state.assert_awaited_once()
+        assert mock_h6199_coordinator.refresh_state.await_args.kwargs["expected_on"] is on
         mock_h6199_coordinator.refresh_state.reset_mock()
 
 
 async def test_refresh_with_retry_required_flag(h6199_light, mock_h6199_coordinator):
-    """An unconfirmed required write raises; a non-required one (experimental video) degrades quietly."""
+    """An unconfirmed required write raises; callers can still explicitly choose best-effort verification."""
     mock_h6199_coordinator.refresh_state = AsyncMock(return_value=False)
     await h6199_light._refresh_with_retry(expected_video_mode="game", required=False)
     with pytest.raises(RuntimeError):
         await h6199_light._refresh_with_retry(expected_music_mode="spectrum")
+
+
+async def test_set_video_retry_replays_power_and_full_mode(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+    co.refresh_state = AsyncMock(side_effect=[False, True])
+    packet = proto.build_video_mode(
+        full_screen=False,
+        game_mode=True,
+        saturation=60,
+        sound_effects=True,
+        sound_effects_softness=50,
+    )
+
+    await h6199_light.async_set_video_mode(
+        mode="game",
+        capture_region="part",
+        saturation=60,
+        sound_effects=True,
+        sound_effects_softness=50,
+    )
+
+    assert [call.args[0] for call in co.send_command.await_args_list] == [
+        proto.build_power(True),
+        packet,
+        proto.build_power(True),
+        packet,
+    ]
+    for call in co.refresh_state.await_args_list:
+        assert call.kwargs["expected_on"] is True
+        assert call.kwargs["expected_video_mode"] == "game"
+        assert call.kwargs["expected_video_full_screen"] is False
+        assert call.kwargs["expected_video_saturation"] == 60
+        assert call.kwargs["expected_video_sound_effects"] is True
+        assert call.kwargs["expected_video_sound_effects_softness"] == 50
+    assert co.video_mode == "game"
+
+
+async def test_set_music_confirms_requested_parameters(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+
+    await h6199_light.async_set_music_mode(
+        mode="rhythm",
+        sensitivity=55,
+        color=(1, 2, 3),
+        calm=True,
+    )
+
+    kwargs = co.refresh_state.await_args.kwargs
+    assert kwargs["expected_on"] is True
+    assert kwargs["expected_music_mode"] == "rhythm"
+    assert kwargs["expected_music_sensitivity"] == 55
+    assert kwargs["expected_music_calm"] is True
+    assert kwargs["expected_music_color"] == (1, 2, 3)
+    assert kwargs["expected_music_auto_color"] is False
+
+
+async def test_set_music_normalises_sensitivity_and_confirms_auto_color(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+
+    await h6199_light.async_set_music_mode(mode="spectrum", sensitivity=100, color=None)
+
+    kwargs = co.refresh_state.await_args.kwargs
+    assert co.music_sensitivity == 99
+    assert kwargs["expected_on"] is True
+    assert kwargs["expected_music_sensitivity"] == 99
+    assert kwargs["expected_music_color"] is None
+    assert kwargs["expected_music_auto_color"] is True
+
+
+async def test_set_music_retry_restores_requested_parameters(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+    sent: list[tuple[int, tuple[int, int, int] | None, bool]] = []
+
+    async def _select(slug: str) -> None:
+        sent.append((co.music_sensitivity, co.music_color, co.music_calm))
+
+    async def _confirm(**kwargs) -> bool:
+        if len(sent) == 1:
+            co.music_sensitivity = 10
+            co.music_color = (9, 9, 9)
+            co.music_calm = False
+            return False
+        return True
+
+    co.async_select_music_slug = AsyncMock(side_effect=_select)
+    co.refresh_state = AsyncMock(side_effect=_confirm)
+
+    await h6199_light.async_set_music_mode(
+        mode="rhythm",
+        sensitivity=55,
+        color=(1, 2, 3),
+        calm=True,
+    )
+
+    assert sent == [
+        (55, (1, 2, 3), True),
+        (55, (1, 2, 3), True),
+    ]
+
+
+async def test_set_white_retry_replays_power_and_level(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+    co.refresh_state = AsyncMock(side_effect=[False, True])
+    packet = proto.build_white_brightness(47)
+
+    await h6199_light.async_set_white_brightness(brightness=47)
+
+    assert [call.args[0] for call in co.send_command.await_args_list] == [
+        proto.build_power(True),
+        packet,
+        proto.build_power(True),
+        packet,
+    ]
+    for call in co.refresh_state.await_args_list:
+        assert call.kwargs["expected_on"] is True
+        assert call.kwargs["expected_white_brightness"] == 47
+
+
+async def test_disabling_video_sound_preserves_softness(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+    co.video_sound_effects_softness = 50
+
+    await h6199_light.async_set_video_mode(mode="movie", sound_effects=False)
+
+    assert co.video_sound_effects is False
+    assert co.video_sound_effects_softness == 50
+    assert co.refresh_state.await_args.kwargs["expected_video_sound_effects_softness"] is None
 
 
 async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):

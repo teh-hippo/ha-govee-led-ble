@@ -3,7 +3,6 @@
 import logging
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
-from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.light import ColorMode  # type: ignore[attr-defined]
@@ -99,7 +98,16 @@ class _GoveeLightOwner:
             expected_effect: str | None = None,
             expected_on: bool | None = None,
             expected_music_mode: str | None = None,
+            expected_music_sensitivity: int | None = None,
+            expected_music_calm: bool | None = None,
+            expected_music_color: tuple[int, int, int] | None = None,
+            expected_music_auto_color: bool = False,
             expected_video_mode: str | None = None,
+            expected_video_full_screen: bool | None = None,
+            expected_video_saturation: int | None = None,
+            expected_video_sound_effects: bool | None = None,
+            expected_video_sound_effects_softness: int | None = None,
+            expected_white_brightness: int | None = None,
             retry_command: Callable[[], Awaitable[None]] | None = None,
             required: bool = True,
         ) -> None: ...
@@ -124,18 +132,28 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             packet = build_video_mode(full_screen=resolved_fs, game_mode=mode == "game", saturation=saturation,
                 sound_effects=sound_effects, sound_effects_softness=sound_effects_softness)
             # fmt: on
-            async def send() -> None:
+            async def apply() -> None:
+                await self.coordinator.send_command(build_power(True))
+                self.coordinator.is_on = True
                 await self.coordinator.send_command(packet)
 
-            await self.coordinator.send_command(build_power(True))
-            self.coordinator.is_on = True
-            await send()
-            await self._refresh_with_retry(expected_video_mode=mode, retry_command=send, required=False)
+            await apply()
+            await self._refresh_with_retry(
+                expected_on=True,
+                expected_video_mode=mode,
+                expected_video_full_screen=resolved_fs,
+                expected_video_saturation=saturation,
+                expected_video_sound_effects=sound_effects,
+                expected_video_sound_effects_softness=sound_effects_softness if sound_effects else None,
+                retry_command=apply,
+            )
             c = self.coordinator
             c.video_mode, c.effect = mode, None
             c.active_custom_id, c.music_mode = None, "off"
             c.video_saturation, c.video_full_screen = saturation, resolved_fs
-            c.video_sound_effects, c.video_sound_effects_softness = sound_effects, sound_effects_softness
+            c.video_sound_effects = sound_effects
+            if sound_effects:
+                c.video_sound_effects_softness = sound_effects_softness
         self._notify_state_changed()
 
     async def async_set_music_mode(self, mode: str, sensitivity: int = 99,
@@ -148,22 +166,43 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         slug = mode.replace(" ", "_")
         with self._rollback():
             c = self.coordinator
-            c.music_sensitivity, c.music_color = sensitivity, color
+            resolved_sensitivity = min(sensitivity, 99)
             if slug == "rhythm" and calm is not None:
                 c.music_calm = calm
-            apply = partial(c.async_select_music_slug, slug)
+            expected_calm = c.music_calm if slug == "rhythm" else None
+
+            async def apply() -> None:
+                c.music_sensitivity, c.music_color = resolved_sensitivity, color
+                if expected_calm is not None:
+                    c.music_calm = expected_calm
+                await c.async_select_music_slug(slug)
+
             await apply()
-            await self._refresh_with_retry(expected_music_mode=slug, retry_command=apply)
+            await self._refresh_with_retry(
+                expected_on=True,
+                expected_music_mode=slug,
+                expected_music_sensitivity=resolved_sensitivity,
+                expected_music_calm=expected_calm,
+                expected_music_color=color,
+                expected_music_auto_color=color is None,
+                retry_command=apply,
+            )
         self._notify_state_changed()
 
     async def async_set_white_brightness(self, brightness: int = 100) -> None:
         self._require_support("set_white_brightness", supported=self.coordinator.profile.supports_white_brightness)
         with self._rollback():
-            send = partial(self.coordinator.send_command, build_white_brightness(brightness))
-            await self.coordinator.send_command(build_power(True))
-            self.coordinator.is_on = True
-            await send()
-            await self._refresh_with_retry(expected_on=True, retry_command=send)
+            async def apply() -> None:
+                await self.coordinator.send_command(build_power(True))
+                self.coordinator.is_on = True
+                await self.coordinator.send_command(build_white_brightness(brightness))
+
+            await apply()
+            await self._refresh_with_retry(
+                expected_on=True,
+                expected_white_brightness=brightness,
+                retry_command=apply,
+            )
             self.coordinator._enter_static_mode()
             self.coordinator.white_brightness = brightness
             self._attr_color_mode = ColorMode.COLOR_TEMP
