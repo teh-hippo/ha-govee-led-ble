@@ -11,6 +11,10 @@ from .protocol import ParsedTimerSchedule, Weekday, build_timer_schedule, build_
 class _TimerWriteMixin(_CoordinatorBase):
     """Optimistic sleep/wake-up/schedule timer writes with rollback on BLE failure."""
 
+    def _require_timer_support(self) -> None:
+        if not self.profile.supports_timers:
+            raise ValueError(f"{self.model} does not support timers")
+
     async def _commit_timer_write(self, packet: bytes, snapshot: dict[str, Any]) -> None:
         """Write a timer packet, restoring the snapshotted optimistic fields on BLE failure."""
         try:
@@ -22,6 +26,7 @@ class _TimerWriteMixin(_CoordinatorBase):
         self.async_set_updated_data(self.data or {})
 
     async def async_set_sleep_timer(self, *, enabled: bool | None = None, minutes: int | None = None) -> None:
+        self._require_timer_support()
         snapshot: dict[str, Any] = {
             "sleep_timer_enabled": self.sleep_timer_enabled,
             "sleep_timer_minutes": self.sleep_timer_minutes,
@@ -34,6 +39,7 @@ class _TimerWriteMixin(_CoordinatorBase):
         await self._commit_timer_write(packet, snapshot)
 
     async def async_set_wakeup_timer(self, *, enabled: bool | None = None, wake_time: dt_time | None = None) -> None:
+        self._require_timer_support()
         snapshot: dict[str, Any] = {
             "wakeup_timer_enabled": self.wakeup_timer_enabled,
             "wakeup_timer_time": self.wakeup_timer_time,
@@ -49,6 +55,7 @@ class _TimerWriteMixin(_CoordinatorBase):
     async def async_set_schedule_timer(
         self, slot: int, *, on_action: bool, hour: int, minute: int, days: Iterable[Weekday] = ()
     ) -> None:
+        self._require_timer_support()
         snapshot: dict[str, Any] = {"schedule_timers": list(self.schedule_timers)}
         repeat_days = frozenset(days)
         self.schedule_timers[slot] = ParsedTimerSchedule(
@@ -58,6 +65,7 @@ class _TimerWriteMixin(_CoordinatorBase):
         await self._commit_timer_write(packet, snapshot)
 
     async def async_clear_schedule_timer(self, slot: int) -> None:
+        self._require_timer_support()
         snapshot: dict[str, Any] = {"schedule_timers": list(self.schedule_timers)}
         self.schedule_timers[slot] = None
         packet = build_timer_schedule(slot, False, False, 0, 0)

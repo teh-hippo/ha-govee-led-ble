@@ -32,8 +32,9 @@ DreamView video modes); `sat` default. Whole-strip brightness is a separate `33 
 video-frame byte. Music mode codes: 3=Rhythm, 5=Energic, 6=Rolling, 4=Spectrum; `byte[5]` is the
 style (for Rhythm: dynamic 0 / calm 1) and `byte[6]` is the colour count (0 = auto-colour). Additional
 TV commands exist that we do not implement: light direction `0x30`, camera position `0x31`, camera
-check `0x32`, and an `0xA9` family (saturation, sensitivity, HDR, auto-WB, AI filter,
-black-screen/border).
+check `0x32`, and an `0xA9` family (sensitivity, HDR, auto-WB, AI filter and
+black-screen/border). The optional sound-overlay extension to the video frame is also not yet
+capture-validated.
 
 ## Integration audit vs the 2026-07-10 capture
 
@@ -54,7 +55,21 @@ them**: the integration's encoders match the app. Do **not** "fix" these against
 (energic 5 / rhythm 3 / rolling 6 / spectrum 4), white-balance command type `0xA9`, `!autoColor`
 marker `0x01`, sub-mode constants. The H6199 answers `aa 01/04/05` reads (confirmed 2026-07-10).
 
-## Remaining (low priority, not blocking)
+## Integration safety gating
+
+The integration exposes only the H6199 behaviours validated for the captured firmware:
+
+- base colour, brightness and colour temperature;
+- movie/game video, capture region and saturation;
+- video white balance;
+- Energetic, Rhythm, Spectrum and Rolling music modes;
+- static segment effects.
+
+H617A-derived animated DIY effects, extended music modes, timers, power-off memory and video sound
+overlays are rejected until an H6199 app census and attributable captures validate them. Existing
+unsupported saved effects remain exportable but cannot be applied.
+
+## Remaining
 
 - `byte[4]` movie/game is exposed as the two DreamView sub-modes; a final on-TV visual confirm of the
   game sub-mode is a nice-to-have, not a blocker (both values engage video and were seen on the wire).

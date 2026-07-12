@@ -225,6 +225,14 @@
     "custom_effect_unknown_kind": {
       "title": "Unsupported custom effect stored",
       "description": "A saved custom effect uses a format this version cannot apply. It has been kept as-is but cannot be used until it is saved again."
+    },
+    "custom_effect_unsupported_model": {
+      "title": "Custom effect unavailable on this device",
+      "description": "The saved custom effect \"{effect}\" is not validated for {model}. It has been kept for export or deletion but cannot be applied."
+    },
+    "unsupported_model": {
+      "title": "Unsupported Govee model",
+      "description": "This config entry identifies model \"{model}\", which this integration cannot safely control. Reconfigure the device with a supported model."
     }
   },
   "services": {
@@ -250,11 +258,11 @@
         },
         "sound_effects": {
           "name": "Sound effects",
-          "description": "Enable audio-reactive overlay."
+          "description": "Enable the audio-reactive overlay on a model where this extension has been validated. It is currently unavailable on H6199."
         },
         "sound_effects_softness": {
           "name": "Sound effects softness",
-          "description": "Overlay softness (0-100)."
+          "description": "Set overlay softness from 0 to 100 on a model where sound effects have been validated."
         }
       }
     },

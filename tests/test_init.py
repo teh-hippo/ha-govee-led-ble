@@ -3,14 +3,16 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 
 from custom_components.ha_govee_led_ble import (
     _async_cleanup_legacy_entities,
+    _async_cleanup_unsupported_entities,
     async_setup,
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, MODEL_PROFILES
 
 
 def _entry(**kw):
@@ -18,20 +20,31 @@ def _entry(**kw):
     return MagicMock(**({**d, "domain": DOMAIN, "state": ConfigEntryState.LOADED, "runtime_data": None} | kw))
 
 
-@pytest.mark.parametrize("data", [{CONF_MODEL: "H617A"}, {}])
-async def test_setup_entry(hass: HomeAssistant, data):
-    entry = _entry(data=data)
+async def test_setup_entry(hass: HomeAssistant):
+    entry = _entry()
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock) as cleanup,
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock) as fwd,
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.profile = MODEL_PROFILES["H617A"]
         assert await async_setup_entry(hass, entry) is True
     cls.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", "H617A")
     assert entry.runtime_data is cls.return_value
     cleanup.assert_awaited_once_with(hass, entry)
     fwd.assert_awaited_once()
+
+
+@pytest.mark.parametrize("data", [{}, {CONF_MODEL: "H9999"}])
+async def test_setup_entry_rejects_unknown_model(hass: HomeAssistant, data):
+    entry = _entry(data=data)
+    with patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls:
+        assert await async_setup_entry(hass, entry) is False
+    cls.assert_not_called()
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"unsupported_model_{entry.entry_id}")
+    assert issue is not None
+    assert issue.severity is ir.IssueSeverity.ERROR
 
 
 @pytest.mark.parametrize("unload_ok,disc", [(True, "assert_awaited_once"), (False, "assert_not_awaited")])
@@ -67,6 +80,34 @@ async def test_cleanup_legacy_entities(hass: HomeAssistant):
         ]
     )
     assert registry.async_remove.call_count == 4
+
+
+async def test_cleanup_unsupported_h6199_entities(hass: HomeAssistant, mock_h6199_coordinator):
+    entry = _entry(data={CONF_MODEL: "H6199"})
+    registry = MagicMock()
+    stale = [
+        MagicMock(unique_id=f"112233445566{suffix}", entity_id=f"entity.{index}")
+        for index, suffix in enumerate(
+            (
+                "_sleep_timer",
+                "_sleep_timer_duration",
+                "_wakeup_timer",
+                "_wakeup_timer_time",
+                "_poweroff_memory",
+            )
+        )
+    ]
+    keep = MagicMock(unique_id="112233445566_music_sensitivity", entity_id="number.keep")
+    with (
+        patch("custom_components.ha_govee_led_ble.er.async_get", return_value=registry),
+        patch(
+            "custom_components.ha_govee_led_ble.er.async_entries_for_config_entry",
+            return_value=[*stale, keep],
+        ),
+    ):
+        await _async_cleanup_unsupported_entities(hass, entry, mock_h6199_coordinator.profile)
+    assert registry.async_remove.call_count == len(stale)
+    registry.async_remove.assert_has_calls([call(entity.entity_id) for entity in stale])
 
 
 async def test_async_setup_registers_card():

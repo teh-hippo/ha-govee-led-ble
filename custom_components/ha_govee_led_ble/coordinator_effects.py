@@ -11,15 +11,11 @@ from .const import DOMAIN
 from .coordinator_base import _CoordinatorBase
 from .custom_effects import (
     AuthorableContent,
-    ComboContent,
     CustomEffect,
     EffectContent,
     EffectValidationError,
-    FlatContent,
     SegmentContent,
-    SketchContent,
     UnknownContent,
-    VibrantContent,
     content_from_dict,
     content_to_dict,
     new_effect_id,
@@ -30,8 +26,6 @@ from .protocol import build_custom_effect
 
 STORE_VERSION = 2
 STORE_MINOR_VERSION = 1
-
-_DIY_CONTENT = (SketchContent, VibrantContent, FlatContent, ComboContent)
 
 
 def effect_store_key(entry_id: str) -> str:
@@ -65,11 +59,25 @@ class _CustomEffectMixin(_CoordinatorBase):
     def _ordered_effects(self) -> list[CustomEffect]:
         return sorted(self.custom_effects.values(), key=lambda effect: (effect.name_key, effect.id))
 
+    def is_custom_effect_supported(self, effect: CustomEffect) -> bool:
+        return self._is_supported_content(effect.content)
+
     def custom_effect_display_names(self) -> list[str]:
-        return [effect.display_name for effect in self._ordered_effects()]
+        return [effect.display_name for effect in self._ordered_effects() if self.is_custom_effect_supported(effect)]
 
     def custom_effect_index(self) -> dict[str, str]:
-        return {effect.id: effect.display_name for effect in self._ordered_effects()}
+        return {
+            effect.id: effect.display_name
+            for effect in self._ordered_effects()
+            if self.is_custom_effect_supported(effect)
+        }
+
+    def quarantined_custom_effect_index(self) -> dict[str, str]:
+        return {
+            effect.id: effect.display_name
+            for effect in self._ordered_effects()
+            if not self.is_custom_effect_supported(effect)
+        }
 
     def resolve_custom(self, key_or_id: str) -> CustomEffect | None:
         if (direct := self.custom_effects.get(key_or_id)) is not None:
@@ -84,9 +92,15 @@ class _CustomEffectMixin(_CoordinatorBase):
     def _scene_shadow_issue_id(self, effect_id: str) -> str:
         return f"custom_effect_scene_shadow_{self.address}_{effect_id}"
 
+    def _unsupported_effect_issue_id(self, effect_id: str) -> str:
+        return f"custom_effect_unsupported_model_{self.address}_{effect_id}"
+
     def _reconcile_scene_shadow(self, effect: CustomEffect) -> None:
         """Raise or clear the repair issue that flags a stored custom shadowing a built-in scene."""
         issue_id = self._scene_shadow_issue_id(effect.id)
+        if not self.is_custom_effect_supported(effect):
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            return
         if effect.name_key in self._scene_name_keys:
             ir.async_create_issue(
                 self.hass,
@@ -100,16 +114,35 @@ class _CustomEffectMixin(_CoordinatorBase):
         else:
             ir.async_delete_issue(self.hass, DOMAIN, issue_id)
 
+    def _reconcile_effect_support(self, effect: CustomEffect) -> None:
+        issue_id = self._unsupported_effect_issue_id(effect.id)
+        if self.is_custom_effect_supported(effect):
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            return
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="custom_effect_unsupported_model",
+            translation_placeholders={"effect": effect.display_name, "model": self.model},
+        )
+
     async def async_load_effects(self) -> None:
         async with self._store_lock:
             await self._reload_from_store()
         for effect in self.custom_effects.values():
+            self._reconcile_effect_support(effect)
             self._reconcile_scene_shadow(effect)
 
     async def async_apply_custom_effect(self, effect_id: str) -> None:
         effect = self.custom_effects.get(effect_id)
         if effect is None:
             raise EffectValidationError("unknown_effect")
+        if isinstance(effect.content, UnknownContent):
+            raise EffectValidationError("unknown_kind_not_applyable")
+        self._require_supported_kind(effect.content)
         for packet in build_custom_effect(effect.content, segment_count=self.profile.segment_count):
             await self.send_command(packet)
         self.active_custom_id = effect.id
@@ -144,6 +177,7 @@ class _CustomEffectMixin(_CoordinatorBase):
                 self.active_custom_id = None
                 self.effect = None
             ir.async_delete_issue(self.hass, DOMAIN, self._scene_shadow_issue_id(effect.id))
+            ir.async_delete_issue(self.hass, DOMAIN, self._unsupported_effect_issue_id(effect.id))
             await self._save_to_store()
             self._publish()
 
@@ -158,6 +192,7 @@ class _CustomEffectMixin(_CoordinatorBase):
             self.custom_effects[effect.id] = renamed
             if self.active_custom_id == effect.id:
                 self.effect = renamed.display_name
+            self._reconcile_effect_support(renamed)
             self._reconcile_scene_shadow(renamed)
             await self._save_to_store()
             self._publish()
@@ -185,6 +220,7 @@ class _CustomEffectMixin(_CoordinatorBase):
             self.custom_effects[effect.id] = updated
             if self.active_custom_id == effect.id:
                 self.effect = updated.display_name
+            self._reconcile_effect_support(updated)
             self._reconcile_scene_shadow(updated)
             await self._save_to_store()
             self._publish()
@@ -214,11 +250,18 @@ class _CustomEffectMixin(_CoordinatorBase):
     def _require_supported_kind(self, content: EffectContent) -> AuthorableContent:
         if isinstance(content, UnknownContent):
             raise EffectValidationError("unknown_kind_not_saveable")
-        if isinstance(content, SegmentContent) and not self.profile.supports_segments:
-            raise EffectValidationError("segments_unsupported")
-        if isinstance(content, _DIY_CONTENT) and not self.profile.supports_diy:
+        if not self._is_supported_content(content):
+            if isinstance(content, SegmentContent):
+                raise EffectValidationError("segments_unsupported")
             raise EffectValidationError("diy_unsupported")
         return content
+
+    def _is_supported_content(self, content: EffectContent) -> bool:
+        if isinstance(content, UnknownContent):
+            return False
+        if isinstance(content, SegmentContent):
+            return self.profile.supports_segments
+        return self.profile.supports_diy
 
     def _validated_name_key(self, display_name: str, *, exclude_id: str | None = None) -> str:
         name_key = normalise_name(display_name)

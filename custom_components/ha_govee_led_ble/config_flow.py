@@ -8,15 +8,13 @@ from homeassistant.components.bluetooth import BluetoothServiceInfo
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_ADDRESS
 
-from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES
+from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES, resolve_model
 
 MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
 
 
 def _extract_model(name: str) -> str | None:
-    if (m := MODEL_PATTERN.search(name)) and any(m.group(1).startswith(k) for k in MODEL_PROFILES):
-        return next(k for k in MODEL_PROFILES if m.group(1).startswith(k))
-    return None
+    return resolve_model(m.group(1)) if (m := MODEL_PATTERN.search(name)) else None
 
 
 def _normalize_address(address: str) -> str:
@@ -24,7 +22,7 @@ def _normalize_address(address: str) -> str:
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 2
+    VERSION = 3
 
     _discovered: dict[str, str]
 
@@ -59,7 +57,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): str,
-                    vol.Required(CONF_MODEL, default=models[0]): vol.In(models),
+                    vol.Required(CONF_MODEL): vol.In(models),
                 }
             ),
         )

@@ -127,6 +127,7 @@ def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinat
     mock_h6199_coordinator.custom_effect_display_names.return_value = ["Solo"]
     h = h6199_light.effect_list
     assert h[0] == "Solo" and "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
+    assert "Music: Bloom" not in h and "Music: Shiny" not in h
 
 
 async def test_turn_on_custom_effect_applies(light, mock_coordinator):
@@ -169,6 +170,7 @@ async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effe
 @pytest.mark.parametrize("effect,mode", [("Video: Movie", "movie"), ("Video: Game", "game"), ("video: game", "game")])
 async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coordinator, effect, mode):
     co = mock_h6199_coordinator
+    co.profile = replace(co.profile, supports_video_sound_effects=True)
     co.is_on = True
     co.video_full_screen = False
     co.video_saturation = 63
@@ -212,11 +214,18 @@ async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordin
 
 
 @pytest.mark.parametrize("mode,slug", [(m, m.replace(" ", "_")) for m in MUSIC_MODE_IDS])
-async def test_set_music_mode_all_modes(h6199_light, mock_h6199_coordinator, mode, slug):
+async def test_set_music_mode_all_modes(light, mock_coordinator, mode, slug):
     """Every mode routes through the coordinator's single music-apply path with its slug."""
-    await h6199_light.async_set_music_mode(mode=mode, sensitivity=70)
-    mock_h6199_coordinator.async_select_music_slug.assert_awaited_once_with(slug)
-    assert mock_h6199_coordinator.music_sensitivity == 70
+    await light.async_set_music_mode(mode=mode, sensitivity=70)
+    mock_coordinator.async_select_music_slug.assert_awaited_once_with(slug)
+    assert mock_coordinator.music_sensitivity == 70
+
+
+async def test_h6199_rejects_unvalidated_music_modes(h6199_light, mock_h6199_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await h6199_light.async_set_music_mode(mode="bloom", sensitivity=70)
+    assert exc.value.translation_key == "unsupported_model"
+    mock_h6199_coordinator.async_select_music_slug.assert_not_awaited()
 
 
 async def test_set_music_mode_stores_calm_only_for_rhythm(h6199_light, mock_h6199_coordinator):
@@ -260,6 +269,7 @@ async def test_refresh_with_retry_required_flag(h6199_light, mock_h6199_coordina
 
 async def test_set_video_retry_replays_power_and_full_mode(h6199_light, mock_h6199_coordinator):
     co = mock_h6199_coordinator
+    co.profile = replace(co.profile, supports_video_sound_effects=True)
     co.refresh_state = AsyncMock(side_effect=[False, True])
     packet = proto.build_video_mode(
         full_screen=False,
@@ -394,6 +404,7 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     assert co.video_mode == "movie" and co.effect is None and co.video_saturation == 80
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
+    co.profile = replace(co.profile, supports_video_sound_effects=True)
     await lt.async_set_video_mode(
         mode="game", saturation=60, full_screen=False, sound_effects=True, sound_effects_softness=50
     )
@@ -427,6 +438,13 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     assert c[0].args[0] == proto.build_power(True)
     assert c[1].args[0] == proto.build_white_brightness(47)
     assert co.white_brightness == 47 and co.brightness_pct == 100 and co.effect is None
+
+
+async def test_h6199_rejects_unvalidated_video_sound(h6199_light, mock_h6199_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await h6199_light.async_set_video_mode(mode="movie", sound_effects=True)
+    assert exc.value.translation_key == "unsupported_model"
+    mock_h6199_coordinator.send_command.assert_not_called()
 
 
 async def test_set_white_brightness_clears_active_custom(h6199_light, mock_h6199_coordinator):
@@ -519,6 +537,7 @@ def test_segment_colors_attribute_present(light, mock_coordinator):
     mock_coordinator.custom_effect_index.return_value = {"a1b2c3d4": "Sunset"}
     assert light.extra_state_attributes == {
         "custom_effects": {"a1b2c3d4": "Sunset"},
+        "custom_effect_kinds": ["combo", "flat", "segments", "sketch", "vibrant"],
         "segment_colors": [[10, 20, 30]] * 15,
     }
 
@@ -537,7 +556,10 @@ def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
     mock_coordinator.custom_effect_index.return_value = {"a1b2c3d4": "Sunset"}
     attrs = GoveeBLELight(mock_coordinator).extra_state_attributes
     assert "segment_colors" not in attrs
-    assert attrs == {"custom_effects": {"a1b2c3d4": "Sunset"}}
+    assert attrs == {
+        "custom_effects": {"a1b2c3d4": "Sunset"},
+        "custom_effect_kinds": ["combo", "flat", "sketch", "vibrant"],
+    }
 
 
 async def test_segment_restore_rehydrates(light, mock_coordinator):
@@ -837,3 +859,8 @@ async def test_export_effect_unknown_maps_error(light, mock_coordinator):
 def test_custom_effects_attribute_maps_id_to_name(light, mock_coordinator):
     mock_coordinator.custom_effect_index.return_value = {"a1b2c3d4": "Sunset", "e5f6a7b8": "Dawn"}
     assert light.extra_state_attributes["custom_effects"] == {"a1b2c3d4": "Sunset", "e5f6a7b8": "Dawn"}
+
+
+def test_quarantined_effects_attribute(light, mock_coordinator):
+    mock_coordinator.quarantined_custom_effect_index.return_value = {"e5f6a7b8": "Vibe"}
+    assert light.extra_state_attributes["quarantined_custom_effects"] == {"e5f6a7b8": "Vibe"}

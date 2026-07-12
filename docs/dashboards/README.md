@@ -27,11 +27,11 @@ swatches.
 | View | H617A | H6199 | Covers |
 | --- | --- | --- | --- |
 | Comfort | yes | yes | on/off, brightness, RGB colour, colour temperature, colour favourites, active-mode readout, effect preview |
-| Scenes | yes | no | built-in scene effects (the H6199 has no built-in scenes) |
-| Music | yes | yes | music mode selector, music style (H617A), per-mode tuning |
+| Scenes | yes | no | built-in scene effects; H6199 scene transport exists but its model catalogue is not yet surfaced |
+| Music | yes | yes | all mapped H617A modes; the four validated classic modes on H6199 |
 | Video | no | yes | movie/game, colour mapping, video white balance, static white |
-| Timers | yes | yes | sleep and wake-up timers (disabled by default) |
-| Advanced | yes | yes | power-off memory switch, custom-effect services |
+| Timers | yes | no | H617A sleep and wake-up timers (disabled by default) |
+| Advanced | yes | limited | custom-effect services; H6199 authoring is restricted to validated static segment effects |
 
 A card that references an entity your model does not expose simply shows as
 unavailable, so delete the views or rows that do not apply to your device.
@@ -78,9 +78,10 @@ Services:
   segment card's Save button). `export_effect` returns a portable snapshot of a
   saved effect by its stable id.
 - Colour mapping reapplies the active video mode as you change it, so switching
-  it moves the strip into video mode. Saturation and sound effects are set only
-  through the `set_video_mode` service.
-- Power-off memory, the timer entities, and video white balance are all
-  disabled by default; enable each in its entity settings before use. Static
-  white (the `set_white_brightness` service) is a separate warm/cool white mode,
-  distinct from video white balance.
+  it moves the strip into video mode. Saturation is supported through
+  `set_video_mode`; the sound-overlay extension remains unavailable until it is
+  captured on H6199.
+- H617A timer entities and H6199 video white balance are disabled by default;
+  enable each in its entity settings before use. H6199 timers and power-off
+  memory remain hidden until they are validated on that model. Static white
+  (`set_white_brightness`) is separate from video white balance.

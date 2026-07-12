@@ -13,7 +13,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from .const import CONF_MODEL, DOMAIN
+from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES, ModelProfile, resolve_model
 from .coordinator import GoveeBLECoordinator
 from .coordinator_effects import build_effect_store
 
@@ -43,6 +43,16 @@ _LEGACY_EXPERIMENTAL_OPTION = "experimental"
 _CARD_URL = "/ha_govee_led_ble/govee-led-ble-card.js"
 _CARD_FILE = Path(__file__).parent / "www" / "govee-led-ble-card.js"
 _CARD_REGISTERED = "card_registered"
+_TIMER_ENTITY_SUFFIXES = {
+    "_sleep_timer",
+    "_sleep_timer_duration",
+    "_wakeup_timer",
+    "_wakeup_timer_time",
+}
+
+
+def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
+    return f"unsupported_model_{entry.entry_id}"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -63,19 +73,45 @@ async def _async_cleanup_legacy_entities(hass: HomeAssistant, entry: GoveeBLECon
             registry.async_remove(entity.entity_id)
 
 
+async def _async_cleanup_unsupported_entities(
+    hass: HomeAssistant,
+    entry: GoveeBLEConfigEntry,
+    profile: ModelProfile,
+) -> None:
+    suffixes: set[str] = set()
+    if not profile.supports_timers:
+        suffixes.update(_TIMER_ENTITY_SUFFIXES)
+    if not profile.supports_poweroff_memory:
+        suffixes.add("_poweroff_memory")
+    if not suffixes:
+        return
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.unique_id and any(entity.unique_id.endswith(suffix) for suffix in suffixes):
+            registry.async_remove(entity.entity_id)
+
+
 def _addr(entry: GoveeBLEConfigEntry) -> str:
     assert entry.unique_id is not None
     return entry.unique_id.replace(":", "").lower()
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
+    options = dict(entry.options)
     if entry.version < 2:
-        options = {k: v for k, v in entry.options.items() if k != _LEGACY_EXPERIMENTAL_OPTION}
+        options = {k: v for k, v in options.items() if k != _LEGACY_EXPERIMENTAL_OPTION}
         # Capture the old switch.music_calm id now; select.music_style is registered only after setup.
         old_id = er.async_get(hass).async_get_entity_id("switch", DOMAIN, f"{_addr(entry)}_music_calm")
         if old_id:
             hass.data.setdefault(DOMAIN, {})[f"{entry.entry_id}_music_calm_from"] = old_id
-        hass.config_entries.async_update_entry(entry, options=options, version=2)
+    data = dict(entry.data)
+    raw_model = data.get(CONF_MODEL)
+    model = resolve_model(raw_model) if isinstance(raw_model, str) else None
+    if model is None and isinstance(entry.title, str):
+        model = next((candidate for candidate in MODEL_PROFILES if candidate in entry.title.upper()), None)
+    if model is not None:
+        data[CONF_MODEL] = model
+    hass.config_entries.async_update_entry(entry, data=data, options=options, version=3)
     return True
 
 
@@ -114,13 +150,29 @@ def _maybe_flag_music_mode_replaced(hass: HomeAssistant, entry: GoveeBLEConfigEn
 
 async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
     assert entry.unique_id is not None
-    coordinator = GoveeBLECoordinator(hass, entry.unique_id, entry.data.get(CONF_MODEL, "H617A"))
+    raw_model = entry.data.get(CONF_MODEL)
+    model = resolve_model(raw_model) if isinstance(raw_model, str) else None
+    issue_id = _unsupported_model_issue_id(entry)
+    if model is None:
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key="unsupported_model",
+            translation_placeholders={"model": str(raw_model or "missing")},
+        )
+        return False
+    ir.async_delete_issue(hass, DOMAIN, issue_id)
+    coordinator = GoveeBLECoordinator(hass, entry.unique_id, model)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     coordinator.attach_effect_store(build_effect_store(hass, entry.entry_id))
     await coordinator.async_load_effects()
     _maybe_flag_music_mode_replaced(hass, entry)
     await _async_cleanup_legacy_entities(hass, entry)
+    await _async_cleanup_unsupported_entities(hass, entry, coordinator.profile)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _maybe_flag_music_calm_replaced(hass, entry)
     return True
@@ -133,4 +185,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
+    ir.async_delete_issue(hass, DOMAIN, _unsupported_model_issue_id(entry))
     await build_effect_store(hass, entry.entry_id).async_remove()

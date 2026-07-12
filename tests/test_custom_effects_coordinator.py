@@ -259,6 +259,18 @@ async def test_save_rejects_diy_when_unsupported(hass, hass_storage):
     assert exc.value.key == "diy_unsupported"
 
 
+async def test_apply_rejects_stored_diy_when_unsupported(hass, hass_storage):
+    coord = _coord(hass, "gate_apply")
+    await coord.async_load_effects()
+    eid = await coord.async_save_effect("Vibe", _vibrant(1))
+    coord.profile = replace(coord.profile, supports_diy=False)
+    send = AsyncMock()
+    with patch.object(coord, "send_command", send), pytest.raises(EffectValidationError) as exc:
+        await coord.async_apply_custom_effect(eid)
+    assert exc.value.key == "diy_unsupported"
+    send.assert_not_awaited()
+
+
 async def test_save_rejects_segments_when_unsupported(hass, hass_storage):
     coord = _coord(hass, "gate_seg")
     await coord.async_load_effects()
@@ -453,7 +465,7 @@ async def test_update_rejects_invalid_content(hass, hass_storage):
 
 
 async def test_update_rejects_unsupported_content(hass, hass_storage):
-    coord = _coord(hass, "upd_unsupported", "H6199")
+    coord = _coord(hass, "upd_unsupported")
     await coord.async_load_effects()
     eid = await coord.async_save_effect("Alpha", _vibrant(1))
     coord.profile = replace(coord.profile, supports_diy=False)
@@ -603,6 +615,19 @@ async def test_display_names_and_index_stable_order(hass, hass_storage):
     alpha = await coord.async_save_effect("Alpha", _vibrant(2))
     assert coord.custom_effect_display_names() == ["Alpha", "Bravo"]
     assert coord.custom_effect_index() == {alpha: "Alpha", bravo: "Bravo"}
+
+
+async def test_unsupported_effects_are_quarantined_but_exportable(hass, hass_storage):
+    coord = _coord(hass, "quarantine")
+    await coord.async_load_effects()
+    static = await coord.async_save_effect("Static", SegmentContent(colors=((1, 2, 3),)))
+    diy = await coord.async_save_effect("Vibe", _vibrant(1))
+    coord.profile = replace(coord.profile, supports_diy=False)
+
+    assert coord.custom_effect_index() == {static: "Static"}
+    assert coord.custom_effect_display_names() == ["Static"]
+    assert coord.quarantined_custom_effect_index() == {diy: "Vibe"}
+    assert (await coord.async_export_effect(diy))["name"] == "Vibe"
 
 
 # --------------------------------------------------------------------------- #

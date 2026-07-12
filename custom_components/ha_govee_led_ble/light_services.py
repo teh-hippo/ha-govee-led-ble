@@ -9,7 +9,7 @@ from homeassistant.components.light import ColorMode  # type: ignore[attr-define
 from homeassistant.core import ServiceResponse
 from homeassistant.exceptions import ServiceValidationError
 
-from .const import DOMAIN, MUSIC_MODE_SLUGS, MUSIC_MODES
+from .const import DOMAIN, MUSIC_MODES
 from .coordinator import GoveeBLECoordinator
 from .custom_effects import EffectValidationError, content_from_dict
 from .protocol import (
@@ -55,9 +55,12 @@ def _single_effect_ref(first: str | None, second: str | None, translation_key: s
 
 # fmt: off
 async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: bool) -> None:
+    sound_effects = coord.video_sound_effects and coord.profile.supports_video_sound_effects
     await coord.send_command(build_video_mode(full_screen=coord.video_full_screen, game_mode=game_mode,
-        saturation=coord.video_saturation, sound_effects=coord.video_sound_effects,
+        saturation=coord.video_saturation, sound_effects=sound_effects,
         sound_effects_softness=coord.video_sound_effects_softness))
+    if not coord.profile.supports_video_sound_effects:
+        coord.video_sound_effects = False
 # fmt: on
 
 
@@ -82,7 +85,7 @@ async def apply_active_video_white_balance(coord: GoveeBLECoordinator) -> bool:
 
 
 async def apply_active_music_mode(coord: GoveeBLECoordinator) -> bool:
-    if not coord.is_on or coord.music_mode not in MUSIC_MODE_SLUGS:
+    if not coord.is_on or coord.music_mode not in coord.profile.music_modes:
         return False
     await coord.async_select_music_slug(coord.music_mode)
     return True
@@ -132,6 +135,11 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             sound_effects: bool = False, sound_effects_softness: int = 0) -> None:
         # fmt: on
         self._require_support("set_video_mode", supported=self.coordinator.profile.supports_video_mode)
+        if sound_effects:
+            self._require_support(
+                "video sound effects",
+                supported=self.coordinator.profile.supports_video_sound_effects,
+            )
         with self._rollback():
             resolved_fs = full_screen if capture_region is None else capture_region == "full"
             # fmt: off
@@ -164,12 +172,12 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
 
     async def async_set_music_mode(self, mode: str, sensitivity: int = 99,
             color: tuple[int, int, int] | None = None, calm: bool | None = None) -> None:
-        self._require_support("set_music_mode", supported=self.coordinator.profile.supports_music_mode)
         if mode in MUSIC_MODE_ALIASES:
             canonical = MUSIC_MODE_ALIASES[mode]
             _LOGGER.warning("Music mode '%s' is deprecated; use '%s' instead", mode, canonical)
             mode = canonical
         slug = mode.replace(" ", "_")
+        self._require_support("set_music_mode", supported=slug in self.coordinator.profile.music_modes)
         with self._rollback():
             c = self.coordinator
             resolved_sensitivity = min(sensitivity, 99)

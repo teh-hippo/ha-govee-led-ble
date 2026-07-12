@@ -7,8 +7,8 @@
 # Settings > Devices & Services > your Govee device. `light.govee_strip` is the
 # example light; the number/select/switch ids follow your light's device name.
 #
-# Model fit: Comfort, Music and Timers suit H617A and H6199. Scenes are H617A
-# only. Video and static white are H6199 only. Segment painting is not here; it
+# Model fit: Comfort and Music suit H617A and H6199. Timers and surfaced scenes
+# are H617A only. Video and static white are H6199 only. Segment painting is not here; it
 # uses the integration's separate custom card.
 title: Govee LED strip
 views:
@@ -198,8 +198,9 @@ views:
     cards:
       - type: markdown
         content: >-
-          H6199 only. Pick Movie or Game below. Saturation and sound effects are
-          set through the `set_video_mode` service, shown on the buttons.
+          H6199 only. Pick Movie or Game below. Saturation is set through the
+          `set_video_mode` service. Sound overlays remain unavailable until
+          their H6199 encoding is validated.
           Colour mapping reapplies the active video mode live.
       - type: grid
         columns: 2
@@ -242,8 +243,7 @@ views:
         content: >-
           Video white balance is disabled by default; enable the
           `number.govee_strip_video_white_balance` entity in its settings to use
-          it. Saturation and sound effects are set only through the
-          `set_video_mode` service.
+          it. Saturation is set through the `set_video_mode` service.
       - type: markdown
         content: >-
           Static white is a separate H6199 warm/cool white mode set by the
@@ -284,14 +284,14 @@ views:
               data:
                 brightness: 100
 
-  # --- Timers: sleep and wake-up (H617A and H6199) ---
+  # --- Timers: sleep and wake-up (H617A only until H6199 validation) ---
   - title: Timers
     path: timers
     icon: mdi:timer-outline
     cards:
       - type: markdown
         content: >-
-          Sleep and wake-up timers for H617A and H6199. These entities are
+          Sleep and wake-up timers for H617A. These entities are
           disabled by default; enable them in their entity settings first. The
           sleep timer turns the strip off after its duration; the wake-up timer
           turns it on at the set time.
@@ -313,8 +313,8 @@ views:
     cards:
       - type: markdown
         content: >-
-          Switches. Power-off memory is disabled by default; enable the switch
-          entity in its settings to use it.
+          Power-off memory remains hidden because it is not yet validated on
+          either supported model.
       - type: entities
         title: Switches
         entities:

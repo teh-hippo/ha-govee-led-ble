@@ -31,7 +31,7 @@ async def test_migrate_bumps_version_strips_experimental_and_stashes_music_calm(
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert dict(entry.options) == {"keep_me": 1}
     assert hass.data[DOMAIN][_stash_key(entry)] == old.entity_id
 
@@ -71,7 +71,7 @@ async def test_clean_install_migrates_without_issue(hass: HomeAssistant):
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert _stash_key(entry) not in hass.data.get(DOMAIN, {})
 
     _maybe_flag_music_calm_replaced(hass, entry)
@@ -83,7 +83,7 @@ async def test_migrate_strips_experimental_without_music_calm(hass: HomeAssistan
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert dict(entry.options) == {}
     assert _stash_key(entry) not in hass.data.get(DOMAIN, {})
 
@@ -91,11 +91,21 @@ async def test_migrate_strips_experimental_without_music_calm(hass: HomeAssistan
     assert ir.async_get(hass).async_get_issue(DOMAIN, "music_calm_replaced") is None
 
 
-async def test_migrate_is_noop_for_current_version(hass: HomeAssistant):
+async def test_migrate_current_entry_bumps_to_v3(hass: HomeAssistant):
     entry = MockConfigEntry(domain=DOMAIN, unique_id=_ADDR, version=2, data={CONF_MODEL: "H617A"})
     entry.add_to_hass(hass)
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert _stash_key(entry) not in hass.data.get(DOMAIN, {})
+
+
+async def test_migrate_recovers_model_from_legacy_title(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=_ADDR, version=2, title="Govee H6199", data={})
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, entry) is True
+
+    assert entry.version == 3
+    assert entry.data == {CONF_MODEL: "H6199"}

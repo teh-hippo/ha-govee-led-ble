@@ -337,6 +337,29 @@ export const STUDIO_KINDS: readonly { id: StudioKind; label: string; available: 
   { id: "combo", label: "Combo", available: true },
 ];
 
+const CONTENT_KIND_BY_STUDIO_KIND: Readonly<Record<StudioKind, string>> = {
+  static: "segments",
+  gradient: "vibrant",
+  sketch: "sketch",
+  flat: "flat",
+  combo: "combo",
+};
+
+/**
+ * Resolve the authoring kinds supported by the selected light.
+ *
+ * Older integration versions do not expose `custom_effect_kinds`, so a missing
+ * attribute retains the complete card for backwards compatibility.
+ */
+export function supportedStudioKinds(raw: unknown): StudioKind[] {
+  const available = STUDIO_KINDS.filter((kind) => kind.available);
+  if (!Array.isArray(raw)) return available.map((kind) => kind.id);
+  const supported = new Set(raw.filter((kind): kind is string => typeof kind === "string"));
+  return available
+    .filter((kind) => supported.has(CONTENT_KIND_BY_STUDIO_KIND[kind.id]))
+    .map((kind) => kind.id);
+}
+
 // --- Studio: typed content builders (twins of custom_effects.content_from_dict) ---
 
 /** JSON shape of a `SegmentContent` effect, as `save_effect(content=)` expects. */

@@ -149,7 +149,7 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
 
 async def test_setup_number_entry_without_supported_params(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.profile = replace(c.profile, supports_video_mode=False, supports_music_mode=False)
+    c.profile = replace(c.profile, supports_video_mode=False, music_modes=())
     add = MagicMock()
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=c), add)
     add.assert_not_called()

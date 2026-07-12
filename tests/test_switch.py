@@ -34,8 +34,7 @@ async def test_setup_switch_entry_h617a(mock_coordinator):
 async def test_setup_switch_entry_h6199(mock_h6199_coordinator):
     add = MagicMock()
     await async_setup_switch_entry(MagicMock(), _entry(mock_h6199_coordinator), add)
-    keys = [entity._key for entity in add.call_args.args[0]]
-    assert keys == ["poweroff_memory"]
+    add.assert_not_called()
 
 
 async def test_setup_switch_entry_without_supported_controls(mock_coordinator):
@@ -49,6 +48,10 @@ async def test_setup_switch_entry_without_supported_controls(mock_coordinator):
 
 
 async def test_setup_switch_entry_poweroff_memory_created_disabled(mock_h6199_coordinator):
+    mock_h6199_coordinator.profile = replace(
+        mock_h6199_coordinator.profile,
+        supports_poweroff_memory=True,
+    )
     add = MagicMock()
     await async_setup_switch_entry(MagicMock(), _entry(mock_h6199_coordinator), add)
     keys = [entity._key for entity in add.call_args.args[0]]
@@ -88,6 +91,7 @@ def test_poweroff_memory_is_on_reflects_coordinator(mock_h6199_coordinator):
 
 async def test_poweroff_memory_turn_on_sends_command(mock_h6199_coordinator):
     c = mock_h6199_coordinator
+    c.profile = replace(c.profile, supports_poweroff_memory=True)
     c.poweroff_memory = False
     await PowerOffMemorySwitch(c).async_turn_on()
     assert c.poweroff_memory is True
@@ -96,6 +100,7 @@ async def test_poweroff_memory_turn_on_sends_command(mock_h6199_coordinator):
 
 async def test_poweroff_memory_turn_off_sends_command(mock_h6199_coordinator):
     c = mock_h6199_coordinator
+    c.profile = replace(c.profile, supports_poweroff_memory=True)
     c.poweroff_memory = True
     await PowerOffMemorySwitch(c).async_turn_off()
     assert c.poweroff_memory is False
@@ -104,6 +109,7 @@ async def test_poweroff_memory_turn_off_sends_command(mock_h6199_coordinator):
 
 async def test_poweroff_memory_rollback_on_failure(mock_h6199_coordinator):
     c = mock_h6199_coordinator
+    c.profile = replace(c.profile, supports_poweroff_memory=True)
     c.poweroff_memory = False
     c.send_command = AsyncMock(side_effect=BleakError("timeout"))
     with pytest.raises(BleakError):
@@ -205,9 +211,9 @@ async def test_wakeup_timer_switch_turn_on_off(mock_h6199_coordinator):
     c.async_set_wakeup_timer.assert_awaited_once_with(enabled=False)
 
 
-async def test_switch_setup_adds_timers_disabled_by_default(mock_h6199_coordinator):
+async def test_switch_setup_adds_timers_disabled_by_default(mock_coordinator):
     added: list = []
-    await switch_setup(MagicMock(), _entry(mock_h6199_coordinator), lambda e: added.extend(e))
+    await switch_setup(MagicMock(), _entry(mock_coordinator), lambda e: added.extend(e))
     timer_switches = [e for e in added if isinstance(e, (SleepTimerSwitch, WakeupTimerSwitch))]
     assert [type(e).__name__ for e in timer_switches] == ["SleepTimerSwitch", "WakeupTimerSwitch"]
     assert all(e._attr_entity_registry_enabled_default is False for e in timer_switches)
@@ -215,7 +221,6 @@ async def test_switch_setup_adds_timers_disabled_by_default(mock_h6199_coordinat
 
 async def test_switch_setup_omits_timers_when_unsupported(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.profile = replace(c.profile, supports_timers=False)
     added: list = []
     await switch_setup(MagicMock(), _entry(c), lambda e: added.extend(e))
     assert not any(isinstance(e, (SleepTimerSwitch, WakeupTimerSwitch)) for e in added)

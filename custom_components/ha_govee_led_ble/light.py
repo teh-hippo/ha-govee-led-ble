@@ -217,13 +217,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     def effect_list(self) -> list[str]:
         p = self.coordinator.profile
         scenes = get_scene_names() if p.scene_source == "api" else []
-        music = list(_MUSIC_EFFECTS) if p.supports_music_mode else []
+        music = [label for label, slug in _MUSIC_EFFECTS.items() if slug in p.music_modes]
         video = list(_VIDEO_EFFECTS) if p.supports_video_mode else []
         return [*scenes, *self.coordinator.custom_effect_display_names(), *music, *video]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        attrs: dict[str, Any] = {"custom_effects": self.coordinator.custom_effect_index()}
+        attrs: dict[str, Any] = {
+            "custom_effects": self.coordinator.custom_effect_index(),
+            "custom_effect_kinds": sorted(self.coordinator.profile.custom_effect_kinds),
+        }
+        if quarantined := self.coordinator.quarantined_custom_effect_index():
+            attrs["quarantined_custom_effects"] = quarantined
         if self.coordinator.profile.supports_segments:
             attrs["segment_colors"] = [list(color) for color in self.coordinator.segment_colors]
         return attrs
@@ -247,7 +252,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if not (restored := last_state.attributes.get(ATTR_EFFECT)):
             return
         key = _normalize_effect_name(str(restored))
-        if (effect := coordinator.resolve_custom(key)) is not None:
+        if (effect := coordinator.resolve_custom(key)) is not None and coordinator.is_custom_effect_supported(effect):
             coordinator.active_custom_id, coordinator.effect = effect.id, effect.display_name
         elif key in SCENES:
             coordinator.effect = key
@@ -344,12 +349,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     mode=mode,
                     saturation=coordinator.video_saturation,
                     full_screen=coordinator.video_full_screen,
-                    sound_effects=coordinator.video_sound_effects,
+                    sound_effects=(
+                        coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects
+                    ),
                     sound_effects_softness=coordinator.video_sound_effects_softness,
                 )
                 return
         if coordinator.profile.supports_music_mode:
-            slug = next((s for label, s in _MUSIC_EFFECTS.items() if _normalize_effect_name(label) == key), None)
+            slug = next(
+                (
+                    candidate
+                    for label, candidate in _MUSIC_EFFECTS.items()
+                    if _normalize_effect_name(label) == key and candidate in coordinator.profile.music_modes
+                ),
+                None,
+            )
             if slug is not None:
                 await coordinator.async_select_music_slug(slug)
                 return

@@ -12,7 +12,8 @@ class ModelProfile:
     state_readable: bool = False
     scene_source: str = "none"
     supports_video_mode: bool = False
-    supports_music_mode: bool = False
+    supports_video_sound_effects: bool = False
+    music_modes: tuple[str, ...] = ()
     supports_music_style: bool = False
     supports_music_params: bool = False
     supports_white_brightness: bool = False
@@ -24,6 +25,17 @@ class ModelProfile:
     @property
     def supports_segments(self) -> bool:
         return self.segment_count > 0
+
+    @property
+    def supports_music_mode(self) -> bool:
+        return bool(self.music_modes)
+
+    @property
+    def custom_effect_kinds(self) -> frozenset[str]:
+        kinds = {"segments"} if self.supports_segments else set()
+        if self.supports_diy:
+            kinds.update({"sketch", "vibrant", "flat", "combo"})
+        return frozenset(kinds)
 
 
 MUSIC_MODES: dict[str, int] = {
@@ -57,13 +69,15 @@ MUSIC_MODE_SLUGS: dict[str, int] = {
     "shiny": 0x31,
 }
 
+_H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
+
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617A": ModelProfile(
         "H617A LED Strip",
         state_readable=True,
         scene_source="api",
-        supports_music_mode=True,
+        music_modes=tuple(MUSIC_MODE_SLUGS),
         supports_music_style=True,
         supports_music_params=True,
         supports_diy=True,
@@ -74,15 +88,20 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6199 DreamView T1",
         state_readable=True,
         supports_video_mode=True,
-        supports_music_mode=True,
+        music_modes=_H6199_MUSIC_MODES,
         supports_white_brightness=True,
-        supports_diy=True,
-        supports_timers=True,
-        supports_poweroff_memory=True,
         segment_count=15,
     ),
 }
 
+UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
+
+
+def resolve_model(model: str) -> str | None:
+    candidate = model.strip().upper()
+    return next((known for known in MODEL_PROFILES if candidate.startswith(known)), None)
+
 
 def get_profile(model: str) -> ModelProfile:
-    return MODEL_PROFILES.get(model, MODEL_PROFILES["H617A"])
+    resolved = resolve_model(model)
+    return MODEL_PROFILES[resolved] if resolved is not None else UNSUPPORTED_PROFILE

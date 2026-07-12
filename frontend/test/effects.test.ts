@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   coerceCustomEffects,
   errorMessage,
+  supportedStudioKinds,
   type CustomEffectEntry,
 } from "../src/logic";
 
@@ -82,5 +83,24 @@ describe("errorMessage", () => {
     expect(errorMessage({ code: "x" })).toBe("Something went wrong.");
     expect(errorMessage({ message: "  " })).toBe("Something went wrong.");
     expect(errorMessage({}, "Custom fallback")).toBe("Custom fallback");
+  });
+});
+
+describe("supportedStudioKinds", () => {
+  it("keeps every editor for integration versions without capability metadata", () => {
+    expect(supportedStudioKinds(undefined)).toEqual([
+      "static",
+      "gradient",
+      "sketch",
+      "flat",
+      "combo",
+    ]);
+  });
+
+  it("maps backend content kinds to the matching editors", () => {
+    expect(supportedStudioKinds(["segments"])).toEqual(["static"]);
+    expect(
+      supportedStudioKinds(["segments", "vibrant", "flat", "future_kind"]),
+    ).toEqual(["static", "gradient", "flat"]);
   });
 });

@@ -1,4 +1,3 @@
-from dataclasses import replace
 from datetime import time as dtime
 from unittest.mock import MagicMock
 
@@ -24,16 +23,15 @@ async def test_async_set_value(mock_h6199_coordinator):
     c.async_set_wakeup_timer.assert_awaited_once_with(wake_time=dtime(7, 15))
 
 
-async def test_setup_adds_time_disabled_by_default(mock_h6199_coordinator):
+async def test_setup_adds_time_disabled_by_default(mock_coordinator):
     added: list = []
-    await time_setup(MagicMock(), _entry(mock_h6199_coordinator), lambda e: added.extend(e))
+    await time_setup(MagicMock(), _entry(mock_coordinator), lambda e: added.extend(e))
     assert len(added) == 1 and isinstance(added[0], WakeupTimerTime)
     assert added[0]._attr_entity_registry_enabled_default is False
 
 
 async def test_setup_omits_time_when_unsupported(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.profile = replace(c.profile, supports_timers=False)
     added: list = []
     await time_setup(MagicMock(), _entry(c), lambda e: added.extend(e))
     assert added == []

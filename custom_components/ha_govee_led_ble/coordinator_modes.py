@@ -132,6 +132,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         if slug == "off":
             await self.async_restore_pre_mode()
             return
+        if slug not in self.profile.music_modes:
+            raise ValueError(f"{self.model} does not support music mode {slug}")
         if self.active_mode == "colour":
             self._pre_mode_snapshot = self._capture_static_state()
         mode_id = MUSIC_MODE_SLUGS[slug]

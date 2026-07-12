@@ -55,6 +55,8 @@ async def _set_with_rollback(
 
 
 async def _apply_poweroff_memory(coordinator: GoveeBLECoordinator) -> bool:
+    if not coordinator.profile.supports_poweroff_memory:
+        raise ValueError(f"{coordinator.model} does not support power-off memory")
     await coordinator.send_command(build_poweroff_memory(bool(coordinator.poweroff_memory)))
     return True
 

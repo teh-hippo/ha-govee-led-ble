@@ -1,8 +1,10 @@
-from dataclasses import replace
 from datetime import time as dtime
 from unittest.mock import MagicMock
 
+import pytest
+
 from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.number import SleepTimerNumber
 from custom_components.ha_govee_led_ble.number import async_setup_entry as number_setup
 from tests.mock_ble import (
@@ -32,19 +34,24 @@ async def test_sleep_number_set_native_value(mock_h6199_coordinator):
     c.async_set_sleep_timer.assert_awaited_once_with(minutes=30)
 
 
-async def test_number_setup_adds_sleep_disabled_by_default(mock_h6199_coordinator):
+async def test_number_setup_adds_sleep_disabled_by_default(mock_coordinator):
     added: list = []
-    await number_setup(MagicMock(), _entry(mock_h6199_coordinator), lambda e: added.extend(e))
+    await number_setup(MagicMock(), _entry(mock_coordinator), lambda e: added.extend(e))
     sleep = [e for e in added if isinstance(e, SleepTimerNumber)]
     assert len(sleep) == 1 and sleep[0]._attr_entity_registry_enabled_default is False
 
 
 async def test_number_setup_omits_sleep_when_unsupported(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.profile = replace(c.profile, supports_timers=False)
     added: list = []
     await number_setup(MagicMock(), _entry(c), lambda e: added.extend(e))
     assert not any(isinstance(e, SleepTimerNumber) for e in added)
+
+
+async def test_timer_write_rejects_unsupported_model(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199")
+    with pytest.raises(ValueError, match="H6199"):
+        await coordinator.async_set_sleep_timer(enabled=True)
 
 
 def _query(sim: GoveeDeviceSim, action: int) -> list[bytes]:
@@ -100,6 +107,10 @@ async def test_mock_ble_sleep_timer_write_then_decode(mock_ble: MockBle):
     # EXPERIMENTAL: harness=G encoding=decode-only
     coord, sim, client = mock_ble.coordinator, mock_ble.sim, mock_ble.client
     await coord._ensure_connected()
+    if not coord.profile.supports_timers:
+        with pytest.raises(ValueError, match=coord.model):
+            await coord.async_set_sleep_timer(enabled=True, minutes=25)
+        return
     await coord.async_set_sleep_timer(enabled=True, minutes=25)
     assert sim.sleep_timer == (1, coord.brightness_pct, 25, 0)
     sim.sleep_timer = (1, 80, 40, 0)
@@ -111,6 +122,10 @@ async def test_mock_ble_wakeup_timer_write_then_decode(mock_ble: MockBle):
     # EXPERIMENTAL: harness=G encoding=decode-only
     coord, sim, client = mock_ble.coordinator, mock_ble.sim, mock_ble.client
     await coord._ensure_connected()
+    if not coord.profile.supports_timers:
+        with pytest.raises(ValueError, match=coord.model):
+            await coord.async_set_wakeup_timer(enabled=True, wake_time=dtime(6, 30))
+        return
     await coord.async_set_wakeup_timer(enabled=True, wake_time=dtime(6, 30))
     assert sim.wakeup_timer == (1, 100, 6, 30, proto.TIMER_REPEAT_ONCE, 10)
     sim.wakeup_timer = (1, 100, 7, 45, proto.TIMER_REPEAT_ONCE, 10)
@@ -122,6 +137,10 @@ async def test_mock_ble_schedule_timer_write_then_decode(mock_ble: MockBle):
     # EXPERIMENTAL: harness=G encoding=decode-only
     coord, sim, client = mock_ble.coordinator, mock_ble.sim, mock_ble.client
     await coord._ensure_connected()
+    if not coord.profile.supports_timers:
+        with pytest.raises(ValueError, match=coord.model):
+            await coord.async_set_schedule_timer(0, on_action=True, hour=9, minute=45)
+        return
     await coord.async_set_schedule_timer(0, on_action=True, hour=9, minute=45, days=[proto.Weekday.SUN])
     assert sim.schedule_timers[0] == (0x81, 9, 45, proto.timer_repeat([proto.Weekday.SUN]))
     sim.schedule_timers[0] = (0x80, 10, 30, proto.timer_repeat([proto.Weekday.SAT]))

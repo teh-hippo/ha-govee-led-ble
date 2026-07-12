@@ -787,6 +787,21 @@ export const cardStyles = css`
       padding-left: 8px;
       border-radius: 4px;
     }
+    .effect.quarantined {
+      border-left: 3px solid var(--warning-color, #f9a825);
+      padding-left: 8px;
+      border-radius: 4px;
+    }
+    .badge-unavailable {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 18px;
+      padding: 6px 10px;
+      color: var(--warning-color, #f9a825);
+      border: 1px solid var(--warning-color, #f9a825);
+      font-size: 0.85em;
+      font-weight: 600;
+    }
     .effect .btn.danger {
       border-color: var(--error-color);
       color: var(--error-color);

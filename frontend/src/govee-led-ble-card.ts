@@ -68,6 +68,7 @@ import {
   selectAll,
   selectionToSegments,
   STUDIO_KINDS,
+  supportedStudioKinds,
   TABS,
   toggleSegment,
   type CustomEffectEntry,
@@ -106,8 +107,6 @@ const MIN_STOPS = 2;
 const MAX_STOPS = 5;
 /** Card title, shared by the live card and the unavailable/notice states. */
 const CARD_TITLE = "Govee Effect Studio";
-/** The Studio kinds that have a working editor this release. */
-const AVAILABLE_KINDS = STUDIO_KINDS.filter((k) => k.available);
 const SOON_KINDS = STUDIO_KINDS.filter((k) => !k.available);
 
 /** Coerce a raw `segment_colors` attribute into RGB triples, or null if absent/malformed. */
@@ -317,6 +316,7 @@ class GoveeLedBleCard extends LitElement {
   }
 
   updated(): void {
+    this._ensureSupportedStudioKind();
     this._reconcileDraftIds();
     this._updateClipped();
     this._drawNowPreview();
@@ -440,6 +440,7 @@ class GoveeLedBleCard extends LitElement {
   }
 
   private _selectKind(kind: StudioKind): void {
+    if (!this._supportedStudioKinds().includes(kind)) return;
     if (this._editingId !== null && kind !== this._studioKind) return;
     const wasDirty = this._hasUnsavedDraft();
     this._studioKind = kind;
@@ -451,11 +452,12 @@ class GoveeLedBleCard extends LitElement {
 
   private _onKindKey(ev: KeyboardEvent): void {
     if (this._editingId !== null) return;
-    const idx = AVAILABLE_KINDS.findIndex((k) => k.id === this._studioKind);
-    const next = nextTabIndex(idx, ev.key, AVAILABLE_KINDS.length);
+    const available = this._availableKindDescriptors();
+    const idx = available.findIndex((kind) => kind.id === this._studioKind);
+    const next = nextTabIndex(idx, ev.key, available.length);
     if (next === idx) return;
     ev.preventDefault();
-    this._selectKind(AVAILABLE_KINDS[next].id);
+    this._selectKind(available[next].id);
     void this.updateComplete.then(() => {
       this.renderRoot
         .querySelector<HTMLButtonElement>('.kinds .kind[aria-checked="true"]')
@@ -511,6 +513,35 @@ class GoveeLedBleCard extends LitElement {
     const state = this.hass.states[entity];
     if (!state) return null;
     return coerceSegmentColors(state.attributes?.segment_colors);
+  }
+
+  private _supportedStudioKinds(): StudioKind[] {
+    const entity = this._config?.entity;
+    const raw = entity
+      ? this.hass?.states[entity]?.attributes?.custom_effect_kinds
+      : undefined;
+    return supportedStudioKinds(raw);
+  }
+
+  private _availableKindDescriptors(): (typeof STUDIO_KINDS)[number][] {
+    const supported = new Set(this._supportedStudioKinds());
+    return STUDIO_KINDS.filter((kind) => kind.available && supported.has(kind.id));
+  }
+
+  private _isStudioKindSupported(kind: StudioKind): boolean {
+    return this._supportedStudioKinds().includes(kind);
+  }
+
+  private _ensureSupportedStudioKind(): void {
+    if (this._isStudioKindSupported(this._studioKind)) return;
+    const [fallback] = this._supportedStudioKinds();
+    if (fallback === undefined) return;
+    this._editingId = null;
+    this._editingOriginalName = null;
+    this._editingOriginalContent = null;
+    this._loadedContent = null;
+    this._studioKind = fallback;
+    this._draftBaseline = this._draftSignature();
   }
 
   // --- segment painter: pointer drag (shared by Now + Studio Static) ------
@@ -1131,6 +1162,14 @@ class GoveeLedBleCard extends LitElement {
     feedback: string,
     clearImport = false,
   ): void {
+    const kind = studioKindForContent(content);
+    if (!this._isStudioKindSupported(kind)) {
+      this._feedback = {
+        kind: "error",
+        text: `This light does not support ${STUDIO_KINDS.find((entry) => entry.id === kind)?.label ?? kind} effects.`,
+      };
+      return;
+    }
     if (this._hasUnsavedDraft()) {
       this._pendingDraft = {
         name,
@@ -1168,6 +1207,10 @@ class GoveeLedBleCard extends LitElement {
   private async _saveStudio(): Promise<void> {
     const entity = this._config?.entity;
     if (!this.hass || !entity) return;
+    if (!this._isStudioKindSupported(this._studioKind)) {
+      this._feedback = { kind: "error", text: "This effect type is not supported by this light." };
+      return;
+    }
     const name = this._studioName.trim();
     try {
       const content = this._currentStudioContent();
@@ -1875,6 +1918,7 @@ class GoveeLedBleCard extends LitElement {
   // --- Studio workspace ----------------------------------------------------
 
   private _renderStudio(): unknown {
+    const availableKinds = this._availableKindDescriptors();
     return html`
       <div id="panel-studio" role="tabpanel" aria-labelledby="tab-studio">
         ${this._renderScopeBand("draft")}
@@ -1883,7 +1927,7 @@ class GoveeLedBleCard extends LitElement {
             <span class="label">Effect kind</span>
           </div>
           <div class="kinds" role="radiogroup" aria-label="Effect kind" @keydown=${this._onKindKey}>
-            ${AVAILABLE_KINDS.map(
+            ${availableKinds.map(
               (k) => html`
                 <button
                   class="kind ${this._studioKind === k.id ? "active" : ""}"
@@ -2480,6 +2524,10 @@ class GoveeLedBleCard extends LitElement {
 
   private _renderLibrary(state: HassEntityState): unknown {
     const effects = coerceCustomEffects(state.attributes?.custom_effects);
+    const quarantined = coerceCustomEffects(
+      state.attributes?.quarantined_custom_effects,
+    );
+    const allEffects = [...effects, ...quarantined];
     const active =
       typeof state.attributes?.effect === "string" ? state.attributes.effect : null;
     return html`
@@ -2487,7 +2535,7 @@ class GoveeLedBleCard extends LitElement {
         <section>
           <div class="row heading">
             <span class="label">Saved effects</span>
-            <span class="hint">${effects.length} saved</span>
+            <span class="hint">${effects.length} available</span>
           </div>
           ${effects.length === 0
             ? html`<p class="help">
@@ -2497,10 +2545,27 @@ class GoveeLedBleCard extends LitElement {
             : html`
                 <p class="help">Select an effect to apply it.</p>
                 <ul class="effects" role="list">
-                  ${effects.map((effect) => this._renderEffectRow(effect, active, effects))}
+                  ${effects.map((effect) => this._renderEffectRow(effect, active, allEffects))}
                 </ul>
               `}
         </section>
+        ${quarantined.length === 0
+          ? nothing
+          : html`
+              <section>
+                <div class="row heading">
+                  <span class="label">Unavailable on this model</span>
+                  <span class="hint">${quarantined.length} preserved</span>
+                </div>
+                <p class="help">
+                  These effects are kept for export or deletion, but cannot be applied or edited on
+                  this light.
+                </p>
+                <ul class="effects" role="list">
+                  ${quarantined.map((effect) => this._renderQuarantinedEffectRow(effect))}
+                </ul>
+              </section>
+            `}
         <section>
           <details class="import-panel">
             <summary>Import effect JSON</summary>
@@ -2524,7 +2589,7 @@ class GoveeLedBleCard extends LitElement {
                 <button
                   class="btn primary"
                   ?disabled=${this._importText.trim() === ""}
-                  @click=${() => this._reviewImport(effects)}
+                  @click=${() => this._reviewImport(allEffects)}
                 >
                   Review import
                 </button>
@@ -2651,6 +2716,46 @@ class GoveeLedBleCard extends LitElement {
               </button>
             </div>
           </details>
+        </div>
+      </li>
+    `;
+  }
+
+  private _renderQuarantinedEffectRow(effect: CustomEffectEntry): unknown {
+    if (this._deletingId === effect.id) {
+      return html`
+        <li class="effect quarantined">
+          <span class="confirm-text">Delete "${effect.name}"?</span>
+          <button class="btn confirm-cancel" @click=${this._cancelDelete}>Cancel</button>
+          <button class="btn danger primary" @click=${() => this._deleteEffect(effect)}>
+            Delete
+          </button>
+        </li>
+      `;
+    }
+    const busy = this._busyKey?.endsWith(`:${effect.id}`) ?? false;
+    return html`
+      <li class="effect quarantined">
+        <div class="effect-main">
+          <span class="badge-unavailable">Unavailable</span>
+          <span class="effect-label" title=${effect.name}>${effect.name}</span>
+        </div>
+        <div class="effect-actions">
+          <button
+            class="btn"
+            ?disabled=${busy}
+            @click=${() => void this._exportEffect(effect)}
+            aria-label=${`Export ${effect.name}`}
+          >
+            ${busy ? "Working…" : "Export"}
+          </button>
+          <button
+            class="btn danger"
+            @click=${() => this._askDelete(effect)}
+            aria-label=${`Delete ${effect.name}`}
+          >
+            Delete
+          </button>
         </div>
       </li>
     `;

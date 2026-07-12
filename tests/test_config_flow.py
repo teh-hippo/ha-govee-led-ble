@@ -3,7 +3,7 @@ from homeassistant import config_entries
 from homeassistant.components.bluetooth import BluetoothServiceInfo
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
 from custom_components.ha_govee_led_ble.config_flow import GoveeConfigFlow, _extract_model
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
@@ -83,10 +83,11 @@ async def test_user_step_creates_entry(hass: HomeAssistant):
     assert r["type"] == FlowResultType.CREATE_ENTRY and r["data"][CONF_MODEL] == "H617A"
 
 
-async def test_user_step_defaults_model_to_h617a(hass: HomeAssistant):
+async def test_user_step_requires_explicit_model(hass: HomeAssistant):
     r = await _init(hass, config_entries.SOURCE_USER)
-    r2 = await hass.config_entries.flow.async_configure(r["flow_id"], {CONF_ADDRESS: "11:22:33:44:55:66"})
-    assert r2["type"] == FlowResultType.CREATE_ENTRY and r2["data"][CONF_MODEL] == "H617A"
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(r["flow_id"], {CONF_ADDRESS: "11:22:33:44:55:66"})
+    assert not hass.config_entries.async_entries(DOMAIN)
 
 
 _EM = [("SomeOtherDevice", None), ("Govee_H9999_ABCD", None), ("", None), ("ihoment_H617A_ABCD", "H617A")]
