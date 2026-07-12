@@ -35,9 +35,11 @@ packets that belong to the strip.
   live sniff, decodes the frame the app emits, and auto-diffs it against what our `protocol.py`
   would send — PASS/FAIL with a byte diff, no AI in the loop. See "Guided live validation" below.
 
-Overridable env vars (defaults suit the reference setup): `GOVEE_BLE_DIR` (WSL tooling dir),
-`GOVEE_WIN_CAP` (Windows path to the captures dir), `GOVEE_BTLOGGER` (path to
-`idevicebtlogger.exe`), `PWSH` (PowerShell executable).
+Set `GOVEE_BLE_DIR` (WSL tooling directory), `GOVEE_WIN_CAP` (Windows capture
+directory) and `GOVEE_BTLOGGER` (Windows `idevicebtlogger.exe` path) before
+using live or replay modes. `PWSH` is optional and defaults to `pwsh.exe`.
+The live commands fail before prompting if the logger does not produce a valid
+pcap header within five seconds.
 
 ## Guided live validation (`validate_protocol.py`)
 
