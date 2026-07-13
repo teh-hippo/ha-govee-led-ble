@@ -1,4 +1,10 @@
-from tools.ble.fetch_effect_library import distil
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from tools.ble.fetch_effect_library import CATALOGUE_DIR, catalogue_drift, distil
 
 
 def test_distil_counts_scene_tiles_separately_from_effect_variants():
@@ -30,3 +36,48 @@ def test_distil_counts_scene_tiles_separately_from_effect_variants():
     assert catalogue["scene_count"] == 2
     assert catalogue["effect_count"] == 3
     assert [effect.get("variant") for effect in catalogue["scenes"]] == ["A", "B", None]
+
+
+def test_catalogue_drift_reports_structural_changes():
+    expected = {
+        "sku": "H617A",
+        "scene_count": 2,
+        "effect_count": 2,
+        "scenes": [
+            {"category": "Natural", "name": "Aurora", "code": 1, "param": "one"},
+            {"category": "Natural", "name": "Sunrise", "code": 2, "param": ""},
+        ],
+    }
+    current = {
+        "sku": "H617A",
+        "scene_count": 2,
+        "effect_count": 2,
+        "scenes": [
+            {"category": "Natural", "name": "Aurora", "code": 3, "param": "two"},
+            {"category": "Natural", "name": "Sunset", "code": 4, "param": ""},
+        ],
+    }
+
+    assert catalogue_drift(expected, current) == [
+        "removed: Natural / Sunrise",
+        "added: Natural / Sunset",
+        "changed: Natural / Aurora (code, param)",
+    ]
+
+
+@pytest.mark.parametrize(
+    "sku,scene_count,effect_count,digest",
+    [
+        ("H617A", 80, 83, "5fc5fe70c6c6e0e3bb5c1956ece8372cee2ec33f75dd971d31850741959345b9"),
+        ("H6199", 149, 240, "8ef351fcdb67ba529d07c0fddae4651831e3bbfe546bb50534b34f0881610cdd"),
+    ],
+)
+def test_frozen_catalogue_scope(sku: str, scene_count: int, effect_count: int, digest: str):
+    path = Path(CATALOGUE_DIR) / f"effect-library-{sku}.json"
+    data = json.loads(path.read_text())
+
+    assert data["sku"] == sku
+    assert data["scene_count"] == scene_count
+    assert data["effect_count"] == effect_count
+    assert catalogue_drift(data, data) == []
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == digest

@@ -17,10 +17,13 @@ parameters) without the multi-megabyte icon/rule noise of the raw response.
 
 Usage::
 
-    python3 fetch_effect_library.py H617A [H619A ...] [--out-dir DIR] [--raw]
+    uv run python tools/ble/fetch_effect_library.py H617A [H6199 ...]
+    uv run python tools/ble/fetch_effect_library.py H617A H6199 --check
 
-Writes ``effect-library-<SKU>.json`` per SKU (next to this file by default).
-With ``--raw`` it also keeps the untouched API response as ``<SKU>-raw.json``.
+Writes ``effect-library-<SKU>.json`` per SKU under ``tools/ble/catalogues`` by
+default. ``--check`` fails with a structural delta instead of overwriting the
+frozen snapshots. With ``--raw`` it also keeps the untouched API response as
+``<SKU>-raw.json``.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from typing import Any, cast
 API_URL = "https://app2.govee.com/appsku/v1/light-effect-libraries"
 # The endpoint gates on app version; a large sentinel keeps it from 426-ing us.
 APP_VERSION = "9999999"
+CATALOGUE_DIR = Path(__file__).parent / "catalogues"
 
 
 def fetch_library(sku: str) -> dict[str, Any]:
@@ -91,30 +95,78 @@ def distil(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _scene_key(scene: dict[str, Any]) -> tuple[str, str, str]:
+    return str(scene.get("category", "")), str(scene.get("name", "")), str(scene.get("variant", ""))
+
+
+def catalogue_drift(expected: dict[str, Any], current: dict[str, Any]) -> list[str]:
+    """Return a stable, human-readable structural delta between two catalogues."""
+    changes = []
+    for field in ("sku", "scene_count", "effect_count"):
+        if expected.get(field) != current.get(field):
+            changes.append(f"{field}: {expected.get(field)!r} -> {current.get(field)!r}")
+
+    expected_scenes = {_scene_key(scene): scene for scene in expected.get("scenes", [])}
+    current_scenes = {_scene_key(scene): scene for scene in current.get("scenes", [])}
+    for key in sorted(expected_scenes.keys() - current_scenes.keys()):
+        changes.append(f"removed: {' / '.join(part for part in key if part)}")
+    for key in sorted(current_scenes.keys() - expected_scenes.keys()):
+        changes.append(f"added: {' / '.join(part for part in key if part)}")
+    for key in sorted(expected_scenes.keys() & current_scenes.keys()):
+        before, after = expected_scenes[key], current_scenes[key]
+        fields = sorted(field for field in before.keys() | after.keys() if before.get(field) != after.get(field))
+        if fields:
+            changes.append(f"changed: {' / '.join(part for part in key if part)} ({', '.join(fields)})")
+    return changes
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("skus", nargs="+", help="Model SKU(s), e.g. H617A H619A")
-    parser.add_argument("--out-dir", type=Path, default=Path(__file__).parent, help="Output directory")
+    parser.add_argument("--out-dir", type=Path, default=CATALOGUE_DIR, help="Output/check directory")
     parser.add_argument("--raw", action="store_true", help="Also write the untouched API response")
+    parser.add_argument("--check", action="store_true", help="Compare with frozen snapshots without overwriting")
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    failed = False
     for sku in args.skus:
         raw = fetch_library(sku)
         if raw.get("status") != 200:
             print(f"{sku}: API returned status={raw.get('status')} message={raw.get('message')!r}")
+            failed = True
             continue
-        if args.raw:
+        if args.raw and not args.check:
             (args.out_dir / f"{sku}-raw.json").write_text(json.dumps(raw, indent=2))
         catalogue = distil(raw)
         catalogue["sku"] = sku
         out_path = args.out_dir / f"effect-library-{sku}.json"
+        if args.check:
+            if not out_path.exists():
+                print(f"{sku}: missing frozen snapshot {out_path}")
+                failed = True
+                continue
+            expected = cast(dict[str, Any], json.loads(out_path.read_text()))
+            changes = catalogue_drift(expected, catalogue)
+            if changes:
+                failed = True
+                print(f"{sku}: catalogue drift ({len(changes)} change(s))")
+                for change in changes:
+                    print(f"  {change}")
+            else:
+                print(
+                    f"{sku}: unchanged at {catalogue['scene_count']} scenes / "
+                    f"{catalogue['effect_count']} effects"
+                )
+            continue
         out_path.write_text(json.dumps(catalogue, indent=2, ensure_ascii=False) + "\n")
         adjustable = sum(1 for scene in catalogue["scenes"] if scene.get("adjustable"))
         print(
             f"{sku}: {catalogue['scene_count']} scenes / {catalogue['effect_count']} effects "
             f"({adjustable} with adjustable parameters) -> {out_path.name}"
         )
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
