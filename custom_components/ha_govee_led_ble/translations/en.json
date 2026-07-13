@@ -27,9 +27,6 @@
       }
     },
     "number": {
-      "video_white_balance": {
-        "name": "Video white balance"
-      },
       "music_sensitivity": {
         "name": "Music sensitivity"
       },
@@ -69,7 +66,11 @@
         }
       },
       "video_capture_region": {
-        "name": "Video color mapping"
+        "name": "Video color mapping",
+        "state": {
+          "full": "All",
+          "part": "Part"
+        }
       }
     },
     "sensor": {
@@ -258,11 +259,11 @@
         },
         "sound_effects": {
           "name": "Sound effects",
-          "description": "Enable the audio-reactive overlay on a model where this extension has been validated. It is currently unavailable on H6199."
+          "description": "Enable the H6199 audio-reactive video overlay."
         },
         "sound_effects_softness": {
           "name": "Sound effects softness",
-          "description": "Set overlay softness from 0 to 100 on a model where sound effects have been validated."
+          "description": "Set overlay softness from 1 to 100."
         }
       }
     },

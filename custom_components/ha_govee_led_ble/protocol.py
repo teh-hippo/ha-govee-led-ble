@@ -185,6 +185,15 @@ def build_scene_multi(scene_param_b64: str, scene_code: int, scene_type: int = 2
     return [*build_a3_multi(scene_type, base64.b64decode(scene_param_b64)), build_scene(scene_code)]
 
 
+def build_h6199_scene(scene_param_b64: str, scene_code: int, scene_type: int = 2) -> list[bytes]:
+    """Build the H6199 scene body and its model-specific three-byte activation."""
+    activation_type = scene_type if scene_param_b64 else 0x01
+    activation = build_packet(0x33, 0x05, [0x04, *scene_code.to_bytes(2, "little"), activation_type])
+    if not scene_param_b64:
+        return [activation]
+    return [*build_a3_multi(scene_type, base64.b64decode(scene_param_b64)), activation]
+
+
 # --- Custom-effect content encoders (§3.3) -----------------------------------------------------
 # Every builder returns list[bytes]; the store/entity layers never see raw bytes. Tier-1 segments
 # reuse the live write-path; the Tier-2 DIY/Vibrant encoders are capture-pinned and stay
@@ -310,7 +319,7 @@ STATE_QUERY = build_packet(STATUS_HEADER, POWER_PACKET_TYPE, [])
 BRIGHTNESS_QUERY = build_packet(STATUS_HEADER, BRIGHTNESS_PACKET_TYPE, [])
 COLOR_MODE_QUERY = build_packet(STATUS_HEADER, COLOR_PACKET_TYPE, [])
 FW_QUERY = build_packet(STATUS_HEADER, FIRMWARE_PACKET_TYPE, [])
-HW_QUERY = build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [])
+HW_QUERY = build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03])
 KEEP_ALIVE = STATE_QUERY
 
 
@@ -318,31 +327,19 @@ def build_video_mode(
     full_screen: bool = True,
     game_mode: bool = False,
     saturation: int = 100,
-    sound_effects: bool = False,
-    sound_effects_softness: int = 0,
+    sound_effects: bool | None = None,
+    sound_effects_softness: int = 100,
 ) -> bytes:
-    # H6199 video frame (docs/ble-protocol-h6199.md); region 1=full/0=part, validated app-sniff 2026-07-10.
+    # H6199 video frame; region 1=all/0=part, with an optional sound flag and softness extension.
     params = [COLOR_MODE_VIDEO, int(full_screen), int(game_mode), _clamp(saturation, 0, 100)]
-    if sound_effects:
-        params.extend([0x01, _clamp(sound_effects_softness, 0, 100)])
+    if sound_effects is not None:
+        params.extend([int(sound_effects), _clamp(sound_effects_softness, 1, 100)])
     return build_packet(0x33, 0x05, params)
 
 
-def build_video_white_balance(balance: int) -> bytes:
-    """Build H6199 DreamView white balance calibration packet (0=blue, 100=red).
-
-    Captured from iOS app (BluetoothLogging profile):
-    - 0%  -> 33a9000301070a...95
-    - 100%-> 33a90003011505...88
-    """
-    # H6199 33 a9 00 03 01; selector 00 03 validated app-sniff 2026-07-10.
-    pct = _clamp(balance, 0, 100) / 100.0
-    # Observed endpoints (red, blue) at extremes.
-    red_min, blue_min = 0x07, 0x0A
-    red_max, blue_max = 0x15, 0x05
-    red = _clamp(round(red_min + (red_max - red_min) * pct), 0, 255)
-    blue = _clamp(round(blue_min + (blue_max - blue_min) * pct), 0, 255)
-    return build_packet(0x33, 0xA9, [0x00, 0x03, 0x01, red, blue])
+def build_video_white_balance(red: int, blue: int) -> bytes:
+    """Build the H6199 raw two-axis DreamView white-balance frame."""
+    return build_packet(0x33, 0xA9, [0x00, 0x03, 0x01, _clamp(red, 0, 255), _clamp(blue, 0, 255)])
 
 
 def build_music_mode_with_color(
@@ -363,10 +360,14 @@ def build_music_mode_with_color(
 # (H617A §6, docs/ble-protocol-h617a.md lines 217-234). Assembled body =
 # `01 <fragCount> 41 <MODE> <count> <RGB x count> <mode-specific tail>`; a3 offsets are absolute
 # from the assembled byte 0, so the body-local index is `offset - 3`. Every template byte below is
-# replayed byte-exact from validate-20260709-122350.pcap + validation-report-20260709-123428.json;
-# volatile animation bytes (Separation[22], Piano[30], Fountain[26]) are never synthesised. Locked
-# by the byte-exact A/B/A decode test in tests/test_protocol.py.
+# replayed byte-exact from the 2026-07-09 validation run and current iOS 7.5.21 captures. Volatile
+# animation bytes (Separation[22], Piano[30]) are never synthesised. Locked by byte-exact A/B/A
+# decode tests in tests/test_protocol.py.
 _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
+    # Bloom 0x30: current iOS Dynamic baseline; [27]=style companion (Dynamic 0x50 / Calm 0x14).
+    0x30: bytes.fromhex("3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000"),
+    # Shiny 0x31: current iOS Dynamic baseline; [20:22]=style companion (14 46 / 05 64).
+    0x31: bytes.fromhex("3105ff0000ff7f00ffff0000ff000000ff14460a0000000000000000000000"),
     # Separation 0x32: report step music-p-gradient (= pcap idx5); [20]=seppoint 1, [21]=gradient on.
     0x32: bytes.fromhex("3205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000"),
     # Hopping 0x33 (3-frag): report step music-p-relbright (= pcap idx16); [29]=relative brightness 50.
@@ -375,8 +376,8 @@ _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
     ),
     # Piano Keys 0x34: report step music-p-keys (= pcap idx20); [27]=key count 15, [30]=volatile.
     0x34: bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000"),
-    # Fountain 0x35: report step music-p-direction (= pcap idx24); [28]=direction clockwise, [26]=volatile.
-    0x35: bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0201055000000000"),
+    # Fountain 0x35: current iOS Clockwise baseline; direction is the pair [26,28].
+    0x35: bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0001055000000000"),
     # Day & Night 0x37: pcap baseline idx27/29; [26]=segments 1, [27]=speed 10 (reproduces both A/B frames).
     0x37: bytes.fromhex("3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010a000000000000"),
 }
@@ -387,7 +388,6 @@ _MUSIC_PARAM_COUNT: dict[int, int] = {mode: body[1] for mode, body in _MUSIC_PAR
 _VOLATILE_OFFSETS: dict[int, frozenset[int]] = {
     0x32: frozenset({22}),
     0x34: frozenset({30}),
-    0x35: frozenset({26}),
 }
 _MUSIC_PARAM_BASE = 3  # assembled-body base: template byte 0 is the MODE byte at assembled index 3.
 
@@ -507,10 +507,10 @@ def parse_fw_version(payload: bytes) -> str | None:
 
 
 def parse_hw_version(payload: bytes) -> str | None:
-    """Decode a hardware version from an ``aa 07`` reply. Best-effort: the H617A/H6199 have not
-    been observed to answer ``aa 07`` (see #97), so this decoder is unverified against a live reply."""
-    # EXPERIMENTAL: harness=none encoding=reply-unobserved
-    return _decode_version(payload)
+    """Decode the hardware version from an ``aa 07 03`` reply payload."""
+    if not payload or payload[0] != 0x03:
+        return None
+    return _decode_version(payload[1:])
 
 
 # Experimental timer & power-off encoders (decode-only; see plan-research-encodings.md §2-3).
@@ -726,6 +726,9 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_scene": Evidence("VALIDATED", "H617A §3/§6 scene 33 05 04 <code_LE>; live"),
     "build_a3_multi": Evidence("VALIDATED", "H617A §6 0xA3 multi-frame fragmenter; XOR at byte[19]; live"),
     "build_scene_multi": Evidence("VALIDATED", "H617A §6 0xA3 body + 33 05 04 activate; live"),
+    "build_h6199_scene": Evidence(
+        "VALIDATED", "H6199 simple type-01 and A3 type-02 scene activations; iOS app-sniff 2026-07-12"
+    ),
     "build_diy_activate": Evidence("VALIDATED", "H617A §3 DIY select 33 05 0a <slot>; live (CAT §2.1)"),
     "build_segment_content": Evidence(
         "VALIDATED", "H617A §3/§7 seg colour+brightness reuse; VAL single/all/one-seg live"
@@ -739,8 +742,13 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_music_params_a3": Evidence(
         "EXPERIMENTAL", "VAL a3 music body §2.3 (H617A 217-234); capture-pinned, volatile bytes replayed"
     ),
-    "build_video_mode": Evidence("VALIDATED", "H6199 video 33 05 00 <region><sub><sat>; app-sniff 2026-07-10"),
-    "build_video_white_balance": Evidence("VALIDATED", "H6199 33 a9 00 03 01; selector 00 03 app-sniff 2026-07-10"),
+    "build_video_mode": Evidence(
+        "VALIDATED", "H6199 33 05 00 region/sub/sat + optional sound/softness; A/B/A app-sniff 2026-07-12"
+    ),
+    "build_video_white_balance": Evidence(
+        "VALIDATED",
+        "H6199 33 a9 00 03 01 <red><blue>; independent raw axes app-sniffed 2026-07-12; UI mapping unproven",
+    ),
     "build_timer_schedule": Evidence("EXPERIMENTAL", "H617A §4 timer 33 23; write live, ships gated Tier-2"),
     "build_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 sleep 33 11; reply captured (OBSERVE)"),
     "build_timer_wakeup": Evidence("EXPERIMENTAL", "H617A §4 wake-up 33 12; reply captured (OBSERVE)"),
@@ -748,7 +756,9 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "split_status_frame": Evidence("VALIDATED", "H617A §4 status aa <type>; 20-byte XOR split; live"),
     "parse_color_mode_response": Evidence("VALIDATED", "H617A §4 colour-mode aa 05 (15 01/04/00/13); live"),
     "parse_fw_version": Evidence("VALIDATED", "H617A §4 firmware aa 06 -> ASCII '3.02.24'; VAL live capture"),
-    "parse_hw_version": Evidence("EXPERIMENTAL", "aa 07 reply unobserved live (#97); shares fw ASCII decode"),
+    "parse_hw_version": Evidence(
+        "VALIDATED", "H617A/H6199 aa 07 03 -> ASCII hardware version; iOS app-sniff 2026-07-12"
+    ),
     "parse_timer_repeat": Evidence("VALIDATED", "H617A §4 repeat byte Mon=bit0..Sun=bit6; live"),
     "parse_timer_schedule": Evidence("VALIDATED", "H617A §4 slot [enableAndType,hh,mm,repeat]; live"),
     "parse_timer_schedule_table": Evidence("VALIDATED", "H617A §4/§7 aa 23 ff + four 4-byte slots; live"),
@@ -759,6 +769,8 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "BRIGHTNESS_QUERY": Evidence("VALIDATED", "H617A §4 brightness query aa 04; mirrors 33 04"),
     "COLOR_MODE_QUERY": Evidence("VALIDATED", "H617A §4 colour-mode query aa 05; live"),
     "FW_QUERY": Evidence("VALIDATED", "H617A §4 firmware query aa 06; VAL connect handshake"),
-    "HW_QUERY": Evidence("VALIDATED", "H617A §4 hardware query aa 07 bytes; sent at connect, reply unobserved (#97)"),
+    "HW_QUERY": Evidence(
+        "VALIDATED", "H617A/H6199 hardware query aa 07 03; replies 3.01.01/3.02.01 app-sniffed 2026-07-12"
+    ),
     "KEEP_ALIVE": Evidence("VALIDATED", "H617A §4 aa 01 ~2s keep-alive (= STATE_QUERY)"),
 }

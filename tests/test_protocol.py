@@ -227,6 +227,19 @@ def test_scene_multi():
     assert (pkts[-1][3], pkts[-1][4]) == (0x73, 0x08)
 
 
+def test_build_h6199_scene_matches_current_ios_captures():
+    aurora_a = "AiAAAAABAgH/MgEAAAAA+jIDAP8AAP//qv8AAwCAAAAAACMAAAADAgH/GQD6AAAC+gAEf/8A//8AoP//AP//FAH6AAD/AA=="
+    assert proto.build_h6199_scene("", 0, 0) == [H("3305040000010000000000000000000000000033")]
+    assert proto.build_h6199_scene(aurora_a, 215, 2) == [
+        H("a3000105020220000000010201ff320100000049"),
+        H("a30100fa320300ff0000ffffaaff000300800040"),
+        H("a30200000023000000030201ff1900fa0000029c"),
+        H("a303fa00047fff00ffff00a0ffff00ffff14016b"),
+        H("a3fffa0000ff0000000000000000000000000059"),
+        H("330504d7000200000000000000000000000000e7"),
+    ]
+
+
 def test_build_a3_multi():
     frames = proto.build_a3_multi(0x02, bytes(20))
     assert frames == [
@@ -358,7 +371,7 @@ def test_constants():
     assert proto.BRIGHTNESS_QUERY == H("AA040000000000000000000000000000000000AE")
     assert proto.COLOR_MODE_QUERY == H("AA050000000000000000000000000000000000AF")
     assert proto.FW_QUERY == H("AA060000000000000000000000000000000000AC")
-    assert proto.HW_QUERY == H("AA070000000000000000000000000000000000AD")
+    assert proto.HW_QUERY == H("AA070300000000000000000000000000000000AE")
     assert proto.KEEP_ALIVE == proto.STATE_QUERY
     assert (proto.COMMAND_HEADER, proto.STATUS_HEADER) == (0x33, 0xAA)
     assert (proto.POWER_PACKET_TYPE, proto.BRIGHTNESS_PACKET_TYPE, proto.COLOR_PACKET_TYPE) == (0x01, 0x04, 0x05)
@@ -372,17 +385,20 @@ def test_constants():
 
 
 def test_firmware_hardware_version_decode():
-    # H617A §4 + VAL live capture: aa 06 fw reply "3.02.24", aa 07 hw reply "3.01.01" (ASCII, NUL-padded).
+    # H617A/H6199 current-app handshakes return ASCII, NUL-padded versions.
     fw_reply = H("aa06332e30322e3234000000000000000000009b")
-    hw_reply = H("aa07332e30312e3031000000000000000000009e")
+    hw_reply = H("aa0703332e30312e30310000000000000000009d")
+    h6199_hw_reply = H("aa0703332e30322e30310000000000000000009e")
     fw_domain, fw_payload = proto.split_status_frame(fw_reply)
     hw_domain, hw_payload = proto.split_status_frame(hw_reply)
     assert (fw_domain, hw_domain) == (0x06, 0x07)
     assert proto.parse_fw_version(fw_payload) == "3.02.24"
     assert proto.parse_hw_version(hw_payload) == "3.01.01"
+    assert proto.parse_hw_version(proto.split_status_frame(h6199_hw_reply)[1]) == "3.02.01"
     # NUL padding is trimmed; an empty payload decodes to None.
     assert proto.parse_fw_version(b"3.02.24\x00\x00") == "3.02.24"
     assert proto.parse_hw_version(b"") is None
+    assert proto.parse_hw_version(b"\x02" + b"3.01.01") is None
 
 
 def test_video_mode():
@@ -395,11 +411,13 @@ def test_video_mode():
     assert proto.build_video_mode() == H("3305000100640000000000000000000000000053")
     chk(dict(full_screen=False, game_mode=True, saturation=75), slice(3, 6), (0x00, 0x01, 75))
     chk(dict(sound_effects=True, sound_effects_softness=50), slice(6, 8), (0x01, 50))
-    chk(dict(sound_effects=False), 6, 0x00)
+    assert proto.build_video_mode(sound_effects=False, sound_effects_softness=100) == H(
+        "3305000100640064000000000000000000000037"
+    )
     chk(dict(saturation=200), 5, 100)
     chk(dict(saturation=-5), 5, 0)
     chk(dict(sound_effects=True, sound_effects_softness=200), 7, 100)
-    chk(dict(sound_effects=True, sound_effects_softness=-5), 7, 0)
+    chk(dict(sound_effects=True, sound_effects_softness=-5), 7, 1)
     chk(
         dict(full_screen=False, game_mode=True, saturation=60, sound_effects=True, sound_effects_softness=75),
         slice(2, 8),
@@ -408,12 +426,10 @@ def test_video_mode():
 
 
 def test_video_white_balance():
-    # Captured from iOS app (bluetoothd-hci-latest.pklg) while moving DreamView WB slider.
-    assert proto.build_video_white_balance(0) == H("33a9000301070a00000000000000000000000095")
-    assert proto.build_video_white_balance(100) == H("33a9000301150500000000000000000000000088")
-    assert proto.build_video_white_balance(-1) == proto.build_video_white_balance(0)
-    assert proto.build_video_white_balance(120) == proto.build_video_white_balance(100)
-    _valid(proto.build_video_white_balance(0))
+    assert proto.build_video_white_balance(0x07, 0x0A) == H("33a9000301070a00000000000000000000000095")
+    assert proto.build_video_white_balance(0x0F, 0x04) == H("33a90003010f0400000000000000000000000093")
+    assert proto.build_video_white_balance(-1, 999) == proto.build_video_white_balance(0, 255)
+    _valid(proto.build_video_white_balance(0x10, 0x05))
 
 
 def test_music_mode():
@@ -454,6 +470,18 @@ def test_music_mode_byte5_per_mode():
 # the a3 fragments (dropping each frame's `a3 <idx>` prefix and trailing XOR) must reproduce it. Each
 # (mode, overrides) pins a captured A/B/A transition — the same transitions that pinned the offsets.
 _MUSIC_PARAM_FRAMES: dict[tuple[int, tuple[tuple[int, int], ...]], str] = {
+    # Bloom 0x30: current iOS Dynamic / Calm A/B/A.
+    (0x30, ()): "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000",
+    (
+        0x30,
+        ((27, 0x14),),
+    ): "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a14000000000000",
+    # Shiny 0x31: current iOS Dynamic / Calm A/B/A.
+    (0x31, ()): "0102413105ff0000ff7f00ffff0000ff000000ff14460a0000000000000000000000",
+    (
+        0x31,
+        ((20, 0x05), (21, 0x64)),
+    ): "0102413105ff0000ff7f00ffff0000ff000000ff05640a0000000000000000000000",
     # Separation 0x32: report music-p-gradient (build{}) / music-p-seppoint ([20]=5).
     (0x32, ()): "0102413205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000",
     (0x32, ((20, 0x05),)): "0102413205ff7f00ff0000ffff000000ff00ff0005015e0000000000000000000000",
@@ -466,8 +494,16 @@ _MUSIC_PARAM_FRAMES: dict[tuple[int, tuple[tuple[int, int], ...]], str] = {
     ),
     # Piano 0x34: report music-p-keys (key count 15).
     (0x34, ()): "0102413407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000",
-    # Fountain 0x35: report music-p-direction (clockwise).
-    (0x35, ()): "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0201055000000000",
+    # Fountain 0x35: current Clockwise, Two-way and retained Counterclockwise captures.
+    (0x35, ()): "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0001055000000000",
+    (
+        0x35,
+        ((26, 0x01), (28, 0x03)),
+    ): "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0101035000000000",
+    (
+        0x35,
+        ((26, 0x02), (28, 0x05)),
+    ): "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0201055000000000",
     # Day & Night 0x37: pcap baseline (build{}), report music-p-segments ([26]=7) / music-p-speed ([27]=0x32).
     (0x37, ()): "0102413707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010a000000000000",
     (0x37, ((26, 0x07),)): "0102413707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff070a000000000000",
@@ -488,7 +524,19 @@ def test_build_music_params_a3_reproduces_captured_bodies():
 
 def test_build_music_params_a3_flips_only_its_offset():
     # Overwriting one decoded offset changes exactly that byte; the rest of the captured body is verbatim.
-    cases = ((0x32, 20, 5), (0x32, 21, 0), (0x33, 29, 0), (0x34, 27, 8), (0x35, 28, 3), (0x37, 26, 7), (0x37, 27, 50))
+    cases = (
+        (0x30, 27, 0x14),
+        (0x31, 20, 0x05),
+        (0x31, 21, 0x64),
+        (0x32, 20, 5),
+        (0x32, 21, 0),
+        (0x33, 29, 0),
+        (0x34, 27, 8),
+        (0x35, 26, 1),
+        (0x35, 28, 3),
+        (0x37, 26, 7),
+        (0x37, 27, 50),
+    )
     for mode, offset, value in cases:
         base = _assemble_a3(proto.build_music_params_a3(mode, {}))
         changed = _assemble_a3(proto.build_music_params_a3(mode, {offset: value}))
@@ -497,7 +545,7 @@ def test_build_music_params_a3_flips_only_its_offset():
 
 
 def test_build_music_params_a3_never_writes_volatile_bytes():
-    for mode, offset in ((0x32, 22), (0x34, 30), (0x35, 26)):
+    for mode, offset in ((0x32, 22), (0x34, 30)):
         with pytest.raises(ValueError, match="volatile"):
             proto.build_music_params_a3(mode, {offset: 0x01})
 

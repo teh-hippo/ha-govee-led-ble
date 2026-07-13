@@ -42,6 +42,15 @@ def test_power_brightness_replies_roundtrip(model):
 
 
 @pytest.mark.parametrize("model", MODELS)
+def test_identity_replies_roundtrip(model):
+    sim = GoveeDeviceSim(model)
+    (firmware,) = sim.handle_write(proto.FW_QUERY)
+    (hardware,) = sim.handle_write(proto.HW_QUERY)
+    assert proto.parse_fw_version(proto.split_status_frame(firmware)[1]) == sim.firmware
+    assert proto.parse_hw_version(proto.split_status_frame(hardware)[1]) == sim.hardware
+
+
+@pytest.mark.parametrize("model", MODELS)
 def test_rgb_command_fills_segments_and_roundtrips(model):
     sim = GoveeDeviceSim(model)
     sim.handle_write(proto.build_color_rgb(10, 20, 30))
@@ -125,18 +134,32 @@ def test_video_command_applies_only_on_h6199():
     assert h617a.effect is None
 
 
+def test_video_sound_extension_and_base_frame_preservation():
+    sim = GoveeDeviceSim("H6199")
+    sim.handle_write(proto.build_video_mode(sound_effects=True, sound_effects_softness=50))
+    assert sim.video_sound_effects is True
+    assert sim.video_sound_effects_softness == 50
+
+    sim.handle_write(proto.build_video_mode(saturation=40))
+    assert sim.video_sound_effects is True
+    assert sim.video_sound_effects_softness == 50
+
+    sim.handle_write(proto.build_video_mode(sound_effects=False, sound_effects_softness=50))
+    assert sim.video_sound_effects is False
+    assert sim.video_sound_effects_softness == 50
+
+
 def test_video_white_balance_gated():
     h6199 = GoveeDeviceSim("H6199")
-    h6199.handle_write(proto.build_video_white_balance(100))
-    assert h6199.video_white_balance == 100
+    h6199.handle_write(proto.build_video_white_balance(0x0F, 0x04))
+    assert h6199.video_white_balance == (0x0F, 0x04)
     h617a = GoveeDeviceSim("H617A")
-    h617a.handle_write(proto.build_video_white_balance(100))
+    h617a.handle_write(proto.build_video_white_balance(0x0F, 0x04))
     assert h617a.video_white_balance is None
 
 
-@pytest.mark.parametrize("model", MODELS)
-def test_segment_writes_address_individual_slots(model):
-    sim = GoveeDeviceSim(model)
+def test_segment_writes_address_individual_slots():
+    sim = GoveeDeviceSim("H617A")
     sim.handle_write(segment_color_packet((255, 0, 0), mask=0b101))
     assert sim.segments[0] == (255, 0, 0)
     assert sim.segments[2] == (255, 0, 0)

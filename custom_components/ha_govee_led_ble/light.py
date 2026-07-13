@@ -35,7 +35,6 @@ from .light_services import (
 from .light_services import MUSIC_MODE_IDS as MUSIC_MODE_IDS
 from .light_services import apply_active_music_mode as apply_active_music_mode
 from .light_services import apply_active_video_mode as apply_active_video_mode
-from .light_services import apply_active_video_white_balance as apply_active_video_white_balance
 from .protocol import (
     build_brightness,
     build_color_rgb,
@@ -89,8 +88,8 @@ def _coerce_segment_colors(raw: Any, count: int) -> list[tuple[int, int, int]] |
 
 _STATE_FIELDS = (
     "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
-    "video_white_balance segment_colors "
-    "video_full_screen video_sound_effects video_sound_effects_softness white_brightness music_sensitivity "
+    "segment_colors video_full_screen video_sound_effects video_sound_effects_softness "
+    "white_brightness music_sensitivity "
     "music_calm music_color active_custom_id music_mode video_mode"
 ).split()
 
@@ -103,6 +102,7 @@ async def async_setup_entry(
     async_add_entities([GoveeBLELight(config_entry.runtime_data)])
     p = entity_platform.async_get_current_platform()
     _pct = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
+    _sound_softness = vol.All(vol.Coerce(int), vol.Range(min=1, max=100))
     _segment = vol.All(vol.Coerce(int), vol.Range(min=1, max=15))
     _rgb = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
     # fmt: off
@@ -112,7 +112,7 @@ async def async_setup_entry(
         vol.Optional("capture_region"): vol.In(["full", "part"]),
         vol.Optional("full_screen", default=True): cv.boolean,
         vol.Optional("sound_effects", default=False): cv.boolean,
-        vol.Optional("sound_effects_softness", default=0): _pct,
+        vol.Optional("sound_effects_softness"): _sound_softness,
     }, "async_set_video_mode")
     p.async_register_entity_service("set_music_mode", {
         vol.Required("mode"): vol.In([*MUSIC_MODE_IDS, *MUSIC_MODE_ALIASES]),

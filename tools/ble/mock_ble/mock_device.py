@@ -43,9 +43,6 @@ _COLOR_FLAG = 0x01
 # tracks music as a slug in ``music_mode``, not as an effect string).
 _MUSIC_LABEL_BY_ID = {code: f"music: {name}" for name, code in MUSIC_MODES.items()}
 _WHITE_BALANCE_ACTION = 0xA9
-# Mirror the red endpoints of protocol.build_video_white_balance so the
-# write-only calibration decodes back to a 0-100 percentage.
-_WB_RED_MIN, _WB_RED_MAX = 0x07, 0x15
 # Experimental timer command/reply actions (mirror protocol's 0x11/0x12/0x23).
 SLEEP_TIMER_ACTION = 0x11
 WAKEUP_TIMER_ACTION = 0x12
@@ -62,9 +59,8 @@ class GoveeDeviceSim:
         self.profile = get_profile(model)
         self.is_on = False
         self.brightness_pct = 100
-        # Identity replies for the aa 06/aa 07 handshake (H617A live values; VAL).
-        self.firmware = "3.02.24"
-        self.hardware = "3.01.01"
+        self.firmware = "1.10.04" if model == "H6199" else "3.02.24"
+        self.hardware = "3.02.01" if model == "H6199" else "3.01.01"
         self.color_mode: ColorMode = "rgb"
         self.rgb_color: RGB = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
@@ -74,8 +70,8 @@ class GoveeDeviceSim:
         self.video_game = False
         self.video_saturation = 100
         self.video_sound_effects = False
-        self.video_sound_effects_softness = 0
-        self.video_white_balance: int | None = None
+        self.video_sound_effects_softness = 100
+        self.video_white_balance: tuple[int, int] | None = None
         self.music_mode_id: int | None = None
         self.music_sensitivity = 100
         self.music_calm = False
@@ -111,7 +107,7 @@ class GoveeDeviceSim:
         if domain == FIRMWARE_PACKET_TYPE:
             return [build_packet(STATUS_HEADER, FIRMWARE_PACKET_TYPE, list(self.firmware.encode("ascii")))]
         if domain == HARDWARE_PACKET_TYPE:
-            return [build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, list(self.hardware.encode("ascii")))]
+            return [build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03, *self.hardware.encode("ascii")])]
         if domain == SLEEP_TIMER_ACTION and self.sleep_timer is not None:
             return [build_packet(STATUS_HEADER, SLEEP_TIMER_ACTION, list(self.sleep_timer))]
         if domain == WAKEUP_TIMER_ACTION and self.wakeup_timer is not None:
@@ -158,7 +154,7 @@ class GoveeDeviceSim:
         elif action == COLOR_PACKET_TYPE:
             self._apply_color_command(frame)
         elif action == _WHITE_BALANCE_ACTION and self.profile.supports_video_mode:
-            self.video_white_balance = round((frame[5] - _WB_RED_MIN) / (_WB_RED_MAX - _WB_RED_MIN) * 100)
+            self.video_white_balance = (frame[5], frame[6])
         elif action == SLEEP_TIMER_ACTION:
             self.sleep_timer = (frame[2], frame[3], frame[4], frame[5])
         elif action == WAKEUP_TIMER_ACTION:
@@ -234,8 +230,8 @@ class GoveeDeviceSim:
         self.video_full_screen = bool(frame[3])
         self.video_game = bool(frame[4])
         self.video_saturation = frame[5]
-        self.video_sound_effects = bool(frame[6])
-        if self.video_sound_effects:
+        if frame[6] or frame[7]:
+            self.video_sound_effects = bool(frame[6])
             self.video_sound_effects_softness = frame[7]
         self.effect = "video: game" if self.video_game else "video: movie"
 

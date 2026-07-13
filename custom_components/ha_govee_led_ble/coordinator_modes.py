@@ -32,7 +32,11 @@ class PreModeSnapshot:
     level: int = 100
 
 
-FOUNTAIN_DIRECTIONS: dict[str, int] = {"clockwise": 0x05, "counterclockwise": 0x03, "two_way": 0x03}
+FOUNTAIN_DIRECTION_BYTES: dict[str, tuple[int, int]] = {
+    "clockwise": (0x00, 0x05),
+    "counterclockwise": (0x02, 0x05),
+    "two_way": (0x01, 0x03),
+}
 
 
 def _encode_byte(value: Any) -> int:
@@ -44,8 +48,7 @@ def _encode_bool(value: Any) -> int:
 
 
 def _encode_fountain_direction(value: Any) -> int:
-    # Two-way is indistinguishable from Counterclockwise on the wire (both a3[28]=0x03); VAL 45-49.
-    return FOUNTAIN_DIRECTIONS[value]
+    return FOUNTAIN_DIRECTION_BYTES[value][1]
 
 
 @dataclass(frozen=True)
@@ -138,10 +141,11 @@ class _ActiveModeMixin(_CoordinatorBase):
             self._pre_mode_snapshot = self._capture_static_state()
         mode_id = MUSIC_MODE_SLUGS[slug]
         calm = self.music_calm if mode_id == RHYTHM_MODE_ID else False
+        color = self.music_color if self.profile.supports_music_color else None
         await self.send_command(build_power(True))
         self.is_on = True
         await self.send_command(
-            build_music_mode_with_color(mode_id, sensitivity=self.music_sensitivity, color=self.music_color, calm=calm)
+            build_music_mode_with_color(mode_id, sensitivity=self.music_sensitivity, color=color, calm=calm)
         )
         self.music_mode, self.video_mode = slug, "off"
         self.effect, self.active_custom_id = None, None
@@ -160,6 +164,12 @@ class _ActiveModeMixin(_CoordinatorBase):
     async def async_apply_music_params(self, mode_code: int) -> None:
         """Re-send the active mode's a3 movement frame, merging every stored param for that mode so
         multi-param modes (Separation, Day & Night) never clobber a sibling param (§2.3)."""
+        await self._send_music_params(mode_code)
+
+    async def _send_music_params(self, mode_code: int) -> None:
         overrides = {spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code)}
+        if mode_code == 0x35:
+            phase, selector = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
+            overrides.update({26: phase, 28: selector})
         for packet in build_music_params_a3(mode_code, overrides):
             await self.send_command(packet)

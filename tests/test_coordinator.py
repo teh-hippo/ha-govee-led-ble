@@ -633,7 +633,7 @@ async def test_async_paint_segments_rolls_back_on_failure(coord):
 
 
 async def test_async_paint_segments_rejects_unsupported(coord):
-    coord.profile = replace(coord.profile, segment_count=0)
+    coord.profile = replace(coord.profile, supports_segment_writes=False)
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
         pytest.raises(ValueError),
@@ -836,7 +836,7 @@ def test_device_info_carries_versions_and_omits_connections(coord):
 
 def test_notify_callback_sets_fw_hw_versions(coord):
     fw = proto.build_packet(proto.STATUS_HEADER, proto.FIRMWARE_PACKET_TYPE, list(b"3.02.24"))
-    hw = proto.build_packet(proto.STATUS_HEADER, proto.HARDWARE_PACKET_TYPE, list(b"3.01.01"))
+    hw = proto.build_packet(proto.STATUS_HEADER, proto.HARDWARE_PACKET_TYPE, [0x03, *b"3.01.01"])
     coord._notify_callback(None, bytearray(fw))
     coord._notify_callback(None, bytearray(hw))
     assert coord.fw_version == "3.02.24" and coord.hw_version == "3.01.01"
@@ -871,8 +871,7 @@ async def test_send_identity_queries_only_unknown(coord):
     c = _c(write_gatt_char=AsyncMock())
     coord._client = c
     await coord._send_identity_queries()
-    c.write_gatt_char.assert_any_await(proto.WRITE_UUID, proto.HW_QUERY, response=False)
-    c.write_gatt_char.assert_any_await(proto.WRITE_UUID, proto.FW_QUERY, response=False)
+    assert [call.args[1] for call in c.write_gatt_char.await_args_list] == [proto.HW_QUERY, proto.FW_QUERY]
     # Only the still-unknown value is re-queried.
     coord.fw_version, coord.hw_version = "3.02.24", None
     c.write_gatt_char.reset_mock()
@@ -883,11 +882,6 @@ async def test_send_identity_queries_only_unknown(coord):
     c.write_gatt_char.reset_mock()
     await coord._send_identity_queries()
     c.write_gatt_char.assert_not_awaited()
-    # include_hw=False (keep-alive retry path): only firmware, even when hw is unknown.
-    coord.fw_version = coord.hw_version = None
-    c.write_gatt_char.reset_mock()
-    await coord._send_identity_queries(include_hw=False)
-    c.write_gatt_char.assert_awaited_once_with(proto.WRITE_UUID, proto.FW_QUERY, response=False)
 
 
 def test_keep_alive_started_as_background_task(coord):
@@ -907,8 +901,7 @@ def test_keep_alive_started_as_background_task(coord):
 
 
 async def test_keep_alive_retries_identity_until_bounded(coord):
-    """#97: a connect-time identity reply can be missed, so keep-alive re-queries while a
-    version is unknown, bounded by IDENTITY_RETRY_TICKS so an unanswered aa07 is not polled forever."""
+    """Connect-time identity replies can be missed, so retries remain bounded."""
     coord._client = _c(write_gatt_char=AsyncMock())
     coord.fw_version = coord.hw_version = None
     calls = {"n": 0}
@@ -926,10 +919,21 @@ async def test_keep_alive_retries_identity_until_bounded(coord):
     assert ident.await_count == IDENTITY_RETRY_TICKS
 
 
-async def test_keep_alive_skips_identity_when_fw_known(coord):
-    """#97: keep-alive re-queries firmware only; a known fw stops retries even if hw stays null."""
+async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
     coord._client = _c(write_gatt_char=AsyncMock())
     coord.fw_version, coord.hw_version = "3.02.24", None
+    with (
+        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,
+        patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=False),
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await coord._keep_alive_loop()
+    ident.assert_awaited_once_with()
+
+
+async def test_keep_alive_skips_identity_when_versions_known(coord):
+    coord._client = _c(write_gatt_char=AsyncMock())
+    coord.fw_version, coord.hw_version = "3.02.24", "3.01.01"
     with (
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,
         patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=False),

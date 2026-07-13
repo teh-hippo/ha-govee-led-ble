@@ -170,13 +170,11 @@ async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effe
 @pytest.mark.parametrize("effect,mode", [("Video: Movie", "movie"), ("Video: Game", "game"), ("video: game", "game")])
 async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coordinator, effect, mode):
     co = mock_h6199_coordinator
-    co.profile = replace(co.profile, supports_video_sound_effects=True)
     co.is_on = True
     co.video_full_screen = False
     co.video_saturation = 63
     co.video_sound_effects = True
     co.video_sound_effects_softness = 27
-    co.video_white_balance = 44
     co.refresh_state = AsyncMock(side_effect=[False, True])
     await h6199_light.async_turn_on(effect=effect)
     packet = proto.build_video_mode(
@@ -199,7 +197,6 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
         assert call.kwargs["expected_video_sound_effects"] is True
         assert call.kwargs["expected_video_sound_effects_softness"] == 27
     assert co.video_mode == mode and co.effect is None
-    assert co.video_white_balance == 44
 
 
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):
@@ -228,16 +225,27 @@ async def test_h6199_rejects_unvalidated_music_modes(h6199_light, mock_h6199_coo
     mock_h6199_coordinator.async_select_music_slug.assert_not_awaited()
 
 
-async def test_set_music_mode_stores_calm_only_for_rhythm(h6199_light, mock_h6199_coordinator):
-    co = mock_h6199_coordinator
+async def test_set_music_mode_stores_calm_for_rhythm(light, mock_coordinator):
+    co = mock_coordinator
     co.music_calm = False
-    await h6199_light.async_set_music_mode(mode="rhythm", sensitivity=60, calm=True)
+    await light.async_set_music_mode(mode="rhythm", sensitivity=60, calm=True)
     co.async_select_music_slug.assert_awaited_once_with("rhythm")
     assert co.music_calm is True
-    co.music_calm = False
-    await h6199_light.async_set_music_mode(mode="spectrum", sensitivity=60, calm=True)
-    co.async_select_music_slug.assert_awaited_with("spectrum")
-    assert co.music_calm is False
+
+
+@pytest.mark.parametrize("kwargs", [{"color": (1, 2, 3)}, {"calm": True}])
+async def test_h6199_rejects_unvalidated_music_parameters(h6199_light, mock_h6199_coordinator, kwargs):
+    with pytest.raises(ServiceValidationError) as exc:
+        await h6199_light.async_set_music_mode(mode="rhythm", sensitivity=60, **kwargs)
+    assert exc.value.translation_key == "unsupported_model"
+    mock_h6199_coordinator.async_select_music_slug.assert_not_awaited()
+
+
+async def test_rejects_calm_for_unstyled_mode(light, mock_coordinator):
+    with pytest.raises(ServiceValidationError) as exc:
+        await light.async_set_music_mode(mode="spectrum", sensitivity=60, calm=True)
+    assert exc.value.translation_key == "unsupported_model"
+    mock_coordinator.async_select_music_slug.assert_not_awaited()
 
 
 async def test_set_music_mode_energic_alias(h6199_light, mock_h6199_coordinator, caplog):
@@ -269,7 +277,6 @@ async def test_refresh_with_retry_required_flag(h6199_light, mock_h6199_coordina
 
 async def test_set_video_retry_replays_power_and_full_mode(h6199_light, mock_h6199_coordinator):
     co = mock_h6199_coordinator
-    co.profile = replace(co.profile, supports_video_sound_effects=True)
     co.refresh_state = AsyncMock(side_effect=[False, True])
     packet = proto.build_video_mode(
         full_screen=False,
@@ -303,10 +310,10 @@ async def test_set_video_retry_replays_power_and_full_mode(h6199_light, mock_h61
     assert co.video_mode == "game"
 
 
-async def test_set_music_confirms_requested_parameters(h6199_light, mock_h6199_coordinator):
-    co = mock_h6199_coordinator
+async def test_set_music_confirms_requested_parameters(light, mock_coordinator):
+    co = mock_coordinator
 
-    await h6199_light.async_set_music_mode(
+    await light.async_set_music_mode(
         mode="rhythm",
         sensitivity=55,
         color=(1, 2, 3),
@@ -335,8 +342,8 @@ async def test_set_music_normalises_sensitivity_and_confirms_auto_color(h6199_li
     assert kwargs["expected_music_auto_color"] is True
 
 
-async def test_set_music_retry_restores_requested_parameters(h6199_light, mock_h6199_coordinator):
-    co = mock_h6199_coordinator
+async def test_set_music_retry_restores_requested_parameters(light, mock_coordinator):
+    co = mock_coordinator
     sent: list[tuple[int, tuple[int, int, int] | None, bool]] = []
 
     async def _select(slug: str) -> None:
@@ -353,7 +360,7 @@ async def test_set_music_retry_restores_requested_parameters(h6199_light, mock_h
     co.async_select_music_slug = AsyncMock(side_effect=_select)
     co.refresh_state = AsyncMock(side_effect=_confirm)
 
-    await h6199_light.async_set_music_mode(
+    await light.async_set_music_mode(
         mode="rhythm",
         sensitivity=55,
         color=(1, 2, 3),
@@ -392,19 +399,28 @@ async def test_disabling_video_sound_preserves_softness(h6199_light, mock_h6199_
 
     assert co.video_sound_effects is False
     assert co.video_sound_effects_softness == 50
+    assert co.send_command.await_args_list[1].args[0] == proto.build_video_mode(
+        sound_effects=False,
+        sound_effects_softness=50,
+    )
     assert co.refresh_state.await_args.kwargs["expected_video_sound_effects_softness"] is None
 
 
-async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
+async def test_set_video_and_basic_music(h6199_light, mock_h6199_coordinator):
     lt, co = h6199_light, mock_h6199_coordinator
     await lt.async_set_video_mode(mode="movie", saturation=80)
     c = co.send_command.call_args_list
     assert c[0].args[0] == proto.build_power(True)
-    assert c[1].args[0] == proto.build_video_mode(full_screen=True, game_mode=False, saturation=80)
+    assert c[1].args[0] == proto.build_video_mode(
+        full_screen=True,
+        game_mode=False,
+        saturation=80,
+        sound_effects=False,
+        sound_effects_softness=100,
+    )
     assert co.video_mode == "movie" and co.effect is None and co.video_saturation == 80
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
-    co.profile = replace(co.profile, supports_video_sound_effects=True)
     await lt.async_set_video_mode(
         mode="game", saturation=60, full_screen=False, sound_effects=True, sound_effects_softness=50
     )
@@ -417,20 +433,19 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     co.is_on, co.effect = False, None
     await lt.async_set_video_mode(mode="movie", saturation=50, full_screen=True, capture_region="part")
     c = co.send_command.call_args_list
-    assert c[1].args[0] == proto.build_video_mode(full_screen=False, game_mode=False, saturation=50)
+    assert c[1].args[0] == proto.build_video_mode(
+        full_screen=False,
+        game_mode=False,
+        saturation=50,
+        sound_effects=False,
+        sound_effects_softness=50,
+    )
     assert co.video_full_screen is False
     co.async_select_music_slug.reset_mock()
     await lt.async_set_music_mode(mode="energetic", sensitivity=75)
     co.async_select_music_slug.assert_awaited_once_with("energetic")
     assert co.music_sensitivity == 75
     co.async_select_music_slug.reset_mock()
-    await lt.async_set_music_mode(mode="spectrum", sensitivity=90, color=(255, 0, 128))
-    co.async_select_music_slug.assert_awaited_once_with("spectrum")
-    assert co.music_color == (255, 0, 128)
-    co.async_select_music_slug.reset_mock()
-    await lt.async_set_music_mode(mode="rhythm", sensitivity=55, color=(1, 2, 3), calm=True)
-    co.async_select_music_slug.assert_awaited_once_with("rhythm")
-    assert co.music_calm is True
     co.send_command.reset_mock()
     co.is_on, co.effect = False, None
     await lt.async_set_white_brightness(brightness=47)
@@ -440,7 +455,11 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     assert co.white_brightness == 47 and co.brightness_pct == 100 and co.effect is None
 
 
-async def test_h6199_rejects_unvalidated_video_sound(h6199_light, mock_h6199_coordinator):
+async def test_video_sound_requires_capability(h6199_light, mock_h6199_coordinator):
+    mock_h6199_coordinator.profile = replace(
+        mock_h6199_coordinator.profile,
+        supports_video_sound_effects=False,
+    )
     with pytest.raises(ServiceValidationError) as exc:
         await h6199_light.async_set_video_mode(mode="movie", sound_effects=True)
     assert exc.value.translation_key == "unsupported_model"
@@ -539,6 +558,15 @@ def test_segment_colors_attribute_present(light, mock_coordinator):
         "custom_effects": {"a1b2c3d4": "Sunset"},
         "custom_effect_kinds": ["combo", "flat", "segments", "sketch", "vibrant"],
         "segment_colors": [[10, 20, 30]] * 15,
+    }
+
+
+def test_h6199_segment_surface_is_gated(h6199_light, mock_h6199_coordinator):
+    mock_h6199_coordinator.custom_effect_index.return_value = {}
+
+    assert h6199_light.extra_state_attributes == {
+        "custom_effects": {},
+        "custom_effect_kinds": [],
     }
 
 

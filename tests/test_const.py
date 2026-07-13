@@ -11,7 +11,7 @@ def test_segment_count_and_supports_segments():
     assert MODEL_PROFILES["H617A"].segment_count == 15
     assert MODEL_PROFILES["H6199"].segment_count == 15
     assert MODEL_PROFILES["H617A"].supports_segments
-    assert MODEL_PROFILES["H6199"].supports_segments
+    assert not MODEL_PROFILES["H6199"].supports_segments
 
 
 def test_supports_segments_defaults_false():
@@ -53,6 +53,9 @@ def test_model_specific_music_and_custom_effect_capabilities():
         "shiny",
     )
     assert MODEL_PROFILES["H6199"].music_modes == ("energetic", "rhythm", "spectrum", "rolling")
+    assert MODEL_PROFILES["H617A"].supports_music_color
+    assert not MODEL_PROFILES["H6199"].supports_music_color
+    assert MODEL_PROFILES["H6199"].supports_video_sound_effects
     assert MODEL_PROFILES["H617A"].custom_effect_kinds == {
         "segments",
         "sketch",
@@ -60,4 +63,4 @@ def test_model_specific_music_and_custom_effect_capabilities():
         "flat",
         "combo",
     }
-    assert MODEL_PROFILES["H6199"].custom_effect_kinds == {"segments"}
+    assert MODEL_PROFILES["H6199"].custom_effect_kinds == set()

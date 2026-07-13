@@ -19,21 +19,15 @@ from .entity import GoveeBLEEntity
 from .light import (
     apply_active_music_mode,
     apply_active_video_mode,
-    apply_active_video_white_balance,
 )
 from .protocol import build_poweroff_memory
 
 type _ReapplyCallback = Callable[[GoveeBLECoordinator], Awaitable[bool]]
-_NUMBER_PARAMS = [
-    "video_white_balance",
-    "music_sensitivity",
-]
+_NUMBER_PARAMS = ["music_sensitivity"]
 
 
 def _supports_number_param(coordinator: GoveeBLECoordinator, key: str) -> bool:
     profile = coordinator.profile
-    if key == "video_white_balance":
-        return profile.supports_video_mode
     if key == "music_sensitivity":
         return profile.supports_music_mode
     return False
@@ -81,7 +75,7 @@ class _H6199ControlEntity(GoveeBLEEntity):
         self._attr_device_info = coordinator.device_info
 
 
-class H6199ParameterNumber(_H6199ControlEntity, RestoreEntity, NumberEntity):
+class H6199ParameterNumber(_H6199ControlEntity, NumberEntity):
     _attr_mode = NumberMode.SLIDER
     _attr_native_step = 1
     _attr_native_min_value = 0
@@ -91,37 +85,15 @@ class H6199ParameterNumber(_H6199ControlEntity, RestoreEntity, NumberEntity):
         super().__init__(coordinator, key=key, **kwargs)
         if key == "music_sensitivity":
             self._attr_native_max_value = 99
-        elif key == "video_white_balance":
-            # EXPERIMENTAL / capture-pending: the 33 a9 value mapping is unproven (§2.2, B3).
-            self._attr_entity_registry_enabled_default = False
 
     @property
     def native_value(self) -> float | None:
         value = getattr(self.coordinator, self._key)
         return float(value) if value is not None else None
 
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        await self._async_restore_value()
-
-    async def _async_restore_value(self) -> None:
-        if self._key != "video_white_balance" or getattr(self.coordinator, self._key) is not None:
-            return
-        default_balance = int(self._attr_native_max_value)
-        restored = default_balance
-        if (last_state := await self.async_get_last_state()) is not None:
-            try:
-                restored = int(round(float(last_state.state)))
-            except TypeError, ValueError:
-                restored = default_balance
-        restored = min(max(restored, int(self._attr_native_min_value)), int(self._attr_native_max_value))
-        setattr(self.coordinator, self._key, restored)
-        self.coordinator.async_set_updated_data(self.coordinator.data or {})
-
     async def async_set_native_value(self, value: float) -> None:
         next_value = int(round(value))
-        reapply = apply_active_video_white_balance if self._key == "video_white_balance" else apply_active_music_mode
-        await _set_with_rollback(self.coordinator, key=self._key, value=next_value, reapply=reapply)
+        await _set_with_rollback(self.coordinator, key=self._key, value=next_value, reapply=apply_active_music_mode)
 
 
 class PowerOffMemorySwitch(_H6199ControlEntity, RestoreEntity, SwitchEntity):

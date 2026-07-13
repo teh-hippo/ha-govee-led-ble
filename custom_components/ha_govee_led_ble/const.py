@@ -14,6 +14,7 @@ class ModelProfile:
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
     music_modes: tuple[str, ...] = ()
+    supports_music_color: bool = False
     supports_music_style: bool = False
     supports_music_params: bool = False
     supports_white_brightness: bool = False
@@ -21,10 +22,11 @@ class ModelProfile:
     supports_timers: bool = False
     supports_poweroff_memory: bool = False
     segment_count: int = 0
+    supports_segment_writes: bool = False
 
     @property
     def supports_segments(self) -> bool:
-        return self.segment_count > 0
+        return self.segment_count > 0 and self.supports_segment_writes
 
     @property
     def supports_music_mode(self) -> bool:
@@ -78,16 +80,19 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         state_readable=True,
         scene_source="api",
         music_modes=tuple(MUSIC_MODE_SLUGS),
+        supports_music_color=True,
         supports_music_style=True,
         supports_music_params=True,
         supports_diy=True,
         supports_timers=True,
         segment_count=15,
+        supports_segment_writes=True,
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
         supports_video_mode=True,
+        supports_video_sound_effects=True,
         music_modes=_H6199_MUSIC_MODES,
         supports_white_brightness=True,
         segment_count=15,

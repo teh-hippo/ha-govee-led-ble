@@ -317,8 +317,7 @@ def _v_video_region(expected: int) -> Callable[[bytes], tuple[bool, str]]:
 
 
 def _v_whitebalance(v: bytes) -> tuple[bool, str]:
-    """H6199 white balance with teeth. Live capture: 33 a9 00 03 ... selector 0x00 (matches our
-    build_video_white_balance) and count 0x03. Fails if the wire uses a different selector/shape."""
+    """H6199 raw white-balance frame with teeth; UI-to-axis mapping is checked separately."""
     ok = v[2] == 0x00 and v[3] == 0x03
     msg = f"selector={v[2]:#04x} count={v[3]} values={v[4:9].hex()}"
     return ok, msg + (" (0x00/3 matches our code)" if ok else " - expected selector 0x00, count 0x03")
@@ -852,7 +851,7 @@ def build_plan(protocol) -> list[Step]:  # noqa: ANN001
         match=_is(0x33, 0xA9),
         validate=_v_whitebalance,
         confirm=True,
-        note="live: 33 a9 00 03 01 ... selector 0x00 matches our build_video_white_balance",
+        note="live: 33 a9 00 03 01 <red><blue>; raw axes only, UI mapping unresolved",
     )
     add(
         id="h6199-scene",

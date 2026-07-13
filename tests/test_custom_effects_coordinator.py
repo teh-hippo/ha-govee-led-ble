@@ -182,11 +182,12 @@ async def test_save_rejects_scene_collision(hass, hass_storage):
     assert exc.value.key == "scene_name_collision"
 
 
-async def test_h6199_has_no_scene_collisions(hass, hass_storage):
+async def test_h6199_rejects_unvalidated_segment_effect(hass, hass_storage):
     coord = _coord(hass, "scene6199", "H6199")
     await coord.async_load_effects()
-    eid = await coord.async_save_effect("Sunset", SegmentContent(colors=((255, 0, 0),)))
-    assert coord.custom_effects[eid].name_key == "sunset"
+    with pytest.raises(EffectValidationError) as exc:
+        await coord.async_save_effect("Sunset", SegmentContent(colors=((255, 0, 0),)))
+    assert exc.value.key == "segments_unsupported"
 
 
 async def test_load_flags_stored_scene_collision_with_repair_issue(hass, hass_storage):
@@ -540,13 +541,27 @@ async def test_update_name_off_scene_clears_shadow_issue(hass, hass_storage):
 # Export: portable payload shape and exact-id resolution
 # --------------------------------------------------------------------------- #
 async def test_export_returns_full_payload(hass, hass_storage):
+    content = SegmentContent(colors=((255, 0, 0), None))
+    key = effect_store_key("exp")
+    hass_storage[key] = {
+        "version": 2,
+        "minor_version": 1,
+        "key": key,
+        "data": {
+            "effects": {
+                "a1b2c3d4": {
+                    "display_name": "My Reds",
+                    "name_key": "my reds",
+                    "content": content_to_dict(content),
+                }
+            }
+        },
+    }
     coord = _coord(hass, "exp", "H6199")
     await coord.async_load_effects()
-    content = SegmentContent(colors=((255, 0, 0), None))
-    eid = await coord.async_save_effect("My Reds", content)
 
-    assert await coord.async_export_effect(eid) == {
-        "id": eid,
+    assert await coord.async_export_effect("a1b2c3d4") == {
+        "id": "a1b2c3d4",
         "name": "My Reds",
         "model": "H6199",
         "segment_count": 15,

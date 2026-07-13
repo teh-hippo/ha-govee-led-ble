@@ -17,7 +17,6 @@ from .protocol import (
     build_power,
     build_segment_brightness,
     build_video_mode,
-    build_video_white_balance,
     build_white_brightness,
 )
 
@@ -55,7 +54,7 @@ def _single_effect_ref(first: str | None, second: str | None, translation_key: s
 
 # fmt: off
 async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: bool) -> None:
-    sound_effects = coord.video_sound_effects and coord.profile.supports_video_sound_effects
+    sound_effects = coord.video_sound_effects if coord.profile.supports_video_sound_effects else None
     await coord.send_command(build_video_mode(full_screen=coord.video_full_screen, game_mode=game_mode,
         saturation=coord.video_saturation, sound_effects=sound_effects,
         sound_effects_softness=coord.video_sound_effects_softness))
@@ -71,16 +70,6 @@ async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
         await coord.send_command(build_power(True))
         coord.is_on = True
     await apply_video_mode_from_state(coord, game_mode=coord.video_mode == "game")
-    return True
-
-
-async def apply_active_video_white_balance(coord: GoveeBLECoordinator) -> bool:
-    if coord.video_white_balance is None:
-        return False
-    if not coord.is_on:
-        await coord.send_command(build_power(True))
-        coord.is_on = True
-    await coord.send_command(build_video_white_balance(coord.video_white_balance))
     return True
 
 
@@ -132,7 +121,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
     # fmt: off
     async def async_set_video_mode(self, mode: str, saturation: int = 100,
             capture_region: str | None = None, full_screen: bool = True,
-            sound_effects: bool = False, sound_effects_softness: int = 0) -> None:
+            sound_effects: bool = False, sound_effects_softness: int | None = None) -> None:
         # fmt: on
         self._require_support("set_video_mode", supported=self.coordinator.profile.supports_video_mode)
         if sound_effects:
@@ -141,10 +130,16 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 supported=self.coordinator.profile.supports_video_sound_effects,
             )
         with self._rollback():
+            c = self.coordinator
             resolved_fs = full_screen if capture_region is None else capture_region == "full"
+            supports_sound = c.profile.supports_video_sound_effects
+            resolved_sound = sound_effects if supports_sound else None
+            resolved_softness = (
+                c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
+            )
             # fmt: off
             packet = build_video_mode(full_screen=resolved_fs, game_mode=mode == "game", saturation=saturation,
-                sound_effects=sound_effects, sound_effects_softness=sound_effects_softness)
+                sound_effects=resolved_sound, sound_effects_softness=resolved_softness)
             # fmt: on
             async def apply() -> None:
                 await self.coordinator.send_command(build_power(True))
@@ -157,17 +152,16 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 expected_video_mode=mode,
                 expected_video_full_screen=resolved_fs,
                 expected_video_saturation=saturation,
-                expected_video_sound_effects=sound_effects,
-                expected_video_sound_effects_softness=sound_effects_softness if sound_effects else None,
+                expected_video_sound_effects=resolved_sound,
+                expected_video_sound_effects_softness=resolved_softness if resolved_sound else None,
                 retry_command=apply,
             )
-            c = self.coordinator
             c.video_mode, c.effect = mode, None
             c.active_custom_id, c.music_mode = None, "off"
             c.video_saturation, c.video_full_screen = saturation, resolved_fs
-            c.video_sound_effects = sound_effects
-            if sound_effects:
-                c.video_sound_effects_softness = sound_effects_softness
+            c.video_sound_effects = sound_effects if supports_sound else False
+            if supports_sound:
+                c.video_sound_effects_softness = resolved_softness
         self._notify_state_changed()
 
     async def async_set_music_mode(self, mode: str, sensitivity: int = 99,
@@ -178,6 +172,16 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             mode = canonical
         slug = mode.replace(" ", "_")
         self._require_support("set_music_mode", supported=slug in self.coordinator.profile.music_modes)
+        if color is not None:
+            self._require_support(
+                "set_music_mode",
+                supported=self.coordinator.profile.supports_music_color,
+            )
+        if calm is not None:
+            self._require_support(
+                "set_music_mode",
+                supported=self.coordinator.profile.supports_music_style and slug == "rhythm",
+            )
         with self._rollback():
             c = self.coordinator
             resolved_sensitivity = min(sensitivity, 99)

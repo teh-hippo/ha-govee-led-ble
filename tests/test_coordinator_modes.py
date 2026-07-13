@@ -153,4 +153,4 @@ async def test_apply_music_params_encodes_fountain_direction(coord):
     coord.music_fountain_direction = "counterclockwise"
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_apply_music_params(0x35)
-    assert _sent(sc) == proto.build_music_params_a3(0x35, {28: 0x03})
+    assert _sent(sc) == proto.build_music_params_a3(0x35, {26: 0x02, 28: 0x05})

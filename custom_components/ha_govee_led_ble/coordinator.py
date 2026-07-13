@@ -145,10 +145,9 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.preview_reduce_motion = False
         self.video_saturation = self.white_brightness = 100
         self.music_sensitivity = 99
-        self.video_white_balance: int | None = None
         self.music_calm = False
         self.video_full_screen, self.video_sound_effects = True, False
-        self.video_sound_effects_softness = 0
+        self.video_sound_effects_softness = 100
         self.music_color: tuple[int, int, int] | None = None
         # Per-mode music movement params (§2.3, EXPERIMENTAL); defaults are the capture-pinned
         # template values so an untouched entity reapplies the exact captured body.
@@ -483,19 +482,15 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         except BleakError:
             return False
 
-    async def _send_identity_queries(self, *, include_hw: bool = True) -> None:
-        """Query firmware (and, at connect, hardware) for DeviceInfo, sending only unknowns.
+    async def _send_identity_queries(self) -> None:
+        """Query firmware and hardware for DeviceInfo, sending only unknowns.
 
-        A firmware reply can be missed right after connect (notify not yet delivering), so the
-        keep-alive loop re-sends the firmware query while it is unknown, bounded by
-        ``IDENTITY_RETRY_TICKS``. Hardware is sent once per connect and not retried: some units
-        never answer ``aa 07`` (see #97), so retrying it would only repeat a doomed write.
+        Replies can be missed right after connect while notifications are starting, so the
+        keep-alive loop retries unknown values up to ``IDENTITY_RETRY_TICKS``.
         """
         if not self._client or not self._client.is_connected:
             return
-        candidates = [(FW_QUERY, self.fw_version)]
-        if include_hw:
-            candidates.append((HW_QUERY, self.hw_version))
+        candidates = [(HW_QUERY, self.hw_version), (FW_QUERY, self.fw_version)]
         queries = [q for q, value in candidates if value is None]
         try:
             for query in queries:
@@ -625,10 +620,12 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     self.hass.async_create_task(self._disconnect_if_current(client))
                     break
                 self._keep_alive_ticks += 1
-                if self.fw_version is None and self._identity_retries < IDENTITY_RETRY_TICKS:
+                if (self.fw_version is None or self.hw_version is None) and (
+                    self._identity_retries < IDENTITY_RETRY_TICKS
+                ):
                     self._identity_retries += 1
                     async with self._lock:
-                        await self._send_identity_queries(include_hw=False)
+                        await self._send_identity_queries()
                 full = self._keep_alive_ticks % STATE_QUERY_EVERY_N_KEEP_ALIVES == 0
                 async with self._lock:
                     ok = await self._send_state_queries(query_power=True, query_brightness=full, query_color_mode=full)
@@ -669,7 +666,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         by ``build_segment_paint`` (one packet per colour) and written without readback, so
         the optimistic slots are restored if any write fails.
         """
-        if not self.profile.segment_count:
+        if not self.profile.supports_segments:
             raise ValueError(f"{self.model} does not support per-segment control")
         resolved: list[SegmentColorGroup] = [(list(segments), rgb) for segments, rgb in groups]
         snapshot = list(self.segment_colors)
