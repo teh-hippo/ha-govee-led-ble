@@ -9,7 +9,7 @@ Govee packets are 20 bytes: header 0x33 (command), 0xAA (status) or 0xA3
 (multi-packet fragment), with byte 19 = XOR of bytes 0..18. That signature is
 used to filter Govee traffic out of the phone's other BLE activity.
 
-Usage: python3 decode_govee.py <capture.pcap> [--all]
+Usage: uv run python tools/ble/decode_govee.py <capture.pcap> [--all]
   --all   also print packets that are not Govee (raw ATT values)
 """
 

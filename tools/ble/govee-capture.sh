@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Efficient Govee BLE capture loop, driven from WSL via pwsh.exe.
 #
-#   govee-capture.sh start <name>   # begin capture, then do ONE action in the app
-#   govee-capture.sh stop           # stop the running capture and decode it
-#   govee-capture.sh decode <name>  # re-decode an existing capture
-#   govee-capture.sh list           # list captures
+#   govee-capture.sh start <name>    # begin capture
+#   govee-capture.sh mark <label>    # timestamp an action in a batched capture
+#   govee-capture.sh stop            # stop the running capture and decode it
+#   govee-capture.sh decode <name>   # re-decode an existing capture
+#   govee-capture.sh list            # list captures
 #
 # Captures stream to $GOVEE_BLE_DIR/captures/<name>.pcap. Stop is by PID, so you tap
 # the app at your own pace (idevicebtlogger has no duration flag and Ctrl+C cannot be
@@ -16,6 +17,7 @@
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SELF_DIR/../.." && pwd)"
 : "${GOVEE_BLE_DIR:?set GOVEE_BLE_DIR to the WSL capture-tool directory}"
 : "${GOVEE_WIN_CAP:?set GOVEE_WIN_CAP to the Windows capture directory}"
 : "${GOVEE_BTLOGGER:?set GOVEE_BTLOGGER to idevicebtlogger.exe}"
@@ -38,18 +40,30 @@ case "${1:-}" in
     pid="$("$PWSH" -NoProfile -Command "\$p = Start-Process -FilePath '$EXE' -ArgumentList '-f','pcap','$out' -WindowStyle Hidden -PassThru; \$p.Id" | tr -d '\r[:space:]')"
     started_at="$(date --iso-8601=seconds)"
     printf '%s %s %s\n' "$pid" "$name" "$started_at" > "$STATE"
+    : > "$CAP/$name.actions.tsv"
     for _ in {1..20}; do
       [ -f "$CAP/$name.pcap" ] && [ "$(stat -c %s "$CAP/$name.pcap")" -ge 24 ] && break
       sleep 0.25
     done
     if [ ! -f "$CAP/$name.pcap" ] || [ "$(stat -c %s "$CAP/$name.pcap")" -lt 24 ]; then
       "$PWSH" -NoProfile -Command "Stop-Process -Id $pid -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
-      rm -f "$STATE"
+      rm -f "$STATE" "$CAP/$name.actions.tsv"
       echo "capture preflight failed: idevicebtlogger wrote no pcap header" >&2
       exit 1
     fi
     echo "recording '$name' (pid $pid)"
-    echo ">> perform ONE action in the Govee app now, then: govee-capture.sh stop"
+    echo ">> mark each batched action immediately before it starts, then run: govee-capture.sh stop"
+    ;;
+  mark)
+    [ -f "$STATE" ] || { echo "no capture running"; exit 1; }
+    shift
+    label="$*"; [ -n "$label" ] || usage 1
+    read -r _ name _ < "$STATE"
+    label="${label//$'\t'/ }"
+    label="${label//$'\r'/ }"
+    label="${label//$'\n'/ }"
+    printf '%s\t%s\n' "$(date --iso-8601=ns)" "$label" >> "$CAP/$name.actions.tsv"
+    echo "marked '$label'"
     ;;
   stop)
     [ -f "$STATE" ] || { echo "no capture running"; exit 1; }
@@ -58,15 +72,15 @@ case "${1:-}" in
     sleep 0.4
     rm -f "$STATE"
     stopped_at="$(date --iso-8601=seconds)"
-    printf '{"capture":"%s","started_at":"%s","stopped_at":"%s"}\n' \
-      "$name" "$started_at" "$stopped_at" > "$CAP/$name.meta.json"
+    printf '{"capture":"%s","started_at":"%s","stopped_at":"%s","actions":"%s.actions.tsv"}\n' \
+      "$name" "$started_at" "$stopped_at" "$name" > "$CAP/$name.meta.json"
     echo "stopped '$name' (pid $pid)"
-    python3 "$SELF_DIR/decode_govee.py" "$CAP/$name.pcap"
+    uv run --project "$PROJECT_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcap"
     ;;
   decode)
     name="${2:-}"; [ -n "$name" ] || usage 1
     shift 2
-    python3 "$SELF_DIR/decode_govee.py" "$CAP/$name.pcap" "$@"
+    uv run --project "$PROJECT_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcap" "$@"
     ;;
   list)
     ls -lh "$CAP"/*.pcap 2>/dev/null || echo "no captures yet"

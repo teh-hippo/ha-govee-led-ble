@@ -21,14 +21,15 @@ packets that belong to the strip.
 - **An iPhone with Apple's Bluetooth logging profile installed**, paired and trusted to the
   Windows host. Installing that profile and the libimobiledevice toolchain is a one-time,
   environment-specific setup kept outside this repo.
-- **Python 3** in WSL for the decoder. No Wireshark required.
+- The project's `uv` environment in WSL for the decoder. No Wireshark required.
 
 ## Tools (`tools/ble/`)
 
 - `govee-capture.sh`: start/stop the capture and auto-decode. It starts `idevicebtlogger`
   detached and stops it **by PID**, because the logger has no duration flag and Ctrl+C
   cannot be delivered to a Windows process from WSL. You therefore tap the app at your own
-  pace between `start` and `stop`.
+  pace between `start` and `stop`. The `mark` command writes timestamped labels for each action
+  in a batched feature-family capture.
 - `decode_govee.py`: parse the `.pcap` and print the strip's packets as labelled hex.
 - `validate_protocol.py` + `validation_plan.py`: a **guided live validation harness**. It runs a
   comprehensive ordered checklist one action at a time (e.g. "Set brightness to 1%"), watches the
@@ -71,6 +72,27 @@ tools/ble/govee-capture.sh decode seg-red --all   # re-decode, incl. non-Govee A
 
 Keeping each action in its own named file (`seg-red`, `scene-halloween`, ...) makes the
 captures trivial to compare later.
+
+## Batched feature-family loop
+
+Use one capture for a short A/B/A family when stopping for every action would add more hand-off
+overhead than evidence. Mark each action immediately before it starts and leave about three
+seconds between actions:
+
+```bash
+tools/ble/govee-capture.sh start music-style-batch
+tools/ble/govee-capture.sh mark "Bloom Dynamic"
+# perform the action
+tools/ble/govee-capture.sh mark "Bloom Calm"
+# perform the action
+tools/ble/govee-capture.sh mark "Bloom Dynamic revert"
+# perform the action
+tools/ble/govee-capture.sh stop
+```
+
+The capture writes `<name>.actions.tsv` and references it from `<name>.meta.json`. Prefer the
+one-action loop when a control has volatile neighbouring bytes or the action sequence cannot be
+made unambiguous.
 
 ## How the decoder isolates the strip
 
