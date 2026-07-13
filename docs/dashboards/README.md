@@ -29,9 +29,9 @@ swatches.
 | Comfort | yes | yes | on/off, brightness, RGB colour, colour temperature, colour favourites, active-mode readout, effect preview |
 | Scenes | yes | no | built-in scene effects; H6199 scene transport exists but its model catalogue is not yet surfaced |
 | Music | yes | yes | all mapped H617A modes; the four validated classic modes on H6199 |
-| Video | no | yes | movie/game, colour mapping, video white balance, static white |
+| Video | no | yes | movie/game, colour mapping, sound/softness and static white; white-balance UI mapping remains gated |
 | Timers | yes | no | H617A sleep and wake-up timers (disabled by default) |
-| Advanced | yes | limited | custom-effect services; H6199 authoring is restricted to validated static segment effects |
+| Advanced | yes | limited | custom-effect services; H6199 authoring remains gated until its write paths are attributable |
 
 A card that references an entity your model does not expose simply shows as
 unavailable, so delete the views or rows that do not apply to your device.
@@ -47,7 +47,6 @@ Entities (example ids, substitute your own):
 - `select.govee_strip_music_mode`
 - `select.govee_strip_music_style`
 - `number.govee_strip_music_sensitivity`
-- `number.govee_strip_video_white_balance`
 - `select.govee_strip_video_color_mapping`
 - `switch.govee_strip_power_off_memory`
 - `switch.govee_strip_sleep_timer`, `number.govee_strip_sleep_timer_duration`
@@ -79,9 +78,8 @@ Services:
   saved effect by its stable id.
 - Colour mapping reapplies the active video mode as you change it, so switching
   it moves the strip into video mode. Saturation is supported through
-  `set_video_mode`; the sound-overlay extension remains unavailable until it is
-  captured on H6199.
-- H617A timer entities and H6199 video white balance are disabled by default;
-  enable each in its entity settings before use. H6199 timers and power-off
-  memory remain hidden until they are validated on that model. Static white
-  (`set_white_brightness`) is separate from video white balance.
+  `set_video_mode`; the same service exposes the validated sound and softness
+  controls.
+- H617A timer entities are disabled by default. H6199 white-balance, segment, timer and power-off
+  memory controls remain hidden until their model-specific mappings are validated. Static white
+  (`set_white_brightness`) is separate from DreamView white balance.

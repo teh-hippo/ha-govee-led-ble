@@ -60,7 +60,7 @@ Byte offsets in this document are half-open ranges, so `[12:14]` means `byte[12]
 On connect the app performs an initial-state handshake, then settles into a keep-alive poll.
 Observed sequence (H617A, confirmed live):
 
-1. Identity and capability queries, each sent once: `aa 07` hardware version, `aa 06` firmware
+1. Identity and capability queries, each sent once: `aa 07 03` hardware version, `aa 06` firmware
    version, `aa 04` brightness, `aa 40` segment count, `aa 05` colour mode, `aa 23 ff` timer table,
    `aa 11` sleep timer, `aa 12` wake-up timer.
 2. Per-segment state read-back `aa a5 <group>` for groups 1..5 (see "Segment state readback").
@@ -91,7 +91,7 @@ a trailing XOR checksum (omitted from the table for brevity). `<..>` marks a var
 | Vibrant activate | `33 05 0a <slot>` | Same activation as DIY; preceded by the `0xA3` Vibrant body (type `0x03`). |
 | Music mode | `33 05 13 <mode> <sens> <style> <count> <RGB×count>` | H617A uses sub-command `0x13` (an older protocol version emits `0x0c`); see "Music mode layout". All 11 `mode` codes confirmed live (match `const.MUSIC_MODES`); `sens` 0-99; `style` `00` Dynamic / `01` Calm; `count` = manual colour count and the auto-colour flag (`00` = Auto colour on). Extended modes also send a `0x41` `a3` parameter frame. |
 | Video mode | `33 05 00 <full> <game> <sat> [01 <soft>]` | Full-screen and game flags, saturation 0-100, optional sound-effect softness. |
-| Video white balance (H6199) | `33 a9 00 03 01 <red> <blue>` | DreamView calibration, H6199 only. |
+| Video white balance (H6199) | `33 a9 00 03 01 <red> <blue>` | Raw independent DreamView components; app-control mapping is not yet surfaced. |
 | Timer / schedule | `33 23 <idx> <enableAndType> <hour> <min> <repeat>` | 4 on/off slots. Related: sleep `33 11`, wake-up `33 12`, gradual `33 14`. See "Timer subsystem". |
 | Clock sync (handshake) | `33 09 <7-byte time>` | Sent on connect; informational. |
 
@@ -196,8 +196,8 @@ byte:   33 05 SUB  MODE  SENS  STYLE  COUNT  <RGB × COUNT>
   candidate mappings ({0,5,3,2} and {16,17,18,19} from earlier analysis, and on-wire {5,3,4,6}).
   Live activation of each named mode settled it in favour of the on-wire set
   `{0x05, 0x03, 0x04, 0x06}`.
-- `STYLE` (byte 5): Dynamic (`0x00`) / Calm (`0x01`). Byte-confirmed live for Rhythm and Shiny
-  (both emitted `style=calm` when set to Calm); the other modes hold `0x00`. The
+- `STYLE` (byte 5): Dynamic (`0x00`) / Calm (`0x01`). Byte-confirmed live for Rhythm, Bloom and
+  Shiny; the other modes hold `0x00`. The
   `parse_color_mode_response` decoder currently reports Calm for Rhythm only.
 - `COUNT` (byte 6) = manual colour count, and is also the **auto-colour flag**: `0x00` = Auto
   colour on (no RGB follows); `N` = Auto colour off with `N` colours, each a 3-byte RGB. Confirmed
@@ -213,23 +213,23 @@ toggle and auto-colour + one colour. Extended modes ALSO send a colour/parameter
 `01 <fragCount> 41 <MODE> <nColours> <RGB×n> <mode-specific tail>`, and the per-mode parameters live
 at fixed offsets in that assembled body (offset = concatenated fragment payloads).
 
-**Per-mode `a3` parameter offsets (confirmed live 2026-07-09 by A/B/A diff with revert):**
+**Per-mode `a3` parameter offsets (confirmed live by A/B/A diff with revert):**
 
 | Mode | Parameter | Body offset | Values |
 |---|---|---|---|
+| Bloom `0x30` | Dynamic/Calm companion | `[27]` | Dynamic=`0x50`; Calm=`0x14` |
+| Shiny `0x31` | Dynamic/Calm companion | `[20,21]` | Dynamic=`14,46`; Calm=`05,64` |
 | Separation `0x32` | Separation point | `[20]` | `0x01`..`0x05` (5 positions) |
 | Separation `0x32` | Gradient | `[21]` | `0x00` off / `0x01` on |
 | Hopping `0x33` | Relative brightness | `[29]` | `0x00`..`0x32` (0-50%) |
 | Piano Keys `0x34` | Key count | `[27]` | `0x08`..`0x0f` (8-15) |
-| Fountain `0x35` | Direction | `[28]` | `0x05` Clockwise / `0x03` reverse |
+| Fountain `0x35` | Direction | `[26,28]` | Clockwise=`00,05`; Counterclockwise=`02,05`; Two-way=`01,03` |
 | Day and Night `0x37` | Segment count | `[26]` | `0x01`..`0x07` (1-7) |
 | Day and Night `0x37` | Speed | `[27]` | `0x01`..`0x32` |
 
 Multi-colour palettes (Separation, Hopping background, etc.) are the `<RGB×n>` groups in the body.
-Two caveats confirmed on the wire: **Fountain `[26]` is a volatile change/animation byte, not the
-direction** (the direction is `[28]`; an early single-diff mis-read `[26]` until an A/B/A revert
-exposed the confound); and **Fountain "Two-way" emits a body identical to Counterclockwise**
-(`[28]=0x03`), so the two are indistinguishable in this frame. Rhythm/Spectrum parameters ride the
+Fountain direction uses the pair `[26,28]`, confirmed across current Clockwise/Two-way/Clockwise
+and retained Clockwise/Counterclockwise/Clockwise captures. Rhythm/Spectrum parameters ride the
 `33 05 13` frame itself (STYLE byte 5, auto-colour/COUNT byte 6, RGB from byte 7), not the `a3` body.
 
 Verified frames (captured, sub-command `0x13`): `13 05 63 00 01 ff0000` (mode `0x05`, sens 99, one
@@ -248,7 +248,7 @@ notification. Reply data below is an example unless stated otherwise.
 | `04` | Brightness | `0x64` = 100%. Mirrors the `33 04` command (`BRIGHTNESS_QUERY`). |
 | `05` | Colour mode | First reply byte is the mode: `15 01` = static RGB, `04 <code>` = scene, `00 ..` = video, `13 ..` = music. |
 | `06` | Firmware version | `"3.02.24"` (ASCII) |
-| `07` | Hardware version | `"3.01.01"` (ASCII) |
+| `07` | Hardware version | selector `03`, then `"3.01.01"` (ASCII) |
 | `11` | Sleep timer (fade-off) | `[enable, startBri, closeMin, curMin]`, e.g. `00 1e 0f 0f` = disabled, start bri 30, close in 15 min. Write command `0x11`. |
 | `12` | Wake-up timer (sunrise) | `[enable, endBri, hour, min, repeat, rampMin]`, e.g. `00 64 11 00 00 1e` = disabled, end bri 100, 17:00, ramp 30 min. Write command `0x12`. |
 | `14` | Gradual on/off | Single state byte; no reply seen when unset. Write command `0x14`. |
@@ -471,9 +471,9 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | none | Not implemented; needs mode-`0x0a` builders for the `TYPE 0x04`/`0x03`/`0xFF` bodies. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a` | none | Not implemented. |
-| Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Per-mode `a3` parameters (section 3) and multi-colour are discovered but not yet built. |
+| Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
 | Video mode `33 05 00` | `build_video_mode` | H6199 TV-backlight only; not offered on H617A. |
-| Video white balance `33 a9` | `build_video_white_balance` | H6199-specific. |
+| Video white balance `33 a9` | `build_video_white_balance` | H6199 raw two-axis frame only; no one-dimensional UI mapping. |
 | Colour-mode query `aa 05` | `parse_color_mode_response` | Confirmed live. |
 | Scheduled timer write `33 23` | `build_timer_schedule` | Write confirmed live (4 slots, on/off, weekday bits Mon=bit0..Sun=bit6). |
 | Timer table read-back `aa 23` | `parse_timer_schedule_table` | Decodes the full `ff`-prefixed 4-slot table into per-slot records; confirmed against the live reply. |
@@ -512,10 +512,9 @@ The full, current worklist of what remains to verify or discover is in
 [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md). In brief:
 
 1. **Music, per-mode parameters**: all 11 mode codes and the per-mode `a3` parameter offsets are
-   confirmed (section 3). Dynamic/Calm (STYLE, byte 5) is byte-confirmed for Rhythm and Shiny;
-   auto-colour is the COUNT byte (byte 6). Fountain "Two-way" is indistinguishable from
-   Counterclockwise on the wire, and Fountain body byte `[26]` is a volatile change byte, not the
-   direction (the direction is `[28]`).
+   confirmed (section 3). Dynamic/Calm (STYLE, byte 5) is byte-confirmed for Rhythm, Bloom and Shiny;
+   auto-colour is the COUNT byte (byte 6). Fountain direction uses the byte pair `[26,28]`:
+   Clockwise=`00,05`, Counterclockwise=`02,05`, and Two-way=`01,03`.
 2. **Query semantics**: the `aa 11` (sleep) and `aa 12` (wake-up) reply layouts are confirmed
    (section 4), as is the `aa 23` timer table. `aa 14` (gradual) is not exposed on the H617A app
    (no toggle exists; the wake-up screen only offers a final-brightness level).
@@ -532,8 +531,8 @@ Still open:
   numeric arrays and sub-style/direction bytes, and reading an app-authored DIY body back (the
   device is write-only for effects: `aa 05` returns the numeric code, never the `a3` body; see
   issues #57/#89).
-- **H6199 depth**: only video, overall brightness, white balance and scene were observed for the
-  H6199; its music and per-segment behaviour are not yet validated. See
+- **H6199 depth**: video, overall brightness, raw white-balance frames, three representative scenes
+  and the four current music modes were observed. Segment writes remain unvalidated. See
   [`ble-protocol-h6199.md`](ble-protocol-h6199.md).
 
 The DIY effect catalogue is in [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.

@@ -235,20 +235,16 @@ views:
         name: Colour mapping
         features:
           - type: select-options
-      - type: entities
-        title: Video controls
-        entities:
-          - entity: number.govee_strip_video_white_balance
       - type: markdown
         content: >-
-          Video white balance is disabled by default; enable the
-          `number.govee_strip_video_white_balance` entity in its settings to use
-          it. Saturation is set through the `set_video_mode` service.
+          DreamView white balance is withheld because the current app drives two
+          independent raw components and its UI mapping is not yet decoded.
+          Saturation is set through the `set_video_mode` service.
       - type: markdown
         content: >-
           Static white is a separate H6199 warm/cool white mode set by the
           `set_white_brightness` service. It is distinct from Video white
-          balance above.
+          balance.
       - type: grid
         columns: 3
         square: false

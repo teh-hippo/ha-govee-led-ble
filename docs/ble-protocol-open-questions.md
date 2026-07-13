@@ -118,9 +118,9 @@ diffing.
   but low value.
 - **Snapshot** (More menu): an app-side store of saved looks ("No snapshots yet" by default);
   applying one replays the underlying colour/scene/effect command. No new command.
-- **Video mode**: not offered for the H617A in the app (an H6199 TV-backlight feature).
-  `build_video_mode` / `build_video_white_balance` stay builder-derived and cannot be validated on
-  this SKU without an H6199.
+- **Video mode**: not offered for the H617A in the app (an H6199 TV-backlight feature). H6199
+  app-sniffs validate `build_video_mode` and the raw two-axis `build_video_white_balance` frame;
+  the white-balance UI mapping remains open.
 
 ## 8. Tooling and provenance notes
 

@@ -30,8 +30,7 @@ signals confirm the model:
 - The captured "Halloween" scene used code **1173**. That is H617A's code for Halloween; on
   H619A/H6199 the same scene is code **2497**. (Fetched live from the Govee library API below.)
 - Home Assistant's Bluetooth scan advertises this strip as `Govee_H617A_*` (never `H619A`).
-- The integration's existing `scenes.py` matches the live H617A catalogue exactly (79 of 80
-  scenes; see the gap note below), and is therefore already correct for this device.
+- The generated `scenes.py` catalogue is mechanically checked against the frozen H617A snapshot.
 
 Practical upshot: the scene work is essentially done (H617A is already supported), and the new
 capabilities to add are **per-segment control**, **DIY custom effects** and the **Vibrant
@@ -58,13 +57,17 @@ implementations in `wez/govee2mqtt` (`src/ble.rs`) and `AlgoClaw/Govee`
 Fetch and distil the catalogue for any model with the helper tool:
 
 ```bash
-python3 tools/ble/fetch_effect_library.py H617A H6199   # writes effect-library-<SKU>.json
+uv run python tools/ble/fetch_effect_library.py H617A H6199
+uv run python tools/ble/fetch_effect_library.py H617A H6199 --check
+uv run python tools/ble/generate_scenes.py --check
 ```
 
 Each distilled entry is `{category, name, code, param, variant?, adjustable?, config?}`, which
 is enough to send the scene (`build_scene(code)` for simple scenes, or
 `build_scene_multi(param, code)` when `param` is present) and to know which parameters it
-exposes (`config`).
+exposes (`config`). Frozen snapshots live under `tools/ble/catalogues`; `--check` reports added,
+removed and changed entries without overwriting them. `generate_scenes.py` keeps the compressed
+H617A runtime catalogue in `scenes.py` mechanically aligned with its frozen snapshot.
 
 ## 1. Scenes (H617A, complete)
 
@@ -103,21 +106,20 @@ Spin(2226)~, Rhythm(2227), Bloom(2228)~.
 > name in section 2. The scene versions play a fixed Govee-authored animation; the DIY
 > versions apply the chosen animation to a user palette.
 
-`scenes.py` gap: the packaged catalogue has 79 of these 80 scenes; **"Aurora B" (16160)** is
-missing and should be added when `scenes.py` is next regenerated.
+The generated H617A runtime catalogue now carries all 83 effect variants across the 80 scene
+tiles, including **Aurora B** (16160), and is checked against the frozen API snapshot.
 
-`scenes.py` prefix bug (verified against capture): `build_scene_multi()` hardcodes a multi-frame
-prefix byte of `0x02`, but the app uses the scene's `sceneType` (see
-[`ble-protocol-h617a.md`](ble-protocol-h617a.md)). This is correct for the 72 `sceneType = 2`
-scenes but wrong for the 2 `sceneType = 1` scenes, **"Halloween" and "Sweet"**, which need
-`0x01`. Fix by carrying `sceneType` per scene and passing it as the prefix. Keep this in mind
-when testing those two scenes.
+`SceneEntry` carries the API `sceneType`, and `build_scene_multi()` passes it to the A3 fragmenter.
+This preserves the `0x01` prefix required by **Halloween** and **Sweet** instead of assuming the
+common `0x02` type.
 
 ### H619A / H6199 scenes
 149 scenes across 12 categories (including licensed packs: "House of the Dragon", "Zootopia
 2", "Miami Dolphins"), plus Music/Games/Movie categories absent from H617A. The codes differ
 from H617A (e.g. Halloween 2497 vs 1173, Forest 212 vs 2163), so H619A/H6199 need their own
 catalogue. Regenerate with `fetch_effect_library.py H6199`.
+The captured simple and type-`0x02` branches are byte-pinned in `build_h6199_scene`; the H6199
+catalogue is not yet surfaced by the light entity.
 
 ## 2. DIY custom effects
 
@@ -343,17 +345,17 @@ per-effect limits, the rgbicv2 speed domain and directions).
 
 | Effect | Code | Colour groups | Variant selector | Notes |
 |---|---|---|---|---|
-| Brilliant1 | 501 | single 1..8 | `param2 = 0x32` | speed 76..255, default 250; no direction; no user brightness |
-| Brilliant2 | 501 | single 1..8 | `param2 = 0x14` | second baked sub-style |
+| Brilliant1 | 501 | 1 background + 4..8 embellishment | body shape | Speed + relative-brightness interval 10..100%; current iOS body has 7 A3 parts |
+| Brilliant2 | 501 | 1 background + 4..8 embellishment | body shape | Same controls; current iOS body has 6 A3 parts |
 | Colorful starry sky | 502 | single 1..8 | body byte | star-size range ~1..12 + relative brightness + speed |
 | Colorful meteor1 | 504 | single 1..8 | ~`0x20`/`0x29` | body ~51 bytes; direction |
 | Colorful meteor2 | 504 | single 1..8 | body byte | |
 | Colorful meteor shower1 | 503 | single 3..8 | ~`0x20`/`0x29` | body ~102 bytes; direction |
 | Colorful meteor shower2 | 503 | single 3..8 | body byte | |
 | Sparkle | 505 | embellishment 1..8 + fixed 1 background | body byte | relative-brightness interval |
-| Bloom1 | 506 | bloom 1..8 + moving 1..8 | offset 99 = `0x14` | no speed slider; relative brightness |
-| Bloom2 | 506 | bloom 1..8 + moving 1..8 | offset 99 = `0x16` | |
-| Bloom3 | 506 | bloom 1..8 + moving 1..8 | body byte | third captured variant |
+| Bloom1 | 506 | bloom 2..8 + moving 2..8 | body shape | 7-part current iOS body; relative brightness 1..100% |
+| Bloom2 | 506 | bloom 2..8 + moving 2..8 | body shape | deterministic 9-part body |
+| Bloom3 | 506 | bloom 2..8 + moving 2..8 | body shape | deterministic 9-part body |
 | Stack1 | 507 | stack 1..8 + moving 1..8 | body byte | relative brightness 1..100 |
 | Stack2 | 507 | stack 1..8 + moving 1..8 | body byte | |
 
@@ -370,6 +372,14 @@ The H617A serves exactly these 33. The Govee app carries further templates (Prog
 Ladder, Battle / Duikang, Sway / Swing, Spin / Revolve, Vibrate / Penshe, Stacking / PileUp,
 Colorful, Chase), but those belong to other RGBIC SKUs (H604A/B, H605B, H6608, H66013), not the
 H617A, so this catalogue is complete for the H617A.
+
+Current iOS 7.5.21 editors apply selections and parameter changes immediately; the visible Apply
+button is not the BLE write boundary. Bloom2 relative brightness 10/30/10% produced repeatable
+wire values `0x45/0x6f/0x45`. Share Space replays a downloaded four-part A3 body through DIY
+activation `0xfe`. Workshop and AI/image effects remain separate authoring/import mechanisms.
+
+The H6199 also exposes DIY, but its captured Fade1 uses activation `0x61`. H617A animated DIY
+builders must not be reused for H6199 until that model's body grammar is mapped.
 
 Effect appearance (motion) is confirmed only for Brilliant (a brisk flow of the chosen colours, no
 direction) and Crossing (a bidirectional crossing of up to three bands); the per-variant spatial
@@ -404,25 +414,24 @@ floors and defaults:
 
 | Effect | Code | Colour groups (label: min..max) | Speed [min, max, def] (0..255) | Brightness / range | Directions |
 |---|---|---|---|---|---|
-| Brilliant | 501 | single: 1..8 | [76, 255, 250] | none | none |
+| Brilliant | 501 | Background: exactly 1; Embellishment: 4..8 | app slider; wire mapping pending | relative-brightness interval 10..100% | none |
 | Colorful starry sky | 502 | single: 1..8 | [1, 255, 200] | star size (payload-driven; code fallback 1..25, observed ~1..12); relative brightness on the V1 template | none |
 | Colorful meteor | 504 | single: 1..8 | [200, 255, 253] | none | Clockwise, Counterclockwise |
 | Colorful meteor shower | 503 | single: 3..8 | [200, 255, 253] | none | Clockwise, Counterclockwise |
 | Sparkle | 505 | Embellishment: 1..8; Background: exactly 1 | [200, 245, 240] | relative-brightness interval (0..255) on the V1 template | none |
-| Bloom | 506 | Bloom colour: 1..8; Moving colour: 1..8 | none (no speed slider) | relative brightness | Clockwise, Counterclockwise |
+| Bloom | 506 | Bloom colour: 2..8; Moving colour: 2..8 | none (no speed slider) | relative brightness 1..100% | none shown |
 | Stack | 507 | Stack colours: 1..8; Moving colour: 1..8 | n/a (brightness slider instead) | relative brightness 1..100 (default 100) | Clockwise, Counterclockwise |
 
 Notes:
 
-- Bloom on this device runs the V2 template (template id 113), which allows
-  1..8 in both groups. The base/V1 Bloom templates use 2..8; which template a given firmware
-  serves is confirmed by capture (Bloom here was 1..8-capable).
+- Current iOS 7.5.21 exposes 2..8 colours in both Bloom groups.
 - "Star size" is a type 2 `[max, min]` range carried in the record (confirmed; section 6 of
   [`ble-protocol-h617a.md`](ble-protocol-h617a.md)); the code fallback is 1..25 and the observed
   range was ~1..12.
-- The relative-brightness **interval** is the first two bytes of a 6-byte brightness record
-  (upper, lower) scaled `byte = round(pct x 2.55)`. It backs Bloom's relative-brightness control
-  and Sparkle's two-handle range slider; Brilliant exposes no user brightness control
+- Brightness records are template-specific rather than universally scaled by `pct x 2.55`.
+  Bloom's single relative-brightness control uses a `0x32` floor and produced
+  10/20/30% = `0x45/0x5a/0x6f`. Brilliant exposes a two-handle interval from 10 to 100%.
+  Exact Sparkle and Brilliant field mappings remain to be isolated
   ([`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6).
 
 **Finger Sketch**: freeform paint, no colour-group min/max. **Combo**: one shared flat palette
@@ -483,7 +492,7 @@ the full worklist. What remains here:
 | 1 | rgbicv2 Brilliant/Sparkle/Stack: move each slider alone | the concrete per-effect speed-lookup values and the meaning of colour `param1` / `param2` (the record grammar itself is decoded, section 2.3) |
 | 2 | rgbicv2 Colorful meteor / meteor shower: change direction | the direction byte and the variant-byte value space        |
 | 3 | Colour temperature on the device                     | the corrected true-white frame drives white mode; extend the Kelvin curve |
-| 4 | Music, per-mode controls (each mode's colour picker, multi-colour, Dynamic/Calm) | completes the app Music parameter model (protocol reference section 3) |
+| 4 | Music, remaining per-mode colour pickers and multi-colour controls | completes the app Music parameter model; Bloom/Shiny style and Fountain direction are closed |
 
 Effect demonstrations (what each effect looks like, for entity naming and previews) are a
 separate research task and do not require a capture.
@@ -491,7 +500,8 @@ separate research task and do not require a capture.
 ## 6. Tooling
 
 - `tools/ble/fetch_effect_library.py` fetches and distils the scene catalogue for any SKU from
-  the public API (no account). Output: `effect-library-<SKU>.json`.
+  the public API (no account). Frozen output lives under `tools/ble/catalogues`, and `--check`
+  reports API drift without overwriting it.
 - `tools/ble/govee-capture.sh` + `tools/ble/decode_govee.py` drive and decode the live BLE
   captures (see [`ble-capture-workflow.md`](ble-capture-workflow.md)).
 
