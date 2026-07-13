@@ -68,8 +68,8 @@ def test_catalogue_drift_reports_structural_changes():
 @pytest.mark.parametrize(
     "sku,scene_count,effect_count,digest",
     [
-        ("H617A", 80, 83, "5fc5fe70c6c6e0e3bb5c1956ece8372cee2ec33f75dd971d31850741959345b9"),
-        ("H6199", 149, 240, "8ef351fcdb67ba529d07c0fddae4651831e3bbfe546bb50534b34f0881610cdd"),
+        ("H617A", 80, 83, "1a1e49f46f7735629351d72f82237d09ea3a2033f56c09470a5c7aaeb70bee56"),
+        ("H6199", 149, 240, "f8675e1c452dacf655de643db79e0c1542fdcbb3d55ca3365af74b02f0d195bb"),
     ],
 )
 def test_frozen_catalogue_scope(sku: str, scene_count: int, effect_count: int, digest: str):

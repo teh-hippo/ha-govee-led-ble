@@ -74,6 +74,7 @@ def distil(raw: dict[str, Any]) -> dict[str, Any]:
                     "name": scene.get("sceneName"),
                     "code": light_effect.get("sceneCode"),
                     "param": light_effect.get("scenceParam", ""),
+                    "scene_type": light_effect.get("sceneType", scene.get("sceneType", 2)),
                 }
                 # Scenes with several sub-effects (e.g. "Action A/B/C") share a
                 # name; keep the sub-label so each remains addressable.

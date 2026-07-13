@@ -7,19 +7,22 @@
       "category": "Natural",
       "name": "Sunrise",
       "code": 0,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Natural",
       "name": "Sunset",
       "code": 1,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Natural",
       "name": "Forest",
       "code": 2163,
       "param": "AyYAAQAKAgH/GQG0CgoCyBQF//8AAP//////AP//lP8AFAGWAAAAACMAAg8FAgH/FAH7AAAB+goEBP8AtP8AR///4/8AAAAAAAAAABoAAAABAgH/BQHIFBQC7hQBAP8AAAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -54,6 +57,7 @@
       "name": "Aurora",
       "code": 2164,
       "param": "AiAAAAABAgH/MgEAAAAA+jIDAP8AAP//qv8AAwCAAAAAACMAAAADAgH/GQD6AAAC+gAEf/8A//8AoP//AP//FAH6AAD/AA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -84,6 +88,7 @@
       "name": "Lightning",
       "code": 2165,
       "param": "ASmBAgEBAgH/AAH/AQEC/yMG////AAAA////AAAA////AAAAFQXMEQXNAA==",
+      "scene_type": 2,
       "variant": "A",
       "adjustable": true,
       "config": [
@@ -112,6 +117,7 @@
       "name": "Lightning",
       "code": 2278,
       "param": "BRokAAABAgH/fQP/FBQAABQBAAD/AACAAACAARoAAAABAgH/fgH8FBQAABQBAAD/AACAAACAARogAQACAgH/AAKAFBQAgBQB////AACAEAHzAhooAQACAgH/AACAFBQAgBQB////AACAEgH4Ah0kAQACAgH/AAP/BAEA/woCAAD/////AACAAACAAQ==",
+      "scene_type": 2,
       "variant": "B",
       "adjustable": true,
       "config": [
@@ -143,6 +149,7 @@
       "name": "Starry Sky",
       "code": 2166,
       "param": "AiAAAAACAAH/GQF4MjICyDIDAAD/AH7/AAD/AAAAAAAAACMAAg8DAAH/FAH6FBQC/TIEAAD/////AOz/AAD/AAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -169,6 +176,7 @@
       "name": "Spring",
       "code": 2167,
       "param": "AykAAgoFAgH/GQAAAAAC+jIG/zgA/38AAP8AAAAAAP//iwD/AACAAAAAACMAAh4KAAH//wAAAAAB+gAE8QAd/3UA/8AA/0sAAAD/AAH6AB0AAAABAAEyAAHIMjICyDICAP8A//8AAAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -198,19 +206,22 @@
       "category": "Natural",
       "name": "Summer",
       "code": 2168,
-      "param": "AhoAAAABAgH//wAAAAAA/zIBM///AwCAAAAAACYAAh4KAAH//wAAAAAA+gAFAAD/AP///8AA//8AAAX/AAAAAAD/AA=="
+      "param": "AhoAAAABAgH//wAAAAAA/zIBM///AwCAAAAAACYAAh4KAAH//wAAAAAA+gAFAAD/AP///8AA//8AAAX/AAAAAAD/AA==",
+      "scene_type": 2
     },
     {
       "category": "Natural",
       "name": "Fall",
       "code": 2169,
-      "param": "AhoAAAABAgH//wAAAAAA/zIB/zgAAwCAAAAAACkAAh4KAAH//wAAAAAA+gAG8QAd/3UA/8AA/0sA/wAAAAAAEADcAAD/AA=="
+      "param": "AhoAAAABAgH//wAAAAAA/zIB/zgAAwCAAAAAACkAAh4KAAH//wAAAAAA+gAG8QAd/3UA/8AA/0sA/wAAAAAAEADcAAD/AA==",
+      "scene_type": 2
     },
     {
       "category": "Natural",
       "name": "Winter",
       "code": 2170,
       "param": "AxoAAAABAgH/CgHIFAoA/TIB////AwCAAAAAACMAAh4KAAH/BQCgFBQB/QAE////t///pv//d///FAHIEQH9/yMAAh4KAAH/BQCgFBQB/QoE////t///pv//d///EQHIEgH8AA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -242,13 +253,15 @@
       "category": "Natural",
       "name": "Rainbow",
       "code": 22,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Natural",
       "name": "Fire",
       "code": 2171,
       "param": "BR0AAAAWAAFwMgO7FBQC1RQC/1kH////AwD/EwD/ASknAAAFAgH/mQL/Xx4CAP8GAAAA/////20H/00H/w4H/wgJEgD8EACAAikhAAAGAgH/mQL/Xx4CAP8GAAAA/////20H/00H/w4H/wgJEAD+EAD9AilDAhQUAAH//wCAFBQB6hQG/xUH/wgJ/wgJ/ykH/wcTAAAAEwD8AACAAykkAAABAAH/AACAFBQB6RQG/xUH/zkH/44H/14H/wcT/w8HFwD5AAD/BA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -311,6 +324,7 @@
       "name": "Wave",
       "code": 2172,
       "param": "ASMAAAACAAH//wAAAAAC/TIEAAD/AH7/AOz/AAD/EwH8AAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -333,6 +347,7 @@
       "name": "Deep sea",
       "code": 2173,
       "param": "Ah0AAAABAAH//wAAAAAA3DICAGT/AAD/AAAAAAAAABoAAgoBAgH/KAHXAAAAADIBAP+WAAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -359,6 +374,7 @@
       "name": "Karst Cave",
       "code": 2174,
       "param": "AyYAAQAKAgH/GQFkCgoCyBQFvQD//0kA/5YAnv8AFP//FgFkAAAAACkAAh4PAgH/ZAHmAAAB+hQGBP8AAP8AiwD//0v/8QAe//8AAAAAAAAAACAAAAABAAGWMgDmFBQC+hQDAMz/AG7/AAP/AAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -409,6 +425,7 @@
       "name": "Glacier",
       "code": 2175,
       "param": "BCBQAQAZAAH/AAD/MjICZAADAAD/AP//////FgD/AAAAACBVAQAZAAH/AAD/MjICZAADAAD/AP//////FAD/AAAAACkAAh4FAAH/AAL/MjIC/xQGAP//AAAA////AAAA////AP//AAAAEgD6ACYAAh4FAAH/AAL/MjIC3AIFAP//AAAA////AAAAAP//AAAAEgDrAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -439,6 +456,7 @@
       "name": "Gobi Desert",
       "code": 2176,
       "param": "AiCgAQAyAAGWlgAAAAAA3BQDljIAyDwA0jIAAAAAAAAAAB0AAgUBAAH/FAHwFFAC+kYC/38A/7QAAAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -465,6 +483,7 @@
       "name": "Moonlight",
       "code": 2177,
       "param": "AiBgAgoFAgFkZABkAAAC/RQD//8A//+g////AAAAEAXcAB2gAQAyAAFkHgAAAAAA/RQCAABQAB6gAAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -500,6 +519,7 @@
       "name": "Flower Field",
       "code": 2178,
       "param": "AiygAh4ZAgH/lgDSAAAC/gAH0QBe/wMA/2wA//8A/38A/wAA9QD/AAAAEADwABqgAQAyAAEyFAAAAAAA+hQBzwBiAAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -539,6 +559,7 @@
       "name": "Downpour",
       "code": 2179,
       "param": "BCMwAgQBAAH/AAL/AgIA/2QE////AAAAAAAAAAAAAACAEQD0ACkUAgIBAAH/AAD/AQQA/yYGAAAAAAAA////AAAA////AAAAAACAEwDfAC9CAgUDAAL/AAL/AgH/AAD7KMgA/x4GAAAAAAAAAAAAAAAA////AAAAAACAAACAACAAAAAyAgIHAgGbgMgEAwOZfMAAgBQB////AACAAACAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -626,6 +647,7 @@
       "name": "Sunny",
       "code": 2180,
       "param": "Ax0AAAABAAHxwwB/FBQAkgICAP//AAD/AAB/AAB/AR0AAhkBAAHxwwDKFBQAfxQC////AAAAAAB/EQD8AR0AAhkBAAHxwwDKFBQAfxQC////AAAAAAB/EwD8AQ==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -676,6 +698,7 @@
       "name": "Volcano",
       "code": 2181,
       "param": "BSNQAQAFAgH/CgD6AAACAAAE/wAAyAAAlgAAMgAAFgH5AAAAACNVAQAFAgH/CgD6AAACAAAE/wAAyAAAlgAAMgAAFAH6AAAAACNVAQAFAgH/CgD6AAACAAAE/wAAyAAAlgAAMgAAFAH6AAAAACNQAQAFAgH/CgD6AAACAAAE/wAAyAAAlgAAMgAAFgH5AAAAAB2gAgoFAgH/CgD/AAACAAACMgAA/wAAEADJAAAAAA==",
+      "scene_type": 2,
       "variant": "A",
       "adjustable": true,
       "config": [
@@ -744,6 +767,7 @@
       "name": "Volcano",
       "code": 2277,
       "param": "BSYwAQADAgH/AAD/FBQB/w8F/wAAAAAA/ysGAAAA/1EHEgDxAADUACY3AQADAgH/AAD/FBQB/w8F/wAAAAAA/yoHAAAA/1kHEADxAADUAB1DAQAEAAH/GgD/FBQB0w8C/wAA/xEHEQD0AADUAB0lAAABAgGyDQDTGRkA0w8C/0UH/wAAEAD0AADUAB0jAAABAgGyDADTGRkA0w8C/zoH/wAAEgD0AADUAA==",
+      "scene_type": 2,
       "variant": "B",
       "adjustable": true,
       "config": [
@@ -892,6 +916,7 @@
       "name": "Cornfield",
       "code": 2182,
       "param": "Bh0wAQADAgH/AAD/FBQA5xQC/0EA/4IAEQDyAAAAAB0yAQADAgH/AAD/FBQA5hQC/0EA/2MAEQDyAAAAAB00AQADAgH/AAD/FBQA5hQC/0EA/2MAEQDyAAAAAB02AQADAgH/AAD/FBQA5xQC/0EA/5YAEQDyAAAAAB0oAQACAgH/AAD/FBQA5h4C/0EA/2MAEQDyAAAAABqgAQAyAAFkCgAAAAAA/zIBPCMAERTwAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -999,6 +1024,7 @@
       "name": "Meteor shower",
       "code": 2183,
       "param": "AiA3AQAAAgH/qwIAAAABAAADAAD/AP//////AAD6EAH1ACAwAQADAgH/qwIAAAABAAADAAD/AP//////AAD6EAH5AA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1030,19 +1056,22 @@
       "category": "Natural",
       "name": "Flying",
       "code": 2184,
-      "param": "Ax0AAgYDAgG9YgPMCgoDxhQC/44H/wYVBADQAQD5BSMAAgUCAgHbWQPMCg8DzRQE7Tj+//sHSO3+Of5dBADQAQD5BSAAAAABAAHMzAK+CgoA7kYD/26Y/1MN/9gvAACAAACAAQ=="
+      "param": "Ax0AAgYDAgG9YgPMCgoDxhQC/44H/wYVBADQAQD5BSMAAgUCAgHbWQPMCg8DzRQE7Tj+//sHSO3+Of5dBADQAQD5BSAAAAABAAHMzAK+CgoA7kYD/26Y/1MN/9gvAACAAACAAQ==",
+      "scene_type": 2
     },
     {
       "category": "Natural",
       "name": "Tree shadow",
       "code": 2185,
-      "param": "Ah0AAAABAAGnVQO+Dw+A6RQCdP5eUP4IAACAAACAACkAAgYBAAGPRgPLBQoA6RQG/+0w5/9jAAAAAAAA//8AAAAABQDjAAD7AA=="
+      "param": "Ah0AAAABAAGnVQO+Dw+A6RQCdP5eUP4IAACAAACAACkAAgYBAAGPRgPLBQoA6RQG/+0w5/9jAAAAAAAA//8AAAAABQDjAAD7AA==",
+      "scene_type": 2
     },
     {
       "category": "Natural",
       "name": "Cherry blossoms",
       "code": 2186,
       "param": "Ah0AAAABAAFwcACAFBQA3BQC/zft/wb+AACAAACAAB0AAgUBAAE9GgCAFBQBgBQC/2r39Iv+AACAEgD1AA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1065,6 +1094,7 @@
       "name": "Stream",
       "code": 2187,
       "param": "Ax2RAAACAgGdgwAAFBQAABQCW/+1VSr/FAP4AACAABoQAAABAAG1tQAAFBQA/xQBLpT/AACAAACAABqRAAACAgH/TALRFBQAABQBeP7ZBAD9AADpAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1100,6 +1130,7 @@
       "name": "Ripple",
       "code": 2188,
       "param": "BRoAAAABAAH/AACAFBQAgBQBAAD/AACAAACAABpQAAABAAH/AACAFBQAgBQBAP//FgD5AACAABpVAAABAAH/AACAFBQAgBQBAP//FAD5AACAABoyAAABAAHMzACAFBQAgBQBCP9wFgD5AACAARo1AAABAAHMzACAFBQAgBQBCP97FAD5AACAAQ==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1151,25 +1182,29 @@
       "category": "Natural",
       "name": "Desert B",
       "code": 10005,
-      "param": "AyYAAAAFAgHLMwPJFBQDABQF/x4H/zcH/1oH/zcH/x4HAACAAACAABpQAwECAAH/AACAFBQAgBQB/zIHFgD5AACAABpVAwECAAH/AACAFBQAgBQB/zEHFAD5AACAAA=="
+      "param": "AyYAAAAFAgHLMwPJFBQDABQF/x4H/zcH/1oH/zcH/x4HAACAAACAABpQAwECAAH/AACAFBQAgBQB/zIHFgD5AACAABpVAwECAAH/AACAFBQAgBQB/zEHFAD5AACAAA==",
+      "scene_type": 2
     },
     {
       "category": "Natural",
       "name": "Sand Grains",
       "code": 10006,
-      "param": "Ah0AAwQEAAGgoAAAFBQDABQC/4Mw/4UjAACAEAH3ARoAAAABAAH/jAH5FBQDAAcB/2MaAACAAACAAA=="
+      "param": "Ah0AAwQEAAGgoAAAFBQDABQC/4Mw/4UjAACAEAH3ARoAAAABAAH/jAH5FBQDAAcB/2MaAACAAACAAA==",
+      "scene_type": 2
     },
     {
       "category": "Natural",
       "name": "Aurora B",
       "code": 16160,
-      "param": "BCNAAAABAgH/GQPCCgMC5jIED/8ICwf/B/j//wbpAAL4AQCAACNCAAABAAH/GAO7CgOC5zIE/9Nyy4X/DUv/Uv+ZEgHNAAPkACNEAAABAAH/GAO7CgMC5TIECwf/D/8I/wbpB/j/EAHMAQCAACZGAAABAAH/GAO7CgMC5TIFB/j/Cwf//wbpD/8I3P8REgHdAQCAAA=="
+      "param": "BCNAAAABAgH/GQPCCgMC5jIED/8ICwf/B/j//wbpAAL4AQCAACNCAAABAAH/GAO7CgOC5zIE/9Nyy4X/DUv/Uv+ZEgHNAAPkACNEAAABAAH/GAO7CgMC5TIECwf/D/8I/wbpB/j/EAHMAQCAACZGAAABAAH/GAO7CgMC5TIFB/j/Cwf//wbpD/8I3P8REgHdAQCAAA==",
+      "scene_type": 2
     },
     {
       "category": "Festival",
       "name": "Christmas",
       "code": 2189,
       "param": "AykAAgoFAgH/GQAAAAAC+jIG/zgA/38AAP8AAAAAAP///wAAFAH6AAAAACMAAg8DAAH/GQHmMjIB+jIE8QAdAP8AAP//////FgH6EgHcACAAAAABAgH/AAD+FBQA/xQD/wAAAAAAAP8AEQCAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1251,25 +1286,29 @@
       "category": "Festival",
       "name": "Halloween",
       "code": 1173,
-      "param": "gwb/9QAFAP///wUA/+n/BQD///8FAP/p2QUA//j/BgAE/x4A/1oA/zIA/3gA"
+      "param": "gwb/9QAFAP///wUA/+n/BQD///8FAP/p2QUA//j/BgAE/x4A/1oA/zIA/3gA",
+      "scene_type": 1
     },
     {
       "category": "Festival",
       "name": "Candlelight",
       "code": 9,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Festival",
       "name": "Birthday",
       "code": 2190,
-      "param": "Ai8AAgoFAgL/GQAAAAD/GQAAAAAC+jIG/zgA/38AAP8AAAAAAP//iwD/AACAAAAAACMAAh4KAAH//wAAAAAB+gAE8QAd/3UA/8AA/0sAAAD/AAH6AA=="
+      "param": "Ai8AAgoFAgL/GQAAAAD/GQAAAAAC+jIG/zgA/38AAP8AAAAAAP//iwD/AACAAAAAACMAAh4KAAH//wAAAAAB+gAE8QAd/3UA/8AA/0sAAAD/AAH6AA==",
+      "scene_type": 2
     },
     {
       "category": "Festival",
       "name": "Fireworks",
       "code": 2191,
       "param": "BCNQAQAZAAH/AAD/MjICZAAE/wAAAAD/AP//////FAD/AAAAACNVAQAZAAH/AAD/MjICZAAE/wAAAAD/AP//////FgD/AAAAACkAAg8FAAH/AAL/MjIC/wIG/wAAAAAA//8AAAAAAAD/AP//AAAAEgH6ACkAAg8FAAH/AAL/MjIC/wIGiwD/AAAA//8AAAAA/3L/AP//AAAAEgH6AA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1368,6 +1407,7 @@
       "name": "Party",
       "code": 2192,
       "param": "AzgAAh4KAgH/GQEUAAAC/xQL/wAAAP//AAD/////AAD//wAAiwD/AAAA////AP8AiwD/AAD/AAAAACwAAh4PAgH/GQMAMjIC+gAH/wAAAP//AAD/////AAD//wAAiwD/FADIAAAAACAAAAABAAEyMgAAMjIC/woD/xP//38AAAD/EQCAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1427,6 +1467,7 @@
       "name": "Dance Party",
       "code": 2193,
       "param": "AiwAAh4PAgH/GQEUAAAC+gAH/wAAAP//AAD/////AAD//wAAiwD/AAD/AAAAACwAAh4PAgH/GQMAMjIC+gAH/wAAAP//AAD/////AAD//wAAiwD/AAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1457,6 +1498,7 @@
       "name": "Mother's Day",
       "code": 2194,
       "param": "AiAAAAABAAH//wEAAAAA3DID/wsA6QD/zAD/AAAAAAAAACAAAigBAgH/KAHXIBQAADID/3///z8A////AAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1492,6 +1534,7 @@
       "name": "Father's Day",
       "code": 2195,
       "param": "Ah0AAAABAAH//wEAAAAA3DICAAD/AP//AAAAAAAAABoAAigBAgH/KAHXIBQAADIB////AAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1527,6 +1570,7 @@
       "name": "White Light",
       "code": 10565,
       "param": "ARoAAAABAAH//wAAFBQAABQB/5Y+AACAAACAAA==",
+      "scene_type": 2,
       "special_skus": [
         "H618A"
       ]
@@ -1535,25 +1579,29 @@
       "category": "Life",
       "name": "Sweet",
       "code": 1170,
-      "param": "gwH/tP8yAATwAB7qACu8AP/jAP8="
+      "param": "gwH/tP8yAATwAB7qACu8AP/jAP8=",
+      "scene_type": 1
     },
     {
       "category": "Life",
       "name": "Romantic",
       "code": 7,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Life",
       "name": "Movie",
       "code": 4,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Life",
       "name": "Siren",
       "code": 2196,
       "param": "Ah0AAAAKAAH//wAAAAAC/xQC/wAAAAD/EADIAAAAACMAAhQKAAH//wAAAAAA/woE////AP//AAD/////EQD+AAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1591,37 +1639,43 @@
       "category": "Life",
       "name": "Night",
       "code": 2197,
-      "param": "Ah0AAAAFAAGWBQGWMjIC3DICAAD/nADIAAAAAAAAACAAAAADAgGWBQHXMjICADIDiwD/AAAAAAD/AAAAAAAAAA=="
+      "param": "Ah0AAAAFAAGWBQGWMjIC3DICAAD/nADIAAAAAAAAACAAAAADAgGWBQHXMjICADIDiwD/AAAAAAD/AAAAAAAAAA==",
+      "scene_type": 2
     },
     {
       "category": "Life",
       "name": "Sleep",
       "code": 2198,
-      "param": "ASAAAAAFAAFMMwGWMjIC3DID/38A/0EA/7AAAAAAAAAAAA=="
+      "param": "ASAAAAAFAAFMMwGWMjIC3DID/38A/0EA/7AAAAAAAAAAAA==",
+      "scene_type": 2
     },
     {
       "category": "Life",
       "name": "Morning",
       "code": 2199,
-      "param": "Ah0AAAABAAHIMgFkMjIAyDIC////AP//AAAAAAAAABoAAgoBAgH/KAG0MjIAADIBAP+WAAAAAAAAAA=="
+      "param": "Ah0AAAABAAHIMgFkMjIAyDIC////AP//AAAAAAAAABoAAgoBAgH/KAG0MjIAADIBAP+WAAAAAAAAAA==",
+      "scene_type": 2
     },
     {
       "category": "Life",
       "name": "Afternoon",
       "code": 2200,
-      "param": "Ah0AAAABAAH//wAAAAAA3DIC////AP//AAAAAAAAAB0AAgoBAgH/KAHXAAAA+jICAMX/////AAAAAAAAAA=="
+      "param": "Ah0AAAABAAH//wAAAAAA3DIC////AP//AAAAAAAAAB0AAgoBAgH/KAHXAAAA+jICAMX/////AAAAAAAAAA==",
+      "scene_type": 2
     },
     {
       "category": "Life",
       "name": "Work",
       "code": 2201,
-      "param": "AR0AAAABAgH//wAAAAAA+pYC////j///AAAAAAAAAA=="
+      "param": "AR0AAAABAgH//wAAAAAA+pYC////j///AAAAAAAAAA==",
+      "scene_type": 2
     },
     {
       "category": "Life",
       "name": "Leisure",
       "code": 2202,
       "param": "AiAAAAABAgH/MgAAAAAA9TID/wAA/2wA/38AAwCAAAAAAB2gAAAFAgH/MgD/FBQA8DIC/1AA7AAmAwCAEQD8AA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1670,13 +1724,15 @@
       "category": "Life",
       "name": "Meditation",
       "code": 2203,
-      "param": "AiMAAAABAgHnNQAAAAAAblMEKwf/Bhz+Bkb+B3v/AwAcAAAAAB0AAQAKAgH/MgAAMgAA+jICAAB4AABQAwCAAAAAAA=="
+      "param": "AiMAAAABAgHnNQAAAAAAblMEKwf/Bhz+Bkb+B3v/AwAcAAAAAB0AAQAKAgH/MgAAMgAA+jICAAB4AABQAwCAAAAAAA==",
+      "scene_type": 2
     },
     {
       "category": "Life",
       "name": "Colorful",
       "code": 2204,
       "param": "ASYAAgoFAAH//wCeAAAB9QAF8QAd/3UA/8AA/0sA/1h7AAD/AAH6Aw==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1697,13 +1753,15 @@
       "category": "Life",
       "name": "Candy",
       "code": 2205,
-      "param": "ASMAAAAKAAH//wAAFBQCABQE/0pV/1UhpP5eVvv+AACAAACAAA=="
+      "param": "ASMAAAAKAAH//wAAFBQCABQE/0pV/1UhpP5eVvv+AACAAACAAA==",
+      "scene_type": 2
     },
     {
       "category": "Life",
       "name": "Dreamlike",
       "code": 2206,
       "param": "AiMAAAAEAgH/UACAFBQDtgoEElP+iwD/MU7/iwD/AAD6AACAACAAAggBAAH//wM9CgoA/gED////AP//Nsn+AADuAACAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1744,6 +1802,7 @@
       "name": "Dreamland",
       "code": 2207,
       "param": "BRoAAQACAAH//wCAFBQB/xQB2gf/FQD9AACAARoAAQACAAH//wCAFBQB/xQB/7cHFQH9AACAARoAAQACAAH//wCAFBQB/xQB/zkHEQL6AwCAARoAAQACAAH//wCAFBQB/xQB/wbZFQD6AACAAR0AAAAKAAH//wCAFBQAwxQC/0AH/weNBQT3AACAAA==",
+      "scene_type": 2,
       "variant": "A",
       "adjustable": true,
       "config": [
@@ -1807,6 +1866,7 @@
       "name": "Dreamland",
       "code": 2279,
       "param": "AyYAAAABAgH//wAAAQEA0AEF/wAA/2UHAP8AAAD/iwD/AACAAACAACYAAQAFAAH//wCAFBQCAAEFiwD/AAD/AP8A/zEH/wAAFgD5AACAASYAAQAFAAH//wCAFBQCAAEFiwD/AAD/AP8A/zkH/wAAFAD5AACAAg==",
+      "scene_type": 2,
       "variant": "B",
       "adjustable": true,
       "config": [
@@ -1846,13 +1906,15 @@
       "category": "Emotion",
       "name": "Energetic",
       "code": 16,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Emotion",
       "name": "Profound",
       "code": 2208,
       "param": "AiMAAAAKAgH/CgIAAAACAAAEAAD/AHr/AMf/AP//EAH6AAAAACMAAAAKAgH/CgIAAAACAAAEAAD/AHH/ALL/AP//EgH6AAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1884,13 +1946,15 @@
       "category": "Emotion",
       "name": "Quiet",
       "code": 2209,
-      "param": "ASAAAAAIAgH/MgHIMhQC+jIDbv8A1f8A1f8AEQKAAAAAAA=="
+      "param": "ASAAAAAIAgH/MgHIMhQC+jIDbv8A1f8A1f8AEQKAAAAAAA==",
+      "scene_type": 2
     },
     {
       "category": "Emotion",
       "name": "Warm",
       "code": 2210,
       "param": "AyNQAQAPAgH/CgIAAAACAAAE/wAA/1oA/3gA5QA2EAD6AAAAACMAAQAPAgH/CgIAAAACAAAE/wAA/1oA/3gA8gAcEAD6AAAAABoAAAABAgGWMgAAAAAA+jIB/4H/EQCAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1921,6 +1985,7 @@
       "name": "Flow",
       "code": 2211,
       "param": "ASkAAQAyAgH/MgD/MhkB/AAGAP//AKP/AHT/AAAAAAAAAAAAAAAAAAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -1941,13 +2006,15 @@
       "category": "Emotion",
       "name": "Longing",
       "code": 2212,
-      "param": "AiMAAAACAgH/MgHIMlAB0zIEAAD/AHr/swCb/zP/AAAAAAAAACMAAg8FAgH/CgPIMjIByDIEjAD/AHH/iwD//0n/FAGWAAAAAA=="
+      "param": "AiMAAAACAgH/MgHIMlAB0zIEAAD/AHr/swCb/zP/AAAAAAAAACMAAg8FAgH/CgPIMjIByDIEjAD/AHH/iwD//0n/FAGWAAAAAA==",
+      "scene_type": 2
     },
     {
       "category": "Emotion",
       "name": "Happy",
       "code": 2213,
       "param": "BSkAAAAIAAH/AAP/ZGQCADIG/wAA/38A//8AAP//AAD/AP8AEgD8AAAAAhoRAAABAgH/AAAAAAAA/zIBiwD/AAAAEgH8ARoTAAABAgH/AAAAAAAA/zIBAAD/AAAAEgH8ARoVAAABAgH/AAAAAAAA/zIBAP8AAAAAEgH9ARoVAAABAgH/AAAAAAAA/zIBAP//AAAAEgH8AQ==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2010,6 +2077,7 @@
       "name": "Mysterious",
       "code": 2214,
       "param": "AikAAAABAAH/AAH/ZGQA/AMG/wAAAP8AAAD//38A//8AiwD/AAAAAAAAAikAAAAIAAH/AAP/ZGQCADIG/3D//38A//8AAP//AKD/AP8AEgD8AAAAAg==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2036,6 +2104,7 @@
       "name": "Release",
       "code": 2215,
       "param": "AiZQAQAFAAH/AAAAZAoCyBQFAAD/AP//AP8A//8A/38AFgD9AAAAACZVAQAFAAH/AAAAZAoCyBQFAAD/AP//AP8A//8A/38AFAD8AAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2066,6 +2135,7 @@
       "name": "Game",
       "code": 2216,
       "param": "AiYAAAAFAAH//wAAAAAC/zIFiwD/AAD//xP//38A/wAAEwH9AAAAACYAAAADAAH//wAAAAAC/zIFiwD/AAD/AAAA////AP//EwH8AAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2110,6 +2180,7 @@
       "name": "Disco",
       "code": 2217,
       "param": "AiwAAgoFAgH//wAAAAAB/wAH/wAAAP//AAD/////AAD//wAAiwD/AAD/EAH4ACkAAgoDAgH/CgAZAAAC/zIGiwD/AAD/AAAA////AAAA/wAAAwCAEgH6AA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2149,13 +2220,15 @@
       "category": "Emotion",
       "name": "Optimistic",
       "code": 2218,
-      "param": "ASAAAQAKAAHl5QAAFBQBAAED/2iN//JuGP6DAACAAACAAA=="
+      "param": "ASAAAQAKAAHl5QAAFBQBAAED/2iN//JuGP6DAACAAACAAA==",
+      "scene_type": 2
     },
     {
       "category": "Emotion",
       "name": "Heartbeat",
       "code": 2219,
       "param": "Ah0AAAACAgH/AAEAFBQCABQC/wf7B/P/AACAAACAAB0AAAABAgH/BAOAFBQA/AUC/wAAAAAAAACAAACAAQ==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2206,6 +2279,7 @@
       "name": "Cheerful",
       "code": 2220,
       "param": "Ax1QAQAFAAH//wGAFBQBgBQC/38A/wAAFQD6AACAAR1VAQAFAAH//wGAFBQBgBQC/38A/wAAFwD6AACAASAAAAADAAFtbQD5FBQCABQD//8A/4Un//8AAgD4AACAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2236,6 +2310,7 @@
       "name": "Swing",
       "code": 2222,
       "param": "BSMgAQACAgH/AAD/FBQA/xQE/0EA/4IA1ABX/5YAEQD8AAAAACMiAQACAgH/AAD/FBQA/xQE/0EA/2MA4wA5/7kAEQD6AAAAACMkAQACAgH/AAD/FBQA/xQE/0EA/2MA3gBE/7AAEQD7AAAAACMmAQACAgH/AAD/FBQA/xQE/0EA/5YA1QBV/64AEQD6AAAAACMoAQACAgH/AAD/FBQA/xQE/0EA/5YA7QAk/7IAEQD6AAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2368,6 +2443,7 @@
       "name": "Flash",
       "code": 2223,
       "param": "ASagAQAIAAH//wAAAAAA/hQF//8A/38A/0UA/wAA2wBIFAH9AAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2394,6 +2470,7 @@
       "name": "Fight",
       "code": 2224,
       "param": "BSMgAQACAgH//wD/FBQB/wYE/wAAAP////8AAP8AFAD5AACAACMkAQACAgH//wD/FBQB/wYE/wAAAP8A//8AAP//FgD6AACAACMiAQACAgH//wD/FBQB/wYE/wAAAP8A//8AAP//FAD7AACAACMmAQACAgH//wD/FBQB/wYE/wAAAP8A//8AAP//FgD7AACAACMoAQACAgH//wD/FBQB/wYE/wAAAP8A//8AAP//EAD5AACAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2526,6 +2603,7 @@
       "name": "Stacking",
       "code": 2225,
       "param": "AiAAAAABAAH//wAAAAAAyDID/wAAAP8AAAD/FADOAAAAACAAAQABAAH//wAAAAAAyDID/wAAAP8AAAD/EgD/AAAAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2547,19 +2625,22 @@
       "category": "Funny",
       "name": "Twinkle",
       "code": 8,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Funny",
       "name": "Breathe",
       "code": 10,
-      "param": ""
+      "param": "",
+      "scene_type": 0
     },
     {
       "category": "Funny",
       "name": "Spin",
       "code": 2226,
       "param": "BSYgAAABAgH/fgOACgoA8xQF/4wH//4HYf4IB/6uB7r+FQD4AACAACkiAAABAgH/GAOACgoA8xQG/4wH//4H/14H/wY9/wbTtAb+FwD4AACAACkkAAABAgH/GQOACgoA8hQG/4wH//4HCP+qBtr+CH3+1wb/FQD4AACAACkmAAABAgH/GQOACgoA8xQG/4wH//4H/waF9Qf/Vmb/B6L/FwD4AACAACkoAAABAgH/GQOACgoA8xQG/4wH//4H8VD/B2n/CP+RCP8PFQD4AACAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
@@ -2641,13 +2722,15 @@
       "category": "Funny",
       "name": "Rhythm",
       "code": 2227,
-      "param": "AykkAAABAAH/AACAFBQAgAEG/wAAAAD///8AAP8AiwD//38AAACAAACAAClAAgQBAAH/AACAFBQB5gQG/wYbBwf///8AAP8A/38AAP//EgDyAADZASlGAgQBAAH/AACAFBQB5gQG/wAAAAD///8AAP8A/38AAP//EADzAACAAQ=="
+      "param": "AykkAAABAAH/AACAFBQAgAEG/wAAAAD///8AAP8AiwD//38AAACAAACAAClAAgQBAAH/AACAFBQB5gQG/wYbBwf///8AAP8A/38AAP//EgDyAADZASlGAgQBAAH/AACAFBQB5gQG/wAAAAD///8AAP8A/38AAP//EADzAACAAQ==",
+      "scene_type": 2
     },
     {
       "category": "Funny",
       "name": "Bloom",
       "code": 2228,
       "param": "BCkwAAABAAH//wCAFBQB8hQG/wAA/38AcP6aB3H/9Rf///8AFgD5AACAACkjAAABAAH//wCAFBQB8hQG/wAA/38AcP6aByz//hH+//8AFAD6AACAACklAAABAAH//wCAFBQB8hQG/wAA/38AcP6aB1z//wf3//8AFgD6AACAACk3AAABAAH//wCAFBQB8hQG/wAA/38AcP6aB1n/8wf///8AFAD6AACAAA==",
+      "scene_type": 2,
       "adjustable": true,
       "config": [
         {
