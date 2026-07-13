@@ -154,10 +154,7 @@ def main() -> None:
                 for change in changes:
                     print(f"  {change}")
             else:
-                print(
-                    f"{sku}: unchanged at {catalogue['scene_count']} scenes / "
-                    f"{catalogue['effect_count']} effects"
-                )
+                print(f"{sku}: unchanged at {catalogue['scene_count']} scenes / {catalogue['effect_count']} effects")
             continue
         out_path.write_text(json.dumps(catalogue, indent=2, ensure_ascii=False) + "\n")
         adjustable = sum(1 for scene in catalogue["scenes"] if scene.get("adjustable"))
