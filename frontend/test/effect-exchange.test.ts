@@ -272,7 +272,8 @@ describe("Sketch authoring", () => {
         palette: [[255, 0, 0], [0, 0, 255]],
         effects: [[0, 0], [3, 4], [9, 10]],
       });
-      expect(flatVariantLabel(3, 4)).toBe("Marquee 2");
+      expect(flatVariantLabel(1, 0)).toBe("Jumping1");
+      expect(flatVariantLabel(3, 4)).toBe("Marquee2");
     });
 
     it("rejects empty, oversized or invalid chains and palettes", () => {
