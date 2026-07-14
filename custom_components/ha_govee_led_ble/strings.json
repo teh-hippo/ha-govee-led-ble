@@ -194,17 +194,23 @@
     "flat_bad_rgb": {
       "message": "A Flat palette entry is not a valid RGB colour."
     },
-    "combo_variant_range": {
-      "message": "Combo variant must be from 0 to 255."
+    "combo_variant_invalid": {
+      "message": "Combo variant must be 0."
     },
     "combo_speed_range": {
       "message": "Combo speed must be from 0 to 100."
+    },
+    "combo_empty": {
+      "message": "Combo requires at least one effect step."
     },
     "combo_too_many": {
       "message": "Combo accepts up to four effect steps."
     },
     "combo_family_variant_invalid": {
       "message": "A Combo step uses an unsupported Flat family and variant."
+    },
+    "combo_palette_empty": {
+      "message": "Combo requires at least one palette colour."
     },
     "combo_bad_rgb": {
       "message": "A Combo palette entry is not a valid RGB colour."

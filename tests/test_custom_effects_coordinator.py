@@ -94,6 +94,38 @@ async def test_apply_unknown_id_raises(hass, hass_storage):
     assert exc.value.key == "unknown_effect"
 
 
+async def test_load_quarantines_content_that_no_longer_validates(hass, hass_storage):
+    key = effect_store_key("invalid_combo")
+    hass_storage[key] = {
+        "version": 2,
+        "minor_version": 1,
+        "key": key,
+        "data": {
+            "effects": {
+                "aaaa1111": {
+                    "display_name": "Legacy Combo",
+                    "name_key": "legacy combo",
+                    "content": {
+                        "kind": "combo",
+                        "variant": 0,
+                        "speed": 50,
+                        "palette": [[255, 0, 0]],
+                        "effects": [[4, 6]],
+                    },
+                }
+            }
+        },
+    }
+    coord = _coord(hass, "invalid_combo")
+    await coord.async_load_effects()
+
+    assert coord.custom_effect_index() == {}
+    assert coord.quarantined_custom_effect_index() == {"aaaa1111": "Legacy Combo"}
+    with pytest.raises(EffectValidationError) as exc:
+        await coord.async_apply_custom_effect("aaaa1111")
+    assert exc.value.key == "combo_family_variant_invalid"
+
+
 # --------------------------------------------------------------------------- #
 # Store migration v1 -> v2
 # --------------------------------------------------------------------------- #

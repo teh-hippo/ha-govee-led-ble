@@ -290,12 +290,12 @@ def build_flat_diy(content: FlatContent) -> list[bytes]:
     return [*build_a3_multi(0x04, body), build_diy_activate(0xF0)]
 
 
-def build_combo(content: ComboContent) -> list[bytes]:
+def build_combo(content: ComboContent, *, slot: int = 0xF0) -> list[bytes]:
     # EXPERIMENTAL: harness=diy-combo encoding=capture-pinned
     palette = b"".join(bytes(colour) for colour in content.palette)
     sequence = b"".join(bytes([family, variant]) for family, variant in content.effects)
     body = bytes([0xFF, content.variant, content.speed, len(palette)]) + palette + bytes([len(sequence)]) + sequence
-    return [*build_a3_multi(0x04, body), build_diy_activate(0xF0)]
+    return [*build_a3_multi(0x04, body), build_diy_activate(slot)]
 
 
 def build_custom_effect(content: EffectContent, *, segment_count: int) -> list[bytes]:
@@ -736,7 +736,10 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_sketch": Evidence("EXPERIMENTAL", "CAT §2.4 Finger Sketch TYPE 0x03; capture-pinned, gated Tier-2"),
     "build_vibrant": Evidence("EXPERIMENTAL", "CAT §3 Vibrant TYPE 0x03; 11-byte header undecoded, replayed verbatim"),
     "build_flat_diy": Evidence("EXPERIMENTAL", "CAT §2.2 flat DIY TYPE 0x04; capture-pinned, gated Tier-2"),
-    "build_combo": Evidence("EXPERIMENTAL", "CAT §2.5 combo TYPE 0x04 FAMILY 0xFF; capture-pinned, gated Tier-2"),
+    "build_combo": Evidence(
+        "EXPERIMENTAL",
+        "CAT §2.5 TYPE 04 FAMILY FF body; current iOS 7.5.21 slots 6E/EF, HA slot F0 needs direct check",
+    ),
     "build_custom_effect": Evidence("VALIDATED", "dispatcher over per-kind encoders (own evidence); Unknown rejected"),
     "build_music_mode_with_color": Evidence("VALIDATED", "H617A §3/§7 music 33 05 13; 11 modes live-confirmed"),
     "build_music_params_a3": Evidence(

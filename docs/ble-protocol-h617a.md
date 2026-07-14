@@ -86,7 +86,7 @@ a trailing XOR checksum (omitted from the table for brevity). `<..>` marks a var
 | Colour temperature | `33 05 15 01 00 00 00 <Khi> <Klo> <R> <G> <B> <ML> <MH>` | RGB slot `[4:7]` is zero; Kelvin is 16-bit big-endian at `[7:9]`; Govee's rendered white RGB at `[9:12]`. |
 | Per-segment brightness | `33 05 15 02 <pct> <ML> <MH>` | Segment mask at `[5:7]`, immediately after the percent. Independent of colour. |
 | Scene select | `33 05 04 <code_LE>` | Scene code, little-endian; preceded by `0xA3` frames for complex scenes. |
-| DIY select (flat / Finger Sketch / Combo) | `33 05 0a <slot>` | Mode `0x0a`; preceded by the `0xA3` DIY body (`TYPE 0x04`, `0x03`, or `0x04` with `FAMILY 0xFF`). Slot is app-assigned (e.g. `0xF0`). |
+| DIY select (flat / Finger Sketch / Combo) | `33 05 0a <slot>` | Mode `0x0a`; preceded by the `0xA3` DIY body (`TYPE 0x04`, `0x03`, or `0x04` with `FAMILY 0xFF`). Slot is app-assigned and persistent per saved effect; current Combo examples used `0x6E` and `0xEF`. |
 | rgbicv2 DIY select | `33 05 04 <code_LE>` | Rich DIY effects reuse the scene command with a per-effect code (Bloom 506, Brilliant 501, ...); preceded by the `0xA3` record-container body (`TYPE 0x02`). |
 | Vibrant activate | `33 05 0a <slot>` | Same activation as DIY; preceded by the `0xA3` Vibrant body (type `0x03`). |
 | Music mode | `33 05 13 <mode> <sens> <style> <count> <RGB×count>` | H617A uses sub-command `0x13` (an older protocol version emits `0x0c`); see "Music mode layout". All 11 `mode` codes confirmed live (match `const.MUSIC_MODES`); `sens` 0-99; `style` `00` Dynamic / `01` Calm; `count` = manual colour count and the auto-colour flag (`00` = Auto colour on). Extended modes also send a `0x41` `a3` parameter frame. |
@@ -362,10 +362,26 @@ effect is in [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.6.
 FF <var> <speed> <plen> <palette...> <seqlen> <(FAMILY, VARIANT) pairs>
 ```
 
-Chains up to four flat effects behind one shared palette and speed. `seqlen = 2 x effect_count`,
-and each pair reuses the flat `(FAMILY, VARIANT)` values. Confirmed Fade1 + Marquee1:
+Chains one to four compatible flat effects behind one shared palette and speed.
+`seqlen = 2 x effect_count`, and each pair reuses the flat `(FAMILY, VARIANT)` values.
+Confirmed Fade1 + Marquee1:
 `... 15 <7 colours> 04 00 00 03 03 00` (`seqlen 0x04`, pairs `(00,00)` and `(03,03)`, trailing
-pad). Activation `33 05 0a <slot>`. `seqlen` scaling beyond two effects is inferred.
+pad). Activation is `33 05 0a <slot>`.
+
+Current iOS 7.5.21 evidence confirms:
+
+- one to four steps, sequence lengths `0x02`, `0x04`, `0x06`, `0x08`;
+- duplicate steps, with remove and re-add as the only ordering operation;
+- one shared palette of one to eight colours;
+- shared speed `0x00..0x64`, with new-Combo default `0x33`;
+- fixed body variant `0x00`, with no corresponding editor control;
+- exactly Fade1-3, Jumping1-2, Twinkle1-3, Marquee1-3, Chasing1-2 and Rainbow1-2 in the
+  Combo picker; Flat Music1-3 and Crossing are excluded;
+- immediate body upload plus activation after every edit; Apply only re-sends the same
+  transaction, while Save and other library metadata changes send no Govee BLE command;
+- app-assigned slot `0x6E` in one editor and `0xEF` in a separate editor. Slot `0xEF` persisted
+  after Save and reopen, proving that the activation byte is an effect handle rather than a
+  body-derived value.
 
 ### rgbicv2 DIY (`TYPE 0x02`)
 
@@ -468,9 +484,9 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | Colour temperature `33 05 15 01 00 00 00 ...` | `build_color_temp` | Implemented and confirmed live; emits the true-Kelvin frame over 2000-9000K. |
 | Scene select `33 05 04` | `build_scene` | Confirmed live. |
 | Scene multi-frame `0xA3` | `build_scene_multi` | Confirmed live; carries the per-scene `scene_type` prefix (`0`/`1`/`2`). |
-| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | none | Not implemented; needs mode-`0x0a` builders for the `TYPE 0x04`/`0x03`/`0xFF` bodies. |
+| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented as capture-pinned custom-effect builders. Current Combo body semantics are confirmed; reserving activation slot `0xF0` for HA-authored effects still needs a targeted H617A check. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
-| Vibrant `0xA3` (type `0x03`) + `33 05 0a` | none | Not implemented. |
+| Vibrant `0xA3` (type `0x03`) + `33 05 0a` | `build_vibrant` | Implemented from the capture-pinned header and per-segment gradient entries; remains experimental while the header is partly undecoded. |
 | Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
 | Video mode `33 05 00` | `build_video_mode` | H6199 TV-backlight only; not offered on H617A. |
 | Video white balance `33 a9` | `build_video_white_balance` | H6199 raw two-axis frame only; no one-dimensional UI mapping. |
@@ -483,13 +499,13 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 
 Remaining gaps:
 
-- **DIY authoring not implemented**: the integration encodes scene mode `0x04` and replays
-  rgbicv2 DIY through `build_scene_multi`, but the flat, Finger Sketch and Combo encodings still
-  need mode-`0x0a` builders plus their `0xA3` bodies, and there is no from-scratch DIY-body
-  author. This blocks reading back or exporting an app-authored DIY (see issues #57/#89).
-- **Music per-mode parameters not built**: the per-mode `a3` parameter offsets (section 3) and
-  multi-colour music palettes are decoded on-wire but not yet exposed as builders or entities.
-- **Vibrant not implemented**: no builder for the gradient upload or activation.
+- **HA-authored DIY slot**: the app assigns and persists a distinct activation slot per effect.
+  The integration currently reserves legacy-observed slot `0xF0`; a targeted H617A check is
+  required before promoting the custom-effect builders from experimental.
+- **App-authored DIY read-back**: no device query returns the full editor body, so an
+  app-authored DIY cannot be imported from the strip.
+- **Music per-mode parameters**: capture-pinned parameter builders exist, but the remaining
+  controls are not all exposed as entities.
 
 ## 8. Open questions and capture matrix
 

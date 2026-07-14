@@ -351,6 +351,19 @@ def test_build_combo_matches_catalogue():
         _valid(frame)
 
 
+def test_build_combo_matches_current_ios_capture():
+    content = ComboContent(
+        speed=0x33,
+        palette=((255, 0, 0),),
+        effects=((0x00, 0x00), (0x01, 0x00), (0x03, 0x03), (0x08, 0x09)),
+    )
+    body = H("ff003303ff0000080000010003030809")
+    frames = proto.build_combo(content, slot=0xEF)
+    assert frames == [*proto.build_a3_multi(0x04, body), H("33050aef000000000000000000000000000000d3")]
+    for frame in frames:
+        _valid(frame)
+
+
 def test_build_custom_effect_dispatches_each_kind():
     seg = SegmentContent(colors=(None, None, (10, 20, 30)))
     assert proto.build_custom_effect(seg, segment_count=15) == [H("330515010a141e00000000000400000000000026")]

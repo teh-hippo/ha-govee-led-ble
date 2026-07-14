@@ -32,6 +32,9 @@ import {
   buildEffectExchangeDocument,
   buildFlatContent,
   buildSketchContent,
+  COMBO_CATALOGUE,
+  comboFamilyByCode,
+  comboVariantLabel,
   effectFileName,
   FLAT_CATALOGUE,
   flatFamilyByCode,
@@ -245,12 +248,12 @@ class GoveeLedBleCard extends LitElement {
     this._flatPalette = [...DEFAULT_STOPS];
     this._comboEffects = [
       {
-        family: FLAT_CATALOGUE[0].family,
-        variant: FLAT_CATALOGUE[0].variants[0].variant,
+        family: COMBO_CATALOGUE[0].family,
+        variant: COMBO_CATALOGUE[0].variants[0].variant,
       },
     ];
     this._comboVariant = 0;
-    this._comboSpeed = 50;
+    this._comboSpeed = 51;
     this._comboPalette = [...DEFAULT_STOPS];
     this._stops = [...DEFAULT_STOPS];
     this._studioStops = [...DEFAULT_STOPS];
@@ -758,6 +761,7 @@ class GoveeLedBleCard extends LitElement {
   }
 
   private _removeFlatPaletteColour(index: number): void {
+    if (this._flatPalette.length <= 1) return;
     this._flatPalette = this._flatPalette.filter((_colour, current) => current !== index);
   }
 
@@ -778,7 +782,7 @@ class GoveeLedBleCard extends LitElement {
   }
 
   private _setComboFamily(index: number, family: number): void {
-    const entry = flatFamilyByCode(family);
+    const entry = comboFamilyByCode(family);
     this._comboEffects = this._comboEffects.map((step, current) =>
       current === index
         ? { family, variant: entry.variants[0].variant }
@@ -788,7 +792,7 @@ class GoveeLedBleCard extends LitElement {
 
   private _setComboVariant(index: number, variant: number): void {
     const step = this._comboEffects[index];
-    flatVariantLabel(step.family, variant);
+    comboVariantLabel(step.family, variant);
     this._comboEffects = this._comboEffects.map((entry, current) =>
       current === index ? { ...entry, variant } : entry,
     );
@@ -796,7 +800,7 @@ class GoveeLedBleCard extends LitElement {
 
   private _addComboStep(): void {
     if (this._comboEffects.length >= 4) return;
-    const family = FLAT_CATALOGUE[0];
+    const family = COMBO_CATALOGUE[0];
     this._comboEffects = [
       ...this._comboEffects,
       { family: family.family, variant: family.variants[0].variant },
@@ -804,6 +808,7 @@ class GoveeLedBleCard extends LitElement {
   }
 
   private _removeComboStep(index: number): void {
+    if (this._comboEffects.length <= 1) return;
     this._comboEffects = this._comboEffects.filter(
       (_step, current) => current !== index,
     );
@@ -829,6 +834,7 @@ class GoveeLedBleCard extends LitElement {
   }
 
   private _removeComboPaletteColour(index: number): void {
+    if (this._comboPalette.length <= 1) return;
     this._comboPalette = this._comboPalette.filter(
       (_colour, current) => current !== index,
     );
@@ -843,12 +849,12 @@ class GoveeLedBleCard extends LitElement {
   }
 
   private _resetCombo(): void {
-    const family = FLAT_CATALOGUE[0];
+    const family = COMBO_CATALOGUE[0];
     this._comboEffects = [
       { family: family.family, variant: family.variants[0].variant },
     ];
     this._comboVariant = 0;
-    this._comboSpeed = 50;
+    this._comboSpeed = 51;
     this._comboPalette = [...DEFAULT_STOPS];
     this._finishDraftReset();
   }
@@ -2161,6 +2167,7 @@ class GoveeLedBleCard extends LitElement {
               </button>
               <button
                 class="btn tiny danger"
+                ?disabled=${palette.length <= 1}
                 @click=${() => removeColour(index)}
                 aria-label=${`Remove colour ${index + 1}`}
               >
@@ -2303,7 +2310,7 @@ class GoveeLedBleCard extends LitElement {
           : html`
               <ol class="combo-chain">
                 ${this._comboEffects.map((step, index) => {
-                  const family = flatFamilyByCode(step.family);
+                  const family = comboFamilyByCode(step.family);
                   return html`
                     <li class="combo-step">
                       <span class="combo-number">${index + 1}</span>
@@ -2318,7 +2325,7 @@ class GoveeLedBleCard extends LitElement {
                               Number((e.target as HTMLSelectElement).value),
                             )}
                         >
-                          ${FLAT_CATALOGUE.map(
+                          ${COMBO_CATALOGUE.map(
                             (entry) => html`
                               <option value=${String(entry.family)}>${entry.label}</option>
                             `,
@@ -2362,6 +2369,7 @@ class GoveeLedBleCard extends LitElement {
                         </button>
                         <button
                           class="btn tiny danger"
+                          ?disabled=${this._comboEffects.length <= 1}
                           @click=${() => this._removeComboStep(index)}
                           aria-label=${`Remove step ${index + 1}`}
                         >

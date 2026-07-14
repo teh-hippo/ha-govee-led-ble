@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildComboContent,
+  COMBO_CATALOGUE,
+  comboVariantLabel,
   buildFlatContent,
   buildSketchContent,
   buildEffectExchangeDocument,
@@ -132,13 +134,13 @@ describe("effect exchange", () => {
         palette: [],
         effects: [[1, 1]],
       }),
-    ).toThrow("Unknown variant");
+    ).toThrow("Unknown Combo variant");
     expect(() =>
       parseEffectContent({
         kind: "combo",
         variant: 256,
         speed: 50,
-        palette: [],
+        palette: [[1, 2, 3]],
         effects: [[0, 0]],
       }),
     ).toThrow("variant must be from 0 to 255");
@@ -263,17 +265,17 @@ describe("Sketch authoring", () => {
           [[0, 0], [3, 4], [9, 10]],
           62,
           [[255, 0, 0], [0, 0, 255]],
-          7,
         ),
       ).toEqual({
         kind: "combo",
-        variant: 7,
+        variant: 0,
         speed: 62,
         palette: [[255, 0, 0], [0, 0, 255]],
         effects: [[0, 0], [3, 4], [9, 10]],
       });
       expect(flatVariantLabel(1, 0)).toBe("Jumping1");
-      expect(flatVariantLabel(3, 4)).toBe("Marquee2");
+      expect(comboVariantLabel(3, 4)).toBe("Marquee2");
+      expect(COMBO_CATALOGUE.flatMap((family) => family.variants)).toHaveLength(15);
     });
 
     it("rejects empty, oversized or invalid chains and palettes", () => {
@@ -288,14 +290,20 @@ describe("Sketch authoring", () => {
         ),
       ).toThrow("up to four steps");
       expect(() => buildComboContent([[1, 1]], 50, [[1, 2, 3]])).toThrow(
-        "Unknown variant",
+        "Unknown Combo variant",
+      );
+      expect(() => buildComboContent([[4, 6]], 50, [[1, 2, 3]])).toThrow(
+        "not available in Combo",
+      );
+      expect(() => buildComboContent([[10, 0]], 50, [[1, 2, 3]])).toThrow(
+        "not available in Combo",
       );
       expect(() => buildComboContent([[0, 0]], 50, [])).toThrow(
         "at least one palette colour",
       );
       expect(() =>
-        buildComboContent([[0, 0]], 50, [[1, 2, 3]], 256),
-      ).toThrow("variant must be from 0 to 255");
+        buildComboContent([[0, 0]], 50, [[1, 2, 3]], 1),
+      ).toThrow("variant must be 0");
     });
   });
 

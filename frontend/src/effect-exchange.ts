@@ -83,6 +83,10 @@ export interface FlatFamily {
 }
 
 export const FLAT_CATALOGUE: readonly FlatFamily[] = flatCatalogue;
+const COMBO_FAMILY_CODES = new Set([0x00, 0x01, 0x02, 0x03, 0x08, 0x09]);
+export const COMBO_CATALOGUE: readonly FlatFamily[] = FLAT_CATALOGUE.filter(
+  (family) => COMBO_FAMILY_CODES.has(family.family),
+);
 
 export const SKETCH_MOTIONS: readonly { code: number; label: string }[] = [
   { code: 0x02, label: "Cycle" },
@@ -236,15 +240,19 @@ export function parseEffectContent(value: unknown): EffectContentDict {
         }
         const family = integer(pair[0], `Combo effects[${index}].family`);
         const variant = integer(pair[1], `Combo effects[${index}].variant`);
-        flatVariantLabel(family, variant);
+        comboVariantLabel(family, variant);
         return [family, variant] as [number, number];
       });
+      if (effects.length === 0) throw new Error("Combo requires at least one step.");
       if (effects.length > 4) throw new Error("Combo accepts up to four steps.");
       const palette = rgbList(content.palette, "Combo palette");
+      if (palette.length === 0) throw new Error("Combo requires at least one palette colour.");
       if (palette.length > 8) throw new Error("Combo accepts up to 8 colours.");
+      const variant = byte(content.variant, "Combo variant");
+      if (variant !== 0) throw new Error("Combo variant must be 0.");
       return {
         kind,
-        variant: byte(content.variant, "Combo variant"),
+        variant,
         speed: percentage(content.speed, "Combo speed"),
         palette,
         effects,
@@ -408,6 +416,12 @@ export function flatFamilyByCode(family: number): FlatFamily {
   return entry;
 }
 
+export function comboFamilyByCode(family: number): FlatFamily {
+  const entry = COMBO_CATALOGUE.find((candidate) => candidate.family === family);
+  if (entry === undefined) throw new Error(`Flat family ${family} is not available in Combo.`);
+  return entry;
+}
+
 export function buildFlatContent(
   family: number,
   variant: number,
@@ -444,18 +458,27 @@ export function flatVariantLabel(family: number, variant: number): string {
   return variantEntry.label;
 }
 
+export function comboVariantLabel(family: number, variant: number): string {
+  const familyEntry = comboFamilyByCode(family);
+  const variantEntry = familyEntry.variants.find(
+    (candidate) => candidate.variant === variant,
+  );
+  if (variantEntry === undefined) {
+    throw new Error(`Unknown Combo variant for ${familyEntry.label}.`);
+  }
+  return variantEntry.label;
+}
+
 export function buildComboContent(
   effects: readonly (readonly [number, number])[],
   speed: number,
   palette: readonly RGB[],
   variant = 0,
 ): ComboContentDict {
-  if (!Number.isInteger(variant) || variant < 0 || variant > 255) {
-    throw new Error("Combo variant must be from 0 to 255.");
-  }
+  if (variant !== 0) throw new Error("Combo variant must be 0.");
   if (effects.length === 0) throw new Error("Add at least one Combo step.");
   if (effects.length > 4) throw new Error("Combo accepts up to four steps.");
-  for (const [family, variant] of effects) flatVariantLabel(family, variant);
+  for (const [family, variant] of effects) comboVariantLabel(family, variant);
   if (palette.length === 0) throw new Error("Add at least one palette colour.");
   if (palette.length > 8) throw new Error("Combo accepts up to 8 colours.");
   return {

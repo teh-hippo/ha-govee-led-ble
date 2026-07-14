@@ -140,13 +140,15 @@ four encodings, and the encoding also fixes how the effect is activated:
 | Flat | `0x04` | `FAMILY VARIANT SPEED PLEN <palette>` | `33 05 0a <slot>` | Fade, Jumping, Twinkle, Marquee, Chasing, Rainbow, Crossing, Music |
 | rgbicv2 | `0x02` | record container (scene-style) | `33 05 04 <code_LE>` | Brilliant, Colorful starry sky, Colorful meteor, Colorful meteor shower, Sparkle, Bloom, Stack |
 | Finger Sketch | `0x03` | `EFFECT SPEED BRIGHT <bg RGB> <paint groups>` | `33 05 0a <slot>` | Finger Sketch (freeform paint) |
-| Combo | `0x04`, `FAMILY = 0xFF` | flat body + trailing `(family, variant)` pairs | `33 05 0a <slot>` | up to 4 chained flat effects |
+| Combo | `0x04`, `FAMILY = 0xFF` | flat body + trailing `(family, variant)` pairs | `33 05 0a <slot>` | 1-4 effects from the current 15-effect Combo subset |
 
 Two activation paths:
 
 - **Flat, Finger Sketch and Combo** activate with mode `0x0a` and a per-DIY **slot** id, an
-  app-assigned handle (observed `0xF0`; an earlier Fade capture used `0xBE`). The slot is not a
-  catalogue code and carries no colour information.
+  app-assigned handle. Combo slots `0x6E` and `0xEF` were observed in separate current editor
+  instances; legacy captures used `0x1B` and `0xF0`, and an earlier Fade capture used `0xBE`.
+  The slot persists after Save and reopen, but is not encoded in the body, is not a catalogue
+  code and carries no colour information.
 - **rgbicv2** activates with the **scene** command `33 05 04 <code_LE>`, each effect owning its
   own code (2.3). Because the transport is byte-for-byte the scene path, feeding a captured
   rgbicv2 body to the existing `build_scene_multi(base64(body[3:]), code)` reproduces its frames
@@ -285,16 +287,19 @@ and a static 15-segment gradient rather than paint groups.
 
 ### 2.5 Combo encoding (`TYPE 0x04`, `FAMILY 0xFF`)
 
-Combo chains up to four flat effects behind one shared palette and speed. It reuses the flat
-encoding with the reserved family `0xFF`:
+Combo chains one to four compatible flat effects behind one shared palette and speed. It reuses
+the flat encoding with the reserved family `0xFF`:
 
 ```
 01 <linecount> 04 FF <var> <speed> <plen> <palette...> <seqlen> <(FAMILY, VARIANT) pairs>
 ```
 
 - `seqlen` = `2 x number_of_effects` (two bytes per chained effect).
-- Each pair is a `(FAMILY, VARIANT)` from the flat table (2.2).
+- Each pair is a current Combo-compatible `(FAMILY, VARIANT)` from the flat table (2.2).
 - There is one shared colour list and one speed; there are no per-effect parameters.
+- The current editor always emits `var = 0x00`; it exposes no control for this byte.
+- Speed is `0x00..0x64`; a new Combo defaults to `0x33`.
+- The shared palette contains one to eight ordered RGB colours.
 
 Confirmed example, Fade1 + Marquee1 (seven-colour palette), activation `33 05 0a f0`:
 
@@ -307,9 +312,30 @@ Confirmed example, Fade1 + Marquee1 (seven-colour palette), activation `33 05 0a
 ```
 
 Pair `(00, 00)` is Fade1 and `(03, 03)` is Marquee1, matching the flat `(FAMILY, VARIANT)`
-values. The app caps a Combo at four effects. The `seqlen` scaling is **confirmed**: building
-Fade1, Jumping1, Marquee1 then Chasing1 stepped `seqlen` through `0x02, 0x04, 0x06, 0x08`
-(`2 x effect_count`), with pairs `(00,00)(01,00)(03,03)(08,09)` accumulated in order.
+values. The frozen iOS 7.5.21 editor confirms:
+
+- `seqlen` steps through `0x02`, `0x04`, `0x06`, `0x08` for one to four effects.
+- Fade1, Jumping1, Marquee1 then Chasing1 accumulates pairs
+  `(00,00)(01,00)(03,03)(08,09)` in editor order.
+- Duplicate effects are accepted. The app exposes no reorder control; remove and re-add changes
+  the order.
+- Every add, remove, palette or speed edit immediately uploads the body and activates it.
+  **Apply** re-sends the unchanged body. **Save**, rename, group changes and delete are app
+  metadata operations and emit no Govee BLE command.
+
+The current Combo picker contains exactly these 15 effects:
+
+| Family | Compatible variants |
+|---|---|
+| Fade `0x00` | Fade1 `0x00`, Fade2 `0x01`, Fade3 `0x02` |
+| Jumping `0x01` | Jumping1 `0x00`, Jumping2 `0x02` |
+| Twinkle `0x02` | Twinkle1 `0x00`, Twinkle2 `0x01`, Twinkle3 `0x02` |
+| Marquee `0x03` | Marquee1 `0x03`, Marquee2 `0x04`, Marquee3 `0x05` |
+| Chasing `0x08` | Chasing1 `0x09`, Chasing2 `0x0A` |
+| Rainbow `0x09` | Rainbow1 `0x09`, Rainbow2 `0x0A` |
+
+Flat Music1-3 and Crossing remain valid standalone Flat effects, but the current Combo picker
+does not offer them.
 
 ### 2.6 Complete DIY effect catalogue (33 effects)
 

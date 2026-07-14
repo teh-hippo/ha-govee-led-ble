@@ -62,10 +62,12 @@ def test_custom_effect_validation_errors_are_translated():
         "flat_speed_range",
         "palette_too_large",
         "flat_bad_rgb",
-        "combo_variant_range",
+        "combo_variant_invalid",
         "combo_speed_range",
+        "combo_empty",
         "combo_too_many",
         "combo_family_variant_invalid",
+        "combo_palette_empty",
         "combo_bad_rgb",
     }
     assert keys <= exceptions.keys()

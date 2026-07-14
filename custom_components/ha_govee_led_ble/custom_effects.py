@@ -44,7 +44,7 @@ class FlatContent:
 class ComboContent:
     kind: Literal["combo"] = "combo"
     variant: int = 0x00
-    speed: int = 0x32
+    speed: int = 0x33
     palette: tuple[RGB, ...] = ()
     effects: tuple[tuple[int, int], ...] = ()
 
@@ -81,7 +81,6 @@ _SKETCH_MOTION_CODES: frozenset[int] = frozenset({0x02, 0x09, 0x0A, 0x0F, 0x13, 
 _SKETCH_SPEED_RANGE: range = range(0, 101)
 _SKETCH_BRIGHT_RANGE: range = range(0, 101)
 _DIY_SPEED_RANGE: range = range(0, 101)
-_BYTE_RANGE: range = range(0, 256)
 
 # CAT 2.6: confirmed flat (FAMILY, VARIANT) pairs, keyed by family (variants have catalogue gaps).
 _FLAT_VARIANTS_BY_FAMILY: dict[int, tuple[int, ...]] = {
@@ -96,6 +95,10 @@ _FLAT_VARIANTS_BY_FAMILY: dict[int, tuple[int, ...]] = {
 }
 _FLAT_FAMILY_VARIANTS: frozenset[tuple[int, int]] = frozenset(
     (family, variant) for family, variants in _FLAT_VARIANTS_BY_FAMILY.items() for variant in variants
+)
+_COMBO_FAMILIES = frozenset({0x00, 0x01, 0x02, 0x03, 0x08, 0x09})
+_COMBO_FAMILY_VARIANTS: frozenset[tuple[int, int]] = frozenset(
+    pair for pair in _FLAT_FAMILY_VARIANTS if pair[0] in _COMBO_FAMILIES
 )
 
 _CROSSING_FAMILY = 0x0A
@@ -149,10 +152,12 @@ def validate_content(content: AuthorableContent, *, segment_count: int) -> None:
             _require(len(content.palette) <= _flat_palette_max(content.family), "palette_too_large")
             _require(all(_is_rgb(s) for s in content.palette), "flat_bad_rgb")
         case ComboContent():
-            _require(content.variant in _BYTE_RANGE, "combo_variant_range")
+            _require(content.variant == 0x00, "combo_variant_invalid")
             _require(content.speed in _DIY_SPEED_RANGE, "combo_speed_range")
+            _require(bool(content.effects), "combo_empty")
             _require(len(content.effects) <= 4, "combo_too_many")
-            _require(all(fv in _FLAT_FAMILY_VARIANTS for fv in content.effects), "combo_family_variant_invalid")
+            _require(all(fv in _COMBO_FAMILY_VARIANTS for fv in content.effects), "combo_family_variant_invalid")
+            _require(bool(content.palette), "combo_palette_empty")
             _require(len(content.palette) <= 8, "palette_too_large")
             _require(all(_is_rgb(s) for s in content.palette), "combo_bad_rgb")
 

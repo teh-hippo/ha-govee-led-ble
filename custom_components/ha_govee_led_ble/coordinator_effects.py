@@ -60,7 +60,14 @@ class _CustomEffectMixin(_CoordinatorBase):
         return sorted(self.custom_effects.values(), key=lambda effect: (effect.name_key, effect.id))
 
     def is_custom_effect_supported(self, effect: CustomEffect) -> bool:
-        return self._is_supported_content(effect.content)
+        content = effect.content
+        if isinstance(content, UnknownContent) or not self._is_supported_content(content):
+            return False
+        try:
+            validate_content(content, segment_count=self.profile.segment_count)
+        except EffectValidationError:
+            return False
+        return True
 
     def custom_effect_display_names(self) -> list[str]:
         return [effect.display_name for effect in self._ordered_effects() if self.is_custom_effect_supported(effect)]
@@ -142,7 +149,8 @@ class _CustomEffectMixin(_CoordinatorBase):
             raise EffectValidationError("unknown_effect")
         if isinstance(effect.content, UnknownContent):
             raise EffectValidationError("unknown_kind_not_applyable")
-        self._require_supported_kind(effect.content)
+        content = self._require_supported_kind(effect.content)
+        validate_content(content, segment_count=self.profile.segment_count)
         for packet in build_custom_effect(effect.content, segment_count=self.profile.segment_count):
             await self.send_command(packet)
         self.active_custom_id = effect.id
