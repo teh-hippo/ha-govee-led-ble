@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Efficient Govee BLE capture loop, driven from WSL via pwsh.exe.
 #
-#   govee-capture.sh start <name>    # begin capture
+#   govee-capture.sh start <name> [prediction-sha256]  # begin capture
 #   govee-capture.sh mark <label>    # timestamp an action in a batched capture
 #   govee-capture.sh stop            # stop the running capture and decode it
 #   govee-capture.sh decode <name>   # re-decode an existing capture
@@ -33,13 +33,18 @@ usage() { grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 case "${1:-}" in
   start)
     name="${2:-}"; [ -n "$name" ] || usage 1
+    prediction_sha256="${3:--}"
+    if [ "$prediction_sha256" != "-" ] && [[ ! "$prediction_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "prediction SHA-256 must be 64 lowercase hexadecimal characters" >&2
+      exit 1
+    fi
     [ ! -f "$STATE" ] || { echo "a capture is already running"; exit 1; }
     name="${name//[^A-Za-z0-9._-]/_}"
     mkdir -p "$CAP"
     out="$WIN_CAP/${name}.pcap"
     pid="$("$PWSH" -NoProfile -Command "\$p = Start-Process -FilePath '$EXE' -ArgumentList '-f','pcap','$out' -WindowStyle Hidden -PassThru; \$p.Id" | tr -d '\r[:space:]')"
-    started_at="$(date --iso-8601=seconds)"
-    printf '%s %s %s\n' "$pid" "$name" "$started_at" > "$STATE"
+    started_at="$(date --iso-8601=ns)"
+    printf '%s %s %s %s\n' "$pid" "$name" "$started_at" "$prediction_sha256" > "$STATE"
     : > "$CAP/$name.actions.tsv"
     for _ in {1..20}; do
       [ -f "$CAP/$name.pcap" ] && [ "$(stat -c %s "$CAP/$name.pcap")" -ge 24 ] && break
@@ -67,13 +72,19 @@ case "${1:-}" in
     ;;
   stop)
     [ -f "$STATE" ] || { echo "no capture running"; exit 1; }
-    read -r pid name started_at < "$STATE"
+    read -r pid name started_at prediction_sha256 < "$STATE"
+    prediction_sha256="${prediction_sha256:--}"
     "$PWSH" -NoProfile -Command "Stop-Process -Id $pid -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
     sleep 0.4
     rm -f "$STATE"
-    stopped_at="$(date --iso-8601=seconds)"
-    printf '{"capture":"%s","started_at":"%s","stopped_at":"%s","actions":"%s.actions.tsv"}\n' \
-      "$name" "$started_at" "$stopped_at" "$name" > "$CAP/$name.meta.json"
+    stopped_at="$(date --iso-8601=ns)"
+    if [ "$prediction_sha256" = "-" ]; then
+      prediction_json=null
+    else
+      prediction_json="\"$prediction_sha256\""
+    fi
+    printf '{"capture":"%s","started_at":"%s","stopped_at":"%s","actions":"%s.actions.tsv","prediction_sha256":%s}\n' \
+      "$name" "$started_at" "$stopped_at" "$name" "$prediction_json" > "$CAP/$name.meta.json"
     echo "stopped '$name' (pid $pid)"
     uv run --project "$PROJECT_DIR" python "$SELF_DIR/decode_govee.py" "$CAP/$name.pcap"
     ;;

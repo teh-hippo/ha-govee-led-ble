@@ -29,6 +29,7 @@ device, and return its BLE link to Home Assistant.
 | `tools/ble/govee-capture.sh` | Starts, marks, stops, and decodes a capture from WSL. |
 | `pymobiledevice3` CoreDevice display service | Keeps one authenticated, loopback-only phone viewer and touch channel open. |
 | `tools/ble/decode_govee.py` | Extracts Govee TX writes and RX notifications from the pcap. |
+| `tools/ble/safe_verify.py` | Freezes one private run manifest, records bounded markers, verifies attribution and restoration, and writes terminal evidence. |
 | `custom_components/ha_govee_led_ble/protocol.py` | Supplies the expected packet builders and parsers. |
 | `tools/ble/validate_protocol.py` | Runs the declarative validation plan against live, replayed, or simulated frames. |
 
@@ -69,7 +70,7 @@ logger does not write a valid pcap header within five seconds.
 Record the following before releasing the BLE link:
 
 - run ID using `<YYYYMMddHHmmss>-<taskid>-<focus>`;
-- target model, firmware, app build, and integration commit;
+- target model, firmware, app build, integration commit, and frozen catalogue SHA-256;
 - exact baseline state, including power, brightness, mode, and relevant parameters;
 - one app action to perform;
 - expected TX frame or structural signature;
@@ -115,83 +116,152 @@ The touch endpoint returns before the device necessarily completes the action. L
 seconds before assessing BLE or visual state. Keep the loop brisk because a provisioned phone can
 auto-lock and cannot be unlocked by the automation.
 
-## Bounded run
+## Approved bounded verification run
 
-### 1. Hand the link to the app
+`safe_verify.py` is the required runner for the autonomous verification campaign. Its manifest is
+private and uncommitted because it contains the target Bluetooth address, local name, config entry,
+entity ID, UI path, control values, and touch coordinates. It also freezes:
 
-Disable only the target Home Assistant config entry. Open Govee Home, select the target, and
-confirm the app has connected before starting the evidence window.
+- the integration commit, Govee app build, device firmware, and catalogue SHA-256;
+- the exact TX and optional RX frames for every window;
+- Sunrise and brightness 5% restoration packets;
+- the 10% brightness limit, 90-second run limit, and 60-second activity limit.
 
-### 2. Start and mark the capture
-
-```bash
-tools/ble/govee-capture.sh start 20260715190000-h617a-power-on
-tools/ble/govee-capture.sh mark "baseline confirmed"
-```
-
-For each action, write the marker immediately before the phone command:
+### 1. Freeze the manifest
 
 ```bash
-tools/ble/govee-capture.sh mark "tap power on"
-# issue the approved touch
+RUN_ID=20260715190000-h617a-verify-power
+RUN_DIR="$GOVEE_BLE_DIR/runs/$RUN_ID"
+MANIFEST="$GOVEE_BLE_DIR/manifests/$RUN_ID.json"
+
+uv run python tools/ble/safe_verify.py init "$MANIFEST" "$RUN_DIR"
+PREDICTION_SHA256="$(jq -r .prediction_sha256 "$RUN_DIR/state.json")"
 ```
 
-Use one capture for a short A/B/A sequence only when every transition is attributable:
+Initialisation writes mode-`0600` copies of `manifest.json`, `prediction.json`, and `state.json`.
+Every later command rechecks both frozen hashes.
+
+### 2. Start the attributed capture
+
+Start the logger before Govee Home connects so the pcap contains the LE connection event that maps
+the target address to its HCI connection handle:
 
 ```bash
-tools/ble/govee-capture.sh mark "set A"
-# action A
-tools/ble/govee-capture.sh mark "set B"
-# action B
-tools/ble/govee-capture.sh mark "restore A"
-# action A
+tools/ble/govee-capture.sh start "$RUN_ID" "$PREDICTION_SHA256"
 ```
 
-The sidecar `<run>.actions.tsv` stores timestamped labels and `<run>.meta.json` records capture
-times. Do not trim trailing zeroes from packet bodies while attributing fields because payload
-zeroes and transport padding can be indistinguishable.
+The active capture state carries the same prediction hash. A safe run refuses a legacy capture
+started without that hash.
 
-### 3. Decode and compare
+### 3. Record the baseline and hand off the link
+
+Write a Home Assistant snapshot with this exact shape:
+
+```json
+{
+  "config_entry_id": "<target entry>",
+  "entity_id": "light.cupboard_skirt",
+  "entry_state": "loaded",
+  "entity_available": true,
+  "power": "on",
+  "brightness_percent": 5,
+  "mode": "scene",
+  "effect": "Sunrise"
+}
+```
+
+Record it before disabling the target entry:
+
+```bash
+uv run python tools/ble/safe_verify.py ha "$RUN_DIR" before "$RUN_DIR/ha-before.json"
+```
+
+Disable only the target config entry. Open Govee Home, select the target, and confirm its private
+identity and connected state. Record a hand-off snapshot proving the entry is `not_loaded` with
+`disabled_by` set to `user`:
+
+```json
+{
+  "config_entry_id": "<target entry>",
+  "entity_id": "light.cupboard_skirt",
+  "entry_state": "not_loaded",
+  "disabled_by": "user"
+}
+```
+
+```bash
+uv run python tools/ble/safe_verify.py ha "$RUN_DIR" handoff "$RUN_DIR/ha-handoff.json"
+```
+
+Then arm the run:
+
+```bash
+uv run python tools/ble/safe_verify.py mark "$RUN_DIR" armed \
+  --pcap "$GOVEE_BLE_DIR/captures/$RUN_ID.pcap" \
+  --viewer-healthy --phone-unlocked --target-confirmed
+```
+
+Arming fails unless exactly one active connection handle maps to the frozen target address and no
+other or unattributed Govee traffic has appeared.
+
+### 4. Execute each manifest window
+
+Record the displayed value immediately before Terra performs the approved touch:
+
+```bash
+uv run python tools/ble/safe_verify.py mark "$RUN_DIR" power-off:before-action \
+  --viewer-healthy --phone-unlocked --displayed "On"
+# Terra performs the frozen touch.
+uv run python tools/ble/safe_verify.py mark "$RUN_DIR" power-off:after-action \
+  --viewer-healthy --phone-unlocked --displayed "Off" --visual confirmed
+# Wait for the manifest's settle interval.
+uv run python tools/ble/safe_verify.py mark "$RUN_DIR" power-off:settled \
+  --viewer-healthy --phone-unlocked
+```
+
+Repeat that exact marker sequence for each action and restoration window. The runner writes the
+same timestamps to `state.json` and `<run>.actions.tsv`; do not call `govee-capture.sh mark` during
+a safe run.
+
+The run invalidates immediately on an out-of-order marker, phone lock, unhealthy viewer, ambiguous
+displayed value, action timeout, settle-window write, activity gap above 60 seconds, or total
+duration above 90 seconds.
+
+Each `before-action` marker drains and rechecks the attributed capture before Terra may touch the
+phone. Each `settled` marker verifies the closed window before the runner accepts another action.
+
+### 5. Stop, restore ownership, and analyse
+
+After the final restoration window:
 
 ```bash
 tools/ble/govee-capture.sh stop
-tools/ble/govee-capture.sh decode 20260715190000-h617a-power-on
 ```
 
-Compare the observed app TX frame with the prediction from `protocol.py`. Compare the RX reply with
-the parser and expected device state. Record exact bytes and any differing payload offsets.
-
-Apply behaviour is determined from the capture:
-
-- A fresh TX `0x33` command or complete `0xA3` transaction means the edit reached the BLE
-  transport. Do not tap Apply speculatively.
-- Queries, keep-alives, or no new TX command mean the edit did not reach the device. If the UI
-  presents Apply, tap it once in a newly marked window.
-- TX without the expected RX acknowledgement or status is ambiguous. Query the relevant state and
-  record the result rather than assuming success.
-- An unexpected command family is a failed prediction. Preserve it and stop before broadening the
-  run.
-
-### 4. Restore and return ownership
-
-Restore the exact baseline through the same proven path and confirm it from BLE read-back when
-available. Back out of the device page normally, terminate Govee Home, enable the Home Assistant
-entry, and `POST /api/config/config_entries/entry/<entry_id>/reload`.
+Back out of the device page normally, terminate Govee Home, enable the Home Assistant entry, and
+`POST /api/config/config_entries/entry/<entry_id>/reload`.
 
 The hand-back is complete only when the entry is loaded and its entities are available. A
 `setup_retry` state with an unreachable reason usually means the app still owns the device link.
 Do not restart Home Assistant to mask an incomplete hand-off.
 
-### 5. Persist the evidence
+Record the exact restored snapshot and analyse:
 
-For each run, retain:
+```bash
+uv run python tools/ble/safe_verify.py ha "$RUN_DIR" after "$RUN_DIR/ha-after.json"
+uv run python tools/ble/safe_verify.py analyse "$RUN_DIR"
+```
 
-- the raw pcap and action sidecar outside the repository;
-- the prediction and exact observed TX and RX bytes;
-- app labels and values needed to interpret each transition;
-- the restoration result;
-- the model, firmware, app build, and integration commit;
-- a concise terminal classification such as validated, mismatch, no BLE action, or unresolved.
+Analysis rejects missing, duplicate, unexpected, delayed, cross-device, or unattributed Govee
+frames. It also rejects any recognised brightness command or status above 10%. It writes
+mode-`0600` `evidence.json` and `evidence.md` containing:
+
+- hashes and paths for the pcap, action sidecar, capture metadata, manifest, and prediction;
+- all decoded Govee frames and marker records;
+- target address and connection handle;
+- provenance and Home Assistant snapshots;
+- exact restoration evidence;
+- a wire-pass, TX-only pass, mismatch, no-write, or invalid verdict.
 
 Commit only decoded protocol findings, tests, and documentation. Raw pcaps can contain nearby
 Bluetooth traffic and device identifiers.
@@ -210,9 +280,19 @@ Repeated one-shot screenshot or HID commands create new media streams and can we
 
 Do not run recovery while a healthy viewer is active.
 
+For an invalid safe run, stop the capture, terminate Govee Home, restore and reload the Home
+Assistant entry, then record the restored snapshot:
+
+```bash
+uv run python tools/ble/safe_verify.py recover "$RUN_DIR" "$RUN_DIR/ha-recovery.json"
+```
+
+Recovery writes terminal `invalid` evidence. The original run can never resume; create a new run
+ID after approval.
+
 ## Guided validation harness
 
-`validation_plan.py` is the declarative checklist. Each step identifies the relevant frame and
+`validation_plan.py` is the legacy declarative checklist. Each step identifies the relevant frame and
 either computes an exact expected packet from `protocol.py` or applies a structural validator.
 
 ```bash
@@ -224,7 +304,8 @@ tools/ble/validate_protocol.py --sim
 
 `--sim` proves internal encode, decode, and plan consistency only. It does not validate the
 protocol against the app or a device. Live verification remains prediction, app action, observed
-BLE, read-back, and restoration.
+BLE, read-back, and restoration. Do not use its current live plan for the autonomous campaign
+because it contains long sessions and brightness steps above the approved limit.
 
 ## Decoder boundary
 
@@ -235,5 +316,7 @@ keeps writes and notifications matching the Govee packet signature:
 - first byte `0x33`, `0xAA`, or `0xA3`;
 - byte 19 equals the XOR of bytes 0 through 18.
 
-This separates Govee frames from unrelated phone traffic. Direction still matters: TX is the
+The decoder also tracks LE connection and disconnection events, retaining the 12-bit HCI
+connection handle and peer Bluetooth address on each ATT record. The safe runner rejects a frame
+that cannot be attributed to the one frozen target connection. Direction still matters: TX is the
 phone-to-device command path and RX is acknowledgement or status from the device.

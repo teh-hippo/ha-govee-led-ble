@@ -112,13 +112,13 @@ The app may not issue a colour-mode query in every action window. Exact app TX i
 Device state is confirmed from an attributable RX status when present, otherwise through the
 integration after Home Assistant regains the link.
 
-## Runner prerequisite
+## Safe runner
 
 Do not run `tools/ble/validate_protocol.py --live` unchanged. Its current plan combines many
 actions into a long session and includes 100% brightness steps, which violate this campaign's
 bounded-run and brightness rules.
 
-Before the first live run, adapt the harness or wrap it with a safe manifest that:
+`tools/ble/safe_verify.py` implements the required one-run manifest. It:
 
 - executes one approved run at a time;
 - records predicted TX and expected RX before the action;
@@ -132,6 +132,10 @@ Before the first live run, adapt the harness or wrap it with a safe manifest tha
 - persists a crash-recovery state file after every marker;
 - writes JSON and Markdown evidence without embedding screenshots;
 - passes replay and simulation tests before phone use.
+
+The runner also binds the prediction digest to `govee-capture.sh` active state and final metadata,
+cross-checks `.actions.tsv` against persisted markers, records run provenance, and produces
+terminal invalid evidence after successful recovery.
 
 The harness is an orchestrator, not a UI oracle. It must not decide phone coordinates or infer
 whether the intended control was selected. Terra performs and reports that decision.
@@ -468,5 +472,5 @@ the current builders and frozen catalogue. They also required the following befo
 - distinct wire-pass and TX-only verdicts;
 - separate positive live coverage and offline negative-path tests.
 
-These requirements are incorporated above. The plan remains unapproved for live execution until
-the safe manifest and replay tests exist.
+These requirements are incorporated above and implemented by the safe runner and its replay and
+simulation tests. Live execution remains owner-approval gated one run at a time.

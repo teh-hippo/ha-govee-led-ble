@@ -22,7 +22,7 @@ def _capture_env(tmp_path: Path) -> dict[str, str]:
 def test_mark_records_timestamped_batch_action(tmp_path: Path):
     captures = tmp_path / "captures"
     captures.mkdir()
-    (captures / ".current").write_text("123 batch-run 2026-07-13T15:00:00+10:00\n")
+    (captures / ".current").write_text(f"123 batch-run 2026-07-13T15:00:00+10:00 {'a' * 64}\n")
 
     result = subprocess.run(  # noqa: S603
         ["/bin/bash", str(_SCRIPT), "mark", "Bloom", "Dynamic"],
@@ -49,3 +49,16 @@ def test_mark_requires_active_capture(tmp_path: Path):
 
     assert result.returncode == 1
     assert result.stdout.strip() == "no capture running"
+
+
+def test_start_rejects_invalid_prediction_hash(tmp_path: Path):
+    result = subprocess.run(  # noqa: S603
+        ["/bin/bash", str(_SCRIPT), "start", "batch-run", "not-a-hash"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_capture_env(tmp_path),
+    )
+
+    assert result.returncode == 1
+    assert "prediction SHA-256" in result.stderr
