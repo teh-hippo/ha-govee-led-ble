@@ -49,6 +49,11 @@ def test_native_value_custom_from_sticky_id(h617a):
     assert GoveeActiveModeSensor(h617a).native_value == "custom"
 
 
+def test_native_value_custom_from_diy_slot(h617a):
+    h617a.is_on, h617a.diy_slot = True, 0xEF
+    assert GoveeActiveModeSensor(h617a).native_value == "custom"
+
+
 def test_scene_name_set_h617a_uses_catalogue(h617a):
     assert h617a.scene_name_set == frozenset(get_scene_names())
     assert h617a.scene_name_set

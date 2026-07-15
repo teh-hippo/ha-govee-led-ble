@@ -18,7 +18,7 @@ from custom_components.ha_govee_led_ble.custom_effects import (
     VibrantContent,
     content_to_dict,
 )
-from custom_components.ha_govee_led_ble.protocol import build_custom_effect
+from custom_components.ha_govee_led_ble.protocol import DEFAULT_DIY_SLOT, build_custom_effect
 
 _ADDR = {"H617A": "AA:BB:CC:DD:EE:FF", "H6199": "11:22:33:44:55:66"}
 
@@ -82,8 +82,19 @@ async def test_apply_sets_sticky_and_sends_packets(hass, hass_storage):
     assert sent  # non-empty: packets were actually written
     assert coord.active_custom_id == eid
     assert coord.effect == "My Reds"
+    assert coord.diy_slot is None
     assert coord.music_mode == "off" and coord.video_mode == "off"
     assert coord.active_mode == "custom"
+
+
+async def test_apply_diy_sets_default_slot_and_runtime_ownership(hass, hass_storage):
+    coord = _coord(hass, "apply_diy")
+    await coord.async_load_effects()
+    eid = await coord.async_save_effect("Vibrant", _vibrant(8))
+    with patch.object(coord, "send_command", new_callable=AsyncMock):
+        await coord.async_apply_custom_effect(eid)
+    assert coord.diy_slot == DEFAULT_DIY_SLOT
+    assert coord._owned_diy_effect_id == eid
 
 
 async def test_apply_unknown_id_raises(hass, hass_storage):

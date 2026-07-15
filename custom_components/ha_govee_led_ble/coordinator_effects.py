@@ -20,9 +20,10 @@ from .custom_effects import (
     content_to_dict,
     new_effect_id,
     normalise_name,
+    uses_diy_slot,
     validate_content,
 )
-from .protocol import build_custom_effect
+from .protocol import DEFAULT_DIY_SLOT, build_custom_effect
 
 STORE_VERSION = 2
 STORE_MINOR_VERSION = 1
@@ -155,6 +156,8 @@ class _CustomEffectMixin(_CoordinatorBase):
             await self.send_command(packet)
         self.active_custom_id = effect.id
         self.effect = effect.display_name
+        self.diy_slot = DEFAULT_DIY_SLOT if uses_diy_slot(content) else None
+        self._owned_diy_effect_id = effect.id if uses_diy_slot(content) else None
         self.music_mode = self.video_mode = "off"
         self._publish()
 
@@ -184,6 +187,8 @@ class _CustomEffectMixin(_CoordinatorBase):
             if self.active_custom_id == effect.id:
                 self.active_custom_id = None
                 self.effect = None
+            if self._owned_diy_effect_id == effect.id:
+                self._owned_diy_effect_id = None
             ir.async_delete_issue(self.hass, DOMAIN, self._scene_shadow_issue_id(effect.id))
             ir.async_delete_issue(self.hass, DOMAIN, self._unsupported_effect_issue_id(effect.id))
             await self._save_to_store()

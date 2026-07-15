@@ -20,6 +20,8 @@ def _sent(sc):
 
 async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
     coord.is_on, coord.effect, coord.active_custom_id = True, "prior effect", "diy-42"
+    coord.diy_slot = proto.DEFAULT_DIY_SLOT
+    coord._owned_diy_effect_id = "diy-42"
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_select_music_slug("rhythm")
     assert _sent(sc) == [
@@ -29,6 +31,8 @@ async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
     assert coord.is_on is True
     assert (coord.music_mode, coord.video_mode) == ("rhythm", "off")
     assert coord.effect is None and coord.active_custom_id is None
+    assert coord.diy_slot is None
+    assert coord._owned_diy_effect_id is None
 
 
 async def test_entering_music_from_color_temp_captures_color_temp_snapshot(coord):
@@ -92,11 +96,15 @@ async def test_restore_pre_mode_re_emits_matching_builder(coord, snapshot, expec
     coord._pre_mode_snapshot = snapshot
     coord.music_mode, coord.video_mode = "rhythm", "movie"
     coord.effect, coord.active_custom_id = "leftover", "diy-1"
+    coord.diy_slot = proto.DEFAULT_DIY_SLOT
+    coord._owned_diy_effect_id = "diy-1"
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_restore_pre_mode()
     assert _sent(sc) == [expected]
     assert (coord.music_mode, coord.video_mode) == ("off", "off")
     assert coord.effect is None and coord.active_custom_id is None
+    assert coord.diy_slot is None
+    assert coord._owned_diy_effect_id is None
 
 
 async def test_select_off_routes_to_restore_and_clears_music_mode(coord):

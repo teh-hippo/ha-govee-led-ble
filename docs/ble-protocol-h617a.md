@@ -86,8 +86,9 @@ a trailing XOR checksum (omitted from the table for brevity). `<..>` marks a var
 | Colour temperature | `33 05 15 01 00 00 00 <Khi> <Klo> <R> <G> <B> <ML> <MH>` | RGB slot `[4:7]` is zero; Kelvin is 16-bit big-endian at `[7:9]`; Govee's rendered white RGB at `[9:12]`. |
 | Per-segment brightness | `33 05 15 02 <pct> <ML> <MH>` | Segment mask at `[5:7]`, immediately after the percent. Independent of colour. |
 | Scene select | `33 05 04 <code_LE>` | Scene code, little-endian; preceded by `0xA3` frames for complex scenes. |
-| DIY select (flat / Finger Sketch / Combo) | `33 05 0a <slot>` | Mode `0x0a`; preceded by the `0xA3` DIY body (`TYPE 0x04`, `0x03`, or `0x04` with `FAMILY 0xFF`). Slot is app-assigned and persistent per saved effect; current Combo examples used `0x6E` and `0xEF`. |
+| DIY select (flat / Finger Sketch / Combo) | `33 05 0a <slot>` | Mode `0x0a`; preceded by the `0xA3` DIY body (`TYPE 0x04`, `0x03`, or `0x04` with `FAMILY 0xFF`). Slot is app-assigned and persistent per saved effect; current Combo examples used `0x6E` and `0xEF`. The integration's default `0xF0` was accepted and read back, but app captures also used `0xF0`, so it does not prove ownership. |
 | rgbicv2 DIY select | `33 05 04 <code_LE>` | Rich DIY effects reuse the scene command with a per-effect code (Bloom 506, Brilliant 501, ...); preceded by the `0xA3` record-container body (`TYPE 0x02`). |
+| Workshop Apply | `33 05 04 91 01 02` | Workshop code `0x0191`, little-endian, with scene type `0x02`; preceded by the length-delimited Workshop `0xA3` body (`TYPE 0x02`). |
 | Vibrant activate | `33 05 0a <slot>` | Same activation as DIY; preceded by the `0xA3` Vibrant body (type `0x03`). |
 | Music mode | `33 05 13 <mode> <sens> <style> <count> <RGB×count>` | H617A uses sub-command `0x13` (an older protocol version emits `0x0c`); see "Music mode layout". All 11 `mode` codes confirmed live (match `const.MUSIC_MODES`); `sens` 0-99; `style` `00` Dynamic / `01` Calm; `count` = manual colour count and the auto-colour flag (`00` = Auto colour on). Extended modes also send a `0x41` `a3` parameter frame. |
 | Video mode | `33 05 00 <full> <game> <sat> [01 <soft>]` | Full-screen and game flags, saturation 0-100, optional sound-effect softness. |
@@ -332,6 +333,7 @@ payload is identified by the `TYPE` and activation pair:
 | Scene | `sceneType` (`0x02`, or `0x01` for a few such as Halloween and Sweet) | `33 05 04 <code_LE>` |
 | Flat DIY | `0x04` | `33 05 0a <slot>` |
 | Combo DIY | `0x04` (`FAMILY = 0xFF`) | `33 05 0a <slot>` |
+| Workshop | `0x02` | `33 05 04 91 01 02` |
 | rgbicv2 DIY | `0x02` | `33 05 04 <code_LE>` |
 | Finger Sketch DIY | `0x03` | `33 05 0a <slot>` |
 | Vibrant | `0x03` | `33 05 0a <slot>` |
@@ -381,7 +383,90 @@ Current iOS 7.5.21 evidence confirms:
   transaction, while Save and other library metadata changes send no Govee BLE command;
 - app-assigned slot `0x6E` in one editor and `0xEF` in a separate editor. Slot `0xEF` persisted
   after Save and reopen, proving that the activation byte is an effect handle rather than a
-  body-derived value.
+  body-derived value;
+- default integration slot `0xF0` directly accepted on H617A firmware 3.02.24. The probe sent the
+  exact Combo body, activated `33 05 0a f0`, and received fresh colour-mode read-back
+  `aa 05 0a f0`. Legacy app captures also used `0xF0`, so read-back confirms only the slot, not
+  which body or author is active.
+
+### Workshop (`TYPE 0x02`, code `0x0191`)
+
+Workshop is a separate length-delimited layer container. Apply sends the body with A3 type `0x02`,
+then activates it with `33 05 04 91 01 02`. The strip acknowledges the A3 chunk count and the
+colour command. Save was kept separate and was not required for transport.
+
+The semantic body is:
+
+```
+<layer_count> [<record_len=1d> <29-byte layer record>]...
+```
+
+A copied second layer increments `layer_count` and appends another complete record. Any zeroes
+needed to fill the final 17-byte A3 chunk are transport padding outside the length-delimited
+records.
+
+The first valid current-iOS anchor used one **Select IC Continuously** layer with ordered red and
+blue colours:
+
+```
+01 1d 00 01 00 0f 10 01 ff0000 80 14 14 01 80 14 02 ff0000 0000ff 00 00 80 00 00 80 00
+```
+
+An untouched draft and a one-red-colour draft emitted no Workshop write. Red plus blue emitted the
+body above, establishing two colours as the minimum observed valid colour content.
+
+The Select Type wire enum and its two record parameters are directly mapped:
+
+| Current iOS label | Wire value | Parameters | Current default meaning |
+|---|---:|---|---|
+| Segment | `00` | `00 07` | Seven segments |
+| Select IC Continuously | `01` | `00 0f` | Fifteen ICs |
+| Select IC Randomly | `02` | `0f 01` | Maximum 15, minimum 1 |
+| Customize Segment | `03` | `01 00` | One IC per segment, zero IC interval |
+
+These are layer-record offsets `1:4`; they do not match the APK's internal enum order. All other
+record bytes and the activation stayed byte-identical across the four marked Applies. Reapplying
+Select IC Continuously produced the exact original body.
+
+The final byte of each 29-byte layer record is priority. Default/disabled is `00`; setting only the
+second copied layer to priority 2 changed only that byte to `02`. Copying and then deleting the
+layer produced exact two-layer and one-layer A/B/A bodies.
+
+All offsets below count the record length byte as `r0`. Four further marked captures isolated the
+remaining visible field families:
+
+| Current iOS control | Observed record change |
+|---|---|
+| Number of IC, Continuous | `r4: 0f -> 07` for 15 to 7 |
+| Applied Area | `r1: 00 -> 50` for full 10/10 to 5/10; the app also clamps `r4` to `05` |
+| Brightness Scope | `r7:r8: ff00 -> c639` for the displayed 22-77% range |
+| Brightness Changing Speed | `r10: 7f -> ff` for displayed 50% to 100% |
+| Brightest/Darkest retention | `r11:r12: 1414 -> c830` for displayed 200 and 48 |
+| Distribution Method | `r13: 01 -> 00` for Based on Number of IC to Unified Color |
+| Direction | `r13: 01 -> 81` for Forward to Backward |
+| Colour Changing Speed / Retention | `r14:r15: 8014 -> ffff` for displayed 50%/20 to 100%/255 |
+| Colour count | `r16: 02 -> 03`; the record length grows `r0: 1d -> 20` and the third RGB is appended |
+
+The colour palette starts at `r17`. The seven trailing bytes after its variable-length RGB list
+are three selected-area movement bytes, three overall-movement bytes and the priority byte.
+With two colours:
+
+- selected-area movement encoded `17 04 ff` for interval 4, Backward and Forward, 100% speed and
+  Enter/Exit enabled;
+- overall movement encoded `11 05 ff` for interval 5, Forward and Backward and 100% speed;
+- disabled defaults are `00 00 80` before slider interaction and `00 00 7f` after returning a
+  displayed 50% slider to its centre.
+
+That `0x80` versus `0x7f` distinction also appears in the colour and brightness speed fields. It is
+UI rounding, not a different displayed default. The marked captures are
+`20260715135324-h617a-workshop-area-count-differential.pcap`,
+`20260715140050-h617a-workshop-colour-family.pcap`,
+`20260715141908-h617a-workshop-brightness-moving-effects.pcap` and
+`20260715143430-h617a-workshop-selected-moving-completion.pcap`.
+
+The field locations are now attributable, but an unrestricted encoder still requires the complete
+packed value space for Applied Area, distribution/direction and movement flags, plus any priority
+values and reorder behaviour needed beyond the proven default and level 2.
 
 ### rgbicv2 DIY (`TYPE 0x02`)
 
@@ -484,13 +569,14 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | Colour temperature `33 05 15 01 00 00 00 ...` | `build_color_temp` | Implemented and confirmed live; emits the true-Kelvin frame over 2000-9000K. |
 | Scene select `33 05 04` | `build_scene` | Confirmed live. |
 | Scene multi-frame `0xA3` | `build_scene_multi` | Confirmed live; carries the per-scene `scene_type` prefix (`0`/`1`/`2`). |
-| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented as capture-pinned custom-effect builders. Current Combo body semantics are confirmed; reserving activation slot `0xF0` for HA-authored effects still needs a targeted H617A check. |
+| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented custom-effect builders. Flat and Finger Sketch remain capture-pinned; the current Combo body and default slot `0xF0` are directly validated on H617A firmware 3.02.24. Slot read-back cannot identify the active body. |
+| Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | none | Transport, minimum content, layers, Select Type, area/count, palette, timing, brightness, movement and priority field locations are mapped. Unproven packed value spaces remain fail-closed. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a` | `build_vibrant` | Implemented from the capture-pinned header and per-segment gradient entries; remains experimental while the header is partly undecoded. |
 | Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
 | Video mode `33 05 00` | `build_video_mode` | H6199 TV-backlight only; not offered on H617A. |
 | Video white balance `33 a9` | `build_video_white_balance` | H6199 raw two-axis frame only; no one-dimensional UI mapping. |
-| Colour-mode query `aa 05` | `parse_color_mode_response` | Confirmed live. |
+| Colour-mode query `aa 05` | `parse_color_mode_response` | Confirmed live, including DIY mode `0x0a` with its activation slot. |
 | Scheduled timer write `33 23` | `build_timer_schedule` | Write confirmed live (4 slots, on/off, weekday bits Mon=bit0..Sun=bit6). |
 | Timer table read-back `aa 23` | `parse_timer_schedule_table` | Decodes the full `ff`-prefixed 4-slot table into per-slot records; confirmed against the live reply. |
 | Sleep / wake-up `33 11` / `33 12` | `build_timer_sleep` / `build_timer_wakeup` (+ parsers) | Builders shipped; replies captured live (OBSERVE). |
@@ -499,9 +585,6 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 
 Remaining gaps:
 
-- **HA-authored DIY slot**: the app assigns and persists a distinct activation slot per effect.
-  The integration currently reserves legacy-observed slot `0xF0`; a targeted H617A check is
-  required before promoting the custom-effect builders from experimental.
 - **App-authored DIY read-back**: no device query returns the full editor body, so an
   app-authored DIY cannot be imported from the strip.
 - **Music per-mode parameters**: capture-pinned parameter builders exist, but the remaining

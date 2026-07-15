@@ -42,6 +42,9 @@ def _make_coord(**ov) -> MagicMock:
         music_daynight_speed=10,
         segment_colors=[(255, 255, 255)] * 15,
         active_custom_id=None,
+        diy_slot=None,
+        color_mode=None,
+        _owned_diy_effect_id=None,
         music_mode="off",
         video_mode="off",
         custom_effects={},
@@ -60,6 +63,8 @@ def _make_coord(**ov) -> MagicMock:
 
     def _enter_static_mode() -> None:
         c.effect = c.active_custom_id = None
+        c.diy_slot = None
+        c._owned_diy_effect_id = None
         c.music_mode = c.video_mode = "off"
 
     c._enter_static_mode = MagicMock(side_effect=_enter_static_mode)

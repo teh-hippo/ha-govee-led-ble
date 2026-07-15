@@ -9,7 +9,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile
 from .custom_effects import CustomEffect
-from .protocol import ParsedTimerSchedule
+from .protocol import ParsedMode, ParsedTimerSchedule
 
 if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
@@ -55,6 +55,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     music_daynight_segments: int
     music_daynight_speed: int
     active_custom_id: str | None
+    diy_slot: int | None
+    color_mode: ParsedMode | None
+    _owned_diy_effect_id: str | None
     _pre_mode_snapshot: PreModeSnapshot
     custom_effects: dict[str, CustomEffect]
     segment_colors: list[tuple[int, int, int]]

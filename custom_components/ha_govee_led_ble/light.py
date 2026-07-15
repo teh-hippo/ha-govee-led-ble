@@ -27,6 +27,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN, MUSIC_MODES
 from .coordinator import GoveeBLECoordinator
+from .custom_effects import SegmentContent
 from .entity import GoveeBLEEntity
 from .light_services import (
     MUSIC_MODE_ALIASES,
@@ -36,6 +37,8 @@ from .light_services import MUSIC_MODE_IDS as MUSIC_MODE_IDS
 from .light_services import apply_active_music_mode as apply_active_music_mode
 from .light_services import apply_active_video_mode as apply_active_video_mode
 from .protocol import (
+    DEFAULT_DIY_SLOT,
+    ParsedMode,
     build_brightness,
     build_color_rgb,
     build_color_temp,
@@ -90,7 +93,7 @@ _STATE_FIELDS = (
     "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
     "segment_colors video_full_screen video_sound_effects video_sound_effects_softness "
     "white_brightness music_sensitivity "
-    "music_calm music_color active_custom_id music_mode video_mode"
+    "music_calm music_color active_custom_id diy_slot music_mode video_mode"
 ).split()
 
 
@@ -247,14 +250,23 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             or coordinator.video_mode != "off"
         ):
             return
+        if coordinator.diy_slot is not None and coordinator.diy_slot != DEFAULT_DIY_SLOT:
+            return
+        if coordinator.color_mode in (ParsedMode.SCENE, ParsedMode.MUSIC, ParsedMode.VIDEO, ParsedMode.UNKNOWN):
+            return
         if (last_state := await self.async_get_last_state()) is None:
             return
         if not (restored := last_state.attributes.get(ATTR_EFFECT)):
             return
         key = _normalize_effect_name(str(restored))
         if (effect := coordinator.resolve_custom(key)) is not None and coordinator.is_custom_effect_supported(effect):
-            coordinator.active_custom_id, coordinator.effect = effect.id, effect.display_name
-        elif key in SCENES:
+            if (
+                coordinator.color_mode is None
+                or coordinator.color_mode is ParsedMode.COLOUR
+                and isinstance(effect.content, SegmentContent)
+            ):
+                coordinator.active_custom_id, coordinator.effect = effect.id, effect.display_name
+        elif coordinator.color_mode is None and key in SCENES:
             coordinator.effect = key
 
     async def _async_restore_segments(self) -> None:
@@ -340,6 +352,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             for packet in build_scene_multi(scene.param, scene.code, scene.scene_type):
                 await coordinator.send_command(packet)
             coordinator.effect, coordinator.active_custom_id = key, None
+            coordinator.diy_slot = None
+            coordinator._owned_diy_effect_id = None
             coordinator.music_mode = coordinator.video_mode = "off"
             return
         if coordinator.profile.supports_video_mode:

@@ -59,6 +59,11 @@ type AuthorableContent = SegmentContent | SketchContent | VibrantContent | FlatC
 type EffectContent = AuthorableContent | UnknownContent
 
 
+def uses_diy_slot(content: EffectContent) -> bool:
+    """Return whether content is activated through the H617A DIY slot."""
+    return isinstance(content, SketchContent | VibrantContent | FlatContent | ComboContent)
+
+
 @dataclass(frozen=True)
 class CustomEffect:
     id: str

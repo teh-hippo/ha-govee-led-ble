@@ -364,6 +364,19 @@ def test_build_combo_matches_current_ios_capture():
         _valid(frame)
 
 
+def test_build_combo_matches_direct_f0_probe():
+    content = ComboContent(
+        speed=0x33,
+        palette=((255, 0, 0), (0, 0, 255)),
+        effects=((0x00, 0x00), (0x03, 0x03)),
+    )
+    assert proto.build_combo(content) == [
+        H("a300010204ff003306ff00000000ff0400000369"),
+        H("a3ff03000000000000000000000000000000005f"),
+        H("33050af0000000000000000000000000000000cc"),
+    ]
+
+
 def test_build_custom_effect_dispatches_each_kind():
     seg = SegmentContent(colors=(None, None, (10, 20, 30)))
     assert proto.build_custom_effect(seg, segment_count=15) == [H("330515010a141e00000000000400000000000026")]
@@ -595,6 +608,14 @@ def test_parse():
     assert proto.parse_color_mode_response(bytes([0x15, 0x02, 50])).white_brightness == 50
     with pytest.raises(ValueError):
         proto.parse_color_mode_response(b"")
+
+
+def test_parse_direct_diy_slot_readback():
+    domain, payload = proto.split_status_frame(H("aa050af000000000000000000000000000000055"))
+    parsed = proto.parse_color_mode_response(payload)
+    assert domain == 0x05
+    assert parsed.mode is proto.ParsedMode.DIY
+    assert parsed.diy_slot == proto.DEFAULT_DIY_SLOT
 
 
 def test_parse_music_calm_only_for_rhythm():

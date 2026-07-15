@@ -158,6 +158,8 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             )
             c.video_mode, c.effect = mode, None
             c.active_custom_id, c.music_mode = None, "off"
+            c.diy_slot = None
+            c._owned_diy_effect_id = None
             c.video_saturation, c.video_full_screen = saturation, resolved_fs
             c.video_sound_effects = sound_effects if supports_sound else False
             if supports_sound:

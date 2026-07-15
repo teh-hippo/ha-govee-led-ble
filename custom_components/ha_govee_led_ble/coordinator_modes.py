@@ -102,7 +102,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     def active_mode(self) -> str:
         if not self.is_on:
             return "off"
-        if self.active_custom_id is not None:
+        if self.active_custom_id is not None or self.diy_slot is not None:
             return "custom"
         if self.effect in self.scene_name_set:
             return "scene"
@@ -120,6 +120,8 @@ class _ActiveModeMixin(_CoordinatorBase):
     def _enter_static_mode(self) -> None:
         """Clear every non-static mode so exactly one operating mode is ever active (spec §1.4)."""
         self.effect = self.active_custom_id = None
+        self.diy_slot = None
+        self._owned_diy_effect_id = None
         self.music_mode = self.video_mode = "off"
 
     @property
@@ -149,6 +151,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         )
         self.music_mode, self.video_mode = slug, "off"
         self.effect, self.active_custom_id = None, None
+        self.diy_slot = None
+        self._owned_diy_effect_id = None
 
     async def async_restore_pre_mode(self) -> None:
         snap = self._pre_mode_snapshot

@@ -65,6 +65,8 @@ async def async_get_config_entry_diagnostics(
             "color_temp_kelvin": coordinator.color_temp_kelvin,
             "effect": coordinator.effect,
             "active_custom_id": coordinator.active_custom_id,
+            "diy_slot": coordinator.diy_slot,
+            "color_mode": coordinator.color_mode.name.lower() if coordinator.color_mode is not None else None,
             "custom_effect_count": len(coordinator.custom_effects),
             "video_saturation": coordinator.video_saturation,
             "video_sound_effects": coordinator.video_sound_effects,

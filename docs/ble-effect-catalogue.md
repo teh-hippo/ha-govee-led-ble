@@ -148,7 +148,8 @@ Two activation paths:
   app-assigned handle. Combo slots `0x6E` and `0xEF` were observed in separate current editor
   instances; legacy captures used `0x1B` and `0xF0`, and an earlier Fade capture used `0xBE`.
   The slot persists after Save and reopen, but is not encoded in the body, is not a catalogue
-  code and carries no colour information.
+  code and carries no colour information. The integration also uses `0xF0` by default, but the
+  app evidence proves that value is not exclusive and cannot identify an HA-authored effect.
 - **rgbicv2** activates with the **scene** command `33 05 04 <code_LE>`, each effect owning its
   own code (2.3). Because the transport is byte-for-byte the scene path, feeding a captured
   rgbicv2 body to the existing `build_scene_multi(base64(body[3:]), code)` reproduces its frames
@@ -402,7 +403,9 @@ H617A, so this catalogue is complete for the H617A.
 Current iOS 7.5.21 editors apply selections and parameter changes immediately; the visible Apply
 button is not the BLE write boundary. Bloom2 relative brightness 10/30/10% produced repeatable
 wire values `0x45/0x6f/0x45`. Share Space replays a downloaded four-part A3 body through DIY
-activation `0xfe`. Workshop and AI/image effects remain separate authoring/import mechanisms.
+activation `0xfe`. Workshop is a separate TYPE `0x02` length-delimited layer container activated
+with code `0x0191`; its current map is in [`ble-protocol-h617a.md`](ble-protocol-h617a.md).
+AI/image effects remain a separate authoring/import mechanism.
 
 The H6199 also exposes DIY, but its captured Fade1 uses activation `0x61`. H617A animated DIY
 builders must not be reused for H6199 until that model's body grammar is mapped.
@@ -504,6 +507,13 @@ index. Example (Forest):
 So a scene "speed"/"brightness" slider is not a free 0-100 value; it picks an index into these
 arrays. The distilled catalogue keeps this `config` verbatim so we can reproduce the app's
 slider steps.
+
+Current iOS 7.5.21 did not expose those ordinal controls through the paths tested in marked capture
+`20260715145325-h617a-adjustable-scenes.pcap`. **Life > My Scenes** was empty, the target Natural
+and Festival scenes were absent from the editable My Scenes grid, and Effects Lab offered
+tap-to-apply plus community details on long press. Starry Sky was selected, but no parameter
+A/B/A was performed. The frozen `config` proves the parameter data exists, not that the current
+account exposes an editable UI. Future live checks must establish one scene's edit path at a time.
 
 ## 5. Capture matrix (what to record next)
 

@@ -35,6 +35,8 @@ COLOR_MODE_SCENE = 0x04
 COLOR_MODE_VIDEO = 0x00
 COLOR_MODE_MUSIC = 0x13
 COLOR_MODE_STATIC = 0x15
+COLOR_MODE_DIY = 0x0A
+DEFAULT_DIY_SLOT = 0xF0
 
 
 MUSIC_SLUG_BY_ID: dict[int, str] = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
@@ -196,13 +198,13 @@ def build_h6199_scene(scene_param_b64: str, scene_code: int, scene_type: int = 2
 
 # --- Custom-effect content encoders (§3.3) -----------------------------------------------------
 # Every builder returns list[bytes]; the store/entity layers never see raw bytes. Tier-1 segments
-# reuse the live write-path; the Tier-2 DIY/Vibrant encoders are capture-pinned and stay
-# EXPERIMENTAL. Packet bytes live only here — nothing downstream hardcodes frames.
+# reuse the live write-path. Combo is directly validated; the remaining Tier-2 DIY/Vibrant
+# encoders stay capture-pinned and experimental. Packet bytes live only here.
 
 
 def build_diy_activate(slot: int) -> bytes:
     """DIY/Vibrant activation ``33 05 0a <slot>`` (H617A §3 "DIY select"); ``slot`` is app-assigned."""
-    return build_packet(0x33, 0x05, [0x0A, slot])
+    return build_packet(0x33, 0x05, [COLOR_MODE_DIY, slot])
 
 
 def _group_indices[T](values: Iterable[T | None], *, start: int) -> list[tuple[T, list[int]]]:
@@ -246,7 +248,7 @@ def build_sketch(content: SketchContent, *, segment_count: int) -> list[bytes]:
     body += bytes([len(groups)])
     for rgb, indices in groups:
         body += bytes([len(indices), *rgb, *indices])
-    return [*build_a3_multi(0x03, body), build_diy_activate(0xF0)]
+    return [*build_a3_multi(0x03, body), build_diy_activate(DEFAULT_DIY_SLOT)]
 
 
 def _interpolate(stops: tuple[RGB, ...], n: int) -> list[RGB]:
@@ -280,18 +282,17 @@ def build_vibrant(content: VibrantContent, *, segment_count: int) -> list[bytes]
     # EXPERIMENTAL: harness=diy-vibrant encoding=capture-pinned
     seg_rgb = _interpolate(content.stops, segment_count)
     entries = b"".join(bytes([index, 0x01, *seg_rgb[index]]) for index in range(segment_count))
-    return [*build_a3_multi(0x03, _VIBRANT_HEADER + entries), build_diy_activate(0xF0)]
+    return [*build_a3_multi(0x03, _VIBRANT_HEADER + entries), build_diy_activate(DEFAULT_DIY_SLOT)]
 
 
 def build_flat_diy(content: FlatContent) -> list[bytes]:
     # EXPERIMENTAL: harness=diy-flat encoding=capture-pinned
     palette = b"".join(bytes(colour) for colour in content.palette)
     body = bytes([content.family, content.variant, content.speed, len(palette)]) + palette
-    return [*build_a3_multi(0x04, body), build_diy_activate(0xF0)]
+    return [*build_a3_multi(0x04, body), build_diy_activate(DEFAULT_DIY_SLOT)]
 
 
-def build_combo(content: ComboContent, *, slot: int = 0xF0) -> list[bytes]:
-    # EXPERIMENTAL: harness=diy-combo encoding=capture-pinned
+def build_combo(content: ComboContent, *, slot: int = DEFAULT_DIY_SLOT) -> list[bytes]:
     palette = b"".join(bytes(colour) for colour in content.palette)
     sequence = b"".join(bytes([family, variant]) for family, variant in content.effects)
     body = bytes([0xFF, content.variant, content.speed, len(palette)]) + palette + bytes([len(sequence)]) + sequence
@@ -420,11 +421,12 @@ def build_music_params_a3(
 
 
 class ParsedMode(Enum):
-    """Operating mode a colour-mode reply decodes to; music and video live outside ``effect``."""
+    """Operating mode from a colour-mode reply; DIY carries a slot, music and video their own state."""
 
     UNKNOWN = auto()
     COLOUR = auto()
     SCENE = auto()
+    DIY = auto()
     MUSIC = auto()
     VIDEO = auto()
 
@@ -433,6 +435,7 @@ class ParsedMode(Enum):
 class ParsedColorModeResponse:
     mode: ParsedMode = ParsedMode.UNKNOWN
     effect: str | None = None
+    diy_slot: int | None = None
     music_mode: str | None = None
     video_mode: str | None = None
     video_full_screen: bool | None = None
@@ -457,6 +460,8 @@ def parse_color_mode_response(payload: bytes) -> ParsedColorModeResponse:
         return ParsedColorModeResponse(
             mode=ParsedMode.SCENE, effect=SCENE_EFFECT_BY_ID.get(int.from_bytes(scene_bytes, "little"))
         )
+    if mode == COLOR_MODE_DIY:
+        return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_slot=_get(payload, 1))
     if mode == COLOR_MODE_VIDEO:
         return ParsedColorModeResponse(
             mode=ParsedMode.VIDEO,
@@ -729,7 +734,9 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_h6199_scene": Evidence(
         "VALIDATED", "H6199 simple type-01 and A3 type-02 scene activations; iOS app-sniff 2026-07-12"
     ),
-    "build_diy_activate": Evidence("VALIDATED", "H617A §3 DIY select 33 05 0a <slot>; live (CAT §2.1)"),
+    "build_diy_activate": Evidence(
+        "VALIDATED", "H617A §3 DIY select 33 05 0a <slot>; slot F0 accepted and read back live 2026-07-15"
+    ),
     "build_segment_content": Evidence(
         "VALIDATED", "H617A §3/§7 seg colour+brightness reuse; VAL single/all/one-seg live"
     ),
@@ -737,8 +744,8 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_vibrant": Evidence("EXPERIMENTAL", "CAT §3 Vibrant TYPE 0x03; 11-byte header undecoded, replayed verbatim"),
     "build_flat_diy": Evidence("EXPERIMENTAL", "CAT §2.2 flat DIY TYPE 0x04; capture-pinned, gated Tier-2"),
     "build_combo": Evidence(
-        "EXPERIMENTAL",
-        "CAT §2.5 TYPE 04 FAMILY FF body; current iOS 7.5.21 slots 6E/EF, HA slot F0 needs direct check",
+        "VALIDATED",
+        "H617A §6 Combo TYPE 04 FAMILY FF; current iOS body plus slot F0 direct write/read-back 2026-07-15",
     ),
     "build_custom_effect": Evidence("VALIDATED", "dispatcher over per-kind encoders (own evidence); Unknown rejected"),
     "build_music_mode_with_color": Evidence("VALIDATED", "H617A §3/§7 music 33 05 13; 11 modes live-confirmed"),
@@ -757,7 +764,9 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_timer_wakeup": Evidence("EXPERIMENTAL", "H617A §4 wake-up 33 12; reply captured (OBSERVE)"),
     "build_poweroff_memory": Evidence("EXPERIMENTAL", "MEM §1 power-off memory 33 41; no live capture"),
     "split_status_frame": Evidence("VALIDATED", "H617A §4 status aa <type>; 20-byte XOR split; live"),
-    "parse_color_mode_response": Evidence("VALIDATED", "H617A §4 colour-mode aa 05 (15 01/04/00/13); live"),
+    "parse_color_mode_response": Evidence(
+        "VALIDATED", "H617A §4 colour-mode aa 05 (15/04/0a/00/13); DIY slot F0 read back live 2026-07-15"
+    ),
     "parse_fw_version": Evidence("VALIDATED", "H617A §4 firmware aa 06 -> ASCII '3.02.24'; VAL live capture"),
     "parse_hw_version": Evidence(
         "VALIDATED", "H617A/H6199 aa 07 03 -> ASCII hardware version; iOS app-sniff 2026-07-12"

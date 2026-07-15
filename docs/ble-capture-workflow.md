@@ -23,6 +23,34 @@ packets that belong to the strip.
   environment-specific setup kept outside this repo.
 - The project's `uv` environment in WSL for the decoder. No Wireshark required.
 
+## Persistent iPhone control
+
+Autonomous runs should keep one CoreDevice media stream open for one approved, bounded target,
+normally one scene or one control family. Opening and closing a stream for every tap is slow and
+can wedge `displayservice`, but broad multi-scene sessions accumulate too much state and evidence.
+
+```bash
+python -m pymobiledevice3 developer core-device display serve-web \
+  --bind 127.0.0.1 --http-port 18080 --no-audio --userspace
+```
+
+The loopback viewer exposes ordered `/touch` requests while the authenticated stream remains open.
+Keep it bound to `127.0.0.1`; the control endpoints are intentionally unauthenticated. Use one
+phone operator to mark, drive, capture and decode the approved target, then stop and reconcile it
+before starting another. Do not queue follow-on targets without owner approval. Take only decisive
+screenshots, retain their full files locally and return text-only findings to the main session.
+
+After an iPhone restart, remount the Developer Disk Image before using developer services:
+
+```bash
+python -m pymobiledevice3 mounter auto-mount --userspace
+```
+
+On a later screenshot or touch timeout, stop the persistent viewer, probe
+`display get-media-stream-server-status`, mount or remount the Developer Disk Image, and verify
+with one screenshot before asking for a phone restart. These recovery steps do not write BLE
+state.
+
 ## Tools (`tools/ble/`)
 
 - `govee-capture.sh`: start/stop the capture and auto-decode. It starts `idevicebtlogger`

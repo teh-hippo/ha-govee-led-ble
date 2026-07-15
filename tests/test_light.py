@@ -11,7 +11,12 @@ from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
-from custom_components.ha_govee_led_ble.custom_effects import EffectValidationError, content_from_dict
+from custom_components.ha_govee_led_ble.custom_effects import (
+    EffectValidationError,
+    SegmentContent,
+    VibrantContent,
+    content_from_dict,
+)
 from custom_components.ha_govee_led_ble.light import (
     MUSIC_MODE_IDS,
     GoveeBLELight,
@@ -143,11 +148,13 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
     co = mock_coordinator
     co.is_on = True
     co.active_custom_id, co.music_mode, co.video_mode = "diy-9", "rhythm", "off"
+    co.diy_slot = proto.DEFAULT_DIY_SLOT
     await light.async_turn_on(effect="rainbow")
     sent = [call.args[0] for call in co.send_command.call_args_list]
     scene = SCENES["rainbow"]
     assert sent == proto.build_scene_multi(scene.param, scene.code, scene.scene_type)
     assert co.effect == "rainbow" and co.active_custom_id is None
+    assert co.diy_slot is None
     assert co.music_mode == "off" and co.video_mode == "off"
 
 
@@ -660,6 +667,77 @@ async def test_restore_custom_sets_active_custom_id(light, mock_coordinator):
     mock_coordinator.resolve_custom.assert_called_once_with("sunset")
     assert mock_coordinator.active_custom_id == "diy-3"
     assert mock_coordinator.effect == "Sunset"
+
+
+async def test_restore_diy_slot_does_not_infer_ownership(light, mock_coordinator):
+    mock_coordinator.diy_slot = proto.DEFAULT_DIY_SLOT
+    mock_coordinator.color_mode = proto.ParsedMode.DIY
+    mock_coordinator.resolve_custom = MagicMock(
+        return_value=MagicMock(
+            id="diy-3",
+            display_name="Sunset",
+            content=VibrantContent(stops=((0, 0, 0), (255, 0, 0))),
+        )
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Sunset"}))
+    await light._async_restore_effect()
+    assert mock_coordinator.active_custom_id is None and mock_coordinator.effect is None
+
+    mock_coordinator.resolve_custom.return_value = MagicMock(
+        id="segments",
+        display_name="Segments",
+        content=SegmentContent(colors=((255, 0, 0),)),
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Segments"}))
+    await light._async_restore_effect()
+    assert mock_coordinator.active_custom_id is None and mock_coordinator.effect is None
+
+
+async def test_restore_effect_skipped_for_foreign_live_diy_slot(light, mock_coordinator):
+    mock_coordinator.diy_slot = 0xEF
+    mock_coordinator.color_mode = proto.ParsedMode.DIY
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "rainbow"}))
+    await light._async_restore_effect()
+    light.async_get_last_state.assert_not_called()
+    assert mock_coordinator.effect is None
+
+
+async def test_restore_confirmed_static_accepts_segment_custom_only(light, mock_coordinator):
+    mock_coordinator.color_mode = proto.ParsedMode.COLOUR
+    mock_coordinator.resolve_custom = MagicMock(
+        return_value=MagicMock(
+            id="diy-3",
+            display_name="Sunset",
+            content=VibrantContent(stops=((0, 0, 0), (255, 0, 0))),
+        )
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Sunset"}))
+    await light._async_restore_effect()
+    assert mock_coordinator.active_custom_id is None and mock_coordinator.effect is None
+
+    mock_coordinator.resolve_custom.return_value = MagicMock(
+        id="segments",
+        display_name="Segments",
+        content=SegmentContent(colors=((255, 0, 0),)),
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Segments"}))
+    await light._async_restore_effect()
+    assert (mock_coordinator.active_custom_id, mock_coordinator.effect) == ("segments", "Segments")
+
+
+async def test_restore_unknown_scene_does_not_resurrect_custom(light, mock_coordinator):
+    mock_coordinator.color_mode = proto.ParsedMode.SCENE
+    mock_coordinator.resolve_custom = MagicMock(
+        return_value=MagicMock(
+            id="segments",
+            display_name="Segments",
+            content=SegmentContent(colors=((255, 0, 0),)),
+        )
+    )
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"effect": "Segments"}))
+    await light._async_restore_effect()
+    light.async_get_last_state.assert_not_called()
+    assert mock_coordinator.active_custom_id is None and mock_coordinator.effect is None
 
 
 async def test_restore_scene_keeps_effect(light, mock_coordinator):

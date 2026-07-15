@@ -27,16 +27,20 @@ from .coordinator_base import TIMER_SCHEDULE_SLOTS as TIMER_SCHEDULE_SLOTS
 from .coordinator_effects import EffectStore, _CustomEffectMixin
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_timers import _TimerWriteMixin
-from .custom_effects import CustomEffect
+from .custom_effects import CustomEffect, SegmentContent, uses_diy_slot
 from .protocol import (
+    ALL_SEGMENTS_MASK,
     BRIGHTNESS_PACKET_TYPE,
     BRIGHTNESS_QUERY,
+    COLOR_MODE_DIY,
     COLOR_MODE_MUSIC,
     COLOR_MODE_QUERY,
+    COLOR_MODE_SCENE,
     COLOR_MODE_STATIC,
     COLOR_MODE_VIDEO,
     COLOR_PACKET_TYPE,
     COMMAND_HEADER,
+    DEFAULT_DIY_SLOT,
     FIRMWARE_PACKET_TYPE,
     FW_QUERY,
     HARDWARE_PACKET_TYPE,
@@ -45,6 +49,7 @@ from .protocol import (
     MUSIC_SLUG_BY_ID,
     POWER_PACKET_TYPE,
     READ_UUID,
+    SCENE_EFFECT_BY_ID,
     WRITE_UUID,
     ParsedMode,
     ParsedTimerSchedule,
@@ -73,7 +78,14 @@ DEVICE_DISCOVERY_ATTEMPTS = 4
 PACKET_LOG_LIMIT = 50
 EXPECTED_STATE_TTL = 2.0
 
-_CORE_STATE_FIELDS = ("is_on", "brightness_pct", "rgb_color", "color_temp_kelvin", "effect")
+_CORE_STATE_FIELDS = (
+    "is_on",
+    "brightness_pct",
+    "rgb_color",
+    "color_temp_kelvin",
+    "effect",
+    "diy_slot",
+)
 _COLOR_MODE_FIELDS = (
     "video_full_screen",
     "video_saturation",
@@ -84,27 +96,78 @@ _COLOR_MODE_FIELDS = (
     "music_color",
     "white_brightness",
 )
+_COLOR_EXPECTATION_FIELDS = frozenset(
+    ("color_mode", "effect", "rgb_color", "color_temp_kelvin", "music_mode", "video_mode", *_COLOR_MODE_FIELDS)
+)
 
 
-def _expected_from_packet(packet: bytes) -> tuple[str, Any] | None:
-    """Map an outgoing command to the optimistic (field, value) its reply should confirm."""
+def _expectations_from_packet(packet: bytes) -> dict[str, Any]:
+    """Map an outgoing command to the optimistic fields its replies should confirm."""
     if len(packet) < 3 or packet[0] != COMMAND_HEADER:
-        return None
+        return {}
     if packet[1] == POWER_PACKET_TYPE:
-        return "is_on", bool(packet[2])
+        return {"is_on": bool(packet[2])}
     if packet[1] == BRIGHTNESS_PACKET_TYPE:
-        return "brightness_pct", packet[2]
+        return {"brightness_pct": packet[2]}
     if packet[1] != COLOR_PACKET_TYPE or len(packet) < 4:
-        return None
+        return {}
+    expectations: dict[str, Any] = {}
+    if color_mode := _expected_color_mode_from_packet(packet):
+        expectations["color_mode"] = color_mode
     if packet[2] == COLOR_MODE_MUSIC:
-        return "music_mode", MUSIC_SLUG_BY_ID.get(packet[3])
+        music_mode = MUSIC_SLUG_BY_ID.get(packet[3])
+        expectations["music_mode"] = music_mode
+        expectations["music_sensitivity"] = packet[4]
+        if music_mode == "rhythm":
+            expectations["music_calm"] = bool(packet[5])
+        expectations["music_color"] = tuple(packet[7:10]) if packet[6] == 0x01 else None
+        return expectations
     if packet[2] == COLOR_MODE_VIDEO and len(packet) >= 5:
-        return "video_mode", "game" if packet[4] else "movie"
-    if packet[2] == COLOR_MODE_STATIC and packet[3] == 0x01 and len(packet) >= 9:
-        if packet[4] or packet[5] or packet[6]:
-            return "rgb_color", (packet[4], packet[5], packet[6])
-        return "color_temp_kelvin", (packet[7] << 8) | packet[8]
-    return None
+        expectations.update(
+            {
+                "video_mode": "game" if packet[4] else "movie",
+                "video_full_screen": bool(packet[3]),
+                "video_saturation": packet[5],
+            }
+        )
+        if packet[7]:
+            expectations["video_sound_effects"] = bool(packet[6])
+            expectations["video_sound_effects_softness"] = packet[7]
+        return expectations
+    if packet[2] == COLOR_MODE_SCENE and len(packet) >= 5:
+        expectations["effect"] = SCENE_EFFECT_BY_ID.get(int.from_bytes(packet[3:5], "little"))
+        return expectations
+    if packet[2] == COLOR_MODE_STATIC and packet[3] == 0x01 and len(packet) >= 14:
+        mask = packet[12] | (packet[13] << 8)
+        if mask == ALL_SEGMENTS_MASK:
+            if packet[4] or packet[5] or packet[6]:
+                expectations["rgb_color"] = (packet[4], packet[5], packet[6])
+            else:
+                expectations["color_temp_kelvin"] = (packet[7] << 8) | packet[8]
+        return expectations
+    if packet[2] == COLOR_MODE_STATIC and packet[3] == 0x02 and len(packet) >= 7:
+        mask = packet[5] | (packet[6] << 8)
+        if mask == ALL_SEGMENTS_MASK:
+            expectations["white_brightness"] = packet[4]
+    return expectations
+
+
+def _expected_color_mode_from_packet(packet: bytes) -> tuple[ParsedMode, int | None] | None:
+    if len(packet) < 4 or packet[0] != COMMAND_HEADER or packet[1] != COLOR_PACKET_TYPE:
+        return None
+    match packet[2]:
+        case value if value == COLOR_MODE_DIY:
+            return ParsedMode.DIY, packet[3]
+        case value if value == COLOR_MODE_MUSIC:
+            return ParsedMode.MUSIC, None
+        case value if value == COLOR_MODE_VIDEO:
+            return ParsedMode.VIDEO, None
+        case value if value == COLOR_MODE_STATIC:
+            return ParsedMode.COLOUR, packet[3]
+        case value if value == COLOR_MODE_SCENE:
+            return ParsedMode.SCENE, None
+        case _:
+            return None
 
 
 class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin):
@@ -136,6 +199,9 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.music_mode = "off"
         self.video_mode = "off"
         self.active_custom_id: str | None = None
+        self.diy_slot: int | None = None
+        self.color_mode: ParsedMode | None = None
+        self._owned_diy_effect_id: str | None = None
         self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
         self.custom_effects: dict[str, CustomEffect] = {}
         self._store_lock = asyncio.Lock()
@@ -333,37 +399,56 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
 
     def _arm_expected(self, packet: bytes) -> None:
-        expectation = _expected_from_packet(packet)
-        if expectation is not None:
-            field, value = expectation
-            self._expected_state[field] = (value, time.monotonic() + EXPECTED_STATE_TTL)
+        expectations = _expectations_from_packet(packet)
+        if "color_mode" in expectations:
+            for field in _COLOR_EXPECTATION_FIELDS:
+                self._expected_state.pop(field, None)
+        deadline = time.monotonic() + EXPECTED_STATE_TTL
+        for field, value in expectations.items():
+            self._expected_state[field] = (value, deadline)
 
     def _accept_expected(self, field: str, value: Any) -> bool:
         """Consult the optimistic window for `field`.
 
-        Returns True (and clears the expectation) when the reply agrees or the deadline
-        has passed; returns False to drop a stale reply that still disagrees in-window.
+        Returns True when the reply agrees or the deadline has passed; returns False to
+        drop a stale reply that still disagrees in-window. Matching expectations remain
+        authoritative until the deadline so a later reordered reply cannot overwrite them.
         """
         expectation = self._expected_state.get(field)
         if expectation is None:
             return True
         expected, deadline = expectation
-        if time.monotonic() >= deadline or value == expected:
+        if time.monotonic() >= deadline:
             del self._expected_state[field]
+            return True
+        if value == expected:
             return True
         _LOGGER.debug("Ignoring stale %s for %s: %r (expecting %r)", field, self.address, value, expected)
         return False
 
     def _apply_color_mode_payload(self, payload: bytes) -> tuple[str, ...]:
         parsed = parse_color_mode_response(payload)
+        if parsed.mode is ParsedMode.DIY:
+            mode_detail = parsed.diy_slot
+        elif parsed.mode is ParsedMode.COLOUR:
+            mode_detail = payload[1]
+        else:
+            mode_detail = None
+        observed_color_mode = parsed.mode, mode_detail
+        if not self._accept_expected("color_mode", observed_color_mode):
+            return ()
+        self.color_mode = parsed.mode
         observed: list[str] = []
         accept_parameters = True
+        active_custom = self.custom_effects.get(self.active_custom_id) if self.active_custom_id is not None else None
         # Readback mirror of _enter_static_mode: committing one mode clears the others so exactly one
-        # is ever truthful. A bare COLOUR reply keeps active_custom_id (a custom effect reads back as static).
+        # is ever truthful. Static segment effects and slot-backed DIY effects retain only matching metadata.
         if parsed.mode is ParsedMode.MUSIC:
             if parsed.music_mode is not None and self._accept_expected("music_mode", parsed.music_mode):
                 self.music_mode = parsed.music_mode
                 self.video_mode, self.effect, self.active_custom_id = "off", None, None
+                self.diy_slot = None
+                self._owned_diy_effect_id = None
                 observed.append("music_mode")
             else:
                 accept_parameters = False
@@ -371,26 +456,62 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             if parsed.video_mode is not None and self._accept_expected("video_mode", parsed.video_mode):
                 self.video_mode = parsed.video_mode
                 self.music_mode, self.effect, self.active_custom_id = "off", None, None
+                self.diy_slot = None
+                self._owned_diy_effect_id = None
                 observed.append("video_mode")
+            else:
+                accept_parameters = False
+        elif parsed.mode is ParsedMode.DIY:
+            known_custom = (
+                parsed.diy_slot == DEFAULT_DIY_SLOT
+                and active_custom is not None
+                and self._owned_diy_effect_id == active_custom.id
+                and uses_diy_slot(active_custom.content)
+            )
+            readback_effect = self.effect if known_custom else None
+            if self._accept_expected("effect", readback_effect):
+                self.effect = readback_effect
+                self.music_mode = self.video_mode = "off"
+                self.diy_slot = parsed.diy_slot
+                if not known_custom:
+                    self.active_custom_id = None
+                    self._owned_diy_effect_id = None
+                observed.append("effect")
             else:
                 accept_parameters = False
         elif parsed.mode is ParsedMode.SCENE:
             if self._accept_expected("effect", parsed.effect):
                 self.effect = parsed.effect
                 self.music_mode, self.video_mode, self.active_custom_id = "off", "off", None
+                self.diy_slot = None
+                self._owned_diy_effect_id = None
                 observed.append("effect")
         elif parsed.mode is ParsedMode.COLOUR:
-            if self._accept_expected("effect", parsed.effect):
-                self.effect, self.music_mode, self.video_mode = None, "off", "off"
+            known_custom = active_custom is not None and isinstance(active_custom.content, SegmentContent)
+            readback_effect = self.effect if known_custom else None
+            if self._accept_expected("effect", readback_effect):
+                self.effect, self.music_mode, self.video_mode = readback_effect, "off", "off"
+                self.diy_slot = None
+                if not known_custom:
+                    self.active_custom_id = None
+                self._owned_diy_effect_id = None
                 observed.append("effect")
+        else:
+            self.effect = self.active_custom_id = None
+            self.diy_slot = None
+            self._owned_diy_effect_id = None
+            self.music_mode = self.video_mode = "off"
+            observed.append("effect")
         if accept_parameters:
             if parsed.mode is ParsedMode.MUSIC and len(payload) > 4 and payload[4] == 0:
-                self.music_color = None
-                observed.append("music_color")
+                if self._accept_expected("music_color", None):
+                    self.music_color = None
+                    observed.append("music_color")
             for attr in _COLOR_MODE_FIELDS:
                 if (value := getattr(parsed, attr)) is not None:
-                    setattr(self, attr, value)
-                    observed.append(attr)
+                    if self._accept_expected(attr, value):
+                        setattr(self, attr, value)
+                        observed.append(attr)
         if parsed.rgb_color is not None:
             # A colour-temp state reads back as its white-point RGB with no kelvin field; recognising it
             # keeps the light in CT mode instead of clobbering kelvin and dropping to a near-white RGB.
@@ -718,3 +839,6 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 self._notify_started_monotonic = None
                 self._last_rx_monotonic = None
                 self._expected_state.clear()
+                if self.active_custom_id == self._owned_diy_effect_id:
+                    self.active_custom_id = self.effect = None
+                self._owned_diy_effect_id = None
