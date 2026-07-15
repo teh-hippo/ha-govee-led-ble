@@ -9,18 +9,19 @@ There are three kinds of effect, from different sources:
 
 1. **Scenes** (named presets like "Aurora", "Halloween", "Bloom"). The complete list per
    model is served by a public Govee endpoint, and each scene carries the exact BLE payload.
-   This means we can enumerate and test **every** scene today, no capture required.
+   Enumeration and packet generation do not require one manual capture per scene, but representative
+   live verification is still required.
 2. **DIY custom effects** (33 user-authored effects built in the app's DIY editor: animation
    families such as Fade, Jumping, Marquee and Rainbow, richer templates such as Bloom and
    Sparkle, the freeform "Finger Sketch", and chained "Combo" effects), applied to colour
    palettes the user picks. These are built client-side and are **not** in any public list; they
    are encoded directly in the BLE body. This session decoded and **confirmed on-wire** the
    **four** distinct DIY body encodings and the complete 33-effect catalogue. See section 2.
-3. **Vibrant** (a multi-colour gradient), not yet implemented: the user picks 2 to 5 colours and
-   the app interpolates them across the strip's 15 segments, then uploads the resolved
-   per-segment colours. Unlike scenes and animated DIY it plays no animation. Vibrant reuses the
-   Finger Sketch `TYPE 0x03` encoding (section 2.4). See section 3 and
-   [`ble-protocol-h617a.md`](ble-protocol-h617a.md).
+3. **Vibrant** (a multi-colour gradient): the user picks 2 to 5 colours and the app interpolates
+   them across the strip's 15 segments, then uploads the resolved per-segment colours. Unlike
+   scenes and animated DIY, it plays no animation. An experimental builder reproduces the
+   capture-pinned `TYPE 0x03` body while its fixed header remains partly undecoded. See section 3
+   and [`ble-protocol-h617a.md`](ble-protocol-h617a.md).
 
 ## Model identification
 
@@ -32,11 +33,11 @@ signals confirm the model:
 - Home Assistant's Bluetooth scan advertises this strip as `Govee_H617A_*` (never `H619A`).
 - The generated `scenes.py` catalogue is mechanically checked against the frozen H617A snapshot.
 
-Practical upshot: the scene work is essentially done (H617A is already supported), and the new
-capabilities to add are **per-segment control**, **DIY custom effects** and the **Vibrant
-gradient**. The H619A/H6199
-data is retained here too, since H619A and H6199 share one catalogue (verified byte-identical)
-and H6199 is already a supported model.
+Practical upshot: H617A scene enumeration is complete, per-segment control is implemented, and
+Flat, Finger Sketch, Vibrant, and Combo authoring are available behind model capability gates.
+rgbicv2 and Workshop remain incomplete from-scratch authoring surfaces. H619A/H6199 catalogue data
+is retained because those SKUs share a byte-identical scene catalogue, but H6199 runtime exposure
+remains separately gated.
 
 ## Source: the Govee light-effect library API (no account needed)
 
@@ -69,13 +70,14 @@ exposes (`config`). Frozen snapshots live under `tools/ble/catalogues`; `--check
 removed and changed entries without overwriting them. `generate_scenes.py` keeps the compressed
 H617A runtime catalogue in `scenes.py` mechanically aligned with its frozen snapshot.
 
-## 1. Scenes (H617A, complete)
+## 1. Scenes (H617A, complete catalogue)
 
-80 scenes across 5 categories. Codes are the `sceneCode` used in `33 05 04 <code_LE>`. A `~`
-marks scenes that expose adjustable parameters (speed/brightness, see section 4); scenes
-without a `param` (e.g. Sunrise/Sunset) are activated by the code alone.
+The API exposes 80 scene tiles and 83 named variants across 5 categories. Codes are the
+`sceneCode` used in `33 05 04 <code_LE>`. A `~` marks variants that expose adjustable parameters
+(speed or brightness, see section 4); scenes without a `param`, such as Sunrise and Sunset, are
+activated by the code alone.
 
-### Natural (32)
+### Natural (32 tiles, 34 variants)
 Sunrise(0), Sunset(1), Forest(2163)~, Aurora(2164)~, Lightning A(2165)~, Lightning B(2278)~,
 Starry Sky(2166)~, Spring(2167)~, Summer(2168), Fall(2169), Winter(2170)~, Rainbow(22),
 Fire(2171)~, Wave(2172)~, Deep sea(2173)~, Karst Cave(2174)~, Glacier(2175)~, Gobi
@@ -93,7 +95,7 @@ White Light(10565), Sweet(1170), Romantic(7), Movie(4), Siren(2196)~, Night(2197
 Sleep(2198), Morning(2199), Afternoon(2200), Work(2201), Leisure(2202)~, Meditation(2203),
 Colorful(2204)~, Candy(2205), Dreamlike(2206)~.
 
-### Emotion (15)
+### Emotion (15 tiles, 16 variants)
 Dreamland A(2207)~, Dreamland B(2279)~, Energetic(16), Profound(2208)~, Quiet(2209),
 Warm(2210)~, Flow(2211)~, Longing(2212), Happy(2213)~, Mysterious(2214)~, Release(2215)~,
 Game(2216)~, Disco(2217)~, Optimistic(2218), Heartbeat(2219)~, Cheerful(2220)~.
@@ -123,10 +125,12 @@ catalogue is not yet surfaced by the light entity.
 
 ## 2. DIY custom effects
 
-A DIY effect is a user-authored effect built in the app's DIY editor: an animation family (or a
-richer template), a variant, a speed, and one or more colour groups. The integration does
-**not** implement DIY yet (it encodes scene mode `0x04` only). Every value below was **confirmed
-on-wire this session** on the H617A unless explicitly marked inferred.
+A DIY effect is a user-authored effect built in the app's DIY editor: an animation family or richer
+template, a variant, a speed, and one or more colour groups. The integration implements Flat,
+Finger Sketch, Vibrant, and Combo content for H617A. Flat, Finger Sketch, and Vibrant remain
+experimental; Combo is directly validated. rgbicv2 supports captured-body replay but not
+from-scratch authoring. Every value below was confirmed on-wire on the H617A unless explicitly
+marked inferred.
 
 ### 2.1 Four body encodings
 
@@ -340,9 +344,9 @@ does not offer them.
 
 ### 2.6 Complete DIY effect catalogue (33 effects)
 
-Every DIY effect captured this session, grouped by encoding. "Colours" is the editor's practical
-colour-group range (the app config minimum is 0 for flat effects; see 2.7 for the authoritative
-per-effect limits, the rgbicv2 speed domain and directions).
+The complete captured H617A DIY set is grouped below by encoding. "Colours" is the editor's
+practical colour-group range. The app config minimum is 0 for flat effects; see section 2.7 for
+the authoritative per-effect limits, rgbicv2 speed domain, and directions.
 
 **Flat (`TYPE 0x04`, activation `33 05 0a <slot>`)**
 
@@ -417,8 +421,7 @@ analysis notes.
 
 ### 2.7 Colour and parameter limits
 
-Authoritative per-effect limits observed from the app. These are the app-enforced
-bounds; the captures this session all sit inside them.
+Authoritative per-effect limits observed from the app. These are the app-enforced bounds.
 
 **Flat effects** (colour config minimum is 0, but the editor requires at least 1 in practice):
 
@@ -469,15 +472,15 @@ Notes:
 > The DIY **Music** family (flat `FAMILY 0x04`, effects Music1..3) is distinct from the app's
 > **Music mode** (`33 05 13`; section 3 of [`ble-protocol-h617a.md`](ble-protocol-h617a.md)). The
 > DIY Music family reactively drives a user palette over the flat DIY encoding; the app Music
-> mode is a separate real-time command that was **not** captured this session (section 5).
+> mode is a separate real-time command mapped in the H617A protocol reference.
 
 ## 3. Vibrant (multi-colour gradient)
 
-Vibrant is a client-side gradient capability, not yet implemented. The user picks 2 to 5 colours
-and the app interpolates them across all 15 segments, then uploads the resolved per-segment
-colours as `0xA3` multi-frames and activates them with `33 05 0a <slot>` (the same mode-`0x0a`
-activation as flat DIY and Finger Sketch). Unlike scenes and animated DIY it plays no animation:
-it is a static per-segment gradient.
+Vibrant is a client-side gradient capability. The user picks 2 to 5 colours and the app
+interpolates them across all 15 segments, then uploads the resolved per-segment colours as `0xA3`
+multi-frames and activates them with `33 05 0a <slot>` (the same mode-`0x0a` activation as flat
+DIY and Finger Sketch). Unlike scenes and animated DIY, it plays no animation. The integration's
+experimental builder reproduces the observed body but retains the fixed, partly undecoded header.
 
 The multi-frame body is `01 <linecount> 03 <header> <15 entries>`, where each entry is
 `<segment_index> 01 <R> <G> <B>`. Vibrant reuses the Finger Sketch `TYPE 0x03` encoding (section
@@ -515,20 +518,19 @@ tap-to-apply plus community details on long press. Starry Sky was selected, but 
 A/B/A was performed. The frozen `config` proves the parameter data exists, not that the current
 account exposes an editable UI. Future live checks must establish one scene's edit path at a time.
 
-## 5. Capture matrix (what to record next)
+## 5. Remaining effect captures
 
-Reuse the one-action-per-file loop in [`ble-capture-workflow.md`](ble-capture-workflow.md),
-changing one variable per capture. Closed since the last matrix: the app Music mode, the misc
-modes (Color Slider, Random Color, Snapshot, Timer), Combo `seqlen` scaling and Video mode (not
-offered on the H617A). See [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md) for
-the full worklist. What remains here:
+Use the bounded prediction-first loop in
+[`ble-capture-workflow.md`](ble-capture-workflow.md), changing one variable per marked window.
+The effect-specific gaps are:
 
-| # | Action (in the app)                                  | Confirms                                                        |
-|---|------------------------------------------------------|-----------------------------------------------------------------|
-| 1 | rgbicv2 Brilliant/Sparkle/Stack: move each slider alone | the concrete per-effect speed-lookup values and the meaning of colour `param1` / `param2` (the record grammar itself is decoded, section 2.3) |
-| 2 | rgbicv2 Colorful meteor / meteor shower: change direction | the direction byte and the variant-byte value space        |
-| 3 | Colour temperature on the device                     | the corrected true-white frame drives white mode; extend the Kelvin curve |
-| 4 | Music, remaining per-mode colour pickers and multi-colour controls | completes the app Music parameter model; Bloom/Shiny style and Fountain direction are closed |
+| # | App action | Confirms |
+| --- | --- | --- |
+| 1 | Move each Brilliant, Sparkle, and Stack slider independently. | Concrete speed lookups and colour parameter meanings. |
+| 2 | Reverse Colorful meteor and meteor shower independently. | Direction and variant value spaces. |
+| 3 | Locate one adjustable built-in scene and perform one parameter A/B/A. | Whether current catalogue parameters have an exposed app editor and how its index reaches BLE. |
+| 4 | Exercise each remaining H617A music control independently. | The complete per-mode parameter surface and its capture-pinned offsets. |
+| 5 | Exercise one unproven Workshop enum or movement combination. | The next packed value without broadening the run. |
 
 Effect demonstrations (what each effect looks like, for entity naming and previews) are a
 separate research task and do not require a capture.

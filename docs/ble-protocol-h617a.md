@@ -1,32 +1,32 @@
 # Govee H617A BLE protocol reference
 
-A protocol reference for local Bluetooth LE control of the Govee H617A RGBIC LED strip,
-written for anyone implementing or extending this integration. It is derived from live
-captures of the vendor iOS app (decoded with `tools/ble/decode_govee.py`) and from driving the
-strip directly and reading its state back.
-Every command is cross-checked against the current builders in
-`custom_components/ha_govee_led_ble/protocol.py` and `scenes.py`.
+A protocol reference for local Bluetooth LE control of the Govee H617A RGBIC LED strip. It is
+derived from live captures of the vendor iOS app, decoded with `tools/ble/decode_govee.py`, and
+approved direct validation against the designated test strip. Confirmed commands are cross-checked
+against the current builders in `custom_components/ha_govee_led_ble/protocol.py` and `scenes.py`.
 
 Companion documents:
 
 - Effect content (scene catalogue, DIY families, parameters, capture plan):
   [`ble-effect-catalogue.md`](ble-effect-catalogue.md).
 - Capture and decode method: [`ble-capture-workflow.md`](ble-capture-workflow.md).
+- H6199 model-specific protocol: [`ble-protocol-h6199.md`](ble-protocol-h6199.md).
+- Current verification backlog: [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md).
 
 Status: power, brightness, RGB and white/Kelvin colour, per-segment control, scenes, all 11 music
-modes and scheduled timers are implemented and confirmed live (H617A, firmware 3.02.24); sleep and
-wake-up timers are captured, and gradual on/off is not offered on this model. The four DIY authoring
-encodings and the Vibrant gradient are decoded on-wire here but not yet built; the rgbicv2 DIY
-effects already replay through the existing scene transport (`build_scene_multi`). See
-the implementation status in section 7. Raw `.pcap` captures are kept out of the repository because
+modes and scheduled timers are implemented and confirmed live on firmware `3.02.24`. Flat, Finger
+Sketch, Vibrant, and Combo builders exist; Flat, Finger Sketch, and Vibrant remain experimental,
+while Combo is directly validated. rgbicv2 effects can replay captured bodies through
+`build_scene_multi`, and Workshop authoring remains fail-closed where packed value spaces are not
+proven. See section 7 for implementation status. Raw pcaps remain outside the repository because
 they contain live BLE traffic.
 
 ## 1. Overview and device
 
 - Model: H617A. Hardware `3.01.01`, firmware `3.02.24`.
 - 15 addressable segments, reported by the strip as 5 groups of 3 segments.
-- The integration also supports the H6199, which shares most command framing but uses a
-  different scene catalogue and adds DreamView-specific commands (section 3).
+- The integration also supports the H6199, which uses model-specific DreamView, scene, DIY, and
+  capability rules. See [`ble-protocol-h6199.md`](ble-protocol-h6199.md).
 
 ### Model identification
 
@@ -58,14 +58,16 @@ Byte offsets in this document are half-open ranges, so `[12:14]` means `byte[12]
 ### Connect handshake and keep-alive
 
 On connect the app performs an initial-state handshake, then settles into a keep-alive poll.
-Observed sequence (H617A, confirmed live):
+Confirmed app requests are:
 
 1. Identity and capability queries, each sent once: `aa 07 03` hardware version, `aa 06` firmware
    version, `aa 04` brightness, `aa 40` segment count, `aa 05` colour mode, `aa 23 ff` timer table,
    `aa 11` sleep timer, `aa 12` wake-up timer.
-2. Per-segment state read-back `aa a5 <group>` for groups 1..5 (see "Segment state readback").
-3. Steady state: the app polls `aa 01` (power) roughly every 2 seconds as a keep-alive; the strip
+2. Steady state: the app polls `aa 01` (power) roughly every 2 seconds as a keep-alive; the strip
    replies `aa 01 01` when on.
+
+The device also emits per-segment state replies `aa a5 <group>` for groups 1..5 during startup.
+The exact app request has not been isolated and must not be inferred from the reply selector.
 
 The app may also send a clock sync `33 09 <7-byte time>` (informational, seen in earlier captures;
 not required to control the strip). The handshake replies establish the device identity (firmware
@@ -91,14 +93,13 @@ a trailing XOR checksum (omitted from the table for brevity). `<..>` marks a var
 | Workshop Apply | `33 05 04 91 01 02` | Workshop code `0x0191`, little-endian, with scene type `0x02`; preceded by the length-delimited Workshop `0xA3` body (`TYPE 0x02`). |
 | Vibrant activate | `33 05 0a <slot>` | Same activation as DIY; preceded by the `0xA3` Vibrant body (type `0x03`). |
 | Music mode | `33 05 13 <mode> <sens> <style> <count> <RGB×count>` | H617A uses sub-command `0x13` (an older protocol version emits `0x0c`); see "Music mode layout". All 11 `mode` codes confirmed live (match `const.MUSIC_MODES`); `sens` 0-99; `style` `00` Dynamic / `01` Calm; `count` = manual colour count and the auto-colour flag (`00` = Auto colour on). Extended modes also send a `0x41` `a3` parameter frame. |
-| Video mode | `33 05 00 <full> <game> <sat> [01 <soft>]` | Full-screen and game flags, saturation 0-100, optional sound-effect softness. |
+| Video mode (H6199) | `33 05 00 <region> <game> <sat> <sound> <softness>` | Current H6199 app frame. Sound and softness are always present; see the H6199 reference. |
 | Video white balance (H6199) | `33 a9 00 03 01 <red> <blue>` | Raw independent DreamView components; app-control mapping is not yet surfaced. |
 | Timer / schedule | `33 23 <idx> <enableAndType> <hour> <min> <repeat>` | 4 on/off slots. Related: sleep `33 11`, wake-up `33 12`, gradual `33 14`. See "Timer subsystem". |
 | Clock sync (handshake) | `33 09 <7-byte time>` | Sent on connect; informational. |
 
-The music-mode command was confirmed on the H617A this session (see "Music mode layout"). Video
-mode is **not** offered for the H617A in the app (it is an H6199 TV-backlight feature), so
-`33 05 00` and `33 a9` stay builder-derived and unconfirmed for this SKU.
+The music-mode command is confirmed on the H617A (see "Music mode layout"). Video mode is **not**
+offered for the H617A in the app, so `33 05 00` and `33 a9` are H6199-only commands.
 
 ### Colour frame layout
 
@@ -193,10 +194,7 @@ byte:   33 05 SUB  MODE  SENS  STYLE  COUNT  <RGB × COUNT>
   | Fountain | `0x35` |
   | Day and Night | `0x37` |
 
-  The classic band (`Energetic`/`Rhythm`/`Spectrum`/`Rolling`) previously had three competing
-  candidate mappings ({0,5,3,2} and {16,17,18,19} from earlier analysis, and on-wire {5,3,4,6}).
-  Live activation of each named mode settled it in favour of the on-wire set
-  `{0x05, 0x03, 0x04, 0x06}`.
+  The authoritative captured mapping is `{0x05, 0x03, 0x04, 0x06}`.
 - `STYLE` (byte 5): Dynamic (`0x00`) / Calm (`0x01`). Byte-confirmed live for Rhythm, Bloom and
   Shiny; the other modes hold `0x00`. The
   `parse_color_mode_response` decoder currently reports Calm for Rhythm only.
@@ -256,16 +254,18 @@ notification. Reply data below is an example unless stated otherwise.
 | `23` | Timer table (4 on/off slots) | `ff <slot0..3 × 4B>`, each slot `[enableAndType, hour, min, repeat]`. e.g. `ff 01 06 00 80 …`. Write command `0x23`. **Not** segment config. |
 | `40` | Segment count | `0f` (15) |
 | `a3` | Multi-frame control | - |
-| `a5 <group>` | Segment colours | `aa a5 <group>` then 3 segments of `<brightness> <R> <G> <B>`. |
+| `a5 <group>` | Segment colour and brightness reply | `aa a5 <group>` then 3 segments of `<brightness> <R> <G> <B>`. The request frame is not yet byte-pinned. |
 
 ### Segment state readback (`aa a5`)
 
-Query each group `01..05`; the reply carries three segments of four bytes each,
-`<brightness> <R> <G> <B>`. Group `G` holds segments `3*(G-1)` to `3*(G-1)+2`, so group 1 =
-segments 0-2 and group 5 = segments 12-14. For example a segment set to full-brightness red
-reads back as `64 ff 00 00`. This path confirmed the 5x3 grouping and that per-segment
-brightness is stored independently of colour: a colour write left each segment's brightness
-from an earlier session untouched.
+Replies were observed for groups `01..05`; each carries three segments of four bytes,
+`<brightness> <R> <G> <B>`. Group `G` holds segments `3*(G-1)` to `3*(G-1)+2`, so group 1 contains
+segments 0 to 2 and group 5 contains segments 12 to 14. For example, a segment set to
+full-brightness red reads back as `64 ff 00 00`.
+
+This path confirmed the 5 by 3 grouping and that per-segment brightness is stored independently of
+colour. A colour write left each segment's earlier brightness unchanged. The app TX request that
+elicits each reply remains an explicit capture gap.
 
 ### Timer subsystem (`0x11`/`0x12`/`0x14`/`0x23`)
 
@@ -514,17 +514,16 @@ whole-area movement sub-block (4 bytes):
 
 The V2 record variant (Bloom on this device, template id 113) appends, after the whole-area
 block, a 1-byte param, a 1-byte length `y`, `y` bytes of blob and one trailing byte. Bloom's second
-colour layer and its numbered-variant byte live in this
-V2 region, which is why the earlier teardown placed the Bloom variant at "body offset 99".
+colour layer and numbered-variant byte live in this V2 region, including the observed body
+offset 99.
 
 A container holds one or more records; two-colour-group effects such as Bloom and Stack use
 separate records for the base and moving layers, moved at independent rates. The movement engine
 exposes four directions: Forward, Backward, Forward and Backward, and Backward and Forward
 (`InAreaMoveEffectView` / `AllMoveEffectView`); a display speed 1-100 maps to the internal 1-255
 (default 50). Motion is parameterised per record by a speed-mode lookup (`color`, `moveAll`,
-`moveIn`, `bright` arrays plus `defaultIndex`), the client-side motion model. The fields the
-earlier teardown left inferred (the type and value bytes at offsets 2-4, and the "midblock" that
-is in fact the brightness sub-block) are now decoded.
+`moveIn`, `bright` arrays plus `defaultIndex`), the client-side motion model. The type and value
+bytes at offsets 2 to 4 and the brightness sub-block are decoded.
 
 Still inferred (need a capture): the concrete per-effect speed-mode numeric arrays, the exact
 pixel-level difference between numbered sub-styles (for example Brilliant `param2` `0x32` vs
@@ -574,64 +573,35 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a` | `build_vibrant` | Implemented from the capture-pinned header and per-segment gradient entries; remains experimental while the header is partly undecoded. |
 | Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
-| Video mode `33 05 00` | `build_video_mode` | H6199 TV-backlight only; not offered on H617A. |
+| Video mode `33 05 00` | `build_video_mode` | H6199 only. Current call paths send the full sound and softness payload, but the builder can still emit a shortened frame when called with `sound_effects=None`. |
 | Video white balance `33 a9` | `build_video_white_balance` | H6199 raw two-axis frame only; no one-dimensional UI mapping. |
 | Colour-mode query `aa 05` | `parse_color_mode_response` | Confirmed live, including DIY mode `0x0a` with its activation slot. |
 | Scheduled timer write `33 23` | `build_timer_schedule` | Write confirmed live (4 slots, on/off, weekday bits Mon=bit0..Sun=bit6). |
 | Timer table read-back `aa 23` | `parse_timer_schedule_table` | Decodes the full `ff`-prefixed 4-slot table into per-slot records; confirmed against the live reply. |
 | Sleep / wake-up `33 11` / `33 12` | `build_timer_sleep` / `build_timer_wakeup` (+ parsers) | Builders shipped; replies captured live (OBSERVE). |
-| Power-off memory | `build_poweroff_memory` / `parse_poweroff_memory` | Implemented. |
+| Power-off memory | `build_poweroff_memory` / `parse_poweroff_memory` | Experimental and unsupported by both current model profiles. No H617A app surface or live frame is proven. |
 | Clock sync `33 09` | none | Informational; not needed for control. |
 
 Remaining gaps:
 
 - **App-authored DIY read-back**: no device query returns the full editor body, so an
   app-authored DIY cannot be imported from the strip.
+- **Segment read-back request**: `aa a5` replies are decoded, but the app request that elicits each
+  group is not captured.
 - **Music per-mode parameters**: capture-pinned parameter builders exist, but the remaining
   controls are not all exposed as entities.
 
-## 8. Open questions and capture matrix
+## 8. Evidence gaps
 
-Confirmed this session: power, whole-strip brightness, whole and per-segment colour (mask at
-`[12:14]`), per-segment brightness (mask at `[5:7]`), colour and brightness independence, the
-colour-temperature encoding, the segment readback path (`aa a5`), the static colour-mode query
-(`aa 05`), the Vibrant body shape, and **all four DIY encodings**: the flat `(FAMILY, VARIANT)`
-map for every flat effect, the rgbicv2 record grammar and per-effect activation codes, the six
-Finger Sketch motion codes, and the Combo `(family, variant)` chain. The rgbicv2 record grammar
-is now **fully decoded** and confirmed on the wire (section 6), resolving the
-fields the earlier teardown left inferred.
+The remaining H617A work is bounded:
 
-Closed since: the app **Music mode** (`33 05 13`, section 3), the **Timer** subsystem (`0x23`,
-previously mislabelled a segment-config query), **Combo `seqlen`** (confirmed `2 x effect_count`),
-and the miscellaneous modes (**Color Slider** is a plain static-colour write, **Random Color** is
-a per-segment palette that confirms arbitrary segment masks, **Snapshot** is an app-side store of
-saved looks with no new command, and **Video mode** is not offered on the H617A).
+- capture the request that elicits each `AA A5` segment reply;
+- complete Workshop packed enums, movement flags, priorities, and layer reorder behaviour;
+- finish rgbicv2 per-effect parameter maps and from-scratch authoring;
+- establish one current adjustable-scene editor path before testing scene parameters;
+- verify the remaining music controls and read-back semantics;
+- complete semantic validation of the experimental Flat, Finger Sketch, and Vibrant builders.
 
-The full, current worklist of what remains to verify or discover is in
-[`ble-protocol-open-questions.md`](ble-protocol-open-questions.md). In brief:
-
-1. **Music, per-mode parameters**: all 11 mode codes and the per-mode `a3` parameter offsets are
-   confirmed (section 3). Dynamic/Calm (STYLE, byte 5) is byte-confirmed for Rhythm, Bloom and Shiny;
-   auto-colour is the COUNT byte (byte 6). Fountain direction uses the byte pair `[26,28]`:
-   Clockwise=`00,05`, Counterclockwise=`02,05`, and Two-way=`01,03`.
-2. **Query semantics**: the `aa 11` (sleep) and `aa 12` (wake-up) reply layouts are confirmed
-   (section 4), as is the `aa 23` timer table. `aa 14` (gradual) is not exposed on the H617A app
-   (no toggle exists; the wake-up screen only offers a final-brightness level).
-3. **Segment mask**: whole-strip white brightness uses the all-segments mask `0x7FFF`; the builders
-   no longer emit `0x0000`.
-4. **Colour temperature**: the Kelvin frame drives true white across 2000-9000K (five-point sweep,
-   essentially linear); confirmed live and shipped in `build_color_temp`. The `aa 05` read-back of a
-   CT state returns the white-point RGB with no Kelvin field, so the coordinator recognises that white
-   point and keeps colour-temp mode instead of dropping to a near-white RGB (confirmed 2026-07-10).
-
-Still open:
-
-- **DIY authoring**: the concrete flat `(FAMILY, VARIANT)` builders, the rgbicv2 speed-mode
-  numeric arrays and sub-style/direction bytes, and reading an app-authored DIY body back (the
-  device is write-only for effects: `aa 05` returns the numeric code, never the `a3` body; see
-  issues #57/#89).
-- **H6199 depth**: video, overall brightness, raw white-balance frames, three representative scenes
-  and the four current music modes were observed. Segment writes remain unvalidated. See
-  [`ble-protocol-h6199.md`](ble-protocol-h6199.md).
-
-The DIY effect catalogue is in [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.
+The authoritative ordered backlog is
+[`ble-protocol-open-questions.md`](ble-protocol-open-questions.md). Effect identities and parameter
+domains are in [`ble-effect-catalogue.md`](ble-effect-catalogue.md).
