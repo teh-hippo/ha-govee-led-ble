@@ -473,10 +473,16 @@ remaining visible field families:
 | Brightness Scope | `r7:r8: ff00 -> c639` for the displayed 22-77% range |
 | Brightness Changing Speed | `r10: 7f -> ff` for displayed 50% to 100% |
 | Brightest/Darkest retention | `r11:r12: 1414 -> c830` for displayed 200 and 48 |
-| Distribution Method | `r13: 01 -> 00` for Based on Number of IC to Unified Color |
-| Direction | `r13: 01 -> 81` for Forward to Backward |
+| Distribution Method (`r13` low bits) | `00` Unified Color, `01` Based on Number of IC, `02` Based on Segment |
+| Direction (`r13` bit `0x80`) | `0x00` Forward, `0x80` Backward |
 | Colour Changing Speed / Retention | `r14:r15: 8014 -> ffff` for displayed 50%/20 to 100%/255 |
 | Colour count | `r16: 02 -> 03`; the record length grows `r0: 1d -> 20` and the third RGB is appended |
+
+`r13` is a single packed byte: bit `0x80` set when Direction is Backward, OR-ed with the
+distribution value (`00` Unified, `01` Based on Number of IC, `02` Based on Segment). Confirmed
+live 2026-07-16 across all direction/distribution combinations (record byte 17 of the first layer,
+capture `20260716165800-h617a-workshop-r13`): Unified+Backward `80`, IC+Backward `81`,
+Segment+Backward `82`. Selecting Based on Segment also exposes a Color gradient toggle in the app.
 
 The colour palette starts at `r17`. The seven trailing bytes after its variable-length RGB list
 are three selected-area movement bytes, three overall-movement bytes and the priority byte.
