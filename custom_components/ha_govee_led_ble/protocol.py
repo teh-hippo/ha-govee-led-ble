@@ -746,9 +746,11 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_color_rgb": Evidence("VALIDATED", "H617A §3/§5 whole-strip colour, mask 0x7FFF; live"),
     "build_color_temp": Evidence("VALIDATED", "H617A §3 colour-temp 33 05 15 01 00 00 00 <K>; live 2-9kK"),
     "build_white_brightness": Evidence("VALIDATED", "H617A §7 white brightness 33 05 15 02, mask 0x7FFF; live"),
-    "build_scene": Evidence("VALIDATED", "H617A §3/§6 scene 33 05 04 <code_LE>; live"),
+    "build_scene": Evidence("VALIDATED", "H617A §3/§6 scene 33 05 04 <code_LE>; Sunrise/Rainbow live 2026-07-16"),
     "build_a3_multi": Evidence("VALIDATED", "H617A §6 0xA3 multi-frame fragmenter; XOR at byte[19]; live"),
-    "build_scene_multi": Evidence("VALIDATED", "H617A §6 0xA3 body + 33 05 04 activate; live"),
+    "build_scene_multi": Evidence(
+        "VALIDATED", "H617A §6 0xA3 body TYPE 0x01/0x02 + 33 05 04 activate; Aurora/Halloween byte-exact 2026-07-16"
+    ),
     "build_h6199_scene": Evidence(
         "VALIDATED", "H6199 simple type-01 and A3 type-02 scene activations; iOS app-sniff 2026-07-12"
     ),
