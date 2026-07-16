@@ -427,7 +427,7 @@ def build_music_params_a3(
     cannot shift the downstream offsets.
     """
     # EXPERIMENTAL: harness=music-params encoding=capture-pinned
-    # source: validate-20260709-122350.pcap + validation-report-20260709-123428.json (§2.3).
+    # source: validate-20260709-122350.pcap + validation-report-20260709-123428.json; layout H617A §3.
     body = bytearray(_MUSIC_PARAM_TEMPLATE[mode])
     if palette is not None:
         if len(palette) != _MUSIC_PARAM_COUNT[mode]:
@@ -786,7 +786,7 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
         "= manual colour count (0=auto-colour on)+RGB; 11 modes live-confirmed",
     ),
     "build_music_params_a3": Evidence(
-        "EXPERIMENTAL", "VAL a3 music body §2.3 (H617A 217-234); capture-pinned, volatile bytes replayed"
+        "EXPERIMENTAL", "VAL a3 music body H617A §3 (lines 217-234); capture-pinned, volatile bytes replayed"
     ),
     "build_video_mode": Evidence(
         "VALIDATED",

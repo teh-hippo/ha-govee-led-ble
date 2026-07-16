@@ -237,7 +237,7 @@ Home, confirm the exact baseline, and record:
   "power": "on",
   "brightness_percent": 5,
   "mode": "scene",
-  "effect": "sunrise"
+  "effect": "Sunrise"
 }
 ```
 

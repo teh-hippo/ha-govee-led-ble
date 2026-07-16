@@ -13,8 +13,9 @@ Companion documents:
 - H6199 model-specific protocol: [`ble-protocol-h6199.md`](ble-protocol-h6199.md).
 - Current verification backlog: [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md).
 
-Status: power, brightness, RGB and white/Kelvin colour, per-segment control, scenes, all 11 music
-modes and scheduled timers are implemented and confirmed live on firmware `3.02.24`. Flat, Finger
+Status: power, brightness, RGB and white/Kelvin colour, per-segment control, scenes and all 11
+music modes are implemented and confirmed live on firmware `3.02.24`. Scheduled-timer writes are
+observed live but ship gated (Tier-2). Flat, Finger
 Sketch, Vibrant, and Combo builders exist; Flat and Vibrant remain experimental,
 while Finger Sketch and Combo are directly validated. rgbicv2 effects can replay captured bodies through
 `build_scene_multi`, and Workshop authoring remains fail-closed where packed value spaces are not
@@ -242,7 +243,7 @@ and retained Clockwise/Counterclockwise/Clockwise captures. Rhythm/Spectrum para
 `33 05 13` frame itself (STYLE byte 5, auto-colour/COUNT byte 6, RGB from byte 7), not the `a3` body.
 
 Verified frames (captured, sub-command `0x13`): `13 05 63 00 01 ff0000` (mode `0x05`, sens 99, one
-colour red), `13 03 63 00 00` (mode `0x03`, Auto color on), `13 03 63 01 01 0000ff` (Calm, one
+colour red), `13 03 63 00 00` (mode `0x03`, Auto colour on), `13 03 63 01 01 0000ff` (Calm, one
 colour blue). Full byte-level detail and per-mode payload tails are kept in internal analysis
 notes.
 
@@ -264,7 +265,7 @@ notification. Reply data below is an example unless stated otherwise.
 |---|---|---|
 | `01` | Power | `01` = on. Polled ~2 s as keep-alive. |
 | `04` | Brightness | `0x64` = 100%. Mirrors the `33 04` command (`BRIGHTNESS_QUERY`). |
-| `05` | Colour mode | First reply byte is the mode: `15 01` = static RGB, `04 <code>` = scene, `00 ..` = video, `13 ..` = music. |
+| `05` | Colour mode | First reply byte is the mode: `15 01` = static RGB, `04 <code>` = scene, `00 ..` = video, `13 ..` = music, `0a <slot>` = DIY. |
 | `06` | Firmware version | `"3.02.24"` (ASCII) |
 | `07` | Hardware version | selector `03`, then `"3.01.01"` (ASCII) |
 | `11` | Sleep timer (fade-off) | `[enable, startBri, closeMin, curMin]`, e.g. `00 1e 0f 0f` = disabled, start bri 30, close in 15 min. Write command `0x11`. |
@@ -312,11 +313,13 @@ byte is `0x80 | weekday-mask` (Mon=bit0 .. Sun=bit6) with two special values. Co
 
 **Sleep timer (`0x11`)**: fade the light off, `[enable, startBri, closeMin, curMin]`. Confirmed
 live 2026-07-16: enable `33 11 01 32 10 00` (startBri 50, close in 16 min), disable `33 11 00 …`;
-read-back `aa 11 00 32 10 00`. The countdown arms the moment the timer is enabled.
+read-back `aa 11 00 32 10 00`. The countdown arms the moment the timer is enabled. The write frame
+is observed live; the builder ships gated with reply decode-only (OBSERVE).
 **Wake-up timer (`0x12`)**: sunrise alarm, `[enable, endBri, hour, min, repeat, rampMin]` (hour
 clamped 0-23, min 0-59). Confirmed live 2026-07-16: every-day `33 12 01 64 11 01 00 1d` (endBri 100,
 17:01, ramp 29 min), Monday-only `33 12 01 64 11 01 81 1d`; the `repeat` byte shares the `0x23`
-encoding (every day = `0x00`). **Gradual (`0x14`)**: a soft on/off transition toggle, single state
+encoding (every day = `0x00`). The wake-up write is observed live; the builder ships gated with
+reply decode-only (OBSERVE). **Gradual (`0x14`)**: a soft on/off transition toggle, single state
 byte; not exposed on the H617A app.
 
 ## 5. Colour models
@@ -372,7 +375,7 @@ Body layouts after `01 <linecount> <TYPE>`:
 
 The Govee-authored palette or definition from the API `scenceParam` blob. Activation
 `33 05 04 <code_LE>`. The app's per-scene edit pencil (Speed slider + Color Change palette)
-re-uploads a modified body through the same path — there is no separate parameter command. Full
+re-uploads a modified body through the same path; there is no separate parameter command. Full
 detail, including the live-confirmed speed/palette grammar, in
 [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 4.
 
@@ -591,7 +594,8 @@ all confirmed live on firmware `3.02.24` (2026-07-16). Full detail in
 ### Vibrant (`TYPE 0x03`)
 
 An observed 14-byte preamble `01 05 03 09 00 64 01 01 01 0f 01 ff 00 00` (the leading `01 05 03`
-being start marker, linecount and type), then 15 per-segment entries, each
+being start marker, linecount and type; this `0x05` linecount came from a truncated capture, and
+the fragmenter computes `0x06` for a complete 15-entry body), then 15 per-segment entries, each
 `<segment_index> 01 <R> <G> <B>`. Activation `33 05 0a <slot>`. Vibrant is the static-gradient
 member of the `TYPE 0x03` family: the bytes after the type are `09 00`, that is Finger Sketch
 motion `0x09` (Clockwise) with the speed byte `0x00`. The 11 header bytes after the type are not
@@ -641,7 +645,7 @@ The remaining H617A work is bounded:
 - capture the request that elicits each `AA A5` segment reply;
 - complete Workshop movement flags and directions, priority values, layer reorder, and the Segment Color-gradient field;
 - finish rgbicv2 per-effect parameter maps and from-scratch authoring;
-- establish one current adjustable-scene editor path before testing scene parameters;
+- verify scene speed and palette value arrays beyond the Aurora anchor;
 - verify the remaining music controls and read-back semantics;
 - complete semantic validation of the experimental Flat and Vibrant builders.
 

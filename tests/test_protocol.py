@@ -503,11 +503,11 @@ def test_music_mode():
     chk(0x03, dict(sensitivity=50, calm=True, color=(128, 64, 32)), slice(5, 10), (0x01, 0x01, 128, 64, 32))
 
 
-def test_music_mode_byte5_per_mode():
-    # byte5 is per-mode: Rhythm carries Dynamic/Calm, Spectrum/Rolling carry auto-colour.
+def test_music_mode_style_count_per_mode():
+    # byte5 = STYLE (Dynamic 0 / Calm 1); byte6 = COUNT (0 = auto-colour on, 1 + RGB = manual colour).
     # Rhythm frames are the captured references from docs/ble-protocol-h617a.md ("Music mode layout",
     # verified sub-command 0x13): `13 03 63 00 00` (Dynamic) and `13 03 63 01 01 0000ff` (Calm, blue).
-    # Spectrum/Rolling byte5 = auto-colour (1 = device auto-colours, 0 = use supplied colour) per the
+    # Spectrum/Rolling send STYLE 0 and choose colour via COUNT (auto-colour = COUNT 0), per the
     # 2026-07-08 live music-mode notes.
     bm = proto.build_music_mode_with_color
     # Rhythm 0x03 — byte5 = Dynamic(0) / Calm(1)

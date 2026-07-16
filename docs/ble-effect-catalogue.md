@@ -220,12 +220,12 @@ reassembled body is `01 <linecount> 02 <record container>`, and each effect is a
 
 | Effect | Code | LE activation | Colour groups | Variant / parameters |
 |---|---|---|---|---|
-| Brilliant | 501 | `33 05 04 f5 01` | single 1..8 | speed 76..255, default 250; no direction; no user brightness; variant = `param2` (`0x32`/`0x14`) |
+| Brilliant | 501 | `33 05 04 f5 01` | 1 background + 4..8 embellishment | speed via app slider (wire mapping pending); no direction; no user brightness; variant = `param2` (`0x32`/`0x14`) |
 | Colorful starry sky | 502 | `33 05 04 f6 01` | single 1..8 | star-size range (observed ~1..12) + relative brightness + speed |
 | Colorful meteor shower | 503 | `33 05 04 f7 01` | single 3..8 | body ~102 bytes; direction; variant body byte |
 | Colorful meteor | 504 | `33 05 04 f8 01` | single 1..8 | body ~51 bytes; direction; variant body byte |
 | Sparkle | 505 | `33 05 04 f9 01` | embellishment 1..8 + fixed 1 background | relative-brightness interval + speed |
-| Bloom | 506 | `33 05 04 fa 01` | bloom 1..8 + moving 1..8 | no speed slider; relative brightness; variant = body offset 99 (`0x14`/`0x16`) |
+| Bloom | 506 | `33 05 04 fa 01` | bloom 2..8 + moving 2..8 | no speed slider; relative brightness; variant = body offset 99 (`0x14`/`0x16`) |
 | Stack | 507 | `33 05 04 fb 01` | stack 1..8 + moving 1..8 | relative brightness 1..100; direction |
 
 Key facts (confirmed):
@@ -293,8 +293,8 @@ Worked example (Clockwise, background blue, one group of four green segments):
 ```
 
 The body is uploaded as an `0xA3` multi-frame stream and then activated. Live capture on H617A
-firmware `3.02.24` (2026-07-16) shows the app **always** sends two `0xA3` frames — the body in
-frame `idx=0x00` (zero-padded), then an **empty** `idx=0xFF` terminator — with the frame-count
+firmware `3.02.24` (2026-07-16) shows the app **always** sends two `0xA3` frames, the body in
+frame `idx=0x00` (zero-padded) then an **empty** `idx=0xFF` terminator, with the frame-count
 byte fixed at `0x02` for a single-chunk body, and activates with slot `0x20` plus the DIY type:
 
 ```
@@ -547,7 +547,7 @@ arrays the API ships per scene, as a JSON string. Example (Forest):
 
 `page` = which parameter, `defaultIndex` = the default position, and the value arrays
 (`color` / `bright.brightValue` / `moveAll`) are the exact bytes written into the body. Forest's
-`defaultIndex:3` selects `250` (`0xfa`, Fast) — the same byte range observed live on Aurora, so the
+`defaultIndex:3` selects `250` (`0xfa`, Fast), the same byte range observed live on Aurora, so the
 frozen `config` is now proven against BLE. The distilled catalogue keeps `config` verbatim.
 
 ## 5. Remaining effect captures

@@ -13,11 +13,11 @@ capture against the device and analysis of the app's on-wire behaviour. Applies 
   applied **activation-only, with no upload**: 12 codes `{0,1,4,5,7,8,9,10,15,16,21,22}` are
   activated with `33 05 04 <code>`. Code-only apply is the proof the firmware holds these itself.
 - **The current "what am I showing" pointer.** On reconnect the device answers `AA 05` with its
-  live selection — current scene code, DIY code or colour. The app **reads** state, it does not
+  live selection: current scene code, DIY code or colour. The app **reads** state, it does not
   assume it.
-- **A power-off-memory setting** — command `0x41`, query `AA 41`:
+- **A power-off-memory setting**: command `0x41`, query `AA 41`:
   restore-last-state on/off, or restore a fixed configured mode. Model/version gated.
-- **Raw numeric records only** — colour `33 05 15 01`, per-segment, brightness, and effect record
+- **Raw numeric records only**: colour `33 05 15 01`, per-segment, brightness, and effect record
   containers. The app serialises everything to bytes before sending; the device stores no names or
   structured objects.
 
@@ -25,7 +25,7 @@ capture against the device and analysis of the app's on-wire behaviour. Applies 
 
 - The user's **whole DIY library is cloud-side** (list/detail/effect strings are fetched by id).
   Save/create posts the full record (name, effect string and effect codes).
-- **Custom DIY is re-uploaded to the device on every apply, then activated by code** — the app
+- **Custom DIY is re-uploaded to the device on every apply, then activated by code**: the app
   never trusts the device to have kept it (transport `0xA1` cmd `0x02`, then `33 05 0A <code>`).
   The asymmetry (built-in scenes = code-only; custom DIY = upload-then-activate) is the core
   evidence that **custom effects are not device-persisted**.
@@ -49,12 +49,12 @@ capture against the device and analysis of the app's on-wire behaviour. Applies 
   scene bodies (`0xA3`), each followed by a code activation. On connect the app **reads** state
   and does not re-upload effect bodies.
 - **Unprovable from the app:** whether firmware keeps a *full custom-effect body* across a hard
-  power-cycle — the app always re-uploads a custom DIY before activating it.
+  power-cycle; the app always re-uploads a custom DIY before activating it.
 
 ## 4. Portable custom-effect sharing (cloud-free)
 
 Govee has two "share" systems. Its social share hands over a **cloud web link** referencing a
-server `videoId` — not useful to us. But the effect payload itself is a **self-contained base64
+server `videoId`, not useful to us. But the effect payload itself is a **self-contained base64
 blob**, which is the model we want.
 
 **Minimal fields to reconstruct and apply with no cloud:** `sku` + `sceneType` +
@@ -64,7 +64,7 @@ blob**, which is the model we want.
 fragment into 0xA3 frames → activate 33 05 04 <code> (scene/rgbicv2) or 33 05 0A <code> (flat DIY)`.
 Our `build_scene_multi` already replays this byte-for-byte.
 
-**Proposed export format** (`docs`-owned, for our own import/export — not Govee's):
+**Proposed export format** (`docs`-owned, for our own import/export, not Govee's):
 
 ```json
 {
