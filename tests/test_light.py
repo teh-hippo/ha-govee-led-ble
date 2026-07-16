@@ -240,6 +240,14 @@ async def test_set_music_mode_stores_calm_for_rhythm(light, mock_coordinator):
     assert co.music_calm is True
 
 
+async def test_set_music_mode_stores_calm_for_shiny(light, mock_coordinator):
+    co = mock_coordinator
+    co.music_calm = False
+    await light.async_set_music_mode(mode="shiny", sensitivity=60, calm=True)
+    co.async_select_music_slug.assert_awaited_once_with("shiny")
+    assert co.music_calm is True
+
+
 @pytest.mark.parametrize("kwargs", [{"color": (1, 2, 3)}, {"calm": True}])
 async def test_h6199_rejects_unvalidated_music_parameters(h6199_light, mock_h6199_coordinator, kwargs):
     with pytest.raises(ServiceValidationError) as exc:

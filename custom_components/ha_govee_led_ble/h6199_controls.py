@@ -129,7 +129,7 @@ class PowerOffMemorySwitch(_H6199ControlEntity, RestoreEntity, SwitchEntity):
 
 
 class GoveeMusicStyleSelect(_H6199ControlEntity, SelectEntity):
-    """Dynamic/Calm music style for Rhythm (§2.1); H617A only, replaces the old ``music_calm`` switch."""
+    """Dynamic/Calm music style for Rhythm, Bloom and Shiny (§2.1); H617A only."""
 
     _attr_options = ["dynamic", "calm"]
 

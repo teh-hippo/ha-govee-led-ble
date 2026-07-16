@@ -58,18 +58,52 @@ async def test_entering_music_from_active_mode_preserves_snapshot(coord):
     assert coord._pre_mode_snapshot is original
 
 
-async def test_music_calm_style_only_applies_to_rhythm(coord):
+async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
     coord.is_on, coord.music_calm, coord.music_sensitivity = True, True, 80
+
+    # Rhythm carries Dynamic/Calm in the base frame only (no a3 companion).
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_select_music_slug("rhythm")
-    assert _sent(sc)[-1] == proto.build_music_mode_with_color(
-        MUSIC_MODE_SLUGS["rhythm"], sensitivity=80, color=None, calm=True
-    )
+    assert _sent(sc) == [
+        proto.build_power(True),
+        proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["rhythm"], sensitivity=80, color=None, calm=True),
+    ]
+
+    # A mode without a style keeps calm out of the base frame and sends no companion.
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_select_music_slug("hopping")
-    assert _sent(sc)[-1] == proto.build_music_mode_with_color(
-        MUSIC_MODE_SLUGS["hopping"], sensitivity=80, color=None, calm=False
-    )
+    assert _sent(sc) == [
+        proto.build_power(True),
+        proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["hopping"], sensitivity=80, color=None, calm=False),
+    ]
+
+    # Shiny sets the base-frame STYLE and its a3 companion [20,21] to the Calm values.
+    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+        await coord.async_select_music_slug("shiny")
+    assert _sent(sc) == [
+        proto.build_power(True),
+        proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["shiny"], sensitivity=80, color=None, calm=True),
+        *proto.build_music_params_a3(0x31, {20: 0x14, 21: 0x46}),
+    ]
+
+    # Bloom's Calm companion is [27].
+    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+        await coord.async_select_music_slug("bloom")
+    assert _sent(sc) == [
+        proto.build_power(True),
+        proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["bloom"], sensitivity=80, color=None, calm=True),
+        *proto.build_music_params_a3(0x30, {27: 0x14}),
+    ]
+
+    # Dynamic Shiny writes the template's baseline companion values.
+    coord.music_calm = False
+    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+        await coord.async_select_music_slug("shiny")
+    assert _sent(sc) == [
+        proto.build_power(True),
+        proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["shiny"], sensitivity=80, color=None, calm=False),
+        *proto.build_music_params_a3(0x31, {20: 0x05, 21: 0x64}),
+    ]
 
 
 def test_music_style_reconciles_calm_bool(coord):

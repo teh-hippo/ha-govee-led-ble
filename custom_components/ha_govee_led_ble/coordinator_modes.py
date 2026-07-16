@@ -38,6 +38,19 @@ FOUNTAIN_DIRECTION_BYTES: dict[str, tuple[int, int]] = {
     "two_way": (0x01, 0x03),
 }
 
+BLOOM_MODE_ID = MUSIC_MODE_SLUGS["bloom"]
+SHINY_MODE_ID = MUSIC_MODE_SLUGS["shiny"]
+# Modes whose base-frame STYLE byte (byte 5) carries Dynamic/Calm (H617A §2.1, live 2026-07-16).
+MUSIC_STYLE_MODE_IDS = frozenset({RHYTHM_MODE_ID, BLOOM_MODE_ID, SHINY_MODE_ID})
+# Slugs for the style-carrying modes, derived so the set never drifts from the id set above.
+MUSIC_STYLE_SLUGS = frozenset(slug for slug, mode_id in MUSIC_MODE_SLUGS.items() if mode_id in MUSIC_STYLE_MODE_IDS)
+# Bloom and Shiny also carry Dynamic/Calm in their a3 movement companion; Rhythm rides byte 5 alone.
+# Absolute a3 offsets keyed by ``calm``; the Dynamic (False) values equal the capture-pinned templates.
+_MUSIC_STYLE_COMPANION: dict[int, dict[bool, dict[int, int]]] = {
+    BLOOM_MODE_ID: {False: {27: 0x50}, True: {27: 0x14}},
+    SHINY_MODE_ID: {False: {20: 0x05, 21: 0x64}, True: {20: 0x14, 21: 0x46}},
+}
+
 
 def _encode_byte(value: Any) -> int:
     return int(value)
@@ -142,13 +155,15 @@ class _ActiveModeMixin(_CoordinatorBase):
         if self.active_mode == "colour":
             self._pre_mode_snapshot = self._capture_static_state()
         mode_id = MUSIC_MODE_SLUGS[slug]
-        calm = self.music_calm if mode_id == RHYTHM_MODE_ID else False
+        calm = self.music_calm if mode_id in MUSIC_STYLE_MODE_IDS else False
         color = self.music_color if self.profile.supports_music_color else None
         await self.send_command(build_power(True))
         self.is_on = True
         await self.send_command(
             build_music_mode_with_color(mode_id, sensitivity=self.music_sensitivity, color=color, calm=calm)
         )
+        if mode_id in _MUSIC_STYLE_COMPANION:
+            await self._send_music_params(mode_id)
         self.music_mode, self.video_mode = slug, "off"
         self.effect, self.active_custom_id = None, None
         self.diy_slot = None
@@ -175,5 +190,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         if mode_code == 0x35:
             phase, selector = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
             overrides.update({26: phase, 28: selector})
+        companion = _MUSIC_STYLE_COMPANION.get(mode_code)
+        if companion is not None:
+            overrides.update(companion[self.music_calm])
         for packet in build_music_params_a3(mode_code, overrides):
             await self.send_command(packet)

@@ -11,6 +11,7 @@ from homeassistant.exceptions import ServiceValidationError
 
 from .const import DOMAIN, MUSIC_MODES
 from .coordinator import GoveeBLECoordinator
+from .coordinator_modes import MUSIC_STYLE_SLUGS
 from .custom_effects import EffectValidationError, content_from_dict
 from .protocol import (
     SegmentColorGroup,
@@ -182,19 +183,22 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         if calm is not None:
             self._require_support(
                 "set_music_mode",
-                supported=self.coordinator.profile.supports_music_style and slug == "rhythm",
+                supported=self.coordinator.profile.supports_music_style and slug in MUSIC_STYLE_SLUGS,
             )
         with self._rollback():
             c = self.coordinator
             resolved_sensitivity = min(sensitivity, 99)
-            if slug == "rhythm" and calm is not None:
+            if slug in MUSIC_STYLE_SLUGS and calm is not None:
                 c.music_calm = calm
-            expected_calm = c.music_calm if slug == "rhythm" else None
+            style_calm = c.music_calm if slug in MUSIC_STYLE_SLUGS else None
+            # Rhythm reflects STYLE in its status reply; Bloom/Shiny repurpose that byte, so their
+            # calm is written optimistically but not verified on read-back.
+            verify_calm = c.music_calm if slug == "rhythm" else None
 
             async def apply() -> None:
                 c.music_sensitivity, c.music_color = resolved_sensitivity, color
-                if expected_calm is not None:
-                    c.music_calm = expected_calm
+                if style_calm is not None:
+                    c.music_calm = style_calm
                 await c.async_select_music_slug(slug)
 
             await apply()
@@ -202,7 +206,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 expected_on=True,
                 expected_music_mode=slug,
                 expected_music_sensitivity=resolved_sensitivity,
-                expected_music_calm=expected_calm,
+                expected_music_calm=verify_calm,
                 expected_music_color=color,
                 expected_music_auto_color=color is None,
                 retry_command=apply,
