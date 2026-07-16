@@ -268,7 +268,7 @@ notification. Reply data below is an example unless stated otherwise.
 | `06` | Firmware version | `"3.02.24"` (ASCII) |
 | `07` | Hardware version | selector `03`, then `"3.01.01"` (ASCII) |
 | `11` | Sleep timer (fade-off) | `[enable, startBri, closeMin, curMin]`, e.g. `00 1e 0f 0f` = disabled, start bri 30, close in 15 min. Write command `0x11`. |
-| `12` | Wake-up timer (sunrise) | `[enable, endBri, hour, min, repeat, rampMin]`, e.g. `00 64 11 00 00 1e` = disabled, end bri 100, 17:00, ramp 30 min. Write command `0x12`. |
+| `12` | Wake-up timer (sunrise) | `[enable, endBri, hour, min, repeat, rampMin]`, e.g. `00 64 11 00 00 1e` = disabled, end bri 100, 17:00, every day (`repeat 00`), ramp 30 min. Write command `0x12`. |
 | `14` | Gradual on/off | Single state byte; no reply seen when unset. Write command `0x14`. |
 | `23` | Timer table (4 on/off slots) | `ff <slot0..3 × 4B>`, each slot `[enableAndType, hour, min, repeat]`. e.g. `ff 01 06 00 80 …`. Write command `0x23`. **Not** segment config. |
 | `40` | Segment count | `0f` (15) |
@@ -297,7 +297,7 @@ below were confirmed by live capture.
 ```
 33 23 <idx> <enableAndType> <hour> <min> <repeat>
       |     |                |      |     |
-      |     |                |      |     days bitmask (0x80 = one-time / no repeat, 0xff = every day)
+      |     |                |      |     days bitmask (0x80 = one-time / no repeat, 0x00 = every day)
       |     |                |      minute
       |     |                hour
       |     enableAndType: bit7 (0x80) = enabled, bit0 (0x01) = action (1 on / 0 off). 0x81 = enabled+on.
@@ -306,12 +306,18 @@ below were confirmed by live capture.
 
 Query `aa 23` returns the whole table: `ff` then four 4-byte slots `[enableAndType, hour, min,
 repeat]`. Captured `33 23 00 81 06 00 80` = slot 0, enabled+on, 06:00, no repeat. The `repeat`
-weekday bits are Mon=bit0 .. Sun=bit6 (confirmed live: Monday-only = `0x81`, Sunday-only = `0xC0`).
+byte is `0x80 | weekday-mask` (Mon=bit0 .. Sun=bit6) with two special values. Confirmed live
+2026-07-16: one-time = `0x80`, Monday-only = `0x81`, Sunday-only = `0xC0`, and **every day = `0x00`**
+(the app never emits `0x7f`/`0xff`; a set high bit marks a one-time or specific-weekday schedule).
 
-**Sleep timer (`0x11`)**: fade the light off, `[enable, startBri, closeMin, curMin]`.
+**Sleep timer (`0x11`)**: fade the light off, `[enable, startBri, closeMin, curMin]`. Confirmed
+live 2026-07-16: enable `33 11 01 32 10 00` (startBri 50, close in 16 min), disable `33 11 00 …`;
+read-back `aa 11 00 32 10 00`. The countdown arms the moment the timer is enabled.
 **Wake-up timer (`0x12`)**: sunrise alarm, `[enable, endBri, hour, min, repeat, rampMin]` (hour
-clamped 0-23, min 0-59). **Gradual (`0x14`)**: a soft on/off transition toggle, single state byte;
-not exposed on the H617A app.
+clamped 0-23, min 0-59). Confirmed live 2026-07-16: every-day `33 12 01 64 11 01 00 1d` (endBri 100,
+17:01, ramp 29 min), Monday-only `33 12 01 64 11 01 81 1d`; the `repeat` byte shares the `0x23`
+encoding (every day = `0x00`). **Gradual (`0x14`)**: a soft on/off transition toggle, single state
+byte; not exposed on the H617A app.
 
 ## 5. Colour models
 

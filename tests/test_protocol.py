@@ -638,13 +638,13 @@ W = proto.Weekday
 
 
 def test_timer_repeat():
-    # Mon=bit0 .. Sun=bit6, high bit always set; empty = one-time, full week = every day.
+    # Mon=bit0 .. Sun=bit6; empty = one-time (0x80), every weekday = every day (0x00), else 0x80|mask.
     assert proto.timer_repeat() == proto.TIMER_REPEAT_ONCE == 0x80  # fire once
     assert proto.timer_repeat([W.TUE]) == 0x82  # Tue-only
     assert proto.timer_repeat([W.MON, W.TUE]) == 0x83  # Mon+Tue
     assert proto.timer_repeat([W.MON]) == 0x81
     assert proto.timer_repeat([W.SUN]) == 0xC0  # 0x80 | (1 << 6)
-    assert proto.timer_repeat(list(W)) == 0xFF  # every day
+    assert proto.timer_repeat(list(W)) == 0x00  # every day (app sends 0x00, not 0xff)
     assert proto.timer_repeat([W.TUE, W.TUE]) == 0x82  # duplicates collapse
     for bad in ([7], [-1]):
         with pytest.raises(ValueError):
@@ -656,9 +656,9 @@ def test_parse_timer_repeat():
     assert proto.parse_timer_repeat(0x82) == frozenset({W.TUE})
     assert proto.parse_timer_repeat(H("82")[0]) == frozenset({W.TUE})  # raw repeat byte 0x82 -> Tue
     assert proto.parse_timer_repeat(0x83) == frozenset({W.MON, W.TUE})
-    assert proto.parse_timer_repeat(0xFF) == frozenset(W)  # every day
-    assert proto.parse_timer_repeat(0x00) == frozenset(W)  # high bit clear -> every day
-    for byte in (0x80, 0x81, 0x82, 0x83, 0xC0, 0xFF):
+    assert proto.parse_timer_repeat(0x00) == frozenset(W)  # every day (app's canonical form)
+    assert proto.parse_timer_repeat(0xFF) == frozenset(W)  # tolerated alias -> re-encodes to 0x00
+    for byte in (0x00, 0x80, 0x81, 0x82, 0x83, 0xC0):
         assert proto.timer_repeat(proto.parse_timer_repeat(byte)) == byte  # round-trip
 
 
@@ -669,7 +669,7 @@ def test_timer_schedule():
     assert proto.build_timer_schedule(1, True, False, 22, 30, [W.MON, W.TUE]) == H(
         "33230180161e830000000000000000000000001a"
     )
-    assert proto.build_timer_schedule(3, True, True, 7, 15, list(W)) == H("33230381070fff00000000000000000000000065")
+    assert proto.build_timer_schedule(3, True, True, 7, 15, list(W)) == H("33230381070f000000000000000000000000009a")
     assert proto.build_timer_schedule(2, False, False, 0, 0, []) == H("3323020000008000000000000000000000000092")
     clamp = proto.build_timer_schedule(0, True, True, 25, 61, [])  # hour/minute clamp to 23/59
     assert (clamp[4], clamp[5]) == (23, 59)

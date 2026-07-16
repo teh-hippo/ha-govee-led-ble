@@ -537,16 +537,19 @@ TIMER_REPEAT_ONCE = 0x80  # high bit set with no weekday bits -> fires once
 
 
 def timer_repeat(days: Iterable[Weekday] = ()) -> int:
-    """Encode weekdays as a timer repeat byte (Mon=bit0 .. Sun=bit6, high bit always set).
+    """Encode weekdays as a timer repeat byte (Mon=bit0 .. Sun=bit6).
 
-    An empty set yields 0x80 (fires once); the full week yields 0xFF (every day).
+    Empty yields 0x80 (fires once); every weekday selected yields 0x00 (every day, as the app
+    sends it); any other subset is 0x80 | mask.
     """
-    mask = TIMER_REPEAT_ONCE
+    mask = 0
     for day in days:
         if not 0 <= int(day) <= 6:
             raise ValueError(f"weekday {day!r} out of range 0..6")
         mask |= 1 << int(day)
-    return mask
+    if mask == 0x7F:
+        return 0x00
+    return TIMER_REPEAT_ONCE | mask
 
 
 def parse_timer_repeat(repeat: int) -> frozenset[Weekday]:
