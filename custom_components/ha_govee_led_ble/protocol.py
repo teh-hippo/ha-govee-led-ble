@@ -750,8 +750,12 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_segment_brightness": Evidence("VALIDATED", "H617A §3/§7 seg brightness 33 05 15 02, mask[5:7]; live"),
     "build_segment_paint": Evidence("VALIDATED", "H617A §5 one 33 05 15 01 frame per colour group; live"),
     "build_color_rgb": Evidence("VALIDATED", "H617A §3/§5 whole-strip colour, mask 0x7FFF; live"),
-    "build_color_temp": Evidence("VALIDATED", "H617A §3 colour-temp 33 05 15 01 00 00 00 <K>; live 2-9kK"),
-    "build_white_brightness": Evidence("VALIDATED", "H617A §7 white brightness 33 05 15 02, mask 0x7FFF; live"),
+    "build_color_temp": Evidence(
+        "VALIDATED", "H617A §3 colour-temp 33 05 15 01 00 00 00 <K>; live 2-9kK on H617A; H6199 parity unattributed"
+    ),
+    "build_white_brightness": Evidence(
+        "VALIDATED", "H617A §7 white brightness 33 05 15 02, mask 0x7FFF; live on H617A; H6199 reuse unattributed"
+    ),
     "build_scene": Evidence("VALIDATED", "H617A §3/§6 scene 33 05 04 <code_LE>; Sunrise/Rainbow live 2026-07-16"),
     "build_a3_multi": Evidence("VALIDATED", "H617A §6 0xA3 multi-frame fragmenter; XOR at byte[19]; live"),
     "build_scene_multi": Evidence(
