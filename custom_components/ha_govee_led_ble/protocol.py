@@ -780,7 +780,11 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
         "H617A §6 Combo TYPE 04 FAMILY FF; current iOS body plus slot F0 direct write/read-back 2026-07-15",
     ),
     "build_custom_effect": Evidence("VALIDATED", "dispatcher over per-kind encoders (own evidence); Unknown rejected"),
-    "build_music_mode_with_color": Evidence("VALIDATED", "H617A §3/§7 music 33 05 13; 11 modes live-confirmed"),
+    "build_music_mode_with_color": Evidence(
+        "VALIDATED",
+        "H617A music 33 05 13 <mode><sens><style><count>; STYLE byte5 Dynamic(0)/Calm(1), COUNT byte6 "
+        "= manual colour count (0=auto-colour on)+RGB; 11 modes live-confirmed",
+    ),
     "build_music_params_a3": Evidence(
         "EXPERIMENTAL", "VAL a3 music body §2.3 (H617A 217-234); capture-pinned, volatile bytes replayed"
     ),
