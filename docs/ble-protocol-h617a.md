@@ -217,7 +217,7 @@ at fixed offsets in that assembled body (offset = concatenated fragment payloads
 | Mode | Parameter | Body offset | Values |
 |---|---|---|---|
 | Bloom `0x30` | Dynamic/Calm companion | `[27]` | Dynamic=`0x50`; Calm=`0x14` |
-| Shiny `0x31` | Dynamic/Calm companion | `[20,21]` | Dynamic=`14,46`; Calm=`05,64` |
+| Shiny `0x31` | Dynamic/Calm companion | `[20,21]` | Dynamic=`05,64`; Calm=`14,46` |
 | Separation `0x32` | Separation point | `[20]` | `0x01`..`0x05` (5 positions) |
 | Separation `0x32` | Gradient | `[21]` | `0x00` off / `0x01` on |
 | Hopping `0x33` | Relative brightness | `[29]` | `0x00`..`0x32` (0-50%) |
@@ -235,6 +235,15 @@ Verified frames (captured, sub-command `0x13`): `13 05 63 00 01 ff0000` (mode `0
 colour red), `13 03 63 00 00` (mode `0x03`, Auto color on), `13 03 63 01 01 0000ff` (Calm, one
 colour blue). Full byte-level detail and per-mode payload tails are kept in internal analysis
 notes.
+
+The current iOS Music walkthrough on 2026-07-16 reconfirmed the complete editor surface and its
+write boundary. Rhythm writes immediately for sensitivity (`0x00`..`0x63`), Dynamic/Calm,
+auto/manual colour and RGB selection. Extended editors stage their parameters until **Apply**,
+then send the `0x41` A3 body followed by the base `33 05 13` activation. Representative current
+captures reconfirmed Separation point/gradient, Hopping relative brightness, Piano key count,
+Fountain direction, Day and Night segment count, and Bloom style. Shiny A/B/A corrected its
+companion mapping to Dynamic=`05 64`, Calm=`14 46`. The **From mobile phone** path is a separate
+microphone-permission workflow and was left out of BLE mapping at the owner's request.
 
 ## 4. Query and status reference (0xAA)
 

@@ -367,8 +367,8 @@ def build_music_mode_with_color(
 _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
     # Bloom 0x30: current iOS Dynamic baseline; [27]=style companion (Dynamic 0x50 / Calm 0x14).
     0x30: bytes.fromhex("3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000"),
-    # Shiny 0x31: current iOS Dynamic baseline; [20:22]=style companion (14 46 / 05 64).
-    0x31: bytes.fromhex("3105ff0000ff7f00ffff0000ff000000ff14460a0000000000000000000000"),
+    # Shiny 0x31: current iOS Dynamic baseline; [20:22]=style companion (05 64 / 14 46).
+    0x31: bytes.fromhex("3105ff0000ff7f00ffff0000ff000000ff05640a0000000000000000000000"),
     # Separation 0x32: report step music-p-gradient (= pcap idx5); [20]=seppoint 1, [21]=gradient on.
     0x32: bytes.fromhex("3205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000"),
     # Hopping 0x33 (3-frag): report step music-p-relbright (= pcap idx16); [29]=relative brightness 50.

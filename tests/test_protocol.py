@@ -503,11 +503,11 @@ _MUSIC_PARAM_FRAMES: dict[tuple[int, tuple[tuple[int, int], ...]], str] = {
         ((27, 0x14),),
     ): "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a14000000000000",
     # Shiny 0x31: current iOS Dynamic / Calm A/B/A.
-    (0x31, ()): "0102413105ff0000ff7f00ffff0000ff000000ff14460a0000000000000000000000",
+    (0x31, ()): "0102413105ff0000ff7f00ffff0000ff000000ff05640a0000000000000000000000",
     (
         0x31,
-        ((20, 0x05), (21, 0x64)),
-    ): "0102413105ff0000ff7f00ffff0000ff000000ff05640a0000000000000000000000",
+        ((20, 0x14), (21, 0x46)),
+    ): "0102413105ff0000ff7f00ffff0000ff000000ff14460a0000000000000000000000",
     # Separation 0x32: report music-p-gradient (build{}) / music-p-seppoint ([20]=5).
     (0x32, ()): "0102413205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000",
     (0x32, ((20, 0x05),)): "0102413205ff7f00ff0000ffff000000ff00ff0005015e0000000000000000000000",
@@ -552,8 +552,8 @@ def test_build_music_params_a3_flips_only_its_offset():
     # Overwriting one decoded offset changes exactly that byte; the rest of the captured body is verbatim.
     cases = (
         (0x30, 27, 0x14),
-        (0x31, 20, 0x05),
-        (0x31, 21, 0x64),
+        (0x31, 20, 0x14),
+        (0x31, 21, 0x46),
         (0x32, 20, 5),
         (0x32, 21, 0),
         (0x33, 29, 0),
