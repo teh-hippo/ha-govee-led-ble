@@ -37,6 +37,7 @@ COLOR_MODE_MUSIC = 0x13
 COLOR_MODE_STATIC = 0x15
 COLOR_MODE_DIY = 0x0A
 DEFAULT_DIY_SLOT = 0xF0
+SKETCH_DIY_SLOT = 0x20
 
 
 MUSIC_SLUG_BY_ID: dict[int, str] = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
@@ -162,22 +163,30 @@ def build_scene(scene_id: int) -> bytes:
     return build_packet(0x33, 0x05, [0x04, *scene_id.to_bytes(2, "little")])
 
 
-def build_a3_multi(type_byte: int, body: bytes) -> list[bytes]:
+def _a3_frame(index: int, chunk: bytes) -> bytes:
+    packet = bytearray([MULTI_PACKET_PREFIX, index, *chunk])
+    packet = (packet + bytearray(19 - len(packet)))[:19]
+    packet.append(xor_checksum(packet))
+    return bytes(packet)
+
+
+def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> list[bytes]:
     """Fragment a body into 0xA3 multi-frames (H617A §6).
 
     Frames ``[0x01, chunk_count, type_byte, *body]`` into 17-byte chunks, each emitted as a
     20-byte ``0xA3 <index|0xFF>`` frame with an XOR checksum. Shared by scenes, music params and
-    custom effects so there is a single fragmenter and a single XOR path.
+    custom effects so there is a single fragmenter and a single XOR path. With ``terminator`` the
+    data chunks keep sequential indices and an extra empty ``0xFF`` frame closes the sequence, the
+    form the Govee app uses for Finger Sketch (``TYPE 0x03``).
     """
     data = bytes([type_byte]) + body
-    payload = bytes([0x01, math.ceil((len(data) + 2) / 17)]) + data
+    chunk_count = math.ceil((len(data) + 2) / 17)
+    payload = bytes([0x01, chunk_count + (1 if terminator else 0)]) + data
     chunks = [payload[index : index + 17] for index in range(0, len(payload), 17)]
-    packets: list[bytes] = []
-    for index, chunk in enumerate(chunks):
-        packet = bytearray([MULTI_PACKET_PREFIX, 0xFF if index == len(chunks) - 1 else index, *chunk])
-        packet = (packet + bytearray(19 - len(packet)))[:19]
-        packet.append(xor_checksum(packet))
-        packets.append(bytes(packet))
+    last = len(chunks) - 1
+    packets = [_a3_frame(index if terminator or index != last else 0xFF, chunk) for index, chunk in enumerate(chunks)]
+    if terminator:
+        packets.append(_a3_frame(0xFF, b""))
     return packets
 
 
@@ -202,9 +211,15 @@ def build_h6199_scene(scene_param_b64: str, scene_code: int, scene_type: int = 2
 # encoders stay capture-pinned and experimental. Packet bytes live only here.
 
 
-def build_diy_activate(slot: int) -> bytes:
-    """DIY/Vibrant activation ``33 05 0a <slot>`` (H617A §3 "DIY select"); ``slot`` is app-assigned."""
-    return build_packet(0x33, 0x05, [COLOR_MODE_DIY, slot])
+def build_diy_activate(slot: int, type_byte: int | None = None) -> bytes:
+    """DIY/Vibrant activation ``33 05 0a <slot> [type]`` (H617A §3 "DIY select"); ``slot`` is app-assigned.
+
+    Finger Sketch appends its ``TYPE 0x03`` after the slot; the other DIY kinds omit it.
+    """
+    params = [COLOR_MODE_DIY, slot]
+    if type_byte is not None:
+        params.append(type_byte)
+    return build_packet(0x33, 0x05, params)
 
 
 def _group_indices[T](values: Iterable[T | None], *, start: int) -> list[tuple[T, list[int]]]:
@@ -242,13 +257,13 @@ def build_segment_content(content: SegmentContent, *, segment_count: int) -> lis
 
 
 def build_sketch(content: SketchContent, *, segment_count: int) -> list[bytes]:
-    # EXPERIMENTAL: harness=diy-sketch encoding=capture-pinned
+    # VALIDATED: Finger Sketch live H617A 3.02.24 (2026-07-16); body + 2-frame A3 + 33 05 0a 20 03.
     body = bytes([content.motion, content.speed, content.brightness, *content.background])
     groups = _group_by_colour_0based(content.colors)
     body += bytes([len(groups)])
     for rgb, indices in groups:
         body += bytes([len(indices), *rgb, *indices])
-    return [*build_a3_multi(0x03, body), build_diy_activate(DEFAULT_DIY_SLOT)]
+    return [*build_a3_multi(0x03, body, terminator=True), build_diy_activate(SKETCH_DIY_SLOT, 0x03)]
 
 
 def _interpolate(stops: tuple[RGB, ...], n: int) -> list[RGB]:
@@ -743,7 +758,9 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_segment_content": Evidence(
         "VALIDATED", "H617A §3/§7 seg colour+brightness reuse; VAL single/all/one-seg live"
     ),
-    "build_sketch": Evidence("EXPERIMENTAL", "CAT §2.4 Finger Sketch TYPE 0x03; capture-pinned, gated Tier-2"),
+    "build_sketch": Evidence(
+        "VALIDATED", "H617A §2.4 Finger Sketch TYPE 0x03; body/framing/activation live 2026-07-16"
+    ),
     "build_vibrant": Evidence("EXPERIMENTAL", "CAT §3 Vibrant TYPE 0x03; 11-byte header undecoded, replayed verbatim"),
     "build_flat_diy": Evidence("EXPERIMENTAL", "CAT §2.2 flat DIY TYPE 0x04; capture-pinned, gated Tier-2"),
     "build_combo": Evidence(

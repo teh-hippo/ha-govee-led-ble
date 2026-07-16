@@ -15,8 +15,8 @@ Companion documents:
 
 Status: power, brightness, RGB and white/Kelvin colour, per-segment control, scenes, all 11 music
 modes and scheduled timers are implemented and confirmed live on firmware `3.02.24`. Flat, Finger
-Sketch, Vibrant, and Combo builders exist; Flat, Finger Sketch, and Vibrant remain experimental,
-while Combo is directly validated. rgbicv2 effects can replay captured bodies through
+Sketch, Vibrant, and Combo builders exist; Flat and Vibrant remain experimental,
+while Finger Sketch and Combo are directly validated. rgbicv2 effects can replay captured bodies through
 `build_scene_multi`, and Workshop authoring remains fail-closed where packed value spaces are not
 proven. See section 7 for implementation status. Raw pcaps remain outside the repository because
 they contain live BLE traffic.
@@ -88,7 +88,7 @@ a trailing XOR checksum (omitted from the table for brevity). `<..>` marks a var
 | Colour temperature | `33 05 15 01 00 00 00 <Khi> <Klo> <R> <G> <B> <ML> <MH>` | RGB slot `[4:7]` is zero; Kelvin is 16-bit big-endian at `[7:9]`; Govee's rendered white RGB at `[9:12]`. |
 | Per-segment brightness | `33 05 15 02 <pct> <ML> <MH>` | Segment mask at `[5:7]`, immediately after the percent. Independent of colour. |
 | Scene select | `33 05 04 <code_LE>` | Scene code, little-endian; preceded by `0xA3` frames for complex scenes. |
-| DIY select (flat / Finger Sketch / Combo) | `33 05 0a <slot>` | Mode `0x0a`; preceded by the `0xA3` DIY body (`TYPE 0x04`, `0x03`, or `0x04` with `FAMILY 0xFF`). Slot is app-assigned and persistent per saved effect; current Combo examples used `0x6E` and `0xEF`. The integration's default `0xF0` was accepted and read back, but app captures also used `0xF0`, so it does not prove ownership. |
+| DIY select (flat / Finger Sketch / Combo) | `33 05 0a <slot> [type]` | Mode `0x0a`; preceded by the `0xA3` DIY body (`TYPE 0x04`, `0x03`, or `0x04` with `FAMILY 0xFF`). Finger Sketch appends its `TYPE 0x03` after the slot and uses a fixed slot `0x20` (`33 05 0a 20 03`, live-confirmed). Combo/Flat omit the trailing type; slot is app-assigned and persistent per saved effect (current Combo examples used `0x6E` and `0xEF`). The integration's default `0xF0` was accepted and read back, but app captures also used `0xF0`, so it does not prove ownership. |
 | rgbicv2 DIY select | `33 05 04 <code_LE>` | Rich DIY effects reuse the scene command with a per-effect code (Bloom 506, Brilliant 501, ...); preceded by the `0xA3` record-container body (`TYPE 0x02`). |
 | Workshop Apply | `33 05 04 91 01 02` | Workshop code `0x0191`, little-endian, with scene type `0x02`; preceded by the length-delimited Workshop `0xA3` body (`TYPE 0x02`). |
 | Vibrant activate | `33 05 0a <slot>` | Same activation as DIY; preceded by the `0xA3` Vibrant body (type `0x03`). |
@@ -564,10 +564,12 @@ EFFECT SPEED BRIGHT <bg RGB> <groupcount> [<segcount> <fill RGB> <segment index.
 ```
 
 `EFFECT` is a motion code (Cycle `0x02`, Clockwise `0x09`, Counter-clockwise `0x0A`, Twinkle
-`0x0F`, Gradient `0x13`, Breathe `0x14`); `SPEED` (50% -> `0x33`, max -> `0x64`); `BRIGHT`
-(observed `0x64`); then a background RGB and one or more paint groups. Each paint group is
+`0x0F`, Gradient `0x13`, Breathe `0x14`); `SPEED` and `BRIGHT` are `0..100` bytes (`0x64` = 100);
+then a background RGB and one or more paint groups. Each paint group is
 `<segcount> <fill RGB> <segment index...>`, and segment indices are 0-based, matching the
-colour-mask bit numbering. Activation `33 05 0a <slot>`. Full detail in
+colour-mask bit numbering. The body is sent as two `0xA3` frames (body in `idx=0x00`, empty
+`idx=0xFF` terminator) and activated with `33 05 0a 20 03` (DIY select, slot `0x20`, TYPE `0x03`),
+all confirmed live on firmware `3.02.24` (2026-07-16). Full detail in
 [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.4.
 
 ### Vibrant (`TYPE 0x03`)
@@ -593,7 +595,7 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | Colour temperature `33 05 15 01 00 00 00 ...` | `build_color_temp` | Implemented and confirmed live; emits the true-Kelvin frame over 2000-9000K. |
 | Scene select `33 05 04` | `build_scene` | Confirmed live. |
 | Scene multi-frame `0xA3` | `build_scene_multi` | Confirmed live; carries the per-scene `scene_type` prefix (`0`/`1`/`2`). |
-| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented custom-effect builders. Flat and Finger Sketch remain capture-pinned; the current Combo body and default slot `0xF0` are directly validated on H617A firmware 3.02.24. Slot read-back cannot identify the active body. |
+| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented custom-effect builders. Finger Sketch body, two-frame `0xA3` framing and `33 05 0a 20 03` activation are directly validated on H617A firmware 3.02.24; the current Combo body and default slot `0xF0` are directly validated too. Flat remains capture-pinned. Slot read-back cannot identify the active body. |
 | Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | none | Transport, minimum content, layers, Select Type, area/count, palette, timing, brightness, movement and priority field locations are mapped. Unproven packed value spaces remain fail-closed. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a` | `build_vibrant` | Implemented from the capture-pinned header and per-segment gradient entries; remains experimental while the header is partly undecoded. |
@@ -625,7 +627,7 @@ The remaining H617A work is bounded:
 - finish rgbicv2 per-effect parameter maps and from-scratch authoring;
 - establish one current adjustable-scene editor path before testing scene parameters;
 - verify the remaining music controls and read-back semantics;
-- complete semantic validation of the experimental Flat, Finger Sketch, and Vibrant builders.
+- complete semantic validation of the experimental Flat and Vibrant builders.
 
 The authoritative ordered backlog is
 [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md). Effect identities and parameter

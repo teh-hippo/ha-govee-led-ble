@@ -291,6 +291,25 @@ def test_build_segment_content_matches_captured_frames():
         _valid(frame)
 
 
+def test_build_sketch_matches_live_capture():
+    # Finger Sketch live H617A 3.02.24 (2026-07-16): Clockwise, bg white, 3 red segments 0,1,2.
+    content = SketchContent(
+        motion=0x09,
+        speed=0x33,
+        brightness=0x64,
+        background=(255, 255, 255),
+        colors=((255, 0, 0), (255, 0, 0), (255, 0, 0)),
+    )
+    frames = proto.build_sketch(content, segment_count=15)
+    assert frames == [
+        H("a300010203093364ffffff0103ff0000000102fc"),  # 01 <count 2> 03 EFFECT SPEED BRIGHT <bg> <groups>
+        H("a3ff00000000000000000000000000000000005c"),  # empty 0xFF terminator frame
+        H("33050a200300000000000000000000000000001f"),  # activation 33 05 0a <slot 0x20> <type 0x03>
+    ]
+    for frame in frames:
+        _valid(frame)
+
+
 def test_build_sketch_matches_catalogue():
     # CAT §2.4: Clockwise, background blue, one green group over segments 0,1,2,4 (0-based).
     content = SketchContent(
@@ -302,8 +321,9 @@ def test_build_sketch_matches_catalogue():
     )
     body = H("0933640000ff010400ff0000010204")  # EFFECT SPEED BRIGHT <bg> <groups> <segcount fill segidx...>
     frames = proto.build_sketch(content, segment_count=15)
-    assert frames == [*proto.build_a3_multi(0x03, body), proto.build_diy_activate(0xF0)]
-    assert frames[-1] == H("33050af0000000000000000000000000000000cc")  # activation 33 05 0a f0
+    # Composition through the shared fragmenter: terminated A3 stream then slot/type activation.
+    assert frames == [*proto.build_a3_multi(0x03, body, terminator=True), proto.build_diy_activate(0x20, 0x03)]
+    assert frames[-1] == H("33050a200300000000000000000000000000001f")  # activation 33 05 0a 20 03
     for frame in frames:
         _valid(frame)
 

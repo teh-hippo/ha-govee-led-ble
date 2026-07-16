@@ -127,8 +127,8 @@ catalogue is not yet surfaced by the light entity.
 
 A DIY effect is a user-authored effect built in the app's DIY editor: an animation family or richer
 template, a variant, a speed, and one or more colour groups. The integration implements Flat,
-Finger Sketch, Vibrant, and Combo content for H617A. Flat, Finger Sketch, and Vibrant remain
-experimental; Combo is directly validated. rgbicv2 supports captured-body replay but not
+Finger Sketch, Vibrant, and Combo content for H617A. Flat and Vibrant remain
+experimental; Finger Sketch and Combo are directly validated. rgbicv2 supports captured-body replay but not
 from-scratch authoring. Every value below was confirmed on-wire on the H617A unless explicitly
 marked inferred.
 
@@ -274,8 +274,7 @@ Motion codes (`EFFECT`, offset 3), all confirmed by cycling the dropdown:
 | Gradient | `0x13` |
 | Breathe | `0x14` |
 
-Worked example (Clockwise, background blue, one group of four green segments), activation
-`33 05 0a f0`:
+Worked example (Clockwise, background blue, one group of four green segments):
 
 ```
 01 <lc> 03 09 33 64  00 00 FF  01  04  00 FF 00  00 01 02 04
@@ -286,9 +285,21 @@ Worked example (Clockwise, background blue, one group of four green segments), a
         TYPE 0x03
 ```
 
-Finger Sketch has **no colour-group min/max**; it is freeform per-segment paint. Vibrant
-(section 3) is the same `TYPE 0x03` family: it uses `EFFECT = 0x09` with the speed byte `0x00`
-and a static 15-segment gradient rather than paint groups.
+The body is uploaded as an `0xA3` multi-frame stream and then activated. Live capture on H617A
+firmware `3.02.24` (2026-07-16) shows the app **always** sends two `0xA3` frames — the body in
+frame `idx=0x00` (zero-padded), then an **empty** `idx=0xFF` terminator — with the frame-count
+byte fixed at `0x02` for a single-chunk body, and activates with slot `0x20` plus the DIY type:
+
+```
+TX a3 00 01 02 03 09 33 64 FF FF FF 01 03 FF 00 00 00 01 02   body (Clockwise, bg white, segs 0,1,2 red)
+TX a3 FF 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   empty terminator
+TX 33 05 0a 20 03                                             activation: DIY select, slot 0x20, TYPE 0x03
+```
+
+Finger Sketch has **no colour-group min/max**; it is freeform per-segment paint. SPEED and
+BRIGHT are `0..100` bytes (`0x64` = 100). Vibrant (section 3) is the same `TYPE 0x03` family: it
+uses `EFFECT = 0x09` with the speed byte `0x00` and a static 15-segment gradient rather than paint
+groups.
 
 ### 2.5 Combo encoding (`TYPE 0x04`, `FAMILY 0xFF`)
 
