@@ -38,7 +38,17 @@ case "${1:-}" in
       echo "prediction SHA-256 must be 64 lowercase hexadecimal characters" >&2
       exit 1
     fi
-    [ ! -f "$STATE" ] || { echo "a capture is already running"; exit 1; }
+    # Fresh start: stop any previous capture (stale or running) and clear its state.
+    if [ -f "$STATE" ]; then
+      read -r old_pid old_name _ < "$STATE" || true
+      echo "clearing previous capture '${old_name:-?}' (pid ${old_pid:-?})" >&2
+      [ -n "${old_pid:-}" ] && "$PWSH" -NoProfile -Command "Stop-Process -Id $old_pid -Force -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
+      rm -f "$STATE"
+    fi
+    # idevicebtlogger allows only one client on the packet-logger service; orphaned
+    # instances (e.g. a wrapper killed by 'timeout') leave it held, so every new
+    # capture writes 0 bytes. Clear stray loggers so each effort starts fresh.
+    "$PWSH" -NoProfile -Command "Get-Process idevicebtlogger -ErrorAction SilentlyContinue | Stop-Process -Force" >/dev/null 2>&1 || true
     name="${name//[^A-Za-z0-9._-]/_}"
     mkdir -p "$CAP"
     out="$WIN_CAP/${name}.pcap"
@@ -53,7 +63,11 @@ case "${1:-}" in
     if [ ! -f "$CAP/$name.pcap" ] || [ "$(stat -c %s "$CAP/$name.pcap")" -lt 24 ]; then
       "$PWSH" -NoProfile -Command "Stop-Process -Id $pid -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
       rm -f "$STATE" "$CAP/$name.actions.tsv"
-      echo "capture preflight failed: idevicebtlogger wrote no pcap header" >&2
+      echo "capture preflight failed: idevicebtlogger connected but wrote no pcap header" >&2
+      echo "  the phone's HCI stream is not flowing. Check, in order:" >&2
+      echo "  1. the iPhone is unlocked;" >&2
+      echo "  2. the Bluetooth logging (PacketLogger) profile is still installed and valid;" >&2
+      echo "  3. toggle Bluetooth off then on to restart the HCI stream." >&2
       exit 1
     fi
     echo "recording '$name' (pid $pid)"
