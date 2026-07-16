@@ -102,6 +102,7 @@ class RunManifest:
     run_id: str
     task_id: str
     provenance: dict[str, str]
+    ownership: dict[str, str]
     target: dict[str, str]
     baseline: dict[str, Any]
     limits: dict[str, int]
@@ -118,6 +119,7 @@ class RunManifest:
             "run_id": self.run_id,
             "task_id": self.task_id,
             "provenance": dict(self.provenance),
+            "ownership": dict(self.ownership),
             "target": dict(self.target),
             "baseline": dict(self.baseline),
             "limits": dict(self.limits),
@@ -281,6 +283,7 @@ def load_manifest_data(value: Any) -> RunManifest:
         "run_id",
         "task_id",
         "provenance",
+        "ownership",
         "target",
         "baseline",
         "limits",
@@ -312,6 +315,16 @@ def load_manifest_data(value: Any) -> RunManifest:
         "catalogue_sha256": catalogue_sha256,
     }
 
+    ownership = _mapping(raw["ownership"], "ownership")
+    _exact_keys(ownership, {"start", "end"}, set(), "ownership")
+    normalised_ownership = {
+        "start": _text(ownership["start"], "ownership.start"),
+        "end": _text(ownership["end"], "ownership.end"),
+    }
+    for boundary, owner in normalised_ownership.items():
+        if owner not in {"home_assistant", "govee_home"}:
+            raise ManifestError(f"ownership.{boundary} must be home_assistant or govee_home")
+
     target = _mapping(raw["target"], "target")
     _exact_keys(target, {"address", "local_name", "config_entry_id", "entity_id"}, set(), "target")
     normalised_target = {
@@ -323,16 +336,12 @@ def load_manifest_data(value: Any) -> RunManifest:
 
     baseline = _mapping(raw["baseline"], "baseline")
     baseline_keys = {
-        "entry_state",
-        "entity_available",
         "power",
         "brightness_percent",
         "mode",
         "effect",
     }
     _exact_keys(baseline, baseline_keys, set(), "baseline")
-    if not isinstance(baseline["entity_available"], bool):
-        raise ManifestError("baseline.entity_available must be boolean")
     baseline_brightness = _integer(
         baseline["brightness_percent"],
         "baseline.brightness_percent",
@@ -340,8 +349,6 @@ def load_manifest_data(value: Any) -> RunManifest:
         100,
     )
     normalised_baseline = {
-        "entry_state": _text(baseline["entry_state"], "baseline.entry_state"),
-        "entity_available": baseline["entity_available"],
         "power": _text(baseline["power"], "baseline.power"),
         "brightness_percent": baseline_brightness,
         "mode": _text(baseline["mode"], "baseline.mode"),
@@ -462,6 +469,7 @@ def load_manifest_data(value: Any) -> RunManifest:
         run_id=_identifier(raw["run_id"], "run_id"),
         task_id=_identifier(raw["task_id"], "task_id"),
         provenance=normalised_provenance,
+        ownership=normalised_ownership,
         target=normalised_target,
         baseline=normalised_baseline,
         limits=normalised_limits,
@@ -507,7 +515,7 @@ def initialise_run(manifest_path: Path, run_dir: Path) -> dict[str, Any]:
         "target_handle": None,
         "pcap_path": None,
         "markers": [],
-        "ha_checks": {},
+        "ownership_checks": {},
         "invalid_reason": None,
     }
     _atomic_json(run_dir / STATE_FILE, state)
@@ -531,11 +539,21 @@ def _load_run(run_dir: Path) -> tuple[RunManifest, dict[str, Any]]:
 
 def _snapshot_errors(manifest: RunManifest, snapshot: Any) -> list[str]:
     raw = _mapping(snapshot, "Home Assistant snapshot")
-    required = {"config_entry_id", "entity_id", *manifest.baseline.keys()}
+    required = {
+        "config_entry_id",
+        "entity_id",
+        "entry_state",
+        "disabled_by",
+        "entity_available",
+        *manifest.baseline.keys(),
+    }
     _exact_keys(raw, required, set(), "Home Assistant snapshot")
     expected = {
         "config_entry_id": manifest.target["config_entry_id"],
         "entity_id": manifest.target["entity_id"],
+        "entry_state": "loaded",
+        "disabled_by": None,
+        "entity_available": True,
         **manifest.baseline,
     }
     return [f"{key}: expected {expected[key]!r}, got {raw[key]!r}" for key in expected if raw[key] != expected[key]]
@@ -554,29 +572,65 @@ def _handoff_errors(manifest: RunManifest, snapshot: Any) -> list[str]:
     return [f"{key}: expected {expected[key]!r}, got {raw[key]!r}" for key in expected if raw[key] != expected[key]]
 
 
-def record_ha_snapshot(run_dir: Path, stage: str, snapshot: Any) -> dict[str, Any]:
-    if stage not in {"before", "handoff", "after"}:
-        raise RunError("Home Assistant stage must be before, handoff, or after")
+def _retained_errors(manifest: RunManifest, snapshot: Any) -> list[str]:
+    raw = _mapping(snapshot, "Govee Home ownership snapshot")
+    required = {
+        "config_entry_id",
+        "entity_id",
+        "entry_state",
+        "disabled_by",
+        "app_connected",
+        *manifest.baseline.keys(),
+    }
+    _exact_keys(raw, required, set(), "Govee Home ownership snapshot")
+    expected = {
+        "config_entry_id": manifest.target["config_entry_id"],
+        "entity_id": manifest.target["entity_id"],
+        "entry_state": "not_loaded",
+        "disabled_by": "user",
+        "app_connected": True,
+        **manifest.baseline,
+    }
+    return [f"{key}: expected {expected[key]!r}, got {raw[key]!r}" for key in expected if raw[key] != expected[key]]
+
+
+def record_ownership_snapshot(run_dir: Path, stage: str, snapshot: Any) -> dict[str, Any]:
+    stages = {"before", "handoff", "retained-before", "retained-after", "after"}
+    if stage not in stages:
+        raise RunError("ownership stage must be before, handoff, retained-before, retained-after, or after")
     manifest, state = _load_run(run_dir)
-    if stage == "before" and state["status"] != "prepared":
+    if stage == "before" and (manifest.ownership["start"] != "home_assistant" or state["status"] != "prepared"):
         raise RunError("the before snapshot must be recorded before arming")
-    if stage == "handoff" and (state["status"] != "prepared" or "before" not in state["ha_checks"]):
+    if stage == "handoff" and (
+        manifest.ownership["start"] != "home_assistant"
+        or state["status"] != "prepared"
+        or "before" not in state["ownership_checks"]
+    ):
         raise RunError("the handoff snapshot must follow the before snapshot")
-    if stage == "after" and state["status"] != "awaiting_ha":
+    if stage == "retained-before" and (manifest.ownership["start"] != "govee_home" or state["status"] != "prepared"):
+        raise RunError("the retained-before snapshot requires a Govee Home start")
+    if stage == "after" and (manifest.ownership["end"] != "home_assistant" or state["status"] != "awaiting_ha"):
         raise RunError("the after snapshot must follow the final settled marker")
-    errors = _handoff_errors(manifest, snapshot) if stage == "handoff" else _snapshot_errors(manifest, snapshot)
+    if stage == "retained-after" and (manifest.ownership["end"] != "govee_home" or state["status"] != "awaiting_govee"):
+        raise RunError("the retained-after snapshot must follow the final settled marker")
+    if stage == "handoff":
+        errors = _handoff_errors(manifest, snapshot)
+    elif stage in {"retained-before", "retained-after"}:
+        errors = _retained_errors(manifest, snapshot)
+    else:
+        errors = _snapshot_errors(manifest, snapshot)
     if errors:
-        if stage in {"handoff", "after"}:
+        if stage in {"handoff", "retained-after", "after"}:
             state["status"] = "needs_recovery"
             state["phase"] = "needs_recovery"
-            state["invalid_reason"] = f"Home Assistant {stage} mismatch: " + "; ".join(errors)
+            state["invalid_reason"] = f"ownership {stage} mismatch: " + "; ".join(errors)
             _atomic_json(run_dir / STATE_FILE, state)
-        raise RunError(f"Home Assistant {stage} mismatch: " + "; ".join(errors))
-    state["ha_checks"][stage] = {
+        raise RunError(f"ownership {stage} mismatch: " + "; ".join(errors))
+    state["ownership_checks"][stage] = {
         "recorded_at": datetime.now(UTC).isoformat(),
         "snapshot": snapshot,
     }
-    if stage == "after":
+    if stage in {"retained-after", "after"}:
         state["status"] = "ready_for_analysis"
         state["phase"] = "ready_for_analysis"
     _atomic_json(run_dir / STATE_FILE, state)
@@ -711,9 +765,12 @@ def record_marker(
     }
     closed_window_count: int | None = None
     if marker == "armed":
-        if not {"before", "handoff"} <= state["ha_checks"].keys():
-            _invalidate(run_dir, state, "Home Assistant handoff is not proven")
-            raise RunError("record the Home Assistant before and handoff snapshots before arming")
+        required_checks = (
+            {"before", "handoff"} if manifest.ownership["start"] == "home_assistant" else {"retained-before"}
+        )
+        if not required_checks <= state["ownership_checks"].keys():
+            _invalidate(run_dir, state, "run ownership start is not proven")
+            raise RunError("record the required ownership snapshots before arming")
         if not target_confirmed:
             _invalidate(run_dir, state, "armed requires confirmed target identity and pcap")
             raise RunError("armed requires confirmed target identity and pcap")
@@ -835,8 +892,8 @@ def record_marker(
             raise RunError(reason)
         state["last_live_verdict"] = progress["verdict"]
     if len(state["markers"]) == len(expected_markers):
-        state["status"] = "awaiting_ha"
-        state["phase"] = "awaiting_ha"
+        state["status"] = "awaiting_ha" if manifest.ownership["end"] == "home_assistant" else "awaiting_govee"
+        state["phase"] = state["status"]
     _atomic_json(run_dir / STATE_FILE, state)
     return state
 
@@ -853,7 +910,11 @@ def complete_recovery(run_dir: Path, snapshot: Any) -> dict[str, Any]:
     manifest, state = _load_run(run_dir)
     if state["status"] != "needs_recovery":
         raise RunError("recovery is valid only for a run marked needs_recovery")
-    errors = _snapshot_errors(manifest, snapshot)
+    errors = (
+        _snapshot_errors(manifest, snapshot)
+        if manifest.ownership["end"] == "home_assistant"
+        else _retained_errors(manifest, snapshot)
+    )
     if errors:
         raise RunError("recovery baseline mismatch: " + "; ".join(errors))
     artifacts = {
@@ -887,7 +948,7 @@ def complete_recovery(run_dir: Path, snapshot: Any) -> dict[str, Any]:
                 path = Path(state[f"{key}_path"])
                 if path.is_file():
                     artifacts[key] = {"path": str(path), "sha256": _file_sha256(path)}
-    state["ha_checks"]["recovery"] = {
+    state["ownership_checks"]["recovery"] = {
         "recorded_at": datetime.now(UTC).isoformat(),
         "snapshot": snapshot,
     }
@@ -907,14 +968,21 @@ def complete_recovery(run_dir: Path, snapshot: Any) -> dict[str, Any]:
             "connection_handle": state["target_handle"],
         },
         "windows": [],
-        "restoration_source": "home-assistant-readback",
+        "restoration_source": (
+            "home-assistant-readback" if manifest.ownership["end"] == "home_assistant" else "govee-home-readback"
+        ),
         "restoration": {
-            "source": "home-assistant-readback",
+            "source": (
+                "home-assistant-readback" if manifest.ownership["end"] == "home_assistant" else "govee-home-readback"
+            ),
             "required_tx": [packet.hex() for packet in manifest.restoration_packets],
             "observed_tx": [],
         },
         "markers": list(state["markers"]),
-        "home_assistant": dict(state["ha_checks"]),
+        "ownership": {
+            "boundary": dict(manifest.ownership),
+            "checks": dict(state["ownership_checks"]),
+        },
         "frames": [],
         "errors": [state["invalid_reason"], *artifact_errors],
         "extra_rx": [],
@@ -1263,7 +1331,11 @@ def evaluate_run(
 
     restoration_seen = {record.value for record in restoration_records}
     restoration_wire = all(packet in restoration_seen for packet in manifest.restoration_packets)
-    restoration_source = "wire" if restoration_wire else "home-assistant-readback"
+    restoration_source = (
+        "wire"
+        if restoration_wire
+        else ("home-assistant-readback" if manifest.ownership["end"] == "home_assistant" else "govee-home-readback")
+    )
     verdict = _verdict(errors, action_confirmations, required_action_tx_observed)
     return {
         "schema_version": SCHEMA_VERSION,
@@ -1286,7 +1358,10 @@ def evaluate_run(
             "observed_tx": sorted(record.value.hex() for record in restoration_records),
         },
         "markers": list(state["markers"]),
-        "home_assistant": dict(state["ha_checks"]),
+        "ownership": {
+            "boundary": dict(manifest.ownership),
+            "checks": dict(state["ownership_checks"]),
+        },
         "frames": [
             {
                 "timestamp": record.timestamp.isoformat(),
@@ -1393,7 +1468,7 @@ def _write_report(run_dir: Path, report: dict[str, Any]) -> None:
 def analyse_run(run_dir: Path, pcap_path: Path | None = None) -> dict[str, Any]:
     manifest, state = _load_run(run_dir)
     if state["status"] != "ready_for_analysis":
-        raise RunError("run must have a verified Home Assistant after snapshot before analysis")
+        raise RunError("run must have a verified end-ownership snapshot before analysis")
     capture_path = Path(state["pcap_path"])
     if pcap_path is not None and pcap_path.resolve() != capture_path:
         raise RunError("analysis pcap differs from the pcap frozen at armed")
@@ -1507,13 +1582,25 @@ def _simulation_state(manifest: RunManifest, state: dict[str, Any]) -> tuple[dic
     snapshot = {
         "config_entry_id": manifest.target["config_entry_id"],
         "entity_id": manifest.target["entity_id"],
+        "entry_state": "loaded",
+        "disabled_by": None,
+        "entity_available": True,
+        **manifest.baseline,
+    }
+    retained = {
+        "config_entry_id": manifest.target["config_entry_id"],
+        "entity_id": manifest.target["entity_id"],
+        "entry_state": "not_loaded",
+        "disabled_by": "user",
+        "app_connected": True,
         **manifest.baseline,
     }
     state["target_handle"] = handle
     state["markers"] = markers
-    state["ha_checks"] = {
-        "before": {"recorded_at": start.isoformat(), "snapshot": snapshot},
-        "handoff": {
+    ownership_checks: dict[str, Any] = {}
+    if manifest.ownership["start"] == "home_assistant":
+        ownership_checks["before"] = {"recorded_at": start.isoformat(), "snapshot": snapshot}
+        ownership_checks["handoff"] = {
             "recorded_at": start.isoformat(),
             "snapshot": {
                 "config_entry_id": manifest.target["config_entry_id"],
@@ -1521,9 +1608,18 @@ def _simulation_state(manifest: RunManifest, state: dict[str, Any]) -> tuple[dic
                 "entry_state": "not_loaded",
                 "disabled_by": "user",
             },
-        },
-        "after": {"recorded_at": cursor.isoformat(), "snapshot": snapshot},
+        }
+    else:
+        ownership_checks["retained-before"] = {
+            "recorded_at": start.isoformat(),
+            "snapshot": retained,
+        }
+    end_stage = "after" if manifest.ownership["end"] == "home_assistant" else "retained-after"
+    ownership_checks[end_stage] = {
+        "recorded_at": cursor.isoformat(),
+        "snapshot": snapshot if end_stage == "after" else retained,
     }
+    state["ownership_checks"] = ownership_checks
     state["status"] = "ready_for_analysis"
     state["phase"] = "ready_for_analysis"
     return state, tuple(records)
@@ -1568,10 +1664,13 @@ def _build_parser() -> argparse.ArgumentParser:
     initialise.add_argument("manifest", type=Path)
     initialise.add_argument("run_dir", type=Path)
 
-    ha = commands.add_parser("ha")
-    ha.add_argument("run_dir", type=Path)
-    ha.add_argument("stage", choices=("before", "handoff", "after"))
-    ha.add_argument("snapshot", type=Path)
+    ownership = commands.add_parser("ownership")
+    ownership.add_argument("run_dir", type=Path)
+    ownership.add_argument(
+        "stage",
+        choices=("before", "handoff", "retained-before", "retained-after", "after"),
+    )
+    ownership.add_argument("snapshot", type=Path)
 
     mark = commands.add_parser("mark")
     mark.add_argument("run_dir", type=Path)
@@ -1609,9 +1708,9 @@ def main() -> int:
             case "init":
                 state = initialise_run(args.manifest, args.run_dir)
                 print(f"prepared {state['run_id']} prediction_sha256={state['prediction_sha256']}")
-            case "ha":
-                record_ha_snapshot(args.run_dir, args.stage, _read_json(args.snapshot))
-                print(f"recorded Home Assistant {args.stage} baseline")
+            case "ownership":
+                record_ownership_snapshot(args.run_dir, args.stage, _read_json(args.snapshot))
+                print(f"recorded {args.stage} ownership")
             case "mark":
                 record_marker(
                     args.run_dir,

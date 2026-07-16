@@ -4,7 +4,9 @@
 
 Verify the supported Govee protocol end to end by predicting each BLE transaction from the
 integration, performing the corresponding action in Govee Home on the iPhone, observing the
-actual Bluetooth traffic, checking device state, and restoring Home Assistant ownership.
+actual Bluetooth traffic, and checking device state. Restore the exact Sunrise 5% baseline after
+each run, but retain Govee-session ownership until the owner explicitly ends the session and
+confirms Home Assistant hand-back.
 
 The first tranche covers power, colour, music, and built-in scenes. Work stops after those runs
 for owner review. No live verification in this plan begins without explicit approval.
@@ -19,8 +21,8 @@ Every live run must establish four independent facts:
    HID.
 3. **Wire observation:** the marked pcap contains the attributable app TX frame and any device RX
    acknowledgement or status.
-4. **Restoration:** the exact baseline is restored, Govee Home releases the BLE link, and the Home
-   Assistant config entry is loaded and available.
+4. **Restoration:** the exact baseline and declared run-end owner are verified. Home Assistant
+   remains disabled between runs unless the owner explicitly confirms session hand-back.
 
 A changed screen or visible animation is supporting evidence only. It cannot replace BLE
 observation or state read-back.
@@ -50,7 +52,8 @@ An ambiguous visual result invalidates the action window even if a plausible BLE
 - Target only the designated H617A Cupboard Skirt device.
 - Never touch the other H617A device.
 - Keep H617A master brightness at 5%, and never above 10%.
-- Home Assistant owns the BLE link between runs.
+- Home Assistant owns the BLE link outside an explicitly active live session. Its target entry
+  remains disabled between runs during that session.
 - Disable and reload only the target config entry. Do not restart Home Assistant.
 - Use one persistent, loopback-only CoreDevice viewer per run.
 - Bind decoded frames to the target Bluetooth connection handle and address. Fail if another Govee
@@ -62,8 +65,9 @@ An ambiguous visual result invalidates the action window even if a plausible BLE
 
 If the phone locks, CoreDevice disconnects, the main process crashes, or recovery requires a
 Developer Disk Image remount, the run is invalid. Preserve its artifacts, assign a new run ID,
-recover Home Assistant ownership, reassert the baseline, and start again. Never append post-recovery
-actions to the original capture.
+reassert the baseline under the current session owner, and start again. Do not return the link to
+Home Assistant without explicit owner confirmation. Never append post-recovery actions to the
+original capture.
 
 ## Campaign baseline
 
@@ -75,11 +79,11 @@ The H617A baseline for the first tranche is:
 | Master brightness | 5% |
 | Mode | Built-in scene |
 | Scene | Sunrise, code `0x0000` |
-| Home Assistant | Config entry loaded and entity available |
+| Session owner | Home Assistant before the first run; Govee session between runs |
 
-Confirm the baseline immediately before every hand-off. Restore Sunrise at 5% in the app before
-returning the link to Home Assistant. If the observed state differs before a run, stop and record
-the new baseline rather than silently normalising it.
+Confirm the baseline immediately before every run. Restore Sunrise at 5% in the app before closing
+each capture. If the observed state differs before a run, stop and record the new baseline rather
+than silently normalising it.
 
 The restoration packet set is frozen for every run:
 
@@ -152,9 +156,9 @@ Each run manifest contains private, uncommitted target identity:
 
 Ownership checks are part of `armed`:
 
-1. Home Assistant reports the target entry loaded and available before hand-off.
-2. Disabling the entry moves it to `not_loaded` with `disabled_by=user`.
-3. Govee Home reports the private target identity connected.
+1. The first run records Home Assistant loaded, then `not_loaded` with `disabled_by=user`.
+2. Later runs record retained ownership with the entry still disabled.
+3. Govee Home reports the private target identity connected and the exact baseline.
 4. The pcap maps the active connection handle to that target address.
 5. More than one candidate Govee connection invalidates the run.
 
@@ -192,11 +196,13 @@ not a continuation of the failed run.
 2. Stop the capture logger and persistent viewer by their recorded identifiers.
 3. If the phone is locked, obtain an owner unlock before issuing another phone command.
 4. Recover CoreDevice services only after the viewer is stopped.
-5. Terminate Govee Home cleanly and enable the target Home Assistant entry.
-6. Reload the entry. If it remains unreachable, use the proven connect, back-out, terminate,
-   enable, and reload hand-back sequence.
-7. Reassert Sunrise and brightness 5%, then confirm the entry is loaded and available.
-8. Mark the failed run `invalid`, clear the recovery state, and create a new run ID.
+5. Reassert Sunrise and brightness 5% through Govee Home.
+6. Record the retained baseline with the target entry still `not_loaded` and `disabled_by=user`.
+7. Mark the failed run `invalid`, clear the recovery state, terminate Govee Home cleanly, and
+   create a new run ID.
+
+Return the link to Home Assistant only after the owner explicitly ends the live session and
+confirms hand-back.
 
 ## First tranche
 
@@ -238,7 +244,8 @@ Procedure:
 5. Mark and tap power on.
 6. In the restoration window, reassert Sunrise and brightness 5% if read-back does not already
    prove both values.
-7. Close the app, return the link to Home Assistant, and confirm the same baseline.
+7. Record retained ownership, stop the capture, and disconnect the app while leaving the Home
+   Assistant entry disabled.
 
 Pass only if both TX frames are exact and no mode, colour, or brightness write appears in either
 power action window. Restoration writes are assessed in their separate window.
@@ -275,7 +282,7 @@ Procedure:
 3. Confirm the exact blue control reports `#0000FF`, then mark and tap it.
 4. Mark and tap red again to prove A/B/A attribution.
 5. Restore Sunrise and brightness 5% in a separate window.
-6. Return the link to Home Assistant and verify availability.
+6. Record retained ownership, stop the capture, and leave the Home Assistant entry disabled.
 
 Pass only if the mask bytes are `FF 7F`, the RGB bytes are exact, red reproduces byte-for-byte,
 and no per-segment or colour-temperature frame is substituted.
@@ -319,7 +326,7 @@ Procedure:
 6. Mark and select Calm.
 7. Mark and restore Dynamic.
 8. Restore Sunrise and brightness 5% in a separate window.
-9. Return the link to Home Assistant and verify availability.
+9. Record retained ownership, stop the capture, and leave the Home Assistant entry disabled.
 
 Pass only if mode remains `0x03`, sensitivity remains `0x63`, and byte 5 is the sole semantic
 change between Dynamic and Calm. The frame must contain no manual-colour count or RGB payload.
@@ -396,8 +403,8 @@ Each run produces:
 - Terra's text-only operator record for every marker;
 - a wire-pass, TX-only pass, mismatch, no-write, invalid, or unresolved verdict;
 - the exact restoration result;
-- Home Assistant entry state before and after;
-- persisted recovery state cleared only after successful hand-back;
+- declared ownership state at the start and end of the run;
+- persisted recovery state cleared only after the declared end owner and baseline are verified;
 - the integration commit, app build, device firmware, and catalogue hash.
 
 The summary table must distinguish:
@@ -405,7 +412,7 @@ The summary table must distinguish:
 | Result | Meaning |
 | --- | --- |
 | Wire pass | Exact TX, attributable device RX, UI state, and restoration agree. |
-| TX-only pass | Exact TX and restoration agree, but state was confirmed only after Home Assistant hand-back. This does not validate the RX parser. |
+| TX-only pass | Exact TX and restoration agree, but no attributable target RX confirmed the state. This does not validate the RX parser. |
 | Mismatch | An attributable app frame differs from the frozen prediction. |
 | No write | The app action produced no attributable command. |
 | Invalid | Target binding, phone state, timing window, brightness guard, or recovery boundary failed. |
@@ -454,7 +461,8 @@ Verification is complete only when:
 - every live mismatch has a resolved code, capability, or documentation disposition;
 - unsupported experimental helpers are either retained with an explicit non-production scope or
   removed;
-- Home Assistant ownership and the exact device baseline are restored after every run;
+- the exact device baseline and declared end owner are verified after every run;
+- Home Assistant ownership is restored only after explicit owner-confirmed session hand-back;
 - the owner and expert panel approve the final evidence matrix.
 
 ## Expert review outcome

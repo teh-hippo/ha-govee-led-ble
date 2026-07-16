@@ -16,8 +16,8 @@ from tools.ble.safe_verify import (
     evaluate_run,
     initialise_run,
     load_manifest_data,
-    record_ha_snapshot,
     record_marker,
+    record_ownership_snapshot,
     simulate_run,
 )
 
@@ -53,6 +53,10 @@ def _manifest() -> dict[str, Any]:
             "device_firmware": "3.02.24",
             "catalogue_sha256": "2" * 64,
         },
+        "ownership": {
+            "start": "home_assistant",
+            "end": "govee_home",
+        },
         "target": {
             "address": TARGET_ADDRESS,
             "local_name": "Govee_H617A_3A5B",
@@ -60,8 +64,6 @@ def _manifest() -> dict[str, Any]:
             "entity_id": "light.cupboard_skirt",
         },
         "baseline": {
-            "entry_state": "loaded",
-            "entity_available": True,
             "power": "on",
             "brightness_percent": 5,
             "mode": "scene",
@@ -142,6 +144,7 @@ def _snapshot() -> dict[str, Any]:
         "config_entry_id": "entry-h617a",
         "entity_id": "light.cupboard_skirt",
         "entry_state": "loaded",
+        "disabled_by": None,
         "entity_available": True,
         "power": "on",
         "brightness_percent": 5,
@@ -156,6 +159,20 @@ def _handoff_snapshot() -> dict[str, str]:
         "entity_id": "light.cupboard_skirt",
         "entry_state": "not_loaded",
         "disabled_by": "user",
+    }
+
+
+def _retained_snapshot() -> dict[str, Any]:
+    return {
+        "config_entry_id": "entry-h617a",
+        "entity_id": "light.cupboard_skirt",
+        "entry_state": "not_loaded",
+        "disabled_by": "user",
+        "app_connected": True,
+        "power": "on",
+        "brightness_percent": 5,
+        "mode": "scene",
+        "effect": "Sunrise",
     }
 
 
@@ -271,8 +288,8 @@ def _prepare_replay(
     pcap = tmp_path / "capture.pcap"
     _write_manifest(manifest_path)
     state = initialise_run(manifest_path, run_dir)
-    record_ha_snapshot(run_dir, "before", _snapshot())
-    record_ha_snapshot(run_dir, "handoff", _handoff_snapshot())
+    record_ownership_snapshot(run_dir, "before", _snapshot())
+    record_ownership_snapshot(run_dir, "handoff", _handoff_snapshot())
     base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     packets = [
         (base, _connection_packet(0x0040, TARGET_ADDRESS)),
@@ -287,7 +304,7 @@ def _prepare_replay(
     _start_capture_sidecars(pcap, state["prediction_sha256"], base)
     _record_valid_markers(run_dir, pcap, base)
     _stop_capture_sidecars(pcap, state["prediction_sha256"], base + timedelta(seconds=20))
-    record_ha_snapshot(run_dir, "after", _snapshot())
+    record_ownership_snapshot(run_dir, "retained-after", _retained_snapshot())
     return run_dir, pcap, base
 
 
@@ -348,6 +365,47 @@ def test_simulation_uses_frozen_predictions_and_writes_evidence(tmp_path: Path):
     assert (run_dir / "evidence.md").exists()
 
 
+def test_subsequent_run_starts_from_retained_govee_ownership(tmp_path: Path):
+    manifest_data = _manifest()
+    manifest_data["ownership"]["start"] = "govee_home"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps(manifest_data))
+    run_dir = tmp_path / "run"
+    pcap = tmp_path / "capture.pcap"
+    state = initialise_run(manifest, run_dir)
+    record_ownership_snapshot(run_dir, "retained-before", _retained_snapshot())
+    base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
+    _write_pcap(pcap, [(base, _connection_packet(0x0040, TARGET_ADDRESS))])
+    _start_capture_sidecars(pcap, state["prediction_sha256"], base)
+
+    armed = record_marker(
+        run_dir,
+        "armed",
+        at=base + timedelta(seconds=1),
+        pcap_path=pcap,
+        viewer_healthy=True,
+        phone_unlocked=True,
+        target_confirmed=True,
+    )
+
+    assert armed["status"] == "active"
+    assert set(armed["ownership_checks"]) == {"retained-before"}
+
+
+def test_simulation_supports_explicit_home_assistant_handback(tmp_path: Path):
+    manifest_data = _manifest()
+    manifest_data["ownership"]["end"] = "home_assistant"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps(manifest_data))
+    run_dir = tmp_path / "simulation"
+
+    report = simulate_run(manifest, run_dir)
+
+    assert report["ownership"]["boundary"]["end"] == "home_assistant"
+    assert "after" in report["ownership"]["checks"]
+    assert "retained-after" not in report["ownership"]["checks"]
+
+
 def test_replay_passes_with_target_rx_and_exact_restoration(tmp_path: Path):
     run_dir, pcap, _ = _prepare_replay(tmp_path)
 
@@ -389,8 +447,8 @@ def test_live_window_fails_before_the_next_action(
     pcap = tmp_path / "capture.pcap"
     _write_manifest(manifest_path)
     state = initialise_run(manifest_path, run_dir)
-    record_ha_snapshot(run_dir, "before", _snapshot())
-    record_ha_snapshot(run_dir, "handoff", _handoff_snapshot())
+    record_ownership_snapshot(run_dir, "before", _snapshot())
+    record_ownership_snapshot(run_dir, "handoff", _handoff_snapshot())
     base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     packets = [
         (base, _connection_packet(0x0040, TARGET_ADDRESS)),
@@ -439,7 +497,7 @@ def test_live_window_fails_before_the_next_action(
 
     assert json.loads((run_dir / "state.json").read_text())["status"] == "needs_recovery"
     _stop_capture_sidecars(pcap, state["prediction_sha256"], base + timedelta(seconds=6))
-    complete_recovery(run_dir, _snapshot())
+    complete_recovery(run_dir, _retained_snapshot())
     assert json.loads((run_dir / "evidence.json").read_text())["verdict"] == "invalid"
 
 
@@ -463,8 +521,8 @@ def test_before_action_rejects_idle_gap_traffic(tmp_path: Path):
     pcap = tmp_path / "capture.pcap"
     _write_manifest(manifest_path)
     state = initialise_run(manifest_path, run_dir)
-    record_ha_snapshot(run_dir, "before", _snapshot())
-    record_ha_snapshot(run_dir, "handoff", _handoff_snapshot())
+    record_ownership_snapshot(run_dir, "before", _snapshot())
+    record_ownership_snapshot(run_dir, "handoff", _handoff_snapshot())
     base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     _write_pcap(
         pcap,
@@ -529,8 +587,8 @@ def test_total_run_limit_is_checked_before_each_action(tmp_path: Path):
     run_dir = tmp_path / "run"
     pcap = tmp_path / "capture.pcap"
     state = initialise_run(manifest_path, run_dir)
-    record_ha_snapshot(run_dir, "before", _snapshot())
-    record_ha_snapshot(run_dir, "handoff", _handoff_snapshot())
+    record_ownership_snapshot(run_dir, "before", _snapshot())
+    record_ownership_snapshot(run_dir, "handoff", _handoff_snapshot())
     base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     _write_pcap(
         pcap,
@@ -592,8 +650,8 @@ def test_state_confirmation_must_follow_the_required_tx(tmp_path: Path):
     pcap = tmp_path / "capture.pcap"
     _write_manifest(manifest_path)
     state = initialise_run(manifest_path, run_dir)
-    record_ha_snapshot(run_dir, "before", _snapshot())
-    record_ha_snapshot(run_dir, "handoff", _handoff_snapshot())
+    record_ownership_snapshot(run_dir, "before", _snapshot())
+    record_ownership_snapshot(run_dir, "handoff", _handoff_snapshot())
     base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     _write_pcap(
         pcap,
@@ -652,7 +710,7 @@ def test_missing_required_rx_is_not_classified_as_no_write():
             "manifest_sha256": "manifest",
             "target_handle": None,
             "markers": [],
-            "ha_checks": {},
+            "ownership_checks": {},
         },
     )
     without_rx = tuple(record for record in records if record.direction != "RX")
@@ -673,7 +731,7 @@ def test_manifest_tampering_is_rejected(tmp_path: Path):
     (run_dir / "manifest.json").write_text(json.dumps(frozen))
 
     with pytest.raises(RunError, match="frozen manifest hash mismatch"):
-        record_ha_snapshot(run_dir, "before", _snapshot())
+        record_ownership_snapshot(run_dir, "before", _snapshot())
 
 
 def test_manifest_rejects_predicted_brightness_above_the_limit():
@@ -690,8 +748,8 @@ def test_early_arming_failure_preserves_capture_for_recovery(tmp_path: Path):
     pcap = tmp_path / "capture.pcap"
     _write_manifest(manifest_path)
     state = initialise_run(manifest_path, run_dir)
-    record_ha_snapshot(run_dir, "before", _snapshot())
-    record_ha_snapshot(run_dir, "handoff", _handoff_snapshot())
+    record_ownership_snapshot(run_dir, "before", _snapshot())
+    record_ownership_snapshot(run_dir, "handoff", _handoff_snapshot())
     base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     _write_pcap(pcap, [(base, _connection_packet(0x0040, TARGET_ADDRESS))])
     _start_capture_sidecars(pcap, state["prediction_sha256"], base)
@@ -711,10 +769,10 @@ def test_early_arming_failure_preserves_capture_for_recovery(tmp_path: Path):
     assert failed_state["status"] == "needs_recovery"
     assert failed_state["pcap_path"] == str(pcap.resolve())
     with pytest.raises(RunError, match="capture is still active"):
-        complete_recovery(run_dir, _snapshot())
+        complete_recovery(run_dir, _retained_snapshot())
 
     _stop_capture_sidecars(pcap, state["prediction_sha256"], base + timedelta(seconds=2))
-    recovered = complete_recovery(run_dir, _snapshot())
+    recovered = complete_recovery(run_dir, _retained_snapshot())
     assert recovered["status"] == "invalid_recovered"
     assert "pcap" in json.loads((run_dir / "evidence.json").read_text())["artifacts"]
 
@@ -725,8 +783,8 @@ def test_ambiguous_visual_result_requires_terminal_recovery(tmp_path: Path):
     pcap = tmp_path / "capture.pcap"
     _write_manifest(manifest_path)
     state = initialise_run(manifest_path, run_dir)
-    record_ha_snapshot(run_dir, "before", _snapshot())
-    record_ha_snapshot(run_dir, "handoff", _handoff_snapshot())
+    record_ownership_snapshot(run_dir, "before", _snapshot())
+    record_ownership_snapshot(run_dir, "handoff", _handoff_snapshot())
     base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     _write_pcap(pcap, [(base, _connection_packet(0x0040, TARGET_ADDRESS))])
     _start_capture_sidecars(pcap, state["prediction_sha256"], base)
@@ -760,7 +818,7 @@ def test_ambiguous_visual_result_requires_terminal_recovery(tmp_path: Path):
         )
 
     _stop_capture_sidecars(pcap, state["prediction_sha256"], base + timedelta(seconds=4))
-    state = complete_recovery(run_dir, _snapshot())
+    state = complete_recovery(run_dir, _retained_snapshot())
     assert state["status"] == "invalid_recovered"
     assert json.loads((run_dir / "evidence.json").read_text())["verdict"] == "invalid"
 
@@ -771,8 +829,8 @@ def test_phone_activity_gap_requires_recovery(tmp_path: Path):
     pcap = tmp_path / "capture.pcap"
     _write_manifest(manifest_path)
     state = initialise_run(manifest_path, run_dir)
-    record_ha_snapshot(run_dir, "before", _snapshot())
-    record_ha_snapshot(run_dir, "handoff", _handoff_snapshot())
+    record_ownership_snapshot(run_dir, "before", _snapshot())
+    record_ownership_snapshot(run_dir, "handoff", _handoff_snapshot())
     base = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     _write_pcap(pcap, [(base, _connection_packet(0x0040, TARGET_ADDRESS))])
     _start_capture_sidecars(pcap, state["prediction_sha256"], base)
@@ -797,5 +855,5 @@ def test_phone_activity_gap_requires_recovery(tmp_path: Path):
         )
 
     _stop_capture_sidecars(pcap, state["prediction_sha256"], base + timedelta(seconds=63))
-    state = complete_recovery(run_dir, _snapshot())
+    state = complete_recovery(run_dir, _retained_snapshot())
     assert state["status"] == "invalid_recovered"

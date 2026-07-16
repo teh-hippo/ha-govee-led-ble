@@ -5,8 +5,9 @@ the phone's Bluetooth HCI stream, and comparing the observed packets with this i
 builders and parsers.
 
 The method is prediction-first. Before each app action, record what the integration is expected to
-send or receive. Perform one bounded action, decode its BLE window, compare the result, restore the
-device, and return its BLE link to Home Assistant.
+send or receive. Perform one bounded action, decode its BLE window, compare the result, and restore
+the device baseline. Return its BLE link to Home Assistant only at an explicitly confirmed session
+hand-back.
 
 ## Operating principles
 
@@ -18,7 +19,8 @@ device, and return its BLE link to Home Assistant.
    stream for every tap.
 6. Take only decisive screenshots. Keep full images locally and return text findings to the main
    investigation.
-7. Restore the exact baseline and Home Assistant ownership before closing the run.
+7. Restore the exact device baseline before closing each run. Retain Govee-session ownership until
+   the owner explicitly ends the live session and confirms Home Assistant hand-back.
 8. Stop and reconcile the evidence before starting another target.
 
 ## Components
@@ -55,8 +57,10 @@ logger does not write a valid pcap header within five seconds.
 
 ## Safety and ownership
 
-- Home Assistant owns each BLE link outside an approved capture window.
+- Home Assistant owns the BLE link before an approved live session begins and after the owner
+  explicitly confirms session hand-back.
 - Disable only the target device's config entry before connecting through Govee Home.
+- Keep that entry disabled between individual runs in the same live session.
 - Never restart Home Assistant as part of a hand-off. Enable and reload the single entry instead.
 - Keep the designated H617A test strip within the approved brightness limit, currently 10%.
 - Never touch another device that merely shares the same model.
@@ -83,7 +87,8 @@ Then confirm:
 1. The phone is connected and unlocked.
 2. CoreDevice developer services respond.
 3. No capture state file or stale logger is active.
-4. Home Assistant reports the target entry loaded before hand-off.
+4. For the first run, Home Assistant reports the target entry loaded before hand-off. For later
+   runs, it remains `not_loaded` with `disabled_by=user`.
 5. The app can identify the intended device unambiguously.
 
 ## Persistent phone control
@@ -127,6 +132,20 @@ entity ID, UI path, control values, and touch coordinates. It also freezes:
 - Sunrise and brightness 5% restoration packets;
 - the 10% brightness limit, 90-second run limit, and 60-second activity limit.
 
+Every manifest declares its ownership boundary:
+
+```json
+{
+  "ownership": {
+    "start": "home_assistant",
+    "end": "govee_home"
+  }
+}
+```
+
+The first run starts with `home_assistant`. Later runs start with `govee_home`. Individual runs end
+with `govee_home` unless the owner has explicitly ended the session and confirmed hand-back.
+
 ### 1. Freeze the manifest
 
 ```bash
@@ -153,15 +172,16 @@ tools/ble/govee-capture.sh start "$RUN_ID" "$PREDICTION_SHA256"
 The active capture state carries the same prediction hash. A safe run refuses a legacy capture
 started without that hash.
 
-### 3. Record the baseline and hand off the link
+### 3. Record or retain session ownership
 
-Write a Home Assistant snapshot with this exact shape:
+For the first run, write a Home Assistant snapshot with this exact shape:
 
 ```json
 {
   "config_entry_id": "<target entry>",
   "entity_id": "light.cupboard_skirt",
   "entry_state": "loaded",
+  "disabled_by": null,
   "entity_available": true,
   "power": "on",
   "brightness_percent": 5,
@@ -173,7 +193,7 @@ Write a Home Assistant snapshot with this exact shape:
 Record it before disabling the target entry:
 
 ```bash
-uv run python tools/ble/safe_verify.py ha "$RUN_DIR" before "$RUN_DIR/ha-before.json"
+uv run python tools/ble/safe_verify.py ownership "$RUN_DIR" before "$RUN_DIR/ha-before.json"
 ```
 
 Disable only the target config entry. Open Govee Home, select the target, and confirm its private
@@ -190,7 +210,7 @@ identity and connected state. Record a hand-off snapshot proving the entry is `n
 ```
 
 ```bash
-uv run python tools/ble/safe_verify.py ha "$RUN_DIR" handoff "$RUN_DIR/ha-handoff.json"
+uv run python tools/ble/safe_verify.py ownership "$RUN_DIR" handoff "$RUN_DIR/ha-handoff.json"
 ```
 
 Then arm the run:
@@ -203,6 +223,28 @@ uv run python tools/ble/safe_verify.py mark "$RUN_DIR" armed \
 
 Arming fails unless exactly one active connection handle maps to the frozen target address and no
 other or unattributed Govee traffic has appeared.
+
+For subsequent runs, keep the entry disabled, start the new capture, reconnect the target in Govee
+Home, confirm the exact baseline, and record:
+
+```json
+{
+  "config_entry_id": "<target entry>",
+  "entity_id": "light.cupboard_skirt",
+  "entry_state": "not_loaded",
+  "disabled_by": "user",
+  "app_connected": true,
+  "power": "on",
+  "brightness_percent": 5,
+  "mode": "scene",
+  "effect": "sunrise"
+}
+```
+
+```bash
+uv run python tools/ble/safe_verify.py ownership \
+  "$RUN_DIR" retained-before "$RUN_DIR/retained-before.json"
+```
 
 ### 4. Execute each manifest window
 
@@ -230,27 +272,26 @@ duration above 90 seconds.
 Each `before-action` marker drains and rechecks the attributed capture before Terra may touch the
 phone. Each `settled` marker verifies the closed window before the runner accepts another action.
 
-### 5. Stop, restore ownership, and analyse
+### 5. Retain session ownership and analyse
 
-After the final restoration window:
+After the final restoration window, and before stopping or disconnecting the app, record the same
+baseline as `retained-after`:
+
+```bash
+uv run python tools/ble/safe_verify.py ownership \
+  "$RUN_DIR" retained-after "$RUN_DIR/retained-after.json"
+```
+
+Then stop and analyse:
 
 ```bash
 tools/ble/govee-capture.sh stop
-```
-
-Back out of the device page normally, terminate Govee Home, enable the Home Assistant entry, and
-`POST /api/config/config_entries/entry/<entry_id>/reload`.
-
-The hand-back is complete only when the entry is loaded and its entities are available. A
-`setup_retry` state with an unreachable reason usually means the app still owns the device link.
-Do not restart Home Assistant to mask an incomplete hand-off.
-
-Record the exact restored snapshot and analyse:
-
-```bash
-uv run python tools/ble/safe_verify.py ha "$RUN_DIR" after "$RUN_DIR/ha-after.json"
 uv run python tools/ble/safe_verify.py analyse "$RUN_DIR"
 ```
+
+After evidence is written, terminate Govee Home cleanly so the next capture can observe a fresh LE
+connection event. Leave the Home Assistant entry disabled. This preserves session ownership
+without keeping an un-attributable BLE connection across captures.
 
 Analysis rejects missing, duplicate, unexpected, delayed, cross-device, or unattributed Govee
 frames. It also rejects any recognised brightness command or status above 10%. It writes
@@ -259,7 +300,7 @@ mode-`0600` `evidence.json` and `evidence.md` containing:
 - hashes and paths for the pcap, action sidecar, capture metadata, manifest, and prediction;
 - all decoded Govee frames and marker records;
 - target address and connection handle;
-- provenance and Home Assistant snapshots;
+- provenance and ownership snapshots;
 - exact restoration evidence;
 - a wire-pass, TX-only pass, mismatch, no-write, or invalid verdict.
 
@@ -280,15 +321,31 @@ Repeated one-shot screenshot or HID commands create new media streams and can we
 
 Do not run recovery while a healthy viewer is active.
 
-For an invalid safe run, stop the capture, terminate Govee Home, restore and reload the Home
-Assistant entry, then record the restored snapshot:
+For an invalid safe run, stop the capture and restore Sunrise at 5% through Govee Home. Keep the
+Home Assistant entry disabled, then record the retained snapshot:
 
 ```bash
-uv run python tools/ble/safe_verify.py recover "$RUN_DIR" "$RUN_DIR/ha-recovery.json"
+uv run python tools/ble/safe_verify.py recover "$RUN_DIR" "$RUN_DIR/retained-recovery.json"
 ```
 
 Recovery writes terminal `invalid` evidence. The original run can never resume; create a new run
 ID after approval.
+
+## Explicit session hand-back
+
+Do not return the target to Home Assistant automatically. After the owner explicitly ends the live
+session and confirms hand-back:
+
+1. Confirm Sunrise, on, and 5%.
+2. Back out normally and terminate Govee Home.
+3. Enable only the target Home Assistant entry.
+4. Reload it with `POST /api/config/config_entries/entry/<entry_id>/reload`.
+5. Require `state=loaded`, `disabled_by=null`, entity availability, Sunrise, and brightness
+   `13/255`.
+
+A final approved run may declare `"end": "home_assistant"` and record the normal `after` snapshot.
+If hand-back occurs between runs, retain a separate session hand-back record beside the run
+artifacts.
 
 ## Guided validation harness
 
