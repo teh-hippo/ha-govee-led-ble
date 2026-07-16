@@ -504,9 +504,33 @@ red-orange to yellow to green to blue gradient across the segments.
 
 (DIY parameters are covered in section 2.)
 
-Scenes that support adjustment carry a `speedInfo.config` (a JSON string in the API). It
-describes one or more parameter "pages", each with a set of discrete values selected by an
-index. Example (Forest):
+The per-scene **edit pencil** (top-right of each tile in the *My Scenes* grid) opens an
+adjustable editor. Scenes that support it show a **Speed** slider (discrete Slow / Medium / Fast
+stops) and, for multi-colour scenes, a **Color Change** palette picker (numbered presets) with a
+**Reset**. Confirmed live on Aurora (H617A fw 3.02.24, 2026-07-16, captures
+`20260716151000-h617a-scene-params` and `20260716151500-h617a-scene-speed`).
+
+**Wire mechanism (live-confirmed).** Changing a parameter sends no dedicated command: the app
+recomputes the scene body and re-uploads it through the normal `0xA3` fragments, then re-activates
+with the same `33 05 04 <code_LE>`. It is exactly `build_scene_multi(param, code, sceneType)` with
+a modified `param`. Aurora's body is `01 05 02` (header) + `02` (layer count) + two layer records;
+each record carries a speed byte and an RGB colour list:
+
+- **Speed** sets the per-layer speed byte (Aurora body offsets 18 and 68):
+
+  | Speed | layer 1 (off 18) | layer 2 (off 68) |
+  | --- | --- | --- |
+  | Slow | `0xd6` (214) | `0xed` (237) |
+  | Medium | `0xe8` (232) | `0xf4` (244) |
+  | Fast | `0xfa` (250) | `0xfa` (250) |
+
+  Both layers cap at `0xfa` at Fast; each layer keeps its own slow value, so speed is per-layer
+  and scene-authored, not a single global byte.
+- **Color Change** swaps the RGB triples in each layer's colour list (Aurora offsets ~22-27 and
+  ~54-64). The numbered presets are Govee-defined colour sets.
+
+This matches the API `speedInfo.config` model: the slider picks an *index* into per-layer value
+arrays the API ships per scene, as a JSON string. Example (Forest):
 
 ```json
 [{"color":[237,237,237,250],
@@ -514,20 +538,10 @@ index. Example (Forest):
   "page":1, "defaultIndex":3}]
 ```
 
-- `page` = which parameter (a scene can have several).
-- `bright.brightValue` / `moveAll` / `color` = the discrete values the slider steps through.
-- `defaultIndex` = the default position.
-
-So a scene "speed"/"brightness" slider is not a free 0-100 value; it picks an index into these
-arrays. The distilled catalogue keeps this `config` verbatim so we can reproduce the app's
-slider steps.
-
-Current iOS 7.5.21 did not expose those ordinal controls through the paths tested in marked capture
-`20260715145325-h617a-adjustable-scenes.pcap`. **Life > My Scenes** was empty, the target Natural
-and Festival scenes were absent from the editable My Scenes grid, and Effects Lab offered
-tap-to-apply plus community details on long press. Starry Sky was selected, but no parameter
-A/B/A was performed. The frozen `config` proves the parameter data exists, not that the current
-account exposes an editable UI. Future live checks must establish one scene's edit path at a time.
+`page` = which parameter, `defaultIndex` = the default position, and the value arrays
+(`color` / `bright.brightValue` / `moveAll`) are the exact bytes written into the body. Forest's
+`defaultIndex:3` selects `250` (`0xfa`, Fast) — the same byte range observed live on Aurora, so the
+frozen `config` is now proven against BLE. The distilled catalogue keeps `config` verbatim.
 
 ## 5. Remaining effect captures
 
@@ -539,9 +553,8 @@ The effect-specific gaps are:
 | --- | --- | --- |
 | 1 | Move each Brilliant, Sparkle, and Stack slider independently. | Concrete speed lookups and colour parameter meanings. |
 | 2 | Reverse Colorful meteor and meteor shower independently. | Direction and variant value spaces. |
-| 3 | Locate one adjustable built-in scene and perform one parameter A/B/A. | Whether current catalogue parameters have an exposed app editor and how its index reaches BLE. |
-| 4 | Exercise each remaining H617A music control independently. | The complete per-mode parameter surface and its capture-pinned offsets. |
-| 5 | Exercise one unproven Workshop enum or movement combination. | The next packed value without broadening the run. |
+| 3 | Exercise each remaining H617A music control independently. | The complete per-mode parameter surface and its capture-pinned offsets. |
+| 4 | Exercise one unproven Workshop enum or movement combination. | The next packed value without broadening the run. |
 
 Effect demonstrations (what each effect looks like, for entity naming and previews) are a
 separate research task and do not require a capture.

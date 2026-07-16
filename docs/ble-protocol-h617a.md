@@ -371,7 +371,10 @@ Body layouts after `01 <linecount> <TYPE>`:
 ### Scene
 
 The Govee-authored palette or definition from the API `scenceParam` blob. Activation
-`33 05 04 <code_LE>`. Full detail in [`ble-effect-catalogue.md`](ble-effect-catalogue.md).
+`33 05 04 <code_LE>`. The app's per-scene edit pencil (Speed slider + Color Change palette)
+re-uploads a modified body through the same path — there is no separate parameter command. Full
+detail, including the live-confirmed speed/palette grammar, in
+[`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 4.
 
 ### Flat DIY (`TYPE 0x04`)
 
