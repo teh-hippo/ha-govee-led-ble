@@ -343,13 +343,19 @@ def build_video_mode(
     full_screen: bool = True,
     game_mode: bool = False,
     saturation: int = 100,
-    sound_effects: bool | None = None,
+    sound_effects: bool = False,
     sound_effects_softness: int = 100,
 ) -> bytes:
-    # H6199 video frame; region 1=all/0=part, with an optional sound flag and softness extension.
-    params = [COLOR_MODE_VIDEO, int(full_screen), int(game_mode), _clamp(saturation, 0, 100)]
-    if sound_effects is not None:
-        params.extend([int(sound_effects), _clamp(sound_effects_softness, 1, 100)])
+    # H6199 video frame; region 1=all/0=part. iOS always sends the full frame: sound flag plus a
+    # softness byte (floor 0x01) that persists even when sound is off.
+    params = [
+        COLOR_MODE_VIDEO,
+        int(full_screen),
+        int(game_mode),
+        _clamp(saturation, 0, 100),
+        int(sound_effects),
+        _clamp(sound_effects_softness, 1, 100),
+    ]
     return build_packet(0x33, 0x05, params)
 
 
@@ -775,7 +781,9 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
         "EXPERIMENTAL", "VAL a3 music body §2.3 (H617A 217-234); capture-pinned, volatile bytes replayed"
     ),
     "build_video_mode": Evidence(
-        "VALIDATED", "H6199 33 05 00 region/sub/sat + optional sound/softness; A/B/A app-sniff 2026-07-12"
+        "VALIDATED",
+        "H6199 33 05 00 region/mode/sat/sound/softness; always-full frame, softness persists (floor 0x01) "
+        "when sound off; app-sniff 2026-07-12 + h6199-video-controls-batch.pcap",
     ),
     "build_video_white_balance": Evidence(
         "VALIDATED",

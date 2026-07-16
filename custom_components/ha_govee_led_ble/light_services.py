@@ -55,7 +55,7 @@ def _single_effect_ref(first: str | None, second: str | None, translation_key: s
 
 # fmt: off
 async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: bool) -> None:
-    sound_effects = coord.video_sound_effects if coord.profile.supports_video_sound_effects else None
+    sound_effects = coord.video_sound_effects and coord.profile.supports_video_sound_effects
     await coord.send_command(build_video_mode(full_screen=coord.video_full_screen, game_mode=game_mode,
         saturation=coord.video_saturation, sound_effects=sound_effects,
         sound_effects_softness=coord.video_sound_effects_softness))
@@ -134,7 +134,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             c = self.coordinator
             resolved_fs = full_screen if capture_region is None else capture_region == "full"
             supports_sound = c.profile.supports_video_sound_effects
-            resolved_sound = sound_effects if supports_sound else None
+            resolved_sound = sound_effects and supports_sound
             resolved_softness = (
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
@@ -153,7 +153,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 expected_video_mode=mode,
                 expected_video_full_screen=resolved_fs,
                 expected_video_saturation=saturation,
-                expected_video_sound_effects=resolved_sound,
+                expected_video_sound_effects=resolved_sound if supports_sound else None,
                 expected_video_sound_effects_softness=resolved_softness if resolved_sound else None,
                 retry_command=apply,
             )
@@ -162,7 +162,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             c.diy_slot = None
             c._owned_diy_effect_id = None
             c.video_saturation, c.video_full_screen = saturation, resolved_fs
-            c.video_sound_effects = sound_effects if supports_sound else False
+            c.video_sound_effects = resolved_sound
             if supports_sound:
                 c.video_sound_effects_softness = resolved_softness
         self._notify_state_changed()

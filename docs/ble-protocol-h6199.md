@@ -74,9 +74,8 @@ The following implementation details require care:
   catalogue is not exposed by the light entity.
 - `build_video_white_balance` emits the confirmed raw two-axis frame, but no Home Assistant entity
   exposes it because the app control mapping is not known.
-- `build_video_mode` can still emit a shortened frame when `sound_effects=None`. Current H6199
-  entity and service paths supply the sound state, but the public builder contract does not yet
-  match the app's always-full frame.
+- `build_video_mode` always emits the full frame `33 05 00 <region> <mode> <sat> <sound> <softness>`,
+  matching the app. Softness persists when sound is off and is floored at `0x01`.
 - `build_color_temp` is inherited from the H617A capture. The retained marked H6199 captures do not
   contain an attributable colour-temperature action, so exact model parity is unproven.
 - Whole-strip white brightness uses `33 05 15 02` with mask `0x7FFF`, inherited from H617A. No
@@ -90,12 +89,11 @@ The following implementation details require care:
 
 1. Capture a marked `AA 05` reply while video mode is active.
 2. Map the white-balance UI to both independent raw bytes.
-3. Correct and byte-pin the always-full `build_video_mode` contract.
-4. Capture H6199 colour temperature and compare it byte-for-byte with the shared builder.
-5. Attribute `33 05 15 02` before treating whole-strip white brightness as validated.
-6. Attribute representative H6199 scenes and expose the model-specific catalogue only after
+3. Capture H6199 colour temperature and compare it byte-for-byte with the shared builder.
+4. Attribute `33 05 15 02` before treating whole-strip white brightness as validated.
+5. Attribute representative H6199 scenes and expose the model-specific catalogue only after
    parity checks.
-7. Capture DIY speed and a second family before implementing H6199 authoring.
-8. Attribute a segment write before enabling any segment surface.
-9. Confirm whether music style or colour fields exist on H6199.
-10. Decode Blank Screen, per-side brightness, and the remaining `0xA9` controls.
+6. Capture DIY speed and a second family before implementing H6199 authoring.
+7. Attribute a segment write before enabling any segment surface.
+8. Confirm whether music style or colour fields exist on H6199.
+9. Decode Blank Screen, per-side brightness, and the remaining `0xA9` controls.

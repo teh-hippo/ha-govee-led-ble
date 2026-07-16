@@ -134,19 +134,22 @@ def test_video_command_applies_only_on_h6199():
     assert h617a.effect is None
 
 
-def test_video_sound_extension_and_base_frame_preservation():
+def test_video_frame_always_carries_sound_and_softness():
     sim = GoveeDeviceSim("H6199")
     sim.handle_write(proto.build_video_mode(sound_effects=True, sound_effects_softness=50))
     assert sim.video_sound_effects is True
     assert sim.video_sound_effects_softness == 50
 
-    sim.handle_write(proto.build_video_mode(saturation=40))
-    assert sim.video_sound_effects is True
-    assert sim.video_sound_effects_softness == 50
-
-    sim.handle_write(proto.build_video_mode(sound_effects=False, sound_effects_softness=50))
+    # The app always sends the full frame, so the mock applies sound and softness from every frame
+    # rather than remembering a prior state; softness persists in the frame even with sound off.
+    sim.handle_write(proto.build_video_mode(saturation=40, sound_effects=False, sound_effects_softness=50))
+    assert sim.video_saturation == 40
     assert sim.video_sound_effects is False
     assert sim.video_sound_effects_softness == 50
+
+    sim.handle_write(proto.build_video_mode(sound_effects=True, sound_effects_softness=80))
+    assert sim.video_sound_effects is True
+    assert sim.video_sound_effects_softness == 80
 
 
 def test_video_white_balance_gated():

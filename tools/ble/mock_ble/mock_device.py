@@ -230,9 +230,8 @@ class GoveeDeviceSim:
         self.video_full_screen = bool(frame[3])
         self.video_game = bool(frame[4])
         self.video_saturation = frame[5]
-        if frame[6] or frame[7]:
-            self.video_sound_effects = bool(frame[6])
-            self.video_sound_effects_softness = frame[7]
+        self.video_sound_effects = bool(frame[6])
+        self.video_sound_effects_softness = frame[7]
         self.effect = "video: game" if self.video_game else "video: movie"
 
     def _apply_music(self, frame: bytes) -> None:

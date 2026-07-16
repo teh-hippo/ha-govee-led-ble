@@ -606,7 +606,7 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a` | `build_vibrant` | Implemented from the capture-pinned header and per-segment gradient entries; remains experimental while the header is partly undecoded. |
 | Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
-| Video mode `33 05 00` | `build_video_mode` | H6199 only. Current call paths send the full sound and softness payload, but the builder can still emit a shortened frame when called with `sound_effects=None`. |
+| Video mode `33 05 00` | `build_video_mode` | H6199 only. Always emits the full frame `33 05 00 <region> <mode> <sat> <sound> <softness>`; softness persists when sound is off and is floored at `0x01`. |
 | Video white balance `33 a9` | `build_video_white_balance` | H6199 raw two-axis frame only; no one-dimensional UI mapping. |
 | Colour-mode query `aa 05` | `parse_color_mode_response` | Confirmed live, including DIY mode `0x0a` with its activation slot. |
 | Scheduled timer write `33 23` | `build_timer_schedule` | Write confirmed live (4 slots, on/off, weekday bits Mon=bit0..Sun=bit6). |

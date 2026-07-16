@@ -474,6 +474,9 @@ async def test_send_command_arms_expected_state(coord):
         assert coord._expected_state["video_mode"][0] == "game"
         assert coord._expected_state["video_full_screen"][0] is False
         assert coord._expected_state["video_saturation"][0] == 60
+        # The frame is always full, so sound and softness are armed even when sound is off.
+        assert coord._expected_state["video_sound_effects"][0] is False
+        assert coord._expected_state["video_sound_effects_softness"][0] == 100
 
         await coord.send_command(proto.build_diy_activate(proto.DEFAULT_DIY_SLOT))
         assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.DIY, proto.DEFAULT_DIY_SLOT)

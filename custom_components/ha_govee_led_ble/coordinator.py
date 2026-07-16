@@ -122,17 +122,16 @@ def _expectations_from_packet(packet: bytes) -> dict[str, Any]:
             expectations["music_calm"] = bool(packet[5])
         expectations["music_color"] = tuple(packet[7:10]) if packet[6] == 0x01 else None
         return expectations
-    if packet[2] == COLOR_MODE_VIDEO and len(packet) >= 5:
+    if packet[2] == COLOR_MODE_VIDEO and len(packet) >= 8:
         expectations.update(
             {
                 "video_mode": "game" if packet[4] else "movie",
                 "video_full_screen": bool(packet[3]),
                 "video_saturation": packet[5],
+                "video_sound_effects": bool(packet[6]),
+                "video_sound_effects_softness": packet[7],
             }
         )
-        if packet[7]:
-            expectations["video_sound_effects"] = bool(packet[6])
-            expectations["video_sound_effects_softness"] = packet[7]
         return expectations
     if packet[2] == COLOR_MODE_SCENE and len(packet) >= 5:
         expectations["effect"] = SCENE_EFFECT_BY_ID.get(int.from_bytes(packet[3:5], "little"))

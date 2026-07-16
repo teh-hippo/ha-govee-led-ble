@@ -453,22 +453,34 @@ def test_video_mode():
         assert (tuple(pkt[idx]) if isinstance(idx, slice) else pkt[idx]) == exp
         _valid(pkt)
 
-    chk({}, slice(0, 6), (0x33, 0x05, 0x00, 0x01, 0x00, 100))
-    assert proto.build_video_mode() == H("3305000100640000000000000000000000000053")
+    # iOS always sends the full 8-byte frame: 33 05 00 <region> <mode> <sat> <sound> <softness>.
+    chk({}, slice(0, 8), (0x33, 0x05, 0x00, 0x01, 0x00, 100, 0x00, 100))
+    assert proto.build_video_mode() == H("3305000100640064000000000000000000000037")
     chk(dict(full_screen=False, game_mode=True, saturation=75), slice(3, 6), (0x00, 0x01, 75))
     chk(dict(sound_effects=True, sound_effects_softness=50), slice(6, 8), (0x01, 50))
+    # Sound off still carries softness (it persists); default softness is 0x64.
     assert proto.build_video_mode(sound_effects=False, sound_effects_softness=100) == H(
         "3305000100640064000000000000000000000037"
     )
+    chk(dict(sound_effects=False, sound_effects_softness=1), slice(6, 8), (0x00, 0x01))
     chk(dict(saturation=200), 5, 100)
     chk(dict(saturation=-5), 5, 0)
     chk(dict(sound_effects=True, sound_effects_softness=200), 7, 100)
     chk(dict(sound_effects=True, sound_effects_softness=-5), 7, 1)
+    chk(dict(sound_effects=False, sound_effects_softness=-5), 7, 1)  # floor 0x01 applies with sound off too
     chk(
         dict(full_screen=False, game_mode=True, saturation=60, sound_effects=True, sound_effects_softness=75),
         slice(2, 8),
         (0x00, 0x00, 0x01, 60, 0x01, 75),
     )
+    # Live H6199 iOS capture (h6199-video-controls-batch.pcap): sound off yet softness 0x64 retained,
+    # and the softness minimum is 0x01 (never 0).
+    assert proto.build_video_mode(
+        full_screen=False, game_mode=False, saturation=0x13, sound_effects=False, sound_effects_softness=0x64
+    ) == H("3305000000130064000000000000000000000041")
+    assert proto.build_video_mode(
+        full_screen=False, game_mode=False, saturation=0x13, sound_effects=True, sound_effects_softness=0x01
+    ) == H("3305000000130101000000000000000000000025")
 
 
 def test_video_white_balance():
