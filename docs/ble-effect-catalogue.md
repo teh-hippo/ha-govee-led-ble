@@ -77,6 +77,13 @@ The API exposes 80 scene tiles and 83 named variants across 5 categories. Codes 
 (speed or brightness, see section 4); scenes without a `param`, such as Sunrise and Sunset, are
 activated by the code alone.
 
+Live check (H617A fw 3.02.24, 2026-07-16): 26 scenes spanning simple, type-1, type-2 and the
+edge codes (10005, 16160, 2189) activated byte-for-byte identical to `build_scene_multi`
+(captures `20260716154400`, `160800`, `161100`, `161700`). Saved scenes live in the app's *My
+Scenes* grid; the rest preview non-invasively by tapping their tile in the *Effects Lab*
+(edit-scenes) grid. Variant scenes surface there as an A/B picker that selects the base vs `B`
+code (e.g. Lightning A `2165` / B `2278`).
+
 ### Natural (32 tiles, 34 variants)
 Sunrise(0), Sunset(1), Forest(2163)~, Aurora(2164)~, Lightning A(2165)~, Lightning B(2278)~,
 Starry Sky(2166)~, Spring(2167)~, Summer(2168), Fall(2169), Winter(2170)~, Rainbow(22),
