@@ -146,6 +146,16 @@ byte:   33 05 15 01  00 00 00 Khi Klo RR GG BB ML MH .. XOR
 `build_color_temp` emits exactly this frame (Kelvin at `[7:9]`, RGB slot zeroed); confirmed live
 over 2000-9000K.
 
+> Reconfirmed by the current-iOS Color walkthrough (2026-07-16). The Color tab exposes three
+> sub-tabs: **Whole** (solid RGB via Basic Colors and a Color Wheel, plus the Color temperature
+> slider), **Subsection** (per-segment colour with a serpentine 15-node selector, Select all /
+> Deselect all / Invert, and a Relative brightness slider), and **Vibrant** (the static gradient
+> bar). Whole colour sent `33 05 15 01 <rgb> ... FF 7F` (red/blue/white/wheel all exact); the white
+> Basic swatch is RGB `FF FF FF`, distinct from the Kelvin temperature frame. Colour temperature
+> endpoints matched the table above exactly (warm 2000 K `FF8D0B`, cool 9000 K `D9E1FF`).
+> Selecting segment 1 alone sent colour mask `0x0001` and a relative-brightness change sent
+> `33 05 15 02 <pct> 01 00`, confirming the per-segment mask. No mismatches.
+
 ### Per-segment brightness layout
 
 ```
