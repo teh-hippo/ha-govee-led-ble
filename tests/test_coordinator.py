@@ -15,6 +15,8 @@ from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
     RX_STALE_TIMEOUT,
     GoveeBLECoordinator,
+    _expectations_from_packet,
+    _expected_color_mode_from_packet,
 )
 from custom_components.ha_govee_led_ble.custom_effects import CustomEffect, SegmentContent, VibrantContent
 
@@ -1158,3 +1160,63 @@ async def test_config_entry_first_refresh_raises_config_entry_not_ready(coord):
         bt.async_address_present.return_value = False
         with pytest.raises(ConfigEntryNotReady):
             await coord.async_config_entry_first_refresh()
+
+
+def test_expectations_from_packet_covers_every_command_family():
+    rhythm_id = next(mid for mid, slug in proto.MUSIC_SLUG_BY_ID.items() if slug == "rhythm")
+    spectrum_id = next(mid for mid, slug in proto.MUSIC_SLUG_BY_ID.items() if slug == "spectrum")
+    scene_code = next(iter(proto.SCENE_EFFECT_BY_ID))
+
+    assert _expectations_from_packet(proto.build_power(True)) == {"is_on": True}
+    assert _expectations_from_packet(proto.build_power(False)) == {"is_on": False}
+    assert _expectations_from_packet(proto.build_brightness(37)) == {"brightness_pct": 37}
+
+    rgb = _expectations_from_packet(proto.build_color_rgb(255, 0, 0))
+    assert rgb["rgb_color"] == (255, 0, 0)
+    assert rgb["color_mode"] == (proto.ParsedMode.COLOUR, 0x01)
+
+    # Colour temperature writes carry an all-zero preview RGB, so the frame maps to a kelvin
+    # expectation, never an rgb_color one.
+    ct = _expectations_from_packet(proto.build_color_temp(4000))
+    assert ct["color_temp_kelvin"] == 4000
+    assert "rgb_color" not in ct
+
+    assert _expectations_from_packet(proto.build_white_brightness(80))["white_brightness"] == 80
+
+    assert _expectations_from_packet(proto.build_scene(scene_code))["effect"] == proto.SCENE_EFFECT_BY_ID[scene_code]
+
+    rhythm = _expectations_from_packet(
+        proto.build_music_mode_with_color(rhythm_id, sensitivity=50, color=(10, 20, 30), calm=True)
+    )
+    assert rhythm["music_mode"] == "rhythm"
+    assert rhythm["music_sensitivity"] == 50
+    assert rhythm["music_calm"] is True
+    assert rhythm["music_color"] == (10, 20, 30)
+
+    auto = _expectations_from_packet(proto.build_music_mode_with_color(spectrum_id, sensitivity=40))
+    assert auto["music_mode"] == "spectrum"
+    assert auto["music_color"] is None
+    assert "music_calm" not in auto
+
+    video = _expectations_from_packet(
+        proto.build_video_mode(
+            full_screen=False, game_mode=True, saturation=42, sound_effects=True, sound_effects_softness=55
+        )
+    )
+    assert video["video_mode"] == "game"
+    assert video["video_full_screen"] is False
+    assert video["video_saturation"] == 42
+    assert video["video_sound_effects"] is True
+    assert video["video_sound_effects_softness"] == 55
+
+    diy = proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0xF0])
+    assert _expectations_from_packet(diy)["color_mode"] == (proto.ParsedMode.DIY, 0xF0)
+
+    assert _expectations_from_packet(b"\x00\x01") == {}
+    assert _expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}
+
+
+def test_expected_color_mode_from_packet_rejects_non_colour_packets():
+    assert _expected_color_mode_from_packet(proto.build_power(True)) is None
+    assert _expected_color_mode_from_packet(b"\x33\x05") is None
+    assert _expected_color_mode_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) is None
