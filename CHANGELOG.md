@@ -1,6 +1,100 @@
 # CHANGELOG
 
 
+## v4.1.0-beta.4 (2026-07-16)
+
+### Bug Fixes
+
+- Contain unvalidated model capabilities
+  ([`1d6d292`](https://github.com/teh-hippo/ha-govee-led-ble/commit/1d6d29247c255bbf2c5983692f221d226412b1ba))
+
+- **ble**: Always emit the full H6199 video frame
+  ([`4c6ecce`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4c6eccedcd2b5d8adc435d30d8223803638c7178))
+
+- **ble**: Correct H617A Finger Sketch framing and activation
+  ([`4e89236`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4e89236fb6a3f28f071935a867a13a45ef670659))
+
+- **ble**: Correct H617A timer every-day repeat to 0x00
+  ([`31a426c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/31a426c632f179697989d6225c6b662740d1a38b))
+
+- **ble**: Correct Shiny music style mapping
+  ([`a20c08a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a20c08a9be0294e5aa8d7b6679939a54c7047d69))
+
+- **ble**: Reconcile current iOS protocol evidence
+  ([`162ff5f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/162ff5fb2f1ec1d8f4e1bb86bd54804a4a2d874a))
+
+- **ble**: Reconcile H617A Combo with current iOS evidence
+  ([`91074b2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/91074b2a3c1437e6d644e8e910eab9a224dafe36))
+
+- **frontend**: Match current Flat effect labels
+  ([`988ec08`](https://github.com/teh-hippo/ha-govee-led-ble/commit/988ec08914f5820200c258b50cf67e56dcd9b8d7))
+
+### Code Style
+
+- Format catalogue drift tool
+  ([`e5662ef`](https://github.com/teh-hippo/ha-govee-led-ble/commit/e5662efdeac7281f1eb6c9f82664adc4e38ea477))
+
+### Documentation
+
+- **ble**: Clarify H617A music STYLE and COUNT byte semantics in evidence
+  ([`857f6de`](https://github.com/teh-hippo/ha-govee-led-ble/commit/857f6de9694d480be3e97c8f118b92d7debcf2cd))
+
+- **ble**: Confirm H617A Color tab live (Whole/Subsection/Vibrant)
+  ([`9e9d85d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9e9d85d394bde55f1ee3cb0e7f92f0db29aeeece))
+
+- **ble**: Confirm H617A Scene activation live; clarify A3 framing forms
+  ([`d998a15`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d998a151efd688977ac230ada0801a89e1b2fb18))
+
+- **ble**: Formalise automated capture workflow
+  ([`b3e9f0e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b3e9f0ecf1bc397e52bcbf522a672bb57dc4c06b))
+
+- **ble**: Make H6199 colour-temp and white-brightness evidence honest
+  ([`795ec75`](https://github.com/teh-hippo/ha-govee-led-ble/commit/795ec757491378a303d7a449d4d3eaa070207a87))
+
+- **ble**: Map H617A adjustable-scene parameters (Speed + Color Change)
+  ([`cf43f0c`](https://github.com/teh-hippo/ha-govee-led-ble/commit/cf43f0c21dbcee3591f7e957e9c61f5e5fb9b110))
+
+- **ble**: Plan autonomous protocol verification
+  ([`07ce9e8`](https://github.com/teh-hippo/ha-govee-led-ble/commit/07ce9e8d5e72c80388a3a9f45c5da2c314e3a6c0))
+
+- **ble**: Reconcile protocol references
+  ([`8636e58`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8636e581953584fb7e828ec2d01e6439aaffd835))
+
+- **ble**: Record current iOS mapping evidence
+  ([`0a82bc6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0a82bc6da1e144b73465832c49ed48b3168c9bdf))
+
+- **ble**: Record H617A Scene live-sweep coverage and Effects Lab preview
+  ([`5b24a7a`](https://github.com/teh-hippo/ha-govee-led-ble/commit/5b24a7a2f084ebb6deb4850115eddc16db6109f7))
+
+### Features
+
+- Generate the frozen H617A scene catalogue
+  ([`98c3c38`](https://github.com/teh-hippo/ha-govee-led-ble/commit/98c3c38f8d709d57cd205a68becee0eb0b8498f2))
+
+- **ble**: Add safe autonomous verification runner
+  ([`79f075d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/79f075d41d9761b71c444bccdc27af34002070cc))
+
+- **ble**: Expose H617A Bloom and Shiny Dynamic/Calm music style
+  ([`977c7c1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/977c7c1828b2bfb9638e998910e91c41f6711115))
+
+- **ble**: Record Workshop mapping and DIY readback
+  ([`4d543d2`](https://github.com/teh-hippo/ha-govee-led-ble/commit/4d543d28f71c4e1ef9d3f7441144dbaa12a91847))
+
+- **ble**: Retain ownership across verification runs
+  ([`2e1ad3e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2e1ad3e44252c7f786d6fcfc836987999454866a))
+
+### Testing
+
+- **ble**: Freeze current scene catalogues
+  ([`062c07e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/062c07e47180c4305b930a16dba3bc4a0948ab8a))
+
+- **ble**: Restore the iOS mapping harness
+  ([`234f3fd`](https://github.com/teh-hippo/ha-govee-led-ble/commit/234f3fd3a083d639b0d5a414fa1ee54491dd7cea))
+
+- **ble**: Timestamp batched capture actions
+  ([`af29685`](https://github.com/teh-hippo/ha-govee-led-ble/commit/af296850cd2a773fca7282fa55d5e3b40411f237))
+
+
 ## v4.1.0-beta.3 (2026-07-11)
 
 ### Features
