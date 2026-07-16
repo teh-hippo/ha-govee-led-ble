@@ -501,9 +501,13 @@ UI rounding, not a different displayed default. The marked captures are
 `20260715141908-h617a-workshop-brightness-moving-effects.pcap` and
 `20260715143430-h617a-workshop-selected-moving-completion.pcap`.
 
-The field locations are now attributable, but an unrestricted encoder still requires the complete
-packed value space for Applied Area, distribution/direction and movement flags, plus any priority
-values and reorder behaviour needed beyond the proven default and level 2.
+The field locations are attributable and the `r13` distribution/direction packing is proven (see
+the field-family table above). A five-layer draft was also captured live
+(`20260716165600-h617a-workshop-baseline`): the body was `01 09 02 05` followed by five
+length-delimited records, with activation `33 05 04 91 01 02` unchanged, confirming that records
+simply repeat per `layer_count`. An unrestricted encoder still needs the packed movement flags, the
+remaining priority values and layer-reorder behaviour, and the Color-gradient field that the Based
+on Segment distribution adds.
 
 ### rgbicv2 DIY (`TYPE 0x02`)
 
@@ -608,7 +612,7 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | Scene select `33 05 04` | `build_scene` | Confirmed live. |
 | Scene multi-frame `0xA3` | `build_scene_multi` | Confirmed live; carries the per-scene `scene_type` prefix (`0`/`1`/`2`). |
 | Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented custom-effect builders. Finger Sketch body, two-frame `0xA3` framing and `33 05 0a 20 03` activation are directly validated on H617A firmware 3.02.24; the current Combo body and default slot `0xF0` are directly validated too. Flat remains capture-pinned. Slot read-back cannot identify the active body. |
-| Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | none | Transport, minimum content, layers, Select Type, area/count, palette, timing, brightness, movement and priority field locations are mapped. Unproven packed value spaces remain fail-closed. |
+| Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | none | Transport, minimum content, layers, Select Type, area/count, palette, timing, brightness, movement and priority field locations are mapped, and the `r13` distribution/direction packing is proven. Unproven packed value spaces (movement flags, priority, layer reorder) remain fail-closed. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a` | `build_vibrant` | Implemented from the capture-pinned header and per-segment gradient entries; remains experimental while the header is partly undecoded. |
 | Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
@@ -635,7 +639,7 @@ Remaining gaps:
 The remaining H617A work is bounded:
 
 - capture the request that elicits each `AA A5` segment reply;
-- complete Workshop packed enums, movement flags, priorities, and layer reorder behaviour;
+- complete Workshop movement flags and directions, priority values, layer reorder, and the Segment Color-gradient field;
 - finish rgbicv2 per-effect parameter maps and from-scratch authoring;
 - establish one current adjustable-scene editor path before testing scene parameters;
 - verify the remaining music controls and read-back semantics;
