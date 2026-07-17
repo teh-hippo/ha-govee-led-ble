@@ -465,7 +465,7 @@ floors and defaults:
 
 | Effect | Code | Colour groups (label: min..max) | Speed [min, max, def] (0..255) | Brightness / range | Directions |
 |---|---|---|---|---|---|
-| Brilliant | 501 | Background: exactly 1; Embellishment: 4..8 | app slider; wire mapping pending | relative-brightness interval 10..100% | none |
+| Brilliant | 501 | Background: exactly 1; Embellishment: 4..8 | [21, 227] (colour `param1` `0x15`..`0xe3`) | relative-brightness interval 10..100% | none |
 | Colorful starry sky | 502 | single: 1..8 | [1, 255, 200] | star size (payload-driven; code fallback 1..25, observed ~1..12); relative brightness on the V1 template | none |
 | Colorful meteor | 504 | single: 1..8 | [200, 255, 253] | none | Clockwise, Counterclockwise |
 | Colorful meteor shower | 503 | single: 3..8 | [200, 255, 253] | none | Clockwise, Counterclockwise |
@@ -482,7 +482,8 @@ Notes:
 - Brightness records are template-specific rather than universally scaled by `pct x 2.55`.
   Bloom's single relative-brightness control uses a `0x32` floor and produced
   10/20/30% = `0x45/0x5a/0x6f`. Brilliant exposes a two-handle interval from 10 to 100%.
-  Exact Sparkle and Brilliant field mappings remain to be isolated
+  Brilliant's speed handle maps to colour `param1` (`0x15`..`0xe3`, linear); the exact Sparkle
+  field mapping remains to be isolated
   ([`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6).
 
 **Finger Sketch**: freeform paint, no colour-group min/max. **Combo**: one shared flat palette
@@ -559,7 +560,7 @@ The effect-specific gaps are:
 
 | # | App action | Confirms |
 | --- | --- | --- |
-| 1 | Move each Brilliant, Sparkle, and Stack slider independently. | Concrete speed lookups and colour parameter meanings. |
+| 1 | Move each Sparkle and Stack slider independently. | Concrete speed lookups and colour parameter meanings. |
 | 2 | Reverse Colorful meteor and meteor shower independently. | Direction and variant value spaces. |
 | 3 | Exercise each remaining H617A music control independently. | The complete per-mode parameter surface and its capture-pinned offsets. |
 | 4 | Exercise one unproven Workshop enum or movement combination. | The next packed value without broadening the run. |

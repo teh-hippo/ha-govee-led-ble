@@ -96,7 +96,7 @@ a trailing XOR checksum (omitted from the table for brevity). `<..>` marks a var
 | Workshop Apply | `33 05 04 91 01 02` | Workshop code `0x0191`, little-endian, with scene type `0x02`; preceded by the length-delimited Workshop `0xA3` body (`TYPE 0x02`). |
 | Vibrant activate | `33 05 0a <slot>` | Same activation as DIY; preceded by the `0xA3` Vibrant body (type `0x03`). |
 | Music mode | `33 05 13 <mode> <sens> <style> <count> <RGB×count>` | H617A uses sub-command `0x13` (an older protocol version emits `0x0c`); see "Music mode layout". All 11 `mode` codes confirmed live (match `const.MUSIC_MODES`); `sens` 0-99; `style` `00` Dynamic / `01` Calm; `count` = manual colour count and the auto-colour flag (`00` = Auto colour on). Extended modes also send a `0x41` `a3` parameter frame. |
-| Video mode (H6199) | `33 05 00 <region> <game> <sat> <sound> <softness>` | Current H6199 app frame. Sound and softness are always present; see the H6199 reference. |
+| Video mode (H6199) | `33 05 00 <region> <mode> <sat> <sound> <softness>` | Current H6199 app frame. Sound and softness are always present; see the H6199 reference. |
 | Video white balance (H6199) | `33 a9 00 03 01 <red> <blue>` | Raw independent DreamView components; app-control mapping is not yet surfaced. |
 | Timer / schedule | `33 23 <idx> <enableAndType> <hour> <min> <repeat>` | 4 on/off slots. Related: sleep `33 11`, wake-up `33 12`, gradual `33 14`. See "Timer subsystem". |
 | Clock sync (handshake) | `33 09 <7-byte time>` | Sent on connect; informational. |
