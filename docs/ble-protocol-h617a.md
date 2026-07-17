@@ -561,7 +561,7 @@ offset  field          meaning
 colour sub-block (immediately after the brightness records):
 +0      colour byte    bit-packed: colour type / gradual (low nibble) and colour order;
                        bit 0 = direction-is-positive (forward vs reverse colour travel)
-+1      colour param1  colour-cycle rate (set from the speed lookup)
++1      colour param1  colour-cycle rate = app speed slider (Brilliant measured below)
 +2      colour param2  secondary colour parameter
 +3      colour count   M = number of RGB triples
 +4..    RGB[M]         M x 3 bytes, distributed round-robin by colour index
@@ -588,10 +588,12 @@ exposes four directions: Forward, Backward, Forward and Backward, and Backward a
 `moveIn`, `bright` arrays plus `defaultIndex`), the client-side motion model. The type and value
 bytes at offsets 2 to 4 and the brightness sub-block are decoded.
 
-Still inferred (need a capture): the concrete per-effect speed-mode numeric arrays, the exact
-pixel-level difference between numbered sub-styles (for example Brilliant `param2` `0x32` vs
-`0x14`, Bloom `0x14` vs `0x16`), and the precise meaning of colour `param1` / `param2`. Per-effect
-colour-group ranges, speed domains and directions are in
+Colour `param1` is the speed slider: a controlled Brilliant sweep with fixed colours measured it
+linear from `0x15` (21) at 0% to `0xe3` (227) at 100%, ~`0x7e` (126) at midpoint, with untouched
+bodies left at `0xff` until the slider first moves. Still inferred (need a capture): the concrete
+speed-mode numeric arrays for the other rgbicv2 effects, the exact pixel-level difference between
+numbered sub-styles (for example Brilliant `param2` `0x32` vs `0x14`, Bloom `0x14` vs `0x16`), and
+the meaning of colour `param2`. Per-effect colour-group ranges, speed domains and directions are in
 [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.7. The full teardown is kept in
 internal analysis notes.
 

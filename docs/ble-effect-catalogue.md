@@ -220,7 +220,7 @@ reassembled body is `01 <linecount> 02 <record container>`, and each effect is a
 
 | Effect | Code | LE activation | Colour groups | Variant / parameters |
 |---|---|---|---|---|
-| Brilliant | 501 | `33 05 04 f5 01` | 1 background + 4..8 embellishment | speed via app slider (wire mapping pending); no direction; no user brightness; variant = `param2` (`0x32`/`0x14`) |
+| Brilliant | 501 | `33 05 04 f5 01` | 1 background + 4..8 embellishment | speed slider sets colour `param1` linearly `0x15` (0%) to `0xe3` (100%), ~`0x7e` at midpoint; no direction; no user brightness; variant = `param2` (`0x32`/`0x14`) |
 | Colorful starry sky | 502 | `33 05 04 f6 01` | single 1..8 | star-size range (observed ~1..12) + relative brightness + speed |
 | Colorful meteor shower | 503 | `33 05 04 f7 01` | single 3..8 | body ~102 bytes; direction; variant body byte |
 | Colorful meteor | 504 | `33 05 04 f8 01` | single 1..8 | body ~51 bytes; direction; variant body byte |
@@ -238,7 +238,8 @@ Key facts (confirmed):
 - Because the transport is the scene path, the integration can **replay** any captured rgbicv2
   DIY today via `build_scene_multi`; only the `(body, code)` pair needs storing. The record
   grammar is now fully decoded ([`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6), so
-  synthesising a body from scratch is feasible; the remaining unknowns are the concrete per-effect
+  synthesising a body from scratch is feasible. The Brilliant speed slider is measured (colour
+  `param1`, linear `0x15`..`0xe3`); the remaining unknowns are the other effects' concrete
   speed-lookup values and the exact pixel-level delta between numbered sub-styles (inferred).
 
 **Direction vocabulary (confirmed).** The rgbicv2 movement engine exposes four directions:
@@ -394,7 +395,7 @@ the authoritative per-effect limits, rgbicv2 speed domain, and directions.
 
 | Effect | Code | Colour groups | Variant selector | Notes |
 |---|---|---|---|---|
-| Brilliant1 | 501 | 1 background + 4..8 embellishment | body shape | Speed + relative-brightness interval 10..100%; current iOS body has 7 A3 parts |
+| Brilliant1 | 501 | 1 background + 4..8 embellishment | body shape | Speed maps to colour `param1` `0x15`..`0xe3` (linear, ~`0x7e` mid); relative-brightness interval 10..100%; current iOS body has 7 A3 parts |
 | Brilliant2 | 501 | 1 background + 4..8 embellishment | body shape | Same controls; current iOS body has 6 A3 parts |
 | Colorful starry sky | 502 | single 1..8 | body byte | star-size range ~1..12 + relative brightness + speed |
 | Colorful meteor1 | 504 | single 1..8 | ~`0x20`/`0x29` | body ~51 bytes; direction |
