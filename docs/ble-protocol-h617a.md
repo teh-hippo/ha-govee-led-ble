@@ -68,8 +68,9 @@ Confirmed app requests are:
 2. Steady state: the app polls `aa 01` (power) roughly every 2 seconds as a keep-alive; the strip
    replies `aa 01 01` when on.
 
-The device also emits per-segment state replies `aa a5 <group>` for groups 1..5 during startup.
-The exact app request has not been isolated and must not be inferred from the reply selector.
+The device also emits per-segment state replies `aa a5 <group>` for groups 1..5. The app requests
+them (five per-group `aa a5 <group>` queries) when the Color control is opened; see the segment
+readback section.
 
 The app may also send a clock sync `33 09 <7-byte time>` (informational, seen in earlier captures;
 not required to control the strip). The handshake replies establish the device identity (firmware
@@ -275,7 +276,7 @@ notification. Reply data below is an example unless stated otherwise.
 | `23` | Timer table (4 on/off slots) | `ff <slot0..3 × 4B>`, each slot `[enableAndType, hour, min, repeat]`. e.g. `ff 01 06 00 80 …`. Write command `0x23`. **Not** segment config. |
 | `40` | Segment count | `0f` (15) |
 | `a3` | Multi-frame control | - |
-| `a5 <group>` | Segment colour and brightness reply | `aa a5 <group>` then 3 segments of `<brightness> <R> <G> <B>`. The request frame is not yet byte-pinned. |
+| `a5 <group>` | Segment colour and brightness | Request `aa a5 <group>` (one per group `01`-`05`); reply `aa a5 <group>` then 3 segments of `<brightness> <R> <G> <B>`. |
 
 ### Segment state readback (`aa a5`)
 
@@ -285,8 +286,14 @@ segments 0 to 2 and group 5 contains segments 12 to 14. For example, a segment s
 full-brightness red reads back as `64 ff 00 00`.
 
 This path confirmed the 5 by 3 grouping and that per-segment brightness is stored independently of
-colour. A colour write left each segment's earlier brightness unchanged. The app TX request that
-elicits each reply remains an explicit capture gap.
+colour. A colour write left each segment's earlier brightness unchanged.
+
+The app reads segment state when the **Color** control is opened, not on the keep-alive poll. It
+issues five separate per-group queries in one burst, `aa a5 01` through `aa a5 05` (each zero-padded
+with the usual XOR checksum, e.g. group 1 = `aa a5 01 00…00 0e`), and the strip answers each with the
+matching `aa a5 <group>` reply. A companion `aa a3 00` multi-frame probe follows in the same burst;
+with no DIY body active it returned zero-filled. Confirmed live 2026-07-17 on firmware 3.02.24. The
+integration keeps segment colours optimistically and never issues these queries.
 
 ### Timer subsystem (`0x11`/`0x12`/`0x14`/`0x23`)
 
@@ -645,8 +652,6 @@ Remaining gaps:
 
 - **App-authored DIY read-back**: no device query returns the full editor body, so an
   app-authored DIY cannot be imported from the strip.
-- **Segment read-back request**: `aa a5` replies are decoded, but the app request that elicits each
-  group is not captured.
 - **Music per-mode parameters**: capture-pinned parameter builders exist, but the remaining
   controls are not all exposed as entities.
 
@@ -654,7 +659,6 @@ Remaining gaps:
 
 The remaining H617A work is bounded:
 
-- capture the request that elicits each `AA A5` segment reply;
 - finish rgbicv2 per-effect parameter maps and from-scratch authoring;
 - verify scene speed and palette value arrays beyond the Aurora anchor;
 - verify the remaining music controls and read-back semantics;
