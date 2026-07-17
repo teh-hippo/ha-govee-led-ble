@@ -18,8 +18,9 @@ music modes are implemented and confirmed live on firmware `3.02.24`. Scheduled-
 observed live but ship gated (Tier-2). Flat, Finger
 Sketch, Vibrant, and Combo builders exist; Flat and Vibrant remain experimental,
 while Finger Sketch and Combo are directly validated. rgbicv2 effects can replay captured bodies through
-`build_scene_multi`, and Workshop authoring remains fail-closed where packed value spaces are not
-proven. See section 7 for implementation status. Raw pcaps remain outside the repository because
+`build_scene_multi`, and Workshop is now fully mapped byte-exact (transport header, applied-area
+window, colour gradient, both movement sub-blocks, priority and layer ordering) though not yet
+exposed as a from-scratch builder. See section 7 for implementation status. Raw pcaps remain outside the repository because
 they contain live BLE traffic.
 
 ## 1. Overview and device
@@ -432,7 +433,7 @@ colour command. Save was kept separate and was not required for transport.
 The semantic body is:
 
 ```
-<layer_count> [<record_len=1d> <29-byte layer record>]...
+<layer_count> [<record_len> <layer_record>]...
 ```
 
 A copied second layer increments `layer_count` and appends another complete record. Any zeroes
@@ -462,9 +463,12 @@ These are layer-record offsets `1:4`; they do not match the APK's internal enum 
 record bytes and the activation stayed byte-identical across the four marked Applies. Reapplying
 Select IC Continuously produced the exact original body.
 
-The final byte of each 29-byte layer record is priority. Default/disabled is `00`; setting only the
-second copied layer to priority 2 changed only that byte to `02`. Copying and then deleting the
-layer produced exact two-layer and one-layer A/B/A bodies.
+The final byte of each layer record is priority (`r29` with two colours). The Effect Layer Priority
+control maps it directly: the priority toggle off is `00`, and levels 1 to 5 are `01` through `05`
+(swept live 2026-07-17, capture `workshop-priority.pcap`). Copying and then deleting a layer produced
+exact two-layer and one-layer A/B/A bodies. Layers cannot be positionally reordered: the layer tabs
+only select the active layer, and two long-press-drag attempts left the order unchanged, so stacking
+is governed solely by this priority byte and records are emitted in creation order.
 
 All offsets below count the record length byte as `r0`. Four further marked captures isolated the
 remaining visible field families:
@@ -472,7 +476,7 @@ remaining visible field families:
 | Current iOS control | Observed record change |
 |---|---|
 | Number of IC, Continuous | `r4: 0f -> 07` for 15 to 7 |
-| Applied Area | `r1: 00 -> 50` for full 10/10 to 5/10; the app also clamps `r4` to `05` |
+| Applied Area | `r1` packs the window: high nibble = width in tenths, low nibble = start in tenths (`00 -> 50` for full to a `[0,5]` window; the app also clamps `r4`). The whole strip serialises as `00`; the five Christmas layers tile as `20 22 24 26 28` (width 2 at starts 0/2/4/6/8) |
 | Brightness Scope | `r7:r8: ff00 -> c639` for the displayed 22-77% range |
 | Brightness Changing Speed | `r10: 7f -> ff` for displayed 50% to 100% |
 | Brightest/Darkest retention | `r11:r12: 1414 -> c830` for displayed 200 and 48 |
@@ -486,31 +490,39 @@ distribution value (`00` Unified, `01` Based on Number of IC, `02` Based on Segm
 live 2026-07-16 across all direction/distribution combinations (record byte 17 of the first layer,
 capture `20260716165800-h617a-workshop-r13`): Unified+Backward `80`, IC+Backward `81`,
 Segment+Backward `82`. Selecting Based on Segment also exposes a Color gradient toggle in the app.
+That toggle is `r13` bit `0x01`, set only under Based on Segment: it moves `82` (gradient off) to
+`83` (on), the only distribution where the bit appears (capture `workshop-color-gradient.pcap`).
+Choosing Based on Segment also sets bit `0x10` of `r5`.
 
-The colour palette starts at `r17`. The seven trailing bytes after its variable-length RGB list
-are three selected-area movement bytes, three overall-movement bytes and the priority byte.
-With two colours:
+The colour palette starts at `r17`. The seven trailing bytes after its variable-length RGB list are
+three selected-area movement bytes, three overall-movement bytes and the priority byte. With two
+colours these are `r23:r25`, `r26:r28` and `r29`. Both movement sub-blocks are `<packed> <interval>
+<speed>` (speed is `round(pct x 2.55)`), swept live 2026-07-17 (`workshop-movement-dir.pcap`,
+`workshop-movement-toggles.pcap`, `workshop-overall-dir.pcap`):
 
-- selected-area movement encoded `17 04 ff` for interval 4, Backward and Forward, 100% speed and
-  Enter/Exit enabled;
-- overall movement encoded `11 05 ff` for interval 5, Forward and Backward and 100% speed;
-- disabled defaults are `00 00 80` before slider interaction and `00 00 7f` after returning a
-  displayed 50% slider to its centre.
+- the selected-area packed byte is `0x10` (movement enabled) OR `0x04` (Enter and Exit Effect) OR a
+  two-bit direction: `0` Forward, `1` Forward and Backward, `2` Backward, `3` Backward and Forward;
+- the overall packed byte uses the same enable bit and the same direction values but has no
+  Enter/Exit bit;
+- disabling a sub-block clears only the enable bit (`r23`/`r26` to `00`); the interval and speed
+  bytes persist at their last-set values, so an encoder must treat the enable bit as authoritative.
 
-That `0x80` versus `0x7f` distinction also appears in the colour and brightness speed fields. It is
-UI rounding, not a different displayed default. The marked captures are
+A displayed 50% speed slider serialises as either `0x80` or `0x7f` depending on rounding, across the
+colour, brightness and movement speed fields; this is UI rounding, not a different default. The
+earlier marked captures are
 `20260715135324-h617a-workshop-area-count-differential.pcap`,
 `20260715140050-h617a-workshop-colour-family.pcap`,
 `20260715141908-h617a-workshop-brightness-moving-effects.pcap` and
 `20260715143430-h617a-workshop-selected-moving-completion.pcap`.
 
-The field locations are attributable and the `r13` distribution/direction packing is proven (see
-the field-family table above). A five-layer draft was also captured live
-(`20260716165600-h617a-workshop-baseline`): the body was `01 09 02 05` followed by five
-length-delimited records, with activation `33 05 04 91 01 02` unchanged, confirming that records
-simply repeat per `layer_count`. An unrestricted encoder still needs the packed movement flags, the
-remaining priority values and layer-reorder behaviour, and the Color-gradient field that the Based
-on Segment distribution adds.
+Every Workshop field is now proven byte-exact. A five-layer draft (Christmas) reassembles to
+`01 09 02 05` then five records: the `01 <chunk_count> 02` prefix is the generic `build_a3_multi`
+transport header (`[0x01, chunk_count, type_byte]`, `chunk_count = ceil((len + 3) / 17)`), not a
+Workshop-specific field, so the leading count varies with body length (`02` for one layer, `04` for
+two, `09` for five). The semantic body is `<layer_count>` then the length-delimited records, which
+repeat per `layer_count` and are emitted in creation order. With movement, priority, the
+applied-area window and the colour-gradient bit all decoded, a from-scratch Workshop encoder is
+unblocked; it is documented here but not yet shipped as a builder.
 
 ### rgbicv2 DIY (`TYPE 0x02`)
 
@@ -616,7 +628,7 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | Scene select `33 05 04` | `build_scene` | Confirmed live. |
 | Scene multi-frame `0xA3` | `build_scene_multi` | Confirmed live; carries the per-scene `scene_type` prefix (`0`/`1`/`2`). |
 | Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented custom-effect builders. Finger Sketch body, two-frame `0xA3` framing and `33 05 0a 20 03` activation are directly validated on H617A firmware 3.02.24; the current Combo body and default slot `0xF0` are directly validated too. Flat remains capture-pinned. Slot read-back cannot identify the active body. |
-| Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | none | Transport, minimum content, layers, Select Type, area/count, palette, timing, brightness, movement and priority field locations are mapped, and the `r13` distribution/direction packing is proven. Unproven packed value spaces (movement flags, priority, layer reorder) remain fail-closed. |
+| Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | `build_scene_multi` (transport) | Fully mapped byte-exact: transport header, layer records, Select Type, applied-area window (`r1`), palette, timing, brightness, colour gradient (`r13` bit `0x01`), both movement sub-blocks, the direction enum and priority (`r29` = `0` or `1-5`). Layers are not positionally reorderable; stacking is priority-only. No from-scratch builder yet. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a` | `build_vibrant` | Implemented from the capture-pinned header and per-segment gradient entries; remains experimental while the header is partly undecoded. |
 | Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
@@ -643,7 +655,6 @@ Remaining gaps:
 The remaining H617A work is bounded:
 
 - capture the request that elicits each `AA A5` segment reply;
-- complete Workshop movement flags and directions, priority values, layer reorder, and the Segment Color-gradient field;
 - finish rgbicv2 per-effect parameter maps and from-scratch authoring;
 - verify scene speed and palette value arrays beyond the Aurora anchor;
 - verify the remaining music controls and read-back semantics;
