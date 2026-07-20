@@ -24,13 +24,9 @@ There are three kinds of effect, from different sources:
 
 ## Model identification
 
-The captured device is an **H617A**. Several independent
-signals confirm the model:
-
-- The captured "Halloween" scene used code **1173**. That is H617A's code for Halloween; on
-  H619A/H6199 the same scene is code **2497**.
-- Home Assistant's Bluetooth scan advertises this strip as `Govee_H617A_*` (never `H619A`).
-- The generated `scenes.py` catalogue is mechanically checked against the frozen H617A snapshot.
+The captured device is an **H617A** (Halloween scene code `1173`, not the H619A/H6199 `2497`;
+advertised as `Govee_H617A_*`; `scenes.py` checked against the frozen H617A snapshot). Model detail
+is in [`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 1.
 
 Practical upshot: H617A scene enumeration is complete, per-segment control is implemented, and
 Flat, Finger Sketch, Vibrant, and Combo authoring are available behind model capability gates.
@@ -235,20 +231,10 @@ Key facts:
 - Because the transport is the scene path, the integration can **replay** any captured rgbicv2
   DIY today via `build_scene_multi`; only the `(body, code)` pair needs storing. The record
   grammar is fully decoded ([`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6), so
-  synthesising a body from scratch is feasible. Every speed handle and direction is measured
-  live (see 2.7 and section 6); the remaining unknowns are the exact pixel-level delta between
-  numbered sub-styles that are not a direction (for example Brilliant `param2` `0x32`/`0x14`) and
-  the meaning of colour `param2`.
+  synthesising a body from scratch is feasible.
 
-**Direction vocabulary.** The rgbicv2 movement engine exposes four directions:
-Forward, Backward, Forward and Backward, and Backward and Forward. Direction is not an in-editor
-control; it is the numbered effect variant. A byte diff with colours held fixed shows Colorful
-meteor and meteor shower flip each record's whole-area `moveAll` mode nibble (`0x10` vs `0x12`),
-while Stack1 vs Stack2 swap the in-area `moveIn` mode (`0x_6`/`0x_4`) between their two records; a
-linear strip renders these as forward or backward. Flat effects (2.2) instead expose a
-Clockwise / Counterclockwise style picker (Chasing, Rainbow) or none.
-
-Per-effect colour-group ranges, speed domains and directions are in 2.7.
+Per-effect colour-group ranges, speed domains and directions are in 2.7; the direction and speed
+byte grammar is in [`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6.
 
 ### 2.4 Finger Sketch encoding (`TYPE 0x03`)
 
@@ -474,22 +460,14 @@ floors and defaults:
 Notes:
 
 - The editor exposes 2..8 colours in both Bloom groups.
-- "Star size" is a type 2 `[max, min]` range carried in the record (confirmed; section 6 of
-  [`ble-protocol-h617a.md`](ble-protocol-h617a.md)); the code fallback is 1..25 and the observed
-  range was ~1..12.
-- Brightness records are template-specific rather than universally scaled by `pct x 2.55`.
-  Bloom's single relative-brightness control uses a `0x32` floor and produced
-  10/20/30% = `0x45/0x5a/0x6f`. Brilliant exposes a two-handle interval from 10 to 100%.
-  Speed handles were mapped live: in-place effects (Brilliant, Sparkle, Colorful starry sky) drive
-  colour `param1` (Brilliant `0x15`..`0xe3`, Sparkle `0xc8`..`0xf5`, sky `0x9c`..`0xfa`, each
-  mirrored into the brightness/`moveIn` rate bytes); travelling effects (Colorful meteor, meteor
-  shower) drive the whole-area `moveAll` rate (`0xcb`..`0xfc`); Stack has no speed, only a
-  relative-brightness handle that sets the brightness interval (`0x19` floor to `0xff`) in both
-  records. See [`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6.
-- Directions (Clockwise/Counterclockwise) are the numbered effect variant, not an in-editor
-  toggle: meteor and meteor shower flip each record's whole-area `moveAll` mode nibble (`0x10` vs
-  `0x12`); Stack1 vs Stack2 swap the in-area `moveIn` mode (`0x_6`/`0x_4`) between the stack and
-  moving records. Colours and colour params are unchanged.
+- "Star size" is a type 2 `[max, min]` range carried in the record; the code fallback is 1..25 and
+  the observed range was ~1..12.
+- Brightness records are template-specific rather than universally scaled by `pct x 2.55`: Bloom's
+  relative-brightness control uses a `0x32` floor (10/20/30% = `0x45/0x5a/0x6f`) and Brilliant
+  exposes a two-handle interval from 10 to 100%.
+- Speed handles and the Clockwise/Counterclockwise directions (the numbered effect variant, not an
+  editor toggle) are byte-mapped in [`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6; the
+  per-effect ranges are the Speed column above.
 
 **Finger Sketch**: freeform paint, no colour-group min/max. **Combo**: one shared flat palette
 (up to 8 colours) across up to four chained effects.

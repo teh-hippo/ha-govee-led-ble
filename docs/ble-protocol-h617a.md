@@ -14,14 +14,11 @@ Companion documents:
 - Current verification backlog: [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md).
 
 Status: power, brightness, RGB and white/Kelvin colour, per-segment control, scenes and all 11
-music modes are implemented and confirmed live on firmware `3.02.24`. Scheduled-timer writes are
-observed live but ship gated (Tier-2). Flat, Finger
-Sketch, Vibrant, and Combo builders exist; Flat remains experimental, while Finger Sketch,
-Vibrant, and Combo are directly validated. rgbicv2 effects can replay captured bodies through
-`build_scene_multi`, and Workshop is fully mapped byte-exact (transport header, applied-area
-window, colour gradient, both movement sub-blocks, priority and layer ordering) but not yet
-exposed as a from-scratch builder. See section 7 for implementation status. Raw pcaps stay outside
-the repository because they contain live BLE traffic.
+music modes are implemented and confirmed live on firmware `3.02.24`. Flat, Finger Sketch, Vibrant
+and Combo builders exist (Flat experimental, the rest directly validated); rgbicv2 and Workshop are
+fully mapped and replay byte-exact through `build_scene_multi` but have no from-scratch builder yet.
+Scheduled-timer writes are observed live but ship gated. Section 7 has the per-command detail. Raw
+pcaps stay outside the repository because they carry live BLE traffic.
 
 ## 1. Overview and device
 
@@ -39,9 +36,9 @@ The captured device is an H617A, confirmed by several independent signals:
 - Home Assistant advertises the strip as `Govee_H617A_*`.
 - The packaged `scenes.py` catalogue matches the live H617A catalogue.
 
-H619A and H6199 use different scene codes for most scenes (for example Halloween `2497` vs
-`1173`, Forest `212` vs `2163`) and would need their own catalogue. The per-model scene lists
-are in [`ble-effect-catalogue.md`](ble-effect-catalogue.md).
+H619A and H6199 use different scene codes for most scenes (for example Forest `212` vs `2163`) and
+would need their own catalogue. The per-model scene lists are in
+[`ble-effect-catalogue.md`](ble-effect-catalogue.md).
 
 ## 2. Transport and framing
 
@@ -386,25 +383,10 @@ Chains one to four compatible flat effects behind one shared palette and speed.
 `seqlen = 2 x effect_count`, and each pair reuses the flat `(FAMILY, VARIANT)` values.
 Confirmed Fade1 + Marquee1:
 `... 15 <7 colours> 04 00 00 03 03 00` (`seqlen 0x04`, pairs `(00,00)` and `(03,03)`, trailing
-pad). Activation is `33 05 0a <slot>`.
-
-The Combo editor:
-
-- one to four steps, sequence lengths `0x02`, `0x04`, `0x06`, `0x08`;
-- duplicate steps, with remove and re-add as the only ordering operation;
-- one shared palette of one to eight colours;
-- shared speed `0x00..0x64`, with new-Combo default `0x33`;
-- fixed body variant `0x00`, with no corresponding editor control;
-- exactly Fade1-3, Jumping1-2, Twinkle1-3, Marquee1-3, Chasing1-2 and Rainbow1-2 in the
-  Combo picker; Flat Music1-3 and Crossing are excluded;
-- immediate body upload plus activation after every edit; Apply only re-sends the same
-  transaction, while Save and other library metadata changes send no Govee BLE command;
-- app-assigned slot `0x6E` in one editor and `0xEF` in a separate editor. Slot `0xEF` persisted
-  after Save and reopen, proving that the activation byte is an effect handle rather than a
-  body-derived value;
-- the default integration slot `0xF0` is accepted on H617A (activation `33 05 0a f0`, read back as
-  `aa 05 0a f0`); the app also uses `0xF0`, so read-back confirms only the slot, not which body or
-  author is active.
+pad). Activation is `33 05 0a <slot>` with an app-assigned slot: a persistent effect handle, not a
+body-derived value. The default integration slot `0xF0` is accepted but does not prove ownership
+because the app also uses it. Editor behaviour and the Combo-compatible effect set are in
+[`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.5.
 
 ### Workshop (`TYPE 0x02`, code `0x0191`)
 
@@ -626,23 +608,11 @@ sRGB); the number of stops changes only the resolved per-segment colours, never 
 | Power-off memory | `build_poweroff_memory` / `parse_poweroff_memory` | Experimental and unsupported by both current model profiles. No H617A app surface or live frame is proven. |
 | Clock sync `33 09` | none | Informational; not needed for control. |
 
-Remaining gaps:
-
-- **App-authored DIY read-back**: no device query returns the full editor body, so an
-  app-authored DIY cannot be imported from the strip.
-- **Music per-mode parameters**: capture-pinned parameter builders exist, but the remaining
-  controls are not all exposed as entities.
-
 ## 8. Evidence gaps
 
-The remaining H617A work is bounded:
-
-- rgbicv2 per-effect parameter maps are done (all speed handles, Stack brightness, and
-  meteor/shower/Stack directions); only from-scratch rgbicv2 authoring remains;
-- verify scene speed and palette value arrays beyond the Aurora anchor;
-- verify the remaining music controls and read-back semantics;
-- complete semantic validation of the experimental Flat builder (Vibrant is now validated).
-
-The authoritative ordered backlog is
-[`ble-protocol-open-questions.md`](ble-protocol-open-questions.md). Effect identities and parameter
-domains are in [`ble-effect-catalogue.md`](ble-effect-catalogue.md).
+Remaining H617A work is bounded: from-scratch rgbicv2 and Workshop authoring, scene speed and
+palette value arrays beyond the Aurora anchor, the remaining music controls and their read-back
+semantics, and semantic validation of the experimental Flat builder. No device query returns an
+app-authored DIY body, so such effects cannot be imported from the strip. The authoritative ordered
+backlog is [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md); effect identities and
+parameter domains are in [`ble-effect-catalogue.md`](ble-effect-catalogue.md).
