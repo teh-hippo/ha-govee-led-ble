@@ -409,9 +409,10 @@ Ladder, Battle / Duikang, Sway / Swing, Spin / Revolve, Vibrate / Penshe, Stacki
 Colorful, Chase), but those belong to other RGBIC SKUs (H604A/B, H605B, H6608, H66013), not the
 H617A, so this catalogue is complete for the H617A.
 
-Editors apply selections and parameter changes immediately; the visible Apply button is not the
-BLE write boundary. Share Space replays a downloaded four-part A3 body through DIY activation
-`0xfe`. Workshop is a separate TYPE `0x02` length-delimited layer container activated
+DIY editors apply selections and parameter changes immediately, so their Apply button is not the
+BLE write boundary. Share Space is the opposite: it writes only when its Apply button is tapped,
+replaying the downloaded effect as a multi-frame A3 body plus `33 05 0a` DIY activation (slot
+`0xfe`). Workshop is a separate TYPE `0x02` length-delimited layer container activated
 with code `0x0191`; its current map is in [`ble-protocol-h617a.md`](ble-protocol-h617a.md).
 AI/image effects remain a separate authoring/import mechanism.
 
