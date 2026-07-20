@@ -127,10 +127,10 @@ def test_video_command_applies_only_on_h6199():
 
 def test_video_white_balance_gated():
     h6199 = GoveeDeviceSim("H6199")
-    h6199.handle_write(proto.build_video_white_balance(100))
-    assert h6199.video_white_balance == 100
+    h6199.handle_write(proto.build_video_white_balance(0x0F, 0x04))
+    assert h6199.video_white_balance == (0x0F, 0x04)
     h617a = GoveeDeviceSim("H617A")
-    h617a.handle_write(proto.build_video_white_balance(100))
+    h617a.handle_write(proto.build_video_white_balance(0x0F, 0x04))
     assert h617a.video_white_balance is None
 
 

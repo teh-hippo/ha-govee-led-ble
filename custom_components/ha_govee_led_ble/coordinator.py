@@ -145,10 +145,9 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.preview_reduce_motion = False
         self.video_saturation = self.white_brightness = 100
         self.music_sensitivity = 99
-        self.video_white_balance: int | None = None
         self.music_calm = False
         self.video_full_screen, self.video_sound_effects = True, False
-        self.video_sound_effects_softness = 0
+        self.video_sound_effects_softness = 100
         self.music_color: tuple[int, int, int] | None = None
         # Per-mode music movement params (§2.3, EXPERIMENTAL); defaults are the capture-pinned
         # template values so an untouched entity reapplies the exact captured body.

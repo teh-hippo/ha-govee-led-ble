@@ -61,7 +61,6 @@ async def async_get_config_entry_diagnostics(
             "active_custom_id": coordinator.active_custom_id,
             "custom_effect_count": len(coordinator.custom_effects),
             "video_saturation": coordinator.video_saturation,
-            "video_white_balance": coordinator.video_white_balance,
             "video_sound_effects": coordinator.video_sound_effects,
             "video_sound_effects_softness": coordinator.video_sound_effects_softness,
             "music_sensitivity": coordinator.music_sensitivity,

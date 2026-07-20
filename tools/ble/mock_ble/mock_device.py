@@ -43,9 +43,6 @@ _COLOR_FLAG = 0x01
 # tracks music as a slug in ``music_mode``, not as an effect string).
 _MUSIC_LABEL_BY_ID = {code: f"music: {name}" for name, code in MUSIC_MODES.items()}
 _WHITE_BALANCE_ACTION = 0xA9
-# Mirror the red endpoints of protocol.build_video_white_balance so the
-# write-only calibration decodes back to a 0-100 percentage.
-_WB_RED_MIN, _WB_RED_MAX = 0x07, 0x15
 # Experimental timer command/reply actions (mirror protocol's 0x11/0x12/0x23).
 SLEEP_TIMER_ACTION = 0x11
 WAKEUP_TIMER_ACTION = 0x12
@@ -75,7 +72,7 @@ class GoveeDeviceSim:
         self.video_saturation = 100
         self.video_sound_effects = False
         self.video_sound_effects_softness = 0
-        self.video_white_balance: int | None = None
+        self.video_white_balance: tuple[int, int] | None = None
         self.music_mode_id: int | None = None
         self.music_sensitivity = 100
         self.music_calm = False
@@ -158,7 +155,7 @@ class GoveeDeviceSim:
         elif action == COLOR_PACKET_TYPE:
             self._apply_color_command(frame)
         elif action == _WHITE_BALANCE_ACTION and self.profile.supports_video_mode:
-            self.video_white_balance = round((frame[5] - _WB_RED_MIN) / (_WB_RED_MAX - _WB_RED_MIN) * 100)
+            self.video_white_balance = (frame[5], frame[6])
         elif action == SLEEP_TIMER_ACTION:
             self.sleep_timer = (frame[2], frame[3], frame[4], frame[5])
         elif action == WAKEUP_TIMER_ACTION:
@@ -235,8 +232,7 @@ class GoveeDeviceSim:
         self.video_game = bool(frame[4])
         self.video_saturation = frame[5]
         self.video_sound_effects = bool(frame[6])
-        if self.video_sound_effects:
-            self.video_sound_effects_softness = frame[7]
+        self.video_sound_effects_softness = frame[7]
         self.effect = "video: game" if self.video_game else "video: movie"
 
     def _apply_music(self, frame: bytes) -> None:

@@ -35,7 +35,6 @@ from .light_services import (
 from .light_services import MUSIC_MODE_IDS as MUSIC_MODE_IDS
 from .light_services import apply_active_music_mode as apply_active_music_mode
 from .light_services import apply_active_video_mode as apply_active_video_mode
-from .light_services import apply_active_video_white_balance as apply_active_video_white_balance
 from .protocol import (
     build_brightness,
     build_color_rgb,
@@ -88,8 +87,7 @@ def _coerce_segment_colors(raw: Any, count: int) -> list[tuple[int, int, int]] |
 
 
 _STATE_FIELDS = (
-    "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
-    "video_white_balance segment_colors "
+    "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation segment_colors "
     "video_full_screen video_sound_effects video_sound_effects_softness white_brightness music_sensitivity "
     "music_calm music_color active_custom_id music_mode video_mode"
 ).split()
