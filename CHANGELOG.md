@@ -1,6 +1,53 @@
 # CHANGELOG
 
 
+## v4.1.0-beta.5 (2026-07-20)
+
+### Bug Fixes
+
+- **protocol**: Decode Vibrant header, correct build_vibrant to the wire
+  ([`2d3d7be`](https://github.com/teh-hippo/ha-govee-led-ble/commit/2d3d7bed36a9e9dbf3f4a54bb4550b7bebfb30b5))
+
+### Chores
+
+- **tools**: Make govee-capture start self-heal a wedged logger
+  ([`9c05b3d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9c05b3d35e53aa299066b5858c3c082361602b1f))
+
+### Documentation
+
+- Byte-pin H617A segment read-back request (aa a5)
+  ([`7070ae7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7070ae7662113841fec708b8d6e8edbca5c9a47a))
+
+- Clear stale Brilliant speed placeholders, align video-frame term
+  ([`c47bfdd`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c47bfddf5d99a59b246d76112b0bb5407fd313cd))
+
+- Complete H617A Workshop protocol mapping
+  ([`11430fb`](https://github.com/teh-hippo/ha-govee-led-ble/commit/11430fb881c14977ac0da522248790234881ee0b))
+
+- Complete rgbicv2 per-effect parameter maps
+  ([`6916ef9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/6916ef9efd35a3eb44d8b17c81735ded3f13bb70))
+
+- Correct rgbicv2 direction and speed statements after live mapping
+  ([`79909cb`](https://github.com/teh-hippo/ha-govee-led-ble/commit/79909cbb142011bb5d3cfe9f5e39ba158a9a2103))
+
+- **ble**: Fine-tooth protocol-spec review; reconcile stale claims and style
+  ([`8aea59f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/8aea59fd3f7641d862378f79498736eced70292b))
+
+- **ble**: Finish Workshop recording and close resolved open questions
+  ([`3ebca41`](https://github.com/teh-hippo/ha-govee-led-ble/commit/3ebca41094c78c6e0998e9a72f516951597c7030))
+
+- **ble**: Resolve H617A Workshop r13 distribution/direction packing
+  ([`141e481`](https://github.com/teh-hippo/ha-govee-led-ble/commit/141e48117ed7e554d615368d98c5222b3501a015))
+
+- **h617a**: Map Brilliant rgbicv2 speed slider to colour param1
+  ([`cb050b7`](https://github.com/teh-hippo/ha-govee-led-ble/commit/cb050b7c4a56e6f3c5107e942fccb22d078aaa72))
+
+### Testing
+
+- **coordinator**: Byte-pin the outgoing-packet expectation extractor
+  ([`c8f4915`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c8f491546ca9735a0f72ab00777117ef425763d2))
+
+
 ## v4.1.0-beta.4 (2026-07-16)
 
 ### Bug Fixes
