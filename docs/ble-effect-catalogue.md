@@ -15,21 +15,20 @@ There are three kinds of effect, from different sources:
    families such as Fade, Jumping, Marquee and Rainbow, richer templates such as Bloom and
    Sparkle, the freeform "Finger Sketch", and chained "Combo" effects), applied to colour
    palettes the user picks. These are built client-side and are **not** in any public list; they
-   are encoded directly in the BLE body. This session decoded and **confirmed on-wire** the
-   **four** distinct DIY body encodings and the complete 33-effect catalogue. See section 2.
+   are encoded directly in the BLE body. The **four** distinct DIY body encodings and the complete
+   33-effect catalogue are confirmed on-wire. See section 2.
 3. **Vibrant** (a multi-colour gradient): the user picks 2 to 5 colours and the app interpolates
    them across the strip's 15 segments, then uploads the resolved per-segment colours. Unlike
-   scenes and animated DIY, it plays no animation. An experimental builder reproduces the
-   capture-pinned `TYPE 0x03` body while its fixed header remains partly undecoded. See section 3
-   and [`ble-protocol-h617a.md`](ble-protocol-h617a.md).
+   scenes and animated DIY, it plays no animation. `build_vibrant` reproduces the `TYPE 0x03` body
+   byte-exact. See section 3 and [`ble-protocol-h617a.md`](ble-protocol-h617a.md).
 
 ## Model identification
 
-The captured device is an **H617A** (originally assumed to be an H619A). Several independent
+The captured device is an **H617A**. Several independent
 signals confirm the model:
 
 - The captured "Halloween" scene used code **1173**. That is H617A's code for Halloween; on
-  H619A/H6199 the same scene is code **2497**. (Fetched live from the Govee library API below.)
+  H619A/H6199 the same scene is code **2497**.
 - Home Assistant's Bluetooth scan advertises this strip as `Govee_H617A_*` (never `H619A`).
 - The generated `scenes.py` catalogue is mechanically checked against the frozen H617A snapshot.
 
@@ -77,9 +76,8 @@ The API exposes 80 scene tiles and 83 named variants across 5 categories. Codes 
 (speed or brightness, see section 4); scenes without a `param`, such as Sunrise and Sunset, are
 activated by the code alone.
 
-Live check (H617A fw 3.02.24, 2026-07-16): 26 scenes spanning simple, type-1, type-2 and the
-edge codes (10005, 16160, 2189) activated byte-for-byte identical to `build_scene_multi`
-(captures `20260716154400`, `160800`, `161100`, `161700`). Saved scenes live in the app's *My
+26 representative scenes spanning simple, type-1, type-2 and the edge codes (10005, 16160, 2189)
+activate byte-for-byte identical to `build_scene_multi`. Saved scenes live in the app's *My
 Scenes* grid; the rest preview non-invasively by tapping their tile in the *Effects Lab*
 (edit-scenes) grid. Variant scenes surface there as an A/B picker that selects the base vs `B`
 code (e.g. Lightning A `2165` / B `2278`).
@@ -115,7 +113,7 @@ Spin(2226)~, Rhythm(2227), Bloom(2228)~.
 > name in section 2. The scene versions play a fixed Govee-authored animation; the DIY
 > versions apply the chosen animation to a user palette.
 
-The generated H617A runtime catalogue now carries all 83 effect variants across the 80 scene
+The generated H617A runtime catalogue carries all 83 effect variants across the 80 scene
 tiles, including **Aurora B** (16160), and is checked against the frozen API snapshot.
 
 `SceneEntry` carries the API `sceneType`, and `build_scene_multi()` passes it to the A3 fragmenter.
@@ -156,15 +154,14 @@ four encodings, and the encoding also fixes how the effect is activated:
 Two activation paths:
 
 - **Flat, Finger Sketch and Combo** activate with mode `0x0a` and a per-DIY **slot** id, an
-  app-assigned handle. Combo slots `0x6E` and `0xEF` were observed in separate current editor
-  instances; legacy captures used `0x1B` and `0xF0`, and an earlier Fade capture used `0xBE`.
-  The slot persists after Save and reopen, but is not encoded in the body, is not a catalogue
-  code and carries no colour information. The integration also uses `0xF0` by default, but the
-  app evidence proves that value is not exclusive and cannot identify an HA-authored effect.
+  app-assigned handle. Observed slots include `0x6E`, `0xEF`, `0xF0`, `0x1B` and `0xBE`. The slot
+  persists after Save and reopen, but is not encoded in the body, is not a catalogue code and
+  carries no colour information. The integration also uses `0xF0` by default, which the app also
+  uses, so it cannot identify an HA-authored effect.
 - **rgbicv2** activates with the **scene** command `33 05 04 <code_LE>`, each effect owning its
   own code (2.3). Because the transport is byte-for-byte the scene path, feeding a captured
   rgbicv2 body to the existing `build_scene_multi(base64(body[3:]), code)` reproduces its frames
-  and activation exactly (confirmed).
+  and activation exactly.
 
 `TYPE` alone is not unique: rgbicv2 DIY shares `0x02` with scenes, and Vibrant shares `0x03` with
 Finger Sketch, so the encoding is identified by `TYPE` **and** activation command together.
@@ -186,7 +183,7 @@ byte:    01  <linecount>  04   FAMILY   VARIANT   SPEED   PLEN   <palette RGB...
 ```
 
 - `FAMILY` equals the app's internal effect-family code, a useful cross-check: Fade 0, Jumping 1,
-  Twinkle 2, Marquee 3, Music 4, Chasing 8, Rainbow 9, Crossing 10 (`0x0a`). (Confirmed.)
+  Twinkle 2, Marquee 3, Music 4, Chasing 8, Rainbow 9, Crossing 10 (`0x0a`).
 - `VARIANT` is **family-specific with gaps**, not a clean 0-based index. The confirmed pairs are
   tabulated in 2.6; there is no formula, so each `(family, variant)` must be recorded
   empirically.
@@ -207,7 +204,7 @@ Worked example (Jumping1, seven colours, default speed), activation `33 05 0a f0
       protocol code 0x04 (flat)
 ```
 
-Confirmed on-wire: Fade1 -> Fade2 changed only `VARIANT`; Marquee1 (`0x03`) -> Marquee2 (`0x04`)
+On the wire: Fade1 -> Fade2 changed only `VARIANT`; Marquee1 (`0x03`) -> Marquee2 (`0x04`)
 incremented `VARIANT` by one; sweeping the colour count 6 -> 3 tracked `PLEN` through
 `0x12, 0x0f, 0x0c, 0x09`; the speed slider moved only offset 5 between `0x01` and `0x64`.
 
@@ -228,7 +225,7 @@ reassembled body is `01 <linecount> 02 <record container>`, and each effect is a
 | Bloom | 506 | `33 05 04 fa 01` | bloom 2..8 + moving 2..8 | no speed slider; relative brightness; variant = body offset 99 (`0x14`/`0x16`) |
 | Stack | 507 | `33 05 04 fb 01` | stack 1..8 + moving 1..8 | relative brightness 1..100; direction |
 
-Key facts (confirmed):
+Key facts:
 
 - Codes are **per-effect and externally assigned**, all in a ~500 band that contains no catalogue
   scenes. They are not derived from the body and not the app template id (for example Bloom's
@@ -237,13 +234,13 @@ Key facts (confirmed):
   change: both variants of an effect share one code.
 - Because the transport is the scene path, the integration can **replay** any captured rgbicv2
   DIY today via `build_scene_multi`; only the `(body, code)` pair needs storing. The record
-  grammar is now fully decoded ([`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6), so
-  synthesising a body from scratch is feasible. Every speed handle and direction is now measured
+  grammar is fully decoded ([`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6), so
+  synthesising a body from scratch is feasible. Every speed handle and direction is measured
   live (see 2.7 and section 6); the remaining unknowns are the exact pixel-level delta between
   numbered sub-styles that are not a direction (for example Brilliant `param2` `0x32`/`0x14`) and
   the meaning of colour `param2`.
 
-**Direction vocabulary (confirmed).** The rgbicv2 movement engine exposes four directions:
+**Direction vocabulary.** The rgbicv2 movement engine exposes four directions:
 Forward, Backward, Forward and Backward, and Backward and Forward. Direction is not an in-editor
 control; it is the numbered effect variant. A byte diff with colours held fixed shows Colorful
 meteor and meteor shower flip each record's whole-area `moveAll` mode nibble (`0x10` vs `0x12`),
@@ -274,7 +271,7 @@ Each paint group is `<segment count> <fill RGB> <segment index...>`, so a group 
 segments one colour; multiple groups give multiple fill colours. **Segment indices are 0-based**
 and match the colour-mask bit numbering (segment 0 is the first segment).
 
-Motion codes (`EFFECT`, offset 3), all confirmed by cycling the dropdown:
+Motion codes (`EFFECT`, offset 3):
 
 | Motion | `EFFECT` |
 |---|---|
@@ -296,10 +293,10 @@ Worked example (Clockwise, background blue, one group of four green segments):
         TYPE 0x03
 ```
 
-The body is uploaded as an `0xA3` multi-frame stream and then activated. Live capture on H617A
-firmware `3.02.24` (2026-07-16) shows the app **always** sends two `0xA3` frames, the body in
-frame `idx=0x00` (zero-padded) then an **empty** `idx=0xFF` terminator, with the frame-count
-byte fixed at `0x02` for a single-chunk body, and activates with slot `0x20` plus the DIY type:
+The body is uploaded as an `0xA3` multi-frame stream and then activated. The app **always** sends
+two `0xA3` frames, the body in frame `idx=0x00` (zero-padded) then an **empty** `idx=0xFF`
+terminator, with the frame-count byte fixed at `0x02` for a single-chunk body, and activates with
+slot `0x20` plus the DIY type:
 
 ```
 TX a3 00 01 02 03 09 33 64 FF FF FF 01 03 FF 00 00 00 01 02   body (Clockwise, bg white, segs 0,1,2 red)
@@ -328,7 +325,7 @@ the flat encoding with the reserved family `0xFF`:
 - Speed is `0x00..0x64`; a new Combo defaults to `0x33`.
 - The shared palette contains one to eight ordered RGB colours.
 
-Confirmed example, Fade1 + Marquee1 (seven-colour palette), activation `33 05 0a f0`:
+Example, Fade1 + Marquee1 (seven-colour palette), activation `33 05 0a f0`:
 
 ```
 ... 15 <7 colours> 04 00 00 03 03 00
@@ -339,7 +336,7 @@ Confirmed example, Fade1 + Marquee1 (seven-colour palette), activation `33 05 0a
 ```
 
 Pair `(00, 00)` is Fade1 and `(03, 03)` is Marquee1, matching the flat `(FAMILY, VARIANT)`
-values. The frozen iOS 7.5.21 editor confirms:
+values. The Combo editor:
 
 - `seqlen` steps through `0x02`, `0x04`, `0x06`, `0x08` for one to four effects.
 - Fade1, Jumping1, Marquee1 then Chasing1 accumulates pairs
@@ -426,10 +423,9 @@ Ladder, Battle / Duikang, Sway / Swing, Spin / Revolve, Vibrate / Penshe, Stacki
 Colorful, Chase), but those belong to other RGBIC SKUs (H604A/B, H605B, H6608, H66013), not the
 H617A, so this catalogue is complete for the H617A.
 
-Current iOS 7.5.21 editors apply selections and parameter changes immediately; the visible Apply
-button is not the BLE write boundary. Bloom2 relative brightness 10/30/10% produced repeatable
-wire values `0x45/0x6f/0x45`. Share Space replays a downloaded four-part A3 body through DIY
-activation `0xfe`. Workshop is a separate TYPE `0x02` length-delimited layer container activated
+Editors apply selections and parameter changes immediately; the visible Apply button is not the
+BLE write boundary. Share Space replays a downloaded four-part A3 body through DIY activation
+`0xfe`. Workshop is a separate TYPE `0x02` length-delimited layer container activated
 with code `0x0191`; its current map is in [`ble-protocol-h617a.md`](ble-protocol-h617a.md).
 AI/image effects remain a separate authoring/import mechanism.
 
@@ -438,8 +434,7 @@ builders must not be reused for H6199 until that model's body grammar is mapped.
 
 Effect appearance (motion) is confirmed only for Brilliant (a brisk flow of the chosen colours, no
 direction) and Crossing (a bidirectional crossing of up to three bands); the per-variant spatial
-behaviour of the other families is still inferred. Full motion descriptors are kept in internal
-analysis notes.
+behaviour of the other families is still inferred.
 
 ### 2.7 Colour and parameter limits
 
@@ -469,16 +464,16 @@ floors and defaults:
 | Effect | Code | Colour groups (label: min..max) | Speed [min, max, def] (0..255) | Brightness / range | Directions |
 |---|---|---|---|---|---|
 | Brilliant | 501 | Background: exactly 1; Embellishment: 4..8 | [21, 227] (colour `param1` `0x15`..`0xe3`) | relative-brightness interval 10..100% | none |
-| Colorful starry sky | 502 | single: 1..8 | colour `param1` `0x9c`..`0xfa` (156..250, measured) | star size (payload-driven; code fallback 1..25, observed ~1..12); relative brightness on the V1 template | none |
-| Colorful meteor | 504 | single: 1..8 | [200, 255, 253] (`moveAll` rate, measured `0xcb`..`0xfc`) | none | Clockwise, Counterclockwise (variant) |
+| Colorful starry sky | 502 | single: 1..8 | colour `param1` `0x9c`..`0xfa` (156..250) | star size (payload-driven; code fallback 1..25, observed ~1..12); relative brightness on the V1 template | none |
+| Colorful meteor | 504 | single: 1..8 | [200, 255, 253] (`moveAll` rate `0xcb`..`0xfc`) | none | Clockwise, Counterclockwise (variant) |
 | Colorful meteor shower | 503 | single: 3..8 | [200, 255, 253] (`moveAll` rate) | none | Clockwise, Counterclockwise (variant) |
-| Sparkle | 505 | Embellishment: 1..8; Background: exactly 1 | [200, 245, 240] (colour `param1` `0xc8`..`0xf5`, measured) | relative-brightness interval (0..255) on the V1 template | none |
+| Sparkle | 505 | Embellishment: 1..8; Background: exactly 1 | [200, 245, 240] (colour `param1` `0xc8`..`0xf5`) | relative-brightness interval (0..255) on the V1 template | none |
 | Bloom | 506 | Bloom colour: 2..8; Moving colour: 2..8 | none (no speed slider) | relative brightness 1..100% | none shown |
-| Stack | 507 | Stack colours: 1..8; Moving colour: 1..8 | n/a (brightness slider instead) | relative brightness 1..100 = `0x19`..`0xff` (both records, measured) | Stack1/Stack2 variant (in-area mode 6/4) |
+| Stack | 507 | Stack colours: 1..8; Moving colour: 1..8 | n/a (brightness slider instead) | relative brightness 1..100 = `0x19`..`0xff` (both records) | Stack1/Stack2 variant (in-area mode 6/4) |
 
 Notes:
 
-- Current iOS 7.5.21 exposes 2..8 colours in both Bloom groups.
+- The editor exposes 2..8 colours in both Bloom groups.
 - "Star size" is a type 2 `[max, min]` range carried in the record (confirmed; section 6 of
   [`ble-protocol-h617a.md`](ble-protocol-h617a.md)); the code fallback is 1..25 and the observed
   range was ~1..12.
@@ -517,8 +512,7 @@ The multi-frame body reuses the Finger Sketch `TYPE 0x03` grammar (section 2.4):
 segment. Vibrant fixes EFFECT `0x09` (Clockwise), SPEED `0x00`, BRIGHT `0x64`, background
 `01 01 01` and `groupcount 0x0f`, so each of the 15 groups is `01 <R> <G> <B> <segment_index>`. The
 stop count changes only the resolved colours, never the structure. Full byte layout is in
-[`ble-protocol-h617a.md`](ble-protocol-h617a.md) (section 6). Confirmed byte-exact live for two-
-and three-stop gradients (2026-07-20).
+[`ble-protocol-h617a.md`](ble-protocol-h617a.md) (section 6).
 
 ## 4. Scene parameters
 
@@ -527,10 +521,9 @@ and three-stop gradients (2026-07-20).
 The per-scene **edit pencil** (top-right of each tile in the *My Scenes* grid) opens an
 adjustable editor. Scenes that support it show a **Speed** slider (discrete Slow / Medium / Fast
 stops) and, for multi-colour scenes, a **Color Change** palette picker (numbered presets) with a
-**Reset**. Confirmed live on Aurora (H617A fw 3.02.24, 2026-07-16, captures
-`20260716151000-h617a-scene-params` and `20260716151500-h617a-scene-speed`).
+**Reset**.
 
-**Wire mechanism (live-confirmed).** Changing a parameter sends no dedicated command: the app
+**Wire mechanism.** Changing a parameter sends no dedicated command: the app
 recomputes the scene body and re-uploads it through the normal `0xA3` fragments, then re-activates
 with the same `33 05 04 <code_LE>`. It is exactly `build_scene_multi(param, code, sceneType)` with
 a modified `param`. Aurora's body is `01 05 02` (header) + `02` (layer count) + two layer records;
@@ -561,7 +554,7 @@ arrays the API ships per scene, as a JSON string. Example (Forest):
 `page` = which parameter, `defaultIndex` = the default position, and the value arrays
 (`color` / `bright.brightValue` / `moveAll`) are the exact bytes written into the body. Forest's
 `defaultIndex:3` selects `250` (`0xfa`, Fast), the same byte range observed live on Aurora, so the
-frozen `config` is now proven against BLE. The distilled catalogue keeps `config` verbatim.
+frozen `config` is proven against BLE. The distilled catalogue keeps `config` verbatim.
 
 ## 5. Remaining effect captures
 
@@ -594,8 +587,6 @@ separate research task and do not require a capture.
   The H617A uses **all four** DIY encodings, chosen per effect: flat (`TYPE 0x04`) for the eight
   animation families, rgbicv2 (`TYPE 0x02`) for the seven rich templates, `TYPE 0x03` for Finger
   Sketch and Vibrant, and `FAMILY 0xFF` for Combo.
-- Internal analysis notes (working analysis, not committed): the full record-grammar teardown and
-  the speed-lookup model, plus per-effect motion descriptors (confirmed and inferred).
 - Govee library API + `scenceParam` -> BLE pipeline: `wez/govee2mqtt` (`src/undoc_api.rs`,
   `src/ble.rs`), `AlgoClaw/Govee` (`decoded/v1.2/explanation_v1.2.md`),
   `Beshelmek/govee_ble_lights` (ships per-SKU catalogues incl. `H619A.json`; `govee_utils.py`

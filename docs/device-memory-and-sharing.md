@@ -81,6 +81,3 @@ Guardrails: `model` is mandatory (the same `effect_b64` parses differently per S
 `effectId`/author/icon is needed to drive the device; names are display-only. For a per-segment
 "paint", the app's per-segment share blob is already a complete, versioned, cloud-free format
 (version byte + background RGB + `colour → [segment index…]` map) worth copying verbatim.
-
-Provenance: confirmed by live BLE capture against the device and analysis of the app's on-wire
-behaviour.

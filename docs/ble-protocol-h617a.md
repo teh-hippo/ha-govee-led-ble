@@ -18,10 +18,10 @@ music modes are implemented and confirmed live on firmware `3.02.24`. Scheduled-
 observed live but ship gated (Tier-2). Flat, Finger
 Sketch, Vibrant, and Combo builders exist; Flat remains experimental, while Finger Sketch,
 Vibrant, and Combo are directly validated. rgbicv2 effects can replay captured bodies through
-`build_scene_multi`, and Workshop is now fully mapped byte-exact (transport header, applied-area
-window, colour gradient, both movement sub-blocks, priority and layer ordering) though not yet
-exposed as a from-scratch builder. See section 7 for implementation status. Raw pcaps remain outside the repository because
-they contain live BLE traffic.
+`build_scene_multi`, and Workshop is fully mapped byte-exact (transport header, applied-area
+window, colour gradient, both movement sub-blocks, priority and layer ordering) but not yet
+exposed as a from-scratch builder. See section 7 for implementation status. Raw pcaps stay outside
+the repository because they contain live BLE traffic.
 
 ## 1. Overview and device
 
@@ -146,18 +146,7 @@ byte:   33 05 15 01  00 00 00 Khi Klo RR GG BB ML MH .. XOR
   | 5300 | (255, 235, 215) | `FFEBD7` |
   | 9000 | (217, 225, 255) | `D9E1FF` |
 
-`build_color_temp` emits exactly this frame (Kelvin at `[7:9]`, RGB slot zeroed); confirmed live
-over 2000-9000K.
-
-> Reconfirmed by the current-iOS Color walkthrough (2026-07-16). The Color tab exposes three
-> sub-tabs: **Whole** (solid RGB via Basic Colors and a Color Wheel, plus the Color temperature
-> slider), **Subsection** (per-segment colour with a serpentine 15-node selector, Select all /
-> Deselect all / Invert, and a Relative brightness slider), and **Vibrant** (the static gradient
-> bar). Whole colour sent `33 05 15 01 <rgb> ... FF 7F` (red/blue/white/wheel all exact); the white
-> Basic swatch is RGB `FF FF FF`, distinct from the Kelvin temperature frame. Colour temperature
-> endpoints matched the table above exactly (warm 2000 K `FF8D0B`, cool 9000 K `D9E1FF`).
-> Selecting segment 1 alone sent colour mask `0x0001` and a relative-brightness change sent
-> `33 05 15 02 <pct> 01 00`, confirming the per-segment mask. No mismatches.
+`build_color_temp` emits exactly this frame (Kelvin at `[7:9]`, RGB slot zeroed) over 2000-9000 K.
 
 ### Per-segment brightness layout
 
@@ -176,8 +165,7 @@ byte:   33 05 15 02  PP ML MH .. XOR
 
 The app's Music tab (distinct from the DIY Music family in
 [`ble-effect-catalogue.md`](ble-effect-catalogue.md)) sends a **mode-set frame** and, for the
-extended modes, an accompanying **multi-packet colour frame**. Both frames were confirmed by live
-capture against the device.
+extended modes, an accompanying **multi-packet colour frame**.
 
 Mode-set frame:
 
@@ -186,12 +174,10 @@ offset: 0  1  2    3     4     5      6      7..
 byte:   33 05 SUB  MODE  SENS  STYLE  COUNT  <RGB × COUNT>
 ```
 
-- `SUB` = music sub-command. The H617A uses `0x13` on the wire (confirmed live across all 11
-  modes); an older protocol version emits `0x0c`, with an otherwise identical
-  payload. The builder ships `0x13`.
-- `SENS` = sensitivity, 0-99 (default 99). Confirmed linear on-wire (0/48/99 at min/mid/max).
-- `MODE`. All 11 codes are **confirmed live** (H617A, firmware 3.02.24, 2026-07-09) and match
-  `const.MUSIC_MODES`:
+- `SUB` = music sub-command. The H617A uses `0x13` on the wire; an older protocol version emits
+  `0x0c` with an otherwise identical payload. The builder ships `0x13`.
+- `SENS` = sensitivity, 0-99 (default 99), linear on the wire.
+- `MODE`. All 11 codes match `const.MUSIC_MODES`:
 
   | Mode | Code |
   |---|---|
@@ -207,15 +193,12 @@ byte:   33 05 SUB  MODE  SENS  STYLE  COUNT  <RGB × COUNT>
   | Fountain | `0x35` |
   | Day and Night | `0x37` |
 
-  The authoritative captured mapping is `{0x05, 0x03, 0x04, 0x06}`.
-- `STYLE` (byte 5): Dynamic (`0x00`) / Calm (`0x01`). Byte-confirmed live for Rhythm, Bloom and
-  Shiny; the other modes hold `0x00`. The
-  `parse_color_mode_response` decoder currently reports Calm for Rhythm only.
+- `STYLE` (byte 5): Dynamic (`0x00`) / Calm (`0x01`). Rhythm, Bloom and Shiny vary it; the other
+  modes hold `0x00`. The `parse_color_mode_response` decoder reports Calm for Rhythm only.
 - `COUNT` (byte 6) = manual colour count, and is also the **auto-colour flag**: `0x00` = Auto
-  colour on (no RGB follows); `N` = Auto colour off with `N` colours, each a 3-byte RGB. Confirmed
-  live on Spectrum: turning Auto colour off set `COUNT 0->1` and appended one RGB triple (byte 5
-  STYLE stayed `0x00`), and changing that colour moved only the RGB bytes at `[7:10]`. (This
-  corrects an earlier hypothesis that Spectrum/Rolling encoded auto-colour in byte 5.)
+  colour on (no RGB follows); `N` = Auto colour off with `N` colours, each a 3-byte RGB. On
+  Spectrum, turning Auto colour off sets `COUNT 0->1` and appends one RGB triple (STYLE byte 5 stays
+  `0x00`), and changing that colour moves only the RGB bytes at `[7:10]`.
 
 Per-mode controls differ: movement modes expose segment/point count
 (1..8, clamped by strip length), speed (1..100), direction,
@@ -225,7 +208,7 @@ toggle and auto-colour + one colour. Extended modes ALSO send a colour/parameter
 `01 <fragCount> 41 <MODE> <nColours> <RGB×n> <mode-specific tail>`, and the per-mode parameters live
 at fixed offsets in that assembled body (offset = concatenated fragment payloads).
 
-**Per-mode `a3` parameter offsets (confirmed live by A/B/A diff with revert):**
+**Per-mode `a3` parameter offsets:**
 
 | Mode | Parameter | Body offset | Values |
 |---|---|---|---|
@@ -240,23 +223,17 @@ at fixed offsets in that assembled body (offset = concatenated fragment payloads
 | Day and Night `0x37` | Speed | `[27]` | `0x01`..`0x32` |
 
 Multi-colour palettes (Separation, Hopping background, etc.) are the `<RGB×n>` groups in the body.
-Fountain direction uses the pair `[26,28]`, confirmed across current Clockwise/Two-way/Clockwise
-and retained Clockwise/Counterclockwise/Clockwise captures. Rhythm/Spectrum parameters ride the
+Fountain direction uses the pair `[26,28]`. Rhythm/Spectrum parameters ride the
 `33 05 13` frame itself (STYLE byte 5, auto-colour/COUNT byte 6, RGB from byte 7), not the `a3` body.
 
-Verified frames (captured, sub-command `0x13`): `13 05 63 00 01 ff0000` (mode `0x05`, sens 99, one
+Example frames (sub-command `0x13`): `13 05 63 00 01 ff0000` (mode `0x05`, sens 99, one
 colour red), `13 03 63 00 00` (mode `0x03`, Auto colour on), `13 03 63 01 01 0000ff` (Calm, one
-colour blue). Full byte-level detail and per-mode payload tails are kept in internal analysis
-notes.
+colour blue).
 
-The current iOS Music walkthrough on 2026-07-16 reconfirmed the complete editor surface and its
-write boundary. Rhythm writes immediately for sensitivity (`0x00`..`0x63`), Dynamic/Calm,
-auto/manual colour and RGB selection. Extended editors stage their parameters until **Apply**,
-then send the `0x41` A3 body followed by the base `33 05 13` activation. Representative current
-captures reconfirmed Separation point/gradient, Hopping relative brightness, Piano key count,
-Fountain direction, Day and Night segment count, and Bloom style. Shiny A/B/A corrected its
-companion mapping to Dynamic=`05 64`, Calm=`14 46`. The **From mobile phone** path is a separate
-microphone-permission workflow and was left out of BLE mapping at the owner's request.
+The editor has a clear write boundary. Rhythm writes immediately for sensitivity (`0x00`..`0x63`),
+Dynamic/Calm, auto/manual colour and RGB selection. Extended editors stage their parameters until
+**Apply**, then send the `0x41` A3 body followed by the base `33 05 13` activation. The **From
+mobile phone** path is a separate microphone-permission workflow and is not BLE-mapped.
 
 ## 4. Query and status reference (0xAA)
 
@@ -292,7 +269,7 @@ The app reads segment state when the **Color** control is opened, not on the kee
 issues five separate per-group queries in one burst, `aa a5 01` through `aa a5 05` (each zero-padded
 with the usual XOR checksum, e.g. group 1 = `aa a5 01 00…00 0e`), and the strip answers each with the
 matching `aa a5 <group>` reply. A companion `aa a3 00` multi-frame probe follows in the same burst;
-with no DIY body active it returned zero-filled. Confirmed live 2026-07-17 on firmware 3.02.24. The
+with no DIY body active it returns zero-filled. The
 integration keeps segment colours optimistically and never issues these queries.
 
 ### Timer subsystem (`0x11`/`0x12`/`0x14`/`0x23`)
@@ -315,20 +292,19 @@ below were confirmed by live capture.
 
 Query `aa 23` returns the whole table: `ff` then four 4-byte slots `[enableAndType, hour, min,
 repeat]`. Captured `33 23 00 81 06 00 80` = slot 0, enabled+on, 06:00, no repeat. The `repeat`
-byte is `0x80 | weekday-mask` (Mon=bit0 .. Sun=bit6) with two special values. Confirmed live
-2026-07-16: one-time = `0x80`, Monday-only = `0x81`, Sunday-only = `0xC0`, and **every day = `0x00`**
-(the app never emits `0x7f`/`0xff`; a set high bit marks a one-time or specific-weekday schedule).
+byte is `0x80 | weekday-mask` (Mon=bit0 .. Sun=bit6): one-time = `0x80`, Monday-only = `0x81`,
+Sunday-only = `0xC0`, and **every day = `0x00`** (the app never emits `0x7f`/`0xff`; a set high bit
+marks a one-time or specific-weekday schedule).
 
-**Sleep timer (`0x11`)**: fade the light off, `[enable, startBri, closeMin, curMin]`. Confirmed
-live 2026-07-16: enable `33 11 01 32 10 00` (startBri 50, close in 16 min), disable `33 11 00 …`;
-read-back `aa 11 00 32 10 00`. The countdown arms the moment the timer is enabled. The write frame
-is observed live; the builder ships gated with reply decode-only (OBSERVE).
+**Sleep timer (`0x11`)**: fade the light off, `[enable, startBri, closeMin, curMin]`. Enable
+`33 11 01 32 10 00` (startBri 50, close in 16 min), disable `33 11 00 …`; read-back
+`aa 11 00 32 10 00`. The countdown arms the moment the timer is enabled. The builder ships gated
+with reply decode-only (OBSERVE).
 **Wake-up timer (`0x12`)**: sunrise alarm, `[enable, endBri, hour, min, repeat, rampMin]` (hour
-clamped 0-23, min 0-59). Confirmed live 2026-07-16: every-day `33 12 01 64 11 01 00 1d` (endBri 100,
-17:01, ramp 29 min), Monday-only `33 12 01 64 11 01 81 1d`; the `repeat` byte shares the `0x23`
-encoding (every day = `0x00`). The wake-up write is observed live; the builder ships gated with
-reply decode-only (OBSERVE). **Gradual (`0x14`)**: a soft on/off transition toggle, single state
-byte; not exposed on the H617A app.
+clamped 0-23, min 0-59). Every-day `33 12 01 64 11 01 00 1d` (endBri 100, 17:01, ramp 29 min),
+Monday-only `33 12 01 64 11 01 81 1d`; the `repeat` byte shares the `0x23` encoding (every day =
+`0x00`). The builder ships gated with reply decode-only (OBSERVE). **Gradual (`0x14`)**: a soft
+on/off transition toggle, single state byte; not exposed on the H617A app.
 
 ## 5. Colour models
 
@@ -412,7 +388,7 @@ Confirmed Fade1 + Marquee1:
 `... 15 <7 colours> 04 00 00 03 03 00` (`seqlen 0x04`, pairs `(00,00)` and `(03,03)`, trailing
 pad). Activation is `33 05 0a <slot>`.
 
-Current iOS 7.5.21 evidence confirms:
+The Combo editor:
 
 - one to four steps, sequence lengths `0x02`, `0x04`, `0x06`, `0x08`;
 - duplicate steps, with remove and re-add as the only ordering operation;
@@ -426,10 +402,9 @@ Current iOS 7.5.21 evidence confirms:
 - app-assigned slot `0x6E` in one editor and `0xEF` in a separate editor. Slot `0xEF` persisted
   after Save and reopen, proving that the activation byte is an effect handle rather than a
   body-derived value;
-- default integration slot `0xF0` directly accepted on H617A firmware 3.02.24. The probe sent the
-  exact Combo body, activated `33 05 0a f0`, and received fresh colour-mode read-back
-  `aa 05 0a f0`. Legacy app captures also used `0xF0`, so read-back confirms only the slot, not
-  which body or author is active.
+- the default integration slot `0xF0` is accepted on H617A (activation `33 05 0a f0`, read back as
+  `aa 05 0a f0`); the app also uses `0xF0`, so read-back confirms only the slot, not which body or
+  author is active.
 
 ### Workshop (`TYPE 0x02`, code `0x0191`)
 
@@ -447,15 +422,14 @@ A copied second layer increments `layer_count` and appends another complete reco
 needed to fill the final 17-byte A3 chunk are transport padding outside the length-delimited
 records.
 
-The first valid current-iOS anchor used one **Select IC Continuously** layer with ordered red and
-blue colours:
+A one-layer **Select IC Continuously** body with ordered red and blue colours is:
 
 ```
 01 1d 00 01 00 0f 10 01 ff0000 80 14 14 01 80 14 02 ff0000 0000ff 00 00 80 00 00 80 00
 ```
 
-An untouched draft and a one-red-colour draft emitted no Workshop write. Red plus blue emitted the
-body above, establishing two colours as the minimum observed valid colour content.
+An untouched or single-colour draft emits no Workshop write; two colours is the minimum valid
+content.
 
 The Select Type wire enum and its two record parameters are directly mapped:
 
@@ -471,10 +445,8 @@ record bytes and the activation stayed byte-identical across the four marked App
 Select IC Continuously produced the exact original body.
 
 The final byte of each layer record is priority (`r29` with two colours). The Effect Layer Priority
-control maps it directly: the priority toggle off is `00`, and levels 1 to 5 are `01` through `05`
-(swept live 2026-07-17, capture `workshop-priority.pcap`). Copying and then deleting a layer produced
-exact two-layer and one-layer A/B/A bodies. Layers cannot be positionally reordered: the layer tabs
-only select the active layer, and two long-press-drag attempts left the order unchanged, so stacking
+control maps it directly: the priority toggle off is `00`, and levels 1 to 5 are `01` through `05`.
+Layers cannot be positionally reordered; the layer tabs only select the active layer, so stacking
 is governed solely by this priority byte and records are emitted in creation order.
 
 All offsets below count the record length byte as `r0`. Four further marked captures isolated the
@@ -493,19 +465,16 @@ remaining visible field families:
 | Colour count | `r16: 02 -> 03`; the record length grows `r0: 1d -> 20` and the third RGB is appended |
 
 `r13` is a single packed byte: bit `0x80` set when Direction is Backward, OR-ed with the
-distribution value (`00` Unified, `01` Based on Number of IC, `02` Based on Segment). Confirmed
-live 2026-07-16 across all direction/distribution combinations (record byte 17 of the first layer,
-capture `20260716165800-h617a-workshop-r13`): Unified+Backward `80`, IC+Backward `81`,
-Segment+Backward `82`. Selecting Based on Segment also exposes a Color gradient toggle in the app.
-That toggle is `r13` bit `0x01`, set only under Based on Segment: it moves `82` (gradient off) to
-`83` (on), the only distribution where the bit appears (capture `workshop-color-gradient.pcap`).
-Choosing Based on Segment also sets bit `0x10` of `r5`.
+distribution value (`00` Unified, `01` Based on Number of IC, `02` Based on Segment): Unified+Backward
+`80`, IC+Backward `81`, Segment+Backward `82`. Selecting Based on Segment also exposes a Color
+gradient toggle, which is `r13` bit `0x01`, set only under Based on Segment: it moves `82` (gradient
+off) to `83` (on), the only distribution where the bit appears. Choosing Based on Segment also sets
+bit `0x10` of `r5`.
 
 The colour palette starts at `r17`. The seven trailing bytes after its variable-length RGB list are
 three selected-area movement bytes, three overall-movement bytes and the priority byte. With two
 colours these are `r23:r25`, `r26:r28` and `r29`. Both movement sub-blocks are `<packed> <interval>
-<speed>` (speed is `round(pct x 2.55)`), swept live 2026-07-17 (`workshop-movement-dir.pcap`,
-`workshop-movement-toggles.pcap`, `workshop-overall-dir.pcap`):
+<speed>` (speed is `round(pct x 2.55)`):
 
 - the selected-area packed byte is `0x10` (movement enabled) OR `0x04` (Enter and Exit Effect) OR a
   two-bit direction: `0` Forward, `1` Forward and Backward, `2` Backward, `3` Backward and Forward;
@@ -515,14 +484,9 @@ colours these are `r23:r25`, `r26:r28` and `r29`. Both movement sub-blocks are `
   bytes persist at their last-set values, so an encoder must treat the enable bit as authoritative.
 
 A displayed 50% speed slider serialises as either `0x80` or `0x7f` depending on rounding, across the
-colour, brightness and movement speed fields; this is UI rounding, not a different default. The
-earlier marked captures are
-`20260715135324-h617a-workshop-area-count-differential.pcap`,
-`20260715140050-h617a-workshop-colour-family.pcap`,
-`20260715141908-h617a-workshop-brightness-moving-effects.pcap` and
-`20260715143430-h617a-workshop-selected-moving-completion.pcap`.
+colour, brightness and movement speed fields; this is UI rounding, not a different default.
 
-Every Workshop field is now proven byte-exact. A five-layer draft (Christmas) reassembles to
+Every Workshop field is proven byte-exact. A five-layer draft (Christmas) reassembles to
 `01 09 02 05` then five records: the `01 <chunk_count> 02` prefix is the generic `build_a3_multi`
 transport header (`[0x01, chunk_count, type_byte]`, `chunk_count = ceil((len + 3) / 17)`), not a
 Workshop-specific field, so the leading count varies with body length (`02` for one layer, `04` for
@@ -588,7 +552,7 @@ exposes four directions: Forward, Backward, Forward and Backward, and Backward a
 `moveIn`, `bright` arrays plus `defaultIndex`), the client-side motion model. The type and value
 bytes at offsets 2 to 4 and the brightness sub-block are decoded.
 
-The speed handle drives a per-effect entry of the speed-mode lookup, mapped live with fixed-colour
+The speed handle drives a per-effect entry of the speed-mode lookup, mapped with fixed-colour
 sweeps. In-place effects use colour `param1`: Brilliant `0x15`..`0xe3`, Sparkle `0xc8`..`0xf5` and
 Colorful starry sky `0x9c`..`0xfa`, each linear, with Sparkle and starry sky mirroring the same
 rate into the brightness and in-area (`moveIn`) rate bytes; untouched bodies sit at `0xff` until
@@ -602,11 +566,10 @@ shower flip each record's whole-area `moveAll` mode nibble (`0x10` mode 0 vs `0x
 lockstep flags bit and brightness byte); Stack1 vs Stack2 swap the in-area `moveIn` mode (`0x_6` vs
 `0x_4`) between the stack and moving records, colours unchanged.
 
-Still inferred (need a capture): the exact pixel-level difference between numbered sub-styles that
-are not a direction (for example Brilliant `param2` `0x32` vs `0x14`, Bloom `0x14` vs `0x16`) and
-the meaning of colour `param2`. Per-effect colour-group ranges, speed domains and directions are in
-[`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.7. The full teardown is kept in
-internal analysis notes.
+Still inferred: the exact pixel-level difference between numbered sub-styles that are not a
+direction (for example Brilliant `param2` `0x32` vs `0x14`, Bloom `0x14` vs `0x16`) and the meaning
+of colour `param2`. Per-effect colour-group ranges, speed domains and directions are in
+[`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.7.
 
 ### Finger Sketch DIY (`TYPE 0x03`)
 
@@ -619,8 +582,8 @@ EFFECT SPEED BRIGHT <bg RGB> <groupcount> [<segcount> <fill RGB> <segment index.
 then a background RGB and one or more paint groups. Each paint group is
 `<segcount> <fill RGB> <segment index...>`, and segment indices are 0-based, matching the
 colour-mask bit numbering. The body is sent as two `0xA3` frames (body in `idx=0x00`, empty
-`idx=0xFF` terminator) and activated with `33 05 0a 20 03` (DIY select, slot `0x20`, TYPE `0x03`),
-all confirmed live on firmware `3.02.24` (2026-07-16). Full detail in
+`idx=0xFF` terminator) and activated with `33 05 0a 20 03` (DIY select, slot `0x20`, TYPE `0x03`).
+Full detail in
 [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.4.
 
 ### Vibrant (`TYPE 0x03`)
@@ -634,8 +597,7 @@ BRIGHT `0x64` (100), background `01 01 01`, `groupcount 0x0f` (15), then 15 sing
 Activation is `33 05 0a 84 03` (DIY select, slot `0x84`, `TYPE 0x03`). The app interpolates the
 user's 2..5 stops across the 15 segments per channel in **gamma-2.2 linear light** (not linear
 sRGB); the number of stops changes only the resolved per-segment colours, never the structure.
-Confirmed byte-exact live (H617A 3.02.24, 2026-07-20) for two- and three-stop gradients, and
-`build_vibrant` reproduces it.
+`build_vibrant` reproduces it byte-exact for two- and three-stop gradients.
 
 ## 7. Implementation status against protocol.py
 
