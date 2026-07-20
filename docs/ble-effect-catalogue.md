@@ -238,15 +238,18 @@ Key facts (confirmed):
 - Because the transport is the scene path, the integration can **replay** any captured rgbicv2
   DIY today via `build_scene_multi`; only the `(body, code)` pair needs storing. The record
   grammar is now fully decoded ([`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6), so
-  synthesising a body from scratch is feasible. The Brilliant speed slider is measured (colour
-  `param1`, linear `0x15`..`0xe3`); the remaining unknowns are the other effects' concrete
-  speed-lookup values and the exact pixel-level delta between numbered sub-styles (inferred).
+  synthesising a body from scratch is feasible. Every speed handle and direction is now measured
+  live (see 2.7 and section 6); the remaining unknowns are the exact pixel-level delta between
+  numbered sub-styles that are not a direction (for example Brilliant `param2` `0x32`/`0x14`) and
+  the meaning of colour `param2`.
 
 **Direction vocabulary (confirmed).** The rgbicv2 movement engine exposes four directions:
-Forward, Backward, Forward and Backward, and Backward and Forward. An effect that offers a
-direction control presents a subset through a per-effect picker (Colorful meteor, Colorful meteor
-shower and Stack show Clockwise / Counterclockwise), which a linear strip renders as forward or
-backward. Flat effects (2.2) expose only Clockwise / Counterclockwise (Chasing, Rainbow) or none.
+Forward, Backward, Forward and Backward, and Backward and Forward. Direction is not an in-editor
+control; it is the numbered effect variant. A byte diff with colours held fixed shows Colorful
+meteor and meteor shower flip each record's whole-area `moveAll` mode nibble (`0x10` vs `0x12`),
+while Stack1 vs Stack2 swap the in-area `moveIn` mode (`0x_6`/`0x_4`) between their two records; a
+linear strip renders these as forward or backward. Flat effects (2.2) instead expose a
+Clockwise / Counterclockwise style picker (Chasing, Rainbow) or none.
 
 Per-effect colour-group ranges, speed domains and directions are in 2.7.
 
