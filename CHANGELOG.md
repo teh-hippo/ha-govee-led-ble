@@ -1,6 +1,28 @@
 # CHANGELOG
 
 
+## v4.0.2 (2026-07-20)
+
+### Bug Fixes
+
+- **ble**: Correct H6199 and H617A BLE encodings for stable
+  ([`03e8071`](https://github.com/teh-hippo/ha-govee-led-ble/commit/03e8071948373b7425615c06fd38fc8de387d8d8))
+
+### Chores
+
+- **deps**: Lock file maintenance
+  ([`b7501b9`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b7501b9e3de987227db5baae4a40d411c99d6945))
+
+- **deps**: Update astral-sh/setup-uv action to v8.3.2
+  ([`d0022c4`](https://github.com/teh-hippo/ha-govee-led-ble/commit/d0022c4bdc522928ec369261a7eb201a3ebbe8f0))
+
+- **deps**: Update dependency typescript to v7
+  ([`fb3f9c1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fb3f9c1a40c3cedaaae7813469a8e9e216437c15))
+
+- **deps**: Update softprops/action-gh-release digest to 3d0d988
+  ([`fa59a18`](https://github.com/teh-hippo/ha-govee-led-ble/commit/fa59a180648592282102fda9a502c44e1e4e571f))
+
+
 ## v4.0.1 (2026-07-11)
 
 ### Bug Fixes
