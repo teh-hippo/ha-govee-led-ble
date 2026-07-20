@@ -15,7 +15,7 @@ Companion documents:
 
 Status: power, brightness, RGB and white/Kelvin colour, per-segment control, scenes and all 11
 music modes are implemented and confirmed live on firmware `3.02.24`. Flat, Finger Sketch, Vibrant
-and Combo builders exist (Flat experimental, the rest directly validated); rgbicv2 and Workshop are
+and Combo builders exist and are directly validated; rgbicv2 and Workshop are
 fully mapped and replay byte-exact through `build_scene_multi` but have no from-scratch builder yet.
 Scheduled-timer writes are observed live but ship gated. Section 7 has the per-command detail. Raw
 pcaps stay outside the repository because they carry live BLE traffic.
@@ -596,7 +596,7 @@ sRGB); the number of stops changes only the resolved per-segment colours, never 
 | Colour temperature `33 05 15 01 00 00 00 ...` | `build_color_temp` | Implemented and confirmed live; emits the true-Kelvin frame over 2000-9000K. |
 | Scene select `33 05 04` | `build_scene` | Confirmed live. |
 | Scene multi-frame `0xA3` | `build_scene_multi` | Confirmed live; carries the per-scene `scene_type` prefix (`0`/`1`/`2`). |
-| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented custom-effect builders. Finger Sketch body, two-frame `0xA3` framing and `33 05 0a 20 03` activation are directly validated on H617A firmware 3.02.24; the current Combo body and default slot `0xF0` are directly validated too. Flat remains capture-pinned. Slot read-back cannot identify the active body. |
+| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Directly validated custom-effect builders. Finger Sketch body, two-frame `0xA3` framing and `33 05 0a 20 03` activation are validated on H617A firmware 3.02.24; the current Combo body and default slot `0xF0` are validated too, as is Flat across all 19 families (same two-frame `0xA3` envelope, `33 05 0a <slot>` activation). Slot read-back cannot identify the active body. |
 | Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | `build_scene_multi` (transport) | Fully mapped byte-exact: transport header, layer records, Select Type, applied-area window (`r1`), palette, timing, brightness, colour gradient (`r13` bit `0x01`), both movement sub-blocks, the direction enum and priority (`r29` = `0` or `1-5`). Layers are not positionally reorderable; stacking is priority-only. No from-scratch builder yet. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a 84 03` | `build_vibrant` | Validated live: the Finger Sketch `TYPE 0x03` grammar with a gamma-2.2 linear-light gradient across the 15 segments. |
@@ -613,8 +613,8 @@ sRGB); the number of stops changes only the resolved per-segment colours, never 
 ## 8. Evidence gaps
 
 Remaining H617A work is bounded: from-scratch rgbicv2 and Workshop authoring, scene speed and
-palette value arrays beyond the Aurora anchor, the remaining music controls and their read-back
-semantics, and semantic validation of the experimental Flat builder. No device query returns an
+palette value arrays beyond the Aurora anchor, and the remaining music controls and their read-back
+semantics. No device query returns an
 app-authored DIY body, so such effects cannot be imported from the strip. The authoritative ordered
 backlog is [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md); effect identities and
 parameter domains are in [`ble-effect-catalogue.md`](ble-effect-catalogue.md).

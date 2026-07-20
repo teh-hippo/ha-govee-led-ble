@@ -31,7 +31,7 @@ the captured and supported scope.
 | Power | `33 01 <on>` | `00` off, `01` on. |
 | Brightness | `33 04 <pct>` | Whole-device brightness, 0 to 100. It is not part of the video frame. |
 | RGB colour | `33 05 15 01 <R G B> 00 00 00 00 00 FF 7F` | V2 whole-device colour. |
-| Colour temperature | `33 05 15 01 00 00 00 <Khi Klo> <wR wG wB> FF 7F` | Current shared builder, validated on H617A. Kelvin is big-endian at `[7:9]`; exact H6199 byte parity needs a fresh attributable capture. |
+| Colour temperature | `33 05 15 01 00 00 00 <Khi Klo> <wR wG wB> FF 7F` | Confirmed live: the command and big-endian kelvin word (`[7:9]`) are byte-identical to the shared builder (captured `0x0E10` = 3600 K). The white-preview RGB uses a slightly different kelvin-to-RGB curve than `build_color_temp`, which is cosmetic because the device selects white from the kelvin word. |
 | Video mode | `33 05 00 <region> <mode> <sat> <sound> <softness>` | Full payload is always sent. `region`: all `01`, part `00`; `mode`: movie `00`, game `01`; saturation 0 to 100; sound `00` or `01`; softness 1 to 100. |
 | Music mode | `33 05 13 <mode> <sensitivity> ...` | Confirmed modes: Rhythm `03`, Spectrum `04`, Energetic `05`, Rolling `06`. Style, count, and RGB fields are not confirmed for this model. |
 | Simple scene | `33 05 04 <code_LE> 01` | Type `01` activation without an A3 body. |
@@ -76,8 +76,10 @@ The following implementation details require care:
   exposes it because the app control mapping is not known.
 - `build_video_mode` always emits the full frame `33 05 00 <region> <mode> <sat> <sound> <softness>`,
   matching the app. Softness persists when sound is off and is floored at `0x01`.
-- `build_color_temp` is inherited from the H617A capture. The retained marked H6199 captures do not
-  contain an attributable colour-temperature action, so exact model parity is unproven.
+- `build_color_temp` is confirmed live on H6199: the command and big-endian kelvin word match the
+  shared builder byte-for-byte. Only the embedded white-preview RGB differs, because the app's
+  kelvin-to-RGB curve is not identical to `kelvin_to_rgb`; the device selects white from the kelvin
+  word, so the preview delta is cosmetic.
 - Whole-strip white brightness uses `33 05 15 02` with mask `0x7FFF`, inherited from H617A. No
   H6199 write in this command family is attributable, so this exposed surface is not yet
   H6199-validated.
@@ -89,11 +91,10 @@ The following implementation details require care:
 
 1. Capture a marked `AA 05` reply while video mode is active.
 2. Map the white-balance UI to both independent raw bytes.
-3. Capture H6199 colour temperature and compare it byte-for-byte with the shared builder.
-4. Attribute `33 05 15 02` before treating whole-strip white brightness as validated.
-5. Attribute representative H6199 scenes and expose the model-specific catalogue only after
+3. Attribute `33 05 15 02` before treating whole-strip white brightness as validated.
+4. Attribute representative H6199 scenes and expose the model-specific catalogue only after
    parity checks.
-6. Capture DIY speed and a second family before implementing H6199 authoring.
-7. Attribute a segment write before enabling any segment surface.
-8. Confirm whether music style or colour fields exist on H6199.
-9. Decode Blank Screen, per-side brightness, and the remaining `0xA9` controls.
+5. Capture DIY speed and a second family before implementing H6199 authoring.
+6. Attribute a segment write before enabling any segment surface.
+7. Confirm whether music style or colour fields exist on H6199.
+8. Decode Blank Screen, per-side brightness, and the remaining `0xA9` controls.
