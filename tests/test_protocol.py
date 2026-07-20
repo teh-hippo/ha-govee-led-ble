@@ -328,20 +328,21 @@ def test_build_sketch_matches_catalogue():
         _valid(frame)
 
 
-def test_build_vibrant_composes_header_and_entries():
-    # CAT §3: TYPE 0x03; the 11-byte header is undecoded and replayed verbatim (no leading 0x03).
-    assert proto._VIBRANT_HEADER == H("0900640101010f01ff0000")
-    content = VibrantContent(stops=((255, 0, 0), (0, 0, 255)))
-    entries = b"".join(bytes([i, 0x01, *proto._interpolate(content.stops, 15)[i]]) for i in range(15))
+def test_build_vibrant_matches_live_capture():
+    # VALIDATED live H617A 3.02.24 (2026-07-20): Vibrant is a TYPE 0x03 gradient sharing the Finger
+    # Sketch grammar. Stops interpolate per channel in gamma-2.2 linear light to the captured 15
+    # fills; body is motion/speed/brightness/bg + 15 single-segment groups; activation 33 05 0a 84 03.
+    content = VibrantContent(stops=((255, 127, 0), (255, 255, 0), (0, 255, 0)))
+    body = H(
+        "0900640101010f"  # motion 09, speed 00, brightness 64, bg 01 01 01, group count 0f
+        "01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff0007"
+        "01eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
+    )
     frames = proto.build_vibrant(content, segment_count=15)
-    # exact composition through the shared, byte-pinned fragmenter — proves NO duplicated 0x03
-    assert frames == [*proto.build_a3_multi(0x03, proto._VIBRANT_HEADER + entries), proto.build_diy_activate(0xF0)]
-    # on-wire preamble 01 <linecount> 03 <header verbatim>: exactly one type byte, header not duplicated.
-    # linecount is the fragmenter's computed value (0x06 for 15 five-byte entries); the docs' 14-byte
-    # preamble shows 0x05 from a shorter partial capture.
-    assert frames[0][2] == 0x01 and frames[0][4] == 0x03
-    assert frames[0][5:16] == H("0900640101010f01ff0000")
-    assert frames[-1] == H("33050af0000000000000000000000000000000cc")
+    assert frames == [*proto.build_a3_multi(0x03, body), proto.build_diy_activate(0x84, 0x03)]
+    # on-wire preamble 01 <linecount> 03: a complete 15-entry body is five A3 chunks, so linecount 0x05.
+    assert frames[0][2:5] == H("010503")
+    assert frames[-1] == H("33050a84030000000000000000000000000000bb")
     for frame in frames:
         _valid(frame)
 

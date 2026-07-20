@@ -134,8 +134,8 @@ catalogue is not yet surfaced by the light entity.
 
 A DIY effect is a user-authored effect built in the app's DIY editor: an animation family or richer
 template, a variant, a speed, and one or more colour groups. The integration implements Flat,
-Finger Sketch, Vibrant, and Combo content for H617A. Flat and Vibrant remain
-experimental; Finger Sketch and Combo are directly validated. rgbicv2 supports captured-body replay but not
+Finger Sketch, Vibrant, and Combo content for H617A. Flat remains experimental; Finger Sketch,
+Vibrant, and Combo are directly validated. rgbicv2 supports captured-body replay but not
 from-scratch authoring. Every value below was confirmed on-wire on the H617A unless explicitly
 marked inferred.
 
@@ -507,17 +507,18 @@ Notes:
 ## 3. Vibrant (multi-colour gradient)
 
 Vibrant is a client-side gradient capability. The user picks 2 to 5 colours and the app
-interpolates them across all 15 segments, then uploads the resolved per-segment colours as `0xA3`
-multi-frames and activates them with `33 05 0a <slot>` (the same mode-`0x0a` activation as flat
-DIY and Finger Sketch). Unlike scenes and animated DIY, it plays no animation. The integration's
-experimental builder reproduces the observed body but retains the fixed, partly undecoded header.
+interpolates them across all 15 segments **in gamma-2.2 linear light**, then uploads the resolved
+per-segment colours as `0xA3` multi-frames and activates them with `33 05 0a 84 03` (the same
+mode-`0x0a` DIY select as flat DIY and Finger Sketch). Unlike scenes and animated DIY, it plays no
+animation. `build_vibrant` reproduces the body byte-exact.
 
-The multi-frame body is `01 <linecount> 03 <header> <15 entries>`, where each entry is
-`<segment_index> 01 <R> <G> <B>`. Vibrant reuses the Finger Sketch `TYPE 0x03` encoding (section
-2.4): its header begins `03 09 00 ...`, that is Finger Sketch motion `0x09` (Clockwise) with the
-speed byte `0x00`. The full byte layout, the observed 14-byte preamble and its open questions are
-in [`ble-protocol-h617a.md`](ble-protocol-h617a.md) (section 6). Confirmed by decoding a
-red-orange to yellow to green to blue gradient across the segments.
+The multi-frame body reuses the Finger Sketch `TYPE 0x03` grammar (section 2.4):
+`01 <linecount> 03` then `EFFECT SPEED BRIGHT <bg RGB> <groupcount>` and one paint group per
+segment. Vibrant fixes EFFECT `0x09` (Clockwise), SPEED `0x00`, BRIGHT `0x64`, background
+`01 01 01` and `groupcount 0x0f`, so each of the 15 groups is `01 <R> <G> <B> <segment_index>`. The
+stop count changes only the resolved colours, never the structure. Full byte layout is in
+[`ble-protocol-h617a.md`](ble-protocol-h617a.md) (section 6). Confirmed byte-exact live for two-
+and three-stop gradients (2026-07-20).
 
 ## 4. Scene parameters
 

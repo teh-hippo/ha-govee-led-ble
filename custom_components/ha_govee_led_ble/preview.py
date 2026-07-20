@@ -26,7 +26,7 @@ from .custom_effects import (
     VibrantContent,
     content_to_dict,
 )
-from .protocol import _interpolate
+from .protocol import _VIBRANT_GAMMA, _interpolate
 from .scenes import SceneEntry
 
 type Frame = list[RGB]  # one animation frame: segment_count RGB cells, left to right
@@ -137,7 +137,7 @@ def _render_segments(content: SegmentContent, segment_count: int) -> Frame:
 def _render_vibrant(content: VibrantContent, segment_count: int) -> Frame:
     if not content.stops:
         return [_OFF] * segment_count
-    return list(_interpolate(content.stops, segment_count))
+    return list(_interpolate(content.stops, segment_count, gamma=_VIBRANT_GAMMA))
 
 
 def _render_sketch(content: SketchContent, segment_count: int, frame_index: int) -> Frame:

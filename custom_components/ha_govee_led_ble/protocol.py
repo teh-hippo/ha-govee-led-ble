@@ -38,6 +38,7 @@ COLOR_MODE_STATIC = 0x15
 COLOR_MODE_DIY = 0x0A
 DEFAULT_DIY_SLOT = 0xF0
 SKETCH_DIY_SLOT = 0x20
+VIBRANT_DIY_SLOT = 0x84
 
 
 MUSIC_SLUG_BY_ID: dict[int, str] = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
@@ -266,12 +267,25 @@ def build_sketch(content: SketchContent, *, segment_count: int) -> list[bytes]:
     return [*build_a3_multi(0x03, body, terminator=True), build_diy_activate(SKETCH_DIY_SLOT, 0x03)]
 
 
-def _interpolate(stops: tuple[RGB, ...], n: int) -> list[RGB]:
-    """Linear RGB gradient of ``stops`` across ``n`` segments (endpoints inclusive)."""
+_VIBRANT_GAMMA = 2.2  # Vibrant interpolates each channel in gamma-2.2 linear light (measured 2026-07-20)
+
+
+def _interpolate(stops: tuple[RGB, ...], n: int, *, gamma: float | None = None) -> list[RGB]:
+    """RGB gradient of ``stops`` across ``n`` segments (endpoints inclusive).
+
+    Linear in sRGB by default; pass ``gamma`` (Vibrant uses ``2.2``) to interpolate in linear
+    light, which is what the app writes on the wire.
+    """
     if n <= 0:
         return []
     if n == 1 or len(stops) == 1:
         return [stops[0]] * n
+    exponent = gamma if gamma is not None else 1.0
+
+    def _mix(a: int, b: int, fraction: float) -> int:
+        lower, upper = math.pow(a / 255, exponent), math.pow(b / 255, exponent)
+        return round(math.pow(lower + (upper - lower) * fraction, 1 / exponent) * 255)
+
     span = len(stops) - 1
     result: list[RGB] = []
     for index in range(n):
@@ -279,25 +293,20 @@ def _interpolate(stops: tuple[RGB, ...], n: int) -> list[RGB]:
         lower = min(int(position), span - 1)
         fraction = position - lower
         start_rgb, end_rgb = stops[lower], stops[lower + 1]
-        result.append(
-            (
-                round(start_rgb[0] + (end_rgb[0] - start_rgb[0]) * fraction),
-                round(start_rgb[1] + (end_rgb[1] - start_rgb[1]) * fraction),
-                round(start_rgb[2] + (end_rgb[2] - start_rgb[2]) * fraction),
-            )
-        )
+        channels = [_mix(a, b, fraction) for a, b in zip(start_rgb, end_rgb, strict=True)]
+        result.append((channels[0], channels[1], channels[2]))
     return result
 
 
-# 11 header bytes with NO leading 0x03 (that is build_a3_multi's type_byte); undecoded, replayed verbatim.
-_VIBRANT_HEADER = bytes.fromhex("0900640101010f01ff0000")
-
-
 def build_vibrant(content: VibrantContent, *, segment_count: int) -> list[bytes]:
-    # EXPERIMENTAL: harness=diy-vibrant encoding=capture-pinned
-    seg_rgb = _interpolate(content.stops, segment_count)
-    entries = b"".join(bytes([index, 0x01, *seg_rgb[index]]) for index in range(segment_count))
-    return [*build_a3_multi(0x03, _VIBRANT_HEADER + entries), build_diy_activate(DEFAULT_DIY_SLOT)]
+    # VALIDATED: Vibrant live H617A 3.02.24 (2026-07-20); TYPE 0x03 gradient body + 33 05 0a 84 03.
+    seg_rgb = _interpolate(content.stops, segment_count, gamma=_VIBRANT_GAMMA)
+    body = bytes([0x09, 0x00, 0x64, 0x01, 0x01, 0x01])  # motion Clockwise, speed 0, brightness 100, bg (1,1,1)
+    groups = _group_by_colour_0based(seg_rgb)
+    body += bytes([len(groups)])
+    for rgb, indices in groups:
+        body += bytes([len(indices), *rgb, *indices])
+    return [*build_a3_multi(0x03, body), build_diy_activate(VIBRANT_DIY_SLOT, 0x03)]
 
 
 def build_flat_diy(content: FlatContent) -> list[bytes]:
@@ -773,7 +782,7 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_sketch": Evidence(
         "VALIDATED", "H617A §2.4 Finger Sketch TYPE 0x03; body/framing/activation live 2026-07-16"
     ),
-    "build_vibrant": Evidence("EXPERIMENTAL", "CAT §3 Vibrant TYPE 0x03; 11-byte header undecoded, replayed verbatim"),
+    "build_vibrant": Evidence("VALIDATED", "Live H617A 2026-07-20; TYPE 0x03 gamma-2.2 gradient, 33 05 0a 84 03"),
     "build_flat_diy": Evidence("EXPERIMENTAL", "CAT §2.2 flat DIY TYPE 0x04; capture-pinned, gated Tier-2"),
     "build_combo": Evidence(
         "VALIDATED",

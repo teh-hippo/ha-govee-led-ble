@@ -13,7 +13,7 @@ from custom_components.ha_govee_led_ble.custom_effects import (
     UnknownContent,
     VibrantContent,
 )
-from custom_components.ha_govee_led_ble.protocol import _interpolate
+from custom_components.ha_govee_led_ble.protocol import _VIBRANT_GAMMA, _interpolate
 from custom_components.ha_govee_led_ble.scenes import SceneEntry
 
 _RED = (255, 0, 0)
@@ -30,7 +30,7 @@ def test_render_segments_static_pads_missing_with_off():
 
 def test_render_vibrant_matches_interpolate_parity():
     stops = ((0, 0, 0), (255, 255, 255))
-    assert p.render(VibrantContent(stops=stops), 5, 0) == list(_interpolate(stops, 5))
+    assert p.render(VibrantContent(stops=stops), 5, 0) == list(_interpolate(stops, 5, gamma=_VIBRANT_GAMMA))
 
 
 def test_render_vibrant_empty_stops_is_off():

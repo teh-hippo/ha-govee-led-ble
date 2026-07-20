@@ -16,8 +16,8 @@ Companion documents:
 Status: power, brightness, RGB and white/Kelvin colour, per-segment control, scenes and all 11
 music modes are implemented and confirmed live on firmware `3.02.24`. Scheduled-timer writes are
 observed live but ship gated (Tier-2). Flat, Finger
-Sketch, Vibrant, and Combo builders exist; Flat and Vibrant remain experimental,
-while Finger Sketch and Combo are directly validated. rgbicv2 effects can replay captured bodies through
+Sketch, Vibrant, and Combo builders exist; Flat remains experimental, while Finger Sketch,
+Vibrant, and Combo are directly validated. rgbicv2 effects can replay captured bodies through
 `build_scene_multi`, and Workshop is now fully mapped byte-exact (transport header, applied-area
 window, colour gradient, both movement sub-blocks, priority and layer ordering) though not yet
 exposed as a from-scratch builder. See section 7 for implementation status. Raw pcaps remain outside the repository because
@@ -625,14 +625,17 @@ all confirmed live on firmware `3.02.24` (2026-07-16). Full detail in
 
 ### Vibrant (`TYPE 0x03`)
 
-An observed 14-byte preamble `01 05 03 09 00 64 01 01 01 0f 01 ff 00 00` (the leading `01 05 03`
-being start marker, linecount and type; this `0x05` linecount came from a truncated capture, and
-the fragmenter computes `0x06` for a complete 15-entry body), then 15 per-segment entries, each
-`<segment_index> 01 <R> <G> <B>`. Activation `33 05 0a <slot>`. Vibrant is the static-gradient
-member of the `TYPE 0x03` family: the bytes after the type are `09 00`, that is Finger Sketch
-motion `0x09` (Clockwise) with the speed byte `0x00`. The 11 header bytes after the type are not
-yet fully decoded (section 8). Confirmed by decoding a red-orange to yellow to green to blue
-gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segment 13 blue.
+Vibrant is the static-gradient member of the `TYPE 0x03` family and shares the Finger Sketch
+grammar exactly: `01 <linecount> 03` then `EFFECT SPEED BRIGHT <bg RGB> <groupcount>` followed by
+one paint group per segment. For Vibrant these are fixed: EFFECT `0x09` (Clockwise), SPEED `0x00`,
+BRIGHT `0x64` (100), background `01 01 01`, `groupcount 0x0f` (15), then 15 single-segment groups
+`01 <R> <G> <B> <segment_index>`. A complete 15-entry body is 82 bytes, five `0xA3` chunks, so the
+`<linecount>` is `0x05` (the final data chunk carries index `0xFF`; there is no empty terminator).
+Activation is `33 05 0a 84 03` (DIY select, slot `0x84`, `TYPE 0x03`). The app interpolates the
+user's 2..5 stops across the 15 segments per channel in **gamma-2.2 linear light** (not linear
+sRGB); the number of stops changes only the resolved per-segment colours, never the structure.
+Confirmed byte-exact live (H617A 3.02.24, 2026-07-20) for two- and three-stop gradients, and
+`build_vibrant` reproduces it.
 
 ## 7. Implementation status against protocol.py
 
@@ -650,7 +653,7 @@ gradient: segment 0 red-orange, segments 6-7 yellow, segments 9-10 green, segmen
 | Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Implemented custom-effect builders. Finger Sketch body, two-frame `0xA3` framing and `33 05 0a 20 03` activation are directly validated on H617A firmware 3.02.24; the current Combo body and default slot `0xF0` are directly validated too. Flat remains capture-pinned. Slot read-back cannot identify the active body. |
 | Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | `build_scene_multi` (transport) | Fully mapped byte-exact: transport header, layer records, Select Type, applied-area window (`r1`), palette, timing, brightness, colour gradient (`r13` bit `0x01`), both movement sub-blocks, the direction enum and priority (`r29` = `0` or `1-5`). Layers are not positionally reorderable; stacking is priority-only. No from-scratch builder yet. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
-| Vibrant `0xA3` (type `0x03`) + `33 05 0a` | `build_vibrant` | Implemented from the capture-pinned header and per-segment gradient entries; remains experimental while the header is partly undecoded. |
+| Vibrant `0xA3` (type `0x03`) + `33 05 0a 84 03` | `build_vibrant` | Validated live: the Finger Sketch `TYPE 0x03` grammar with a gamma-2.2 linear-light gradient across the 15 segments. |
 | Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
 | Video mode `33 05 00` | `build_video_mode` | H6199 only. Always emits the full frame `33 05 00 <region> <mode> <sat> <sound> <softness>`; softness persists when sound is off and is floored at `0x01`. |
 | Video white balance `33 a9` | `build_video_white_balance` | H6199 raw two-axis frame only; no one-dimensional UI mapping. |
@@ -676,7 +679,7 @@ The remaining H617A work is bounded:
   meteor/shower/Stack directions); only from-scratch rgbicv2 authoring remains;
 - verify scene speed and palette value arrays beyond the Aurora anchor;
 - verify the remaining music controls and read-back semantics;
-- complete semantic validation of the experimental Flat and Vibrant builders.
+- complete semantic validation of the experimental Flat builder (Vibrant is now validated).
 
 The authoritative ordered backlog is
 [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md). Effect identities and parameter
