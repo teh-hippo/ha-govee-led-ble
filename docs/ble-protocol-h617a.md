@@ -588,11 +588,22 @@ exposes four directions: Forward, Backward, Forward and Backward, and Backward a
 `moveIn`, `bright` arrays plus `defaultIndex`), the client-side motion model. The type and value
 bytes at offsets 2 to 4 and the brightness sub-block are decoded.
 
-Colour `param1` is the speed slider: a controlled Brilliant sweep with fixed colours measured it
-linear from `0x15` (21) at 0% to `0xe3` (227) at 100%, ~`0x7e` (126) at midpoint, with untouched
-bodies left at `0xff` until the slider first moves. Still inferred (need a capture): the concrete
-speed-mode numeric arrays for the other rgbicv2 effects, the exact pixel-level difference between
-numbered sub-styles (for example Brilliant `param2` `0x32` vs `0x14`, Bloom `0x14` vs `0x16`), and
+The speed handle drives a per-effect entry of the speed-mode lookup, mapped live with fixed-colour
+sweeps. In-place effects use colour `param1`: Brilliant `0x15`..`0xe3`, Sparkle `0xc8`..`0xf5` and
+Colorful starry sky `0x9c`..`0xfa`, each linear, with Sparkle and starry sky mirroring the same
+rate into the brightness and in-area (`moveIn`) rate bytes; untouched bodies sit at `0xff` until
+the slider first moves. Travelling effects (Colorful meteor, meteor shower) instead drive the
+whole-area `moveAll` rate param (`0xcb`..`0xfc`). Stack has no speed handle; its relative-brightness
+handle sets the brightness interval (upper = lower) in both records, linear from the template floor
+`0x19` to `0xff`.
+
+Direction is the numbered effect variant, not a separate command or toggle: meteor and meteor
+shower flip each record's whole-area `moveAll` mode nibble (`0x10` mode 0 vs `0x12` mode 2, with a
+lockstep flags bit and brightness byte); Stack1 vs Stack2 swap the in-area `moveIn` mode (`0x_6` vs
+`0x_4`) between the stack and moving records, colours unchanged.
+
+Still inferred (need a capture): the exact pixel-level difference between numbered sub-styles that
+are not a direction (for example Brilliant `param2` `0x32` vs `0x14`, Bloom `0x14` vs `0x16`) and
 the meaning of colour `param2`. Per-effect colour-group ranges, speed domains and directions are in
 [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.7. The full teardown is kept in
 internal analysis notes.
@@ -661,7 +672,8 @@ Remaining gaps:
 
 The remaining H617A work is bounded:
 
-- finish rgbicv2 per-effect parameter maps and from-scratch authoring;
+- rgbicv2 per-effect parameter maps are done (all speed handles, Stack brightness, and
+  meteor/shower/Stack directions); only from-scratch rgbicv2 authoring remains;
 - verify scene speed and palette value arrays beyond the Aurora anchor;
 - verify the remaining music controls and read-back semantics;
 - complete semantic validation of the experimental Flat and Vibrant builders.

@@ -466,12 +466,12 @@ floors and defaults:
 | Effect | Code | Colour groups (label: min..max) | Speed [min, max, def] (0..255) | Brightness / range | Directions |
 |---|---|---|---|---|---|
 | Brilliant | 501 | Background: exactly 1; Embellishment: 4..8 | [21, 227] (colour `param1` `0x15`..`0xe3`) | relative-brightness interval 10..100% | none |
-| Colorful starry sky | 502 | single: 1..8 | [1, 255, 200] | star size (payload-driven; code fallback 1..25, observed ~1..12); relative brightness on the V1 template | none |
-| Colorful meteor | 504 | single: 1..8 | [200, 255, 253] | none | Clockwise, Counterclockwise |
-| Colorful meteor shower | 503 | single: 3..8 | [200, 255, 253] | none | Clockwise, Counterclockwise |
-| Sparkle | 505 | Embellishment: 1..8; Background: exactly 1 | [200, 245, 240] | relative-brightness interval (0..255) on the V1 template | none |
+| Colorful starry sky | 502 | single: 1..8 | colour `param1` `0x9c`..`0xfa` (156..250, measured) | star size (payload-driven; code fallback 1..25, observed ~1..12); relative brightness on the V1 template | none |
+| Colorful meteor | 504 | single: 1..8 | [200, 255, 253] (`moveAll` rate, measured `0xcb`..`0xfc`) | none | Clockwise, Counterclockwise (variant) |
+| Colorful meteor shower | 503 | single: 3..8 | [200, 255, 253] (`moveAll` rate) | none | Clockwise, Counterclockwise (variant) |
+| Sparkle | 505 | Embellishment: 1..8; Background: exactly 1 | [200, 245, 240] (colour `param1` `0xc8`..`0xf5`, measured) | relative-brightness interval (0..255) on the V1 template | none |
 | Bloom | 506 | Bloom colour: 2..8; Moving colour: 2..8 | none (no speed slider) | relative brightness 1..100% | none shown |
-| Stack | 507 | Stack colours: 1..8; Moving colour: 1..8 | n/a (brightness slider instead) | relative brightness 1..100 (default 100) | Clockwise, Counterclockwise |
+| Stack | 507 | Stack colours: 1..8; Moving colour: 1..8 | n/a (brightness slider instead) | relative brightness 1..100 = `0x19`..`0xff` (both records, measured) | Stack1/Stack2 variant (in-area mode 6/4) |
 
 Notes:
 
@@ -482,9 +482,16 @@ Notes:
 - Brightness records are template-specific rather than universally scaled by `pct x 2.55`.
   Bloom's single relative-brightness control uses a `0x32` floor and produced
   10/20/30% = `0x45/0x5a/0x6f`. Brilliant exposes a two-handle interval from 10 to 100%.
-  Brilliant's speed handle maps to colour `param1` (`0x15`..`0xe3`, linear); the exact Sparkle
-  field mapping remains to be isolated
-  ([`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6).
+  Speed handles were mapped live: in-place effects (Brilliant, Sparkle, Colorful starry sky) drive
+  colour `param1` (Brilliant `0x15`..`0xe3`, Sparkle `0xc8`..`0xf5`, sky `0x9c`..`0xfa`, each
+  mirrored into the brightness/`moveIn` rate bytes); travelling effects (Colorful meteor, meteor
+  shower) drive the whole-area `moveAll` rate (`0xcb`..`0xfc`); Stack has no speed, only a
+  relative-brightness handle that sets the brightness interval (`0x19` floor to `0xff`) in both
+  records. See [`ble-protocol-h617a.md`](ble-protocol-h617a.md) section 6.
+- Directions (Clockwise/Counterclockwise) are the numbered effect variant, not an in-editor
+  toggle: meteor and meteor shower flip each record's whole-area `moveAll` mode nibble (`0x10` vs
+  `0x12`); Stack1 vs Stack2 swap the in-area `moveIn` mode (`0x_6`/`0x_4`) between the stack and
+  moving records. Colours and colour params are unchanged.
 
 **Finger Sketch**: freeform paint, no colour-group min/max. **Combo**: one shared flat palette
 (up to 8 colours) across up to four chained effects.
@@ -560,10 +567,8 @@ The effect-specific gaps are:
 
 | # | App action | Confirms |
 | --- | --- | --- |
-| 1 | Move each Sparkle and Stack slider independently. | Concrete speed lookups and colour parameter meanings. |
-| 2 | Reverse Colorful meteor and meteor shower independently. | Direction and variant value spaces. |
-| 3 | Exercise each remaining H617A music control independently. | The complete per-mode parameter surface and its capture-pinned offsets. |
-| 4 | Exercise one unproven Workshop enum or movement combination. | The next packed value without broadening the run. |
+| 1 | Exercise each remaining H617A music control independently. | The complete per-mode parameter surface and its capture-pinned offsets. |
+| 2 | Exercise one unproven Workshop enum or movement combination. | The next packed value without broadening the run. |
 
 Effect demonstrations (what each effect looks like, for entity naming and previews) are a
 separate research task and do not require a capture.
