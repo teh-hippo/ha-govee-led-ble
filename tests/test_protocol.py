@@ -248,6 +248,15 @@ def test_build_a3_multi():
     ]
     for f in frames:
         _valid(f)
+    # A single-chunk body is still framed as a numbered data frame + an empty 0xFF terminator
+    # (linecount 0x02), never a lone frame; this is the form flat DIY uses for 1-3 colour palettes.
+    single = proto.build_a3_multi(0x04, H("010064038b00ff"))
+    assert single == [
+        H("a300010204010064038b00ff00000000000000b6"),
+        H("a3ff00000000000000000000000000000000005c"),
+    ]
+    for f in single:
+        _valid(f)
     # build_scene_multi stays byte-identical: shared fragmenter + the 33 05 04 activate frame.
     b64 = base64.b64encode(bytes(range(40))).decode()
     assert proto.build_scene_multi(b64, 2205) == [*proto.build_a3_multi(2, bytes(range(40))), proto.build_scene(2205)]
@@ -355,6 +364,29 @@ def test_build_flat_diy_matches_catalogue():
     assert frames == [*proto.build_a3_multi(0x04, body), proto.build_diy_activate(0xF0)]
     assert frames[-1] == H("33050af0000000000000000000000000000000cc")
     for frame in frames:
+        _valid(frame)
+
+
+def test_build_flat_diy_single_chunk_live():
+    # Live H617A: a 1-3 colour flat body fits one A3 chunk, yet the app always sends a numbered
+    # data frame + an empty 0xFF terminator (linecount 0x02), never a lone frame. Byte-pinned to
+    # captures h617a-diy-jumping1-a (Jumping1, one colour 8B00FF) and diy-crossing (Crossing,
+    # three colours); the activation slot is app-assigned (0xF0 default here).
+    jumping1 = FlatContent(family=0x01, variant=0x00, speed=0x64, palette=((0x8B, 0x00, 0xFF),))
+    assert proto.build_flat_diy(jumping1) == [
+        H("a300010204010064038b00ff00000000000000b6"),
+        H("a3ff00000000000000000000000000000000005c"),
+        H("33050af0000000000000000000000000000000cc"),
+    ]
+    crossing = FlatContent(
+        family=0x0A, variant=0x00, speed=0x64, palette=((0xFF, 0, 0), (0xFF, 0x7D, 0), (0xFF, 0xFF, 0))
+    )
+    assert proto.build_flat_diy(crossing) == [
+        H("a3000102040a006409ff0000ff7d00ffff0000be"),
+        H("a3ff00000000000000000000000000000000005c"),
+        H("33050af0000000000000000000000000000000cc"),
+    ]
+    for frame in proto.build_flat_diy(jumping1) + proto.build_flat_diy(crossing):
         _valid(frame)
 
 

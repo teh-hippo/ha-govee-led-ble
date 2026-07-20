@@ -174,19 +174,27 @@ def _a3_frame(index: int, chunk: bytes) -> bytes:
 def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> list[bytes]:
     """Fragment a body into 0xA3 multi-frames (H617A §6).
 
-    Frames ``[0x01, chunk_count, type_byte, *body]`` into 17-byte chunks, each emitted as a
+    Frames ``[0x01, linecount, type_byte, *body]`` into 17-byte chunks, each emitted as a
     20-byte ``0xA3 <index|0xFF>`` frame with an XOR checksum. Shared by scenes, music params and
     custom effects so there is a single fragmenter and a single XOR path. With ``terminator`` the
     data chunks keep sequential indices and an extra empty ``0xFF`` frame closes the sequence, the
     form the Govee app uses for Finger Sketch (``TYPE 0x03``).
+
+    The app never emits a lone frame: a body that fits in a single chunk is still sent as a
+    numbered data frame followed by an empty ``0xFF`` terminator, so every sequence carries at
+    least two frames. This is the form flat DIY (``TYPE 0x04``) uses for one- to three-colour
+    palettes.
     """
     data = bytes([type_byte]) + body
     chunk_count = math.ceil((len(data) + 2) / 17)
-    payload = bytes([0x01, chunk_count + (1 if terminator else 0)]) + data
+    trailing_terminator = terminator or chunk_count == 1
+    payload = bytes([0x01, chunk_count + (1 if trailing_terminator else 0)]) + data
     chunks = [payload[index : index + 17] for index in range(0, len(payload), 17)]
     last = len(chunks) - 1
-    packets = [_a3_frame(index if terminator or index != last else 0xFF, chunk) for index, chunk in enumerate(chunks)]
-    if terminator:
+    packets = [
+        _a3_frame(index if trailing_terminator or index != last else 0xFF, chunk) for index, chunk in enumerate(chunks)
+    ]
+    if trailing_terminator:
         packets.append(_a3_frame(0xFF, b""))
     return packets
 
@@ -310,7 +318,7 @@ def build_vibrant(content: VibrantContent, *, segment_count: int) -> list[bytes]
 
 
 def build_flat_diy(content: FlatContent) -> list[bytes]:
-    # EXPERIMENTAL: harness=diy-flat encoding=capture-pinned
+    # VALIDATED: flat DIY live H617A 3.02.24; TYPE 0x04 body + 33 05 0a <slot>, two-frame envelope.
     palette = b"".join(bytes(colour) for colour in content.palette)
     body = bytes([content.family, content.variant, content.speed, len(palette)]) + palette
     return [*build_a3_multi(0x04, body), build_diy_activate(DEFAULT_DIY_SLOT)]
@@ -783,7 +791,7 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
         "VALIDATED", "H617A §2.4 Finger Sketch TYPE 0x03; body/framing/activation live 2026-07-16"
     ),
     "build_vibrant": Evidence("VALIDATED", "Live H617A 2026-07-20; TYPE 0x03 gamma-2.2 gradient, 33 05 0a 84 03"),
-    "build_flat_diy": Evidence("EXPERIMENTAL", "CAT §2.2 flat DIY TYPE 0x04; capture-pinned, gated Tier-2"),
+    "build_flat_diy": Evidence("VALIDATED", "CAT §2.2 flat DIY TYPE 0x04 + 33 05 0a slot; live H617A byte-exact"),
     "build_combo": Evidence(
         "VALIDATED",
         "H617A §6 Combo TYPE 04 FAMILY FF; current iOS body plus slot F0 direct write/read-back 2026-07-15",

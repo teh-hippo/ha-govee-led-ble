@@ -128,10 +128,9 @@ catalogue is not yet surfaced by the light entity.
 
 A DIY effect is a user-authored effect built in the app's DIY editor: an animation family or richer
 template, a variant, a speed, and one or more colour groups. The integration implements Flat,
-Finger Sketch, Vibrant, and Combo content for H617A. Flat remains experimental; Finger Sketch,
-Vibrant, and Combo are directly validated. rgbicv2 supports captured-body replay but not
-from-scratch authoring. Every value below was confirmed on-wire on the H617A unless explicitly
-marked inferred.
+Finger Sketch, Vibrant, and Combo content for H617A, all directly validated byte-for-byte on the
+wire. rgbicv2 supports captured-body replay but not from-scratch authoring. Every value below was
+confirmed on-wire on the H617A unless explicitly marked inferred.
 
 ### 2.1 Four body encodings
 
@@ -203,6 +202,12 @@ Worked example (Jumping1, seven colours, default speed), activation `33 05 0a f0
 On the wire: Fade1 -> Fade2 changed only `VARIANT`; Marquee1 (`0x03`) -> Marquee2 (`0x04`)
 incremented `VARIANT` by one; sweeping the colour count 6 -> 3 tracked `PLEN` through
 `0x12, 0x0f, 0x0c, 0x09`; the speed slider moved only offset 5 between `0x01` and `0x64`.
+
+Every flat body uploads as exactly two `0xA3` frames with `linecount 0x02`: a numbered data frame
+(`idx 0x00`) carrying `01 02 04` plus the first 14 body bytes, then an `idx 0xFF` frame that holds
+the palette overflow for four-or-more-colour palettes or is empty for one-to-three-colour palettes
+(which fit the single data frame). The app never emits a lone frame, so `build_a3_multi` always
+closes a single-chunk body with an empty `0xFF` terminator.
 
 ### 2.3 rgbicv2 encoding (`TYPE 0x02`)
 

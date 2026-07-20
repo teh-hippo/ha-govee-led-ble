@@ -330,10 +330,12 @@ activate it with a short `0x33` command. They share the same framing:
 - Each frame is `a3 <idx> <17-byte chunk>` with the XOR checksum at `byte[19]`. `idx` counts
   `00, 01, ...`. Scenes and DIY mark the last data chunk `idx = 0xff`, so `linecount` is the
   number of data chunks; Finger Sketch instead appends a separate empty `idx = 0xff` terminator
-  frame, making its `linecount` the data-chunk count plus one. Partial and empty chunks are
+  frame, making its `linecount` the data-chunk count plus one. A body that fits a single chunk
+  (short flat palettes) still keeps its data frame at `idx = 0x00` and closes with an empty
+  `idx = 0xff` terminator, so `linecount` is never below `0x02`. Partial and empty chunks are
   zero-padded to 17 bytes.
 - The reassembled body across all chunks begins `01 <linecount> <TYPE> ...`, where `linecount`
-  is the chunk count as above (`ceil(payload / 17)` for the scene/DIY form).
+  is the chunk count as above (`ceil(payload / 17)`, floored at 2, for the scene/DIY form).
 
 DIY uses **four** encodings (content catalogue in
 [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2). `TYPE` alone is not unique
