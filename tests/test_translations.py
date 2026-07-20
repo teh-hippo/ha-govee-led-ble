@@ -24,7 +24,7 @@ def test_entity_translation_keys_have_names():
     entity = json.loads(_STRINGS.read_text())["entity"]
     expected = {
         "image": {"effect_preview"},
-        "number": {"sleep_timer_duration", "video_white_balance", "music_sensitivity", "music_daynight_speed"},
+        "number": {"sleep_timer_duration", "music_sensitivity", "music_daynight_speed"},
         "select": {"music_style", "music_fountain_direction", "video_capture_region"},
         "sensor": {"active_mode"},
         "switch": {"effect_preview_reduce_motion", "poweroff_memory", "sleep_timer", "wakeup_timer"},

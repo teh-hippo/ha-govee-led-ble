@@ -235,6 +235,15 @@ def test_build_a3_multi():
     ]
     for f in frames:
         _valid(f)
+    # A single-chunk body is still framed as a numbered data frame + an empty 0xFF terminator
+    # (linecount 0x02), never a lone frame; this is the form flat DIY uses for 1-3 colour palettes.
+    single = proto.build_a3_multi(0x04, H("010064038b00ff"))
+    assert single == [
+        H("a300010204010064038b00ff00000000000000b6"),
+        H("a3ff00000000000000000000000000000000005c"),
+    ]
+    for f in single:
+        _valid(f)
     # build_scene_multi stays byte-identical: shared fragmenter + the 33 05 04 activate frame.
     b64 = base64.b64encode(bytes(range(40))).decode()
     assert proto.build_scene_multi(b64, 2205) == [*proto.build_a3_multi(2, bytes(range(40))), proto.build_scene(2205)]
@@ -278,6 +287,25 @@ def test_build_segment_content_matches_captured_frames():
         _valid(frame)
 
 
+def test_build_sketch_matches_live_capture():
+    # Finger Sketch live H617A 3.02.24 (2026-07-16): Clockwise, bg white, 3 red segments 0,1,2.
+    content = SketchContent(
+        motion=0x09,
+        speed=0x33,
+        brightness=0x64,
+        background=(255, 255, 255),
+        colors=((255, 0, 0), (255, 0, 0), (255, 0, 0)),
+    )
+    frames = proto.build_sketch(content, segment_count=15)
+    assert frames == [
+        H("a300010203093364ffffff0103ff0000000102fc"),  # 01 <count 2> 03 EFFECT SPEED BRIGHT <bg> <groups>
+        H("a3ff00000000000000000000000000000000005c"),  # empty 0xFF terminator frame
+        H("33050a200300000000000000000000000000001f"),  # activation 33 05 0a <slot 0x20> <type 0x03>
+    ]
+    for frame in frames:
+        _valid(frame)
+
+
 def test_build_sketch_matches_catalogue():
     # CAT §2.4: Clockwise, background blue, one green group over segments 0,1,2,4 (0-based).
     content = SketchContent(
@@ -289,26 +317,28 @@ def test_build_sketch_matches_catalogue():
     )
     body = H("0933640000ff010400ff0000010204")  # EFFECT SPEED BRIGHT <bg> <groups> <segcount fill segidx...>
     frames = proto.build_sketch(content, segment_count=15)
-    assert frames == [*proto.build_a3_multi(0x03, body), proto.build_diy_activate(0xF0)]
-    assert frames[-1] == H("33050af0000000000000000000000000000000cc")  # activation 33 05 0a f0
+    # Composition through the shared fragmenter: terminated A3 stream then slot/type activation.
+    assert frames == [*proto.build_a3_multi(0x03, body, terminator=True), proto.build_diy_activate(0x20, 0x03)]
+    assert frames[-1] == H("33050a200300000000000000000000000000001f")  # activation 33 05 0a 20 03
     for frame in frames:
         _valid(frame)
 
 
-def test_build_vibrant_composes_header_and_entries():
-    # CAT §3: TYPE 0x03; the 11-byte header is undecoded and replayed verbatim (no leading 0x03).
-    assert proto._VIBRANT_HEADER == H("0900640101010f01ff0000")
-    content = VibrantContent(stops=((255, 0, 0), (0, 0, 255)))
-    entries = b"".join(bytes([i, 0x01, *proto._interpolate(content.stops, 15)[i]]) for i in range(15))
+def test_build_vibrant_matches_live_capture():
+    # VALIDATED live H617A 3.02.24 (2026-07-20): Vibrant is a TYPE 0x03 gradient sharing the Finger
+    # Sketch grammar. Stops interpolate per channel in gamma-2.2 linear light to the captured 15
+    # fills; body is motion/speed/brightness/bg + 15 single-segment groups; activation 33 05 0a 84 03.
+    content = VibrantContent(stops=((255, 127, 0), (255, 255, 0), (0, 255, 0)))
+    body = H(
+        "0900640101010f"  # motion 09, speed 00, brightness 64, bg 01 01 01, group count 0f
+        "01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff0007"
+        "01eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
+    )
     frames = proto.build_vibrant(content, segment_count=15)
-    # exact composition through the shared, byte-pinned fragmenter — proves NO duplicated 0x03
-    assert frames == [*proto.build_a3_multi(0x03, proto._VIBRANT_HEADER + entries), proto.build_diy_activate(0xF0)]
-    # on-wire preamble 01 <linecount> 03 <header verbatim>: exactly one type byte, header not duplicated.
-    # linecount is the fragmenter's computed value (0x06 for 15 five-byte entries); the docs' 14-byte
-    # preamble shows 0x05 from a shorter partial capture.
-    assert frames[0][2] == 0x01 and frames[0][4] == 0x03
-    assert frames[0][5:16] == H("0900640101010f01ff0000")
-    assert frames[-1] == H("33050af0000000000000000000000000000000cc")
+    assert frames == [*proto.build_a3_multi(0x03, body), proto.build_diy_activate(0x84, 0x03)]
+    # on-wire preamble 01 <linecount> 03: a complete 15-entry body is five A3 chunks, so linecount 0x05.
+    assert frames[0][2:5] == H("010503")
+    assert frames[-1] == H("33050a84030000000000000000000000000000bb")
     for frame in frames:
         _valid(frame)
 
@@ -324,6 +354,29 @@ def test_build_flat_diy_matches_catalogue():
         _valid(frame)
 
 
+def test_build_flat_diy_single_chunk_live():
+    # Live H617A: a 1-3 colour flat body fits one A3 chunk, yet the app always sends a numbered
+    # data frame + an empty 0xFF terminator (linecount 0x02), never a lone frame. Byte-pinned to
+    # captures h617a-diy-jumping1-a (Jumping1, one colour 8B00FF) and diy-crossing (Crossing,
+    # three colours); the activation slot is app-assigned (0xF0 default here).
+    jumping1 = FlatContent(family=0x01, variant=0x00, speed=0x64, palette=((0x8B, 0x00, 0xFF),))
+    assert proto.build_flat_diy(jumping1) == [
+        H("a300010204010064038b00ff00000000000000b6"),
+        H("a3ff00000000000000000000000000000000005c"),
+        H("33050af0000000000000000000000000000000cc"),
+    ]
+    crossing = FlatContent(
+        family=0x0A, variant=0x00, speed=0x64, palette=((0xFF, 0, 0), (0xFF, 0x7D, 0), (0xFF, 0xFF, 0))
+    )
+    assert proto.build_flat_diy(crossing) == [
+        H("a3000102040a006409ff0000ff7d00ffff0000be"),
+        H("a3ff00000000000000000000000000000000005c"),
+        H("33050af0000000000000000000000000000000cc"),
+    ]
+    for frame in proto.build_flat_diy(jumping1) + proto.build_flat_diy(crossing):
+        _valid(frame)
+
+
 def test_build_combo_matches_catalogue():
     # CAT §2.5: Fade1 (00,00) + Marquee1 (03,03), shared seven-colour palette; seqlen = 2*count = 0x04.
     content = ComboContent(variant=0x00, speed=0x32, palette=_DEFAULT_PALETTE, effects=((0x00, 0x00), (0x03, 0x03)))
@@ -336,6 +389,32 @@ def test_build_combo_matches_catalogue():
     assert frames[-1] == H("33050af0000000000000000000000000000000cc")
     for frame in frames:
         _valid(frame)
+
+
+def test_build_combo_matches_current_ios_capture():
+    content = ComboContent(
+        speed=0x33,
+        palette=((255, 0, 0),),
+        effects=((0x00, 0x00), (0x01, 0x00), (0x03, 0x03), (0x08, 0x09)),
+    )
+    body = H("ff003303ff0000080000010003030809")
+    frames = proto.build_combo(content, slot=0xEF)
+    assert frames == [*proto.build_a3_multi(0x04, body), H("33050aef000000000000000000000000000000d3")]
+    for frame in frames:
+        _valid(frame)
+
+
+def test_build_combo_matches_direct_f0_probe():
+    content = ComboContent(
+        speed=0x33,
+        palette=((255, 0, 0), (0, 0, 255)),
+        effects=((0x00, 0x00), (0x03, 0x03)),
+    )
+    assert proto.build_combo(content) == [
+        H("a300010204ff003306ff00000000ff0400000369"),
+        H("a3ff03000000000000000000000000000000005f"),
+        H("33050af0000000000000000000000000000000cc"),
+    ]
 
 
 def test_build_custom_effect_dispatches_each_kind():
@@ -391,29 +470,41 @@ def test_video_mode():
         assert (tuple(pkt[idx]) if isinstance(idx, slice) else pkt[idx]) == exp
         _valid(pkt)
 
-    chk({}, slice(0, 6), (0x33, 0x05, 0x00, 0x01, 0x00, 100))
-    assert proto.build_video_mode() == H("3305000100640000000000000000000000000053")
+    # iOS always sends the full 8-byte frame: 33 05 00 <region> <mode> <sat> <sound> <softness>.
+    chk({}, slice(0, 8), (0x33, 0x05, 0x00, 0x01, 0x00, 100, 0x00, 100))
+    assert proto.build_video_mode() == H("3305000100640064000000000000000000000037")
     chk(dict(full_screen=False, game_mode=True, saturation=75), slice(3, 6), (0x00, 0x01, 75))
     chk(dict(sound_effects=True, sound_effects_softness=50), slice(6, 8), (0x01, 50))
-    chk(dict(sound_effects=False), 6, 0x00)
+    # Sound off still carries softness (it persists); default softness is 0x64.
+    assert proto.build_video_mode(sound_effects=False, sound_effects_softness=100) == H(
+        "3305000100640064000000000000000000000037"
+    )
+    chk(dict(sound_effects=False, sound_effects_softness=1), slice(6, 8), (0x00, 0x01))
     chk(dict(saturation=200), 5, 100)
     chk(dict(saturation=-5), 5, 0)
     chk(dict(sound_effects=True, sound_effects_softness=200), 7, 100)
-    chk(dict(sound_effects=True, sound_effects_softness=-5), 7, 0)
+    chk(dict(sound_effects=True, sound_effects_softness=-5), 7, 1)
+    chk(dict(sound_effects=False, sound_effects_softness=-5), 7, 1)  # floor 0x01 applies with sound off too
     chk(
         dict(full_screen=False, game_mode=True, saturation=60, sound_effects=True, sound_effects_softness=75),
         slice(2, 8),
         (0x00, 0x00, 0x01, 60, 0x01, 75),
     )
+    # Live H6199 iOS capture (h6199-video-controls-batch.pcap): sound off yet softness 0x64 retained,
+    # and the softness minimum is 0x01 (never 0).
+    assert proto.build_video_mode(
+        full_screen=False, game_mode=False, saturation=0x13, sound_effects=False, sound_effects_softness=0x64
+    ) == H("3305000000130064000000000000000000000041")
+    assert proto.build_video_mode(
+        full_screen=False, game_mode=False, saturation=0x13, sound_effects=True, sound_effects_softness=0x01
+    ) == H("3305000000130101000000000000000000000025")
 
 
 def test_video_white_balance():
-    # Captured from iOS app (bluetoothd-hci-latest.pklg) while moving DreamView WB slider.
-    assert proto.build_video_white_balance(0) == H("33a9000301070a00000000000000000000000095")
-    assert proto.build_video_white_balance(100) == H("33a9000301150500000000000000000000000088")
-    assert proto.build_video_white_balance(-1) == proto.build_video_white_balance(0)
-    assert proto.build_video_white_balance(120) == proto.build_video_white_balance(100)
-    _valid(proto.build_video_white_balance(0))
+    assert proto.build_video_white_balance(0x07, 0x0A) == H("33a9000301070a00000000000000000000000095")
+    assert proto.build_video_white_balance(0x0F, 0x04) == H("33a90003010f0400000000000000000000000093")
+    assert proto.build_video_white_balance(-1, 999) == proto.build_video_white_balance(0, 255)
+    _valid(proto.build_video_white_balance(0x10, 0x05))
 
 
 def test_music_mode():
@@ -556,13 +647,13 @@ W = proto.Weekday
 
 
 def test_timer_repeat():
-    # Mon=bit0 .. Sun=bit6, high bit always set; empty = one-time, full week = every day.
+    # Mon=bit0 .. Sun=bit6; empty = one-time (0x80), every weekday = every day (0x00), else 0x80|mask.
     assert proto.timer_repeat() == proto.TIMER_REPEAT_ONCE == 0x80  # fire once
     assert proto.timer_repeat([W.TUE]) == 0x82  # Tue-only
     assert proto.timer_repeat([W.MON, W.TUE]) == 0x83  # Mon+Tue
     assert proto.timer_repeat([W.MON]) == 0x81
     assert proto.timer_repeat([W.SUN]) == 0xC0  # 0x80 | (1 << 6)
-    assert proto.timer_repeat(list(W)) == 0xFF  # every day
+    assert proto.timer_repeat(list(W)) == 0x00  # every day (app sends 0x00, not 0xff)
     assert proto.timer_repeat([W.TUE, W.TUE]) == 0x82  # duplicates collapse
     for bad in ([7], [-1]):
         with pytest.raises(ValueError):
@@ -574,9 +665,9 @@ def test_parse_timer_repeat():
     assert proto.parse_timer_repeat(0x82) == frozenset({W.TUE})
     assert proto.parse_timer_repeat(H("82")[0]) == frozenset({W.TUE})  # raw repeat byte 0x82 -> Tue
     assert proto.parse_timer_repeat(0x83) == frozenset({W.MON, W.TUE})
-    assert proto.parse_timer_repeat(0xFF) == frozenset(W)  # every day
-    assert proto.parse_timer_repeat(0x00) == frozenset(W)  # high bit clear -> every day
-    for byte in (0x80, 0x81, 0x82, 0x83, 0xC0, 0xFF):
+    assert proto.parse_timer_repeat(0x00) == frozenset(W)  # every day (app's canonical form)
+    assert proto.parse_timer_repeat(0xFF) == frozenset(W)  # tolerated alias -> re-encodes to 0x00
+    for byte in (0x00, 0x80, 0x81, 0x82, 0x83, 0xC0):
         assert proto.timer_repeat(proto.parse_timer_repeat(byte)) == byte  # round-trip
 
 
@@ -587,7 +678,7 @@ def test_timer_schedule():
     assert proto.build_timer_schedule(1, True, False, 22, 30, [W.MON, W.TUE]) == H(
         "33230180161e830000000000000000000000001a"
     )
-    assert proto.build_timer_schedule(3, True, True, 7, 15, list(W)) == H("33230381070fff00000000000000000000000065")
+    assert proto.build_timer_schedule(3, True, True, 7, 15, list(W)) == H("33230381070f000000000000000000000000009a")
     assert proto.build_timer_schedule(2, False, False, 0, 0, []) == H("3323020000008000000000000000000000000092")
     clamp = proto.build_timer_schedule(0, True, True, 25, 61, [])  # hour/minute clamp to 23/59
     assert (clamp[4], clamp[5]) == (23, 59)

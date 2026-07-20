@@ -90,7 +90,7 @@ a trailing XOR checksum (omitted from the table for brevity). `<..>` marks a var
 | rgbicv2 DIY select | `33 05 04 <code_LE>` | Rich DIY effects reuse the scene command with a per-effect code (Bloom 506, Brilliant 501, ...); preceded by the `0xA3` record-container body (`TYPE 0x02`). |
 | Vibrant activate | `33 05 0a <slot>` | Same activation as DIY; preceded by the `0xA3` Vibrant body (type `0x03`). |
 | Music mode | `33 05 13 <mode> <sens> <style> <count> <RGB×count>` | H617A uses sub-command `0x13` (an older protocol version emits `0x0c`); see "Music mode layout". All 11 `mode` codes confirmed live (match `const.MUSIC_MODES`); `sens` 0-99; `style` `00` Dynamic / `01` Calm; `count` = manual colour count and the auto-colour flag (`00` = Auto colour on). Extended modes also send a `0x41` `a3` parameter frame. |
-| Video mode | `33 05 00 <full> <game> <sat> [01 <soft>]` | Full-screen and game flags, saturation 0-100, optional sound-effect softness. |
+| Video mode | `33 05 00 <full> <game> <sat> <sound> <soft>` | Full-screen and game flags, saturation 0-100. iOS always sends the full frame; the softness byte (floor `0x01`) persists even when sound is off. |
 | Video white balance (H6199) | `33 a9 00 03 01 <red> <blue>` | DreamView calibration, H6199 only. |
 | Timer / schedule | `33 23 <idx> <enableAndType> <hour> <min> <repeat>` | 4 on/off slots. Related: sleep `33 11`, wake-up `33 12`, gradual `33 14`. See "Timer subsystem". |
 | Clock sync (handshake) | `33 09 <7-byte time>` | Sent on connect; informational. |
@@ -277,7 +277,7 @@ below were confirmed by live capture.
 ```
 33 23 <idx> <enableAndType> <hour> <min> <repeat>
       |     |                |      |     |
-      |     |                |      |     days bitmask (0x80 = one-time / no repeat, 0xff = every day)
+      |     |                |      |     days bitmask (0x80 = one-time / no repeat, 0x00 = every day, as the app sends it; 0xff also decodes as every day)
       |     |                |      minute
       |     |                hour
       |     enableAndType: bit7 (0x80) = enabled, bit0 (0x01) = action (1 on / 0 off). 0x81 = enabled+on.

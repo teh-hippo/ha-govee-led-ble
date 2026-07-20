@@ -35,6 +35,10 @@ COLOR_MODE_SCENE = 0x04
 COLOR_MODE_VIDEO = 0x00
 COLOR_MODE_MUSIC = 0x13
 COLOR_MODE_STATIC = 0x15
+COLOR_MODE_DIY = 0x0A
+DEFAULT_DIY_SLOT = 0xF0
+SKETCH_DIY_SLOT = 0x20
+VIBRANT_DIY_SLOT = 0x84
 
 
 MUSIC_SLUG_BY_ID: dict[int, str] = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
@@ -160,22 +164,38 @@ def build_scene(scene_id: int) -> bytes:
     return build_packet(0x33, 0x05, [0x04, *scene_id.to_bytes(2, "little")])
 
 
-def build_a3_multi(type_byte: int, body: bytes) -> list[bytes]:
+def _a3_frame(index: int, chunk: bytes) -> bytes:
+    packet = bytearray([MULTI_PACKET_PREFIX, index, *chunk])
+    packet = (packet + bytearray(19 - len(packet)))[:19]
+    packet.append(xor_checksum(packet))
+    return bytes(packet)
+
+
+def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> list[bytes]:
     """Fragment a body into 0xA3 multi-frames (H617A §6).
 
-    Frames ``[0x01, chunk_count, type_byte, *body]`` into 17-byte chunks, each emitted as a
+    Frames ``[0x01, linecount, type_byte, *body]`` into 17-byte chunks, each emitted as a
     20-byte ``0xA3 <index|0xFF>`` frame with an XOR checksum. Shared by scenes, music params and
-    custom effects so there is a single fragmenter and a single XOR path.
+    custom effects so there is a single fragmenter and a single XOR path. With ``terminator`` the
+    data chunks keep sequential indices and an extra empty ``0xFF`` frame closes the sequence, the
+    form the Govee app uses for Finger Sketch (``TYPE 0x03``).
+
+    The app never emits a lone frame: a body that fits in a single chunk is still sent as a
+    numbered data frame followed by an empty ``0xFF`` terminator, so every sequence carries at
+    least two frames. This is the form flat DIY (``TYPE 0x04``) uses for one- to three-colour
+    palettes.
     """
     data = bytes([type_byte]) + body
-    payload = bytes([0x01, math.ceil((len(data) + 2) / 17)]) + data
+    chunk_count = math.ceil((len(data) + 2) / 17)
+    trailing_terminator = terminator or chunk_count == 1
+    payload = bytes([0x01, chunk_count + (1 if trailing_terminator else 0)]) + data
     chunks = [payload[index : index + 17] for index in range(0, len(payload), 17)]
-    packets: list[bytes] = []
-    for index, chunk in enumerate(chunks):
-        packet = bytearray([MULTI_PACKET_PREFIX, 0xFF if index == len(chunks) - 1 else index, *chunk])
-        packet = (packet + bytearray(19 - len(packet)))[:19]
-        packet.append(xor_checksum(packet))
-        packets.append(bytes(packet))
+    last = len(chunks) - 1
+    packets = [
+        _a3_frame(index if trailing_terminator or index != last else 0xFF, chunk) for index, chunk in enumerate(chunks)
+    ]
+    if trailing_terminator:
+        packets.append(_a3_frame(0xFF, b""))
     return packets
 
 
@@ -187,13 +207,19 @@ def build_scene_multi(scene_param_b64: str, scene_code: int, scene_type: int = 2
 
 # --- Custom-effect content encoders (§3.3) -----------------------------------------------------
 # Every builder returns list[bytes]; the store/entity layers never see raw bytes. Tier-1 segments
-# reuse the live write-path; the Tier-2 DIY/Vibrant encoders are capture-pinned and stay
-# EXPERIMENTAL. Packet bytes live only here — nothing downstream hardcodes frames.
+# reuse the live write-path. Combo is directly validated; the remaining Tier-2 DIY/Vibrant
+# encoders stay capture-pinned and experimental. Packet bytes live only here.
 
 
-def build_diy_activate(slot: int) -> bytes:
-    """DIY/Vibrant activation ``33 05 0a <slot>`` (H617A §3 "DIY select"); ``slot`` is app-assigned."""
-    return build_packet(0x33, 0x05, [0x0A, slot])
+def build_diy_activate(slot: int, type_byte: int | None = None) -> bytes:
+    """DIY/Vibrant activation ``33 05 0a <slot> [type]`` (H617A §3 "DIY select"); ``slot`` is app-assigned.
+
+    Finger Sketch appends its ``TYPE 0x03`` after the slot; the other DIY kinds omit it.
+    """
+    params = [COLOR_MODE_DIY, slot]
+    if type_byte is not None:
+        params.append(type_byte)
+    return build_packet(0x33, 0x05, params)
 
 
 def _group_indices[T](values: Iterable[T | None], *, start: int) -> list[tuple[T, list[int]]]:
@@ -231,21 +257,34 @@ def build_segment_content(content: SegmentContent, *, segment_count: int) -> lis
 
 
 def build_sketch(content: SketchContent, *, segment_count: int) -> list[bytes]:
-    # EXPERIMENTAL: harness=diy-sketch encoding=capture-pinned
+    # VALIDATED: Finger Sketch live H617A 3.02.24 (2026-07-16); body + 2-frame A3 + 33 05 0a 20 03.
     body = bytes([content.motion, content.speed, content.brightness, *content.background])
     groups = _group_by_colour_0based(content.colors)
     body += bytes([len(groups)])
     for rgb, indices in groups:
         body += bytes([len(indices), *rgb, *indices])
-    return [*build_a3_multi(0x03, body), build_diy_activate(0xF0)]
+    return [*build_a3_multi(0x03, body, terminator=True), build_diy_activate(SKETCH_DIY_SLOT, 0x03)]
 
 
-def _interpolate(stops: tuple[RGB, ...], n: int) -> list[RGB]:
-    """Linear RGB gradient of ``stops`` across ``n`` segments (endpoints inclusive)."""
+_VIBRANT_GAMMA = 2.2  # Vibrant interpolates each channel in gamma-2.2 linear light (measured 2026-07-20)
+
+
+def _interpolate(stops: tuple[RGB, ...], n: int, *, gamma: float | None = None) -> list[RGB]:
+    """RGB gradient of ``stops`` across ``n`` segments (endpoints inclusive).
+
+    Linear in sRGB by default; pass ``gamma`` (Vibrant uses ``2.2``) to interpolate in linear
+    light, which is what the app writes on the wire.
+    """
     if n <= 0:
         return []
     if n == 1 or len(stops) == 1:
         return [stops[0]] * n
+    exponent = gamma if gamma is not None else 1.0
+
+    def _mix(a: int, b: int, fraction: float) -> int:
+        lower, upper = math.pow(a / 255, exponent), math.pow(b / 255, exponent)
+        return round(math.pow(lower + (upper - lower) * fraction, 1 / exponent) * 255)
+
     span = len(stops) - 1
     result: list[RGB] = []
     for index in range(n):
@@ -253,40 +292,34 @@ def _interpolate(stops: tuple[RGB, ...], n: int) -> list[RGB]:
         lower = min(int(position), span - 1)
         fraction = position - lower
         start_rgb, end_rgb = stops[lower], stops[lower + 1]
-        result.append(
-            (
-                round(start_rgb[0] + (end_rgb[0] - start_rgb[0]) * fraction),
-                round(start_rgb[1] + (end_rgb[1] - start_rgb[1]) * fraction),
-                round(start_rgb[2] + (end_rgb[2] - start_rgb[2]) * fraction),
-            )
-        )
+        channels = [_mix(a, b, fraction) for a, b in zip(start_rgb, end_rgb, strict=True)]
+        result.append((channels[0], channels[1], channels[2]))
     return result
 
 
-# 11 header bytes with NO leading 0x03 (that is build_a3_multi's type_byte); undecoded, replayed verbatim.
-_VIBRANT_HEADER = bytes.fromhex("0900640101010f01ff0000")
-
-
 def build_vibrant(content: VibrantContent, *, segment_count: int) -> list[bytes]:
-    # EXPERIMENTAL: harness=diy-vibrant encoding=capture-pinned
-    seg_rgb = _interpolate(content.stops, segment_count)
-    entries = b"".join(bytes([index, 0x01, *seg_rgb[index]]) for index in range(segment_count))
-    return [*build_a3_multi(0x03, _VIBRANT_HEADER + entries), build_diy_activate(0xF0)]
+    # VALIDATED: Vibrant live H617A 3.02.24 (2026-07-20); TYPE 0x03 gradient body + 33 05 0a 84 03.
+    seg_rgb = _interpolate(content.stops, segment_count, gamma=_VIBRANT_GAMMA)
+    body = bytes([0x09, 0x00, 0x64, 0x01, 0x01, 0x01])  # motion Clockwise, speed 0, brightness 100, bg (1,1,1)
+    groups = _group_by_colour_0based(seg_rgb)
+    body += bytes([len(groups)])
+    for rgb, indices in groups:
+        body += bytes([len(indices), *rgb, *indices])
+    return [*build_a3_multi(0x03, body), build_diy_activate(VIBRANT_DIY_SLOT, 0x03)]
 
 
 def build_flat_diy(content: FlatContent) -> list[bytes]:
-    # EXPERIMENTAL: harness=diy-flat encoding=capture-pinned
+    # VALIDATED: flat DIY live H617A 3.02.24; TYPE 0x04 body + 33 05 0a <slot>, two-frame envelope.
     palette = b"".join(bytes(colour) for colour in content.palette)
     body = bytes([content.family, content.variant, content.speed, len(palette)]) + palette
-    return [*build_a3_multi(0x04, body), build_diy_activate(0xF0)]
+    return [*build_a3_multi(0x04, body), build_diy_activate(DEFAULT_DIY_SLOT)]
 
 
-def build_combo(content: ComboContent) -> list[bytes]:
-    # EXPERIMENTAL: harness=diy-combo encoding=capture-pinned
+def build_combo(content: ComboContent, *, slot: int = DEFAULT_DIY_SLOT) -> list[bytes]:
     palette = b"".join(bytes(colour) for colour in content.palette)
     sequence = b"".join(bytes([family, variant]) for family, variant in content.effects)
     body = bytes([0xFF, content.variant, content.speed, len(palette)]) + palette + bytes([len(sequence)]) + sequence
-    return [*build_a3_multi(0x04, body), build_diy_activate(0xF0)]
+    return [*build_a3_multi(0x04, body), build_diy_activate(slot)]
 
 
 def build_custom_effect(content: EffectContent, *, segment_count: int) -> list[bytes]:
@@ -319,30 +352,27 @@ def build_video_mode(
     game_mode: bool = False,
     saturation: int = 100,
     sound_effects: bool = False,
-    sound_effects_softness: int = 0,
+    sound_effects_softness: int = 100,
 ) -> bytes:
-    # H6199 video frame (docs/ble-protocol-h6199.md); region 1=full/0=part, validated app-sniff 2026-07-10.
-    params = [COLOR_MODE_VIDEO, int(full_screen), int(game_mode), _clamp(saturation, 0, 100)]
-    if sound_effects:
-        params.extend([0x01, _clamp(sound_effects_softness, 0, 100)])
+    # H6199 video frame; region 1=all/0=part. iOS always sends the full frame: sound flag plus a
+    # softness byte (floor 0x01) that persists even when sound is off.
+    params = [
+        COLOR_MODE_VIDEO,
+        int(full_screen),
+        int(game_mode),
+        _clamp(saturation, 0, 100),
+        int(sound_effects),
+        _clamp(sound_effects_softness, 1, 100),
+    ]
     return build_packet(0x33, 0x05, params)
 
 
-def build_video_white_balance(balance: int) -> bytes:
-    """Build H6199 DreamView white balance calibration packet (0=blue, 100=red).
+def build_video_white_balance(red: int, blue: int) -> bytes:
+    """Build the H6199 raw two-axis DreamView white-balance frame ``33 a9 00 03 01 <red> <blue>``.
 
-    Captured from iOS app (BluetoothLogging profile):
-    - 0%  -> 33a9000301070a...95
-    - 100%-> 33a90003011505...88
+    Red and blue are independent axes (live H6199 2026-07-20), not a single coupled slider.
     """
-    # H6199 33 a9 00 03 01; selector 00 03 validated app-sniff 2026-07-10.
-    pct = _clamp(balance, 0, 100) / 100.0
-    # Observed endpoints (red, blue) at extremes.
-    red_min, blue_min = 0x07, 0x0A
-    red_max, blue_max = 0x15, 0x05
-    red = _clamp(round(red_min + (red_max - red_min) * pct), 0, 255)
-    blue = _clamp(round(blue_min + (blue_max - blue_min) * pct), 0, 255)
-    return build_packet(0x33, 0xA9, [0x00, 0x03, 0x01, red, blue])
+    return build_packet(0x33, 0xA9, [0x00, 0x03, 0x01, _clamp(red, 0, 255), _clamp(blue, 0, 255)])
 
 
 def build_music_mode_with_color(
@@ -532,16 +562,19 @@ TIMER_REPEAT_ONCE = 0x80  # high bit set with no weekday bits -> fires once
 
 
 def timer_repeat(days: Iterable[Weekday] = ()) -> int:
-    """Encode weekdays as a timer repeat byte (Mon=bit0 .. Sun=bit6, high bit always set).
+    """Encode weekdays as a timer repeat byte (Mon=bit0 .. Sun=bit6).
 
-    An empty set yields 0x80 (fires once); the full week yields 0xFF (every day).
+    Empty yields 0x80 (fires once); every weekday selected yields 0x00 (every day, as the app
+    sends it); any other subset is 0x80 | mask.
     """
-    mask = TIMER_REPEAT_ONCE
+    mask = 0
     for day in days:
         if not 0 <= int(day) <= 6:
             raise ValueError(f"weekday {day!r} out of range 0..6")
         mask |= 1 << int(day)
-    return mask
+    if mask == 0x7F:
+        return 0x00
+    return TIMER_REPEAT_ONCE | mask
 
 
 def parse_timer_repeat(repeat: int) -> frozenset[Weekday]:
@@ -726,21 +759,35 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "build_scene": Evidence("VALIDATED", "H617A §3/§6 scene 33 05 04 <code_LE>; live"),
     "build_a3_multi": Evidence("VALIDATED", "H617A §6 0xA3 multi-frame fragmenter; XOR at byte[19]; live"),
     "build_scene_multi": Evidence("VALIDATED", "H617A §6 0xA3 body + 33 05 04 activate; live"),
-    "build_diy_activate": Evidence("VALIDATED", "H617A §3 DIY select 33 05 0a <slot>; live (CAT §2.1)"),
+    "build_diy_activate": Evidence(
+        "VALIDATED", "H617A §3 DIY select 33 05 0a <slot>; slot F0 accepted and read back live 2026-07-15"
+    ),
     "build_segment_content": Evidence(
         "VALIDATED", "H617A §3/§7 seg colour+brightness reuse; VAL single/all/one-seg live"
     ),
-    "build_sketch": Evidence("EXPERIMENTAL", "CAT §2.4 Finger Sketch TYPE 0x03; capture-pinned, gated Tier-2"),
-    "build_vibrant": Evidence("EXPERIMENTAL", "CAT §3 Vibrant TYPE 0x03; 11-byte header undecoded, replayed verbatim"),
-    "build_flat_diy": Evidence("EXPERIMENTAL", "CAT §2.2 flat DIY TYPE 0x04; capture-pinned, gated Tier-2"),
-    "build_combo": Evidence("EXPERIMENTAL", "CAT §2.5 combo TYPE 0x04 FAMILY 0xFF; capture-pinned, gated Tier-2"),
+    "build_sketch": Evidence(
+        "VALIDATED", "H617A §2.4 Finger Sketch TYPE 0x03; body/framing/activation live 2026-07-16"
+    ),
+    "build_vibrant": Evidence("VALIDATED", "Live H617A 2026-07-20; TYPE 0x03 gamma-2.2 gradient, 33 05 0a 84 03"),
+    "build_flat_diy": Evidence("VALIDATED", "CAT §2.2 flat DIY TYPE 0x04 + 33 05 0a slot; live H617A byte-exact"),
+    "build_combo": Evidence(
+        "VALIDATED",
+        "H617A §6 Combo TYPE 04 FAMILY FF; current iOS body plus slot F0 direct write/read-back 2026-07-15",
+    ),
     "build_custom_effect": Evidence("VALIDATED", "dispatcher over per-kind encoders (own evidence); Unknown rejected"),
     "build_music_mode_with_color": Evidence("VALIDATED", "H617A §3/§7 music 33 05 13; 11 modes live-confirmed"),
     "build_music_params_a3": Evidence(
         "EXPERIMENTAL", "VAL a3 music body §2.3 (H617A 217-234); capture-pinned, volatile bytes replayed"
     ),
-    "build_video_mode": Evidence("VALIDATED", "H6199 video 33 05 00 <region><sub><sat>; app-sniff 2026-07-10"),
-    "build_video_white_balance": Evidence("VALIDATED", "H6199 33 a9 00 03 01; selector 00 03 app-sniff 2026-07-10"),
+    "build_video_mode": Evidence(
+        "VALIDATED",
+        "H6199 33 05 00 region/mode/sat/sound/softness; always-full frame, softness persists (floor 0x01) "
+        "when sound off; app-sniff 2026-07-12 + h6199-video-controls-batch.pcap",
+    ),
+    "build_video_white_balance": Evidence(
+        "VALIDATED",
+        "H6199 33 a9 00 03 01 <red><blue>; independent raw axes app-sniffed 2026-07-12; UI mapping unproven",
+    ),
     "build_timer_schedule": Evidence("EXPERIMENTAL", "H617A §4 timer 33 23; write live, ships gated Tier-2"),
     "build_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 sleep 33 11; reply captured (OBSERVE)"),
     "build_timer_wakeup": Evidence("EXPERIMENTAL", "H617A §4 wake-up 33 12; reply captured (OBSERVE)"),

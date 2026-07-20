@@ -13,84 +13,13 @@ from custom_components.ha_govee_led_ble.h6199_controls import (
     _supports_number_param,
     async_setup_number_entry,
 )
-from custom_components.ha_govee_led_ble.protocol import build_video_white_balance as bvw
-
-
-async def test_video_white_balance(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    assert c.video_white_balance is None
-    await N(c, key="video_white_balance", name="T").async_set_native_value(100)
-    assert c.video_white_balance == 100
-    c.send_command.assert_called_once_with(bvw(100))
 
 
 def test_native_value_property(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.music_sensitivity = 42
     assert N(c, key="music_sensitivity", name="T").native_value == 42.0
-    c.video_white_balance = None
-    assert N(c, key="video_white_balance", name="T").native_value is None
-
-
-def test_video_white_balance_disabled_music_sensitivity_enabled(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    assert N(c, key="video_white_balance", name="T").entity_registry_enabled_default is False
     assert N(c, key="music_sensitivity", name="T").entity_registry_enabled_default is True
-
-
-async def test_video_white_balance_restore(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    entity = N(c, key="video_white_balance", name="T")
-    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="73"))
-    await entity._async_restore_value()
-    assert c.video_white_balance == 73
-    c.async_set_updated_data.assert_called_once_with(c.data)
-
-
-async def test_video_white_balance_restore_default_on_unknown(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    entity = N(c, key="video_white_balance", name="T")
-    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="unknown"))
-    await entity._async_restore_value()
-    assert c.video_white_balance == 100
-    c.async_set_updated_data.assert_called_once_with(c.data)
-
-
-async def test_video_white_balance_restore_default_without_last_state(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    entity = N(c, key="video_white_balance", name="T")
-    entity.async_get_last_state = AsyncMock(return_value=None)
-    await entity._async_restore_value()
-    assert c.video_white_balance == 100
-    c.async_set_updated_data.assert_called_once_with(c.data)
-
-
-async def test_video_white_balance_restore_clamps_out_of_range(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    entity = N(c, key="video_white_balance", name="T")
-    entity.async_get_last_state = AsyncMock(return_value=MagicMock(state="999"))
-    await entity._async_restore_value()
-    assert c.video_white_balance == 100
-    c.async_set_updated_data.assert_called_once_with(c.data)
-
-
-async def test_video_white_balance_restore_skips_when_already_set(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    c.video_white_balance = 55
-    entity = N(c, key="video_white_balance", name="T")
-    entity.async_get_last_state = AsyncMock()
-    await entity._async_restore_value()
-    entity.async_get_last_state.assert_not_called()
-    c.async_set_updated_data.assert_not_called()
-
-
-async def test_restore_value_skips_non_white_balance(mock_h6199_coordinator):
-    c = mock_h6199_coordinator
-    entity = N(c, key="music_sensitivity", name="T")
-    entity.async_get_last_state = AsyncMock()
-    await entity._async_restore_value()
-    entity.async_get_last_state.assert_not_called()
-    c.async_set_updated_data.assert_not_called()
 
 
 async def test_music_sensitivity(mock_h6199_coordinator):
@@ -104,11 +33,12 @@ async def test_music_sensitivity(mock_h6199_coordinator):
 
 async def test_rollback(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.video_white_balance = 55
-    c.send_command = AsyncMock(side_effect=BleakError("timeout"))
+    c.music_sensitivity = 55
+    c.is_on, c.music_mode = True, "rolling"
+    c.async_select_music_slug = AsyncMock(side_effect=BleakError("timeout"))
     with pytest.raises(BleakError):
-        await N(c, key="video_white_balance", name="T").async_set_native_value(20)
-    assert c.video_white_balance == 55
+        await N(c, key="music_sensitivity", name="T").async_set_native_value(20)
+    assert c.music_sensitivity == 55
 
 
 def test_supports_number_param_unknown_key(mock_h6199_coordinator):
@@ -142,7 +72,6 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_h6199_coordinator), add)
     keys = [entity._key for entity in add.call_args.args[0]]
     assert keys == [
-        "video_white_balance",
         "music_sensitivity",
     ]
 

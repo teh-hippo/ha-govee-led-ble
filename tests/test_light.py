@@ -381,7 +381,10 @@ async def test_set_video_and_music(h6199_light, mock_h6199_coordinator):
     co.is_on, co.effect = False, None
     await lt.async_set_video_mode(mode="movie", saturation=50, full_screen=True, capture_region="part")
     c = co.send_command.call_args_list
-    assert c[1].args[0] == proto.build_video_mode(full_screen=False, game_mode=False, saturation=50)
+    # sound_effects_softness persists from the prior call (50) when the service omits it.
+    assert c[1].args[0] == proto.build_video_mode(
+        full_screen=False, game_mode=False, saturation=50, sound_effects_softness=50
+    )
     assert co.video_full_screen is False
     co.async_select_music_slug.reset_mock()
     await lt.async_set_music_mode(mode="energetic", sensitivity=75)

@@ -6,9 +6,6 @@
       }
     },
     "number": {
-      "video_white_balance": {
-        "default": "mdi:white-balance-sunny"
-      },
       "music_sensitivity": {
         "default": "mdi:microphone"
       },

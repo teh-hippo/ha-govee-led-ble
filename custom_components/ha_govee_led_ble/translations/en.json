@@ -27,9 +27,6 @@
       }
     },
     "number": {
-      "video_white_balance": {
-        "name": "Video white balance"
-      },
       "music_sensitivity": {
         "name": "Music sensitivity"
       },
