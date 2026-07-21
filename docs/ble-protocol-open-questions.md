@@ -13,7 +13,7 @@ compared, the relevant reply or physical state is checked, and the baseline is r
 
 | Priority | Scope | Gap | Required closure evidence |
 | --- | --- | --- | --- |
-| P1 | H617A music | All 11 mode IDs and several parameter offsets are confirmed, but the full app surface and read-back semantics are incomplete. | Verify each exposed colour, style, direction, count, speed, gradient, and relative-brightness control against its predicted frame. |
+| P2 | H617A music | Base mode-set frames and every extended-mode `a3` offset (including the Separation, Piano Keys and Day-and-Night Gradient companions) are live-verified; only the `aa 05` music read-back is unmapped. | Capture an `aa 05` reply while a music mode is active and decode its fields. |
 | P1 | H6199 video status | No attributable `AA 05` video reply exists. | Capture video mode activation and the following status reply in one marked window. |
 | P1 | H6199 white balance | Raw red and blue bytes are independent; UI coordinates and ranges are unknown. | Capture isolated red-axis and blue-axis A/B/A movements without fitting a one-dimensional model. |
 | P1 | H6199 scenes | Scene transport and catalogue data exist, but the runtime surface is disabled. | Verify representative simple and A3 scenes, then prove generated catalogue parity before exposure. |

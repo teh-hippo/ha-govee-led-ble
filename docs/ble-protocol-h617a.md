@@ -212,16 +212,21 @@ at fixed offsets in that assembled body (offset = concatenated fragment payloads
 | Bloom `0x30` | Dynamic/Calm companion | `[27]` | Dynamic=`0x50`; Calm=`0x14` |
 | Shiny `0x31` | Dynamic/Calm companion | `[20,21]` | Dynamic=`05,64`; Calm=`14,46` |
 | Separation `0x32` | Separation point | `[20]` | `0x01`..`0x05` (5 positions) |
-| Separation `0x32` | Gradient | `[21]` | `0x00` off / `0x01` on |
+| Separation `0x32` | Gradient | `[21]` (+ companion `[22]`) | on=`01`/`5e`; off=`00`/`61` |
 | Hopping `0x33` | Relative brightness | `[29]` | `0x00`..`0x32` (0-50%) |
-| Piano Keys `0x34` | Key count | `[27]` | `0x08`..`0x0f` (8-15) |
+| Piano Keys `0x34` | Key count | `[27]` (+ companion `[30]`) | `0x08`..`0x0f` (8-15); `[30]` ≈ floor(keys/2) |
+| Piano Keys `0x34` | Gradient | `[26]` | `0x00` off / `0x01` on |
 | Fountain `0x35` | Direction | `[26,28]` | Clockwise=`00,05`; Counterclockwise=`02,05`; Two-way=`01,03` |
 | Day and Night `0x37` | Segment count | `[26]` | `0x01`..`0x07` (1-7) |
 | Day and Night `0x37` | Speed | `[27]` | `0x01`..`0x32` |
+| Day and Night `0x37` | Gradient | `[28]` | `0x00` off / `0x01` on |
 
-Multi-colour palettes (Separation, Hopping background, etc.) are the `<RGB×n>` groups in the body.
-Fountain direction uses the pair `[26,28]`. Rhythm/Spectrum parameters ride the
-`33 05 13` frame itself (STYLE byte 5, auto-colour/COUNT byte 6, RGB from byte 7), not the `a3` body.
+Multi-colour palettes (Separation, Hopping background, etc.) are the `<RGB×n>` groups in the body;
+Hopping's single background colour is `[26:29]` and its `[30:34]` tail is fixed. Rhythm/Spectrum
+parameters ride the `33 05 13` frame itself (STYLE byte 5, auto-colour/COUNT byte 6, RGB from
+byte 7), not the `a3` body. Separation, Piano Keys and Day and Night each also expose a Gradient
+toggle. Selecting an extended-mode tile re-sends its stored `0x41` body followed by the `33 05 13`
+activation, not the bare activation alone. All offsets above are confirmed live on firmware 3.02.24.
 
 Example frames (sub-command `0x13`): `13 05 63 00 01 ff0000` (mode `0x05`, sens 99, one
 colour red), `13 03 63 00 00` (mode `0x03`, Auto colour on), `13 03 63 01 01 0000ff` (Calm, one
