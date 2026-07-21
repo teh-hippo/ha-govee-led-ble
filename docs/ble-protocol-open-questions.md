@@ -13,7 +13,6 @@ compared, the relevant reply or physical state is checked, and the baseline is r
 
 | Priority | Scope | Gap | Required closure evidence |
 | --- | --- | --- | --- |
-| P1 | H617A rgbicv2 DIY | Transport, record grammar, all speed handles, Stack brightness, and meteor/shower/Stack directions are mapped. The `param2` sub-style delta between numbered variants is still inferred. | Isolate the `param2` pixel-level difference between numbered sub-styles with colours held fixed. |
 | P1 | H617A music | All 11 mode IDs and several parameter offsets are confirmed, but the full app surface and read-back semantics are incomplete. | Verify each exposed colour, style, direction, count, speed, gradient, and relative-brightness control against its predicted frame. |
 | P1 | H6199 video status | No attributable `AA 05` video reply exists. | Capture video mode activation and the following status reply in one marked window. |
 | P1 | H6199 white balance | Raw red and blue bytes are independent; UI coordinates and ranges are unknown. | Capture isolated red-axis and blue-axis A/B/A movements without fitting a one-dimensional model. |

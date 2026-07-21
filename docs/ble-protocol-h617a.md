@@ -550,9 +550,14 @@ shower flip each record's whole-area `moveAll` mode nibble (`0x10` mode 0 vs `0x
 lockstep flags bit and brightness byte); Stack1 vs Stack2 swap the in-area `moveIn` mode (`0x_6` vs
 `0x_4`) between the stack and moving records, colours unchanged.
 
-Still inferred: the exact pixel-level difference between numbered sub-styles that are not a
-direction (for example Brilliant `param2` `0x32` vs `0x14`, Bloom `0x14` vs `0x16`) and the meaning
-of colour `param2`. Per-effect colour-group ranges, speed domains and directions are in
+The numbered sub-style of a direction-less effect is a single body value, isolated live with the
+colours held fixed, and its home is effect-specific. Brilliant carries it in colour `param2`
+(`0x32` for Brilliant1, `0x14` for Brilliant2), repeated in every record with all other bytes
+identical. Bloom holds `param2` at `0x32` and instead varies one byte in the V2 region at body
+offset 99 (`0x14` for Bloom1, `0x16` for Bloom2); Bloom3 restructures the V2 records rather than
+flipping a single byte. Colour `param2` is a per-effect secondary parameter that also selects the
+sub-style wherever an effect exposes its numbered variants there. Per-effect colour-group ranges,
+speed domains and directions are in
 [`ble-effect-catalogue.md`](ble-effect-catalogue.md) section 2.7.
 
 ### Finger Sketch DIY (`TYPE 0x03`)
