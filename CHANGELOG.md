@@ -1,6 +1,34 @@
 # CHANGELOG
 
 
+## v4.1.0-beta.6 (2026-07-21)
+
+### Bug Fixes
+
+- **ble**: Frame short flat DIY uploads as a two-frame A3 envelope
+  ([`f7496d6`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f7496d62f40479bd3c267ab39062266b2ed52e38))
+
+### Documentation
+
+- Confirm H617A rgbicv2 numbered-variant encoding
+  ([`c9043d8`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c9043d87fca6d55c88371f63155d3d3bc4920f67))
+
+- Correct the Share Space Apply-boundary description
+  ([`22aee05`](https://github.com/teh-hippo/ha-govee-led-ble/commit/22aee058fffbfa81c1e9a418951fdb59710a3b1f))
+
+- Dedupe repeated protocol facts across the BLE references
+  ([`7987f6d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/7987f6d4a5207582d51e60d33dbbedbf367d58a2))
+
+- Refresh protocol references after flat validation and H6199 colour-temp
+  ([`c94ec47`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c94ec47ec5461afff14b07bc3395e097e0ab3b17))
+
+- Spring-clean the BLE protocol documentation
+  ([`ba13fbd`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ba13fbd15cc582c64d51081d81b64aa69ea1c614))
+
+- Verify and expand the H617A music surface
+  ([`f933449`](https://github.com/teh-hippo/ha-govee-led-ble/commit/f9334495a8ebc88c466e93ae87a4d79460ab0283))
+
+
 ## v4.1.0-beta.5 (2026-07-20)
 
 ### Bug Fixes
