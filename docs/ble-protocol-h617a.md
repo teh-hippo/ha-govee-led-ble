@@ -14,7 +14,7 @@ Companion documents:
 - Current verification backlog: [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md).
 
 Status: power, brightness, RGB and white/Kelvin colour, per-segment control, scenes and all 11
-music modes are implemented and confirmed live on firmware `3.02.24`. Flat, Finger Sketch, Vibrant
+music modes are implemented and confirmed live. Flat, Finger Sketch, Vibrant
 and Combo builders exist and are directly validated; rgbicv2 and Workshop are
 fully mapped and replay byte-exact through `build_scene_multi` but have no from-scratch builder yet.
 Scheduled-timer writes are observed live but ship gated. Section 7 has the per-command detail. Raw
@@ -91,7 +91,7 @@ a trailing XOR checksum (omitted from the table for brevity). `<..>` marks a var
 | DIY select (flat / Finger Sketch / Combo) | `33 05 0a <slot> [type]` | Mode `0x0a`; preceded by the `0xA3` DIY body (`TYPE 0x04`, `0x03`, or `0x04` with `FAMILY 0xFF`). Finger Sketch appends its `TYPE 0x03` after the slot and uses a fixed slot `0x20` (`33 05 0a 20 03`, live-confirmed). Combo/Flat omit the trailing type; slot is app-assigned and persistent per saved effect (current Combo examples used `0x6E` and `0xEF`). The integration's default `0xF0` was accepted and read back, but app captures also used `0xF0`, so it does not prove ownership. |
 | rgbicv2 DIY select | `33 05 04 <code_LE>` | Rich DIY effects reuse the scene command with a per-effect code (Bloom 506, Brilliant 501, ...); preceded by the `0xA3` record-container body (`TYPE 0x02`). |
 | Workshop Apply | `33 05 04 91 01 02` | Workshop code `0x0191`, little-endian, with scene type `0x02`; preceded by the length-delimited Workshop `0xA3` body (`TYPE 0x02`). |
-| Vibrant activate | `33 05 0a <slot>` | Same activation as DIY; preceded by the `0xA3` Vibrant body (type `0x03`). |
+| Vibrant activate | `33 05 0a 84 03` | Appends `TYPE 0x03` after a fixed slot `0x84`; preceded by the `0xA3` Vibrant body (`TYPE 0x03`). |
 | Music mode | `33 05 13 <mode> <sens> <style> <count> <RGB×count>` | H617A uses sub-command `0x13` (an older protocol version emits `0x0c`); see "Music mode layout". All 11 `mode` codes confirmed live (match `const.MUSIC_MODES`); `sens` 0-99; `style` `00` Dynamic / `01` Calm; `count` = manual colour count and the auto-colour flag (`00` = Auto colour on). Extended modes also send a `0x41` `a3` parameter frame. |
 | Video mode (H6199) | `33 05 00 <region> <mode> <sat> <sound> <softness>` | Current H6199 app frame. Sound and softness are always present; see the H6199 reference. |
 | Video white balance (H6199) | `33 a9 00 03 01 <red> <blue>` | Raw independent DreamView components; app-control mapping is not yet surfaced. |
@@ -226,7 +226,7 @@ Hopping's single background colour is `[26:29]` and its `[30:34]` tail is fixed.
 parameters ride the `33 05 13` frame itself (STYLE byte 5, auto-colour/COUNT byte 6, RGB from
 byte 7), not the `a3` body. Separation, Piano Keys and Day and Night each also expose a Gradient
 toggle. Selecting an extended-mode tile re-sends its stored `0x41` body followed by the `33 05 13`
-activation, not the bare activation alone. All offsets above are confirmed live on firmware 3.02.24.
+activation, not the bare activation alone. All offsets above are confirmed live.
 
 Example frames (sub-command `0x13`): `13 05 63 00 01 ff0000` (mode `0x05`, sens 99, one
 colour red), `13 03 63 00 00` (mode `0x03`, Auto colour on), `13 03 63 01 01 0000ff` (Calm, one
@@ -246,7 +246,7 @@ notification. Reply data below is an example unless stated otherwise.
 |---|---|---|
 | `01` | Power | `01` = on. Polled ~2 s as keep-alive. |
 | `04` | Brightness | `0x64` = 100%. Mirrors the `33 04` command (`BRIGHTNESS_QUERY`). |
-| `05` | Colour mode | First reply byte is the mode: `15 01` = static RGB, `04 <code>` = scene, `00 ..` = video, `13 ..` = music, `0a <slot>` = DIY. |
+| `05` | Colour mode | First reply byte is the mode: `15 01` = static RGB, `04 <code>` = scene, `00 ..` = video, `13 ..` = music, `0a <slot>` = DIY. The reply mirrors the matching write body; a music reply is `13 <mode> <sens> <style> <count> <RGB>`. |
 | `06` | Firmware version | `"3.02.24"` (ASCII) |
 | `07` | Hardware version | selector `03`, then `"3.01.01"` (ASCII) |
 | `11` | Sleep timer (fade-off) | `[enable, startBri, closeMin, curMin]`, e.g. `00 1e 0f 0f` = disabled, start bri 30, close in 15 min. Write command `0x11`. |
@@ -606,14 +606,14 @@ sRGB); the number of stops changes only the resolved per-segment colours, never 
 | Colour temperature `33 05 15 01 00 00 00 ...` | `build_color_temp` | Implemented and confirmed live; emits the true-Kelvin frame over 2000-9000K. |
 | Scene select `33 05 04` | `build_scene` | Confirmed live. |
 | Scene multi-frame `0xA3` | `build_scene_multi` | Confirmed live; carries the per-scene `scene_type` prefix (`0`/`1`/`2`). |
-| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Directly validated custom-effect builders. Finger Sketch body, two-frame `0xA3` framing and `33 05 0a 20 03` activation are validated on H617A firmware 3.02.24; the current Combo body and default slot `0xF0` are validated too, as is Flat across all 19 families (same two-frame `0xA3` envelope, `33 05 0a <slot>` activation). Slot read-back cannot identify the active body. |
+| Flat / Finger Sketch / Combo DIY `33 05 0a` + `0xA3` | `build_flat_diy` / `build_sketch` / `build_combo` | Directly validated custom-effect builders. Finger Sketch body, two-frame `0xA3` framing and `33 05 0a 20 03` activation are validated live; the Combo body and Flat across all 19 effects use the same two-frame `0xA3` envelope and `33 05 0a <slot>` activation. |
 | Workshop `0xA3` (`TYPE 0x02`) + `33 05 04 91 01 02` | `build_scene_multi` (transport) | Fully mapped byte-exact: transport header, layer records, Select Type, applied-area window (`r1`), palette, timing, brightness, colour gradient (`r13` bit `0x01`), both movement sub-blocks, the direction enum and priority (`r29` = `0` or `1-5`). Layers are not positionally reorderable; stacking is priority-only. No from-scratch builder yet. |
 | rgbicv2 DIY `33 05 04` + `0xA3` (`TYPE 0x02`) | `build_scene_multi` (transport) | Transport works: replay a captured `(body, code)` via `build_scene_multi`. No from-scratch builder yet. |
 | Vibrant `0xA3` (type `0x03`) + `33 05 0a 84 03` | `build_vibrant` | Validated live: the Finger Sketch `TYPE 0x03` grammar with a gamma-2.2 linear-light gradient across the 15 segments. |
 | Music mode `33 05 13` | `build_music_mode_with_color` | Confirmed live. All 11 mode codes verified; builder handles mode + sensitivity + Dynamic/Calm + auto-colour (COUNT byte 6, `0` = auto on) + one manual colour. Capture-pinned per-mode `a3` templates and decoded controls are built in `build_music_params_a3`. |
 | Video mode `33 05 00` | `build_video_mode` | H6199 only. Always emits the full frame `33 05 00 <region> <mode> <sat> <sound> <softness>`; softness persists when sound is off and is floored at `0x01`. |
 | Video white balance `33 a9` | `build_video_white_balance` | H6199 raw two-axis frame only; no one-dimensional UI mapping. |
-| Colour-mode query `aa 05` | `parse_color_mode_response` | Confirmed live, including DIY mode `0x0a` with its activation slot. |
+| Colour-mode query `aa 05` | `parse_color_mode_response` | Confirmed live, including the DIY slot (`0x0a`) and the music reply (`13 <mode> <sens> <style> <count> <RGB>`). |
 | Scheduled timer write `33 23` | `build_timer_schedule` | Write confirmed live (4 slots, on/off, weekday bits Mon=bit0..Sun=bit6). |
 | Timer table read-back `aa 23` | `parse_timer_schedule_table` | Decodes the full `ff`-prefixed 4-slot table into per-slot records; confirmed against the live reply. |
 | Sleep / wake-up `33 11` / `33 12` | `build_timer_sleep` / `build_timer_wakeup` (+ parsers) | Builders shipped; replies captured live (OBSERVE). |
@@ -623,8 +623,7 @@ sRGB); the number of stops changes only the resolved per-segment colours, never 
 ## 8. Evidence gaps
 
 Remaining H617A work is bounded: from-scratch rgbicv2 and Workshop authoring, scene speed and
-palette value arrays beyond the Aurora anchor, and the remaining music controls and their read-back
-semantics. No device query returns an
-app-authored DIY body, so such effects cannot be imported from the strip. The authoritative ordered
-backlog is [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md); effect identities and
-parameter domains are in [`ble-effect-catalogue.md`](ble-effect-catalogue.md).
+palette value arrays beyond the Aurora anchor, and from-scratch music movement parameters. No device
+query returns an app-authored DIY body, so such effects cannot be imported from the strip. The
+authoritative ordered backlog is [`ble-protocol-open-questions.md`](ble-protocol-open-questions.md);
+effect identities and parameter domains are in [`ble-effect-catalogue.md`](ble-effect-catalogue.md).
