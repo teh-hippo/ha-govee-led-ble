@@ -188,7 +188,20 @@ async def test_apply_music_params_merges_all_params_for_mode(coord):
     coord.music_separation_point, coord.music_separation_gradient = 5, False
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_apply_music_params(0x32)
-    assert _sent(sc) == proto.build_music_params_a3(0x32, {20: 5, 21: 0})
+    # gradient off -> the coupled companion byte [22] is 0x61 (0x5e when on), live-confirmed 2026-07-21.
+    assert _sent(sc) == proto.build_music_params_a3(0x32, {20: 5, 21: 0, 22: 0x61})
+
+
+async def test_apply_music_params_separation_gradient_couples_companion(coord):
+    """The separation gradient toggle drives the coupled companion byte (0x5e on / 0x61 off)."""
+    for gradient, companion in ((True, 0x5E), (False, 0x61)):
+        coord.music_separation_gradient = gradient
+        with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+            await coord.async_apply_music_params(0x32)
+        expected = proto.build_music_params_a3(
+            0x32, {20: coord.music_separation_point, 21: int(gradient), 22: companion}
+        )
+        assert _sent(sc) == expected
 
 
 async def test_apply_music_params_encodes_fountain_direction(coord):

@@ -636,9 +636,8 @@ def test_build_music_params_a3_flips_only_its_offset():
 
 
 def test_build_music_params_a3_never_writes_volatile_bytes():
-    for mode, offset in ((0x32, 22), (0x34, 30)):
-        with pytest.raises(ValueError, match="volatile"):
-            proto.build_music_params_a3(mode, {offset: 0x01})
+    with pytest.raises(ValueError, match="volatile"):
+        proto.build_music_params_a3(0x34, {30: 0x01})
 
 
 def test_build_music_params_a3_palette_guard_and_overlay():

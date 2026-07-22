@@ -190,6 +190,9 @@ class _ActiveModeMixin(_CoordinatorBase):
         if mode_code == 0x35:
             phase, selector = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
             overrides.update({26: phase, 28: selector})
+        if mode_code == 0x32:
+            # Separation's companion byte is gradient-coupled (0x5e on / 0x61 off, live 2026-07-21).
+            overrides[22] = 0x5E if self.music_separation_gradient else 0x61
         companion = _MUSIC_STYLE_COMPANION.get(mode_code)
         if companion is not None:
             overrides.update(companion[self.music_calm])

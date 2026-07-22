@@ -423,9 +423,10 @@ _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
 # mode -> captured palette colour count (body-local byte 1); guards palette overrides so the
 # `<RGB x count>` region can never shift the downstream param offsets.
 _MUSIC_PARAM_COUNT: dict[int, int] = {mode: body[1] for mode, body in _MUSIC_PARAM_TEMPLATE.items()}
-# Absolute a3 offsets that carry volatile animation state: replayed verbatim, never written (VAL "CAVEAT").
+# Absolute a3 offset carrying a derived byte replayed verbatim, never written: Piano Keys [30]
+# tracks ~floor(key_count/2) but its even-count formula is not isolated in a capture, so it stays
+# pinned to the template rather than being written from a guessed formula.
 _VOLATILE_OFFSETS: dict[int, frozenset[int]] = {
-    0x32: frozenset({22}),
     0x34: frozenset({30}),
 }
 _MUSIC_PARAM_BASE = 3  # assembled-body base: template byte 0 is the MODE byte at assembled index 3.
