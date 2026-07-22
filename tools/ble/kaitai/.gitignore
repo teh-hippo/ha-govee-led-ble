@@ -1,11 +1,13 @@
 # Local throwaway toolchain
 node_modules/
+__pycache__/
 
-# Regenerable products (source of truth is the .ksy specs)
-# regenerate parsers: node compile.js <spec>.ksy
-colormode_readback.py
-scene_body.py
+# Regenerable products (source of truth is the .ksy specs).
 # regenerate fixtures: uv run --no-sync python extract_fixtures.py
 fixtures.json
 
-__pycache__/
+# Generated Kaitai parsers (regenerate: node compile.js <spec>.ksy).
+# Ignore every generated *.py; keep the hand-written harness/tooling scripts.
+*.py
+!roundtrip_*.py
+!extract_fixtures.py
