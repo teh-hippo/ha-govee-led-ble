@@ -18,6 +18,7 @@ ignore = [
 
 [lint.per-file-ignores]
 "custom_components/ha_govee_led_ble/scenes.py" = ["E501"]
+"tools/ble/kaitai/roundtrip_*.py" = ["E501"]
 
 [lint.isort]
 known-first-party = ["custom_components.ha_govee_led_ble"]

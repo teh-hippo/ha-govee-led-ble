@@ -19,6 +19,7 @@ stays a human/panel call. Run:
 
     uv run --no-sync --with pyyaml python evidence_lint.py
 """
+
 from __future__ import annotations
 
 import re
@@ -36,27 +37,37 @@ def _field_doc_tags(doc: str) -> list[str]:
     return [t for t in TAG_RE.findall(doc or "") if t in TAGS]
 
 
+def _check_entry(where: str, doc: str, problems: list[str], counts: dict[str, int]) -> None:
+    doc = doc or ""
+    found = _field_doc_tags(doc)
+    stray = [t for t in TAG_RE.findall(doc) if t not in TAGS and t.isupper() and "_" in t]
+    if len(found) == 0:
+        problems.append(f"{where}: no evidence tag (need one of {TAGS})")
+    elif len(found) > 1:
+        problems.append(f"{where}: {len(found)} evidence tags {found}, expected exactly one")
+    else:
+        counts[found[0]] = counts.get(found[0], 0) + 1
+    if stray:
+        problems.append(f"{where}: unknown bracketed tag(s) {stray} (typo?)")
+
+
 def _lint_seq(seq: list, path: str, problems: list[str], counts: dict[str, int]) -> None:
     for field in seq:
         if not isinstance(field, dict) or "id" not in field:
             continue
-        fid = field["id"]
-        where = f"{path}/{fid}"
-        found = _field_doc_tags(field.get("doc", ""))
-        stray = [t for t in TAG_RE.findall(field.get("doc", "") or "") if t not in TAGS and t.isupper() and "_" in t]
-        if len(found) == 0:
-            problems.append(f"{where}: no evidence tag (need one of {TAGS})")
-        elif len(found) > 1:
-            problems.append(f"{where}: {len(found)} evidence tags {found}, expected exactly one")
-        else:
-            counts[found[0]] = counts.get(found[0], 0) + 1
-        if stray:
-            problems.append(f"{where}: unknown bracketed tag(s) {stray} (typo?)")
+        _check_entry(f"{path}/{field['id']}", field.get("doc", ""), problems, counts)
 
 
 def _walk(node: dict, path: str, problems: list[str], counts: dict[str, int]) -> None:
     if isinstance(node.get("seq"), list):
         _lint_seq(node["seq"], path, problems, counts)
+    instances = node.get("instances")
+    if isinstance(instances, dict):
+        for name, inst in instances.items():
+            # Only byte-reading (positional / foreign-stream) instances need a tag;
+            # pure computed `value:` accessors read no bytes and are exempt.
+            if isinstance(inst, dict) and ("pos" in inst or "io" in inst):
+                _check_entry(f"{path}/inst:{name}", inst.get("doc", ""), problems, counts)
     types = node.get("types")
     if isinstance(types, dict):
         for name, sub in types.items():

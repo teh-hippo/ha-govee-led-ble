@@ -54,15 +54,17 @@ enums:
     0x0a: diy
     0x00: video
     0x13: music
-  static_sub:
-    0x01: rgb
-    0x02: white_brightness
 types:
   power_body:
     seq:
       - id: is_on
         type: u1
         doc: '[CONFIRMED_LIVE] raw power state, 0x00 off / 0x01 on'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   colormode_body:
     doc: |
       domain 0x05 colour-mode read-back. The first body byte selects the mode; the
@@ -93,24 +95,38 @@ types:
     seq:
       - id: sub
         type: u1
-        enum: static_sub
-        doc: '[CONFIRMED_LIVE] static sub-selector byte (frame offset 3; 0x00 seen live)'
+        doc: '[CONFIRMED_LIVE] static sub-selector byte (frame offset 3); only 0x00 seen live, so no enum until 0x01/0x02 read-back is captured'
       - id: rgb
         type: govee_common::rgb
-        if: sub == static_sub::rgb
+        if: sub == 0x01
         doc: '[INHERITED] R,G,B at frame offsets 4..6 when sub == 0x01 (no capture)'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
   cm_scene:
     doc: mode 0x04. Scene effect id, little-endian, at frame offset 3+.
     seq:
       - id: scene_id
         type: u2le
         doc: '[CONFIRMED_LIVE] scene effect id (little-endian) at frame offset 3'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
   cm_diy:
     doc: mode 0x0a. App-assigned DIY slot at frame offset 3.
     seq:
       - id: slot
         type: u1
         doc: '[CONFIRMED_LIVE] app-assigned DIY slot at frame offset 3'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
   cm_video:
     doc: mode 0x00 (H6199). Region/mode/saturation/sound/softness at offsets 3..7.
     seq:
@@ -129,6 +145,11 @@ types:
       - id: softness
         type: u1
         doc: '[CONFIRMED_LIVE] sound-effects softness (frame offset 7)'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
   cm_music:
     doc: |
       mode 0x13. offsets: 3 mode-id, 4 sensitivity, 5 style (Dynamic 0x00 / Calm 0x01),
@@ -143,8 +164,7 @@ types:
         doc: '[CONFIRMED_LIVE] sensitivity 0..99 (frame offset 4)'
       - id: style
         type: u1
-        enum: govee_common::music_style
-        doc: '[CONFIRMED_LIVE] Dynamic 0x00 / Calm 0x01 (frame offset 5; see govee_common::music_style)'
+        doc: '[CONFIRMED_LIVE] raw byte 5; Dynamic 0x00 / Calm 0x01 is the Rhythm-only interpretation (other modes repurpose it, see protocol.parse_color_mode_response)'
       - id: manual_color_count
         type: u1
         doc: '[CONFIRMED_LIVE] manual colour count / auto-colour flag (frame offset 6)'
@@ -152,6 +172,11 @@ types:
         type: govee_common::rgb
         if: manual_color_count >= 1
         doc: '[CONFIRMED_LIVE] manual RGB at frame offsets 7..9 when count >= 1'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
   version_body:
     doc: firmware version, ASCII, NUL-terminated (e.g. "3.02.24")
     seq:
@@ -159,6 +184,11 @@ types:
         type: strz
         encoding: ASCII
         doc: '[CONFIRMED_LIVE] firmware version ASCII string, NUL-terminated'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   hw_version_body:
     doc: hardware version; a 0x03 prefix then ASCII NUL-terminated (e.g. "3.01.01")
     seq:
@@ -169,6 +199,11 @@ types:
         type: strz
         encoding: ASCII
         doc: '[CONFIRMED_LIVE] hardware version ASCII string, NUL-terminated'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   segments_body:
     doc: group id then three segments of <brightness> <R> <G> <B> (aa a5 read-back)
     seq:
@@ -180,6 +215,11 @@ types:
         repeat: expr
         repeat-expr: 3
         doc: '[CONFIRMED_LIVE] three 4-byte segment records'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   segment:
     seq:
       - id: brightness

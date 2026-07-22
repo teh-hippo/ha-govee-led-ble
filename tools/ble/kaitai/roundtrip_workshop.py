@@ -24,6 +24,7 @@ Fixtures are embedded as inline hex extracted from these captures (split at A3 i
 20260715140050 colour-family, 20260715141908 brightness-moving-effects,
 workshop-priority, workshop-movement-dir, workshop-overall-dir and 20260716165800 r13.
 """
+
 import io
 import sys
 from pathlib import Path
@@ -41,43 +42,49 @@ FIXTURES = {
         "010902051a200100020001ff000080141401801401ff0005000080000080001a220100020001ff0000"
         "8014140180140100ff04000080000080001a240100020001ff000080141401801401ff00010000800000"
         "80001a260100020001ff00008014140180140100ff00000080000080001a280100010001ff0000801414"
-        "01801401ff0000000080000080000000000000000000000000000000", 5),
+        "01801401ff0000000080000080000000000000000000000000000000",
+        5,
+    ),
     # canonical one-layer Select IC Continuously, ordered red+blue (doc example); baseline.
-    "two_colour_continuously": (
-        "010202011d0001000f1001ff000080141401801402ff00000000ff00008000008000", 1),
+    "two_colour_continuously": ("010202011d0001000f1001ff000080141401801402ff00000000ff00008000008000", 1),
     # select-type matrix: same body, only r2:r4 change (Segment / Randomly / Customize).
-    "matrix_segment": (
-        "010202011d000000071001ff000080141401801402ff00000000ff00008000008000", 1),
-    "matrix_randomly": (
-        "010202011d00020f011001ff000080141401801402ff00000000ff00008000008000", 1),
-    "matrix_customize": (
-        "010202011d000301001001ff000080141401801402ff00000000ff00008000008000", 1),
+    "matrix_segment": ("010202011d000000071001ff000080141401801402ff00000000ff00008000008000", 1),
+    "matrix_randomly": ("010202011d00020f011001ff000080141401801402ff00000000ff00008000008000", 1),
+    "matrix_customize": ("010202011d000301001001ff000080141401801402ff00000000ff00008000008000", 1),
     # three colours: colour_count 03, record_len grows to 0x20, palette red+blue+green.
     "three_colour": (
-        "01030201200001000f1001ff000080141401801403ff00000000ff00ff0000008000008000"
-        "0000000000000000000000000000", 1),
+        "01030201200001000f1001ff000080141401801403ff00000000ff00ff00000080000080000000000000000000000000000000",
+        1,
+    ),
     # brightness differential: r7:r8 c639, r10 ff, r11:r12 c830, r14 7f (vs the baseline).
-    "brightness_scope": (
-        "010202011d0001000f1001c63900ffc830017f1402ff00000000ff00008000008000", 1),
+    "brightness_scope": ("010202011d0001000f1001c63900ffc830017f1402ff00000000ff00008000008000", 1),
     # two-layer bodies that share rec0 except the movement/priority tail:
     #   priority: sel packed 00, ovr packed 10, priority 02
     "priority_2layer": (
         "010402021d400000021201ff000080141483b26d0200ff00ff00000001ef1001b7021a0001000f1001"
-        "ff00008014140180140106ff000000800000800000000000000000", 2),
+        "ff00008014140180140106ff000000800000800000000000000000",
+        2,
+    ),
     #   selected-area movement direction: sel packed 16 (enable|enter-exit|dir2), priority 01
     "selected_movement_dir": (
         "010402021d400000021201ff000080141483b26d0200ff00ff00001601ef1001b7011a0001000f1001"
-        "ff00008014140180140106ff000000800000800000000000000000", 2),
+        "ff00008014140180140106ff000000800000800000000000000000",
+        2,
+    ),
     #   overall movement direction: ovr packed 12 (enable|dir2), priority 00
     "overall_movement_dir": (
         "010402021d400000021201ff000080141483b26d0200ff00ff00000001ef1201b7001a0001000f1001"
-        "ff00008014140180140106ff000000800000800000000000000000", 2),
+        "ff00008014140180140106ff000000800000800000000000000000",
+        2,
+    ),
     # r13 differential: Christmas with rec0 direction/distribution 0x80 (Unified + Backward).
     "r13_direction": (
         "010902051a200100020001ff000080141480801401ff0005000080000080001a220100020001ff0000"
         "8014140180140100ff04000080000080001a240100020001ff000080141401801401ff00010000800000"
         "80001a260100020001ff00008014140180140100ff00000080000080001a280100010001ff0000801414"
-        "01801401ff0000000080000080000000000000000000000000000000", 5),
+        "01801401ff0000000080000080000000000000000000000000000000",
+        5,
+    ),
 }
 
 
@@ -103,9 +110,9 @@ def check_body(name: str, hx: str, exp_layers: int):
     # (4b) each record_len matches the bytes it spans; record_len == 23 + 3*colour_count
     rec_span = 4  # marker + linecount + a3_type + layer_count
     for i, rec in enumerate(k.layers):
-        M = rec.body.colour_count
-        checks.append((f"rec{i}_len==23+3M", rec.record_len == 23 + 3 * M))
-        checks.append((f"rec{i}_body_eof", rec.body._io.is_eof()))
+        m = rec.body.colour_count
+        checks.append((f"rec{i}_len==23+3M", rec.record_len == 23 + 3 * m))
+        checks.append((f"rec{i}_no_excess", len(rec.body.excess) == 0))
         rec_span += 1 + rec.record_len
     # (4c) record spans + padding == body length
     checks.append(("span_sum==len", rec_span + len(k.padding) == len(raw)))
@@ -118,14 +125,17 @@ def check_body(name: str, hx: str, exp_layers: int):
     ok = all(v for _, v in checks)
     bad = ",".join(n for n, v in checks if not v)
     lens = [rec.record_len for rec in k.layers]
-    print(f"{'PASS' if ok else 'FAIL':4s} {name:24s} len={len(raw):3d} lc={k.layer_count} "
-          f"linecount={k.header.linecount} rec_lens={lens} pad={len(k.padding)}B"
-          + (f"  <FAILED: {bad}>" if bad else ""))
+    print(
+        f"{'PASS' if ok else 'FAIL':4s} {name:24s} len={len(raw):3d} lc={k.layer_count} "
+        f"linecount={k.header.linecount} rec_lens={lens} pad={len(k.padding)}B" + (f"  <FAILED: {bad}>" if bad else "")
+    )
     return ok, (raw, k)
 
 
 def diff_offsets(a: bytes, b: bytes) -> set[int]:
-    return {i for i in range(min(len(a), len(b))) if a[i] != b[i]} | set(range(min(len(a), len(b)), max(len(a), len(b))))
+    return {i for i in range(min(len(a), len(b))) if a[i] != b[i]} | set(
+        range(min(len(a), len(b)), max(len(a), len(b)))
+    )
 
 
 def isolation_proofs(parsed: dict) -> int:
@@ -139,71 +149,110 @@ def isolation_proofs(parsed: dict) -> int:
         print(f"  {'PASS' if ok else 'FAIL'} {label:34s} {detail}")
 
     # Select Type enum + r3:r4 params, isolated to record offsets r2,r3,r4 (body offsets 6,7,8).
-    SELECT = {6, 7, 8}
+    select_offsets = {6, 7, 8}
     expect = {
         "matrix_segment": (WorkshopBody.SelectType.segment, 0x00, 0x07),
-        "two_colour_continuously": (WorkshopBody.SelectType.select_ic_continuously, 0x00, 0x0f),
-        "matrix_randomly": (WorkshopBody.SelectType.select_ic_randomly, 0x0f, 0x01),
+        "two_colour_continuously": (WorkshopBody.SelectType.select_ic_continuously, 0x00, 0x0F),
+        "matrix_randomly": (WorkshopBody.SelectType.select_ic_randomly, 0x0F, 0x01),
         "matrix_customize": (WorkshopBody.SelectType.customize_segment, 0x01, 0x00),
     }
     for nm, (st, p1, p2) in expect.items():
         raw, k = parsed[nm]
         r0 = k.layers[0].body
         good = r0.select_type == st and r0.select_param_1 == p1 and r0.select_param_2 == p2
-        confined = diff_offsets(raw, base_raw) <= SELECT
-        emit(f"select_type {nm}", good and confined,
-             f"{r0.select_type.name}={int(r0.select_type.value)} params=({p1:#04x},{p2:#04x}) diff{sorted(diff_offsets(raw, base_raw))}")
+        confined = diff_offsets(raw, base_raw) <= select_offsets
+        emit(
+            f"select_type {nm}",
+            good and confined,
+            f"{r0.select_type.name}={int(r0.select_type.value)} params=({p1:#04x},{p2:#04x}) diff{sorted(diff_offsets(raw, base_raw))}",
+        )
 
     # colour_count -> palette length law across M = 1, 2, 3.
-    for nm, M in (("christmas_5layer", 1), ("two_colour_continuously", 2), ("three_colour", 3)):
+    for nm, m in (("christmas_5layer", 1), ("two_colour_continuously", 2), ("three_colour", 3)):
         _, k = parsed[nm]
         r0 = k.layers[0].body
-        emit(f"colour_count law M={M}", r0.colour_count == M and len(r0.palette) == M and k.layers[0].record_len == 23 + 3 * M,
-             f"r16={r0.colour_count} palette={[(c.r, c.g, c.b) for c in r0.palette]} rec_len={k.layers[0].record_len}")
+        emit(
+            f"colour_count law M={m}",
+            r0.colour_count == m and len(r0.palette) == m and k.layers[0].record_len == 23 + 3 * m,
+            f"r16={r0.colour_count} palette={[(c.r, c.g, c.b) for c in r0.palette]} rec_len={k.layers[0].record_len}",
+        )
 
     # Brightness band r7:r8/r10/r11:r12 (+ r14), isolated to body offsets {11,12,14,15,16,18}.
     braw, bk = parsed["brightness_scope"]
     br = bk.layers[0].body
-    BRIGHT = {11, 12, 14, 15, 16, 18}
-    emit("brightness values", (br.brightness_scope_start, br.brightness_scope_end, br.brightness_speed,
-                               br.brightest_retention, br.darkest_retention) == (0xc6, 0x39, 0xff, 0xc8, 0x30),
-         f"scope=({br.brightness_scope_start:#04x},{br.brightness_scope_end:#04x}) speed={br.brightness_speed:#04x} "
-         f"retention=({br.brightest_retention:#04x},{br.darkest_retention:#04x})")
-    emit("brightness isolated to r7:r8/r10-12/r14", diff_offsets(braw, base_raw) <= BRIGHT,
-         f"diff{sorted(diff_offsets(braw, base_raw))}")
+    bright_offsets = {11, 12, 14, 15, 16, 18}
+    emit(
+        "brightness values",
+        (
+            br.brightness_scope_start,
+            br.brightness_scope_end,
+            br.brightness_speed,
+            br.brightest_retention,
+            br.darkest_retention,
+        )
+        == (0xC6, 0x39, 0xFF, 0xC8, 0x30),
+        f"scope=({br.brightness_scope_start:#04x},{br.brightness_scope_end:#04x}) speed={br.brightness_speed:#04x} "
+        f"retention=({br.brightest_retention:#04x},{br.darkest_retention:#04x})",
+    )
+    emit(
+        "brightness isolated to r7:r8/r10-12/r14",
+        diff_offsets(braw, base_raw) <= bright_offsets,
+        f"diff{sorted(diff_offsets(braw, base_raw))}",
+    )
 
     # r13 direction/distribution: r13_direction differs from Christmas at exactly rec0 r13 (offset 17).
     craw, ck = parsed["christmas_5layer"]
     rraw, rk = parsed["r13_direction"]
     c13 = ck.layers[0].body.direction_distribution
     r13 = rk.layers[0].body.direction_distribution
-    emit("r13 one-byte differential", diff_offsets(rraw, craw) == {17} and c13 == 0x01 and r13 == 0x80,
-         f"christmas=0x{c13:02x}(back={ck.layers[0].body.direction_is_backward}) "
-         f"r13cap=0x{r13:02x}(back={rk.layers[0].body.direction_is_backward}) diff{sorted(diff_offsets(rraw, craw))}")
+    emit(
+        "r13 one-byte differential",
+        diff_offsets(rraw, craw) == {17} and c13 == 0x01 and r13 == 0x80,
+        f"christmas=0x{c13:02x}(back={ck.layers[0].body.direction_is_backward}) "
+        f"r13cap=0x{r13:02x}(back={rk.layers[0].body.direction_is_backward}) diff{sorted(diff_offsets(rraw, craw))}",
+    )
     # and the segment+gradient value 0x83 round-trips (backward | based-on-segment | gradient bit).
     p2r = parsed["priority_2layer"][1].layers[0].body
-    emit("r13 segment+gradient 0x83", p2r.direction_distribution == 0x83 and p2r.direction_is_backward
-         and (p2r.direction_distribution & 0x03) == 0x03,
-         f"r13=0x{p2r.direction_distribution:02x}")
+    emit(
+        "r13 segment+gradient 0x83",
+        p2r.direction_distribution == 0x83
+        and p2r.direction_is_backward
+        and (p2r.direction_distribution & 0x03) == 0x03,
+        f"r13=0x{p2r.direction_distribution:02x}",
+    )
 
     # Movement packed bytes + priority: three 2-layer bodies differ only in the tail
     # offsets {27 (sel packed r23), 30 (ovr packed r26), 33 (priority r29)}.
     praw, pk = parsed["priority_2layer"]
     sraw, sk = parsed["selected_movement_dir"]
     oraw, ok_ = parsed["overall_movement_dir"]
-    TAIL = {27, 30, 33}
-    emit("movement/priority tail isolated",
-         diff_offsets(sraw, praw) <= TAIL and diff_offsets(oraw, praw) <= TAIL,
-         f"sel^prio diff{sorted(diff_offsets(sraw, praw))} ovr^prio diff{sorted(diff_offsets(oraw, praw))}")
+    tail_offsets = {27, 30, 33}
+    emit(
+        "movement/priority tail isolated",
+        diff_offsets(sraw, praw) <= tail_offsets and diff_offsets(oraw, praw) <= tail_offsets,
+        f"sel^prio diff{sorted(diff_offsets(sraw, praw))} ovr^prio diff{sorted(diff_offsets(oraw, praw))}",
+    )
     sm = sk.layers[0].body.selected_area_movement
-    emit("selected movement packed 0x16", sm.packed == 0x16 and sm.enabled and sm.enter_exit_effect and sm.direction == 2,
-         f"packed=0x{sm.packed:02x} enabled={sm.enabled} enter_exit={sm.enter_exit_effect} dir={sm.direction}")
+    emit(
+        "selected movement packed 0x16",
+        sm.packed == 0x16 and sm.enabled and sm.enter_exit_effect and sm.direction == 2,
+        f"packed=0x{sm.packed:02x} enabled={sm.enabled} enter_exit={sm.enter_exit_effect} dir={sm.direction}",
+    )
     om = ok_.layers[0].body.overall_movement
-    emit("overall movement packed 0x12", om.packed == 0x12 and om.enabled and not om.enter_exit_effect and om.direction == 2,
-         f"packed=0x{om.packed:02x} enabled={om.enabled} enter_exit={om.enter_exit_effect} dir={om.direction}")
-    prios = {nm: parsed[nm][1].layers[0].body.priority for nm in ("priority_2layer", "selected_movement_dir", "overall_movement_dir")}
-    emit("priority levels 2/1/0", prios == {"priority_2layer": 2, "selected_movement_dir": 1, "overall_movement_dir": 0},
-         f"{prios}")
+    emit(
+        "overall movement packed 0x12",
+        om.packed == 0x12 and om.enabled and not om.enter_exit_effect and om.direction == 2,
+        f"packed=0x{om.packed:02x} enabled={om.enabled} enter_exit={om.enter_exit_effect} dir={om.direction}",
+    )
+    prios = {
+        nm: parsed[nm][1].layers[0].body.priority
+        for nm in ("priority_2layer", "selected_movement_dir", "overall_movement_dir")
+    }
+    emit(
+        "priority levels 2/1/0",
+        prios == {"priority_2layer": 2, "selected_movement_dir": 1, "overall_movement_dir": 0},
+        f"{prios}",
+    )
 
     return fails
 
@@ -220,8 +269,7 @@ def main() -> int:
     print("\n== isolation proofs (capture-grounded differentials backing CONFIRMED_LIVE) ==")
     fails += isolation_proofs(parsed)
 
-    print(f"\n{'ALL PASS' if not fails else f'{fails} FAILED'} "
-          f"({len(FIXTURES)} bodies round-tripped byte-exact)")
+    print(f"\n{'ALL PASS' if not fails else f'{fails} FAILED'} ({len(FIXTURES)} bodies round-tripped byte-exact)")
     return 1 if fails else 0
 
 

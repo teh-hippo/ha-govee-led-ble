@@ -5,6 +5,7 @@ Full-frame consumption + host-side XOR + field parity with the shipped
 protocol.py decoders, across every aa domain including colour-mode (0x05).
 Captures are ground truth.
 """
+
 import io
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ sys.path.insert(0, str(REPO))
 
 from kaitaistruct import KaitaiStream  # noqa: E402
 from status_reply import StatusReply  # noqa: E402
+
 from custom_components.ha_govee_led_ble import protocol as proto  # noqa: E402
 
 # (name, captured frame hex) -- real wire bytes, one per aa domain plus the five
@@ -102,7 +104,10 @@ def main() -> int:
         ok = all(v for _, v in checks)
         fails += 0 if ok else 1
         bad = ",".join(n for n, v in checks if not v)
-        print(f"{'PASS' if ok else 'FAIL'} {name:10s} domain={k.domain.name} {detail}" + (f"  <FAILED: {bad}>" if bad else ""))
+        print(
+            f"{'PASS' if ok else 'FAIL'} {name:10s} domain={k.domain.name} {detail}"
+            + (f"  <FAILED: {bad}>" if bad else "")
+        )
     print("\nALL PASS" if not fails else f"\n{fails} FAILED")
     return 1 if fails else 0
 

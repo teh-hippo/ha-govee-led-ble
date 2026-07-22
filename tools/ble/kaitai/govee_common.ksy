@@ -41,7 +41,9 @@ types:
         doc: '[CONFIRMED_LIVE] raw 0x01 generic build_a3_multi body marker'
       - id: linecount
         type: u1
-        doc: '[CONFIRMED_LIVE] A3 data-chunk count (transport framing), never below 0x02'
+        valid:
+          min: 2
+        doc: '[CONFIRMED_LIVE] 17-byte A3 frame count as the sender wrote it; equals reassembled_body_len // 17 in every observed capture. Some senders count an appended empty 0xFF terminator frame, others do not (see per-payload docs). Never observed below 0x02.'
 enums:
   music_mode:
     0x05: energetic
@@ -55,6 +57,3 @@ enums:
     0x34: piano_keys
     0x35: fountain
     0x37: day_and_night
-  music_style:
-    0x00: dynamic
-    0x01: calm

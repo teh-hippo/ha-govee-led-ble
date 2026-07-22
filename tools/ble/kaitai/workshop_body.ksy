@@ -180,6 +180,9 @@ types:
       - id: priority
         type: u1
         doc: '[CONFIRMED_LIVE] last record byte: Effect Layer Priority, 00 off / 01..05 levels (00/01/02/03 seen).'
+      - id: excess
+        size-eos: true
+        doc: '[INFERRED] empty for a well-formed record (record_len == 23 + 3*colour_count); any bytes here signal an unmodelled longer record and are asserted empty by the harness.'
     instances:
       applied_area_width_tenths:
         value: '(applied_area & 0xf0) >> 4'

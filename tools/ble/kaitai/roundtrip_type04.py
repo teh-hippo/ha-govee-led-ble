@@ -20,6 +20,7 @@ Per body the harness asserts:
 
 Prints PASS/FAIL per body; exits non-zero on any failure.
 """
+
 import io
 import sys
 from pathlib import Path
@@ -29,8 +30,9 @@ sys.path.insert(0, str(HERE))
 REPO = HERE.parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from kaitaistruct import KaitaiStream  # noqa: E402
 from diy_type04 import DiyType04  # noqa: E402
+from kaitaistruct import KaitaiStream  # noqa: E402
+
 from custom_components.ha_govee_led_ble import protocol as proto  # noqa: E402
 from custom_components.ha_govee_led_ble.custom_effects import ComboContent, FlatContent  # noqa: E402
 
@@ -39,25 +41,61 @@ from custom_components.ha_govee_led_ble.custom_effects import ComboContent, Flat
 # 0x03/0x09/0x0c/0x15 across families 0x00/0x01/0x03/0x08.
 FIXTURES = [
     # --- Combo DIY (FAMILY == 0xFF) -- [CONFIRMED_LIVE], combo captures exist ---
-    ("combo seqlen=0x02 (1 effect)", "combo", "combo-3.pcap",
-     "010204ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff020000000000"),
-    ("combo seqlen=0x04 (2 effects)", "combo", "combo-3.pcap",
-     "010204ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff040000010000"),
-    ("combo seqlen=0x06 (3 effects)", "combo", "combo-3.pcap",
-     "010304ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0600000100030300000000000000000000000000000000"),
-    ("combo seqlen=0x08 (4 effects)", "combo", "combo-4.pcap",
-     "010304ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0800000100030308090000000000000000000000000000"),
-    ("combo seqlen=0x04 pairs (0,0)(3,3)", "combo", "diy-combo.pcap",
-     "010204ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff040000030300"),
+    (
+        "combo seqlen=0x02 (1 effect)",
+        "combo",
+        "combo-3.pcap",
+        "010204ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff020000000000",
+    ),
+    (
+        "combo seqlen=0x04 (2 effects)",
+        "combo",
+        "combo-3.pcap",
+        "010204ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff040000010000",
+    ),
+    (
+        "combo seqlen=0x06 (3 effects)",
+        "combo",
+        "combo-3.pcap",
+        "010304ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0600000100030300000000000000000000000000000000",
+    ),
+    (
+        "combo seqlen=0x08 (4 effects)",
+        "combo",
+        "combo-4.pcap",
+        "010304ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0800000100030308090000000000000000000000000000",
+    ),
+    (
+        "combo seqlen=0x04 pairs (0,0)(3,3)",
+        "combo",
+        "diy-combo.pcap",
+        "010204ff003315ff0000ff7f00ffff0000ff000000ff00ffff8b00ff040000030300",
+    ),
     # --- Flat DIY (FAMILY != 0xFF) -- [CONFIRMED_LIVE], flat captures exist ---
-    ("flat plen=0x15 (7 colours) fam=0x03", "flat", "diy-marquee.pcap",
-     "01020403033215ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000"),
-    ("flat plen=0x0c (4 colours) fam=0x00", "flat", "colorlimit-fade.pcap",
-     "0102040000640cff0000ff7d00ffff0000ff00000000000000000000000000000000"),
-    ("flat plen=0x09 (3 colours) fam=0x08", "flat", "diy-chasing.pcap",
-     "01020408096409ff0000ff7d00ffff00000000000000000000000000000000000000"),
-    ("flat plen=0x03 (1 colour) fam=0x01", "flat", "h617a-diy-jumping1-a.pcap",
-     "010204010064038b00ff000000000000000000000000000000000000000000000000"),
+    (
+        "flat plen=0x15 (7 colours) fam=0x03",
+        "flat",
+        "diy-marquee.pcap",
+        "01020403033215ff0000ff7d00ffff0000ff000000ff00ffff8b00ff000000000000",
+    ),
+    (
+        "flat plen=0x0c (4 colours) fam=0x00",
+        "flat",
+        "colorlimit-fade.pcap",
+        "0102040000640cff0000ff7d00ffff0000ff00000000000000000000000000000000",
+    ),
+    (
+        "flat plen=0x09 (3 colours) fam=0x08",
+        "flat",
+        "diy-chasing.pcap",
+        "01020408096409ff0000ff7d00ffff00000000000000000000000000000000000000",
+    ),
+    (
+        "flat plen=0x03 (1 colour) fam=0x01",
+        "flat",
+        "h617a-diy-jumping1-a.pcap",
+        "010204010064038b00ff000000000000000000000000000000000000000000000000",
+    ),
 ]
 
 
@@ -97,7 +135,7 @@ def check(label: str, kind: str, pcap: str, hx: str) -> tuple[bool, str]:
     # 3. shared header fields vs raw
     checks += [
         ("marker", k.header.marker == b"\x01" and raw[0] == 0x01),
-        ("a3_type", k.a3_type == raw[2] == 0x04),
+        ("a3_type", k.a3_type == b"\x04" and raw[2] == 0x04),
         ("family", k.family == raw[3]),
     ]
 
@@ -108,13 +146,13 @@ def check(label: str, kind: str, pcap: str, hx: str) -> tuple[bool, str]:
             ("variant", body.variant == raw[4]),
             ("speed", body.speed == raw[5]),
             ("plen", body.plen == raw[6]),
-            ("palette", pal == raw[7:7 + body.plen]),
+            ("palette", pal == raw[7 : 7 + body.plen]),
             ("plen=3xcolours", body.plen == 3 * len(body.palette.colours)),
             ("seqlen", body.seqlen == raw[7 + body.plen]),
             ("seqlen=2xpairs", body.seqlen == 2 * len(body.pairs)),
         ]
         seq_off = 7 + body.plen + 1
-        seq_raw = raw[seq_off:seq_off + body.seqlen]
+        seq_raw = raw[seq_off : seq_off + body.seqlen]
         seq_parsed = b"".join(bytes([p.family, p.variant]) for p in body.pairs)
         checks.append(("pairs", seq_parsed == seq_raw))
         # 4. semantic body rebuilt from parsed fields, mirroring build_combo
@@ -127,16 +165,18 @@ def check(label: str, kind: str, pcap: str, hx: str) -> tuple[bool, str]:
             effects=tuple((p.family, p.variant) for p in body.pairs),
         )
         encoded = reassemble_a3(proto.build_combo(content))
-        detail = (f"var={body.variant} speed={body.speed} plen={body.plen} "
-                  f"colours={len(body.palette.colours)} seqlen={body.seqlen} "
-                  f"pairs={[(p.family, p.variant) for p in body.pairs]} pad={len(body.padding)}B")
+        detail = (
+            f"var={body.variant} speed={body.speed} plen={body.plen} "
+            f"colours={len(body.palette.colours)} seqlen={body.seqlen} "
+            f"pairs={[(p.family, p.variant) for p in body.pairs]} pad={len(body.padding)}B"
+        )
     else:  # flat
         checks += [
             ("flat_family", k.family != 0xFF),
             ("variant", body.variant == raw[4]),
             ("speed", body.speed == raw[5]),
             ("plen", body.plen == raw[6]),
-            ("palette", pal == raw[7:7 + body.plen]),
+            ("palette", pal == raw[7 : 7 + body.plen]),
             ("plen=3xcolours", body.plen == 3 * len(body.palette.colours)),
         ]
         # 4. semantic body rebuilt from parsed fields, mirroring build_flat_diy
@@ -149,12 +189,14 @@ def check(label: str, kind: str, pcap: str, hx: str) -> tuple[bool, str]:
             palette=tuple((c.r, c.g, c.b) for c in body.palette.colours),
         )
         encoded = reassemble_a3(proto.build_flat_diy(content))
-        detail = (f"fam={k.family} var={body.variant} speed={body.speed} plen={body.plen} "
-                  f"colours={len(body.palette.colours)} pad={len(body.padding)}B")
+        detail = (
+            f"fam={k.family} var={body.variant} speed={body.speed} plen={body.plen} "
+            f"colours={len(body.palette.colours)} pad={len(body.padding)}B"
+        )
 
     # 4. equality up to padding (semantic reconstruction lands at byte[3])
-    checks.append(("rebuild_upto_pad", rebuilt == raw[3:3 + len(rebuilt)]))
-    checks.append(("tail_all_zero", set(raw[3 + len(rebuilt):]) <= {0}))
+    checks.append(("rebuild_upto_pad", rebuilt == raw[3 : 3 + len(rebuilt)]))
+    checks.append(("tail_all_zero", set(raw[3 + len(rebuilt) :]) <= {0}))
     # 5. shipped-encoder round-trip is byte-exact (linecount + payload + padding)
     checks.append(("encoder_byte_exact", encoded == raw))
 

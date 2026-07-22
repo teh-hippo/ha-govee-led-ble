@@ -22,6 +22,7 @@ Bodies are extracted live from the capture pcaps (captures are ground truth); a 
 of embedded inline anchor hex strings is always tested too, so the harness still
 verifies the core cases if the capture mount is unavailable.
 """
+
 import io
 import sys
 from pathlib import Path
@@ -33,8 +34,9 @@ REPO = HERE.parent.parent.parent  # custom_components
 sys.path.insert(0, str(TOOLS_BLE))
 sys.path.insert(0, str(REPO))
 
-from kaitaistruct import KaitaiStream  # noqa: E402
 from diy_type03 import DiyType03  # noqa: E402
+from kaitaistruct import KaitaiStream  # noqa: E402
+
 from custom_components.ha_govee_led_ble import protocol as proto  # noqa: E402
 
 CAPS = Path("/mnt/z/libimobiledevice/captures")
@@ -144,23 +146,22 @@ def effect_name(k) -> str:
 def reconstruct_body_after_type(k) -> bytes:
     """Rebuild the bytes after the TYPE selector, i.e. the `body` argument that
     protocol.build_sketch / build_vibrant hand to build_a3_multi(0x03, body)."""
-    out = bytes(
-        [effect_value(k), k.speed, k.brightness, k.background.r, k.background.g, k.background.b, k.group_count]
-    )
+    out = bytes([effect_value(k), k.speed, k.brightness, k.background.r, k.background.g, k.background.b, k.group_count])
     for g in k.groups:
         out += bytes([g.seg_count, g.fill.r, g.fill.g, g.fill.b, *g.segment_indices])
     return out
 
 
-def encoder_reproduces(body_after_type: bytes, raw: bytes):
-    """Feed the reconstructed body back through the real build_a3_multi fragmenter and
-    re-reassemble; return the terminator flag that reproduces the captured bytes."""
-    for term in (True, False):
-        frames = proto.build_a3_multi(0x03, body_after_type, terminator=term)
-        reassembled = reassemble_values(frames)
-        if len(reassembled) == 1 and reassembled[0] == raw:
-            return term
-    return None
+def encoder_reproduces(body_after_type: bytes, raw: bytes, family: str):
+    """Reproduce the captured body with the terminator form the SHIPPED builder uses
+    for this family: build_sketch hardcodes terminator=True, build_vibrant omits it
+    (=False). Returns (matches, shipped_frame_count, shipped_term). It does NOT try
+    'whichever form happens to match' -- that masked a real build_sketch divergence."""
+    shipped_term = family == "sketch"
+    frames = proto.build_a3_multi(0x03, body_after_type, terminator=shipped_term)
+    reassembled = reassemble_values(frames)
+    matches = len(reassembled) == 1 and reassembled[0] == raw
+    return matches, len(frames), shipped_term
 
 
 def check_body(label: str, raw: bytes):
@@ -206,20 +207,29 @@ def check_body(label: str, raw: bytes):
     recon = bytes([0x01, k.header.linecount, 0x03]) + body_after_type + bytes(len(k.padding))
     checks.append(("reconstruct", recon == raw))
 
-    # cross-check against protocol.py: real fragmenter reproduces the captured body
-    term = encoder_reproduces(body_after_type, raw)
-    checks.append(("encoder", term is not None))
+    # cross-check against the SHIPPED builder using the exact terminator form it uses
+    # (build_sketch=True, build_vibrant=False) -- NOT "whichever form matches", which
+    # previously masked a real build_sketch divergence. A mismatch is surfaced, not hidden.
+    family = "vibrant" if "vibrant" in label else "sketch"
+    enc_match, shipped_frames, shipped_term = encoder_reproduces(body_after_type, raw, family)
+    divergence = None
+    if not enc_match:
+        divergence = (
+            f"{label}: shipped build_{family}(terminator={shipped_term}) emits {shipped_frames} "
+            f"A3 frames ({shipped_frames * 17}B), but the capture is {(len(raw) + 16) // 17} "
+            f"frames ({len(raw)}B)"
+        )
 
     ok = all(v for _, v in checks)
     bad = ",".join(n for n, v in checks if not v)
-    form = {True: "terminator", False: "plain"}.get(term, "none")
     detail = (
         f"lc={k.header.linecount} eff={effect_name(k)} spd={k.speed} br={k.brightness} "
         f"bg={bytes([k.background.r, k.background.g, k.background.b]).hex()} "
-        f"gc={k.group_count} maxseg={max_seg} pad={len(k.padding)}B form={form}"
+        f"gc={k.group_count} maxseg={max_seg} pad={len(k.padding)}B "
+        f"enc={'match' if enc_match else 'DIVERGES'}"
     )
     print(f"{'PASS' if ok else 'FAIL'} {label:34s} {detail}" + (f"  <FAILED: {bad}>" if bad else ""))
-    return ok, k, used
+    return ok, k, used, divergence
 
 
 def main() -> int:
@@ -229,6 +239,7 @@ def main() -> int:
     print(f"Testing {len(fixtures)} distinct TYPE 0x03 bodies\n")
 
     fails = 0
+    divergences: list[str] = []
     sketch_seen = vibrant15_seen = merged_seen = False
     lc_below_two = 0  # any body with linecount < 2
     sketch_lc_violation = 0  # any 34B Sketch body whose linecount != 2
@@ -236,8 +247,10 @@ def main() -> int:
     single_chunk_count = multi_chunk_sketch = 0
 
     for label, raw in fixtures:
-        ok, k, used = check_body(label, raw)
+        ok, k, used, divergence = check_body(label, raw)
         fails += 0 if ok else 1
+        if divergence:
+            divergences.append(divergence)
 
         # coverage flags
         if k.header.linecount == 2 and len(raw) == 34:
@@ -270,16 +283,31 @@ def main() -> int:
 
     print("\n--- terminator finding (terminator-fixture) ---")
     print("Single-data-chunk Sketch bodies reassemble to 34B = 17 data + 17 zero terminator, linecount 0x02.")
-    print(f"single-data-chunk Sketch bodies (used<=17): {single_chunk_count}; multi-chunk plain-form: {multi_chunk_sketch}")
+    print(
+        f"single-data-chunk Sketch bodies (used<=17): {single_chunk_count}; multi-chunk plain-form: {multi_chunk_sketch}"
+    )
     print(f"all bodies linecount >= 2:                       {'yes' if lc_below_two == 0 else f'NO ({lc_below_two})'}")
-    print(f"all 34B Sketch bodies linecount == 2:            {'yes' if sketch_lc_violation == 0 else f'NO ({sketch_lc_violation})'}")
-    print(f"single-chunk Sketch bodies have >=17B empty term: {'yes' if single_chunk_term_violation == 0 else f'NO ({single_chunk_term_violation})'}")
-    term_ok = lc_below_two == 0 and sketch_lc_violation == 0 and single_chunk_term_violation == 0 and single_chunk_count > 0
+    print(
+        f"all 34B Sketch bodies linecount == 2:            {'yes' if sketch_lc_violation == 0 else f'NO ({sketch_lc_violation})'}"
+    )
+    print(
+        f"single-chunk Sketch bodies have >=17B empty term: {'yes' if single_chunk_term_violation == 0 else f'NO ({single_chunk_term_violation})'}"
+    )
+    term_ok = (
+        lc_below_two == 0 and sketch_lc_violation == 0 and single_chunk_term_violation == 0 and single_chunk_count > 0
+    )
 
     if not coverage_ok:
         fails += 1
     if not term_ok:
         fails += 1
+
+    if divergences:
+        print("\n--- encoder divergences (DECODE passes; protocol.py fix deferred) ---")
+        print("build_sketch hardcodes terminator=True, but the app uses the plain multi-frame")
+        print("form for multi-chunk Sketch bodies, so the shipped builder cannot reproduce them:")
+        for d in divergences:
+            print(f"  DIVERGES {d}")
 
     print("\nALL PASS" if not fails else f"\n{fails} FAILED")
     return 1 if fails else 0

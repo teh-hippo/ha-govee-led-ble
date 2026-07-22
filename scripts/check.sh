@@ -8,6 +8,7 @@ uv sync --locked
 echo "=== Lint ==="
 uv run --no-sync ruff check .
 uv run --no-sync ruff format --check .
+uv run --no-sync python tools/ble/kaitai/evidence_lint.py
 
 echo "=== Mypy ==="
 uv run --no-sync mypy custom_components/ha_govee_led_ble tests

@@ -20,6 +20,7 @@ protocol.build_music_mode_with_color reproduces the frame byte-exact.
 
 Prints PASS/FAIL per fixture and exits non-zero on any failure.
 """
+
 import io
 import sys
 from pathlib import Path
@@ -31,6 +32,7 @@ sys.path.insert(0, str(REPO))
 
 from kaitaistruct import KaitaiStream  # noqa: E402
 from music_body import MusicBody  # noqa: E402
+
 from custom_components.ha_govee_led_ble import protocol as proto  # noqa: E402
 
 # --- Structure 2: reassembled 0xA3 command-0x41 per-mode movement bodies ----------------------
@@ -38,7 +40,10 @@ from custom_components.ha_govee_led_ble import protocol as proto  # noqa: E402
 BODIES = [
     ("separation_a", "0102413205ff7f00ff0000ffff000000ff00ff000200610000000000000000000000"),
     ("separation_b", "0102413205ff7f00ff0000ffff000000ff00ff0002015e0000000000000000000000"),
-    ("hopping", "0103413307ff0000ff7f00ffff0000ff000000ff00ffff8b00ffff000031620103020600000000000000000000000000000000"),
+    (
+        "hopping",
+        "0103413307ff0000ff7f00ffff0000ff000000ff00ffff8b00ffff000031620103020600000000000000000000000000000000",
+    ),
     ("piano_keys", "0102413407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff00090a0404000000"),
     ("fountain", "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0101035000000000"),
     ("day_and_night", "0102413707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0201000000000000"),
@@ -148,7 +153,7 @@ def check_frame(name: str, hx: str) -> tuple[bool, str, int]:
     ok = all(v for _, v in checks)
     bad = ",".join(n for n, v in checks if not v)
     detail = (
-        f"mode={k.mode.name}({mode_val:#04x}) sens={sens} style={k.style.name} count={count} "
+        f"mode={k.mode.name}({mode_val:#04x}) sens={sens} style={style_val:#04x} count={count} "
         f"rgb={colors[0].hex() if count >= 1 else None}"
     )
     return ok, f"{name:18s} {detail}" + (f"  <FAILED: {bad}>" if bad else ""), mode_val

@@ -111,11 +111,12 @@ types:
         doc: '[CONFIRMED_LIVE] frame offset 4: mic sensitivity 0..99 (raw); captures span 0x00/0x2f/0x63.'
       - id: style
         type: u1
-        enum: govee_common::music_style
-        doc: '[CONFIRMED_LIVE] frame offset 5: Dynamic 0x00 / Calm 0x01 (raw int(calm) on the write side).'
+        doc: '[CONFIRMED_LIVE] frame offset 5: raw byte; Dynamic 0x00 / Calm 0x01 is the Rhythm-only interpretation (other modes repurpose it, see protocol.parse_color_mode_response).'
       - id: count
         type: u1
-        doc: '[CONFIRMED_LIVE] frame offset 6: manual colour count AND auto-colour flag (0x00 = auto on, no RGB).'
+        valid:
+          max: 4
+        doc: '[CONFIRMED_LIVE] frame offset 6: manual colour count AND auto-colour flag (0x00 = auto on, no RGB). Bounded to max 4 (the 12-byte RGB region) so the padding repeat-expr cannot go negative.'
       - id: colors
         type: govee_common::rgb
         repeat: expr

@@ -25,7 +25,7 @@ seq:
   - id: scene_type
     type: u1
     enum: scene_type
-    doc: '[CONFIRMED_LIVE] raw scene-type selector (0x02 = rgbicv2 in captures)'
+    doc: '[INFERRED] scene-type selector byte; 0x02 in the captured bodies. The value alone does not identify the effect family (the activation code does), and its meaning is taken from docs, not isolated by a differential.'
   - id: record_count
     type: u1
     doc: '[CONFIRMED_LIVE] number of length-prefixed records that follow'
@@ -43,7 +43,7 @@ enums:
   scene_type:
     0: scene_v0
     1: scene_v1
-    2: rgbicv2
+    2: scene_v2
 types:
   record:
     seq:

@@ -44,6 +44,7 @@ jobs:
       - run: uv sync --locked
       - run: uv run --no-sync ruff check .
       - run: uv run --no-sync ruff format --check .
+      - run: uv run --no-sync python tools/ble/kaitai/evidence_lint.py
 
   mypy:
     name: Mypy

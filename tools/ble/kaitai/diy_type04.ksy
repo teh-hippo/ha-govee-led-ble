@@ -27,8 +27,7 @@ seq:
       the A3 data-chunk count (never below 0x02); Flat/Combo bodies span 1-2 chunks.
       [CONFIRMED_LIVE] round-tripped in every captured Flat and Combo body.
   - id: a3_type
-    type: u1
-    valid: 0x04
+    contents: [0x04]
     doc: |
       byte[2] = 0x04, the A3 payload TYPE selecting the Flat/Combo DIY family.
       [CONFIRMED_LIVE]
@@ -89,8 +88,7 @@ types:
       - id: speed
         type: u1
         doc: |
-          byte[5], SPEED 0-100 (default 0x32 = 50); the Music family reuses this
-          slot as Sensitivity. [CONFIRMED_LIVE]
+          byte[5], SPEED 0-100 (default 0x32 = 50). [CONFIRMED_LIVE]
       - id: plen
         type: u1
         doc: |

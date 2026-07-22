@@ -19,6 +19,7 @@ REPO = TOOLS_BLE.parent.parent
 sys.path.insert(0, str(REPO))
 
 import decode_govee as dg  # noqa: E402
+
 from custom_components.ha_govee_led_ble import protocol as proto  # noqa: E402
 
 CAPS = Path("/mnt/z/libimobiledevice/captures")
@@ -75,7 +76,11 @@ def extract(pcap: Path):
 
 
 def main() -> int:
-    targets = sys.argv[1:] or ["20260716151500-h617a-scene-speed.pcap", "20260716120000-h617a-music-walkthrough.pcap", "20260716140100-h617a-sketch.pcap"]
+    targets = sys.argv[1:] or [
+        "20260716151500-h617a-scene-speed.pcap",
+        "20260716120000-h617a-music-walkthrough.pcap",
+        "20260716140100-h617a-sketch.pcap",
+    ]
     out = {}
     for name in targets:
         p = CAPS / name
