@@ -1,9 +1,10 @@
 # Govee BLE protocol verification backlog
 
-This is the current evidence backlog for the supported H617A and H6199 devices. Confirmed layouts
-belong in [`ble-protocol-h617a.md`](ble-protocol-h617a.md) and
-[`ble-protocol-h6199.md`](ble-protocol-h6199.md). Effect content belongs in
-[`ble-effect-catalogue.md`](ble-effect-catalogue.md). The operating method is defined in
+This is the current evidence backlog for the supported H617A and H6199 devices. Confirmed H617A wire
+layouts are the Kaitai specs in [`../tools/ble/kaitai/`](../tools/ble/kaitai/); H6199 layouts are in
+[`ble-protocol-h6199.md`](ble-protocol-h6199.md). Effect content (scene/DIY names, codes and params)
+is the shipped `custom_components/ha_govee_led_ble/scenes.py` catalogue and the frozen
+`tools/ble/catalogues/effect-library-H617A.json`. The operating method is defined in
 [`ble-capture-workflow.md`](ble-capture-workflow.md).
 
 An item closes only when its app action is attributable, the predicted and observed BLE frames are

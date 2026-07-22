@@ -396,7 +396,7 @@ def build_music_mode_with_color(
 
 # --- Music per-mode movement parameters (§2.3, EXPERIMENTAL, capture-pinned) -------------------
 # H617A movement params ride the MultipleController4Music command 0x41 body, fragmented over a3
-# (H617A §6, docs/ble-protocol-h617a.md lines 217-234). Assembled body =
+# (H617A §6, see tools/ble/kaitai/music_body.ksy). Assembled body =
 # `01 <fragCount> 41 <MODE> <count> <RGB x count> <mode-specific tail>`; a3 offsets are absolute
 # from the assembled byte 0, so the body-local index is `offset - 3`. Every template byte below is
 # replayed byte-exact from the 2026-07-09 validation run and current iOS 7.5.21 captures. Volatile
