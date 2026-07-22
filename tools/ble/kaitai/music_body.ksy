@@ -18,10 +18,9 @@ doc: |
   palette end, not at a fixed absolute offset): Shiny and Separation appear in
   captures with both count 5 and count 7, and the same tail bytes follow each
   palette (e.g. Shiny tail `05 64 0a` at offsets 20-22 when count 5, and at 26-28
-  when count 7). The tail is modelled as ONE per-mode opaque region; individual tail
-  parameters are NOT decoded here (their semantics come from protocol.py
-  `_MUSIC_PARAM_TEMPLATE`, not from an isolated capture differential), so the whole
-  region is tagged as inherited.
+  when count 7). The tail is field-decoded per mode (switch on mode) from the
+  2026-07-21 live editor A/B(/C) sweep; bytes that stay constant across the sweep and
+  whose meaning was not isolated stay INFERRED within each per-mode type.
 
   SUB-TYPE `mode_set_frame` = the full 20-byte `33 05 13` music mode-set FRAME. It
   IS a full frame, so byte[19] is the XOR of bytes[0..18], read opaque and validated
@@ -55,15 +54,24 @@ seq:
     doc: '[CONFIRMED_LIVE] body offsets 5..: count x RGB, byte-exact against captures.'
   - id: tail
     size: tail_len
+    type:
+      switch-on: mode
+      cases:
+        'govee_common::music_mode::bloom': bloom_tail
+        'govee_common::music_mode::shiny': shiny_tail
+        'govee_common::music_mode::separation': separation_tail
+        'govee_common::music_mode::hopping': hopping_tail
+        'govee_common::music_mode::piano_keys': piano_keys_tail
+        'govee_common::music_mode::fountain': fountain_tail
+        'govee_common::music_mode::day_and_night': day_and_night_tail
     doc: |
-      [INHERITED] per-mode movement-parameter region, immediately after the palette.
-      Modelled as one opaque blob: the raw bytes round-trip byte-exact against
-      captures, but no individual tail field is decoded or isolated here.
-      Semantics/offsets are inherited from protocol.py `_MUSIC_PARAM_TEMPLATE` (write
-      side), e.g. Separation +0=separation point, +1=gradient, +2=volatile companion;
-      Shiny +0..+1=style companion (Dynamic 05 64 / Calm 14 46). Capture differentials
-      are observed (Separation +1 00->01, Shiny +0..+1, Day & Night +1/+2) but are left
-      un-isolated in this opaque model, so the region stays pessimistically opaque.
+      [CONFIRMED_LIVE] per-mode movement-parameter region, immediately after the
+      palette (offsets RELATIVE to palette end, not fixed absolute), sized by tail_len
+      and field-decoded per mode below. The field meanings were live-confirmed by the
+      2026-07-21 A/B(/C) editor sweep (see the per-mode tail types); the raw bytes also
+      round-trip byte-exact (roundtrip_music.py checks _raw_tail). Bytes that stay
+      constant across the sweep and whose meaning was not isolated are tagged INFERRED
+      within each per-mode type.
   - id: padding
     type: u1
     valid: 0
@@ -88,6 +96,90 @@ instances:
       covered; the simpler modes (Energetic/Rhythm/Spectrum/Rolling) emit no 0x41 body.
       The region is opaque/INHERITED, so a future capture could extend a length.
 types:
+  bloom_tail:
+    doc: 'Bloom (0x30) tail (2 bytes). Editor = Sensitivity + Dynamic/Calm + colour.'
+    seq:
+      - id: fixed0
+        type: u1
+        doc: '[INFERRED] +0, constant 0x0a across the sweep; meaning not isolated'
+      - id: style_companion
+        type: u1
+        doc: '[CONFIRMED_LIVE] +1, style companion: Dynamic 0x50 / Calm 0x14 (A/B/A 2026-07-21)'
+  shiny_tail:
+    doc: 'Shiny (0x31) tail (3 bytes). Style companion then a constant byte.'
+    seq:
+      - id: style_companion
+        size: 2
+        doc: '[CONFIRMED_LIVE] +0..+1, style companion: Dynamic 05 64 / Calm 14 46'
+      - id: fixed2
+        type: u1
+        doc: '[INFERRED] +2, constant 0x0a across captures; meaning not isolated'
+  separation_tail:
+    doc: 'Separation (0x32) tail (3 bytes). Editor = Sensitivity + point + gradient + colour.'
+    seq:
+      - id: point
+        type: u1
+        doc: '[CONFIRMED_LIVE] +0, separation point 1..5 (swept 1/2/5 live 2026-07-21)'
+      - id: gradient
+        type: u1
+        doc: '[CONFIRMED_LIVE] +1, gradient 0/1'
+      - id: companion
+        type: u1
+        doc: '[CONFIRMED_LIVE] +2, gradient-coupled companion 0x5e (gradient on) / 0x61 (off), point-independent'
+  hopping_tail:
+    doc: 'Hopping (0x33) tail (9 bytes). Editor = Sensitivity + bg colour + rel-brightness + palette.'
+    seq:
+      - id: background
+        type: govee_common::rgb
+        doc: '[CONFIRMED_LIVE] +0..+2, background colour RGB'
+      - id: rel_brightness
+        type: u1
+        doc: '[CONFIRMED_LIVE] +3, relative brightness as a direct % capped at 0x32=50% (49%->0x31, 50%->0x32)'
+      - id: fixed
+        size: 5
+        doc: '[CONFIRMED_LIVE] +4..+8, fixed block 62 01 03 02 06 (unchanged by rel-brightness across the sweep)'
+  piano_keys_tail:
+    doc: 'Piano Keys (0x34) tail (5 bytes). Editor = Sensitivity + key count + gradient + palette.'
+    seq:
+      - id: gradient
+        type: u1
+        doc: '[CONFIRMED_LIVE] +0, gradient 0/1 (undocumented control found live 2026-07-21)'
+      - id: key_count
+        type: u1
+        doc: '[CONFIRMED_LIVE] +1, key count 8..15 (9->0x09, 15->0x0f)'
+      - id: fixed
+        size: 2
+        doc: '[INFERRED] +2..+3, constant 0a 04 across captures; meaning not isolated'
+      - id: derived_half
+        type: u1
+        doc: '[INFERRED] +4, tracks ~floor(key_count/2) (keys 9 -> 4); derived, not an independent control'
+  fountain_tail:
+    doc: 'Fountain (0x35) tail (4 bytes). Editor = Sensitivity + direction + colour.'
+    seq:
+      - id: direction_lo
+        type: u1
+        doc: '[CONFIRMED_LIVE] +0, direction byte A: CW 0x00 / CCW 0x02 / Two-way 0x01 (A/B/C 2026-07-21)'
+      - id: fixed1
+        type: u1
+        doc: '[INFERRED] +1, constant 0x01 across captures; meaning not isolated'
+      - id: direction_hi
+        type: u1
+        doc: '[CONFIRMED_LIVE] +2, direction byte B: CW/CCW 0x05 / Two-way 0x03'
+      - id: companion
+        type: u1
+        doc: '[INFERRED] +3, 0x50 in captures (matches the Dynamic style companion seen elsewhere); not isolated'
+  day_and_night_tail:
+    doc: 'Day and Night (0x37) tail (3 bytes). Editor = Sensitivity + seg count + speed + gradient + palette.'
+    seq:
+      - id: segment_count
+        type: u1
+        doc: '[CONFIRMED_LIVE] +0, segment count 1..7 (captured 2)'
+      - id: speed
+        type: u1
+        doc: '[CONFIRMED_LIVE] +1, speed (0x01 min .. 0x2c at ~90%)'
+      - id: gradient
+        type: u1
+        doc: '[CONFIRMED_LIVE] +2, gradient 0/1 (undocumented control found live 2026-07-21)'
   mode_set_frame:
     doc: |
       Full 20-byte `33 05 13` music mode-set frame. byte[19] is the XOR of

@@ -104,7 +104,8 @@ def check_body(name: str, hx: str) -> tuple[bool, str, int]:
     cap_tail = raw[palette_end : palette_end + exp_tail_len]
     cap_pad = raw[palette_end + exp_tail_len :]
     palette_bytes = b"".join(bytes([c.r, c.g, c.b]) for c in k.palette)
-    rebuilt = bytes([0x01, k.header.linecount, 0x41, mode_val, count]) + palette_bytes + k.tail + bytes(k.padding)
+    raw_tail = k._raw_tail
+    rebuilt = bytes([0x01, k.header.linecount, 0x41, mode_val, count]) + palette_bytes + raw_tail + bytes(k.padding)
     checks = [
         ("consumed", k._io.is_eof()),
         ("marker", k.header.marker == b"\x01"),
@@ -112,17 +113,35 @@ def check_body(name: str, hx: str) -> tuple[bool, str, int]:
         ("mode", mode_val == raw[3]),
         ("count", count == raw[4]),
         ("palette", palette_bytes == raw[5:palette_end]),
-        ("tail_len", len(k.tail) == exp_tail_len),
-        ("tail_bytes", k.tail == cap_tail),
+        ("tail_len", len(raw_tail) == exp_tail_len),
+        ("tail_bytes", raw_tail == cap_tail),
         ("padding_zero", set(k.padding) <= {0}),
         ("padding_bytes", bytes(k.padding) == cap_pad),
         ("roundtrip", rebuilt == raw),
     ]
+    # per-mode decoded tail field spot-checks (offsets relative to palette end)
+    t = k.tail
+    if mode_val == 0x30:  # bloom
+        checks.append(("bloom", t.style_companion == cap_tail[1]))
+    elif mode_val == 0x31:  # shiny
+        checks.append(("shiny", bytes(t.style_companion) == cap_tail[:2]))
+    elif mode_val == 0x32:  # separation
+        checks.append(("sep", (t.point, t.gradient, t.companion) == tuple(cap_tail[:3])))
+    elif mode_val == 0x33:  # hopping
+        checks.append(
+            ("hop", (t.background.r, t.background.g, t.background.b, t.rel_brightness) == tuple(cap_tail[:4]))
+        )
+    elif mode_val == 0x34:  # piano_keys
+        checks.append(("piano", (t.gradient, t.key_count, t.derived_half) == (cap_tail[0], cap_tail[1], cap_tail[4])))
+    elif mode_val == 0x35:  # fountain
+        checks.append(("fountain", (t.direction_lo, t.direction_hi) == (cap_tail[0], cap_tail[2])))
+    elif mode_val == 0x37:  # day_and_night
+        checks.append(("dn", (t.segment_count, t.speed, t.gradient) == tuple(cap_tail[:3])))
     ok = all(v for _, v in checks)
     bad = ",".join(n for n, v in checks if not v)
     detail = (
         f"mode={k.mode.name}({mode_val:#04x}) count={count} palette={palette_bytes.hex()} "
-        f"tail={k.tail.hex()} pad={len(k.padding)}B"
+        f"tail={raw_tail.hex()} pad={len(k.padding)}B"
     )
     return ok, f"{name:14s} {detail}" + (f"  <FAILED: {bad}>" if bad else ""), mode_val
 
