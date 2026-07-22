@@ -635,9 +635,11 @@ def test_build_music_params_a3_flips_only_its_offset():
         assert changed[offset] == value
 
 
-def test_build_music_params_a3_never_writes_volatile_bytes():
-    with pytest.raises(ValueError, match="volatile"):
-        proto.build_music_params_a3(0x34, {30: 0x01})
+def test_build_music_params_a3_writes_derived_offsets():
+    # Separation [22] and Piano [30] are derived bytes the coordinator synthesises; the builder
+    # overlays them like any other offset (they are no longer replayed verbatim).
+    assert _assemble_a3(proto.build_music_params_a3(0x32, {22: 0x61}))[22] == 0x61
+    assert _assemble_a3(proto.build_music_params_a3(0x34, {30: 0x04}))[30] == 0x04
 
 
 def test_build_music_params_a3_palette_guard_and_overlay():

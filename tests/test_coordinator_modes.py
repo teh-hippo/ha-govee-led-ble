@@ -204,6 +204,15 @@ async def test_apply_music_params_separation_gradient_couples_companion(coord):
         assert _sent(sc) == expected
 
 
+async def test_apply_music_params_piano_derives_half_from_key_count(coord):
+    """Piano Keys [30] is a derived byte floor(key_count/2), synthesised on send (live 2026-07-21)."""
+    for keys, half in ((15, 7), (9, 4)):
+        coord.music_piano_key_count = keys
+        with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+            await coord.async_apply_music_params(0x34)
+        assert _sent(sc) == proto.build_music_params_a3(0x34, {27: keys, 30: half})
+
+
 async def test_apply_music_params_encodes_fountain_direction(coord):
     coord.music_fountain_direction = "counterclockwise"
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:

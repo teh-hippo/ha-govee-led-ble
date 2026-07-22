@@ -399,9 +399,10 @@ def build_music_mode_with_color(
 # (H617A §6, see tools/ble/kaitai/music_body.ksy). Assembled body =
 # `01 <fragCount> 41 <MODE> <count> <RGB x count> <mode-specific tail>`; a3 offsets are absolute
 # from the assembled byte 0, so the body-local index is `offset - 3`. Every template byte below is
-# replayed byte-exact from the 2026-07-09 validation run and current iOS 7.5.21 captures. Volatile
-# animation bytes (Separation[22], Piano[30]) are never synthesised. Locked by byte-exact A/B/A
-# decode tests in tests/test_protocol.py.
+# replayed byte-exact from the 2026-07-09 validation run and current iOS 7.5.21 captures. Separation[22]
+# and Piano[30] are derived bytes synthesised by the coordinator from their controlling param
+# (gradient / key count), overlaid like any other override. Locked by byte-exact A/B/A decode
+# tests in tests/test_protocol.py.
 _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
     # Bloom 0x30: current iOS Dynamic baseline; [27]=style companion (Dynamic 0x50 / Calm 0x14).
     0x30: bytes.fromhex("3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000"),
@@ -413,7 +414,7 @@ _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
     0x33: bytes.fromhex(
         "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ffff000032620103020600000000000000000000000000000000"
     ),
-    # Piano Keys 0x34: report step music-p-keys (= pcap idx20); [27]=key count 15, [30]=volatile.
+    # Piano Keys 0x34: report step music-p-keys (= pcap idx20); [27]=key count 15, [30]=derived floor(count/2).
     0x34: bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000"),
     # Fountain 0x35: current iOS Clockwise baseline; direction is the pair [26,28].
     0x35: bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0001055000000000"),
@@ -423,12 +424,6 @@ _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
 # mode -> captured palette colour count (body-local byte 1); guards palette overrides so the
 # `<RGB x count>` region can never shift the downstream param offsets.
 _MUSIC_PARAM_COUNT: dict[int, int] = {mode: body[1] for mode, body in _MUSIC_PARAM_TEMPLATE.items()}
-# Absolute a3 offset carrying a derived byte replayed verbatim, never written: Piano Keys [30]
-# tracks ~floor(key_count/2) but its even-count formula is not isolated in a capture, so it stays
-# pinned to the template rather than being written from a guessed formula.
-_VOLATILE_OFFSETS: dict[int, frozenset[int]] = {
-    0x34: frozenset({30}),
-}
 _MUSIC_PARAM_BASE = 3  # assembled-body base: template byte 0 is the MODE byte at assembled index 3.
 
 
@@ -440,9 +435,9 @@ def build_music_params_a3(
     """Build the H617A per-mode music movement frame (command 0x41, fragmented over a3).
 
     Replays the capture-pinned template for ``mode`` verbatim, overlaying only the decoded param
-    offsets in ``overrides`` (a3-absolute). Volatile animation bytes are never written, and a
-    palette whose length differs from the captured count is rejected so the ``<RGB x count>`` region
-    cannot shift the downstream offsets.
+    offsets in ``overrides`` (a3-absolute; the coordinator supplies both the user-facing params and
+    the derived companion/half bytes). A palette whose length differs from the captured count is
+    rejected so the ``<RGB x count>`` region cannot shift the downstream offsets.
     """
     # EXPERIMENTAL: harness=music-params encoding=capture-pinned
     # source: validate-20260709-122350.pcap + validation-report-20260709-123428.json; layout H617A §3.
@@ -451,10 +446,7 @@ def build_music_params_a3(
         if len(palette) != _MUSIC_PARAM_COUNT[mode]:
             raise EffectValidationError("palette_count_mismatch")
         body[2 : 2 + 3 * len(palette)] = bytes(channel for rgb in palette for channel in rgb)
-    volatile = _VOLATILE_OFFSETS.get(mode, frozenset())
     for offset, value in overrides.items():
-        if offset in volatile:
-            raise ValueError("volatile byte; never write")
         body[offset - _MUSIC_PARAM_BASE] = _clamp(value, 0, 255)
     return build_a3_multi(0x41, bytes(body))
 
@@ -804,7 +796,7 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
         "= manual colour count (0=auto-colour on)+RGB; 11 modes live-confirmed",
     ),
     "build_music_params_a3": Evidence(
-        "EXPERIMENTAL", "VAL a3 music body H617A §3 (lines 217-234); capture-pinned, volatile bytes replayed"
+        "EXPERIMENTAL", "VAL a3 music body H617A §3; capture-pinned template + coordinator-derived companion/half bytes"
     ),
     "build_video_mode": Evidence(
         "VALIDATED",

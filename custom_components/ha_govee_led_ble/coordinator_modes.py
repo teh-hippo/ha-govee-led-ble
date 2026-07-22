@@ -79,7 +79,9 @@ class MusicParamSpec:
     options: tuple[str, ...] = ()
 
 
-# Absolute a3 offsets per §2.3; volatile bytes stay out of this table so they are never written.
+# Absolute a3 offsets per §2.3, one entry per user-facing control; derived/coupled bytes
+# (Separation companion, Piano half, Fountain direction pair, style companion) are not listed here
+# because _send_music_params synthesises them from their controlling param at send time.
 MUSIC_PARAM_SPECS: tuple[MusicParamSpec, ...] = (
     MusicParamSpec("music_separation_point", 0x32, 20, "number", _encode_byte, min_value=1, max_value=5),
     MusicParamSpec("music_separation_gradient", 0x32, 21, "switch", _encode_bool),
@@ -193,6 +195,9 @@ class _ActiveModeMixin(_CoordinatorBase):
         if mode_code == 0x32:
             # Separation's companion byte is gradient-coupled (0x5e on / 0x61 off, live 2026-07-21).
             overrides[22] = 0x5E if self.music_separation_gradient else 0x61
+        if mode_code == 0x34:
+            # Piano Keys [30] is a derived byte: floor(key_count / 2) (9->4, 15->7 live 2026-07-21).
+            overrides[30] = self.music_piano_key_count // 2
         companion = _MUSIC_STYLE_COMPANION.get(mode_code)
         if companion is not None:
             overrides.update(companion[self.music_calm])
