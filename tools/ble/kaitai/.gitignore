@@ -1,0 +1,11 @@
+# Local throwaway toolchain
+node_modules/
+
+# Regenerable products (source of truth is the .ksy specs)
+# regenerate parsers: node compile.js <spec>.ksy
+colormode_readback.py
+scene_body.py
+# regenerate fixtures: uv run --no-sync python extract_fixtures.py
+fixtures.json
+
+__pycache__/
