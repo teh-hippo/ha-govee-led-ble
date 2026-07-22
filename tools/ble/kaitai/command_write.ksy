@@ -1,0 +1,227 @@
+meta:
+  id: command_write
+  title: Govee H617A "33" command-write envelope (decode-only)
+  endian: le
+  imports:
+    - govee_common
+doc: |
+  Phone -> light control write, 20 bytes: 33 <opcode> <17-byte body> <xor>.
+  byte[19] is the XOR of bytes[0..18]; opaque here and validated host-side
+  (Kaitai has no fold/reduce). This is the write-side counterpart of the aa
+  status_reply envelope: one envelope for the whole 33 control family, with the
+  per-opcode bodies below. Opcode 0x05 is a second-level dispatcher whose first
+  body byte selects a sub-command (scene / diy / music / static), and the
+  static sub-command carries a third selector (colour vs brightness).
+
+  Re-verified byte-exact against captured writes (see roundtrip_command.py);
+  captures are ground truth. Field meanings cross-checked against
+  protocol.build_power / build_brightness / build_segment_color / build_color_temp
+  / build_segment_brightness / build_scene / build_diy_activate /
+  build_music_mode_with_color, which are treated as a fallible oracle: the wire
+  bytes win on any disagreement.
+
+  Every field carries one evidence tag in its doc: [CONFIRMED_LIVE] proven by a
+  round-tripped capture; [INFERRED] reasoned but the value is not isolated in a
+  capture; [INHERITED] modelled from the write-side/docs with no confirming
+  capture (the pessimistic default).
+seq:
+  - id: header
+    contents: [0x33]
+    doc: '[CONFIRMED_LIVE] command header, raw 0x33'
+  - id: opcode
+    type: u1
+    enum: command_op
+    doc: '[CONFIRMED_LIVE] top-level opcode selector byte (frame offset 1)'
+  - id: body
+    size: 17
+    type:
+      switch-on: opcode
+      cases:
+        'command_op::power': power_cmd
+        'command_op::brightness': brightness_cmd
+        'command_op::multi': multi_cmd
+    doc: '[CONFIRMED_LIVE] bytes 2..18, interpreted per opcode (unmatched opcodes fall back to raw)'
+  - id: checksum
+    type: u1
+    doc: '[CONFIRMED_LIVE] raw XOR of bytes[0..18]; opaque, host-validated'
+enums:
+  command_op:
+    0x01: power
+    0x04: brightness
+    0x05: multi
+  multi_sub:
+    0x04: scene
+    0x0a: diy
+    0x13: music
+    0x15: static
+types:
+  power_cmd:
+    doc: op 0x01. On/off flag then zero padding.
+    seq:
+      - id: is_on
+        type: u1
+        doc: '[CONFIRMED_LIVE] raw power state, 0x00 off / 0x01 on'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+  brightness_cmd:
+    doc: op 0x04. Whole-strip brightness as a raw 0..100 percentage (NOT 0..255 scaled).
+    seq:
+      - id: percent
+        type: u1
+        valid:
+          max: 100
+        doc: '[CONFIRMED_LIVE] whole-strip brightness 0..100 raw; 51% -> 0x33 captured (resume-bright-main)'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+  multi_cmd:
+    doc: |
+      op 0x05. Second-level dispatcher: the first body byte selects the sub-command,
+      the remaining 16 bytes are interpreted per sub. Mirrors the aa colour-mode
+      read-back selectors (scene 0x04 / diy 0x0a / static 0x15 / music 0x13).
+    seq:
+      - id: sub
+        type: u1
+        enum: multi_sub
+        doc: '[CONFIRMED_LIVE] sub-command selector (frame offset 2)'
+      - id: sub_body
+        size: 16
+        type:
+          switch-on: sub
+          cases:
+            'multi_sub::scene': scene_activate
+            'multi_sub::diy': diy_activate
+            'multi_sub::music': music_cmd
+            'multi_sub::static': static_cmd
+        doc: '[CONFIRMED_LIVE] the 16 bytes at frame offsets 3..18, interpreted per sub-command'
+  scene_activate:
+    doc: |
+      sub 0x04. Two-byte little-endian scene/effect code; H617A sends the bare code
+      with no trailing activation byte. The scene BODY (palette/records) rides a
+      separate a3 multi-frame upload (see scene_body.ksy); this frame only activates
+      a code.
+    seq:
+      - id: code
+        type: u2le
+        doc: '[CONFIRMED_LIVE] scene/effect code, little-endian (frame offset 3); 0x0873 captured (resume-scene-aurora)'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub window; grammar-enforced all-zero'
+  diy_activate:
+    doc: |
+      sub 0x0a. App-assigned DIY slot, optionally followed by a TYPE byte (Finger
+      Sketch appends its TYPE 0x03; other DIY kinds omit it). Share Space replay
+      activates with slot 0xfe.
+    seq:
+      - id: slot
+        type: u1
+        doc: '[CONFIRMED_LIVE] app-assigned DIY slot (frame offset 3); 0xf0 captured (resume-diy-hello)'
+      - id: type_byte
+        type: u1
+        doc: '[INFERRED] optional DIY TYPE byte (frame offset 4); present for Finger Sketch (0x03), 0x00 otherwise'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub window; grammar-enforced all-zero'
+  music_cmd:
+    doc: |
+      sub 0x13. Music-mode selector plus its inline parameters. Byte layout mirrors
+      the aa colour-mode music read-back: mode id, sensitivity, style, manual-colour
+      count, then one manual RGB triple when the count is >= 1 (auto-colour when 0).
+      Per-mode movement/animation parameters ride a separate 0x41 a3 body (music_body.ksy).
+    seq:
+      - id: mode_id
+        type: u1
+        enum: govee_common::music_mode
+        doc: '[CONFIRMED_LIVE] music mode id (frame offset 3; see govee_common::music_mode)'
+      - id: sensitivity
+        type: u1
+        doc: '[CONFIRMED_LIVE] sensitivity 0..99 (frame offset 4)'
+      - id: style
+        type: u1
+        doc: '[CONFIRMED_LIVE] raw byte 5; Dynamic 0x00 / Calm 0x01 is the Rhythm-only interpretation (other modes repurpose it, see protocol.parse_color_mode_response)'
+      - id: manual_color_count
+        type: u1
+        doc: '[CONFIRMED_LIVE] manual colour count / auto-colour flag (frame offset 6); 0 = auto-colour, >=1 = manual RGB supplied. count 1 captured (resume-music-rhythm)'
+      - id: rgb
+        type: govee_common::rgb
+        if: manual_color_count >= 1
+        doc: '[CONFIRMED_LIVE] manual RGB at frame offsets 7..9 when count >= 1; (0,230,210) captured'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub window; grammar-enforced all-zero'
+  static_cmd:
+    doc: |
+      sub 0x15. Static-colour family, third selector byte: 0x01 sets colour (a direct
+      RGB paint OR a colour-temperature word, distinguished by which slots are
+      populated), 0x02 sets brightness. Both carry the 15-bit segment mask
+      (little-endian) at frame offsets 12..13; 0x7fff selects all segments.
+    seq:
+      - id: static_sub
+        type: u1
+        doc: '[CONFIRMED_LIVE] static sub-selector (frame offset 3); 0x01 colour, 0x02 brightness'
+      - id: static_body
+        size: 15
+        type:
+          switch-on: static_sub
+          cases:
+            0x01: static_color
+            0x02: static_brightness
+        doc: '[CONFIRMED_LIVE] the 15 bytes at frame offsets 4..18, interpreted per static sub'
+  static_color:
+    doc: |
+      static sub 0x01. One unified layout covers both a direct RGB paint and a
+      colour-temperature set: a direct-RGB set populates rgb_direct (offsets 4..6)
+      and leaves kelvin/rgb_preview zero; a colour-temperature set zeroes rgb_direct
+      and populates kelvin (offsets 7..8, big-endian) plus a preview RGB (offsets
+      9..11), with the mask forced to all-segments (0x7fff). Proving this shared
+      layout on the wire is a live-verification target.
+    seq:
+      - id: rgb_direct
+        type: govee_common::rgb
+        doc: '[CONFIRMED_LIVE] direct RGB paint at offsets 4..6 (zero for a colour-temperature set); (255,0,0) captured (resume-color-red)'
+      - id: kelvin
+        type: u2be
+        doc: '[CONFIRMED_LIVE] colour temperature in kelvin, big-endian, offsets 7..8 (zero for a direct RGB paint); 0x0e10=3600 captured (resume-colortemp)'
+      - id: rgb_preview
+        type: govee_common::rgb
+        doc: '[CONFIRMED_LIVE] preview RGB for a colour-temperature set, offsets 9..11 (zero for a direct RGB paint); (255,203,141) captured for 3600K'
+      - id: mask
+        type: u2le
+        doc: '[CONFIRMED_LIVE] 15-bit segment mask, little-endian, offsets 12..13; 0x7fff = all segments (captured for both colour and temperature)'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 15-byte static window; grammar-enforced all-zero'
+  static_brightness:
+    doc: |
+      static sub 0x02. Per-segment (or whole-strip) brightness as a raw 0..100
+      percentage, then the 15-bit segment mask. The H617A app has no per-segment
+      brightness control (the top slider is opcode 0x04); this command is emitted
+      only by the integration (build_segment_brightness / build_white_brightness),
+      so it carries no isolated app capture here and stays INHERITED.
+    seq:
+      - id: percent
+        type: u1
+        valid:
+          max: 100
+        doc: '[INHERITED] brightness 0..100 raw at offset 4'
+      - id: mask
+        type: u2le
+        doc: '[INHERITED] 15-bit segment mask, little-endian, offsets 5..6; 0x7fff = all segments'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[INHERITED] trailing zero padding within the 15-byte static window; grammar-enforced all-zero'
