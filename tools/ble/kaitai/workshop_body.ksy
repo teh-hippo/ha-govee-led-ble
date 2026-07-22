@@ -107,10 +107,10 @@ types:
         -orig-id: r5
         type: u1
         doc: >
-          [INFERRED] r5. The doc maps bit 0x10 to the Based-on-Segment distribution,
-          but captures show 0x10 set under Based-on-IC too (00 for the Christmas
-          preset, 10 for single-layer edits, 12 alongside a segment distribution), so
-          the exact meaning is not isolated. Read as raw.
+          [INFERRED] r5. A prior doc claim mapped bit 0x10 to the Based-on-Segment
+          distribution, but captures show 0x10 set under Based-on-IC too (00 for the
+          Christmas preset, 10 for single-layer edits, 12 alongside a segment
+          distribution), so the exact meaning is not isolated. Read as raw.
       - id: r6
         -orig-id: r6
         type: u1
