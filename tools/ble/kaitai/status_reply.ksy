@@ -89,22 +89,25 @@ types:
         doc: '[CONFIRMED_LIVE] the 16 bytes at frame offsets 3..18, interpreted per mode'
   cm_static:
     doc: |
-      mode 0x15. sub 0x01 carries an RGB triple, 0x02 a white-brightness percent.
-      Only sub 0x00 has been seen in a live aa 05 reply; the 0x01 (rgb) and 0x02
-      (white-brightness) read-back branches are modelled from the write-side.
+      mode 0x15 static read-back. Live H617A 2026-07-22 (driven over HA on
+      light.cupboard_skirt): after setting a static RGB colour AND after setting a
+      colour temperature, the reply is byte-identical -- aa 05 15 00 then an all-zero
+      payload. The device echoes only the mode and sub 0x00; it never returns the
+      colour, kelvin or brightness. Those stay write-only (see command_write.ksy
+      static_color, whose sub 0x01 carries rgb and 0x02 a white-brightness percent)
+      and the integration keeps them optimistically. The write-side 0x01/0x02
+      sub-selectors are never seen in a read-back, so no read-back sub-branch is
+      modelled; any non-zero payload trips the zero assertion below and must be
+      captured before it is modelled.
     seq:
       - id: sub
         type: u1
-        doc: '[CONFIRMED_LIVE] static sub-selector byte (frame offset 3); only 0x00 seen live, so no enum until 0x01/0x02 read-back is captured'
-      - id: rgb
-        type: govee_common::rgb
-        if: sub == 0x01
-        doc: '[INHERITED] R,G,B at frame offsets 4..6 when sub == 0x01 (no capture)'
+        doc: '[CONFIRMED_LIVE] static sub-selector at frame offset 3; always 0x00 in H617A read-backs (an RGB set and a CT set both read back 0x00)'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
+        doc: '[CONFIRMED_LIVE] all-zero payload within the 16-byte mode window; the set colour/kelvin/brightness is never echoed'
   cm_scene:
     doc: mode 0x04. Scene effect id, little-endian, at frame offset 3+.
     seq:

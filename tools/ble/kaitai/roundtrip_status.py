@@ -88,7 +88,7 @@ def main() -> int:
             checks.append(("mode", int(b.mode.value) == payload[0]))
             if name == "cm_static":
                 checks.append(("sub", int(m.sub) == payload[1]))
-                detail = f"static sub={int(m.sub)} rgb(ref)={ref.rgb_color} (sub 0x01/0x02 INHERITED)"
+                detail = f"static sub={int(m.sub)} (RGB set + CT set both read back aa0515 00; colour never echoed, ref.rgb={ref.rgb_color})"
             elif name == "cm_scene":
                 checks.append(("scene_id", m.scene_id == int.from_bytes(payload[1:3], "little")))
                 detail = f"scene scene_id={m.scene_id} effect(ref)={ref.effect}"
