@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Crux experiment: does the record-framing scene_body.ksy consume the real
-Aurora scene bodies byte-exact, with the record count + length-prefixed records
+type-2 scene bodies byte-exact, with the record count + length-prefixed records
 landing and only transport zero-padding left over?
 
 Captures are ground truth. Prints the parsed framing so it can be eyeballed,
-and asserts: whole body consumed, padding all zero, and the two Slow/Fast
-bodies differ only inside record data (the speed step at on-wire 18 & 68).
+and asserts: whole body consumed, padding all zero; the two Aurora Slow/Fast
+bodies differ only inside record data (the speed step at on-wire 18 & 68); and
+the Forest body (record_count 3, live 2026-07-22) proves the framing generalises
+past Aurora's record_count 2 with the record_type byte varying across records.
 """
 
 import io
@@ -18,14 +20,19 @@ sys.path.insert(0, str(HERE))
 from kaitaistruct import KaitaiStream  # noqa: E402
 from scene_body import SceneBody  # noqa: E402
 
-# Inline Aurora scene bodies (scene-speed capture, Slow vs Fast). Embedded so the
-# harness is self-contained and reproducible without the gitignored fixtures.json or
-# the capture mount; the two differ only at on-wire offsets 18 and 68 (the speed step).
-BODIES = [
+# Inline type-2 scene bodies. Embedded so the harness is self-contained without the
+# gitignored fixtures.json or the capture mount.
+#  - Aurora Slow vs Fast (scene-speed capture, record_count 2): differ only at on-wire
+#    offsets 18 & 68 (the speed step).
+#  - Forest (forest-body capture, record_count 3, code 2163, live 2026-07-22): a
+#    structurally different type-2 body whose three records carry record_type 1/2/0,
+#    proving the framing generalises past Aurora's two same-type records.
+AURORA_BODIES = [
     "0105020220000000010201ff320100000000fa320300ff7f007fff2aff000300800000000023000000030201ff1900fa000002fa000400ff007fff00a0cfff007fff1401fa0000ff00000000000000000000000000",
     "0105020220000000010201ff320100000000e8320300ff7f007fff2aff000300800000000023000000030201ff1900fa000002fa000400ff007fff00a0cfff007fff1401f40000ff00000000000000000000000000",
 ]
-bodies = list(dict.fromkeys(BODIES))  # distinct, preserve order
+FOREST_BODY = "01070203260001000a0201ff1901b40a0a02c8140500ff000000ffffffff0000ff00ff6b140196000000002300020f050201ff1401fb000001fa0a0400fffb00ff4b4747ff00ff1b000000000000001a000000010201ff0501c8141402ee140100ffff0000000000000000000000000000000000000000"
+bodies = list(dict.fromkeys(AURORA_BODIES)) + [FOREST_BODY]
 
 
 def parse(hx: str):
@@ -61,6 +68,18 @@ if len(parsed) >= 2:
     print(f"all diffs inside record data (>=4, <used {span0})? {in_records}")
     print(f"framing bytes (marker/linecount/scene_type/record_count) identical? {r0[:4] == r1[:4]}")
     if not in_records or r0[:4] != r1[:4]:
+        fails += 1
+
+# generalisation: Forest (record_count 3) parses byte-exact with record_type varying
+if len(parsed) >= 3:
+    kf = parsed[2][1]
+    rec_types = [r.body.record_type for r in kf.records]
+    gen_ok = kf.record_count == 3 and rec_types == [1, 2, 0] and kf._io.is_eof() and set(kf.padding) <= {0}
+    print(
+        f"\nForest generalisation: record_count={kf.record_count} record_types={rec_types} consumed={kf._io.is_eof()}"
+    )
+    print(f"framing generalises past Aurora record_count 2 with record_type varying? {gen_ok}")
+    if not gen_ok:
         fails += 1
 
 print("\nCRUX PASS" if not fails else f"\nCRUX FAIL ({fails})")
