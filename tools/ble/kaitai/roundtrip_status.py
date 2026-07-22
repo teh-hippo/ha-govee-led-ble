@@ -61,7 +61,7 @@ def main() -> int:
             checks.append(("text", b.text == proto.parse_hw_version(payload)))
             detail = f"hw={b.text!r}"
         elif name == "segments":
-            segs = [(s.brightness, s.r, s.g, s.b) for s in b.segments]
+            segs = [(s.brightness, s.colour.r, s.colour.g, s.colour.b) for s in b.segments]
             exp = [tuple(raw[3 + i * 4 : 3 + i * 4 + 4]) for i in range(3)]
             checks += [("group", b.group == raw[2]), ("segments", segs == exp)]
             detail = f"group={b.group} segs={segs}"
@@ -91,14 +91,14 @@ def main() -> int:
                 detail = f"video sat={m.saturation} sound={m.sound_effects} soft={m.softness}"
             elif name == "cm_music":
                 checks += [
-                    ("mode_id", m.mode_id == payload[1]),
+                    ("mode_id", getattr(m.mode_id, "value", m.mode_id) == payload[1]),
                     ("sens", m.sensitivity == payload[2]),
-                    ("style", m.style == payload[3]),
+                    ("style", getattr(m.style, "value", m.style) == payload[3]),
                     ("count", m.manual_color_count == payload[4]),
                 ]
                 if m.manual_color_count >= 1:
-                    checks.append(("rgb", m.rgb == payload[5:8]))
-                detail = f"music mode_id={m.mode_id} sens={m.sensitivity} calm(ref)={ref.music_calm}"
+                    checks.append(("rgb", bytes([m.rgb.r, m.rgb.g, m.rgb.b]) == payload[5:8]))
+                detail = f"music mode_id={getattr(m.mode_id, 'name', m.mode_id)} sens={m.sensitivity} calm(ref)={ref.music_calm}"
         ok = all(v for _, v in checks)
         fails += 0 if ok else 1
         bad = ",".join(n for n, v in checks if not v)

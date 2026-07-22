@@ -11,3 +11,4 @@ fixtures.json
 *.py
 !roundtrip_*.py
 !extract_fixtures.py
+!evidence_lint.py

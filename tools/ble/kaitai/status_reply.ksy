@@ -2,6 +2,8 @@ meta:
   id: status_reply
   title: Govee H617A "aa" status-reply envelope (decode-only)
   endian: le
+  imports:
+    - govee_common
 doc: |
   Light -> phone status notification, 20 bytes: aa <domain> <17-byte body> <xor>.
   byte[19] is the XOR of bytes[0..18]; opaque here and validated host-side
@@ -94,7 +96,7 @@ types:
         enum: static_sub
         doc: '[CONFIRMED_LIVE] static sub-selector byte (frame offset 3; 0x00 seen live)'
       - id: rgb
-        size: 3
+        type: govee_common::rgb
         if: sub == static_sub::rgb
         doc: '[INHERITED] R,G,B at frame offsets 4..6 when sub == 0x01 (no capture)'
   cm_scene:
@@ -134,18 +136,20 @@ types:
     seq:
       - id: mode_id
         type: u1
-        doc: '[CONFIRMED_LIVE] raw music mode id (frame offset 3; matches const.MUSIC_MODES)'
+        enum: govee_common::music_mode
+        doc: '[CONFIRMED_LIVE] music mode id (frame offset 3; see govee_common::music_mode)'
       - id: sensitivity
         type: u1
         doc: '[CONFIRMED_LIVE] sensitivity 0..99 (frame offset 4)'
       - id: style
         type: u1
-        doc: '[CONFIRMED_LIVE] Dynamic 0x00 / Calm 0x01 (frame offset 5)'
+        enum: govee_common::music_style
+        doc: '[CONFIRMED_LIVE] Dynamic 0x00 / Calm 0x01 (frame offset 5; see govee_common::music_style)'
       - id: manual_color_count
         type: u1
         doc: '[CONFIRMED_LIVE] manual colour count / auto-colour flag (frame offset 6)'
       - id: rgb
-        size: 3
+        type: govee_common::rgb
         if: manual_color_count >= 1
         doc: '[CONFIRMED_LIVE] manual RGB at frame offsets 7..9 when count >= 1'
   version_body:
@@ -181,15 +185,9 @@ types:
       - id: brightness
         type: u1
         doc: '[CONFIRMED_LIVE] per-segment brightness'
-      - id: r
-        type: u1
-        doc: '[CONFIRMED_LIVE] red'
-      - id: g
-        type: u1
-        doc: '[CONFIRMED_LIVE] green'
-      - id: b
-        type: u1
-        doc: '[CONFIRMED_LIVE] blue'
+      - id: colour
+        type: govee_common::rgb
+        doc: '[CONFIRMED_LIVE] per-segment RGB (shared rgb type)'
   timer_body:
     doc: ff-prefixed 4-slot schedule table; slot internals decoded in a later increment
     seq:
