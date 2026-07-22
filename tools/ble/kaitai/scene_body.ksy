@@ -25,7 +25,9 @@ seq:
   - id: scene_type
     type: u1
     enum: scene_type
-    doc: '[INFERRED] scene-type selector byte; 0x02 in the captured bodies. The value alone does not identify the effect family (the activation code does), and its meaning is taken from docs, not isolated by a differential.'
+    valid:
+      eq: scene_type::scene_v2
+    doc: '[CONFIRMED_LIVE] catalogue scene_type selector (frame offset 2); values 0/1/2 exist and select DISTINCT body grammars (Sunrise=0, Halloween=1 code 0x0495, Aurora=2 code 0x0874), matching the frozen catalogue scene_type field. Only type 2 (rgbicv2) is modelled here; a type-1 body does not follow this record framing (proven: the Halloween body misparses, record_count reads 0x83). The valid guard fails the grammar closed on non-type-2 bodies.'
   - id: record_count
     type: u1
     doc: '[CONFIRMED_LIVE] number of length-prefixed records that follow'
