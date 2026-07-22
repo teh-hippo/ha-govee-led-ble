@@ -229,11 +229,34 @@ types:
         type: govee_common::rgb
         doc: '[CONFIRMED_LIVE] per-segment RGB (shared rgb type)'
   timer_body:
-    doc: ff-prefixed 4-slot schedule table; slot internals decoded in a later increment
+    doc: |
+      aa 23 read-back: a 0xff table marker then four 4-byte scheduled-timer slot
+      records, mirroring protocol.parse_timer_schedule_table. Confirmed by the timer
+      capture, where a TX 33 23 that set 07:30 Sunday (repeat 0xc0) is echoed back
+      here as slot 0 = 01 07 1e c0.
     seq:
       - id: marker
         contents: [0xff]
         doc: '[CONFIRMED_LIVE] raw 0xff table marker'
-      - id: slots_raw
-        size-eos: true
-        doc: '[INHERITED] opaque 4-slot region, not yet field-decoded'
+      - id: slots
+        type: timer_slot
+        repeat: expr
+        repeat-expr: 4
+        doc: '[CONFIRMED_LIVE] four 4-byte scheduled-timer slot records (the slot index is positional 0..3)'
+  timer_slot:
+    doc: |
+      One scheduled on/off timer slot [enable_and_type, hour, minute, repeat],
+      matching protocol.build_timer_schedule / parse_timer_schedule.
+    seq:
+      - id: enable_and_type
+        type: u1
+        doc: '[INFERRED] bit 0x80 = slot enabled, bit 0x01 = on-action (vs off); the read-back only showed 0x00/0x01, so the enable/type bit meanings come from the write-side builder, not an isolated read-back differential'
+      - id: hour
+        type: u1
+        doc: '[CONFIRMED_LIVE] scheduled hour 0..23; a TX 33 23 that set 07:30 is echoed here as hour 0x07 (timer capture)'
+      - id: minute
+        type: u1
+        doc: '[CONFIRMED_LIVE] scheduled minute 0..59; 0x1e=30 echoed'
+      - id: repeat
+        type: u1
+        doc: '[CONFIRMED_LIVE] weekday repeat bits Mon=bit0..Sun=bit6, 0x80=fire-once; 0xc0 = once|Sunday echoed, matches parse_timer_repeat (weekday order live-confirmed 2026-07-09)'

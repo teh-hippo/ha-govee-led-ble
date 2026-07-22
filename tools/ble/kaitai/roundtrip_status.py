@@ -68,7 +68,20 @@ def main() -> int:
             checks += [("group", b.group == raw[2]), ("segments", segs == exp)]
             detail = f"group={b.group} segs={segs}"
         elif name == "timer":
-            detail = "ff-marker + opaque 4-slot region (INHERITED)"
+            ref = proto.parse_timer_schedule_table(payload)
+            slots = list(b.slots)
+            checks += [
+                ("slot_count", len(slots) == 4),
+                ("hours", [s.hour for s in slots] == [p.hour for p in ref]),
+                ("minutes", [s.minute for s in slots] == [p.minute for p in ref]),
+                ("repeat", [proto.parse_timer_repeat(s.repeat) for s in slots] == [p.repeat_days for p in ref]),
+                (
+                    "slot0",
+                    (slots[0].enable_and_type, slots[0].hour, slots[0].minute, slots[0].repeat)
+                    == (0x01, 0x07, 0x1E, 0xC0),
+                ),
+            ]
+            detail = f"timer slot0=07:30 Sunday; slots={[(s.hour, s.minute, s.repeat) for s in slots]}"
         elif name.startswith("cm_"):
             ref = proto.parse_color_mode_response(payload)
             m = b.mode_body
