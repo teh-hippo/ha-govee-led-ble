@@ -69,7 +69,7 @@ AA_TYPES = {
     0x0B: "?0b",
     0x11: "?11",
     0x12: "?12",
-    0x23: "segcfg",
+    0x23: "timer",
     0x40: "count?",
     0xA3: "multi",
     0xA5: "segments",

@@ -234,9 +234,10 @@ types:
   timer_body:
     doc: |
       aa 23 read-back: a 0xff table marker then four 4-byte scheduled-timer slot
-      records, mirroring protocol.parse_timer_schedule_table. Confirmed by the timer
-      capture, where a TX 33 23 that set 07:30 Sunday (repeat 0xc0) is echoed back
-      here as slot 0 = 01 07 1e c0.
+      records, mirroring protocol.parse_timer_schedule_table. Live 2026-07-22:
+      enabling slot 0 (07:30 Sunday, repeat 0xc0) read back 81 07 1e c0 with the
+      enable bit 0x80 set, while the three disabled slots read 01 .. .. .. (enable
+      bit clear, on-action bit set).
     seq:
       - id: marker
         contents: [0xff]
@@ -253,7 +254,7 @@ types:
     seq:
       - id: enable_and_type
         type: u1
-        doc: '[INFERRED] bit 0x80 = slot enabled, bit 0x01 = on-action (vs off); the read-back only showed 0x00/0x01, so the enable/type bit meanings come from the write-side builder, not an isolated read-back differential'
+        doc: '[CONFIRMED_LIVE] bit 0x80 = slot enabled, bit 0x01 = on-action; live 2026-07-22 enabling slot 0 read back 0x81 (enabled|on) vs 0x01 on the disabled slots, and the TX write 33 23 00 81 07 1e c0 carried the same 0x81'
       - id: hour
         type: u1
         doc: '[CONFIRMED_LIVE] scheduled hour 0..23; a TX 33 23 that set 07:30 is echoed here as hour 0x07 (timer capture)'

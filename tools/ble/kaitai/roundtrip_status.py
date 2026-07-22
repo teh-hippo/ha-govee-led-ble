@@ -27,7 +27,7 @@ FIXTURES = [
     ("fw", "aa06332e30322e3234000000000000000000009b"),
     ("hw", "aa0703332e30312e30310000000000000000009d"),
     ("segments", "aaa50164ff880d64ff880d64ff880d0000000010"),
-    ("timer", "aa23ff01071ec001091080010000800100008036"),
+    ("timer", "aa23ff81071ec0010910800100008001000080b6"),
     ("cm_static", "aa051500000000000000000000000000000000ba"),
     ("cm_scene", "aa050409000000000000000000000000000000a2"),
     ("cm_diy", "aa050a980000000000000000000000000000003d"),
@@ -78,10 +78,10 @@ def main() -> int:
                 (
                     "slot0",
                     (slots[0].enable_and_type, slots[0].hour, slots[0].minute, slots[0].repeat)
-                    == (0x01, 0x07, 0x1E, 0xC0),
+                    == (0x81, 0x07, 0x1E, 0xC0),
                 ),
             ]
-            detail = f"timer slot0=07:30 Sunday; slots={[(s.hour, s.minute, s.repeat) for s in slots]}"
+            detail = f"timer slot0=07:30 Sunday enabled(0x81); slots={[(s.enable_and_type, s.hour, s.minute, s.repeat) for s in slots]}"
         elif name.startswith("cm_"):
             ref = proto.parse_color_mode_response(payload)
             m = b.mode_body

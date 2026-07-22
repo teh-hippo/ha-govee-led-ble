@@ -92,14 +92,22 @@ types:
         size-eos: true
         doc: '[INHERITED] colour sub-block + remainder; opaque. Carries the per-record speed byte.'
   bright_record:
-    doc: 6-byte brightness record; the first two bytes are the relative-brightness interval (upper, lower).
+    doc: |
+      6-byte brightness record; bytes 0..1 are the effect's relative-brightness
+      interval (upper=max, lower=min). LIVE 2026-07-22 (H617A): the scene body is
+      independent of the device brightness slider - re-applying Forest at 49% then
+      85% produced a byte-identical body, and moving the slider sent a separate
+      33 04 <raw_pct> command (0x55=85) with no body re-send. So these bytes are
+      static scene-definition data, not the user's global brightness, and cannot be
+      isolated by a slider. Forest carries [upper 0xff, lower 0x19] = [100%, 10%]
+      under round(pct x 2.55): consistent with the scaling, but scanned not isolated.
     seq:
       - id: interval_upper
         type: u1
-        doc: '[INFERRED] relative-brightness interval upper byte (round(pct x 2.55))'
+        doc: '[INFERRED] rel-brightness interval upper byte = effect max; round(pct x 2.55), Forest 0xff=100%'
       - id: interval_lower
         type: u1
-        doc: '[INFERRED] relative-brightness interval lower byte (round(pct x 2.55))'
+        doc: '[INFERRED] rel-brightness interval lower byte = effect min; round(pct x 2.55), Forest 0x19=10%'
       - id: rest
         size: 4
         doc: '[INHERITED] remaining 4 record bytes; opaque'
