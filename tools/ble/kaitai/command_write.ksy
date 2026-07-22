@@ -160,12 +160,23 @@ types:
         valid: 0
         repeat: eos
         doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub window; grammar-enforced all-zero'
+  segment_mask:
+    doc: |
+      15-bit segment-selection bitmap, little-endian: segment k (1-based) sets bit
+      (k-1), 0x7fff selects all 15 segments. The identical field carries the target
+      of both the 33 05 15 01 colour write (offsets 12..13) and the 33 05 15 02
+      brightness write (offsets 5..6). Proven on the wire: 0x007f = segments 1..7,
+      0x7f80 = segments 8..15 (union 0x7fff = all), 0x4000 = segment 15 alone.
+    seq:
+      - id: bits
+        type: u2le
+        doc: '[CONFIRMED_LIVE] segment bitmap, little-endian (segment k -> bit k-1); 0x7fff = all 15 segments'
   static_cmd:
     doc: |
       sub 0x15. Static-colour family, third selector byte: 0x01 sets colour (a direct
       RGB paint OR a colour-temperature word, distinguished by which slots are
-      populated), 0x02 sets brightness. Both carry the 15-bit segment mask
-      (little-endian) at frame offsets 12..13; 0x7fff selects all segments.
+      populated), 0x02 sets brightness. Both carry the shared segment_mask: colour at
+      frame offsets 12..13, brightness at offsets 5..6; 0x7fff selects all segments.
     seq:
       - id: static_sub
         type: u1
@@ -184,8 +195,10 @@ types:
       colour-temperature set: a direct-RGB set populates rgb_direct (offsets 4..6)
       and leaves kelvin/rgb_preview zero; a colour-temperature set zeroes rgb_direct
       and populates kelvin (offsets 7..8, big-endian) plus a preview RGB (offsets
-      9..11), with the mask forced to all-segments (0x7fff). Proving this shared
-      layout on the wire is a live-verification target.
+      9..11). A colour-temperature set forces the mask to all-segments (0x7fff); a
+      direct paint may select a segment subset (mask != 0x7fff). This shared layout
+      is proven on the wire: direct red (all), 3600K temperature (all), and a
+      segments-8..15 subset paint (seg-multicolor).
     seq:
       - id: rgb_direct
         type: govee_common::rgb
@@ -197,8 +210,8 @@ types:
         type: govee_common::rgb
         doc: '[CONFIRMED_LIVE] preview RGB for a colour-temperature set, offsets 9..11 (zero for a direct RGB paint); (255,203,141) captured for 3600K'
       - id: mask
-        type: u2le
-        doc: '[CONFIRMED_LIVE] 15-bit segment mask, little-endian, offsets 12..13; 0x7fff = all segments (captured for both colour and temperature)'
+        type: segment_mask
+        doc: '[CONFIRMED_LIVE] segment selection at offsets 12..13 (see segment_mask); 0x7fff for colour/temperature, 0x7f80 = segments 8..15 captured for a subset paint (seg-multicolor)'
       - id: padding
         type: u1
         valid: 0
@@ -207,21 +220,22 @@ types:
   static_brightness:
     doc: |
       static sub 0x02. Per-segment (or whole-strip) brightness as a raw 0..100
-      percentage, then the 15-bit segment mask. The H617A app has no per-segment
-      brightness control (the top slider is opcode 0x04); this command is emitted
-      only by the integration (build_segment_brightness / build_white_brightness),
-      so it carries no isolated app capture here and stays INHERITED.
+      percentage, then the shared segment_mask. Emitted live by the H617A app's
+      segment editor (a per-segment brightness slider), distinct from the whole-strip
+      opcode 0x04: captured at 17% over segments 1..7 and 1% over segment 15
+      (seg-brightness). build_segment_brightness / build_white_brightness produce the
+      same frame.
     seq:
       - id: percent
         type: u1
         valid:
           max: 100
-        doc: '[INHERITED] brightness 0..100 raw at offset 4'
+        doc: '[CONFIRMED_LIVE] brightness 0..100 raw at offset 4; 0x11=17% and 0x01=1% captured (seg-brightness)'
       - id: mask
-        type: u2le
-        doc: '[INHERITED] 15-bit segment mask, little-endian, offsets 5..6; 0x7fff = all segments'
+        type: segment_mask
+        doc: '[CONFIRMED_LIVE] segment selection at offsets 5..6 (see segment_mask); 0x007f = segments 1..7 and 0x4000 = segment 15 captured (seg-brightness)'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[INHERITED] trailing zero padding within the 15-byte static window; grammar-enforced all-zero'
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 15-byte static window; grammar-enforced all-zero'

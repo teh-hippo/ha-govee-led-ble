@@ -2,10 +2,10 @@
 """Round-trip verify command_write.ksy against real captured 33 command writes.
 
 Full-frame consumption + host-side XOR + field parity with the shipped
-protocol.py builders, across every 33 opcode confirmed live this session
-(power / brightness / static colour / colour-temperature / scene / diy / music).
-Captures are ground truth: every frame below is real wire bytes from a marked
-single-action capture (resume-* pcaps, 2026-07-22).
+protocol.py builders, across every 33 opcode confirmed live (power / brightness /
+static colour / colour-temperature / per-segment colour + brightness / scene /
+diy / music). Captures are ground truth: every frame below is real wire bytes
+from a marked single-action capture (resume-* and seg-* pcaps).
 """
 
 import io
@@ -32,6 +32,8 @@ FIXTURES = [
     ("scene", "3305047308000000000000000000000000000049"),
     ("diy", "33050af0000000000000000000000000000000cc"),
     ("music", "3305130363000100e6d200000000000000000070"),
+    ("seg_color", "3305150100ff000000000000807f000000000022"),
+    ("seg_brightness", "33051502117f000000000000000000000000004f"),
 ]
 
 
@@ -75,10 +77,10 @@ def main() -> int:
                 ("rgb_direct", rgb == (255, 0, 0)),
                 ("kelvin_zero", s.kelvin == 0),
                 ("preview_zero", (s.rgb_preview.r, s.rgb_preview.g, s.rgb_preview.b) == (0, 0, 0)),
-                ("mask_all", s.mask == 0x7FFF),
+                ("mask_all", s.mask.bits == 0x7FFF),
                 ("builder", proto.build_segment_color(proto.ALL_SEGMENTS, *rgb) == raw),
             ]
-            detail = f"static colour rgb={rgb} mask=0x{s.mask:04x}"
+            detail = f"static colour rgb={rgb} mask=0x{s.mask.bits:04x}"
         elif name == "color_temp":
             s = b.sub_body.static_body
             preview = (s.rgb_preview.r, s.rgb_preview.g, s.rgb_preview.b)
@@ -91,11 +93,33 @@ def main() -> int:
                 ("static_sub", b.sub_body.static_sub == 0x01),
                 ("direct_zero", (s.rgb_direct.r, s.rgb_direct.g, s.rgb_direct.b) == (0, 0, 0)),
                 ("kelvin", s.kelvin == 3600),
-                ("mask_all", s.mask == 0x7FFF),
+                ("mask_all", s.mask.bits == 0x7FFF),
                 ("builder_struct", builder[:7] == raw[:7] and builder[12:14] == raw[12:14]),
                 ("preview_diverges", preview != builder_preview),
             ]
             detail = f"static temp kelvin={s.kelvin} preview={preview} vs protocol.py {builder_preview} (cosmetic)"
+        elif name == "seg_color":
+            s = b.sub_body.static_body
+            rgb = (s.rgb_direct.r, s.rgb_direct.g, s.rgb_direct.b)
+            segs = list(range(8, 16))
+            checks += [
+                ("static_sub", b.sub_body.static_sub == 0x01),
+                ("rgb_direct", rgb == (0, 255, 0)),
+                ("kelvin_zero", s.kelvin == 0),
+                ("mask_subset", s.mask.bits == 0x7F80),
+                ("builder", proto.build_segment_color(segs, *rgb) == raw),
+            ]
+            detail = f"segment colour rgb={rgb} mask=0x{s.mask.bits:04x} (segs 8..15)"
+        elif name == "seg_brightness":
+            s = b.sub_body.static_body
+            segs = list(range(1, 8))
+            checks += [
+                ("static_sub", b.sub_body.static_sub == 0x02),
+                ("percent", s.percent == raw[4]),
+                ("mask_subset", s.mask.bits == 0x007F),
+                ("builder", proto.build_segment_brightness(segs, s.percent) == raw),
+            ]
+            detail = f"segment brightness={s.percent}% mask=0x{s.mask.bits:04x} (segs 1..7)"
         elif name == "scene":
             sc = b.sub_body
             checks += [
