@@ -146,13 +146,16 @@ types:
         doc: '[CONFIRMED_LIVE] +0, gradient 0/1 (undocumented control found live 2026-07-21)'
       - id: key_count
         type: u1
-        doc: '[CONFIRMED_LIVE] +1, key count 8..15 (9->0x09, 15->0x0f)'
+        doc: '[CONFIRMED_LIVE] +1, raw key count, range 8..15, even and odd both settable (8->0x08, 9->0x09, 15->0x0f; re-confirmed live 2026-07-23 via the per-tile pencil-badge editor)'
       - id: fixed
         size: 2
         doc: '[INFERRED] +2..+3, constant 0a 04 across captures; meaning not isolated'
       - id: derived_half
         type: u1
-        doc: '[INFERRED] +4, tracks ~floor(key_count/2) (keys 9 -> 4); derived, not an independent control'
+        doc: >
+          [CONFIRMED_LIVE] +4 = key_count // 2, byte-exact across keys 8->4, 9->4 and
+          15->7 (live 2026-07-23). Derived from the key count (it moves together with
+          +1, so it is not an independent control), but the relationship is confirmed.
   fountain_tail:
     doc: 'Fountain (0x35) tail (4 bytes). Editor = Sensitivity + direction + colour.'
     seq:

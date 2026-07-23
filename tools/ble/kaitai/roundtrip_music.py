@@ -45,6 +45,9 @@ BODIES = [
         "0103413307ff0000ff7f00ffff0000ff000000ff00ffff8b00ffff000031620103020600000000000000000000000000000000",
     ),
     ("piano_keys", "0102413407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff00090a0404000000"),
+    # keys 8 (even) and 15 (max), gradient on: derived_half tracks key_count//2 (4, 7); live 2026-07-23.
+    ("piano_keys_k8_grad1", "0102413407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff01080a0404000000"),
+    ("piano_keys_k15_grad1", "0102413407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010f0a0407000000"),
     ("fountain", "0102413507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0101035000000000"),
     ("day_and_night", "0102413707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0201000000000000"),
     ("bloom", "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a14000000000000"),
@@ -133,6 +136,7 @@ def check_body(name: str, hx: str) -> tuple[bool, str, int]:
         )
     elif mode_val == 0x34:  # piano_keys
         checks.append(("piano", (t.gradient, t.key_count, t.derived_half) == (cap_tail[0], cap_tail[1], cap_tail[4])))
+        checks.append(("piano_derived_half==kc//2", t.derived_half == t.key_count // 2))
     elif mode_val == 0x35:  # fountain
         checks.append(("fountain", (t.direction_lo, t.direction_hi) == (cap_tail[0], cap_tail[2])))
     elif mode_val == 0x37:  # day_and_night
