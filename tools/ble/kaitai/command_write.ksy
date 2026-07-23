@@ -110,20 +110,19 @@ types:
   scene_activate:
     doc: |
       sub 0x04. Two-byte little-endian scene/effect code, then a scene-type byte.
-      A plain preset scene sends type 0x00; the H617A also activates through this
-      sub with type 0x02 for adjustable / Workshop-style scenes (Workshop is
-      33 05 04 91 01 02, see workshop_body.ksy; adjustable scenes are 33 05 04
-      36 3f 02 and 37 3f 02). The scene BODY (palette/records) rides a separate a3
-      multi-frame upload (scene_body.ksy); this frame only activates a code.
-      protocol.build_scene emits only the bare code (type 0x00), so the type-0x02
-      activations are app-only.
+      On the H617A every library scene, edited scene, and Effects Lab effect
+      activates with type 0x00; Workshop (33 05 04 91 01 02, code 0x0191, see
+      workshop_body.ksy) is the only H617A activation that uses type 0x02. The
+      scene BODY (palette/records) rides a separate a3 multi-frame upload
+      (scene_body.ksy); this frame only activates a code. protocol.build_scene
+      emits the bare code with type 0x00.
     seq:
       - id: code
         type: u2le
-        doc: '[CONFIRMED_LIVE] scene/effect code, little-endian (frame offset 3); 0x0873 captured (resume-scene-aurora)'
+        doc: '[CONFIRMED_LIVE] scene/effect code, little-endian (frame offset 3); live 0x0873 (Forest), 0x0875 (Effects Lab Lightning-A)'
       - id: scene_type
         type: u1
-        doc: '[INFERRED] scene-type byte (frame offset 5). 0x00 for plain preset scenes; 0x02 for Workshop (33 05 04 91 01 02, x25 H617A) and adjustable scenes (36/37 3f 02). Exact meaning (adjustable / parametric-scene marker) needs on-phone confirm'
+        doc: '[CONFIRMED_LIVE] scene-type byte (frame offset 5). 0x00 for every H617A scene/effect activation (library scene, edited scene, Effects Lab); 0x02 only for Workshop (code 0x0191). Live 2026-07-23: Forest 0x0873 and Effects Lab Lightning-A 0x0875 both 0x00, an edited-then-reapplied Forest stays 0x00. The 36/37 3f 02 activations once noted here are H6199 (out of scope), not H617A'
       - id: padding
         type: u1
         valid: 0
