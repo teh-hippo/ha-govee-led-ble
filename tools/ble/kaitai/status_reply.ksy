@@ -13,6 +13,11 @@ doc: |
   captures are ground truth. Field meanings cross-checked against
   protocol.split_status_frame / parse_color_mode_response / parse_fw_version /
   parse_hw_version.
+  Observed H617A domains NOT modelled here (fall back to raw; whole-corpus scan
+  2026-07-23): 0x04 group / segment count (reply 0x05, 0x64 seen); 0x11 sleep-timer
+  read-back; 0x12 wake-timer read-back; 0x14; 0x40 IC / segment count (query aa 40
+  00 -> reply aa 40 00 0f = 15 segments); 0xa3 multi-frame state read-back (x178).
+  Queued for on-phone query->reply correlation (validation_backlog aa-readback-gaps).
   Every field carries one evidence tag in its doc: [CONFIRMED_LIVE] proven by a
   round-tripped capture; [INFERRED] reasoned but the value is not isolated in a
   capture; [INHERITED] modelled from the write-side/docs with no confirming

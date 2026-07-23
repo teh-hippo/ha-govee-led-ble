@@ -20,6 +20,14 @@ doc: |
   build_music_mode_with_color, which are treated as a fallible oracle: the wire
   bytes win on any disagreement.
 
+  Observed H617A opcodes NOT modelled here (fall back to raw; whole-corpus scan
+  2026-07-23): 0x09 clock / time-sync; 0x11 sleep timer (build_timer_sleep);
+  0x12 wake timer (build_timer_wakeup); 0x23 scheduled timer (build_timer_schedule,
+  whose aa 23 read-back IS modelled in status_reply). The 0x11/0x12/0x23 frames
+  match those builders byte-exact in 20260716131200-h617a-timer.pcap but that
+  capture's connection address is unresolved; queued for on-phone confirmation
+  before modelling (validation_backlog timer-write-family, cmd-clock-0x09).
+
   Every field carries one evidence tag in its doc: [CONFIRMED_LIVE] proven by a
   round-tripped capture; [INFERRED] reasoned but the value is not isolated in a
   capture; [INHERITED] modelled from the write-side/docs with no confirming
