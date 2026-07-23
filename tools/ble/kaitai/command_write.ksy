@@ -116,16 +116,21 @@ types:
         doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub window; grammar-enforced all-zero'
   diy_activate:
     doc: |
-      sub 0x0a. App-assigned DIY slot, optionally followed by a TYPE byte (Finger
-      Sketch appends its TYPE 0x03; other DIY kinds omit it). Share Space replay
-      activates with slot 0xfe.
+      sub 0x0a. Activates a DIY effect by its app slot, then a family/type byte. The
+      scratch / live-preview slot 0xf0 (the app re-uploads the body each apply, so it
+      carries its own TYPE) and Share Space replay (slot 0xfe) send type_byte 0x00; a
+      SAVED Finger Sketch / Vibrant (the shared TYPE 0x03 body family) re-activates
+      from its numbered slot with type_byte 0x03. All other saved DIYs (TYPE 0x04
+      Flat / Combo) send type_byte 0x00. type_byte is NOT keyed on "Finger Sketch":
+      Finger Sketch previewed from the scratch slot 0xf0 sends 0x00 (finger-sketch-*),
+      and Vibrant (slot 0x84) also sends 0x03.
     seq:
       - id: slot
         type: u1
-        doc: '[CONFIRMED_LIVE] app-assigned DIY slot (frame offset 3); 0xf0 captured (resume-diy-hello)'
+        doc: '[CONFIRMED_LIVE] DIY slot (frame offset 3). 0xf0 = scratch / live-preview slot, reused across many effects (resume-diy-hello, finger-sketch-*, combo, ...); 0xfe = Share Space replay (h617a-share-space-apply); saved DIYs use app-assigned values (0x20 saved Sketch, 0x84 saved Vibrant, plus 0x1b/0x32/0x6e/0xbe/0xef and others captured)'
       - id: type_byte
         type: u1
-        doc: '[INFERRED] optional DIY TYPE byte (frame offset 4); present for Finger Sketch (0x03), 0x00 otherwise'
+        doc: '[INFERRED] DIY family / type byte (frame offset 4). Across the full 205-pcap corpus 0x03 appears ONLY on slots 0x20 (saved Sketch) and 0x84 (saved Vibrant); every other slot (scratch 0xf0, Share Space 0xfe, and all saved TYPE 0x04 slots) sends 0x00. Mechanism (saved TYPE-0x03 family vs slot value) still wants one controlled on-phone capture: create + SAVE a Sketch, re-activate from its tile, confirm 0x03 with its assigned slot; save a Combo, confirm 0x00'
       - id: padding
         type: u1
         valid: 0

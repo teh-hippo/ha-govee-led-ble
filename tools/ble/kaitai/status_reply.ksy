@@ -120,11 +120,18 @@ types:
         repeat: eos
         doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
   cm_diy:
-    doc: mode 0x0a. App-assigned DIY slot at frame offset 3.
+    doc: |
+      mode 0x0a DIY read-back. Slot at frame offset 3, then the same DIY family / type
+      byte the write frame carries (command_write.ksy diy_activate.type_byte): 0x03 for
+      a saved Sketch / Vibrant (TYPE 0x03), else 0x00. protocol.parse_color_mode_response
+      reads only the slot and ignores this byte.
     seq:
       - id: slot
         type: u1
         doc: '[CONFIRMED_LIVE] app-assigned DIY slot at frame offset 3'
+      - id: type_byte
+        type: u1
+        doc: '[CONFIRMED_LIVE] DIY family / type byte at frame offset 4, mirroring the write frame: 0x03 for a saved Vibrant read-back (aa 05 0a 84 03, probe-health), 0x00 for scratch / other DIYs (aa 05 0a 98 00, h617a-s3)'
       - id: padding
         type: u1
         valid: 0

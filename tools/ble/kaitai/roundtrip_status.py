@@ -31,6 +31,7 @@ FIXTURES = [
     ("cm_static", "aa051500000000000000000000000000000000ba"),
     ("cm_scene", "aa050409000000000000000000000000000000a2"),
     ("cm_diy", "aa050a980000000000000000000000000000003d"),
+    ("cm_diy_saved", "aa050a8403000000000000000000000000000022"),
     ("cm_video", "aa050000014d00000000000000000000000000e3"),
     ("cm_music", "aa051306630001ff000000000000000000000027"),
 ]
@@ -92,9 +93,9 @@ def main() -> int:
             elif name == "cm_scene":
                 checks.append(("scene_id", m.scene_id == int.from_bytes(payload[1:3], "little")))
                 detail = f"scene scene_id={m.scene_id} effect(ref)={ref.effect}"
-            elif name == "cm_diy":
-                checks.append(("slot", m.slot == payload[1]))
-                detail = f"diy slot={m.slot} diy_slot(ref)={ref.diy_slot}"
+            elif name in ("cm_diy", "cm_diy_saved"):
+                checks += [("slot", m.slot == payload[1]), ("type_byte", m.type_byte == payload[2])]
+                detail = f"diy slot={m.slot} type_byte=0x{m.type_byte:02x} diy_slot(ref)={ref.diy_slot}"
             elif name == "cm_video":
                 checks += [
                     ("full_screen", m.full_screen == payload[1]),

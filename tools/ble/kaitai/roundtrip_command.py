@@ -31,6 +31,7 @@ FIXTURES = [
     ("color_temp", "330515010000000e10ffcb8dff7f000000000005"),
     ("scene", "3305047308000000000000000000000000000049"),
     ("diy", "33050af0000000000000000000000000000000cc"),
+    ("diy_saved", "33050a200300000000000000000000000000001f"),
     ("music", "3305130363000100e6d200000000000000000070"),
     ("seg_color", "3305150100ff000000000000807f000000000022"),
     ("seg_brightness", "33051502117f000000000000000000000000004f"),
@@ -128,14 +129,15 @@ def main() -> int:
                 ("builder", proto.build_scene(sc.code) == raw),
             ]
             detail = f"scene code={sc.code} (0x{sc.code:04x})"
-        elif name == "diy":
+        elif name in ("diy", "diy_saved"):
             d = b.sub_body
             checks += [
                 ("sub_diy", int(b.sub.value) == 0x0A),
                 ("slot", d.slot == raw[3]),
-                ("builder", proto.build_diy_activate(d.slot) == raw),
+                ("type_byte", d.type_byte == raw[4]),
+                ("builder", proto.build_diy_activate(d.slot, d.type_byte) == raw),
             ]
-            detail = f"diy slot=0x{d.slot:02x}"
+            detail = f"diy slot=0x{d.slot:02x} type_byte=0x{d.type_byte:02x}"
         elif name == "music":
             m = b.sub_body
             mode_id = getattr(m.mode_id, "value", m.mode_id)
