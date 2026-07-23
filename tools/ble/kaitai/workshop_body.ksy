@@ -195,20 +195,30 @@ types:
         doc: '[CONFIRMED_LIVE] r13 bit 0x80: Direction Backward when set.'
   movement:
     doc: |
-      A 3-byte movement sub-block <packed> <interval> <speed>. The packed byte's
-      enable/direction bits are isolated live (movement-dir/overall-dir/toggle
-      captures); interval and speed persist at their last-set values when disabled,
-      so their standalone meaning is not independently isolated.
+      A 3-byte movement sub-block <packed> <interval> <speed>. All three fields are
+      isolated live: the packed enable/direction bits by the movement-dir/overall-dir/
+      toggle captures, and the interval and speed bytes by the 2026-07-23 single-slider
+      Workshop captures (Moving Christmas L1), where each Apply moved exactly one byte.
     seq:
       - id: packed
         type: u1
         doc: '[CONFIRMED_LIVE] enable bit 0x10, selected-area Enter/Exit bit 0x04, low 2 bits = direction (0 Fwd, 1 Fwd+Back, 2 Back, 3 Back+Fwd).'
       - id: interval
         type: u1
-        doc: '[INFERRED] movement interval; persists when the block is disabled, so not independently isolated.'
+        doc: >
+          [CONFIRMED_LIVE] movement interval: the raw discrete Moving-Interval picker
+          level (selected-area range 0-2, overall 0-4+), stored as the literal value.
+          Isolated 2026-07-23: selected-area r24 01->02 and overall r27 01->02 were
+          each the only byte to move.
       - id: speed
         type: u1
-        doc: '[INFERRED] movement speed = round(pct * 2.55); persists when disabled, so not independently isolated.'
+        doc: >
+          [CONFIRMED_LIVE] movement speed: a full 0x00..0xff scaled value =
+          round(slider_fraction * 255). Isolated 2026-07-23: selected-area r25 ef->82
+          (51%) and overall r28 b7->56 (34%) were each the only byte to move. The app's
+          displayed integer percent is an independent rounding of the same fraction
+          (round(fraction * 100)), so the byte is only approximately round(pct * 2.55)
+          and differs by 1 at boundaries (34% -> 0x56=86, not round(34*2.55)=87).
     instances:
       enabled:
         value: '(packed & 0x10) != 0'

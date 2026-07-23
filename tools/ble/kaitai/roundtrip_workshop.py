@@ -85,6 +85,36 @@ FIXTURES = {
         "01801401ff0000000080000080000000000000000000000000000000",
         5,
     ),
+    # Movement interval/speed isolation series (2026-07-23 single-slider Workshop
+    # captures on Moving Christmas L1). Each Apply moves EXACTLY one tail byte, in the
+    # chain baseline -> sel interval -> sel speed -> overall speed -> overall interval.
+    # rec0 movement tail: r23 sel packed / r24 sel interval / r25 sel speed / r26 ovr
+    # packed / r27 ovr interval / r28 ovr speed (offsets 27..32).
+    "mv_baseline": (
+        "010402021d400000021201ff000080141481b26d0200ff00ff00001401ef1001b701"
+        "1a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+        2,
+    ),
+    "mv_sel_interval2": (
+        "010402021d400000021201ff000080141481b26d0200ff00ff00001402ef1001b701"
+        "1a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+        2,
+    ),
+    "mv_sel_speed51": (
+        "010402021d400000021201ff000080141481b26d0200ff00ff00001402821001b701"
+        "1a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+        2,
+    ),
+    "mv_overall_speed34": (
+        "010402021d400000021201ff000080141481b26d0200ff00ff000014028210015601"
+        "1a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+        2,
+    ),
+    "mv_overall_interval2": (
+        "010402021d400000021201ff000080141481b26d0200ff00ff000014028210025601"
+        "1a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+        2,
+    ),
 }
 
 
@@ -252,6 +282,45 @@ def isolation_proofs(parsed: dict) -> int:
         "priority levels 2/1/0",
         prios == {"priority_2layer": 2, "selected_movement_dir": 1, "overall_movement_dir": 0},
         f"{prios}",
+    )
+
+    # Movement interval/speed isolation (2026-07-23 single-slider captures): each Apply
+    # moved EXACTLY one tail byte. interval = raw discrete level (r24 sel / r27 ovr);
+    # speed = full 0x00..0xff scaled = round(slider_fraction * 255) (r25 sel / r28 ovr).
+    # The app percent is a separate rounding, so the byte only approximates
+    # round(pct * 2.55): 51% -> 0x82 matches, 34% -> 0x56=86 not round(34*2.55)=87.
+    mb_raw, mb = parsed["mv_baseline"]
+    sir_raw, sir = parsed["mv_sel_interval2"]
+    ssp_raw, ssp = parsed["mv_sel_speed51"]
+    ovsp_raw, ovsp = parsed["mv_overall_speed34"]
+    ovir_raw, ovir = parsed["mv_overall_interval2"]
+    emit(
+        "sel movement interval isolated r24 (1->2)",
+        diff_offsets(sir_raw, mb_raw) == {28}
+        and mb.layers[0].body.selected_area_movement.interval == 1
+        and sir.layers[0].body.selected_area_movement.interval == 2,
+        f"diff{sorted(diff_offsets(sir_raw, mb_raw))} interval 1->2",
+    )
+    emit(
+        "sel movement speed isolated r25 (94%->51% = 0xef->0x82)",
+        diff_offsets(ssp_raw, sir_raw) == {29}
+        and sir.layers[0].body.selected_area_movement.speed == 0xEF
+        and ssp.layers[0].body.selected_area_movement.speed == 0x82,
+        f"diff{sorted(diff_offsets(ssp_raw, sir_raw))} 0xef->0x82 (round(0.5098*255)=130)",
+    )
+    emit(
+        "overall movement speed isolated r28 (72%->34% = 0xb7->0x56)",
+        diff_offsets(ovsp_raw, ssp_raw) == {32}
+        and ssp.layers[0].body.overall_movement.speed == 0xB7
+        and ovsp.layers[0].body.overall_movement.speed == 0x56,
+        f"diff{sorted(diff_offsets(ovsp_raw, ssp_raw))} 0xb7->0x56 (round(0.337*255)=86, not round(34*2.55)=87)",
+    )
+    emit(
+        "overall movement interval isolated r27 (1->2)",
+        diff_offsets(ovir_raw, ovsp_raw) == {31}
+        and ovsp.layers[0].body.overall_movement.interval == 1
+        and ovir.layers[0].body.overall_movement.interval == 2,
+        f"diff{sorted(diff_offsets(ovir_raw, ovsp_raw))} interval 1->2",
     )
 
     return fails
