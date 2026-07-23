@@ -27,6 +27,7 @@ FIXTURES = [
     ("power_off", "3301000000000000000000000000000000000032"),
     ("power_on", "3301010000000000000000000000000000000033"),
     ("brightness", "3304330000000000000000000000000000000004"),
+    ("clock", "3309102b1004010a00000000000000000000001e"),
     ("color_rgb", "33051501ff00000000000000ff7f00000000005d"),
     ("color_temp", "330515010000000e10ffcb8dff7f000000000005"),
     ("scene", "3305047308000000000000000000000000000049"),
@@ -73,6 +74,15 @@ def main() -> int:
                 ("builder", proto.build_brightness(b.percent) == raw),
             ]
             detail = f"brightness={b.percent}% (raw 0..100)"
+        elif name == "clock":
+            checks += [
+                ("hour", b.hour == raw[2]),
+                ("minute", b.minute == raw[3]),
+                ("second", b.second == raw[4]),
+                ("weekday", b.weekday == raw[5]),
+                ("padding_eof", k._io.is_eof()),
+            ]
+            detail = f"clock {b.hour:02d}:{b.minute:02d}:{b.second:02d} wd={b.weekday}"
         elif name == "color_rgb":
             s = b.sub_body.static_body
             rgb = (s.rgb_direct.r, s.rgb_direct.g, s.rgb_direct.b)

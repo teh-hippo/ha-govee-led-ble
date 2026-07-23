@@ -20,8 +20,8 @@ doc: |
   build_music_mode_with_color, which are treated as a fallible oracle: the wire
   bytes win on any disagreement.
 
-  Observed H617A opcodes NOT modelled here (fall back to raw): 0x09 clock /
-  time-sync (build_clock; not yet captured this cycle). The timer write family
+  Opcode 0x09 (clock / time-sync) is now modelled below, captured live on device
+  connect (the app sends it as the first frame). The timer write family
   0x11 sleep / 0x12 wake / 0x23 scheduled is now modelled below, live-confirmed
   2026-07-23 (fresh writes res-timer-sleep/wake/sched-on|off on the single H617A
   connection, each mirrored by its aa read-back); the sleep/wake bodies are shared
@@ -48,6 +48,7 @@ seq:
       cases:
         'command_op::power': power_cmd
         'command_op::brightness': brightness_cmd
+        'command_op::clock': clock_cmd
         'command_op::multi': multi_cmd
         'command_op::timer_sleep': govee_common::sleep_timer
         'command_op::timer_wake': govee_common::wake_timer
@@ -90,6 +91,44 @@ types:
         valid:
           max: 100
         doc: '[CONFIRMED_LIVE] whole-strip brightness 0..100 raw; 51% -> 0x33 captured (resume-bright-main)'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+  clock_cmd:
+    doc: |
+      op 0x09. Wall-clock time-sync the app pushes as the first frame on every
+      connect. Live differential (device connect at 16:43:16 then 16:51:29,
+      2026-07-23): the minute byte moved 0x2b->0x33 and the second byte 0x10->0x1d
+      exactly tracking the phone clock, the hour held 0x10=16. Body is
+      hour/minute/second then a weekday byte and two constant flag bytes, the rest
+      zero-padded. No protocol.py builder exists yet.
+    seq:
+      - id: hour
+        type: u1
+        valid:
+          max: 23
+        doc: '[CONFIRMED_LIVE] hour 0..23; 0x10=16 matched the wall clock in both connect captures'
+      - id: minute
+        type: u1
+        valid:
+          max: 59
+        doc: '[CONFIRMED_LIVE] minute 0..59; 0x2b=43 -> 0x33=51 tracked the wall clock across two connects'
+      - id: second
+        type: u1
+        valid:
+          max: 59
+        doc: '[CONFIRMED_LIVE] second 0..59; 0x10=16 -> 0x1d=29 changed with elapsed time'
+      - id: weekday
+        type: u1
+        doc: '[INFERRED] day of week; 0x04 observed both captures (Thursday, Mon=1); not isolated across days'
+      - id: flag1
+        type: u1
+        doc: '[INFERRED] constant 0x01 in every capture; purpose unconfirmed'
+      - id: flag2
+        type: u1
+        doc: '[INFERRED] constant 0x0a in every capture; purpose unconfirmed'
       - id: padding
         type: u1
         valid: 0
