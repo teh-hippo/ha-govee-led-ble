@@ -30,6 +30,7 @@ FIXTURES = [
     ("color_rgb", "33051501ff00000000000000ff7f00000000005d"),
     ("color_temp", "330515010000000e10ffcb8dff7f000000000005"),
     ("scene", "3305047308000000000000000000000000000049"),
+    ("scene_workshop", "33050491010200000000000000000000000000a0"),
     ("diy", "33050af0000000000000000000000000000000cc"),
     ("diy_saved", "33050a200300000000000000000000000000001f"),
     ("music", "3305130363000100e6d200000000000000000070"),
@@ -121,14 +122,16 @@ def main() -> int:
                 ("builder", proto.build_segment_brightness(segs, s.percent) == raw),
             ]
             detail = f"segment brightness={s.percent}% mask=0x{s.mask.bits:04x} (segs 1..7)"
-        elif name == "scene":
+        elif name in ("scene", "scene_workshop"):
             sc = b.sub_body
             checks += [
                 ("sub_scene", int(b.sub.value) == 0x04),
                 ("code", sc.code == int.from_bytes(raw[3:5], "little")),
-                ("builder", proto.build_scene(sc.code) == raw),
+                ("scene_type", sc.scene_type == raw[5]),
             ]
-            detail = f"scene code={sc.code} (0x{sc.code:04x})"
+            if sc.scene_type == 0:
+                checks.append(("builder", proto.build_scene(sc.code) == raw))
+            detail = f"scene code=0x{sc.code:04x} type=0x{sc.scene_type:02x}"
         elif name in ("diy", "diy_saved"):
             d = b.sub_body
             checks += [

@@ -56,6 +56,13 @@ enums:
     0x13: music
 types:
   power_body:
+    doc: |
+      domain 0x01 power read-back: is_on then zero padding. NOTE a second, longer
+      aa 01 form exists that this grammar does NOT model and will reject on the
+      padding assertion: aa 01 0c 00 01 00 27 11 24 <b9> 17 <b11> 01 00 00 00 ...
+      (x4 H617A: color-walkthrough, workshop-minimum-validity, video-mode,
+      scene-natural; constants 0x0c/27 11 24/17/01, bytes 9+11 vary). Its layout and
+      trigger are unknown; capture-correlate on-phone before modelling it.
     seq:
       - id: is_on
         type: u1

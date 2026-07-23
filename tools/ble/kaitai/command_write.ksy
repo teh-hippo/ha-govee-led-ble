@@ -101,14 +101,21 @@ types:
         doc: '[CONFIRMED_LIVE] the 16 bytes at frame offsets 3..18, interpreted per sub-command'
   scene_activate:
     doc: |
-      sub 0x04. Two-byte little-endian scene/effect code; H617A sends the bare code
-      with no trailing activation byte. The scene BODY (palette/records) rides a
-      separate a3 multi-frame upload (see scene_body.ksy); this frame only activates
-      a code.
+      sub 0x04. Two-byte little-endian scene/effect code, then a scene-type byte.
+      A plain preset scene sends type 0x00; the H617A also activates through this
+      sub with type 0x02 for adjustable / Workshop-style scenes (Workshop is
+      33 05 04 91 01 02, see workshop_body.ksy; adjustable scenes are 33 05 04
+      36 3f 02 and 37 3f 02). The scene BODY (palette/records) rides a separate a3
+      multi-frame upload (scene_body.ksy); this frame only activates a code.
+      protocol.build_scene emits only the bare code (type 0x00), so the type-0x02
+      activations are app-only.
     seq:
       - id: code
         type: u2le
         doc: '[CONFIRMED_LIVE] scene/effect code, little-endian (frame offset 3); 0x0873 captured (resume-scene-aurora)'
+      - id: scene_type
+        type: u1
+        doc: '[INFERRED] scene-type byte (frame offset 5). 0x00 for plain preset scenes; 0x02 for Workshop (33 05 04 91 01 02, x25 H617A) and adjustable scenes (36/37 3f 02). Exact meaning (adjustable / parametric-scene marker) needs on-phone confirm'
       - id: padding
         type: u1
         valid: 0
