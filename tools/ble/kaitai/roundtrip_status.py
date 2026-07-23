@@ -28,6 +28,8 @@ FIXTURES = [
     ("hw", "aa0703332e30312e30310000000000000000009d"),
     ("segments", "aaa50164ff880d64ff880d64ff880d0000000010"),
     ("timer", "aa23ff81071ec0010910800100008001000080b6"),
+    ("sleep_timer", "aa11003210100000000000000000000000000089"),
+    ("wake_timer", "aa1200641101001d0000000000000000000000d1"),
     ("cm_static", "aa051500000000000000000000000000000000ba"),
     ("cm_scene", "aa050409000000000000000000000000000000a2"),
     ("cm_diy", "aa050a980000000000000000000000000000003d"),
@@ -83,6 +85,24 @@ def main() -> int:
                 ),
             ]
             detail = f"timer slot0=07:30 Sunday enabled(0x81); slots={[(s.enable_and_type, s.hour, s.minute, s.repeat) for s in slots]}"
+        elif name == "sleep_timer":
+            checks += [
+                ("enabled", b.enabled == raw[2]),
+                ("start_bri", b.start_brightness == raw[3]),
+                ("close_min", b.close_minutes == raw[4]),
+                ("current_min", b.current_minutes == raw[5]),
+            ]
+            detail = f"sleep enabled={b.enabled} start_bri={b.start_brightness} close={b.close_minutes}min (shared govee_common.sleep_timer)"
+        elif name == "wake_timer":
+            checks += [
+                ("enabled", b.enabled == raw[2]),
+                ("end_bri", b.end_brightness == raw[3]),
+                ("hour", b.hour == raw[4]),
+                ("minute", b.minute == raw[5]),
+                ("repeat", b.repeat == raw[6]),
+                ("duration", b.duration_minutes == raw[7]),
+            ]
+            detail = f"wake enabled={b.enabled} end_bri={b.end_brightness} {b.hour:02d}:{b.minute:02d} dur={b.duration_minutes}min (shared govee_common.wake_timer)"
         elif name.startswith("cm_"):
             ref = proto.parse_color_mode_response(payload)
             m = b.mode_body

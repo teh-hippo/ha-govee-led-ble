@@ -20,13 +20,12 @@ doc: |
   build_music_mode_with_color, which are treated as a fallible oracle: the wire
   bytes win on any disagreement.
 
-  Observed H617A opcodes NOT modelled here (fall back to raw; whole-corpus scan
-  2026-07-23): 0x09 clock / time-sync; 0x11 sleep timer (build_timer_sleep);
-  0x12 wake timer (build_timer_wakeup); 0x23 scheduled timer (build_timer_schedule,
-  whose aa 23 read-back IS modelled in status_reply). The 0x11/0x12/0x23 frames
-  match those builders byte-exact in 20260716131200-h617a-timer.pcap but that
-  capture's connection address is unresolved; queued for on-phone confirmation
-  before modelling (validation_backlog timer-write-family, cmd-clock-0x09).
+  Observed H617A opcodes NOT modelled here (fall back to raw): 0x09 clock /
+  time-sync (build_clock; not yet captured this cycle). The timer write family
+  0x11 sleep / 0x12 wake / 0x23 scheduled is now modelled below, live-confirmed
+  2026-07-23 (fresh writes res-timer-sleep/wake/sched-on|off on the single H617A
+  connection, each mirrored by its aa read-back); the sleep/wake bodies are shared
+  with status_reply via govee_common.
 
   Every field carries one evidence tag in its doc: [CONFIRMED_LIVE] proven by a
   round-tripped capture; [INFERRED] reasoned but the value is not isolated in a
@@ -48,6 +47,9 @@ seq:
         'command_op::power': power_cmd
         'command_op::brightness': brightness_cmd
         'command_op::multi': multi_cmd
+        'command_op::timer_sleep': govee_common::sleep_timer
+        'command_op::timer_wake': govee_common::wake_timer
+        'command_op::timer_schedule': timer_schedule_cmd
     doc: '[CONFIRMED_LIVE] bytes 2..18, interpreted per opcode (unmatched opcodes fall back to raw)'
   - id: checksum
     type: u1
@@ -57,6 +59,10 @@ enums:
     0x01: power
     0x04: brightness
     0x05: multi
+    0x09: clock
+    0x11: timer_sleep
+    0x12: timer_wake
+    0x23: timer_schedule
   multi_sub:
     0x04: scene
     0x0a: diy
@@ -258,3 +264,22 @@ types:
         valid: 0
         repeat: eos
         doc: '[CONFIRMED_LIVE] trailing zero padding within the 15-byte static window; grammar-enforced all-zero'
+  timer_schedule_cmd:
+    doc: |
+      op 0x23. One scheduled on/off timer slot: the slot index then the shared
+      timer_slot record (govee_common). protocol.build_timer_schedule. Live
+      2026-07-23: enabling slot 0 (07:30, repeat 0xc0) wrote 33 23 00 81 07 1e c0,
+      disabling wrote 33 23 00 01 07 1e c0 (enable bit 0x80 cleared). The aa 23
+      read-back of the four-slot table is modelled in status_reply.timer_body.
+    seq:
+      - id: index
+        type: u1
+        doc: '[CONFIRMED_LIVE] slot index 0..3; 0x00 written live (res-timer-sched-on/off)'
+      - id: slot
+        type: govee_common::timer_slot
+        doc: '[CONFIRMED_LIVE] the scheduled slot record (enable_and_type / hour / minute / repeat)'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'

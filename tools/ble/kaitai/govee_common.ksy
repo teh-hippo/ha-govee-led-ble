@@ -44,6 +44,79 @@ types:
         valid:
           min: 2
         doc: '[CONFIRMED_LIVE] 17-byte A3 frame count as the sender wrote it; equals reassembled_body_len // 17 in every observed capture. Some senders count an appended empty 0xFF terminator frame, others do not (see per-payload docs). Never observed below 0x02.'
+  sleep_timer:
+    doc: |
+      Sleep / fade-off timer body, shared byte-for-byte by the 0x11 command write
+      and its aa 11 read-back (write 33 11 01 32 10 10 00 <-> read aa 11 00 32 10 10,
+      live 2026-07-23). Matches protocol.build_timer_sleep: the light fades from
+      start_brightness to off over close_minutes.
+    seq:
+      - id: enabled
+        type: u1
+        doc: '[CONFIRMED_LIVE] 0x00 off / 0x01 on; toggled 01<->00 live 2026-07-23 (res-timer-sleep-on/off)'
+      - id: start_brightness
+        type: u1
+        doc: '[INFERRED] brightness the fade starts from, 0..100; 0x32=50 observed once (not app-shown, not varied), name from build_timer_sleep'
+      - id: close_minutes
+        type: u1
+        doc: '[CONFIRMED_LIVE] total fade-to-off duration in minutes; 0x10=16 matches the app "Turn off in 16 minutes" (res-timer-sleep-on)'
+      - id: current_minutes
+        type: u1
+        doc: '[INFERRED] countdown minutes remaining; 0x10=16 at start (equals close_minutes), name from build_timer_sleep, not independently isolated'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+  wake_timer:
+    doc: |
+      Wake / sunrise timer body, shared byte-for-byte by the 0x12 command write and
+      its aa 12 read-back (write 33 12 01 64 11 01 00 1d <-> read aa 12 00 64 11 01
+      00 1d, live 2026-07-23). Matches protocol.build_timer_wakeup: the light ramps
+      to end_brightness by hour:minute over the trailing duration.
+    seq:
+      - id: enabled
+        type: u1
+        doc: '[CONFIRMED_LIVE] 0x00 off / 0x01 on; toggled 01<->00 live 2026-07-23 (res-timer-wake-on/off)'
+      - id: end_brightness
+        type: u1
+        doc: '[CONFIRMED_LIVE] target brightness reached at hour:minute, 0..100; 0x64=100 matches the app "reach maximum brightness"'
+      - id: hour
+        type: u1
+        doc: '[CONFIRMED_LIVE] wake hour 0..23; 0x11=17 matches the app "17:01" (res-timer-wake-on)'
+      - id: minute
+        type: u1
+        doc: '[CONFIRMED_LIVE] wake minute 0..59; 0x01=1 matches the app "17:01"'
+      - id: repeat
+        type: u1
+        doc: '[CONFIRMED_LIVE] weekday repeat bits Mon=bit0..Sun=bit6, same encoding as the schedule slot: 0x80=fire-once, 0x00=every day. Live 0x00 matches the app "Every day" (res-timer-wake-on) and protocol.timer_repeat'
+      - id: duration_minutes
+        type: u1
+        doc: '[CONFIRMED_LIVE] sunrise ramp length in minutes; 0x1d=29 matches the app ramp 16:32->17:01 (res-timer-wake-on)'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+  timer_slot:
+    doc: |
+      One scheduled on/off timer slot [enable_and_type, hour, minute, repeat], shared
+      by the 0x23 schedule command write (one slot after the slot index) and the
+      aa 23 read-back (four slots after a 0xff marker). Matches
+      protocol.build_timer_schedule / parse_timer_schedule.
+    seq:
+      - id: enable_and_type
+        type: u1
+        doc: '[CONFIRMED_LIVE] bit 0x80 = slot enabled, bit 0x01 = on-action; live enabling slot 0 read/wrote 0x81 (enabled|on) vs 0x01 disabled (2026-07-22 and res-timer-sched-on/off 2026-07-23)'
+      - id: hour
+        type: u1
+        doc: '[CONFIRMED_LIVE] scheduled hour 0..23; a 07:30 write echoed hour 0x07'
+      - id: minute
+        type: u1
+        doc: '[CONFIRMED_LIVE] scheduled minute 0..59; 0x1e=30 echoed'
+      - id: repeat
+        type: u1
+        doc: '[CONFIRMED_LIVE] weekday repeat bits Mon=bit0..Sun=bit6, 0x80=fire-once; 0xc0 = once|Sunday echoed, matches parse_timer_repeat (weekday order live-confirmed 2026-07-09)'
 enums:
   music_mode:
     0x05: energetic

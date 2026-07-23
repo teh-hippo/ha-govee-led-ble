@@ -36,6 +36,9 @@ FIXTURES = [
     ("music", "3305130363000100e6d200000000000000000070"),
     ("seg_color", "3305150100ff000000000000807f000000000022"),
     ("seg_brightness", "33051502117f000000000000000000000000004f"),
+    ("timer_sleep", "3311013210100000000000000000000000000011"),
+    ("timer_wake", "331201641101001d000000000000000000000049"),
+    ("timer_schedule", "33230081071ec000000000000000000000000048"),
 ]
 
 
@@ -158,6 +161,63 @@ def main() -> int:
                 ),
             ]
             detail = f"music mode={getattr(m.mode_id, 'name', mode_id)} sens={m.sensitivity} style={m.style} rgb={rgb}"
+        elif name == "timer_sleep":
+            checks += [
+                ("enabled", b.enabled == raw[2]),
+                ("start_bri", b.start_brightness == raw[3]),
+                ("close_min", b.close_minutes == raw[4]),
+                ("current_min", b.current_minutes == raw[5]),
+                (
+                    "builder",
+                    proto.build_timer_sleep(bool(b.enabled), b.start_brightness, b.close_minutes, b.current_minutes)
+                    == raw,
+                ),
+            ]
+            detail = f"sleep enabled={b.enabled} start_bri={b.start_brightness} close={b.close_minutes}min cur={b.current_minutes}"
+        elif name == "timer_wake":
+            checks += [
+                ("enabled", b.enabled == raw[2]),
+                ("end_bri", b.end_brightness == raw[3]),
+                ("hour", b.hour == raw[4]),
+                ("minute", b.minute == raw[5]),
+                ("repeat", b.repeat == raw[6]),
+                ("duration", b.duration_minutes == raw[7]),
+                (
+                    "builder",
+                    proto.build_timer_wakeup(
+                        bool(b.enabled),
+                        b.end_brightness,
+                        b.hour,
+                        b.minute,
+                        proto.parse_timer_repeat(b.repeat),
+                        b.duration_minutes,
+                    )
+                    == raw,
+                ),
+            ]
+            detail = f"wake enabled={b.enabled} end_bri={b.end_brightness} {b.hour:02d}:{b.minute:02d} repeat=0x{b.repeat:02x} dur={b.duration_minutes}min"
+        elif name == "timer_schedule":
+            s = b.slot
+            checks += [
+                ("index", b.index == raw[2]),
+                ("enable_and_type", s.enable_and_type == raw[3]),
+                ("hour", s.hour == raw[4]),
+                ("minute", s.minute == raw[5]),
+                ("repeat", s.repeat == raw[6]),
+                (
+                    "builder",
+                    proto.build_timer_schedule(
+                        b.index,
+                        bool(s.enable_and_type & 0x80),
+                        bool(s.enable_and_type & 0x01),
+                        s.hour,
+                        s.minute,
+                        proto.parse_timer_repeat(s.repeat),
+                    )
+                    == raw,
+                ),
+            ]
+            detail = f"schedule slot{b.index} {s.hour:02d}:{s.minute:02d} enable=0x{s.enable_and_type:02x} repeat=0x{s.repeat:02x}"
         ok = all(v for _, v in checks)
         fails += 0 if ok else 1
         bad = ",".join(n for n, v in checks if not v)

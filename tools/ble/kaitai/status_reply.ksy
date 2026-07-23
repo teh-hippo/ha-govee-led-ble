@@ -13,11 +13,13 @@ doc: |
   captures are ground truth. Field meanings cross-checked against
   protocol.split_status_frame / parse_color_mode_response / parse_fw_version /
   parse_hw_version.
-  Observed H617A domains NOT modelled here (fall back to raw; whole-corpus scan
-  2026-07-23): 0x04 group / segment count (reply 0x05, 0x64 seen); 0x11 sleep-timer
-  read-back; 0x12 wake-timer read-back; 0x14; 0x40 IC / segment count (query aa 40
-  00 -> reply aa 40 00 0f = 15 segments); 0xa3 multi-frame state read-back (x178).
-  Queued for on-phone query->reply correlation (validation_backlog aa-readback-gaps).
+  Observed H617A domains NOT modelled here (fall back to raw): 0x04 group /
+  segment count (reply 0x05, 0x64 seen); 0x14; 0x40 IC / segment count (query
+  aa 40 00 -> reply aa 40 00 0f = 15 segments); 0xa3 multi-frame state read-back
+  (x178). Queued for on-phone query->reply correlation (validation_backlog
+  aa-readback-gaps). The sleep-timer (0x11) and wake-timer (0x12) read-backs are
+  now modelled below, sharing govee_common.sleep_timer / wake_timer with the 0x11 /
+  0x12 command writes (write<->read-back byte-identical, live 2026-07-23).
   Every field carries one evidence tag in its doc: [CONFIRMED_LIVE] proven by a
   round-tripped capture; [INFERRED] reasoned but the value is not isolated in a
   capture; [INHERITED] modelled from the write-side/docs with no confirming
@@ -41,6 +43,8 @@ seq:
         'aa_domain::hw_version': hw_version_body
         'aa_domain::segments': segments_body
         'aa_domain::timer': timer_body
+        'aa_domain::sleep_timer': govee_common::sleep_timer
+        'aa_domain::wake_timer': govee_common::wake_timer
     doc: '[CONFIRMED_LIVE] bytes 2..18, interpreted per domain (unmatched domains fall back to raw)'
   - id: checksum
     type: u1
@@ -51,6 +55,8 @@ enums:
     0x05: colormode
     0x06: fw_version
     0x07: hw_version
+    0x11: sleep_timer
+    0x12: wake_timer
     0x23: timer
     0xa5: segments
   color_mode:
@@ -262,24 +268,7 @@ types:
         contents: [0xff]
         doc: '[CONFIRMED_LIVE] raw 0xff table marker'
       - id: slots
-        type: timer_slot
+        type: govee_common::timer_slot
         repeat: expr
         repeat-expr: 4
         doc: '[CONFIRMED_LIVE] four 4-byte scheduled-timer slot records (the slot index is positional 0..3)'
-  timer_slot:
-    doc: |
-      One scheduled on/off timer slot [enable_and_type, hour, minute, repeat],
-      matching protocol.build_timer_schedule / parse_timer_schedule.
-    seq:
-      - id: enable_and_type
-        type: u1
-        doc: '[CONFIRMED_LIVE] bit 0x80 = slot enabled, bit 0x01 = on-action; live 2026-07-22 enabling slot 0 read back 0x81 (enabled|on) vs 0x01 on the disabled slots, and the TX write 33 23 00 81 07 1e c0 carried the same 0x81'
-      - id: hour
-        type: u1
-        doc: '[CONFIRMED_LIVE] scheduled hour 0..23; a TX 33 23 that set 07:30 is echoed here as hour 0x07 (timer capture)'
-      - id: minute
-        type: u1
-        doc: '[CONFIRMED_LIVE] scheduled minute 0..59; 0x1e=30 echoed'
-      - id: repeat
-        type: u1
-        doc: '[CONFIRMED_LIVE] weekday repeat bits Mon=bit0..Sun=bit6, 0x80=fire-once; 0xc0 = once|Sunday echoed, matches parse_timer_repeat (weekday order live-confirmed 2026-07-09)'
