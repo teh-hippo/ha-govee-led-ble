@@ -159,14 +159,17 @@ types:
       sub 0x04. Two-byte little-endian scene/effect code, then a scene-type byte.
       On the H617A every library scene, edited scene, and Effects Lab effect
       activates with type 0x00; Workshop (33 05 04 91 01 02, code 0x0191, see
-      workshop_body.ksy) is the only H617A activation that uses type 0x02. The
-      scene BODY (palette/records) rides a separate a3 multi-frame upload
-      (scene_body.ksy); this frame only activates a code. protocol.build_scene
-      emits the bare code with type 0x00.
+      workshop_body.ksy) is the only H617A activation that uses type 0x02. Scenes
+      that carry a custom rgbicv2 palette upload their BODY (palette/records) as a
+      separate multi-frame a3 (scene_body.ksy) immediately before this frame, while
+      simpler built-in scenes activate by bare code with no body: live 2026-07-23
+      Effects Lab Lightning-A 0x0875 uploaded a 3-frame scene_body then activated,
+      whereas Sunset 0x0001 sent only the bare code. This frame itself just
+      activates a code; protocol.build_scene emits the bare code with type 0x00.
     seq:
       - id: code
         type: u2le
-        doc: '[CONFIRMED_LIVE] scene/effect code, little-endian (frame offset 3); live 0x0873 (Forest), 0x0875 (Effects Lab Lightning-A)'
+        doc: '[CONFIRMED_LIVE] scene/effect code, little-endian (frame offset 3); live 0x0873 (Forest) + 0x0875 (Effects Lab Lightning-A) upload a scene_body first, 0x0001 (Sunset) activates code-only with no body'
       - id: scene_type
         type: u1
         doc: '[CONFIRMED_LIVE] scene-type byte (frame offset 5). 0x00 for every H617A scene/effect activation (library scene, edited scene, Effects Lab); 0x02 only for Workshop (code 0x0191). Live 2026-07-23: Forest 0x0873 and Effects Lab Lightning-A 0x0875 both 0x00, an edited-then-reapplied Forest stays 0x00. The 36/37 3f 02 activations once noted here are H6199 (out of scope), not H617A'
