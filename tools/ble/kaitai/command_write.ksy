@@ -25,7 +25,9 @@ doc: |
   0x11 sleep / 0x12 wake / 0x23 scheduled is now modelled below, live-confirmed
   2026-07-23 (fresh writes res-timer-sleep/wake/sched-on|off on the single H617A
   connection, each mirrored by its aa read-back); the sleep/wake bodies are shared
-  with status_reply via govee_common.
+  with status_reply via govee_common. The DIY (0x05/0x0a) and music (0x05/0x13)
+  sub-command bodies are likewise shared with the matching aa read-backs via
+  govee_common::diy_selector / music_selector.
 
   Every field carries one evidence tag in its doc: [CONFIRMED_LIVE] proven by a
   round-tripped capture; [INFERRED] reasoned but the value is not isolated in a
@@ -109,8 +111,8 @@ types:
           switch-on: sub
           cases:
             'multi_sub::scene': scene_activate
-            'multi_sub::diy': diy_activate
-            'multi_sub::music': music_cmd
+            'multi_sub::diy': govee_common::diy_selector
+            'multi_sub::music': govee_common::music_selector
             'multi_sub::static': static_cmd
         doc: '[CONFIRMED_LIVE] the 16 bytes at frame offsets 3..18, interpreted per sub-command'
   scene_activate:
@@ -129,57 +131,6 @@ types:
       - id: scene_type
         type: u1
         doc: '[CONFIRMED_LIVE] scene-type byte (frame offset 5). 0x00 for every H617A scene/effect activation (library scene, edited scene, Effects Lab); 0x02 only for Workshop (code 0x0191). Live 2026-07-23: Forest 0x0873 and Effects Lab Lightning-A 0x0875 both 0x00, an edited-then-reapplied Forest stays 0x00. The 36/37 3f 02 activations once noted here are H6199 (out of scope), not H617A'
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub window; grammar-enforced all-zero'
-  diy_activate:
-    doc: |
-      sub 0x0a. Activates a DIY effect by its app slot, then a family/type byte. The
-      scratch / live-preview slot 0xf0 (the app re-uploads the body each apply, so it
-      carries its own TYPE) and Share Space replay (slot 0xfe) send type_byte 0x00; a
-      SAVED Finger Sketch / Vibrant (the shared TYPE 0x03 body family) re-activates
-      from its numbered slot with type_byte 0x03. All other saved DIYs (TYPE 0x04
-      Flat / Combo) send type_byte 0x00. type_byte is NOT keyed on "Finger Sketch":
-      Finger Sketch previewed from the scratch slot 0xf0 sends 0x00 (finger-sketch-*),
-      and Vibrant (slot 0x84) also sends 0x03.
-    seq:
-      - id: slot
-        type: u1
-        doc: '[CONFIRMED_LIVE] DIY slot (frame offset 3). 0xf0 = scratch / live-preview slot, reused across many effects (resume-diy-hello, finger-sketch-*, combo, ...); 0xfe = Share Space replay (h617a-share-space-apply); saved DIYs use app-assigned values (0x20 saved Sketch, 0x84 saved Vibrant, plus 0x1b/0x32/0x6e/0xbe/0xef and others captured)'
-      - id: type_byte
-        type: u1
-        doc: '[INFERRED] DIY family / type byte (frame offset 4). Across the full 205-pcap corpus 0x03 appears ONLY on slots 0x20 (saved Sketch) and 0x84 (saved Vibrant); every other slot (scratch 0xf0, Share Space 0xfe, and all saved TYPE 0x04 slots) sends 0x00. Mechanism (saved TYPE-0x03 family vs slot value) still wants one controlled on-phone capture: create + SAVE a Sketch, re-activate from its tile, confirm 0x03 with its assigned slot; save a Combo, confirm 0x00'
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub window; grammar-enforced all-zero'
-  music_cmd:
-    doc: |
-      sub 0x13. Music-mode selector plus its inline parameters. Byte layout mirrors
-      the aa colour-mode music read-back: mode id, sensitivity, style, manual-colour
-      count, then one manual RGB triple when the count is >= 1 (auto-colour when 0).
-      Per-mode movement/animation parameters ride a separate 0x41 a3 body (music_body.ksy).
-    seq:
-      - id: mode_id
-        type: u1
-        enum: govee_common::music_mode
-        doc: '[CONFIRMED_LIVE] music mode id (frame offset 3; see govee_common::music_mode)'
-      - id: sensitivity
-        type: u1
-        doc: '[CONFIRMED_LIVE] sensitivity 0..99 (frame offset 4)'
-      - id: style
-        type: u1
-        doc: '[CONFIRMED_LIVE] raw byte 5; Dynamic 0x00 / Calm 0x01 is the Rhythm-only interpretation (other modes repurpose it, see protocol.parse_color_mode_response)'
-      - id: manual_color_count
-        type: u1
-        doc: '[CONFIRMED_LIVE] manual colour count / auto-colour flag (frame offset 6); 0 = auto-colour, >=1 = manual RGB supplied. count 1 captured (resume-music-rhythm)'
-      - id: rgb
-        type: govee_common::rgb
-        if: manual_color_count >= 1
-        doc: '[CONFIRMED_LIVE] manual RGB at frame offsets 7..9 when count >= 1; (0,230,210) captured'
       - id: padding
         type: u1
         valid: 0

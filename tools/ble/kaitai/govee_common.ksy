@@ -117,6 +117,59 @@ types:
       - id: repeat
         type: u1
         doc: '[CONFIRMED_LIVE] weekday repeat bits Mon=bit0..Sun=bit6, 0x80=fire-once; 0xc0 = once|Sunday echoed, matches parse_timer_repeat (weekday order live-confirmed 2026-07-09)'
+  diy_selector:
+    doc: |
+      DIY effect selector, shared byte-for-byte by the 0x05/0x0a command write
+      (33 05 0a <slot> <type_byte>) and its aa 05 0a colour-mode read-back
+      (aa 05 0a <slot> <type_byte>). Matches protocol.build_diy_activate and
+      protocol.parse_color_mode_response (which reads only the slot). type_byte is a
+      DIY family byte: across the corpus 0x03 appears only on a saved Sketch (slot
+      0x20) or saved Vibrant (slot 0x84); scratch 0xf0, Share Space replay 0xfe and
+      every saved TYPE-0x04 (Flat / Combo) slot send 0x00.
+    seq:
+      - id: slot
+        type: u1
+        doc: '[CONFIRMED_LIVE] DIY slot: 0xf0 scratch / live-preview, 0xfe Share Space replay, saved DIYs app-assigned (0x20 saved Sketch, 0x84 saved Vibrant, ...); written 33 05 0a and read back aa 05 0a byte-identical'
+      - id: type_byte
+        type: u1
+        doc: '[CONFIRMED_LIVE] DIY family / type byte, observed byte-exact both directions (write 33 05 0a 84 03, read aa 05 0a 84 03): 0x03 only for saved Sketch (0x20) / Vibrant (0x84), 0x00 otherwise. The saved-TYPE-0x03-vs-slot mechanism is reasoned, not isolated by a controlled save-and-reactivate capture'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub / mode window; grammar-enforced all-zero'
+  music_selector:
+    doc: |
+      Music-mode selector plus its inline parameters, shared byte-for-byte by the
+      0x05/0x13 command write (33 05 13 <mode> <sens> <style> <count> [rgb]) and its
+      aa 05 13 colour-mode read-back. mode id, sensitivity, style, manual-colour count,
+      then one manual RGB triple when the count is >= 1 (auto-colour when 0). Matches
+      protocol.build_music_mode_with_color / parse_color_mode_response. Per-mode
+      movement parameters ride a separate 0x41 a3 body (music_body.ksy); the full
+      20-byte 33 05 13 mode-set FRAME with its own checksum is music_body.mode_set_frame.
+    seq:
+      - id: mode_id
+        type: u1
+        enum: music_mode
+        doc: '[CONFIRMED_LIVE] music mode id (see music_mode)'
+      - id: sensitivity
+        type: u1
+        doc: '[CONFIRMED_LIVE] sensitivity 0..99'
+      - id: style
+        type: u1
+        doc: '[CONFIRMED_LIVE] raw style byte; Dynamic 0x00 / Calm 0x01 is the Rhythm-only interpretation (other modes repurpose it, see protocol.parse_color_mode_response)'
+      - id: manual_color_count
+        type: u1
+        doc: '[CONFIRMED_LIVE] manual colour count / auto-colour flag; 0 = auto-colour, >= 1 = manual RGB supplied'
+      - id: rgb
+        type: rgb
+        if: manual_color_count >= 1
+        doc: '[CONFIRMED_LIVE] manual RGB when count >= 1; (0,230,210) captured on the write, a manual triple on the read-back'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte sub / mode window; grammar-enforced all-zero'
 enums:
   music_mode:
     0x05: energetic

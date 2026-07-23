@@ -19,7 +19,9 @@ doc: |
   (x178). Queued for on-phone query->reply correlation (validation_backlog
   aa-readback-gaps). The sleep-timer (0x11) and wake-timer (0x12) read-backs are
   now modelled below, sharing govee_common.sleep_timer / wake_timer with the 0x11 /
-  0x12 command writes (write<->read-back byte-identical, live 2026-07-23).
+  0x12 command writes (write<->read-back byte-identical, live 2026-07-23). The
+  colour-mode DIY (0x0a) and music (0x13) read-backs likewise share
+  govee_common::diy_selector / music_selector with the matching 33 05 writes.
   Every field carries one evidence tag in its doc: [CONFIRMED_LIVE] proven by a
   round-tripped capture; [INFERRED] reasoned but the value is not isolated in a
   capture; [INHERITED] modelled from the write-side/docs with no confirming
@@ -101,9 +103,9 @@ types:
           cases:
             'color_mode::static': cm_static
             'color_mode::scene': cm_scene
-            'color_mode::diy': cm_diy
+            'color_mode::diy': govee_common::diy_selector
             'color_mode::video': cm_video
-            'color_mode::music': cm_music
+            'color_mode::music': govee_common::music_selector
         doc: '[CONFIRMED_LIVE] the 16 bytes at frame offsets 3..18, interpreted per mode'
   cm_static:
     doc: |
@@ -137,24 +139,6 @@ types:
         valid: 0
         repeat: eos
         doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
-  cm_diy:
-    doc: |
-      mode 0x0a DIY read-back. Slot at frame offset 3, then the same DIY family / type
-      byte the write frame carries (command_write.ksy diy_activate.type_byte): 0x03 for
-      a saved Sketch / Vibrant (TYPE 0x03), else 0x00. protocol.parse_color_mode_response
-      reads only the slot and ignores this byte.
-    seq:
-      - id: slot
-        type: u1
-        doc: '[CONFIRMED_LIVE] app-assigned DIY slot at frame offset 3'
-      - id: type_byte
-        type: u1
-        doc: '[CONFIRMED_LIVE] DIY family / type byte at frame offset 4, mirroring the write frame: 0x03 for a saved Vibrant read-back (aa 05 0a 84 03, probe-health), 0x00 for scratch / other DIYs (aa 05 0a 98 00, h617a-s3)'
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
   cm_video:
     doc: mode 0x00 (H6199). Region/mode/saturation/sound/softness at offsets 3..7.
     seq:
@@ -173,33 +157,6 @@ types:
       - id: softness
         type: u1
         doc: '[CONFIRMED_LIVE] sound-effects softness (frame offset 7)'
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
-  cm_music:
-    doc: |
-      mode 0x13. offsets: 3 mode-id, 4 sensitivity, 5 style (Dynamic 0x00 / Calm 0x01),
-      6 manual-colour count / auto flag, 7..9 manual RGB when count >= 1.
-    seq:
-      - id: mode_id
-        type: u1
-        enum: govee_common::music_mode
-        doc: '[CONFIRMED_LIVE] music mode id (frame offset 3; see govee_common::music_mode)'
-      - id: sensitivity
-        type: u1
-        doc: '[CONFIRMED_LIVE] sensitivity 0..99 (frame offset 4)'
-      - id: style
-        type: u1
-        doc: '[CONFIRMED_LIVE] raw byte 5; Dynamic 0x00 / Calm 0x01 is the Rhythm-only interpretation (other modes repurpose it, see protocol.parse_color_mode_response)'
-      - id: manual_color_count
-        type: u1
-        doc: '[CONFIRMED_LIVE] manual colour count / auto-colour flag (frame offset 6)'
-      - id: rgb
-        type: govee_common::rgb
-        if: manual_color_count >= 1
-        doc: '[CONFIRMED_LIVE] manual RGB at frame offsets 7..9 when count >= 1'
       - id: padding
         type: u1
         valid: 0
