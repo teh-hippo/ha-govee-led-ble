@@ -1,6 +1,70 @@
 # CHANGELOG
 
 
+## v4.1.0-beta.7 (2026-07-23)
+
+### Bug Fixes
+
+- **music**: Couple the Separation companion byte to the gradient toggle
+  ([`595d694`](https://github.com/teh-hippo/ha-govee-led-ble/commit/595d6948c256ac5903c3b563e7b2bbd01ae93c3e))
+
+- **music**: Derive Piano Keys [30] from the key count; drop dead volatile guard
+  ([`a64c72d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a64c72dfd70d0ca457a6c0380f406f3ef451a52a))
+
+### Documentation
+
+- Confirm H617A aa 05 music read-back and gut stale references
+  ([`747239f`](https://github.com/teh-hippo/ha-govee-led-ble/commit/747239f6a37208f26ff02e2ab83f917608fc7377))
+
+- Fix iPhone touch coordinate space in BLE capture workflow
+  ([`29df603`](https://github.com/teh-hippo/ha-govee-led-ble/commit/29df6039f2963a56c97182d7b31e1cc607d2451f))
+
+- **ble**: Add Kaitai protocol-spec pilot for H617A
+  ([`ee99eef`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ee99eef5082c7203d26bebdd262ecf7feaca12d0))
+
+- **ble**: Add shared govee_common library and evidence gate for Kaitai specs
+  ([`9011f7e`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9011f7e7e8f1c6069cd3dae4dc966ac7dfb740c1))
+
+- **ble**: Add unified aa status-reply Kaitai envelope (H617A)
+  ([`c777466`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c77746616463622af30e4a4718c98e2695b300f9))
+
+- **ble**: Address after-panel review of the Kaitai specs
+  ([`921e7a1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/921e7a11099e531ebf4bc269a94d9be06776524a))
+
+- **ble**: Compose aa 05 colour-mode into the Kaitai status envelope
+  ([`9831f97`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9831f9728e8a5d3ad453836a0580eef7342775c3))
+
+- **ble**: Confirm H617A per-segment static family from live captures
+  ([`0da1827`](https://github.com/teh-hippo/ha-govee-led-ble/commit/0da18270710d219cc1558ffbeb9e16d1f248303c))
+
+- **ble**: Confirm H617A static read-back never echoes the colour
+  ([`9eca092`](https://github.com/teh-hippo/ha-govee-led-ble/commit/9eca0928d56dc1001bc529ef1ee45810f77783cf))
+
+- **ble**: Confirm scene_type selects distinct body grammars, fail closed
+  ([`a0ee419`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a0ee4195d4684f33577ac6b689499ffb78538848))
+
+- **ble**: Decode the aa 23 scheduled-timer read-back 4-slot table
+  ([`17b7c6b`](https://github.com/teh-hippo/ha-govee-led-ble/commit/17b7c6be96df326cb3beaeee0ca061e8b01976a8))
+
+- **ble**: Drop dangling retired-markdown reference in workshop r5
+  ([`a78a874`](https://github.com/teh-hippo/ha-govee-led-ble/commit/a78a8747383a2b10dabe8ef7b6db59c7659d1220))
+
+- **ble**: Field-decode the per-mode music tail from the live sweep
+  ([`ec6787d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/ec6787d7c5c7250994b52633574baf6ea5443061))
+
+- **ble**: Formalise the 33 command-write envelope in Kaitai (H617A)
+  ([`c99f52d`](https://github.com/teh-hippo/ha-govee-led-ble/commit/c99f52dbfac0dab1a049f60d649010d014ec83bf))
+
+- **ble**: Formalise TYPE 0x03/0x04, Workshop and Music A3 bodies in Kaitai
+  ([`489dd01`](https://github.com/teh-hippo/ha-govee-led-ble/commit/489dd013d677e5709d53d3a95096ecd9707b635b))
+
+- **ble**: Prove type-2 scene grammar generalises to record_count 3 (Forest)
+  ([`62c0fc1`](https://github.com/teh-hippo/ha-govee-led-ble/commit/62c0fc1c379b1e620cfdae41f7c1e01e9026317b))
+
+- **ble**: Retire the H617A protocol Markdown superseded by the Kaitai specs
+  ([`b3b8e60`](https://github.com/teh-hippo/ha-govee-led-ble/commit/b3b8e607317de86d9c5c8133d305898b58d5ec4e))
+
+
 ## v4.1.0-beta.6 (2026-07-21)
 
 ### Bug Fixes
