@@ -24,7 +24,8 @@ result against the prediction, and restore the device baseline.
 | Component | Purpose |
 | --- | --- |
 | `idevicebtlogger` | Streams the iPhone Bluetooth HCI log to a pcap file on Windows. |
-| `pymobiledevice3` CoreDevice display service | One authenticated, loopback-only phone viewer and touch channel (screenshots plus taps). |
+| `pymobiledevice3` `serve-web` display stream | One loopback-only phone viewer and touch channel. Its frame is notch-inclusive and taller than the panel, so touches need the Y correction below. |
+| `pymobiledevice3` `dvt screenshot` | Read-only panel-resolution screenshots. A different service, and a different coordinate space from touch. |
 | `tools/ble/govee-capture.sh` | Starts, marks, stops, and decodes a capture from WSL. |
 | `tools/ble/decode_govee.py` | Extracts Govee TX writes and RX notifications from the pcap. |
 | `custom_components/ha_govee_led_ble/protocol.py` | Supplies the expected packet builders and parsers for predictions. |
@@ -71,7 +72,8 @@ python -m pymobiledevice3 developer core-device display serve-web \
 ```
 
 The touch endpoint is unauthenticated, so it must stay on loopback. From WSL, call the Windows
-viewer with `curl.exe`, not WSL `curl`:
+viewer with `curl.exe`, not WSL `curl`. A tap is a single `tap` type (or a `contact` then a
+`release` at the same point); a drag is a stream of `contact` samples ending in a `release`:
 
 ```bash
 curl.exe -fsS \
@@ -80,17 +82,43 @@ curl.exe -fsS \
   http://127.0.0.1:18080/touch
 ```
 
-Touch coordinates are normalised to `0..65535` independently on each axis:
+### Screenshots and touches are different coordinate spaces
+
+Screenshots and touches come from two different services and do not share a coordinate space.
+Screenshots are the read-only `dvt screenshot` at the panel resolution (1206x2622 on the lab
+iPhone 16 Pro). Touches go through the `serve-web` display stream, whose frame is notch-inclusive
+and taller than the panel; its height oscillates between 2752 and 2736 as the home indicator shows
+and hides (documented in the bundled `viewer.js`). A pixel read off a screenshot therefore does not
+map one-to-one onto a touch, and the difference is a vertical offset.
+
+Coordinates are `0..65535` per axis. X maps straight through; Y needs a downward correction:
 
 ```text
-x = round(pixel_x * 65535 / screenshot_width)
-y = round(pixel_y * 65535 / screenshot_height)
+x = round(screenshot_x * 65535 / 1206)
+y = round((screenshot_y + 41) * 65535 / 2622)
 ```
 
-The endpoint returns before the device necessarily completes the action, so leave about three
-seconds before assessing BLE or visual state. A slider needs a `drag` that starts on the handle.
-Keep the loop brisk because a provisioned phone can auto-lock and cannot be unlocked by the
-automation.
+X is unaffected because the Dynamic Island is vertical. The Y correction is about 40 px (measured
++41 px at mid-screen, confirmed across three slider values). It is small enough that tall controls
+absorb it, which is why only thin targets such as a ten-pixel slider line ever expose it.
+
+### Work it reliably: verify and nudge
+
+A control that does not move is almost always wrong coordinates or the wrong gesture, not an
+unusable control; the injector reaches everything the hand can. Drive it closed-loop:
+
+1. Screenshot, locate the visible target, and convert with the formula above.
+2. Act, then screenshot again and confirm the result from the on-screen value or the BLE frame.
+3. If a thin target did not respond, nudge Y by 10 to 15 px and retry before changing anything
+   else.
+4. Sliders vary. Many are tap-to-position: tap the track at the target x. Others move by dragging
+   the thumb. Verify per control; do not assume one rule.
+5. Drags need the `contact` stream on one keep-alive connection. One `curl.exe` per sample is too
+   slow on Windows and is misread as a flick.
+
+The endpoint returns before the device completes the action, so leave about three seconds before
+assessing BLE or visual state. A provisioned phone can auto-lock and cannot be unlocked by the
+automation, so keep the loop brisk.
 
 ## Capture loop
 
