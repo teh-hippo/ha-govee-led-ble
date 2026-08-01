@@ -3,7 +3,12 @@
 from pathlib import Path
 
 from homeassistant.components import frontend
-from homeassistant.components.http import StaticPathConfig
+
+# Home Assistant 2026.8 moved StaticPathConfig into homeassistant.components.http.server and
+# re-exports it from the package root without an explicit export, which strict mypy rejects.
+# The submodule does not exist in 2026.7, so importing from it directly would break at runtime.
+# unused-ignore keeps the comment valid on versions where the import still type checks cleanly.
+from homeassistant.components.http import StaticPathConfig  # type: ignore[attr-defined, unused-ignore]
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
