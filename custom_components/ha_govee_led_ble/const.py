@@ -82,29 +82,33 @@ MUSIC_MODE_SLUGS: dict[str, int] = {
 _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 
 
+_H617X_PROFILE = ModelProfile(
+    "H617A/H617E LED Strip",
+    state_readable=True,
+    scene_source="api",
+    supports_scene_speed=True,
+    music_modes=tuple(MUSIC_MODE_SLUGS),
+    supports_music_color=True,
+    supports_music_style=True,
+    supports_music_params=True,
+    supports_diy=True,
+    supports_timers=True,
+    segment_count=15,
+    supports_segment_writes=True,
+    # supports_white_brightness stays false, and NOT because the command does nothing. Driven
+    # directly on 2026-07-31 it dims the strip and compounds with the whole-strip opcode 0x04
+    # rather than duplicating it (command_write::static_brightness). Two things block exposing
+    # it through this service. It has no read-back, and async_set_white_brightness verifies
+    # through _refresh_with_retry, which raises when the field is never observed. And the
+    # service means "the level of the white mode" and forces ColorMode.COLOR_TEMP, which is not
+    # what the frame does here: on this model it is a relative brightness that multiplies the
+    # master. Exposing that axis needs its own control, which is a feature, not a correction.
+)
+
+
 MODEL_PROFILES: dict[str, ModelProfile] = {
-    "H617A": ModelProfile(
-        "H617A LED Strip",
-        state_readable=True,
-        scene_source="api",
-        supports_scene_speed=True,
-        music_modes=tuple(MUSIC_MODE_SLUGS),
-        supports_music_color=True,
-        supports_music_style=True,
-        supports_music_params=True,
-        supports_diy=True,
-        supports_timers=True,
-        segment_count=15,
-        supports_segment_writes=True,
-        # supports_white_brightness stays false, and NOT because the command does nothing. Driven
-        # directly on 2026-07-31 it dims the strip and compounds with the whole-strip opcode 0x04
-        # rather than duplicating it (command_write::static_brightness). Two things block exposing
-        # it through this service. It has no read-back, and async_set_white_brightness verifies
-        # through _refresh_with_retry, which raises when the field is never observed. And the
-        # service means "the level of the white mode" and forces ColorMode.COLOR_TEMP, which is not
-        # what the frame does here: on this model it is a relative brightness that multiplies the
-        # master. Exposing that axis needs its own control, which is a feature, not a correction.
-    ),
+    "H617A": _H617X_PROFILE,
+    "H617E": _H617X_PROFILE,
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,

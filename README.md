@@ -9,10 +9,24 @@ Local BLE control of supported Govee LED strips from Home Assistant, with no clo
 
 ## Supported Devices
 
-All models support on/off, brightness, RGB color, color temperature, and state readback.
+All models support on/off, brightness, RGB color, color temperature, and notification-based
+state readback. H617A and H617E intentionally share one capability profile and protocol
+implementation.
 
-- **H617A**: LED Strip · 80+ scenes · music mode
-- **H6199**: DreamView T1 · video & music modes · advanced controls
+| Feature | H617A | H617E | H6199 |
+| --- | --- | --- | --- |
+| Built-in scenes | 80+ mapped | H617A catalogue mapped; additional device scenes remain unmapped | Not surfaced |
+| Music modes | 11 mapped modes | Same 11 modes | 4 validated modes |
+| 15-segment painting | Yes | Yes | Not validated |
+| Effect Studio | Static, Gradient, Sketch, Flat, Combo | Same complete surface | Not validated |
+| Saved custom effects | Save, apply, rename, update, delete | Same complete surface | Not validated |
+| Effect JSON import/export | Yes | Yes | No validated authoring surface |
+| Sleep and wake-up timers | Yes | Yes | Not validated |
+| DreamView video controls | No | No | Yes |
+
+The bundled `custom:govee-led-ble-card` provides segment painting and the Govee Effect Studio.
+Effect Studio drafts can be saved as named effects, selected from the light's effect list, and
+exported or imported as portable JSON.
 
 ## Installation
 
