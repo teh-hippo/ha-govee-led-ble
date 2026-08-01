@@ -35,6 +35,11 @@ def test_h617a_and_h617e_share_complete_feature_profile():
     assert resolve_model("H617E-extra") == "H617E"
 
 
+def test_h617x_handoff_timeout_preserves_h6199_lifecycle():
+    assert MODEL_PROFILES["H617A"].connection_idle_timeout == 3.0
+    assert MODEL_PROFILES["H6199"].connection_idle_timeout is None
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments

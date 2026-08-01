@@ -31,6 +31,7 @@ class ModelProfile:
     supports_poweroff_memory: bool = False
     segment_count: int = 0
     supports_segment_writes: bool = False
+    connection_idle_timeout: float | None = None
 
     @property
     def supports_segments(self) -> bool:
@@ -95,6 +96,10 @@ _H617X_PROFILE = ModelProfile(
     supports_timers=True,
     segment_count=15,
     supports_segment_writes=True,
+    # Command verification waits for at most two seconds. Three seconds therefore keeps the
+    # link alive through the final reply (and is re-armed by every command packet), while
+    # releasing it before the first five-second keep-alive would otherwise retain ownership.
+    connection_idle_timeout=3.0,
     # supports_white_brightness stays false, and NOT because the command does nothing. Driven
     # directly on 2026-07-31 it dims the strip and compounds with the whole-strip opcode 0x04
     # rather than duplicating it (command_write::static_brightness). Two things block exposing

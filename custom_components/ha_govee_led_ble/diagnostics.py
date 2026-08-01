@@ -34,7 +34,6 @@ async def async_get_config_entry_diagnostics(
         else None
     )
     coordinator_data = {
-        "address": coordinator.address,
         "model": coordinator.model,
         "state_readable": coordinator.profile.state_readable,
         "supports_scene_speed": coordinator.profile.supports_scene_speed,
@@ -54,6 +53,15 @@ async def async_get_config_entry_diagnostics(
         "supports_poweroff_memory": coordinator.profile.supports_poweroff_memory,
         "segment_count": coordinator.profile.segment_count,
         "connected": bool(client and client.is_connected),
+        "connection_path": coordinator.connection_path,
+        "connected_at": coordinator.last_connected_at,
+        "disconnected_at": coordinator.last_disconnected_at,
+        "connection_duration_seconds": coordinator.last_connection_duration,
+        "retry_count": coordinator.retry_count,
+        "last_failure_type": coordinator.last_failure_type,
+        "disconnect_reason": coordinator.last_disconnect_reason,
+        "fresh_service_discovery_forced": coordinator.fresh_service_discovery_forced,
+        "idle_release_seconds": coordinator.profile.connection_idle_timeout,
         "available": coordinator.available,
         "fw_version": coordinator.fw_version,
         "hw_version": coordinator.hw_version,
