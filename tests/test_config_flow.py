@@ -234,6 +234,12 @@ async def test_user_step_requires_explicit_model(hass: HomeAssistant):
 
 _EM = [("SomeOtherDevice", None), ("Govee_H9999_ABCD", None), ("", None), ("ihoment_H617A_ABCD", "H617A")]
 _EM += [("Govee_H617A_ABCD", "H617A"), ("GBK_H617A_ABCD", "H617A"), ("GVH_H617A_ABCD", "H617A")]
+_EM += [
+    ("ihoment_H617E_ABCD", "H617E"),
+    ("Govee_H617E_ABCD", "H617E"),
+    ("GBK_H617E_ABCD", "H617E"),
+    ("GVH_H617E_ABCD", "H617E"),
+]
 
 
 @pytest.mark.parametrize("name,expected", _EM)

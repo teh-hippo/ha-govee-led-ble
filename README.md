@@ -12,6 +12,7 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 All models support on/off, brightness, RGB colour, colour temperature, and state readback.
 
 - **H617A**: LED Strip · 83 scenes · 11 music modes
+- **H617E**: LED Strip · H617A-compatible scenes, effects and music modes
 - **H6199**: DreamView T1 · 240 scenes · video and music modes · advanced controls
 
 ## Effect Studio
@@ -21,6 +22,7 @@ Govee Effect Studio is added to the Home Assistant sidebar when the integration 
 | Model | Studio surfaces |
 | --- | --- |
 | H617A | Scenes, painted segments, single-layer effects, multi-layered effects, reactive music effects and advanced layered effects |
+| H617E | H617A-compatible scenes, effects and reactive music effects |
 | H6199 | Scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |
 
 H6199 video profiles keep saturation, capture area, sound effects, softness, white balance, relative brightness and blank-screen behaviour together as one reusable effect.
@@ -79,7 +81,7 @@ Use the integration's **Configure** action to choose which Effect Studio categor
 
 ## Scope, non-goals, and expert tools
 
-The supported product scope is local BLE control of H617A and H6199 through Home Assistant.  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
+The supported product scope is local BLE control of H617A, H617E and H6199 through Home Assistant.  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
 
 Wi-Fi provisioning is not a maintained integration or contributor workflow.  The decoded H6199 [`a1 11` frame](tools/ble/kaitai/h6199_wifi_provision.ksy), [reassembled body](tools/ble/kaitai/h6199_wifi_body.ksy) and [`ee 11` result](tools/ble/kaitai/h6199_wifi_result.ksy) remain as tested protocol findings.
 

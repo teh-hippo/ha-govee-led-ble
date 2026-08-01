@@ -84,24 +84,28 @@ MUSIC_MODE_SLUGS: dict[str, int] = {
 _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 
 
+_H617X_PROFILE = ModelProfile(
+    "H617A/H617E LED Strip",
+    state_readable=True,
+    supports_scenes=True,
+    music_modes=tuple(MUSIC_MODE_SLUGS),
+    supports_music_color=True,
+    supports_advanced_effects=True,
+    supports_multi_layered_effects=True,
+    # H617A and H617E expose fifteen segments through five explicit aa a5 query groups of three.
+    # Segment writes ACK normally but do not publish updated groups without those queries.
+    segment_count=15,
+    supports_segment_writes=True,
+    # supports_white_brightness stays false because static subcommand 0x02 is segment-relative
+    # brightness, not the level of a white colour-temperature mode. It compounds with master
+    # brightness and is exposed through set_segment_brightness, including all-segment writes;
+    # the aa a5 groups provide its per-segment readback.
+)
+
+
 MODEL_PROFILES: dict[str, ModelProfile] = {
-    "H617A": ModelProfile(
-        "H617A LED Strip",
-        state_readable=True,
-        supports_scenes=True,
-        music_modes=tuple(MUSIC_MODE_SLUGS),
-        supports_music_color=True,
-        supports_advanced_effects=True,
-        supports_multi_layered_effects=True,
-        # H617A exposes fifteen segments through five explicit aa a5 query groups of three.
-        # Segment writes ACK normally but do not publish updated groups without those queries.
-        segment_count=15,
-        supports_segment_writes=True,
-        # supports_white_brightness stays false because static subcommand 0x02 is segment-relative
-        # brightness, not the level of a white colour-temperature mode. It compounds with master
-        # brightness and is exposed through set_segment_brightness, including all-segment writes;
-        # the aa a5 groups provide its per-segment readback.
-    ),
+    "H617A": _H617X_PROFILE,
+    "H617E": _H617X_PROFILE,
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,

@@ -29,6 +29,19 @@ def test_supports_segments_defaults_false():
     assert not ModelProfile("x").supports_segments
 
 
+def test_h617a_and_h617e_share_complete_feature_profile():
+    profile = MODEL_PROFILES["H617A"]
+    assert MODEL_PROFILES["H617E"] is profile
+    assert profile.supports_scenes
+    assert profile.supports_music_mode
+    assert len(profile.music_modes) == 11
+    assert profile.segment_count == 15
+    assert profile.supports_segments
+    assert profile.supports_advanced_effects
+    assert profile.supports_multi_layered_effects
+    assert resolve_model("H617E-extra") == "H617E"
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments
