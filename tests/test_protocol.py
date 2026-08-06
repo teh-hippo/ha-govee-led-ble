@@ -17,7 +17,7 @@ from custom_components.ha_govee_led_ble.custom_effects import (
 
 H = bytes.fromhex
 
-# CAT §2.2 editor default palette (seven colours): FF0000 FF7D00 FFFF00 00FF00 0000FF 00FFFF 8B00FF.
+# diy_type04.ksy captured editor default palette.
 _DEFAULT_PALETTE = (
     (0xFF, 0, 0),
     (0xFF, 0x7D, 0),
@@ -55,14 +55,11 @@ def test_split_status_frame_short_loose_keeps_tail():
     assert proto.split_status_frame(frame) == (0x04, frame[2:])
 
 
-def test_split_status_frame_bad_checksum_keeps_fallback():
+def test_split_status_frame_rejects_bad_checksum():
     body = bytes([0xAA, 0x05] + [0x01] * 17)
     frame = body + bytes([proto.xor_checksum(body) ^ 0x01])
     assert len(frame) == 20
-    domain, payload = proto.split_status_frame(frame)
-    assert domain == 0x05
-    assert payload == frame[2:]  # checksum not stripped when it fails to verify
-    assert len(payload) == 18
+    assert proto.split_status_frame(frame) is None
 
 
 def test_split_status_frame_rejects_non_status_and_short():
@@ -135,7 +132,7 @@ def test_parse_static_write_round_trips_every_33_05_15_builder():
 
     ct = proto.parse_static_write(proto.build_color_temp(3600))
     assert ct is not None and ct.kelvin == 3600 and ct.rgb is None
-    assert ct.kelvin_preview == proto.kelvin_to_rgb(3600) and ct.whole_strip
+    assert ct.kelvin_companion_rgb == proto.kelvin_to_rgb(3600) and ct.whole_strip
 
     level = proto.parse_static_write(proto.build_segment_brightness(range(1, 8), 17))
     assert level is not None and level.brightness_pct == 17 and level.segment_mask == 0x007F
@@ -260,16 +257,7 @@ def test_scene_multi():
 
 
 def test_build_h6199_scene_matches_current_ios_captures():
-    aurora_a = "AiAAAAABAgH/MgEAAAAA+jIDAP8AAP//qv8AAwCAAAAAACMAAAADAgH/GQD6AAAC+gAEf/8A//8AoP//AP//FAH6AAD/AA=="
-    assert proto.build_h6199_scene("", 0, 0) == [H("3305040000010000000000000000000000000033")]
-    assert proto.build_h6199_scene(aurora_a, 215, 2) == [
-        H("a3000105020220000000010201ff320100000049"),
-        H("a30100fa320300ff0000ffffaaff000300800040"),
-        H("a30200000023000000030201ff1900fa0000029c"),
-        H("a303fa00047fff00ffff00a0ffff00ffff14016b"),
-        H("a3fffa0000ff0000000000000000000000000059"),
-        H("330504d7000200000000000000000000000000e7"),
-    ]
+    assert proto.build_h6199_scene(0) == [H("3305040000010000000000000000000000000033")]
 
 
 def test_build_a3_multi():
@@ -324,7 +312,7 @@ def test_a3_reassembly_rule():
 
 
 def test_build_diy_activate():
-    # H617A §3 "DIY select" 33 05 0a <slot>; slot 0xF0 observed (carries no colour).
+    # govee_common::diy_selector with captured slot 0xF0.
     assert proto.build_diy_activate(0xF0) == H("33050af0000000000000000000000000000000cc")
     assert proto.build_diy_activate(0xBE)[:4] == H("33050abe")
     _valid(proto.build_diy_activate(0xF0))
@@ -410,7 +398,7 @@ def test_build_sketch_spanning_two_chunks_matches_live_capture():
 
 
 def test_build_sketch_matches_catalogue():
-    # CAT §2.4: Clockwise, background blue, one green group over segments 0,1,2,4 (0-based).
+    # diy_type03.ksy Clockwise body with one sparse paint group.
     content = SketchContent(
         motion=0x09,
         speed=0x33,
@@ -450,7 +438,7 @@ def test_build_vibrant_matches_live_capture():
 
 
 def test_build_flat_diy_matches_catalogue():
-    # CAT §2.2: Jumping1, seven-colour default palette, default speed 0x32.
+    # diy_type04.ksy Jumping1 with the captured default palette and speed.
     content = FlatContent(family=0x01, variant=0x00, speed=0x32, palette=_DEFAULT_PALETTE)
     body = H("01003215ff0000ff7d00ffff0000ff000000ff00ffff8b00ff")  # FAMILY VARIANT SPEED PLEN <7 colours>
     frames = proto.build_flat_diy(content)
@@ -484,7 +472,7 @@ def test_build_flat_diy_single_chunk_live():
 
 
 def test_build_combo_matches_catalogue():
-    # CAT §2.5: Fade1 (00,00) + Marquee1 (03,03), shared seven-colour palette; seqlen = 2*count = 0x04.
+    # diy_type04.ksy Combo with two captured family/variant pairs.
     content = ComboContent(variant=0x00, speed=0x32, palette=_DEFAULT_PALETTE, effects=((0x00, 0x00), (0x03, 0x03)))
     # FF <var> <speed> is not pinned by CAT (defaults shown); the tail from PLEN onward is the worked example.
     body = H("ff003215ff0000ff7d00ffff0000ff000000ff00ffff8b00ff0400000303")
@@ -544,6 +532,9 @@ def test_constants():
     assert proto.COLOR_MODE_QUERY == H("AA050000000000000000000000000000000000AF")
     assert proto.FW_QUERY == H("AA060000000000000000000000000000000000AC")
     assert proto.HW_QUERY == H("AA070300000000000000000000000000000000AE")
+    assert proto.SLEEP_TIMER_QUERY == H("AA110000000000000000000000000000000000BB")
+    assert proto.WAKEUP_TIMER_QUERY == H("AA120000000000000000000000000000000000B8")
+    assert proto.SCHEDULE_TIMER_QUERY == H("AA23000000000000000000000000000000000089")
     assert proto.KEEP_ALIVE == proto.STATE_QUERY
     assert (proto.COMMAND_HEADER, proto.STATUS_HEADER) == (0x33, 0xAA)
     assert (proto.POWER_PACKET_TYPE, proto.BRIGHTNESS_PACKET_TYPE, proto.COLOR_PACKET_TYPE) == (0x01, 0x04, 0x05)
@@ -693,7 +684,7 @@ def test_music_mode_style_count_per_mode():
         _valid(pkt)
 
 
-# Music per-mode movement params (§2.3, EXPERIMENTAL). Every expected frame below is replayed
+# Music per-mode movement params. Every expected frame below is replayed
 # byte-exact from validate-20260709-122350.pcap + validation-report-20260709-123428.json; assembling
 # the a3 fragments (dropping each frame's `a3 <idx>` prefix and trailing XOR) must reproduce it. Each
 # (mode, overrides) pins a captured A/B/A transition — the same transitions that pinned the offsets.

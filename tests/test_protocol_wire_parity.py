@@ -137,9 +137,9 @@ def test_builder_reproduces_the_captured_frame(name, built):
         ("h6199_blank_screen_off", lambda: proto.build_blank_screen(False)),
         ("h6199_relbright_36", lambda: proto.build_relative_brightness(36)),
         ("h6199_relbright_100", lambda: proto.build_relative_brightness(100)),
-        ("h6199_scene_sunrise", lambda: proto.build_h6199_scene("", 0)[0]),
-        ("h6199_scene_sunset", lambda: proto.build_h6199_scene("", 1)[0]),
-        ("h6199_scene_candlelight", lambda: proto.build_h6199_scene("", 9)[0]),
+        ("h6199_scene_sunrise", lambda: proto.build_h6199_scene(0)[0]),
+        ("h6199_scene_sunset", lambda: proto.build_h6199_scene(1)[0]),
+        ("h6199_scene_candlelight", lambda: proto.build_h6199_scene(9)[0]),
     ],
 )
 def test_builder_reproduces_the_h6199_captured_frame(name, built):
@@ -232,7 +232,7 @@ def test_every_white_balance_slider_position_is_a_captured_frame():
         ("h6199_colour_temp_cool", 9000, (217, 225, 255)),
     ],
 )
-def test_h6199_colour_temperature_shape_matches_while_the_vendor_preview_curve_differs(name, kelvin, captured_preview):
+def test_h6199_colour_temperature_shape_matches_while_the_companion_curve_differs(name, kelvin, captured_preview):
     captured = fixture(name)
     built = proto.build_color_temp(kelvin)
     assert built[:9] == captured[:9]
@@ -248,13 +248,8 @@ def test_timer_repeat_survives_a_round_trip_through_the_weekday_set():
     assert proto.build_timer_schedule(2, True, True, 0, 0, days) == fixture("command_write_timer_schedule_weekdays")
 
 
-def test_colour_temperature_matches_the_capture_everywhere_except_the_preview():
-    """The one deliberate divergence, pinned rather than printed.
-
-    The device keys off the kelvin value, and the preview triple is cosmetic, so the app's
-    curve and ours disagree without either being wrong on the wire. Stating that as an
-    assertion means a change in either direction shows up, which a printed note never did.
-    """
+def test_colour_temperature_matches_the_capture_except_companion_rgb():
+    """Pin the unresolved companion-RGB divergence instead of claiming byte parity."""
     captured = fixture("command_write_color_temp")
     built = proto.build_color_temp(3600)
     assert built[:7] == captured[:7]
@@ -350,6 +345,25 @@ def test_h6199_music_reply_tracks_fixed_red_and_blue():
     assert blue.music_color == (0, 0, 255)
 
 
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("h6199_status_colour_mode_video", ("movie", True, 100, False, 100)),
+        ("h6199_status_colour_mode_video_game", ("game", True, 100, False, 100)),
+        ("h6199_status_colour_mode_video_custom", ("game", False, 20, True, 12)),
+    ],
+)
+def test_h6199_video_reply_tracks_the_captured_settings(name, expected):
+    parsed = proto.parse_color_mode_response(payload_of(name), video_supported=True)
+    assert (
+        parsed.video_mode,
+        parsed.video_full_screen,
+        parsed.video_saturation,
+        parsed.video_sound_effects,
+        parsed.video_sound_effects_softness,
+    ) == expected
+
+
 def test_the_style_byte_is_only_read_as_calm_for_rhythm():
     """A deliberate asymmetry between the grammar and the decoder, pinned so it stays one.
 
@@ -430,6 +444,12 @@ def test_h6199_sensitivity_reaches_the_captured_ceiling():
     assert fixture("h6199_music_sensitivity_100")[4] == 100
 
 
+def test_h6199_brightness_query_and_reply_use_direct_percent():
+    assert proto.BRIGHTNESS_QUERY == fixture("h6199_query_brightness")
+    assert payload_of("h6199_status_brightness_3")[0] == 3
+    assert payload_of("h6199_status_brightness_24")[0] == 24
+
+
 def a3_body(frames: list[bytes]) -> bytes:
     """Reassemble the single A3 transaction a builder emits, using the shared implementation.
 
@@ -443,6 +463,22 @@ def a3_body(frames: list[bytes]) -> bytes:
     uploads = segment_a3([f for f in frames if len(f) == 20 and f[0] == 0xA3])
     assert len(uploads) == 1, f"expected one A3 transaction from the builder, got {len(uploads)}"
     return reassemble_a3(uploads[0])
+
+
+@pytest.mark.parametrize(
+    ("name", "mode", "overrides"),
+    [
+        ("music_body_bloom_dynamic", 0x30, {}),
+        ("music_body_bloom", 0x30, {27: 0x14}),
+        ("music_body_shiny_dynamic", 0x31, {}),
+        ("music_body_shiny_calm", 0x31, {20: 0x14, 21: 0x46}),
+        ("music_body_separation_p5_grad1", 0x32, {20: 5}),
+        ("music_body_hopping_rb50", 0x33, {}),
+        ("music_body_fountain", 0x35, {26: 1, 28: 3}),
+    ],
+)
+def test_music_parameter_builder_reproduces_shared_corpus(name, mode, overrides):
+    assert a3_body(proto.build_music_params_a3(mode, overrides)) == fixture(name)
 
 
 def slice_palette(body: bytes, offset: int, plen: int) -> tuple[tuple[int, int, int], ...]:

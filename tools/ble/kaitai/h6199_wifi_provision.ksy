@@ -27,6 +27,7 @@ seq:
     doc: '[CONFIRMED_LIVE] H6199 multi-part upload header at frame offset 0'
   - id: sub_opcode
     type: u1
+    valid: 0x11
     doc: |
       [CONFIRMED_LIVE] H6199 upload sub-register at frame offset 1, 0x11 for Wi-Fi
       provisioning. This byte is what makes 0xA1 a family rather than a single command, and

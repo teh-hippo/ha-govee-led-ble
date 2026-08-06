@@ -133,7 +133,6 @@ enums:
     0x15: static
     0x04: scene
     0x0a: diy
-    0x00: video
     0x13: music
 types:
   multi_effect_body:
@@ -314,7 +313,7 @@ types:
       domain 0x05 colour-mode read-back. The first body byte selects the mode; the
       following bytes mirror the matching write body for every mode EXCEPT static,
       where nothing is echoed and the byte that looks like the write-side sub is the
-      33 a3 register instead (see cm_static). All five mode selectors are seen live.
+      33 a3 register instead (see cm_static). All four H617A mode selectors are seen live.
 
       protocol.parse_color_mode_response read static as a mirror until 2026-07-31,
       which invented an rgb of (0, 0, 0) whenever that register was set. It now takes
@@ -332,7 +331,6 @@ types:
             'color_mode::static': cm_static
             'color_mode::scene': cm_scene
             'color_mode::diy': govee_common::diy_selector
-            'color_mode::video': cm_video
             'color_mode::music': govee_common::music_selector
         doc: '[CONFIRMED_LIVE] the 16 bytes at frame offsets 3..18, interpreted per mode'
   cm_static:
@@ -377,24 +375,6 @@ types:
         valid: 0
         repeat: eos
         doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
-  cm_video:
-    doc: |
-      mode 0x00 (H6199), NOT MODELLED. The five named fields this type used to carry
-      were removed on 2026-07-27 after an evidence audit found none of them isolated
-      by any capture; see the opaque field below. What survives is the warning, which
-      is still load-bearing.
-
-      QUERY ALIAS, MIND THIS ONE. This grammar does not model direction, and the
-      app's aa 05 QUERY is aa 05 followed by an all-zero body, which is byte-for-byte
-      a mode 0x00 reply with every field zero. Parsing a capture without splitting TX
-      from RX therefore reports phantom "video" on the H617A, a model that has no
-      video mode at all: 21 such frames sit in the corpus (re-derived 2026-07-27) and
-      every one is a TX query. Attribute by direction before believing the mode.
-      Same failure shape as the aa a3 echo ambiguity described on this spec's header.
-    seq:
-      - id: opaque
-        size-eos: true
-        doc: '[CONFIRMED_LIVE] opaque mode-0x00 window, DELIBERATELY UNNAMED. One frozen frame exists, aa 05 00 00 01 4d then zeros. Five fields were previously modelled here (full_screen, game_mode, saturation, sound_effects, softness); an evidence audit on 2026-07-27 found every one of them mirrored from protocol.py rather than isolated by any capture, and game_mode in particular took its name from the ENCODER build_video_mode rather than from anything observed. This doc claimed until 2026-07-31 that protocol.py''s parser "never reads that index at all", which is simply false: parse_color_mode_response reads indices 1 through 5 of this window and names all five. That error does not disturb the reason the fields were removed, which is that mirroring an encoder is not evidence whichever direction the mirroring runs. Removed rather than relabelled, because naming bytes nobody has observed the meaning of asserts knowledge we do not have. The bytes are retained so nothing observed is lost. The H617A has no video mode, so this can only ever be closed from an H6199, which is currently out of scope.'
   version_body:
     doc: firmware version, ASCII, NUL-terminated (e.g. "3.02.24")
     seq:

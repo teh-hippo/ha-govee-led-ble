@@ -19,6 +19,9 @@ QUERY_CONSTANTS = {
     "WHITE_BALANCE_QUERY",
     "BLANK_SCREEN_QUERY",
     "RELATIVE_BRIGHTNESS_QUERY",
+    "SLEEP_TIMER_QUERY",
+    "WAKEUP_TIMER_QUERY",
+    "SCHEDULE_TIMER_QUERY",
     "FW_QUERY",
     "HW_QUERY",
     "KEEP_ALIVE",
@@ -78,6 +81,8 @@ def test_registry_status_and_source_are_well_formed():
     for name, ev in proto.BUILDER_EVIDENCE.items():
         assert ev.status in {"VALIDATED", "EXPERIMENTAL"}, f"{name}: bad status {ev.status!r}"
         assert ev.source.strip(), f"{name}: empty evidence source"
+        assert ".ksy" in ev.source, f"{name}: evidence must cite its canonical Kaitai spec"
+        assert "§" not in ev.source, f"{name}: retired prose section citation"
 
 
 def test_experimental_status_matches_source_marker():

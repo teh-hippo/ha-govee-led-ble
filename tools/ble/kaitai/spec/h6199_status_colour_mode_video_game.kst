@@ -1,18 +1,16 @@
-# H6199 colour-mode status reply from a fresh connection with the retained video state
-# at All, Movie, saturation 100, sound off and softness 100.
-id: h6199_status_colour_mode_video
-data: h6199_status_colour_mode_video.bin
+# H6199 fresh-connection colour-mode reply with the retained video profile on Game.
+# Against h6199_status_colour_mode_video, only the profile byte and checksum move.
+id: h6199_status_colour_mode_video_game
+data: h6199_status_colour_mode_video_game.bin
 imports:
   - h6199_status_reply
 asserts:
-  - actual: domain
-    expected: 5
   - actual: body.mode
     expected: 0
   - actual: body.detail.region
     expected: 1
   - actual: body.detail.source
-    expected: 0
+    expected: 1
   - actual: body.detail.saturation
     expected: 100
   - actual: body.detail.sound_effects

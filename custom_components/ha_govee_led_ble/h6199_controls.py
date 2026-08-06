@@ -122,19 +122,34 @@ NUMBER_CONTROLS: dict[str, ControlSpec] = {
         lambda p: p.supports_video_sound_effects, apply_active_video_mode, min_value=1
     ),
     "relative_brightness": ControlSpec(
-        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
+        lambda p: p.supports_relative_brightness,
+        _apply_relative_brightness,
+        min_value=1,
+        enabled_default=False,
     ),
     "relative_brightness_left": ControlSpec(
-        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
+        lambda p: p.supports_relative_brightness,
+        _apply_relative_brightness,
+        min_value=1,
+        enabled_default=False,
     ),
     "relative_brightness_top": ControlSpec(
-        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
+        lambda p: p.supports_relative_brightness,
+        _apply_relative_brightness,
+        min_value=1,
+        enabled_default=False,
     ),
     "relative_brightness_right": ControlSpec(
-        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
+        lambda p: p.supports_relative_brightness,
+        _apply_relative_brightness,
+        min_value=1,
+        enabled_default=False,
     ),
     "relative_brightness_bottom": ControlSpec(
-        lambda p: p.supports_relative_brightness, _apply_relative_brightness, enabled_default=False
+        lambda p: p.supports_relative_brightness,
+        _apply_relative_brightness,
+        min_value=1,
+        enabled_default=False,
     ),
 }
 
@@ -180,7 +195,7 @@ async def _set_fields_with_rollback(
 
 
 async def apply_active_music_param(coordinator: GoveeBLECoordinator, *, mode_code: int) -> bool:
-    """Reapply a music param only while its mode is the live music mode; otherwise just store it (§2.3)."""
+    """Reapply a music_body parameter only while its owning mode is live."""
     if not coordinator.is_on or MUSIC_MODE_SLUGS.get(coordinator.music_mode) != mode_code:
         return False
     await coordinator.async_apply_music_params(mode_code)
@@ -379,7 +394,7 @@ class PowerOffMemorySwitch(_H6199ControlEntity, RestoreEntity, SwitchEntity):
 
 
 class GoveeMusicStyleSelect(_H6199ControlEntity, SelectEntity):
-    """Dynamic/Calm music style for Rhythm, Bloom and Shiny (§2.1); H617A only."""
+    """Dynamic/Calm music style for the capture-backed H617A modes."""
 
     _attr_options = ["dynamic", "calm"]
 
@@ -415,7 +430,7 @@ class H6199VideoCaptureSelect(_H6199ControlEntity, SelectEntity):
 
 
 class _MusicParamEntity(_H6199ControlEntity):
-    """Base for the EXPERIMENTAL, disabled-by-default per-mode music movement entities (§2.3)."""
+    """Base for disabled-by-default, capture-backed music_body controls."""
 
     _attr_entity_registry_enabled_default = False
     _attr_entity_category = EntityCategory.CONFIG

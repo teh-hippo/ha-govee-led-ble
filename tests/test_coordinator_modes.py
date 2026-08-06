@@ -127,7 +127,7 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
 
 
 def test_music_style_reconciles_calm_bool(coord):
-    """The ``music_style`` select surface is a Dynamic/Calm view over the ``music_calm`` bool (§2.1)."""
+    """The music-style select is a Dynamic/Calm view over ``music_calm``."""
     coord.music_calm = False
     assert coord.music_style == "dynamic"
     coord.music_calm = True
@@ -181,12 +181,23 @@ async def test_fresh_off_falls_back_to_white_rgb(coord):
 async def test_apply_active_music_mode_reapplies_from_music_mode(coord):
     """A param tweak while music is live re-sends the music frame via the single music-apply path."""
     coord.is_on, coord.music_mode, coord.music_sensitivity = True, "spectrum", 66
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
         assert await apply_active_music_mode(coord) is True
     assert _sent(sc) == [
         proto.build_power(True),
         proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["spectrum"], sensitivity=66, color=None, calm=False),
     ]
+    refresh.assert_awaited_once_with(
+        expected_on=True,
+        expected_music_mode="spectrum",
+        expected_music_sensitivity=66,
+        expected_music_calm=None,
+        expected_music_color=None,
+        expected_music_auto_color=True,
+    )
 
 
 async def test_apply_active_music_mode_noop_when_music_off(coord):
@@ -203,8 +214,30 @@ async def test_apply_active_video_mode_noop_when_video_off(coord):
     assert _sent(sc) == []
 
 
+async def test_apply_active_video_mode_requires_readback(h6199):
+    h6199.is_on, h6199.video_mode = True, "game"
+    h6199.video_full_screen = False
+    h6199.video_saturation = 63
+    h6199.video_sound_effects = True
+    h6199.video_sound_effects_softness = 27
+    with (
+        patch.object(h6199, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        assert await apply_active_video_mode(h6199) is True
+    assert _sent(sc) == [proto.build_video_mode(False, True, 63, True, 27)]
+    refresh.assert_awaited_once_with(
+        expected_on=True,
+        expected_video_mode="game",
+        expected_video_full_screen=False,
+        expected_video_saturation=63,
+        expected_video_sound_effects=True,
+        expected_video_sound_effects_softness=27,
+    )
+
+
 async def test_apply_music_params_merges_all_params_for_mode(coord):
-    """A per-mode apply merges every stored param so a sibling param is never clobbered (§2.3)."""
+    """A per-mode apply merges every stored param so a sibling field is never clobbered."""
     coord.music_separation_point, coord.music_separation_gradient = 5, False
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_apply_music_params(0x32)

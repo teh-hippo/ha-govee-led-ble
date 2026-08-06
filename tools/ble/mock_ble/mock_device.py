@@ -91,8 +91,10 @@ class GoveeDeviceSim:
         count = self.profile.segment_count
         self.segments: list[RGB] = [self.rgb_color] * count
         self.segment_brightness: list[int] = [100] * count
-        self.sleep_timer: tuple[int, int, int, int] | None = None
-        self.wakeup_timer: tuple[int, int, int, int, int, int] | None = None
+        self.sleep_timer: tuple[int, int, int, int] | None = (0, 50, 16, 16) if self.profile.supports_timers else None
+        self.wakeup_timer: tuple[int, int, int, int, int, int] | None = (
+            (0, 100, 17, 1, 0, 29) if self.profile.supports_timers else None
+        )
         self.schedule_timers: list[tuple[int, int, int, int] | None] = [None] * SCHEDULE_SLOTS
 
     def handle_write(self, data: bytes) -> list[bytes]:
@@ -226,7 +228,7 @@ class GoveeDeviceSim:
         if static.brightness_pct is not None:
             self._apply_white(static.brightness_pct, static.segment_mask)
         elif static.kelvin is not None:
-            self._set_color_temp(static.kelvin, static.kelvin_preview or (0, 0, 0))
+            self._set_color_temp(static.kelvin, static.kelvin_companion_rgb or (0, 0, 0))
         elif static.rgb is not None and not static.whole_strip:
             self._fill_segments(static.rgb, static.segment_mask)
         elif static.rgb is not None:

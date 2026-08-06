@@ -1,0 +1,7 @@
+# The captured association result with only its sub-register changed and XOR recomputed.
+# h6199_wifi_result owns ee 11, not every device-initiated EE register.
+id: h6199_wifi_result_reject_sub_opcode
+data: h6199_wifi_result_reject_sub_opcode.bin
+imports:
+  - h6199_wifi_result
+exception: ValidationNotEqualError

@@ -67,18 +67,38 @@ async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: 
 async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
     if coord.video_mode not in ("movie", "game"):
         return False
-    if not coord.is_on:
-        await coord.send_command(build_power(True))
-        coord.is_on = True
-    await apply_video_mode_from_state(coord, game_mode=coord.video_mode == "game")
-    return True
+    for _ in range(2):
+        if not coord.is_on:
+            await coord.send_command(build_power(True))
+            coord.is_on = True
+        await apply_video_mode_from_state(coord, game_mode=coord.video_mode == "game")
+        if await coord.refresh_state(
+            expected_on=True,
+            expected_video_mode=coord.video_mode,
+            expected_video_full_screen=coord.video_full_screen,
+            expected_video_saturation=coord.video_saturation,
+            expected_video_sound_effects=coord.video_sound_effects,
+            expected_video_sound_effects_softness=coord.video_sound_effects_softness,
+        ):
+            return True
+    raise RuntimeError("Video-mode write was not confirmed by the device")
 
 
 async def apply_active_music_mode(coord: GoveeBLECoordinator) -> bool:
     if not coord.is_on or coord.music_mode not in coord.profile.music_modes:
         return False
-    await coord.async_select_music_slug(coord.music_mode)
-    return True
+    for _ in range(2):
+        await coord.async_select_music_slug(coord.music_mode)
+        if await coord.refresh_state(
+            expected_on=True,
+            expected_music_mode=coord.music_mode,
+            expected_music_sensitivity=coord.music_sensitivity,
+            expected_music_calm=coord.music_calm if coord.music_mode == "rhythm" else None,
+            expected_music_color=coord.music_color,
+            expected_music_auto_color=coord.music_color is None,
+        ):
+            return True
+    raise RuntimeError("Music-mode write was not confirmed by the device")
 
 
 class _GoveeLightOwner:

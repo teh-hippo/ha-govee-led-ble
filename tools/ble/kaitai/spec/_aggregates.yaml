@@ -908,6 +908,21 @@
   collect: body.mode
   distinct_at_least: 4
 
+- id: h6199_video_reply_profile_moves_alone
+  doc: >
+    Fresh connections with All/Movie and All/Game retained differ only at the profile
+    byte and checksum, independently confirming the read-side profile enum.
+  between: [h6199_status_colour_mode_video, h6199_status_colour_mode_video_game]
+  differs_at: [4, 19]
+
+- id: h6199_video_reply_custom_settings_are_confined
+  doc: >
+    The same-session Part/Game/20/sound-on/12 reply differs from the All/Game default
+    only at region, saturation, sound, softness and checksum. The remaining eleven
+    detail bytes stay zero.
+  between: [h6199_status_colour_mode_video_game, h6199_status_colour_mode_video_custom]
+  differs_at: [3, 5, 6, 7, 19]
+
 - id: h6199_music_fixed_colour_flag_moves_with_its_colour
   doc: >
     Turning the page's Auto color switch off and straight back on moves the flag and the
@@ -945,6 +960,13 @@
 
 - id: h6199_power_reply_follows_live_state
   between: [h6199_status_power_off, h6199_status_power_on]
+  differs_at: [2, 19]
+
+- id: h6199_brightness_reply_moves_alone
+  doc: >
+    Two retained brightness replies differ only at the direct percentage and checksum,
+    independently confirming the shared integration's domain-0x04 interpretation.
+  between: [h6199_status_brightness_3, h6199_status_brightness_24]
   differs_at: [2, 19]
 
 - id: h6199_blank_screen_reply_follows_switch

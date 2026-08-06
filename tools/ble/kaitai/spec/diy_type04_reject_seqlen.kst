@@ -1,0 +1,7 @@
+# A captured one-effect Combo body with SEQLEN changed from 2 to 3. Sequence bytes
+# are FAMILY/VARIANT pairs, so an odd length must fail closed.
+id: diy_type04_reject_seqlen
+data: diy_type04_reject_seqlen.bin
+imports:
+  - diy_type04
+exception: ValidationExprError

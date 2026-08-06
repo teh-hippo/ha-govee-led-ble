@@ -440,7 +440,7 @@ types:
       static sub 0x01. One unified layout covers both a direct RGB paint and a
       colour-temperature set: a direct-RGB set populates rgb_direct (offsets 4..6)
       and leaves kelvin/rgb_preview zero; a colour-temperature set zeroes rgb_direct
-      and populates kelvin (offsets 7..8, big-endian) plus a preview RGB (offsets
+      and populates kelvin (offsets 7..8, big-endian) plus an RGB companion (offsets
       9..11). A colour-temperature set forces the mask to all-segments (0x7fff); a
       direct paint may select a segment subset (mask != 0x7fff). This shared layout
       is proven on the wire: direct red (all), 3600K temperature (all), and a
@@ -476,7 +476,7 @@ types:
         doc: '[CONFIRMED_LIVE] colour temperature in kelvin, big-endian, offsets 7..8 (zero for a direct RGB paint); 0x0e10=3600 captured (resume-colortemp), and re-confirmed 2026-07-26 with 0x0ce4=3300 and 0x2134=8500 from the Color > Whole temperature slider. Big-endian is settled by those values: read little-endian they would be 58380 and 13345, which are not colour temperatures.'
       - id: rgb_preview
         type: govee_common::rgb
-        doc: '[CONFIRMED_LIVE] preview RGB for a colour-temperature set, offsets 9..11 (zero for a direct RGB paint); (255,203,141) captured for 3600K, (255,195,124) for 3300K and (223,229,255) for 8500K, warm to cool as the slider moves'
+        doc: '[INFERRED] RGB companion for a colour-temperature set, offsets 9..11 (zero for a direct RGB paint); (255,203,141) captured for 3600K, (255,195,124) for 3300K and (223,229,255) for 8500K. The bytes clearly encode a temperature-related colour, but whether firmware renders them, reports them or ignores them beside Kelvin is not isolated.'
       - id: mask
         type: segment_mask
         doc: '[CONFIRMED_LIVE] segment selection at offsets 12..13 (see segment_mask); 0x7fff for colour/temperature, 0x7f80 = segments 8..15 captured for a subset paint (seg-multicolor)'

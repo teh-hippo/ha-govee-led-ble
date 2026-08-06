@@ -16,13 +16,12 @@ confirming capture in this direction", and it was used, and it is now empty: eve
 field that carried it was either promoted by a capture or deleted outright. Deleted
 is the important half. The practice that emptied this category is that an unevidenced
 field gets removed rather than weakly labelled, because naming bytes nobody has
-observed the meaning of asserts knowledge we do not have (see status_reply::cm_video,
-where five named fields went back to one opaque window on exactly that ground). That
+observed the meaning of asserts knowledge we do not have. That
 practice leaves the tag nothing to describe, and an empty category is somewhere to put
 a field instead of deleting it.
 
-Reopen the question if H617A stops being the only model with a spec: modelling a new
-device's read-backs from its write side is the situation the tag was for.
+H617A and H6199 now have independent specs. A new model still starts from its own
+captured bytes rather than inheriting either model's fields.
 
 The gate enforces completeness (every field is labelled) and a closed vocabulary; it
 does not and cannot judge whether a chosen tag is accurate, that stays a human/panel

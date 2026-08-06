@@ -254,7 +254,7 @@ async def test_relative_brightness_writes_a_direct_percent(mock_h6199_coordinato
     c = mock_h6199_coordinator
     c.relative_brightness = None
     entity = N(c, key="relative_brightness")
-    assert (entity.native_min_value, entity.native_max_value) == (0, 100)
+    assert (entity.native_min_value, entity.native_max_value) == (1, 100)
     assert entity.entity_registry_enabled_default is False
     await entity.async_set_native_value(36)
     assert c.relative_brightness == 36
@@ -329,6 +329,14 @@ async def test_video_percentages_ride_the_video_frame_only_while_video_is_live(m
 def test_softness_floor_matches_the_wire(mock_h6199_coordinator):
     """Every captured write carries at least 1; a 0 the device never sees is not a setting."""
     assert N(mock_h6199_coordinator, key="video_sound_effects_softness").native_min_value == 1
+    for key in (
+        "relative_brightness",
+        "relative_brightness_left",
+        "relative_brightness_top",
+        "relative_brightness_right",
+        "relative_brightness_bottom",
+    ):
+        assert N(mock_h6199_coordinator, key=key).native_min_value == 1
 
 
 async def test_number_does_not_restore_read_backed_state(mock_h6199_coordinator):

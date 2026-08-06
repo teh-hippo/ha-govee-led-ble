@@ -80,14 +80,14 @@ class EffectValidationError(ValueError):
         self.key = key
 
 
-# CAT 2.4: Finger Sketch motion codes (Cycle, Clockwise, Counter-clockwise, Twinkle, Gradient, Breathe).
+# diy_type03.ksy::effect motion codes.
 _SKETCH_MOTION_CODES: frozenset[int] = frozenset({0x02, 0x09, 0x0A, 0x0F, 0x13, 0x14})
-# CAT 2.4/2.7: sketch speed and brightness are 0..100 percentage bytes (observed max 0x64).
+# diy_type03.ksy::{speed,brightness} are direct 0..100 percentage bytes.
 _SKETCH_SPEED_RANGE: range = range(0, 101)
 _SKETCH_BRIGHT_RANGE: range = range(0, 101)
 _DIY_SPEED_RANGE: range = range(0, 101)
 
-# CAT 2.6: confirmed flat (FAMILY, VARIANT) pairs, keyed by family (variants have catalogue gaps).
+# diy_type04.ksy flat FAMILY/VARIANT pairs, keyed by family.
 _FLAT_VARIANTS_BY_FAMILY: dict[int, tuple[int, ...]] = {
     0x00: (0x00, 0x01, 0x02),  # Fade 1..3
     0x01: (0x00, 0x02),  # Jumping 1..2 (variant skips 0x01)
@@ -110,7 +110,7 @@ _CROSSING_FAMILY = 0x0A
 
 
 def _flat_palette_max(family: int) -> int:
-    # CAT 2.7: Crossing caps at 3 colours; every other flat family allows up to 8.
+    # The captured Crossing editor caps its palette at three; the other flat families allow eight.
     return 3 if family == _CROSSING_FAMILY else 8
 
 

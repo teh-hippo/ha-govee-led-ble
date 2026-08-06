@@ -1,6 +1,7 @@
 """Shared typed base for the coordinator and its write mixins."""
 
 import asyncio
+from collections.abc import Callable
 from datetime import time as dt_time
 from typing import TYPE_CHECKING, Any
 
@@ -9,7 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile
 from .custom_effects import CustomEffect
-from .protocol import ParsedMode, ParsedTimerSchedule
+from .protocol import ParsedMode, ParsedTimerSchedule, Weekday
 
 if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
@@ -21,7 +22,6 @@ SLEEP_TIMER_PACKET_TYPE = 0x11
 WAKEUP_TIMER_PACKET_TYPE = 0x12
 SCHEDULE_TIMER_PACKET_TYPE = 0x23
 TIMER_SCHEDULE_SLOTS = 4
-WAKEUP_END_BRIGHTNESS = 100
 
 
 class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
@@ -67,9 +67,14 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _store_lock: asyncio.Lock
     _effect_store: Store[dict[str, Any]] | None
     sleep_timer_enabled: bool | None
+    sleep_timer_start_brightness: int | None
     sleep_timer_minutes: int | None
+    sleep_timer_current_minutes: int | None
     wakeup_timer_enabled: bool | None
+    wakeup_timer_end_brightness: int | None
     wakeup_timer_time: dt_time | None
+    wakeup_timer_repeat_days: frozenset[Weekday] | None
+    wakeup_timer_duration_minutes: int | None
     schedule_timers: list[ParsedTimerSchedule | None]
 
     if TYPE_CHECKING:
@@ -77,6 +82,14 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         async def send_command(self, packet: bytes) -> None: ...
 
         async def refresh_state(self, *, expected_effect: str | None = None) -> bool: ...
+
+        async def refresh_query_state(
+            self,
+            query: bytes,
+            domain: int,
+            accept: Callable[[], bool],
+            timeout: float = 2.0,
+        ) -> bool: ...
 
         @property
         def scene_name_set(self) -> frozenset[str]: ...

@@ -183,7 +183,7 @@ async def test_h6199_scene_uses_its_own_activation_frame(h6199_light, mock_h6199
     co.is_on = True
     await h6199_light.async_turn_on(effect="sunrise")
     sent = [call.args[0] for call in co.send_command.call_args_list]
-    assert sent == proto.build_h6199_scene("", SCENES["sunrise"].code)
+    assert sent == proto.build_h6199_scene(SCENES["sunrise"].code)
     assert sent != proto.build_scene_multi("", SCENES["sunrise"].code, 0)
     assert co.effect == "sunrise"
 

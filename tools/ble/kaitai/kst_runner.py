@@ -281,12 +281,11 @@ def check_every_spec_is_exercised(cases: list[Case]) -> None:
 
     A spec nothing parses still compiles, still passes evidence_lint, and still reads as
     documentation of the wire, so it is the field-level version of an orphan fixture: a
-    layout that has never met a byte, indistinguishable from one proven against 164 of
-    them. That matters most for a model whose discovery run has not happened yet. The
-    H6199 has beliefs in protocol.py and no captured bytes at all, and the tempting move
-    is to write its spec from the encoder first and check captures against it later. This
-    check makes that impossible rather than discouraged: an h6199 spec cannot be committed
-    until an h6199 fixture reads it, so its first field is written from bytes.
+    layout that has never met a byte, indistinguishable from one proven against hundreds
+    of them. That matters most for a model whose discovery run has not happened yet. The
+    tempting move is to write its spec from an existing encoder or another model first and
+    check captures against it later. This check makes that impossible rather than merely
+    discouraged: a new spec cannot be committed until a fixture reads it.
 
     The closure is transitive on purpose. govee_common is named by no .kst, only by other
     specs' meta.imports, so a direct "some fixture names it" test would fail the one spec

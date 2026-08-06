@@ -76,19 +76,27 @@ doc: |
     body = 01 <linecount> <scene_type> || catalogue param || zero padding
   Applying Christmas 2189 and Bloom 2228 unedited each uploaded a payload byte-identical to
   its param, and the editors' Reset returned them to byte-identical. CAVEAT: a param can be
-  STALE at its move-field offsets. Glacier 2175 stores 0xff where its own option list says the
-  default is 250, and the app overwrites those bytes from the option list on apply, so its
-  first application differs from the param by exactly those two bytes. Treat the option list
-  as authoritative over the stored param byte. An earlier Forest sample differed for an
-  unrelated reason: that capture was of an Effects-Lab-EDITED Forest, not stock.
+  STALE at an option-list offset. Glacier 2175 stores 0xff where both moveIn lists say the
+  default is 250, and Mysterious 2214 stores 0xff where its brightValue list says 250. The
+  app's live Glacier writes prove it overwrites stale param bytes from the option list on
+  apply, so the option list is authoritative for every mapped field. An earlier Forest
+  sample differed for an unrelated reason: that capture was of an Effects-Lab-EDITED
+  Forest, not stock.
 
   RECORDS ARE NOT CATALOGUE PAGE ARRAY POSITIONS. Each catalogue config entry carries an
   explicit "page" number, and THAT is the record index; the entry's position in the config
   array is not. Using the array position resolves only 89 of the 99 adjustable-scene move
   controls, while using int(config[i]["page"]) resolves 97, and the remaining 2 are Glacier's
-  stale param bytes described above, whose live writes land exactly where the model says. So
-  the model accounts for all 99. The "locator misses" recorded in the backlog were entirely
-  this indexing error plus the stale param, not a second encoding.
+  stale moveIn bytes described above, whose live writes land exactly where the model says. So
+  the model accounts for all 99 movement controls. Mysterious adds one stale
+  brightness_speed byte that was invisible while the runtime ignored brightValue lists.
+
+  ONE CATALOGUE ENTRY REMAINS UNRESOLVED. [INFERRED] Heartbeat 2219 carries config pages
+  1 and 2 for a body with only two records, and those entries contain only color and bright
+  option lists. Every capture-backed config uses zero-based pages, so treating this one as
+  one-based would be a scene-specific exception inferred from catalogue shape alone. The
+  runtime leaves Heartbeat's Speed control unsupported until a live apply shows which record
+  each entry changes.
 
   USER-AUTHORED SCENES SHIP THROUGH THIS SAME GRAMMAR UNDER ONE FIXED CODE.
   [CONFIRMED_LIVE 2026-07-26] The app's "My DIY" list mixes two unrelated mechanisms.

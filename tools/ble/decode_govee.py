@@ -209,10 +209,10 @@ def _require_direction(direction: str) -> None:
 
     Two families of Govee frame are byte-identical between the two directions, so a labeller
     that guesses reports state the device never sent. The aa 05 query body is identical to a
-    mode 0x00 video reply (see status_reply::cm_video), and an aa reply with an all-zero body
-    is identical to its own query frame, which has now bitten on 0xa3 and again on 0x01. The
-    old code treated any unrecognised direction as a REPLY, so a typo produced phantom state
-    silently rather than failing.
+    mode 0x00 video reply (see h6199_status_reply::video_state), and an aa reply with an
+    all-zero body is identical to its own query frame, which has now bitten on 0xa3 and
+    again on 0x01. The old code treated any unrecognised direction as a REPLY, so a typo
+    produced phantom state silently rather than failing.
     """
     if direction not in DIRECTIONS:
         raise ValueError(f"direction must be one of {DIRECTIONS}, got {direction!r}")

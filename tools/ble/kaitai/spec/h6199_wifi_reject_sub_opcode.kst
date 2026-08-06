@@ -1,0 +1,7 @@
+# The captured Wi-Fi header with only its sub-register changed and XOR recomputed.
+# h6199_wifi_provision must not parse another A1 family member as provisioning.
+id: h6199_wifi_reject_sub_opcode
+data: h6199_wifi_reject_sub_opcode.bin
+imports:
+  - h6199_wifi_provision
+exception: ValidationNotEqualError

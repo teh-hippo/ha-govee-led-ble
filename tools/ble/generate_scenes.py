@@ -39,7 +39,11 @@ def _speed_config(scene: dict[str, Any]) -> list[Any] | None:
     """
     if not scene.get("adjustable"):
         return None
-    entries = [entry for entry in scene.get("config", []) if "moveIn" in entry or "moveAll" in entry]
+    entries = [
+        entry
+        for entry in scene.get("config", [])
+        if any(key in entry for key in ("moveIn", "moveAll", "color", "bright"))
+    ]
     if not entries:
         return None
     label = f"{scene['name']} {scene['code']}"
@@ -49,20 +53,48 @@ def _speed_config(scene: dict[str, Any]) -> list[Any] | None:
     if len(indices) != 1:
         raise ValueError(f"{label}: pages disagree on defaultIndex {sorted(indices)}")
     default_index = indices.pop()
-    record_count = len(scene_record_spans(base64.b64decode(scene["param"])))
+    payload = base64.b64decode(scene["param"])
+    spans = scene_record_spans(payload)
+    record_count = len(spans)
     pages: list[list[Any]] = []
     option_counts: set[int] = set()
     for entry in entries:
         page = int(entry["page"])
         if not 0 <= page < record_count:
+            if scene["code"] == 2219:
+                # Heartbeat carries pages 1 and 2 for a two-record body, unlike every
+                # capture-backed zero-based config. Leave its Speed unsupported until a
+                # live application establishes whether this one entry is one-based or stale.
+                return None
             raise ValueError(f"{label}: page {page} has no record (body holds {record_count})")
-        options = [entry.get("moveIn", []), entry.get("moveAll", [])]
+        brightness = [[int(item["brightPage"]), item["brightValue"]] for item in entry.get("bright", [])]
+        options = [
+            entry.get("moveIn", []),
+            entry.get("moveAll", []),
+            entry.get("color", []),
+            *(values for _, values in brightness),
+        ]
         for values in options:
             if values:
                 option_counts.add(len(values))
                 if not 0 <= default_index < len(values):
                     raise ValueError(f"{label}: page {page} default index {default_index} outside {values}")
-        pages.append([page, *options])
+        record_start, _ = spans[page]
+        brightness_block_count = payload[record_start + 5]
+        for block, _ in brightness:
+            if not 0 <= block < brightness_block_count:
+                raise ValueError(
+                    f"{label}: page {page} brightness block {block} outside 0..{brightness_block_count - 1}"
+                )
+        pages.append(
+            [
+                page,
+                entry.get("moveIn", []),
+                entry.get("moveAll", []),
+                entry.get("color", []),
+                brightness,
+            ]
+        )
     if len(option_counts) != 1:
         raise ValueError(f"{label}: pages disagree on option count {sorted(option_counts)}")
     return [default_index, pages]

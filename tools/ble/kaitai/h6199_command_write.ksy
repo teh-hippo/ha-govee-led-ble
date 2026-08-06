@@ -585,8 +585,9 @@ types:
         type: rgb
         if: operation == static_operation::colour
         doc: |
-          [CONFIRMED_LIVE] preview RGB at frame offsets 9..11. It varied with each captured
-          colour-temperature position and is zero on direct RGB writes.
+          [INFERRED] RGB companion at frame offsets 9..11. It varied with each captured
+          colour-temperature position and is zero on direct RGB writes, but its device-side
+          role beside the independently encoded Kelvin value has not been isolated.
       - id: segment_mask
         type: u2
         if: operation == static_operation::colour

@@ -25,6 +25,7 @@ seq:
       switch-on: domain
       cases:
         'query_domain::power': zero_body
+        'query_domain::brightness': zero_body
         'query_domain::colour_mode': zero_body
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
@@ -40,6 +41,7 @@ seq:
 enums:
   query_domain:
     0x01: power
+    0x04: brightness
     0x05: colour_mode
     0x06: firmware
     0x07: hardware
@@ -58,7 +60,7 @@ types:
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] all-zero H6199 query body; grammar-enforced across the captured power, firmware, identity and subordinate-version queries'
+        doc: '[CONFIRMED_LIVE] all-zero H6199 query body; grammar-enforced across the captured power, brightness, colour-mode, firmware, identity and subordinate-version queries'
   hardware_query_body:
     seq:
       - id: selector

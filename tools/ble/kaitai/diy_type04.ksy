@@ -100,6 +100,8 @@ types:
           byte[5], SPEED 0-100 (default 0x32 = 50). [CONFIRMED_LIVE]
       - id: plen
         type: u1
+        valid:
+          expr: _ % 3 == 0
         doc: |
           byte[6], PLEN = palette length in bytes = colours x 3. [CONFIRMED_LIVE]
       - id: palette
@@ -135,6 +137,8 @@ types:
           [CONFIRMED_LIVE]
       - id: plen
         type: u1
+        valid:
+          expr: _ % 3 == 0
         doc: |
           byte[6], PLEN = shared palette length in bytes = colours x 3.
           [CONFIRMED_LIVE]
@@ -146,6 +150,8 @@ types:
           by every chained effect. [CONFIRMED_LIVE]
       - id: seqlen
         type: u1
+        valid:
+          expr: _ % 2 == 0
         doc: |
           byte[7+PLEN], SEQLEN = sequence length in bytes = 2 x effect_count.
           [CONFIRMED_LIVE]

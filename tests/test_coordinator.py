@@ -234,7 +234,14 @@ async def test_start_notify(coord, h6199):
         bt.async_ble_device_from_address.return_value = MagicMock()
         await coord._ensure_connected()
     c2.start_notify.assert_called_once()
-    for q in (proto.KEEP_ALIVE, proto.BRIGHTNESS_QUERY, proto.COLOR_MODE_QUERY):
+    for q in (
+        proto.KEEP_ALIVE,
+        proto.BRIGHTNESS_QUERY,
+        proto.COLOR_MODE_QUERY,
+        proto.SLEEP_TIMER_QUERY,
+        proto.WAKEUP_TIMER_QUERY,
+        proto.SCHEDULE_TIMER_QUERY,
+    ):
         c2.write_gatt_char.assert_any_await(proto.WRITE_UUID, q, response=False)
     await coord.disconnect()
     h6199._client = _c(start_notify=AsyncMock(side_effect=BleakError("fail")))
@@ -348,6 +355,20 @@ async def test_send_state_queries_include_h6199_display_state(h6199):
         proto.WHITE_BALANCE_QUERY,
         proto.BLANK_SCREEN_QUERY,
         proto.RELATIVE_BRIGHTNESS_QUERY,
+    ]
+
+
+async def test_send_state_queries_include_h617a_timers(coord):
+    c = _c(write_gatt_char=AsyncMock())
+    coord._client = c
+    assert await coord._send_state_queries() is True
+    assert [call.args[1] for call in c.write_gatt_char.await_args_list] == [
+        proto.KEEP_ALIVE,
+        proto.BRIGHTNESS_QUERY,
+        proto.COLOR_MODE_QUERY,
+        proto.SLEEP_TIMER_QUERY,
+        proto.WAKEUP_TIMER_QUERY,
+        proto.SCHEDULE_TIMER_QUERY,
     ]
 
 
@@ -974,69 +995,151 @@ def test_notify_callback_unknown_domain_ignored(h6199):
 
 def test_timer_initial_state(coord):
     assert coord.sleep_timer_enabled is None and coord.sleep_timer_minutes is None
+    assert coord.sleep_timer_start_brightness is None and coord.sleep_timer_current_minutes is None
     assert coord.wakeup_timer_enabled is None and coord.wakeup_timer_time is None
+    assert coord.wakeup_timer_end_brightness is None
+    assert coord.wakeup_timer_repeat_days is None
+    assert coord.wakeup_timer_duration_minutes is None
     assert coord.schedule_timers == [None, None, None, None]
 
 
 async def test_set_sleep_timer_sends_and_updates(coord):
+    coord.sleep_timer_enabled = False
+    coord.sleep_timer_start_brightness = 61
+    coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
         patch.object(coord, "async_set_updated_data") as pushed,
     ):
         await coord.async_set_sleep_timer(enabled=True, minutes=45)
     assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 45
-    sc.assert_awaited_once_with(proto.build_timer_sleep(True, coord.brightness_pct, 45))
+    assert coord.sleep_timer_start_brightness == 61 and coord.sleep_timer_current_minutes == 45
+    sc.assert_awaited_once_with(proto.build_timer_sleep(True, 61, 45, 45))
     pushed.assert_called_once()
 
 
 async def test_set_sleep_timer_rollback(coord):
+    coord.sleep_timer_enabled = False
+    coord.sleep_timer_start_brightness = 61
+    coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
     with (
         patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
         pytest.raises(BleakError),
     ):
         await coord.async_set_sleep_timer(enabled=True, minutes=45)
-    assert coord.sleep_timer_enabled is None and coord.sleep_timer_minutes is None
+    assert coord.sleep_timer_enabled is False and coord.sleep_timer_minutes == 16
+    assert coord.sleep_timer_start_brightness == 61 and coord.sleep_timer_current_minutes == 16
+
+
+async def test_set_sleep_timer_reads_hidden_state_before_writing(coord):
+    calls = 0
+
+    async def refresh(query, domain, accept, timeout=2.0):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            coord.sleep_timer_enabled = False
+            coord.sleep_timer_start_brightness = 73
+            coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
+        return accept()
+
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_query_state", side_effect=refresh),
+        patch.object(coord, "async_set_updated_data"),
+    ):
+        await coord.async_set_sleep_timer(minutes=30)
+
+    sc.assert_awaited_once_with(proto.build_timer_sleep(False, 73, 30, 30))
+
+
+async def test_set_sleep_timer_verification_failure_rolls_back(coord):
+    coord.sleep_timer_enabled = False
+    coord.sleep_timer_start_brightness = 61
+    coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=False),
+        pytest.raises(RuntimeError, match="not confirmed"),
+    ):
+        await coord.async_set_sleep_timer(enabled=True, minutes=45)
+    assert sc.await_count == 2
+    assert coord.sleep_timer_enabled is False and coord.sleep_timer_minutes == 16
+    assert coord.sleep_timer_start_brightness == 61 and coord.sleep_timer_current_minutes == 16
 
 
 async def test_set_sleep_timer_partial_updates(coord):
+    coord.sleep_timer_enabled = False
+    coord.sleep_timer_start_brightness = 61
+    coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
         patch.object(coord, "async_set_updated_data"),
     ):
         await coord.async_set_sleep_timer(enabled=True)
-        assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes is None
-        assert sc.await_args.args[0] == proto.build_timer_sleep(True, coord.brightness_pct, 0)
+        assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 16
+        assert sc.await_args.args[0] == proto.build_timer_sleep(True, 61, 16, 16)
         await coord.async_set_sleep_timer(minutes=30)
     assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 30
+    assert coord.sleep_timer_current_minutes == 30
 
 
 async def test_set_wakeup_timer_sends_and_updates(coord):
+    coord.wakeup_timer_enabled = False
+    coord.wakeup_timer_end_brightness = 83
+    coord.wakeup_timer_time = dtime(6, 15)
+    coord.wakeup_timer_repeat_days = frozenset({proto.Weekday.MON, proto.Weekday.FRI})
+    coord.wakeup_timer_duration_minutes = 29
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
         patch.object(coord, "async_set_updated_data"),
     ):
         await coord.async_set_wakeup_timer(enabled=True, wake_time=dtime(7, 30))
     assert coord.wakeup_timer_enabled is True and coord.wakeup_timer_time == dtime(7, 30)
-    sc.assert_awaited_once_with(proto.build_timer_wakeup(True, 100, 7, 30))
+    sc.assert_awaited_once_with(
+        proto.build_timer_wakeup(
+            True,
+            83,
+            7,
+            30,
+            frozenset({proto.Weekday.MON, proto.Weekday.FRI}),
+            29,
+        )
+    )
 
 
 async def test_set_wakeup_timer_rollback(coord):
+    coord.wakeup_timer_enabled = False
+    coord.wakeup_timer_end_brightness = 83
+    coord.wakeup_timer_time = dtime(7, 30)
+    coord.wakeup_timer_repeat_days = frozenset()
+    coord.wakeup_timer_duration_minutes = 29
     with (
         patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
         pytest.raises(BleakError),
     ):
         await coord.async_set_wakeup_timer(enabled=True, wake_time=dtime(6, 0))
-    assert coord.wakeup_timer_enabled is None and coord.wakeup_timer_time is None
+    assert coord.wakeup_timer_enabled is False and coord.wakeup_timer_time == dtime(7, 30)
+    assert coord.wakeup_timer_end_brightness == 83 and coord.wakeup_timer_duration_minutes == 29
 
 
 async def test_set_wakeup_timer_partial_updates(coord):
+    coord.wakeup_timer_enabled = False
+    coord.wakeup_timer_end_brightness = 83
+    coord.wakeup_timer_time = dtime(6, 15)
+    coord.wakeup_timer_repeat_days = frozenset()
+    coord.wakeup_timer_duration_minutes = 29
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
         patch.object(coord, "async_set_updated_data"),
     ):
         await coord.async_set_wakeup_timer(enabled=True)
-        assert coord.wakeup_timer_enabled is True and coord.wakeup_timer_time is None
-        assert sc.await_args.args[0] == proto.build_timer_wakeup(True, 100, 0, 0)
+        assert coord.wakeup_timer_enabled is True and coord.wakeup_timer_time == dtime(6, 15)
+        assert sc.await_args.args[0] == proto.build_timer_wakeup(True, 83, 6, 15, (), 29)
         await coord.async_set_wakeup_timer(wake_time=dtime(8, 0))
     assert coord.wakeup_timer_time == dtime(8, 0)
 
@@ -1045,6 +1148,7 @@ async def test_set_schedule_timer_sends_and_updates(coord):
     days = [proto.Weekday.MON, proto.Weekday.FRI]
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
         patch.object(coord, "async_set_updated_data"),
     ):
         await coord.async_set_schedule_timer(1, on_action=True, hour=6, minute=15, days=days)
@@ -1055,14 +1159,22 @@ async def test_set_schedule_timer_sends_and_updates(coord):
 
 
 async def test_clear_schedule_timer_sends_and_updates(coord):
-    coord.schedule_timers[2] = MagicMock()
+    previous = proto.ParsedTimerSchedule(
+        enabled=True,
+        on_action=True,
+        hour=8,
+        minute=15,
+        repeat_days=frozenset({proto.Weekday.TUE}),
+    )
+    coord.schedule_timers[2] = previous
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
         patch.object(coord, "async_set_updated_data"),
     ):
         await coord.async_clear_schedule_timer(2)
     assert coord.schedule_timers[2] is None
-    sc.assert_awaited_once_with(proto.build_timer_schedule(2, False, False, 0, 0))
+    sc.assert_awaited_once_with(proto.build_timer_schedule(2, False, True, 8, 15, frozenset({proto.Weekday.TUE})))
 
 
 async def test_set_schedule_timer_rollback(coord):
@@ -1076,15 +1188,17 @@ async def test_set_schedule_timer_rollback(coord):
 
 
 def test_notify_callback_sleep_timer(coord):
-    # EXPERIMENTAL: harness=G encoding=decode-only
     coord._notify_callback(None, bytearray([0xAA, 0x11, 0x01, 80, 45, 0]))
     assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 45
+    assert coord.sleep_timer_start_brightness == 80 and coord.sleep_timer_current_minutes == 0
 
 
 def test_notify_callback_wakeup_timer(coord):
-    # EXPERIMENTAL: harness=G encoding=decode-only
     coord._notify_callback(None, bytearray([0xAA, 0x12, 0x01, 100, 7, 30, 0x80, 10]))
     assert coord.wakeup_timer_enabled is True and coord.wakeup_timer_time == dtime(7, 30)
+    assert coord.wakeup_timer_end_brightness == 100
+    assert coord.wakeup_timer_repeat_days == frozenset()
+    assert coord.wakeup_timer_duration_minutes == 10
 
 
 def test_notify_callback_schedule_timer(coord):
@@ -1097,10 +1211,11 @@ def test_notify_callback_schedule_timer(coord):
 
 
 def test_notify_callback_timer_full_frames(coord):
-    # EXPERIMENTAL: harness=G encoding=decode-only
     coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x11, [1, 90, 20, 0])))
     coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x12, [1, 100, 5, 0, 0x80, 15])))
     assert coord.sleep_timer_minutes == 20 and coord.wakeup_timer_time == dtime(5, 0)
+    assert coord.sleep_timer_start_brightness == 90
+    assert coord.wakeup_timer_duration_minutes == 15
 
 
 def test_notify_callback_sleep_timer_short_payload_ignored(coord):
@@ -1109,8 +1224,10 @@ def test_notify_callback_sleep_timer_short_payload_ignored(coord):
 
 
 def test_notify_callback_schedule_out_of_range_slot_ignored(coord):
+    revision = coord._domain_revisions.get(0x23, 0)
     coord._notify_callback(None, bytearray([0xAA, 0x23, 0x09, 0x81, 6, 15, 0x80]))
     assert coord.schedule_timers == [None, None, None, None]
+    assert coord._domain_revisions.get(0x23, 0) == revision
 
 
 def test_available_reflects_link_or_presence(coord):
@@ -1306,8 +1423,8 @@ def test_expectations_from_packet_covers_every_command_family():
     echoed = _expectations_from_packet(proto.build_color_rgb(255, 0, 0), static_echoes_color=True)
     assert echoed["color_mode"] == (proto.ParsedMode.COLOUR, 0x01)
 
-    # Colour temperature writes carry an all-zero preview RGB, so the frame maps to a kelvin
-    # expectation, never an rgb_color one.
+    # Colour-temperature writes zero the direct RGB field, so they map to a Kelvin
+    # expectation rather than an rgb_color one.
     ct = _expectations_from_packet(proto.build_color_temp(4000))
     assert ct["color_temp_kelvin"] == 4000
     assert "rgb_color" not in ct

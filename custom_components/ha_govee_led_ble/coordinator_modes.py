@@ -21,7 +21,7 @@ from .scenes import SCENES, SceneEntry, get_scene_names
 
 @dataclass(frozen=True)
 class PreModeSnapshot:
-    """The typed static state to re-apply when leaving a music or video mode (spec §1.2, panel #9).
+    """The typed static state to re-apply when leaving a music or video mode.
 
     ``kind`` selects which payload is meaningful; the others carry inert defaults so a fresh
     coordinator always has a defined state to restore.
@@ -48,7 +48,7 @@ FOUNTAIN_DIRECTION_BYTES: dict[str, tuple[int, int]] = {
 
 BLOOM_MODE_ID = MUSIC_MODE_SLUGS["bloom"]
 SHINY_MODE_ID = MUSIC_MODE_SLUGS["shiny"]
-# Modes whose base-frame STYLE byte (byte 5) carries Dynamic/Calm (H617A §2.1, live 2026-07-16).
+# Modes whose govee_common::music_selector style byte carries Dynamic/Calm.
 MUSIC_STYLE_MODE_IDS = frozenset({RHYTHM_MODE_ID, BLOOM_MODE_ID, SHINY_MODE_ID})
 # Slugs for the style-carrying modes, derived so the set never drifts from the id set above.
 MUSIC_STYLE_SLUGS = frozenset(slug for slug, mode_id in MUSIC_MODE_SLUGS.items() if mode_id in MUSIC_STYLE_MODE_IDS)
@@ -74,7 +74,7 @@ def _encode_fountain_direction(value: Any) -> int:
 
 @dataclass(frozen=True)
 class MusicParamSpec:
-    """One capture-pinned per-mode music movement param (§2.3): its coordinator field, a3 offset,
+    """One capture-pinned music_body parameter: its coordinator field, A3 offset,
     encoder, and the entity shape/bounds it drives. ``mode_code`` ties it to the active music mode."""
 
     key: str
@@ -87,7 +87,7 @@ class MusicParamSpec:
     options: tuple[str, ...] = ()
 
 
-# Absolute a3 offsets per §2.3, one entry per user-facing control; derived/coupled bytes
+# Absolute music_body offsets, one entry per user-facing control; derived/coupled bytes
 # (Separation companion, Piano half, Fountain direction pair, style companion) are not listed here
 # because _send_music_params synthesises them from their controlling param at send time.
 MUSIC_PARAM_SPECS: tuple[MusicParamSpec, ...] = (
@@ -206,7 +206,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         return PreModeSnapshot(kind="rgb", rgb=self.rgb_color)
 
     def _enter_static_mode(self) -> None:
-        """Clear every non-static mode so exactly one operating mode is ever active (spec §1.4)."""
+        """Clear every non-static mode so exactly one operating mode is active."""
         self.effect = self.active_custom_id = None
         self.diy_slot = None
         self._owned_diy_effect_id = None
@@ -257,7 +257,7 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     async def async_apply_music_params(self, mode_code: int) -> None:
         """Re-send the active mode's a3 movement frame, merging every stored param for that mode so
-        multi-param modes (Separation, Day & Night) never clobber a sibling param (§2.3)."""
+        multi-param modes never clobber a sibling field."""
         await self._send_music_params(mode_code)
 
     async def _send_music_params(self, mode_code: int) -> None:

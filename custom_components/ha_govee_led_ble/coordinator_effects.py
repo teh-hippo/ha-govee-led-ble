@@ -154,6 +154,10 @@ class _CustomEffectMixin(_CoordinatorBase):
         validate_content(content, segment_count=self.profile.segment_count)
         for packet in build_custom_effect(effect.content, segment_count=self.profile.segment_count):
             await self.send_command(packet)
+        if isinstance(content, SegmentContent):
+            for index, colour in enumerate(content.colors):
+                if colour is not None:
+                    self.segment_colors[index] = colour
         self.active_custom_id = effect.id
         self.effect = effect.display_name
         self.diy_slot = AUTHORED_DIY_SLOT if uses_diy_slot(content) else None

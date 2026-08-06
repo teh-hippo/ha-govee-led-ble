@@ -65,10 +65,13 @@ MUSIC_SLUG_BY_ID: dict[int, str] = {code: slug for slug, code in MUSIC_MODE_SLUG
 RHYTHM_MODE_ID = MUSIC_MODE_SLUGS["rhythm"]
 SCENE_EFFECT_BY_ID: dict[int, str] = {scene.code: name for name, scene in SCENES.items()}
 MULTI_PACKET_PREFIX = 0xA3
-# Movement speed bytes sit 5 and 2 from the end of a scene body record (scene_body.ksy):
-# selected_area_movement.speed (catalogue "moveIn") and overall_movement.speed ("moveAll").
+# Scene Speed field locations are owned by govee_common::effect_layer.
 MOVE_IN_OFFSET = -5
 MOVE_ALL_OFFSET = -2
+_SCENE_BRIGHTNESS_BLOCK_COUNT_OFFSET = 5
+_SCENE_FIRST_BRIGHTNESS_SPEED_OFFSET = 9
+_SCENE_BRIGHTNESS_BLOCK_SIZE = 6
+_SCENE_COLOUR_SPEED_BASE_OFFSET = 7
 
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:
@@ -89,16 +92,17 @@ def xor_checksum(data: bytes | bytearray) -> int:
 def split_status_frame(frame: bytes) -> tuple[int, bytes] | None:
     """Split an incoming status notification into ``(domain, payload)``.
 
-    Returns ``None`` for frames shorter than three bytes or without the status header.
-    A full 20-byte frame whose trailing checksum verifies drops that checksum byte; any
-    other (loose) frame keeps everything after the domain byte.
+    Returns ``None`` for frames shorter than three bytes, without the status header, or
+    for a full envelope whose XOR checksum is invalid. Short notifications have no
+    checksum byte and keep everything after the domain.
     """
     if len(frame) < 3 or frame[0] != STATUS_HEADER:
         return None
-    domain = frame[1]
-    if len(frame) == 20 and xor_checksum(frame[:-1]) == frame[-1]:
-        return domain, bytes(frame[2:-1])
-    return domain, bytes(frame[2:])
+    if len(frame) == 20:
+        if xor_checksum(frame[:-1]) != frame[-1]:
+            return None
+        return frame[1], bytes(frame[2:-1])
+    return frame[1], bytes(frame[2:])
 
 
 def build_packet(cmd_type: int, action: int, params: list[int]) -> bytes:
@@ -189,7 +193,7 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
 def build_color_temp(kelvin: int) -> bytes:
     k = _clamp(kelvin, 2000, 9000)
     r, g, b = kelvin_to_rgb(k)
-    # App form: 33 05 15 01 00 00 00 <Khi Klo> <R G B> ... FF 7F (kelvin true-white; RGB is a preview)
+    # command_write::static_color and h6199_command_write::static_colour_body.
     return build_packet(
         0x33, 0x05, [COLOR_MODE_STATIC, STATIC_SUB_COLOR, 0, 0, 0, (k >> 8) & 0xFF, k & 0xFF, r, g, b, 0xFF, 0x7F]
     )
@@ -211,7 +215,7 @@ class ParsedStaticWrite:
     segment_mask: int
     rgb: tuple[int, int, int] | None = None
     kelvin: int | None = None
-    kelvin_preview: tuple[int, int, int] | None = None
+    kelvin_companion_rgb: tuple[int, int, int] | None = None
     brightness_pct: int | None = None
 
     @property
@@ -240,7 +244,10 @@ def parse_static_write(packet: bytes) -> ParsedStaticWrite | None:
         # paint zeroes the kelvin. A deliberate black paint is rgb, not a 0 K temperature.
         if rgb == (0, 0, 0) and kelvin:
             return ParsedStaticWrite(
-                sub=sub, segment_mask=mask, kelvin=kelvin, kelvin_preview=(packet[9], packet[10], packet[11])
+                sub=sub,
+                segment_mask=mask,
+                kelvin=kelvin,
+                kelvin_companion_rgb=(packet[9], packet[10], packet[11]),
             )
         return ParsedStaticWrite(sub=sub, segment_mask=mask, rgb=rgb)
     if sub == STATIC_SUB_BRIGHTNESS and len(packet) >= 7:
@@ -261,7 +268,7 @@ def _a3_frame(index: int, chunk: bytes) -> bytes:
 
 
 def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> list[bytes]:
-    """Fragment a body into 0xA3 multi-frames (H617A §6).
+    """Fragment a body into the two forms documented by govee_common::a3_header.
 
     Frames ``[0x01, linecount, type_byte, *body]`` into 17-byte chunks, each emitted as a
     20-byte ``0xA3 <index|0xFF>`` frame with an XOR checksum. Shared by scenes, music params and
@@ -313,7 +320,7 @@ def scene_record_spans(payload: bytes) -> list[tuple[int, int]]:
 
 
 def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int) -> bytes:
-    """Write Speed position ``index`` into a scene payload's two movement speed bytes per page.
+    """Apply one catalogue Speed position to every field named by its config blocks.
 
     Only type-2 bodies are record containers, so only they carry a ``SceneSpeed`` at all; the
     generator refuses to emit one for any other body.
@@ -335,6 +342,19 @@ def apply_scene_speed(payload: bytes, speed: SceneSpeed, index: int) -> bytes:
             if not options or position < start:
                 continue
             patched[position] = options[_clamp(index, 0, len(options) - 1)]
+        if start + _SCENE_BRIGHTNESS_BLOCK_COUNT_OFFSET >= stop:
+            continue
+        brightness_block_count = payload[start + _SCENE_BRIGHTNESS_BLOCK_COUNT_OFFSET]
+        if page.colour_speed:
+            position = start + _SCENE_COLOUR_SPEED_BASE_OFFSET + brightness_block_count * _SCENE_BRIGHTNESS_BLOCK_SIZE
+            if position < stop:
+                patched[position] = page.colour_speed[_clamp(index, 0, len(page.colour_speed) - 1)]
+        for brightness in page.brightness_speeds:
+            if not 0 <= brightness.block < brightness_block_count or not brightness.values:
+                continue
+            position = start + _SCENE_FIRST_BRIGHTNESS_SPEED_OFFSET + brightness.block * _SCENE_BRIGHTNESS_BLOCK_SIZE
+            if position < stop:
+                patched[position] = brightness.values[_clamp(index, 0, len(brightness.values) - 1)]
     return bytes(patched)
 
 
@@ -353,25 +373,21 @@ def build_scene_multi(
     return [*build_a3_multi(scene_type, payload), build_scene(scene_code)]
 
 
-def build_h6199_scene(scene_param_b64: str, scene_code: int, scene_type: int = 2) -> list[bytes]:
-    """Build the H6199 scene body and its model-specific three-byte activation."""
-    activation_type = scene_type if scene_param_b64 else 0x01
-    activation = build_packet(0x33, 0x05, [0x04, *scene_code.to_bytes(2, "little"), activation_type])
-    if not scene_param_b64:
-        return [activation]
-    return [*build_a3_multi(scene_type, base64.b64decode(scene_param_b64)), activation]
+def build_h6199_scene(scene_code: int) -> list[bytes]:
+    """Build one H6199 activation for a scene already stored by the light."""
+    return [build_packet(0x33, 0x05, [0x04, *scene_code.to_bytes(2, "little"), 0x01])]
 
 
-# --- Custom-effect content encoders (§3.3) -----------------------------------------------------
-# Every builder returns list[bytes]; the store/entity layers never see raw bytes. Tier-1 segments
-# reuse the live write-path. Combo is directly validated; the remaining Tier-2 DIY/Vibrant
-# encoders stay capture-pinned and experimental. Packet bytes live only here.
+# --- Custom-effect content encoders -------------------------------------------------------------
+# Every builder returns list[bytes]; the store/entity layers never see raw bytes. Packet bytes
+# live only here, with body layouts owned by diy_type03.ksy and diy_type04.ksy.
 
 
 def build_diy_activate(slot: int, type_byte: int | None = None) -> bytes:
-    """DIY/Vibrant activation ``33 05 0a <slot> [type]`` (H617A §3 "DIY select"); ``slot`` is app-assigned.
+    """Build the selector documented by govee_common::diy_selector.
 
-    Finger Sketch appends its ``TYPE 0x03`` after the slot; the other DIY kinds omit it.
+    ``slot`` is app-assigned. Finger Sketch appends its captured type byte; the other
+    current builders omit it.
     """
     params = [COLOR_MODE_DIY, slot]
     if type_byte is not None:
@@ -508,6 +524,9 @@ BLANK_SCREEN_QUERY = build_packet(STATUS_HEADER, DISPLAY_SETTING_PACKET_TYPE, [D
 RELATIVE_BRIGHTNESS_QUERY = build_packet(STATUS_HEADER, RELATIVE_BRIGHTNESS_PACKET_TYPE, [RELATIVE_BRIGHTNESS_HEAD])
 FW_QUERY = build_packet(STATUS_HEADER, FIRMWARE_PACKET_TYPE, [])
 HW_QUERY = build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03])
+SLEEP_TIMER_QUERY = build_packet(STATUS_HEADER, 0x11, [])
+WAKEUP_TIMER_QUERY = build_packet(STATUS_HEADER, 0x12, [])
+SCHEDULE_TIMER_QUERY = build_packet(STATUS_HEADER, 0x23, [])
 KEEP_ALIVE = STATE_QUERY
 
 
@@ -642,15 +661,9 @@ def build_music_mode_with_color(
     return build_packet(0x33, 0x05, params)
 
 
-# --- Music per-mode movement parameters (§2.3, EXPERIMENTAL, capture-pinned) -------------------
-# H617A movement params ride the MultipleController4Music command 0x41 body, fragmented over a3
-# (H617A §6, see tools/ble/kaitai/music_body.ksy). Assembled body =
-# `01 <fragCount> 41 <MODE> <count> <RGB x count> <mode-specific tail>`; a3 offsets are absolute
-# from the assembled byte 0, so the body-local index is `offset - 3`. Every template byte below is
-# replayed byte-exact from the 2026-07-09 validation run and current iOS 7.5.21 captures. Separation[22]
-# and Piano[30] are derived bytes synthesised by the coordinator from their controlling param
-# (gradient / key count), overlaid like any other override. Locked by byte-exact A/B/A decode
-# tests in tests/test_protocol.py.
+# --- H617A music per-mode movement parameters --------------------------------------------------
+# music_body.ksy owns the body and per-mode tails. Every template byte below is replayed from
+# captured bodies; the coordinator overlays only fields that grammar names.
 _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
     # Bloom 0x30: current iOS Dynamic baseline; [27]=style companion (Dynamic 0x50 / Calm 0x14).
     0x30: bytes.fromhex("3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000"),
@@ -691,8 +704,6 @@ def build_music_params_a3(
     the derived companion/half bytes). A palette whose length differs from the captured count is
     rejected so the ``<RGB x count>`` region cannot shift the downstream offsets.
     """
-    # EXPERIMENTAL: harness=music-params encoding=capture-pinned
-    # source: validate-20260709-122350.pcap + validation-report-20260709-123428.json; layout H617A §3.
     body = bytearray(_MUSIC_PARAM_TEMPLATE[mode])
     if palette is not None:
         if len(palette) != _MUSIC_PARAM_COUNT[mode]:
@@ -790,8 +801,8 @@ def parse_color_mode_response(
 ) -> ParsedColorModeResponse:
     """Decode an ``aa 05`` colour-mode reply.
 
-    Both flags default to the H617A, the only model with a spec. Callers with a
-    :class:`~.const.ModelProfile` should pass its values.
+    The flags describe model-specific read-back behaviour. Callers with a
+    :class:`~.const.ModelProfile` pass its capabilities.
     """
     if not payload:
         raise ValueError("Color mode payload is empty")
@@ -872,7 +883,8 @@ def parse_hw_version(payload: bytes) -> str | None:
     return _decode_version(payload[1:])
 
 
-# Experimental timer & power-off encoders (decode-only; see plan-research-encodings.md §2-3).
+# Timer encoders are capture-backed by govee_common::{sleep_timer,wake_timer} and
+# command_write::timer_schedule_cmd. Power-off memory remains an unsupported research lead.
 
 
 class Weekday(IntEnum):
@@ -922,7 +934,6 @@ def build_timer_schedule(
     repeat_days: Iterable[Weekday] = (),
 ) -> bytes:
     """Build a scheduled on/off timer slot (0x23); repeat_days empty = fire once."""
-    # EXPERIMENTAL: harness=G encoding=decode-only
     if not 0 <= index <= 3:
         raise ValueError(f"timer slot {index} out of range 0..3")
     enable_and_type = (0x80 if enabled else 0x00) | (0x01 if on_action else 0x00)
@@ -932,7 +943,6 @@ def build_timer_schedule(
 
 def build_timer_sleep(enabled: bool, start_brightness: int, close_minutes: int, current_minutes: int = 0) -> bytes:
     """Build a sleep/fade-off timer (0x11): fade from start_brightness over close_minutes."""
-    # EXPERIMENTAL: harness=G encoding=decode-only
     params = [
         int(enabled),
         _clamp(start_brightness, 10, 100),
@@ -951,7 +961,6 @@ def build_timer_wakeup(
     duration_minutes: int = 10,
 ) -> bytes:
     """Build a wake-up/sunrise timer (0x12): ramp to end_brightness over duration_minutes."""
-    # EXPERIMENTAL: harness=G encoding=decode-only
     params = [
         int(enabled),
         _clamp(end_brightness, 10, 100),
@@ -1047,7 +1056,6 @@ def parse_timer_schedule_table(payload: bytes) -> list[ParsedTimerSchedule]:
 
 def parse_timer_sleep(payload: bytes) -> ParsedSleepTimer:
     """Decode a sleep-timer aa 11 reply [enable, startBri, closeMin, curMin]."""
-    # EXPERIMENTAL: harness=G encoding=decode-only
     if len(payload) < 3:
         raise ValueError("sleep timer payload too short")
     return ParsedSleepTimer(
@@ -1060,7 +1068,6 @@ def parse_timer_sleep(payload: bytes) -> ParsedSleepTimer:
 
 def parse_timer_wakeup(payload: bytes) -> ParsedWakeUpTimer:
     """Decode a wake-up aa 12 reply [enable, endBri, hh, mm, repeat, duration]."""
-    # EXPERIMENTAL: harness=G encoding=decode-only
     if len(payload) < 6:
         raise ValueError("wake-up timer payload too short")
     return ParsedWakeUpTimer(
@@ -1087,19 +1094,9 @@ def parse_poweroff_memory(payload: bytes) -> ParsedPowerOffMemory:
     return ParsedPowerOffMemory(enabled=bool(payload[0]), mode=_get(payload, 1))
 
 
-# Builder -> protocol-evidence registry. Every public builder/parser (and the query constants)
-# cites the in-repo evidence proving its byte layout, plus a status:
-#   VALIDATED    - byte layout confirmed by a live/on-wire capture; ships on the normal surface.
-#   EXPERIMENTAL - unvalidated (no live capture), capture-pending, or a deliberately gated Tier-2 feature; the
-#                  builder also carries a "# EXPERIMENTAL: harness=<id> encoding=<..>" source marker.
-# Legacy section numbers: the "H617A §N" and "H6199 §N" tags below are notation inherited from
-# prose protocol references that have been retired. Wire structure is owned by the Kaitai specs
-# in tools/ble/kaitai/, which are authoritative on any disagreement. Roughly, §2 is frame
-# framing (govee_common), §3/§5/§7 are command writes (command_write.ksy) and §6 is the 0xA3
-# body family (scene_body.ksy, scene_type1_body.ksy, workshop_body.ksy, govee_common.ksy).
-# Re-citing each entry against its owning spec type is outstanding integration work.
-# tests/test_protocol_traceability.py keeps this registry in lockstep with the builder surface,
-# the source markers, and the byte-exact tests, so nothing ships un-traced.
+# Every public builder/parser and query constant cites its canonical Kaitai structure.
+# VALIDATED means the current byte layout is capture-backed. EXPERIMENTAL is reserved for
+# unreachable research leads and requires a matching source marker on the function.
 @dataclass(frozen=True)
 class Evidence:
     """Where a builder's byte layout is proven, and whether it is VALIDATED or EXPERIMENTAL."""
@@ -1109,133 +1106,229 @@ class Evidence:
 
 
 BUILDER_EVIDENCE: dict[str, Evidence] = {
-    "build_packet": Evidence("VALIDATED", "H617A §2 framing: 20-byte frame + XOR at byte[19]"),
-    "build_power": Evidence("VALIDATED", "H617A §3/§7 power 33 01; live byte-identical"),
-    "build_brightness": Evidence("VALIDATED", "H617A §3/§7 brightness 33 04; live, 1:1 linear"),
-    "build_segment_color": Evidence("VALIDATED", "H617A §3 colour 33 05 15 01, mask[12:14]; live"),
+    "build_packet": Evidence(
+        "VALIDATED",
+        "command_write.ksy and h6199_command_write.ksy roots; 20-byte XOR envelopes",
+    ),
+    "build_power": Evidence(
+        "VALIDATED",
+        "command_write.ksy::power_cmd and h6199_command_write.ksy::power_body",
+    ),
+    "build_brightness": Evidence(
+        "VALIDATED",
+        "command_write.ksy::brightness_cmd and h6199_command_write.ksy::brightness_body",
+    ),
+    "build_segment_color": Evidence(
+        "VALIDATED",
+        "command_write.ksy::static_color and h6199_command_write.ksy::static_colour_body",
+    ),
     "build_segment_brightness": Evidence(
         "VALIDATED",
-        "H617A static brightness plus H6199 h6199_command_write::static_colour_body operation 0x02; "
-        "one/pair/all masks accepted and independently echoed by aa a5 segment replies",
+        "command_write.ksy::static_brightness and h6199_command_write.ksy::static_colour_body operation brightness",
     ),
-    "build_segment_paint": Evidence("VALIDATED", "H617A §5 one 33 05 15 01 frame per colour group; live"),
-    "build_color_rgb": Evidence("VALIDATED", "H617A §3/§5 whole-strip colour, mask 0x7FFF; live"),
+    "build_segment_paint": Evidence(
+        "VALIDATED",
+        "command_write.ksy::static_color; one captured frame per colour group",
+    ),
+    "build_color_rgb": Evidence(
+        "VALIDATED",
+        "command_write.ksy::static_color and h6199_command_write.ksy::static_colour_body",
+    ),
     "build_color_temp": Evidence(
         "VALIDATED",
-        "H617A and H6199 33 05 15 01 colour temperature; H6199 warm/mid/cool captures confirm "
-        "Kelvin and mask while documenting that the vendor preview-RGB curve differs",
+        "command_write.ksy::static_color and h6199_command_write.ksy::static_colour_body; "
+        "Kelvin and mask are capture-backed, while the companion RGB algorithm remains non-vendor-exact",
     ),
     "build_white_brightness": Evidence(
-        "VALIDATED", "H617A §7 white brightness 33 05 15 02, mask 0x7FFF; live on H617A; H6199 reuse unattributed"
+        "VALIDATED",
+        "command_write.ksy::static_brightness with the all-segments mask",
     ),
-    "build_scene": Evidence("VALIDATED", "H617A §3/§6 scene 33 05 04 <code_LE>; Sunrise/Rainbow live 2026-07-16"),
-    "build_a3_multi": Evidence("VALIDATED", "H617A §6 0xA3 multi-frame fragmenter; XOR at byte[19]; live"),
+    "build_scene": Evidence(
+        "VALIDATED",
+        "command_write.ksy::scene_activate",
+    ),
+    "build_a3_multi": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::a3_header and the body specs importing it",
+    ),
     "build_scene_multi": Evidence(
         "VALIDATED",
-        "H617A §6 0xA3 body TYPE 0x01/0x02 + 33 05 04 activate; Aurora/Halloween byte-exact 2026-07-16; "
-        "option-list Speed normalisation live 2026-07-26 (Glacier 2175)",
+        "scene_body.ksy, scene_type1_body.ksy and command_write.ksy::scene_activate",
     ),
     "build_h6199_scene": Evidence(
-        "VALIDATED", "H6199 simple type-01 and A3 type-02 scene activations; iOS app-sniff 2026-07-12"
+        "VALIDATED",
+        "h6199_command_write.ksy::scene_body class-1 built-in activations",
     ),
     "build_diy_activate": Evidence(
-        "VALIDATED", "H617A §3 DIY select 33 05 0a <slot>; slot F0 accepted and read back live 2026-07-15"
+        "VALIDATED",
+        "govee_common.ksy::diy_selector via command_write.ksy::multi_cmd",
     ),
     "build_segment_content": Evidence(
-        "VALIDATED", "H617A §3/§7 seg colour+brightness reuse; VAL single/all/one-seg live"
+        "VALIDATED",
+        "command_write.ksy::{static_color,static_brightness} dispatcher",
     ),
     "build_sketch": Evidence(
-        "VALIDATED", "H617A §2.4 Finger Sketch TYPE 0x03; body/framing/activation live 2026-07-16"
+        "VALIDATED",
+        "diy_type03.ksy plus govee_common.ksy::diy_selector",
     ),
-    "build_vibrant": Evidence("VALIDATED", "Live H617A 2026-07-20; TYPE 0x03 gamma-2.2 gradient, 33 05 0a 84 03"),
-    "build_flat_diy": Evidence("VALIDATED", "CAT §2.2 flat DIY TYPE 0x04 + 33 05 0a slot; live H617A byte-exact"),
+    "build_vibrant": Evidence(
+        "VALIDATED",
+        "diy_type03.ksy Vibrant body plus govee_common.ksy::diy_selector",
+    ),
+    "build_flat_diy": Evidence(
+        "VALIDATED",
+        "diy_type04.ksy::flat_body plus govee_common.ksy::diy_selector",
+    ),
     "build_combo": Evidence(
         "VALIDATED",
-        "H617A §6 Combo TYPE 04 FAMILY FF; current iOS body plus slot F0 direct write/read-back 2026-07-15",
+        "diy_type04.ksy::combo_body plus govee_common.ksy::diy_selector",
     ),
-    "build_custom_effect": Evidence("VALIDATED", "dispatcher over per-kind encoders (own evidence); Unknown rejected"),
+    "build_custom_effect": Evidence(
+        "VALIDATED",
+        "command_write.ksy, diy_type03.ksy and diy_type04.ksy per-kind dispatch",
+    ),
     "build_music_mode_with_color": Evidence(
         "VALIDATED",
-        "H617A music 33 05 13 <mode><sens><style><count>; STYLE byte5 Dynamic(0)/Calm(1), COUNT byte6 "
-        "= manual colour count (0=auto-colour on)+RGB; 11 modes live-confirmed",
+        "govee_common.ksy::music_selector and h6199_command_write.ksy::music_body",
     ),
     "build_music_params_a3": Evidence(
-        "EXPERIMENTAL", "VAL a3 music body H617A §3; capture-pinned template + coordinator-derived companion/half bytes"
+        "VALIDATED",
+        "music_body.ksy root and mode-specific tail types",
     ),
     "build_video_mode": Evidence(
         "VALIDATED",
-        "H6199 33 05 00 region/source/saturation/sound/softness (h6199_command_write::video_body); "
-        "each field pinned by a controlled comparison in h6199_video_*, source polarity Game=1/Movie=0",
+        "h6199_command_write.ksy::video_body",
     ),
     "build_video_white_balance": Evidence(
         "VALIDATED",
-        "H6199 white-balance display setting (h6199_command_write::white_balance_payload); the two "
-        "bytes are gains the app picks from a bundled table, byte-exact against h6199_white_balance_*",
+        "h6199_command_write.ksy::white_balance_payload",
     ),
     "build_blank_screen": Evidence(
         "VALIDATED",
-        "H6199 blank-screen display setting (h6199_command_write::blank_screen_payload); flag isolated "
-        "by an on/off pair, trailing bytes replayed from h6199_blank_screen_*",
+        "h6199_command_write.ksy::blank_screen_payload",
     ),
     "build_relative_brightness": Evidence(
         "VALIDATED",
-        "H6199 33 ae per-edge relative brightness (h6199_command_write::relative_brightness_body); "
-        "compatibility form writing one captured percentage to all four named edges",
+        "h6199_command_write.ksy::relative_brightness_body",
     ),
     "build_relative_brightness_edges": Evidence(
         "VALIDATED",
-        "H6199 33 ae independent left/top/right/bottom percentages; each byte isolated by one-edge "
-        "writes in h6199_relbright_{top,right,bottom,left}_*",
+        "h6199_command_write.ksy::relative_brightness_body per-edge differentials",
     ),
-    "build_timer_schedule": Evidence("EXPERIMENTAL", "H617A §4 timer 33 23; write live, ships gated Tier-2"),
-    "build_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 sleep 33 11; reply captured (OBSERVE)"),
-    "build_timer_wakeup": Evidence("EXPERIMENTAL", "H617A §4 wake-up 33 12; reply captured (OBSERVE)"),
+    "build_timer_schedule": Evidence(
+        "VALIDATED",
+        "command_write.ksy::timer_schedule_cmd and govee_common.ksy::timer_slot",
+    ),
+    "build_timer_sleep": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::sleep_timer through command_write.ksy",
+    ),
+    "build_timer_wakeup": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::wake_timer through command_write.ksy",
+    ),
     "build_poweroff_memory": Evidence(
-        "EXPERIMENTAL", "power-off memory 33 41; H617A does not ACK it, controls acked either side 2026-07-29"
+        "EXPERIMENTAL",
+        "status_reply.ksy documents the absent H617A aa 41 reply; no supporting write grammar",
     ),
-    "split_status_frame": Evidence("VALIDATED", "H617A §4 status aa <type>; 20-byte XOR split; live"),
+    "split_status_frame": Evidence(
+        "VALIDATED",
+        "status_reply.ksy and h6199_status_reply.ksy roots",
+    ),
     "parse_static_write": Evidence(
         "VALIDATED",
-        "inverse of build_segment_color / build_color_temp / build_segment_brightness; "
-        "offsets per command_write::static_color and static_brightness; byte-pinned against "
-        "the command_write_* fixtures",
+        "command_write.ksy::{static_color,static_brightness}",
     ),
     "parse_color_mode_response": Evidence(
         "VALIDATED",
-        "H617A §4 colour-mode aa 05 (15/04/0a/00/13); DIY slot F0 read back live 2026-07-15; "
-        "static echoes no colour and byte 1 is the 33 a3 register (status_reply::cm_static), "
-        "so the mirror is opt-in per model",
+        "status_reply.ksy::colormode_body and h6199_status_reply.ksy::colour_mode_body",
     ),
     "parse_display_setting_response": Evidence(
         "VALIDATED",
-        "H6199 aa a9 selector+length replies; white-balance reset/current triples varied independently "
-        "across reset, mid and warm captures, blank-screen payload mirrors its write",
+        "h6199_status_reply.ksy::display_setting_body",
     ),
     "parse_relative_brightness_response": Evidence(
         "VALIDATED",
-        "H6199 aa ae 01 04 left/top/right/bottom reply, independently isolated by an asymmetric 51/32/71/91 read-back",
+        "h6199_status_reply.ksy::relative_brightness_body",
     ),
-    "parse_fw_version": Evidence("VALIDATED", "H617A §4 firmware aa 06 -> ASCII '3.02.24'; VAL live capture"),
+    "parse_fw_version": Evidence(
+        "VALIDATED",
+        "status_reply.ksy::version_body and h6199_status_reply.ksy::version_body",
+    ),
     "parse_hw_version": Evidence(
-        "VALIDATED", "H617A/H6199 aa 07 03 -> ASCII hardware version; iOS app-sniff 2026-07-12"
+        "VALIDATED",
+        "status_reply.ksy::hw_version_body and h6199_status_reply.ksy::hardware_version_body",
     ),
-    "parse_timer_repeat": Evidence("VALIDATED", "H617A §4 repeat byte Mon=bit0..Sun=bit6; live"),
-    "parse_timer_schedule": Evidence("VALIDATED", "H617A §4 slot [enableAndType,hh,mm,repeat]; live"),
-    "parse_timer_schedule_table": Evidence("VALIDATED", "H617A §4/§7 aa 23 ff + four 4-byte slots; live"),
-    "parse_timer_sleep": Evidence("EXPERIMENTAL", "H617A §4 aa 11 sleep reply; OBSERVE"),
-    "parse_timer_wakeup": Evidence("EXPERIMENTAL", "H617A §4 aa 12 wake reply; OBSERVE"),
+    "parse_timer_repeat": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::{timer_slot,wake_timer}",
+    ),
+    "parse_timer_schedule": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::timer_slot",
+    ),
+    "parse_timer_schedule_table": Evidence(
+        "VALIDATED",
+        "status_reply.ksy::timer_body",
+    ),
+    "parse_timer_sleep": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::sleep_timer through status_reply.ksy",
+    ),
+    "parse_timer_wakeup": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::wake_timer through status_reply.ksy",
+    ),
     "parse_poweroff_memory": Evidence(
-        "EXPERIMENTAL", "aa 41 reply [enabled,mode]; H617A answers nothing, nor ACKs 33 41; 2026-07-29"
+        "EXPERIMENTAL",
+        "status_reply.ksy documents the absent H617A aa 41 reply; parser shape is unobserved",
     ),
-    "STATE_QUERY": Evidence("VALIDATED", "H617A §4 power query aa 01; live keep-alive"),
-    "BRIGHTNESS_QUERY": Evidence("VALIDATED", "H617A §4 brightness query aa 04; mirrors 33 04"),
-    "COLOR_MODE_QUERY": Evidence("VALIDATED", "H617A §4 colour-mode query aa 05; live"),
-    "WHITE_BALANCE_QUERY": Evidence("VALIDATED", "H6199 aa a9 00 query; live device-page connect burst"),
-    "BLANK_SCREEN_QUERY": Evidence("VALIDATED", "H6199 aa a9 0a query; live device-page connect burst"),
-    "RELATIVE_BRIGHTNESS_QUERY": Evidence("VALIDATED", "H6199 aa ae 01 query; live device-page connect burst"),
-    "FW_QUERY": Evidence("VALIDATED", "H617A §4 firmware query aa 06; VAL connect handshake"),
+    "STATE_QUERY": Evidence(
+        "VALIDATED",
+        "status_reply.ksy::power_body query envelope; query/reply direction is external",
+    ),
+    "BRIGHTNESS_QUERY": Evidence(
+        "VALIDATED",
+        "status_reply.ksy::brightness_body query envelope; query/reply direction is external",
+    ),
+    "COLOR_MODE_QUERY": Evidence(
+        "VALIDATED",
+        "status_reply.ksy::colormode_body and h6199_status_query.ksy::zero_body",
+    ),
+    "WHITE_BALANCE_QUERY": Evidence(
+        "VALIDATED",
+        "h6199_status_query.ksy::display_setting_query_body white_balance",
+    ),
+    "BLANK_SCREEN_QUERY": Evidence(
+        "VALIDATED",
+        "h6199_status_query.ksy::display_setting_query_body blank_screen",
+    ),
+    "RELATIVE_BRIGHTNESS_QUERY": Evidence(
+        "VALIDATED",
+        "h6199_status_query.ksy::relative_brightness_query_body",
+    ),
+    "FW_QUERY": Evidence(
+        "VALIDATED",
+        "status_reply.ksy::version_body query envelope and h6199_status_query.ksy::zero_body",
+    ),
     "HW_QUERY": Evidence(
-        "VALIDATED", "H617A/H6199 hardware query aa 07 03; replies 3.01.01/3.02.01 app-sniffed 2026-07-12"
+        "VALIDATED",
+        "status_reply.ksy::hw_version_body query envelope and h6199_status_query.ksy::hardware_query_body",
     ),
-    "KEEP_ALIVE": Evidence("VALIDATED", "H617A §4 aa 01 ~2s keep-alive (= STATE_QUERY)"),
+    "SLEEP_TIMER_QUERY": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::sleep_timer query envelope through status_reply.ksy",
+    ),
+    "WAKEUP_TIMER_QUERY": Evidence(
+        "VALIDATED",
+        "govee_common.ksy::wake_timer query envelope through status_reply.ksy",
+    ),
+    "SCHEDULE_TIMER_QUERY": Evidence(
+        "VALIDATED",
+        "status_reply.ksy::timer_body query envelope",
+    ),
+    "KEEP_ALIVE": Evidence(
+        "VALIDATED",
+        "status_reply.ksy::power_body query envelope; identical to STATE_QUERY",
+    ),
 }

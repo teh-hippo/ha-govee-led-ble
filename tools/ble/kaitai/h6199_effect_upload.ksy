@@ -167,6 +167,8 @@ types:
           differing at this byte alone.
       - id: palette_len
         type: u1
+        valid:
+          expr: _ % 3 == 0
         doc: |
           [CONFIRMED_LIVE] how many palette bytes follow, at body offset 6. Captured as 21
           with the editor's seven default swatches and 18 after deleting one, three bytes per

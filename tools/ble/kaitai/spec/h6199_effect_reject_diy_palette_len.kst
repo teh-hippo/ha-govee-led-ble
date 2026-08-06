@@ -1,0 +1,7 @@
+# A captured DIY body with only palette_len changed from 18 to 19. The body still
+# consumes if the zero tail is treated as padding, so the divisibility guard must reject it.
+id: h6199_effect_reject_diy_palette_len
+data: h6199_effect_reject_diy_palette_len.bin
+imports:
+  - h6199_effect_upload
+exception: ValidationExprError

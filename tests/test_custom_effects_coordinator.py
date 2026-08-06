@@ -85,6 +85,7 @@ async def test_apply_sets_sticky_and_sends_packets(hass, hass_storage):
     assert coord.diy_slot is None
     assert coord.music_mode == "off" and coord.video_mode == "off"
     assert coord.active_mode == "custom"
+    assert coord.segment_colors[:2] == [(255, 0, 0), (0, 255, 0)]
 
 
 async def test_apply_diy_sets_default_slot_and_runtime_ownership(hass, hass_storage):

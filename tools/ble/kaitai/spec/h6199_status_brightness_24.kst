@@ -1,0 +1,12 @@
+# H6199 whole-strip brightness reply at 24 percent.
+id: h6199_status_brightness_24
+data: h6199_status_brightness_24.bin
+imports:
+  - h6199_status_reply
+asserts:
+  - actual: domain
+    expected: 4
+  - actual: body.percent
+    expected: 24
+  - actual: body.opaque_tail
+    expected: "00000000000000000000000000000000"

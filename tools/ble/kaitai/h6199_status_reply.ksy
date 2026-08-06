@@ -44,6 +44,7 @@ seq:
       switch-on: domain
       cases:
         'status_domain::power': power_body
+        'status_domain::brightness': brightness_body
         'status_domain::firmware': version_body
         'status_domain::hardware': hardware_version_body
         'status_domain::subordinate_20': version_body
@@ -59,6 +60,7 @@ seq:
 enums:
   status_domain:
     0x01: power
+    0x04: brightness
     0x06: firmware
     0x07: hardware
     0x05: colour_mode
@@ -75,6 +77,12 @@ enums:
     0x04: scene
     0x13: music
     0x15: static_colour
+  video_source:
+    0x00: movie
+    0x01: game
+  video_region:
+    0x00: part
+    0x01: all
 types:
   rgb:
     seq:
@@ -207,6 +215,7 @@ types:
         type:
           switch-on: mode
           cases:
+            'mode_sel::video': video_state
             'mode_sel::music': music_state
             'mode_sel::scene': scene_state
   music_state:
@@ -247,6 +256,35 @@ types:
       - id: opaque_tail
         size: 9
         doc: '[CONFIRMED_LIVE] remaining bytes at frame offsets 10..18, captured as an opaque all-zero window'
+  video_state:
+    doc: |
+      The current video settings, independently modelled from the write body. A retained
+      2026-08-05 capture contains a 33 05 00 write for Part, Game, saturation 20, sound
+      enabled and softness 12, followed later in the same session by an aa 05 reply carrying
+      the same five values in the same positions. Fresh-connection replies additionally
+      carry All/Movie and All/Game at 100/off/100, separating both enums and both percentage
+      ranges from constants.
+    seq:
+      - id: region
+        type: u1
+        enum: video_region
+        doc: '[CONFIRMED_LIVE] capture region at frame offset 3; Part 0 and All 1 both read back, with the Part value matching the same-session write'
+      - id: source
+        type: u1
+        enum: video_source
+        doc: '[CONFIRMED_LIVE] picture profile at frame offset 4; Movie 0 and Game 1 both read back, with Game matching the same-session write'
+      - id: saturation
+        type: u1
+        doc: '[CONFIRMED_LIVE] direct saturation percentage at frame offset 5; 20 and 100 read back, with 20 matching the same-session write'
+      - id: sound_effects
+        type: u1
+        doc: '[CONFIRMED_LIVE] sound-effects state at frame offset 6; zero and one read back, with one matching the same-session write'
+      - id: softness
+        type: u1
+        doc: '[CONFIRMED_LIVE] direct softness percentage at frame offset 7; 12 and 100 read back, with 12 matching the same-session write'
+      - id: opaque_tail
+        size: 11
+        doc: '[CONFIRMED_LIVE] remaining video-state bytes at frame offsets 8..18, captured as an opaque all-zero window'
   scene_state:
     seq:
       - id: scene_id
@@ -275,6 +313,14 @@ types:
       - id: opaque_tail
         size: 16
         doc: '[CONFIRMED_LIVE] remaining H6199 power-reply bytes, captured as an opaque all-zero window'
+  brightness_body:
+    seq:
+      - id: percent
+        type: u1
+        doc: '[CONFIRMED_LIVE] direct whole-strip brightness percentage at frame offset 2; retained replies include 3 and 24 after the device was set to those levels'
+      - id: opaque_tail
+        size: 16
+        doc: '[CONFIRMED_LIVE] remaining H6199 brightness-reply bytes, captured as an opaque all-zero window'
   segment_record:
     seq:
       - id: brightness_percent

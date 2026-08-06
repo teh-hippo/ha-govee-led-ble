@@ -25,6 +25,7 @@ seq:
     doc: '[CONFIRMED_LIVE] H6199 device-initiated header at frame offset 0'
   - id: sub_opcode
     type: u1
+    valid: 0x11
     doc: '[CONFIRMED_LIVE] register the report concerns at frame offset 1, 0x11 being Wi-Fi provisioning, matching the register that was written'
   - id: status
     type: u1

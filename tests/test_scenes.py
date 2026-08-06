@@ -11,7 +11,14 @@ from custom_components.ha_govee_led_ble.protocol import (
     build_scene_multi,
     scene_record_spans,
 )
-from custom_components.ha_govee_led_ble.scenes import SCENES, SceneEntry, ScenePage, SceneSpeed, get_scene_names
+from custom_components.ha_govee_led_ble.scenes import (
+    SCENES,
+    SceneBrightnessSpeed,
+    SceneEntry,
+    ScenePage,
+    SceneSpeed,
+    get_scene_names,
+)
 from tools.ble.fetch_effect_library import CATALOGUE_DIR
 from tools.ble.generate_scenes import build_runtime_catalogue
 
@@ -50,7 +57,19 @@ def _expected_entry(data: list[Any]) -> SceneEntry:
     speed = None
     if len(data) > 3:
         default_index, pages = data[3]
-        speed = SceneSpeed(default_index, tuple(ScenePage(p, tuple(mi), tuple(ma)) for p, mi, ma in pages))
+        speed = SceneSpeed(
+            default_index,
+            tuple(
+                ScenePage(
+                    p,
+                    tuple(mi),
+                    tuple(ma),
+                    tuple(colour),
+                    tuple(SceneBrightnessSpeed(block, tuple(values)) for block, values in brightness),
+                )
+                for p, mi, ma, colour, brightness in pages
+            ),
+        )
     return SceneEntry(data[0], data[1] if len(data) > 1 else "", data[2] if len(data) > 2 else 2, speed)
 
 
@@ -102,7 +121,7 @@ def test_speed_default_position_reproduces_every_other_stored_param():
         if apply_scene_speed(stored, scene.speed, scene.speed.default_index) != stored:
             differing.add(name)
 
-    assert differing == {"glacier"}
+    assert differing == {"glacier", "mysterious"}
 
 
 @pytest.mark.parametrize("index,expected", [(-1, 237), (0, 237), (1, 244), (2, 250), (7, 250)])
@@ -126,6 +145,39 @@ def test_speed_position_writes_the_overall_movement_byte():
 
     assert [uploaded[spans[p.page][1] + MOVE_ALL_OFFSET] for p in scene.speed.pages] == [237, 242]
     assert [stored[spans[p.page][1] + MOVE_ALL_OFFSET] for p in scene.speed.pages] == [243, 248]
+
+
+def test_speed_position_writes_colour_and_brightness_fields():
+    """Christmas position zero changes all eight fields named by its three config blocks."""
+    scene = SCENES["christmas"]
+    assert scene.speed is not None
+    stored = base64.b64decode(scene.param)
+    uploaded = apply_scene_speed(stored, scene.speed, 0)
+    spans = scene_record_spans(stored)
+
+    changed = {offset for offset, (before, after) in enumerate(zip(stored, uploaded, strict=True)) if before != after}
+    expected: set[int] = set()
+    for page in scene.speed.pages:
+        start, stop = spans[page.page]
+        if page.move_in:
+            expected.add(stop + MOVE_IN_OFFSET)
+        if page.move_all:
+            expected.add(stop + MOVE_ALL_OFFSET)
+        brightness_count = stored[start + 5]
+        if page.colour_speed:
+            expected.add(start + 7 + brightness_count * 6)
+        expected.update(start + 9 + brightness.block * 6 for brightness in page.brightness_speeds)
+
+    assert changed == expected
+    assert len(changed) == 8
+
+
+def test_speed_metadata_includes_colour_and_brightness_only_scenes():
+    scene = SCENES["forest"]
+    assert scene.speed is not None
+    assert scene.speed.pages[0].colour_speed
+    assert scene.speed.pages[0].brightness_speeds
+    assert SCENES["heartbeat"].speed is None
 
 
 def test_scene_record_spans_walks_every_type_2_body():
