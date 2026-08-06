@@ -21,7 +21,7 @@ from tools.ble.mock_ble.mock_device import RGB, FakeGoveeClient, GoveeDeviceSim
 
 _COORDINATOR = "custom_components.ha_govee_led_ble.coordinator"
 TEST_ADDRESS = "AA:BB:CC:DD:EE:FF"
-MODELS = ("H617A", "H6199")
+MODELS = ("H617A", "H617E", "H6199")
 
 
 def make_ble_device(address: str = TEST_ADDRESS) -> BLEDevice:

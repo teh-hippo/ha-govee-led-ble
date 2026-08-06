@@ -22,6 +22,24 @@ def test_supports_segments_defaults_false():
     assert not ModelProfile("x").supports_segments
 
 
+def test_h617a_and_h617e_share_complete_feature_profile():
+    profile = MODEL_PROFILES["H617A"]
+    assert MODEL_PROFILES["H617E"] is profile
+    assert profile.scene_source == "api"
+    assert profile.supports_music_mode
+    assert len(profile.music_modes) == 11
+    assert profile.segment_count == 15
+    assert profile.supports_segments
+    assert profile.supports_diy
+    assert profile.custom_effect_kinds == {"segments", "sketch", "vibrant", "flat", "combo"}
+    assert resolve_model("H617E-extra") == "H617E"
+
+
+def test_h617x_handoff_timeout_preserves_h6199_lifecycle():
+    assert MODEL_PROFILES["H617A"].connection_idle_timeout == 3.0
+    assert MODEL_PROFILES["H6199"].connection_idle_timeout is None
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments

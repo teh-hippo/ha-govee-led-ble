@@ -45,14 +45,14 @@ async def test_stale_experimental_option_ignored(mock_h6199_coordinator):
     assert diag["entry"]["options"] == {"experimental": {"timers": True, "diy": False}}
 
 
-async def test_redacts_unique_id(mock_h6199_coordinator):
+async def test_redacts_connection_identity(mock_h6199_coordinator):
     entry = _entry(options={"experimental": {"timers": True}})
     diag = await _run(_prep(mock_h6199_coordinator), entry)
     assert diag["entry"]["unique_id"] == "**REDACTED**"
     assert diag["entry"]["entry_id"] == entry.entry_id
     assert diag["entry"]["data"] == {CONF_MODEL: "H6199"}
     assert diag["entry"]["options"] == {"experimental": {"timers": True}}
-    assert diag["coordinator"]["address"] == "**REDACTED**"
+    assert "address" not in diag["coordinator"]
 
 
 async def test_last_rx_aa05_found(mock_h6199_coordinator):
@@ -126,7 +126,6 @@ async def test_surfaces_core_state(mock_h6199_coordinator):
     coord._expected_state = {"brightness_pct": (55, 0.0)}
     diag = await _run(coord)
     coord = diag["coordinator"]
-    assert coord["address"] == "**REDACTED**"
     assert coord["model"] == "H6199"
     assert coord["is_on"] is True
     assert coord["effect"] == "video: movie"
@@ -158,3 +157,24 @@ async def test_white_balance_position_is_exact_not_nearest(mock_h6199_coordinato
     coord.white_balance_red, coord.white_balance_blue = 17, 4
     diag = await _run(coord)
     assert diag["coordinator"]["white_balance_position"] is None
+
+
+async def test_surfaces_privacy_safe_connection_lifecycle(mock_h6199_coordinator):
+    coord = _prep(mock_h6199_coordinator)
+    coord.connection_path = "remote_proxy"
+    coord.last_connected_at = "2026-07-31T10:00:00-07:00"
+    coord.last_disconnected_at = "2026-07-31T10:00:03-07:00"
+    coord.last_connection_duration = 3.0
+    coord.last_disconnect_reason = "idle_release"
+    coord.retry_count = 1
+    coord.last_failure_type = "BleakError"
+    coord.fresh_service_discovery_forced = True
+    diag = (await _run(coord))["coordinator"]
+    assert diag["connection_path"] == "remote_proxy"
+    assert diag["connected_at"] == "2026-07-31T10:00:00-07:00"
+    assert diag["disconnected_at"] == "2026-07-31T10:00:03-07:00"
+    assert diag["connection_duration_seconds"] == 3.0
+    assert diag["disconnect_reason"] == "idle_release"
+    assert diag["retry_count"] == 1
+    assert diag["last_failure_type"] == "BleakError"
+    assert diag["fresh_service_discovery_forced"] is True

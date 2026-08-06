@@ -24,14 +24,14 @@ swatches.
 
 ## Views and model fit
 
-| View | H617A | H6199 | Covers |
-| --- | --- | --- | --- |
-| Comfort | yes | yes | on/off, brightness, RGB colour, colour temperature, colour favourites, active-mode readout, effect preview |
-| Scenes | yes | no | built-in scene effects; H6199 scene transport exists but its model catalogue is not yet surfaced |
-| Music | yes | yes | all mapped H617A modes; the four validated classic modes on H6199 |
-| Video | no | yes | movie/game, colour mapping, sound/softness and static white; white-balance UI mapping remains gated |
-| Timers | yes | no | H617A sleep and wake-up timers (disabled by default) |
-| Advanced | yes | limited | custom-effect services; H6199 authoring remains gated until its write paths are attributable |
+| View | H617A | H617E | H6199 | Covers |
+| --- | --- | --- | --- | --- |
+| Comfort | yes | yes | yes | on/off, brightness, RGB colour, colour temperature, colour favourites, active-mode readout, effect preview |
+| Scenes | yes | partial | no | the H617A catalogue is mapped on H617A/H617E; additional H617E scenes remain unmapped; H6199 scene transport exists but its model catalogue is not yet surfaced |
+| Music | yes | yes | yes | all 11 mapped H617A/H617E modes; the four validated classic modes on H6199 |
+| Video | no | no | yes | movie/game, colour mapping, sound/softness and static white; white-balance UI mapping remains gated |
+| Timers | yes | yes | no | H617A/H617E sleep and wake-up timers (disabled by default) |
+| Advanced | yes | yes | limited | complete H617A/H617E Effect Studio, saved effects and JSON import/export; H6199 authoring remains gated until its write paths are attributable |
 
 A card that references an entity your model does not expose simply shows as
 unavailable, so delete the views or rows that do not apply to your device.
@@ -63,7 +63,7 @@ Services:
 ## Behaviour notes
 
 - Music mode is chosen with `select.govee_strip_music_mode`; set it to Off to
-  leave music mode. Music style (Dynamic or Calm) is H617A only and affects the
+  leave music mode. Music style (Dynamic or Calm) is H617A/H617E only and affects the
   Rhythm mode. The per-mode tuning entities (sensitivity and the rest) are
   disabled by default; enable the ones you want in their entity settings.
 - The `set_music_mode` service is an advanced shortcut that applies a mode with a
@@ -80,6 +80,6 @@ Services:
   it moves the strip into video mode. Saturation is supported through
   `set_video_mode`; the same service exposes the validated sound and softness
   controls.
-- H617A timer entities are disabled by default. H6199 white-balance, segment, timer and power-off
+- H617A/H617E timer entities are disabled by default. H6199 white-balance, segment, timer and power-off
   memory controls remain hidden until their model-specific mappings are validated. Static white
   (`set_white_brightness`) is separate from DreamView white balance.

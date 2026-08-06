@@ -15,6 +15,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
     RX_STALE_TIMEOUT,
     GoveeBLECoordinator,
+    _connection_path,
     _expectations_from_packet,
     _expected_color_mode_from_packet,
 )
@@ -80,6 +81,102 @@ async def test_send_command(coord):
     with patch.object(coord, "_ensure_connected", return_value=c2), pytest.raises(BleakError):
         await coord.send_command(proto.build_power(True))
     assert c2.write_gatt_char.call_count == 3 and coord._client is None
+
+
+async def test_failed_write_disconnects_and_discards_client(coord):
+    client = _c(write_gatt_char=AsyncMock(side_effect=BleakError("write failed")), disconnect=AsyncMock())
+    coord._client = client
+    ensure = AsyncMock(side_effect=[client, BleakError("retry down"), BleakError("retry down")])
+    with patch.object(coord, "_ensure_connected", new=ensure), pytest.raises(BleakError, match="retry down"):
+        await coord.send_command(proto.build_power(True))
+    client.disconnect.assert_awaited_once()
+    assert coord._client is None
+    assert coord.retry_count == 2
+    assert coord.last_failure_type == "BleakError"
+
+
+async def test_repeated_commands_extend_handoff_window(coord):
+    client = _c(write_gatt_char=AsyncMock())
+    first_cancel, second_cancel = MagicMock(), MagicMock()
+    with (
+        patch.object(coord, "_ensure_connected", return_value=client),
+        patch(f"{M}.time.monotonic", side_effect=[1.0, 10.0, 2.0, 20.0]),
+        patch(f"{M}.async_call_later", side_effect=[first_cancel, second_cancel]),
+    ):
+        await coord.send_command(proto.build_power(True))
+        first_deadline = coord._disconnect_deadline
+        await coord.send_command(proto.build_brightness(50))
+    assert first_deadline == 13.0
+    assert coord._disconnect_deadline == 23.0
+    first_cancel.assert_called_once()
+
+
+async def test_idle_release_disconnects_h617x(coord):
+    client = _c(disconnect=AsyncMock())
+    coord._client = client
+    coord._connected_at_monotonic = 7.0
+    coord._disconnect_deadline = 10.0
+    with patch(f"{M}.time.monotonic", return_value=10.0):
+        await coord._disconnect_if_idle(10.0, "idle_release")
+    client.disconnect.assert_awaited_once()
+    assert coord._client is None
+    assert coord.last_disconnect_reason == "idle_release"
+    assert coord.last_connection_duration == 3.0
+
+
+async def test_polling_does_not_extend_h617x_ownership(coord, h6199):
+    assert coord.update_interval is None
+    assert h6199.update_interval is not None and h6199.update_interval.total_seconds() == 30
+    coord._client = client = _c()
+    with patch.object(coord, "_reset_disconnect_timer") as reset:
+        assert await coord._ensure_connected() is client
+    reset.assert_not_called()
+
+
+def test_connection_path_classification_is_privacy_safe():
+    assert _connection_path(MagicMock(details={})) == "local"
+    assert _connection_path(MagicMock(details={"source": "proxy-private-id"})) == "remote_proxy"
+
+
+def test_remote_disconnect_callback_cleans_up_client(coord):
+    client = _c()
+    keep_alive = MagicMock(done=MagicMock(return_value=False), cancel=MagicMock())
+    cancel_timer = MagicMock()
+    coord._client = client
+    coord._keep_alive_task = keep_alive
+    coord._cancel_disconnect = cancel_timer
+    coord._connected_at_monotonic = 5.0
+    with patch(f"{M}.time.monotonic", return_value=8.5):
+        coord._disconnected_callback(client)
+    assert coord._client is None
+    keep_alive.cancel.assert_called_once()
+    cancel_timer.assert_called_once()
+    assert coord.last_disconnect_reason == "remote_disconnect"
+    assert coord.last_connection_duration == 3.5
+
+
+async def test_gatt_failure_reconnects_new_client_with_fresh_services(hass):
+    flat = replace(MODEL_PROFILES["H617A"], state_readable=False)
+    with patch(f"{M}.get_profile", return_value=flat):
+        fresh = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:22", "H617A")
+    first = _c(
+        write_gatt_char=AsyncMock(side_effect=BleakError("Characteristic not found")),
+        disconnect=AsyncMock(),
+    )
+    second = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    ble_device = MagicMock(details={})
+    with (
+        patch(f"{M}.bluetooth.async_ble_device_from_address", return_value=ble_device),
+        patch(f"{M}.establish_connection", side_effect=[first, second]) as establish,
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await fresh.send_command(proto.build_power(True))
+    assert establish.await_args_list[0].kwargs["use_services_cache"] is True
+    assert establish.await_args_list[1].kwargs["use_services_cache"] is False
+    first.disconnect.assert_awaited_once()
+    assert fresh._client is second
+    assert fresh.fresh_service_discovery_forced is True
+    await fresh.disconnect()
 
 
 async def test_disconnect(coord, h6199):
@@ -747,7 +844,7 @@ async def test_refresh_state_rejects_optimistic_value_without_fresh_reply(coord)
         patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
     ):
         assert await coord.refresh_state(expected_on=True, timeout=0.01) is False
-    disconnect.assert_awaited_once_with(client)
+    disconnect.assert_awaited_once_with(client, reason="state_verification_timeout")
 
 
 async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord):
@@ -786,7 +883,7 @@ async def test_refresh_state_requires_fresh_power_and_video_replies(coord):
         patch.object(coord, "_disconnect_if_current", new_callable=AsyncMock) as disconnect,
     ):
         assert await coord.refresh_state(expected_on=True, expected_video_mode="game", timeout=0.01) is False
-    disconnect.assert_awaited_once_with(client)
+    disconnect.assert_awaited_once_with(client, reason="state_verification_timeout")
 
 
 async def test_refresh_state_rejects_wrong_video_parameters(coord):
@@ -1200,7 +1297,7 @@ def test_keep_alive_started_as_background_task(coord):
 
 async def test_keep_alive_retries_identity_until_bounded(coord):
     """Connect-time identity replies can be missed, so retries remain bounded."""
-    coord._client = _c(write_gatt_char=AsyncMock())
+    coord._client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord.fw_version = coord.hw_version = None
     calls = {"n": 0}
 
@@ -1218,7 +1315,7 @@ async def test_keep_alive_retries_identity_until_bounded(coord):
 
 
 async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
-    coord._client = _c(write_gatt_char=AsyncMock())
+    coord._client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord.fw_version, coord.hw_version = "3.02.24", None
     with (
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,
@@ -1230,7 +1327,7 @@ async def test_keep_alive_retries_missing_hw_when_fw_known(coord):
 
 
 async def test_keep_alive_skips_identity_when_versions_known(coord):
-    coord._client = _c(write_gatt_char=AsyncMock())
+    coord._client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord.fw_version, coord.hw_version = "3.02.24", "3.01.01"
     with (
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock) as ident,

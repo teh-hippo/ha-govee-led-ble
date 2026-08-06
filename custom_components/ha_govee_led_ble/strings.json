@@ -310,7 +310,7 @@
     },
     "set_music_mode": {
       "name": "Set music mode",
-      "description": "Configure the music mode on supported models (H617A/H6199).",
+      "description": "Configure the music mode on supported models (H617A/H617E/H6199).",
       "fields": {
         "mode": {
           "name": "Mode",

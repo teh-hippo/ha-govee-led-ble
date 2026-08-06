@@ -88,6 +88,17 @@ describe("effect exchange", () => {
     ).toEqual(document);
   });
 
+  it("round-trips an H617E effect through the shared 15-segment exchange surface", () => {
+    const h617e = { ...exported, model: "H617E" };
+    const document = buildEffectExchangeDocument(parseExportedEffect(h617e));
+    expect(
+      parseEffectExchangeJson(JSON.stringify(document), {
+        model: "H617E",
+        segmentCount: 15,
+      }),
+    ).toEqual(document);
+  });
+
   it("rejects malformed, foreign and incompatible documents", () => {
     expect(() =>
       parseEffectExchangeJson("{", { model: "H617A", segmentCount: 15 }),

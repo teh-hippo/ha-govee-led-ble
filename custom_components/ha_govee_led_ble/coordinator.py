@@ -86,6 +86,20 @@ DEVICE_DISCOVERY_ATTEMPTS = 4
 PACKET_LOG_LIMIT = 50
 EXPECTED_STATE_TTL = 2.0
 
+
+def _connection_path(ble_device: Any) -> str:
+    """Classify the selected HA BLE path without exposing its source identifier."""
+    details = getattr(ble_device, "details", None)
+    return "remote_proxy" if isinstance(details, dict) and details.get("source") else "local"
+
+
+def _is_gatt_discovery_failure(err: BaseException) -> bool:
+    """Return whether a BLE error indicates stale/missing GATT discovery data."""
+    message = str(err).lower()
+    missing = "not found" in message or "not available" in message or "unknown object" in message
+    return missing and ("characteristic" in message or "gatt" in message or "service" in message)
+
+
 _CORE_STATE_FIELDS = (
     "is_on",
     "brightness_pct",
@@ -185,13 +199,27 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             hass,
             _LOGGER,
             name=f"Govee {model} ({address})",
-            update_interval=timedelta(seconds=30) if profile.state_readable else None,
+            update_interval=(
+                timedelta(seconds=30) if profile.state_readable and profile.connection_idle_timeout is None else None
+            ),
         )
         self.address, self.model, self.profile = address, model, profile
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
         self._control_lock = asyncio.Lock()
         self._cancel_disconnect: CALLBACK_TYPE | None = None
+        self._disconnect_deadline: float | None = None
+        self._pending_disconnect_reason: str | None = None
+        self._connected_at_monotonic: float | None = None
+        self._force_fresh_services = False
+        self.connection_path: str | None = None
+        self.last_connected_at: str | None = None
+        self.last_disconnected_at: str | None = None
+        self.last_connection_duration: float | None = None
+        self.last_disconnect_reason: str | None = None
+        self.retry_count = 0
+        self.last_failure_type: str | None = None
+        self.fresh_service_discovery_forced = False
         self._keep_alive_task: asyncio.Task[None] | None = None
         self._keep_alive_ticks = 0
         self._identity_retries = 0
@@ -370,6 +398,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     await self._ensure_connected()
                     await self._send_state_queries()
             except BleakError as err:
+                self._record_failure(err)
                 # ConfigEntryNotReady on first setup only; steady-state refreshes degrade silently
                 # and presence-driven availability tracks the running state.
                 if first_refresh:
@@ -385,10 +414,15 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
     async def _ensure_connected(self) -> BleakClient:
         if self._client and self._client.is_connected:
             if not self._receive_is_stale():
-                self._reset_disconnect_timer()
+                # H6199 retains the existing poll-driven lifetime. H617A/H617E are activity-
+                # bounded, so polling/readback must never extend their ownership window.
+                if self.profile.connection_idle_timeout is None:
+                    self._reset_disconnect_timer()
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
-            await self.disconnect()
+            await self.disconnect(reason="stale_notification")
+        elif self._client is not None:
+            self._finalize_disconnected(self._client, "remote_disconnect")
         ble_device = None
         for attempt in range(DEVICE_DISCOVERY_ATTEMPTS):
             ble_device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
@@ -397,8 +431,27 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             if attempt < DEVICE_DISCOVERY_ATTEMPTS - 1:
                 await asyncio.sleep(RETRY_BACKOFF_SECONDS)
         if not ble_device:
-            raise BleakError(f"Device {self.address} not found")
-        self._client = await establish_connection(BleakClient, ble_device, self.address)
+            err = BleakError(f"Device {self.address} not found")
+            self._record_failure(err)
+            raise err
+        force_fresh_services = self._force_fresh_services
+        try:
+            client = await establish_connection(
+                BleakClient,
+                ble_device,
+                f"Govee {self.model}",
+                disconnected_callback=self._disconnected_callback,
+                use_services_cache=not force_fresh_services,
+            )
+        except BleakError as err:
+            self._client = None
+            self._record_failure(err)
+            raise
+        self._client = client
+        self.connection_path = _connection_path(ble_device)
+        self.last_connected_at = datetime.now().astimezone().isoformat(timespec="seconds")
+        self._connected_at_monotonic = time.monotonic()
+        self.fresh_service_discovery_forced = force_fresh_services
         self._reset_disconnect_timer()
         if self.profile.state_readable:
             try:
@@ -406,20 +459,77 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 await self._send_identity_queries()
                 if not await self._send_state_queries():
                     raise BleakError(f"Initial state query failed for {self.address}")
-            except BleakError:
-                await self.disconnect()
+            except BleakError as err:
+                self._record_failure(err)
+                await self.disconnect(reason="connection_setup_failure")
                 raise
-        return self._client
+        if self._client is not client or not client.is_connected:
+            disconnected_err = BleakError("Device disconnected during connection setup")
+            self._record_failure(disconnected_err)
+            raise disconnected_err
+        self._force_fresh_services = False
+        return client
 
     def _reset_disconnect_timer(self) -> None:
         if self._cancel_disconnect:
             self._cancel_disconnect()
+        delay = self.profile.connection_idle_timeout or DISCONNECT_DELAY
+        deadline = time.monotonic() + delay
+        self._disconnect_deadline = deadline
+        reason = "idle_release" if self.profile.connection_idle_timeout is not None else "idle_timeout"
 
         @callback
         def _on_timeout(_now: datetime) -> None:
-            self.hass.async_create_task(self.disconnect())
+            self.hass.async_create_task(self._disconnect_if_idle(deadline, reason))
 
-        self._cancel_disconnect = async_call_later(self.hass, DISCONNECT_DELAY, _on_timeout)
+        self._cancel_disconnect = async_call_later(self.hass, delay, _on_timeout)
+
+    async def _disconnect_if_idle(self, deadline: float, reason: str) -> None:
+        """Disconnect only if no newer command extended the activity window."""
+        async with self._lock:
+            if self._disconnect_deadline != deadline or time.monotonic() < deadline:
+                return
+            await self.disconnect(reason=reason)
+
+    def _record_failure(self, err: BaseException) -> None:
+        self.last_failure_type = type(err).__name__
+        if _is_gatt_discovery_failure(err):
+            self._force_fresh_services = True
+
+    @callback
+    def _disconnected_callback(self, client: BleakClient) -> None:
+        """Discard a remotely disconnected client immediately."""
+        self._finalize_disconnected(client, self._pending_disconnect_reason or "remote_disconnect")
+
+    def _finalize_disconnected(self, client: BleakClient, reason: str) -> None:
+        if self._client is not client:
+            return
+        self._stop_keep_alive()
+        if self._cancel_disconnect:
+            self._cancel_disconnect()
+            self._cancel_disconnect = None
+        self._disconnect_deadline = None
+        self._client = None
+        self.last_disconnected_at = datetime.now().astimezone().isoformat(timespec="seconds")
+        if self._connected_at_monotonic is not None:
+            self.last_connection_duration = round(time.monotonic() - self._connected_at_monotonic, 3)
+        self._connected_at_monotonic = None
+        self.last_disconnect_reason = reason
+        self._notify_started_monotonic = None
+        self._last_rx_monotonic = None
+        self._expected_state.clear()
+        if self.active_custom_id == self._owned_diy_effect_id:
+            self.active_custom_id = self.effect = None
+        self._owned_diy_effect_id = None
+
+    def _clear_session_state_without_client(self) -> None:
+        """Clear connection-scoped state when no client object remains."""
+        self._notify_started_monotonic = None
+        self._last_rx_monotonic = None
+        self._expected_state.clear()
+        if self.active_custom_id == self._owned_diy_effect_id:
+            self.active_custom_id = self.effect = None
+        self._owned_diy_effect_id = None
 
     async def _start_notify(self) -> None:
         if not (self._client and self._client.is_connected):
@@ -723,7 +833,8 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
             return True
-        except BleakError:
+        except BleakError as err:
+            self._record_failure(err)
             return False
 
     async def _send_identity_queries(self) -> None:
@@ -740,7 +851,8 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             for query in queries:
                 self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
-        except BleakError:
+        except BleakError as err:
+            self._record_failure(err)
             _LOGGER.debug("Identity query failed for %s", self.address)
 
     async def refresh_state(
@@ -869,7 +981,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                         query_color_mode=query_color,
                     )
             if not ok:
-                await self._disconnect_if_current(client)
+                await self._disconnect_if_current(client, reason="state_query_failure")
                 return False
             if expectations and all(
                 self._field_revisions.get(field, 0) > field_baselines[field] and getattr(self, field) == expected
@@ -883,7 +995,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             if (remaining := deadline - time.monotonic()) > 0:
                 await asyncio.sleep(min(0.25, remaining))
         if any(self._domain_revisions.get(domain, 0) <= baseline for domain, baseline in domain_baselines.items()):
-            await self._disconnect_if_current(client)
+            await self._disconnect_if_current(client, reason="state_verification_timeout")
         return False
 
     def _start_keep_alive(self) -> None:
@@ -920,13 +1032,16 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 async with self._lock:
                     ok = await self._send_state_queries(query_power=True, query_brightness=full, query_color_mode=full)
                 if not ok:
+                    client = self._client
+                    if client is not None:
+                        self.hass.async_create_task(self._disconnect_if_current(client, reason="keep_alive_failure"))
                     break
         except asyncio.CancelledError:
             pass
 
-    async def _disconnect_if_current(self, client: BleakClient) -> None:
+    async def _disconnect_if_current(self, client: BleakClient, *, reason: str = "requested") -> None:
         if self._client is client:
-            await self.disconnect()
+            await self.disconnect(reason=reason)
 
     async def send_command(self, packet: bytes) -> None:
         if self.hass.is_stopping:
@@ -934,14 +1049,17 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             return
         async with self._lock:
             for attempt in range(3):
+                self.retry_count = attempt
                 try:
                     client = await self._ensure_connected()
                     self._record_packet("tx", packet)
                     self._arm_expected(packet)
                     await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                    self._reset_disconnect_timer()
                     return
                 except BleakError as err:
-                    await self.disconnect()
+                    self._record_failure(err)
+                    await self.disconnect(reason="write_failure")
                     if attempt == 2:
                         _LOGGER.error("Failed to send to %s after 3 attempts", self.address)
                         raise
@@ -993,23 +1111,23 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         if len(self.packet_log) > PACKET_LOG_LIMIT:
             del self.packet_log[:-PACKET_LOG_LIMIT]
 
-    async def disconnect(self) -> None:
+    async def disconnect(self, *, reason: str = "requested") -> None:
         client = self._client
         self._stop_keep_alive()
         if self._cancel_disconnect:
             self._cancel_disconnect()
             self._cancel_disconnect = None
+        self._disconnect_deadline = None
+        self._pending_disconnect_reason = reason
         try:
             if client and client.is_connected:
                 await client.disconnect()
-        except BleakError, TimeoutError:
+        except (BleakError, TimeoutError) as err:
+            self._record_failure(err)
             _LOGGER.debug("Error disconnecting from %s", self.address)
         finally:
-            if self._client is client:
-                self._client = None
-                self._notify_started_monotonic = None
-                self._last_rx_monotonic = None
-                self._expected_state.clear()
-                if self.active_custom_id == self._owned_diy_effect_id:
-                    self.active_custom_id = self.effect = None
-                self._owned_diy_effect_id = None
+            if client is not None:
+                self._finalize_disconnected(client, reason)
+            elif self._client is None:
+                self._clear_session_state_without_client()
+            self._pending_disconnect_reason = None

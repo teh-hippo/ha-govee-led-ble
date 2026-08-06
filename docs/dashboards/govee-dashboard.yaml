@@ -7,19 +7,19 @@
 # Settings > Devices & Services > your Govee device. `light.govee_strip` is the
 # example light; the number/select/switch ids follow your light's device name.
 #
-# Model fit: Comfort and Music suit H617A and H6199. Timers and surfaced scenes
-# are H617A only. Video and static white are H6199 only. Segment painting is not here; it
+# Model fit: Comfort and Music suit H617A, H617E and H6199. Timers and surfaced scenes
+# are H617A/H617E only. Video and static white are H6199 only. Segment painting is not here; it
 # uses the integration's separate custom card.
 title: Govee LED strip
 views:
-  # --- Comfort: everyday control (H617A and H6199) ---
+  # --- Comfort: everyday control (H617A, H617E and H6199) ---
   - title: Comfort
     path: comfort
     icon: mdi:lightbulb
     cards:
       - type: markdown
         content: >-
-          Everyday control for H617A and H6199. Tap the light icon for the full
+          Everyday control for H617A, H617E and H6199. Tap the light icon for the full
           colour wheel and effect list. Saved custom effects appear in that same
           effect list under the names you give them.
       - type: light
@@ -45,15 +45,17 @@ views:
         entity: switch.govee_strip_reduce_preview_motion
         name: Reduce preview motion
 
-  # --- Scenes: built-in effect catalogue (H617A only) ---
+  # --- Scenes: built-in effect catalogue (H617A/H617E only) ---
   - title: Scenes
     path: scenes
     icon: mdi:palette
     cards:
       - type: markdown
         content: >-
-          Built-in scenes are H617A only. These buttons are a starter set; tap
-          the light on the Comfort view for all 79 scenes in the effect list.
+          The mapped H617A scene catalogue is available on H617A and H617E.
+          H617E has additional device scenes that are not mapped yet. These
+          buttons are a starter set; tap the light on the Comfort view for all
+          currently mapped scenes in the effect list.
       - type: grid
         columns: 2
         square: false
@@ -139,16 +141,16 @@ views:
               data:
                 effect: party
 
-  # --- Music: reactive modes (H617A and H6199) ---
+  # --- Music: reactive modes (H617A, H617E and H6199) ---
   - title: Music
     path: music
     icon: mdi:music
     cards:
       - type: markdown
         content: >-
-          Music reactive modes for H617A and H6199. Choose a mode with the Music
+          Music reactive modes for H617A, H617E and H6199. Choose a mode with the Music
           mode selector; set it to Off to leave music mode. Music style (Dynamic
-          or Calm) is H617A only and affects the Rhythm mode. The per-mode tuning
+          or Calm) is H617A/H617E only and affects the Rhythm mode. The per-mode tuning
           entities are disabled by default; enable them in their entity settings
           to fine-tune a mode.
       - type: tile
@@ -176,7 +178,7 @@ views:
         content: >-
           Advanced: the `set_music_mode` service applies a mode with a one-shot
           sensitivity and accent colour in a single call. The button below starts
-          Rhythm with a red accent (H617A).
+          Rhythm with a red accent (H617A/H617E).
       - type: button
         name: Rhythm with red accent
         icon: mdi:invert-colors
@@ -280,14 +282,14 @@ views:
               data:
                 brightness: 100
 
-  # --- Timers: sleep and wake-up (H617A only until H6199 validation) ---
+  # --- Timers: sleep and wake-up (H617A/H617E only until H6199 validation) ---
   - title: Timers
     path: timers
     icon: mdi:timer-outline
     cards:
       - type: markdown
         content: >-
-          Sleep and wake-up timers for H617A. These entities are
+          Sleep and wake-up timers for H617A/H617E. These entities are
           disabled by default; enable them in their entity settings first. The
           sleep timer turns the strip off after its duration; the wake-up timer
           turns it on at the set time.
