@@ -50,6 +50,7 @@ from .generated_protocol_adapter import (
 from .generated_protocol_adapter import (
     build_segment_colour as _build_generated_segment_colour,
 )
+from .generated_protocol_adapter import parse_status as _parse_generated_status
 from .generated_protocol_adapter import xor_checksum
 from .scenes import SCENES, SceneSpeed
 
@@ -115,7 +116,10 @@ def _get(payload: bytes, index: int) -> int | None:
     return payload[index] if len(payload) > index else None
 
 
-def split_status_frame(frame: bytes) -> tuple[int, bytes] | None:
+def split_status_frame(
+    frame: bytes,
+    model: str = "H617A",
+) -> tuple[int, bytes] | None:
     """Split an incoming status notification into ``(domain, payload)``.
 
     Returns ``None`` for frames shorter than three bytes, without the status header, or
@@ -125,9 +129,10 @@ def split_status_frame(frame: bytes) -> tuple[int, bytes] | None:
     if len(frame) < 3 or frame[0] != STATUS_HEADER:
         return None
     if len(frame) == 20:
-        if xor_checksum(frame[:-1]) != frame[-1]:
+        parsed = _parse_generated_status(frame, model)
+        if parsed is None:
             return None
-        return frame[1], bytes(frame[2:-1])
+        return int(parsed.domain), bytes(frame[2:-1])
     return frame[1], bytes(frame[2:])
 
 

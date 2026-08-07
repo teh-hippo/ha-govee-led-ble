@@ -639,7 +639,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
-        split = split_status_frame(frame)
+        split = split_status_frame(frame, self.model)
         if split is None:
             return
         domain, payload = split

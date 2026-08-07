@@ -6,7 +6,7 @@ import io
 from importlib import import_module
 from typing import Any, cast
 
-from kaitaistruct import KaitaiStream, ReadWriteKaitaiStruct
+from kaitaistruct import KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
 CommandWrite = cast(
     Any,
@@ -23,6 +23,14 @@ GoveeShared = cast(
 GoveeCommon = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_common").GoveeCommon,
+)
+StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.status_reply").StatusReply,
+)
+H6199StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
 )
 
 
@@ -62,6 +70,18 @@ def _serialize_xor(root: Any, length: int = 20) -> bytes:
     root.checksum = xor_checksum(provisional[:-1])
     _check_tree(root)
     return _write(root, length)
+
+
+def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
+    if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
+        return None
+    root_type = H6199StatusReply if model == "H6199" else StatusReply
+    try:
+        parsed = root_type(KaitaiStream(io.BytesIO(frame)))
+        parsed._read()
+    except KaitaiStructError:
+        return None
+    return parsed
 
 
 def _command_types(model: str) -> tuple[Any, Any, Any]:
