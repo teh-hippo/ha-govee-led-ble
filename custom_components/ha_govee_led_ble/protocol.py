@@ -5,7 +5,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
-from typing import cast
+from typing import Any, cast
 
 from .const import MUSIC_MODE_SLUGS
 from .custom_effects import (
@@ -119,10 +119,17 @@ def _get(payload: bytes, index: int) -> int | None:
     return payload[index] if len(payload) > index else None
 
 
-def split_status_frame(
+@dataclass(frozen=True, slots=True)
+class ParsedStatusEnvelope:
+    domain: int
+    payload: bytes
+    generated: Any | None
+
+
+def decode_status_frame(
     frame: bytes,
     model: str = "H617A",
-) -> tuple[int, bytes] | None:
+) -> ParsedStatusEnvelope | None:
     """Split an incoming status notification into ``(domain, payload)``.
 
     Returns ``None`` for frames shorter than three bytes, without the status header, or
@@ -135,8 +142,22 @@ def split_status_frame(
         parsed = _parse_generated_status(frame, model)
         if parsed is None:
             return None
-        return int(parsed.domain), bytes(frame[2:-1])
-    return frame[1], bytes(frame[2:])
+        return ParsedStatusEnvelope(
+            int(parsed.domain),
+            bytes(frame[2:-1]),
+            parsed,
+        )
+    return ParsedStatusEnvelope(frame[1], bytes(frame[2:]), None)
+
+
+def split_status_frame(
+    frame: bytes,
+    model: str = "H617A",
+) -> tuple[int, bytes] | None:
+    decoded = decode_status_frame(frame, model)
+    if decoded is None:
+        return None
+    return decoded.domain, decoded.payload
 
 
 def build_packet(cmd_type: int, action: int, params: list[int]) -> bytes:

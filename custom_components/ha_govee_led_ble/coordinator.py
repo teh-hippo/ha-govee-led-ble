@@ -64,6 +64,7 @@ from .protocol import (
     ParsedTimerSchedule,
     SegmentColorGroup,
     build_segment_paint,
+    decode_status_frame,
     kelvin_to_rgb,
     parse_color_mode_response,
     parse_display_setting_response,
@@ -75,7 +76,6 @@ from .protocol import (
     parse_timer_schedule_table,
     parse_timer_sleep,
     parse_timer_wakeup,
-    split_status_frame,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -639,46 +639,77 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
-        split = split_status_frame(frame, self.model)
-        if split is None:
+        decoded = decode_status_frame(frame, self.model)
+        if decoded is None:
             return
-        domain, payload = split
+        domain, payload = decoded.domain, decoded.payload
+        generated = decoded.generated
         self._record_packet("rx", frame)
         self._last_rx_monotonic = time.monotonic()
         _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.address, domain, payload.hex())
         try:
             observed: tuple[str, ...] = ()
             if domain == POWER_PACKET_TYPE:
-                value = bool(payload[0])
+                value = bool(generated.body.is_on) if generated is not None else bool(payload[0])
                 if self._accept_expected("is_on", value):
                     self.is_on = value
                     observed = ("is_on",)
             elif domain == BRIGHTNESS_PACKET_TYPE:
-                if self._accept_expected("brightness_pct", payload[0]):
-                    self.brightness_pct = payload[0]
+                brightness_value = (
+                    int(generated.body.percent)
+                    if generated is not None and self.model == "H6199"
+                    else int(generated.body.brightness_pct)
+                    if generated is not None
+                    else payload[0]
+                )
+                if self._accept_expected("brightness_pct", brightness_value):
+                    self.brightness_pct = brightness_value
                     observed = ("brightness_pct",)
             elif domain == COLOR_PACKET_TYPE:
                 observed = self._apply_color_mode_payload(payload)
             elif domain == DISPLAY_SETTING_PACKET_TYPE:
                 display_setting = parse_display_setting_response(payload)
-                if display_setting.current_white_balance is not None:
-                    red, blue = display_setting.current_white_balance
+                current_white_balance: tuple[int, int] | None
+                if generated is not None and generated.body.setting == 0:
+                    red = int(generated.body.payload.current_red)
+                    blue = int(generated.body.payload.current_blue)
+                    current_white_balance = (red, blue)
+                else:
+                    current_white_balance = display_setting.current_white_balance
+                if current_white_balance is not None:
+                    red, blue = current_white_balance
                     values = {"white_balance_red": red, "white_balance_blue": blue}
                     if self._accept_expected_values(values):
                         self.white_balance_red, self.white_balance_blue = red, blue
                         observed = tuple(values)
-                elif display_setting.blank_screen is not None:
-                    if self._accept_expected("blank_screen", display_setting.blank_screen):
-                        self.blank_screen = display_setting.blank_screen
+                else:
+                    blank_screen = (
+                        bool(generated.body.payload.is_enabled)
+                        if generated is not None and generated.body.setting == 10
+                        else display_setting.blank_screen
+                    )
+                    if blank_screen is not None and self._accept_expected(
+                        "blank_screen",
+                        blank_screen,
+                    ):
+                        self.blank_screen = blank_screen
                         observed = ("blank_screen",)
             elif domain == RELATIVE_BRIGHTNESS_PACKET_TYPE:
-                relative_brightness = parse_relative_brightness_response(payload)
-                edges = (
-                    relative_brightness.left,
-                    relative_brightness.top,
-                    relative_brightness.right,
-                    relative_brightness.bottom,
-                )
+                if generated is not None:
+                    edges = (
+                        generated.body.left_percent,
+                        generated.body.top_percent,
+                        generated.body.right_percent,
+                        generated.body.bottom_percent,
+                    )
+                else:
+                    relative_brightness = parse_relative_brightness_response(payload)
+                    edges = (
+                        relative_brightness.left,
+                        relative_brightness.top,
+                        relative_brightness.right,
+                        relative_brightness.bottom,
+                    )
                 aggregate = edges[0] if len(set(edges)) == 1 else None
                 edge_values: dict[str, Any] = {
                     "relative_brightness": aggregate,
@@ -697,9 +728,13 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     ) = edges
                     observed = tuple(edge_values)
             elif domain == FIRMWARE_PACKET_TYPE:
-                self._note_identity(fw_version=parse_fw_version(payload))
+                self._note_identity(
+                    fw_version=(generated.body.text if generated is not None else parse_fw_version(payload))
+                )
             elif domain == HARDWARE_PACKET_TYPE:
-                self._note_identity(hw_version=parse_hw_version(payload))
+                self._note_identity(
+                    hw_version=(generated.body.text if generated is not None else parse_hw_version(payload))
+                )
             elif domain == POWEROFF_MEMORY_PACKET_TYPE:
                 self.poweroff_memory = parse_poweroff_memory(payload).enabled
             elif domain == SLEEP_TIMER_PACKET_TYPE:
