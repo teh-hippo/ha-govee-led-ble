@@ -33,6 +33,8 @@ H6199StatusReply = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
 )
 
+_BLANK_SCREEN_PARAMETERS = b"\x02\x0a\x00\x78\x00"
+
 
 def _check_tree(value: Any, seen: set[int] | None = None) -> None:
     seen = seen or set()
@@ -332,6 +334,21 @@ def build_h6199_white_balance(red: int, blue: int) -> bytes:
     payload.manual = 1
     payload.red = max(0, min(255, red))
     payload.blue = max(0, min(255, blue))
+    body.payload = payload
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_h6199_blank_screen(enabled: bool) -> bytes:
+    root = H6199CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6199CommandWrite.CommandOp.display_setting
+    body = _child(H6199CommandWrite.DisplaySettingBody, root)
+    body.setting = H6199CommandWrite.DisplaySetting.blank_screen
+    body.len = 6
+    payload = _child(H6199CommandWrite.BlankScreenPayload, body)
+    payload.is_on = int(enabled)
+    payload._unnamed1 = _BLANK_SCREEN_PARAMETERS
     body.payload = payload
     root.body = body
     return _serialize_xor(root)

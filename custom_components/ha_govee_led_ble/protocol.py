@@ -31,6 +31,9 @@ from .generated_protocol_adapter import (
     build_h617a_scene as _build_generated_h617a_scene,
 )
 from .generated_protocol_adapter import (
+    build_h6199_blank_screen as _build_generated_blank_screen,
+)
+from .generated_protocol_adapter import (
     build_h6199_relative_brightness as _build_generated_relative_brightness,
 )
 from .generated_protocol_adapter import (
@@ -604,19 +607,6 @@ WHITE_BALANCE_POSITIONS: tuple[tuple[int, int], ...] = (
 # This is where a caller starts from, not what a device currently reports; the aa a9 read-back
 # carries the reset reference and current pair separately.
 WHITE_BALANCE_RESET: tuple[int, int] = WHITE_BALANCE_POSITIONS[16]
-WHITE_BALANCE_MANUAL = 0x01
-# The bytes after the blank-screen flag, replayed verbatim: identical across both captured writes
-# (h6199_command_write::blank_screen_payload::opaque_tail).
-_BLANK_SCREEN_TAIL = (0x02, 0x0A, 0x00, 0x78, 0x00)
-
-
-def _build_display_setting(setting: int, payload: list[int]) -> bytes:
-    """Frame one H6199 display setting behind its selector and payload length.
-
-    The length is the payload's own, never a literal: it is what tells the two settings apart from
-    each other's trailing zeros (h6199_command_write::display_setting_body).
-    """
-    return build_packet(0x33, DISPLAY_SETTING_PACKET_TYPE, [setting, len(payload), *payload])
 
 
 def build_video_white_balance(red: int, blue: int) -> bytes:
@@ -640,7 +630,7 @@ def build_blank_screen(enabled: bool) -> bytes:
     moved across either write, and the vendor app's reading of them as a flag and two integers
     names nothing this project can vary.
     """
-    return _build_display_setting(DISPLAY_SETTING_BLANK_SCREEN, [int(enabled), *_BLANK_SCREEN_TAIL])
+    return _build_generated_blank_screen(enabled)
 
 
 def build_relative_brightness(percent: int) -> bytes:
