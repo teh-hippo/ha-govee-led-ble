@@ -89,7 +89,7 @@ def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
     try:
         parsed = root_type(KaitaiStream(io.BytesIO(frame)))
         parsed._read()
-    except KaitaiStructError:
+    except KaitaiStructError, UnicodeDecodeError:
         return None
     return parsed
 

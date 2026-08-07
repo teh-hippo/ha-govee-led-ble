@@ -33,6 +33,12 @@ def _valid(pkt):
     assert len(pkt) == 20 and proto.xor_checksum(pkt[:19]) == pkt[19]
 
 
+def _parse_color(payload: bytes, model: str = "H617A") -> proto.ParsedColorModeResponse:
+    decoded = proto.decode_status_frame(proto.build_packet(0xAA, 0x05, list(payload)), model)
+    assert decoded is not None
+    return proto.parse_generated_color_mode(decoded.generated, model)
+
+
 def test_xor_checksum():
     assert proto.xor_checksum(bytes(19)) == 0x00
     assert proto.xor_checksum(bytearray([0x33, 0x01, 0x01] + [0x00] * 16)) == 0x33
@@ -50,9 +56,9 @@ def test_split_status_frame_valid_20_byte():
     assert len(payload) == 17  # checksum byte dropped
 
 
-def test_split_status_frame_short_loose_keeps_tail():
+def test_split_status_frame_rejects_short_notification():
     frame = bytes([0xAA, 0x04, 0x4B, 0x00, 0x00, 0x00, 0x00, 0x00])
-    assert proto.split_status_frame(frame) == (0x04, frame[2:])
+    assert proto.split_status_frame(frame) is None
 
 
 def test_split_status_frame_rejects_bad_checksum():
@@ -555,16 +561,13 @@ def test_firmware_hardware_version_decode():
     fw_reply = H("aa06332e30322e3234000000000000000000009b")
     hw_reply = H("aa0703332e30312e30310000000000000000009d")
     h6199_hw_reply = H("aa0703332e30322e30310000000000000000009e")
-    fw_domain, fw_payload = proto.split_status_frame(fw_reply)
-    hw_domain, hw_payload = proto.split_status_frame(hw_reply)
-    assert (fw_domain, hw_domain) == (0x06, 0x07)
-    assert proto.parse_fw_version(fw_payload) == "3.02.24"
-    assert proto.parse_hw_version(hw_payload) == "3.01.01"
-    assert proto.parse_hw_version(proto.split_status_frame(h6199_hw_reply)[1]) == "3.02.01"
-    # NUL padding is trimmed; an empty payload decodes to None.
-    assert proto.parse_fw_version(b"3.02.24\x00\x00") == "3.02.24"
-    assert proto.parse_hw_version(b"") is None
-    assert proto.parse_hw_version(b"\x02" + b"3.01.01") is None
+    fw = proto.decode_status_frame(fw_reply)
+    hw = proto.decode_status_frame(hw_reply)
+    h6199_hw = proto.decode_status_frame(h6199_hw_reply, "H6199")
+    assert fw is not None and fw.domain == 0x06 and fw.generated.body.text == "3.02.24"
+    assert hw is not None and hw.domain == 0x07 and hw.generated.body.text == "3.01.01"
+    assert h6199_hw is not None and h6199_hw.generated.body.text == "3.02.01"
+    assert proto.decode_status_frame(proto.build_packet(0xAA, 0x07, [0x02, *b"3.01.01"])) is None
 
 
 def test_video_mode():
@@ -638,20 +641,41 @@ def test_h6199_display_setting_and_edge_queries():
 
 
 def test_h6199_display_setting_and_edge_readbacks():
-    parsed = proto.parse_display_setting_response(bytes.fromhex("0006011003011505000000000000000000"))
-    assert parsed.reset_white_balance == (16, 3)
-    assert parsed.current_white_balance == (21, 5)
+    white = proto.decode_status_frame(
+        proto.build_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 21, 5]),
+        "H6199",
+    )
+    assert white is not None
+    assert (white.generated.body.payload.reset_red, white.generated.body.payload.reset_blue) == (16, 3)
+    assert (white.generated.body.payload.current_red, white.generated.body.payload.current_blue) == (21, 5)
 
-    blank = proto.parse_display_setting_response(bytes.fromhex("0a0600020a007800000000000000000000"))
-    assert blank.blank_screen is False
+    blank = proto.decode_status_frame(
+        proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0]),
+        "H6199",
+    )
+    assert blank is not None and blank.generated.body.payload.is_enabled == 0
 
-    edges = proto.parse_relative_brightness_response(bytes.fromhex("010433141f290000000000000000000000"))
-    assert (edges.left, edges.top, edges.right, edges.bottom) == (51, 20, 31, 41)
+    edges = proto.decode_status_frame(
+        proto.build_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41]),
+        "H6199",
+    )
+    assert edges is not None
+    edge_body = edges.generated.body
+    assert (edge_body.left_percent, edge_body.top_percent, edge_body.right_percent, edge_body.bottom_percent) == (
+        51,
+        20,
+        31,
+        41,
+    )
 
-    with pytest.raises(ValueError):
-        proto.parse_display_setting_response(b"\x00\x06\x01")
-    with pytest.raises(ValueError):
-        proto.parse_relative_brightness_response(b"\x01\x03\x5b\x5b\x5b")
+    assert (
+        proto.decode_status_frame(
+            proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 0, 0]),
+            "H6199",
+        )
+        is None
+    )
+    assert proto.decode_status_frame(proto.build_packet(0xAA, 0xAE, [1, 3, 91, 91, 91]), "H6199") is None
 
 
 def test_music_mode():
@@ -801,14 +825,13 @@ def test_build_music_params_a3_palette_guard_and_overlay():
 
 
 def test_parse():
-    scene = proto.parse_color_mode_response(bytes([0x04, 0x9D, 0x08]))
+    scene = _parse_color(bytes([0x04, 0x9D, 0x08]))
     assert scene.mode is proto.ParsedMode.SCENE and scene.effect == "candy"
-    p = proto.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]), video_supported=True)
+    p = _parse_color(bytes([0x00, 0x00, 0x01, 42, 0x01, 55]), "H6199")
     assert p.mode is proto.ParsedMode.VIDEO and p.video_mode == "game" and p.effect is None and not p.video_full_screen
     assert (p.video_saturation, p.video_sound_effects, p.video_sound_effects_softness) == (42, True, 55)
-    # A model with no video mode must not read game mode and a saturation out of the same bytes.
-    assert proto.parse_color_mode_response(bytes([0x00, 0x00, 0x01, 42])).mode is proto.ParsedMode.UNKNOWN
-    p = proto.parse_color_mode_response(bytes([0x13, 0x04, 77, 0x00, 0x01, 1, 2, 3]))
+    assert _parse_color(bytes([0x00, 0x00, 0x01, 42])).mode is proto.ParsedMode.UNKNOWN
+    p = _parse_color(bytes([0x13, 0x04, 77, 0x00, 0x01, 1, 2, 3]))
     assert (
         p.mode is proto.ParsedMode.MUSIC
         and p.music_mode == "spectrum"
@@ -817,15 +840,10 @@ def test_parse():
         and p.music_calm is None
         and p.music_color == (1, 2, 3)
     )
-    p = proto.parse_color_mode_response(bytes([0x13, 0x03, 88, 0x01, 0x00]))
+    p = _parse_color(bytes([0x13, 0x03, 88, 0x01, 0x00]))
     assert p.music_mode == "rhythm" and p.effect is None and p.music_sensitivity == 88 and p.music_calm is True
-    static = proto.parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30]))
+    static = _parse_color(bytes([0x15, 0x01]))
     assert static.mode is proto.ParsedMode.COLOUR and static.rgb_color is None and static.multi_effect_flag == 1
-    echoed = proto.parse_color_mode_response(bytes([0x15, 0x01, 10, 20, 30]), static_echoes_color=True)
-    assert echoed.rgb_color == (10, 20, 30)
-    assert proto.parse_color_mode_response(bytes([0x15, 0x02, 50]), static_echoes_color=True).white_brightness == 50
-    with pytest.raises(ValueError):
-        proto.parse_color_mode_response(b"")
 
 
 def test_static_readback_carries_no_colour():
@@ -835,16 +853,14 @@ def test_static_readback_carries_no_colour():
     and expecting the write-side sub back rejects every colour reply the device sends.
     """
     for flag in (0x00, 0x01, 0x02):
-        parsed = proto.parse_color_mode_response(bytes([0x15, flag, *([0] * 16)]))
+        parsed = _parse_color(bytes([0x15, flag]))
         assert parsed.mode is proto.ParsedMode.COLOUR
         assert parsed.multi_effect_flag == flag
         assert parsed.rgb_color is None and parsed.white_brightness is None
 
 
 def test_parse_direct_diy_slot_readback():
-    domain, payload = proto.split_status_frame(H("aa050af000000000000000000000000000000055"))
-    parsed = proto.parse_color_mode_response(payload)
-    assert domain == 0x05
+    parsed = _parse_color(bytes([0x0A, proto.AUTHORED_DIY_SLOT]))
     assert parsed.mode is proto.ParsedMode.DIY
     assert parsed.diy_slot == proto.AUTHORED_DIY_SLOT
 
@@ -852,7 +868,7 @@ def test_parse_direct_diy_slot_readback():
 def test_parse_music_calm_only_for_rhythm():
     # byte5 (payload index 3) is Dynamic/Calm only for Rhythm; Spectrum/Rolling repurpose it as the
     # auto-colour flag, so it must not bleed into music_calm (which set_music_mode inherits for Rhythm).
-    parse = proto.parse_color_mode_response
+    parse = _parse_color
     assert parse(bytes([0x13, 0x03, 60, 0x01, 0x00])).music_calm is True
     assert parse(bytes([0x13, 0x03, 60, 0x00, 0x00])).music_calm is False
     for mid, name in ((0x04, "spectrum"), (0x06, "rolling")):
@@ -861,8 +877,8 @@ def test_parse_music_calm_only_for_rhythm():
 
 
 def test_parse_padded_scene_and_unknown_mode():
-    assert proto.parse_color_mode_response(bytes([0x04, 0x9D, 0x08, 0x00, 0x00])).effect == "candy"
-    assert proto.parse_color_mode_response(bytes([0x99, 0x01, 0x02])) == proto.ParsedColorModeResponse()
+    assert _parse_color(bytes([0x04, 0x9D, 0x08, 0x00, 0x00])).effect == "candy"
+    assert _parse_color(bytes([0x99, 0x01, 0x02])) == proto.ParsedColorModeResponse()
 
 
 W = proto.Weekday

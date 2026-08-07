@@ -3,7 +3,7 @@
 The inverse of :mod:`custom_components.ha_govee_led_ble.protocol`: decode the
 ``0x33`` command frames the integration writes (mutating internal state) and
 answer the ``aa 01/04/05`` query frames with status frames that
-``parse_color_mode_response`` reconstructs into the coordinator's optimistic
+the generated status decoder reconstructs into the coordinator's optimistic
 fields. Experimental timer writes (``0x33 11/12/23``) update timer state and the
 matching ``aa 11/12/23`` queries echo it back. Paired with
 :class:`FakeGoveeClient`, the real coordinator and entities run end-to-end with

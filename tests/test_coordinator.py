@@ -125,15 +125,15 @@ async def test_disconnect_does_not_clear_replacement_client(coord):
 
 def test_notify_callback(h6199):
     cb = h6199._notify_callback
-    cb(None, bytearray([0xAA, 0x01, 0x01, 0x00]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x01])))
     assert h6199.is_on is True
-    cb(None, bytearray([0xAA, 0x01, 0x00, 0x00]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x00])))
     assert h6199.is_on is False
-    cb(None, bytearray([0xAA, 0x04, 0x4B] + [0x00] * 5))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x04, [0x4B])))
     assert h6199.brightness_pct == 75
-    cb(None, bytearray([0xAA, 0x05, 0x00, 0x00, 0x01, 42]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 42])))
     assert (h6199.video_mode, h6199.video_full_screen, h6199.video_saturation) == ("game", False, 42)
-    cb(None, bytearray([0xAA, 0x05, 0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])))
     assert (h6199.music_mode, h6199.music_sensitivity, h6199.music_calm, h6199.music_color) == (
         "spectrum",
         66,
@@ -153,7 +153,7 @@ def test_notify_callback(h6199):
         h6199.relative_brightness_right,
         h6199.relative_brightness_bottom,
     ) == (None, 51, 20, 31, 41)
-    cb(None, bytearray([0xAA, 0x05, 0x04, 0x09, 0x00]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09, 0x00])))
     assert h6199.effect == "candlelight"
     h6199.is_on = False
     cb(None, bytearray([0xAA]))
@@ -384,16 +384,16 @@ def test_notify_callback_brightness_expectation(h6199):
     cb = h6199._notify_callback
     h6199.brightness_pct = 99
     h6199._expected_state["brightness_pct"] = (10, time.monotonic() + 60)
-    cb(None, bytearray([0xAA, 0x04, 0x4B] + [0x00] * 5))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x04, [0x4B])))
     assert h6199.brightness_pct == 99  # ignored
 
     h6199._expected_state["brightness_pct"] = (75, time.monotonic() + 60)
-    cb(None, bytearray([0xAA, 0x04, 0x4B] + [0x00] * 5))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x04, [0x4B])))
     assert h6199.brightness_pct == 75 and "brightness_pct" in h6199._expected_state
 
     with patch(f"{M}.time.monotonic", return_value=1000):
         h6199._expected_state["brightness_pct"] = (10, 0)
-        cb(None, bytearray([0xAA, 0x04, 0x01] + [0x00] * 5))
+        cb(None, bytearray(proto.build_packet(0xAA, 0x04, [0x01])))
         assert h6199.brightness_pct == 1 and "brightness_pct" not in h6199._expected_state
 
 
@@ -403,37 +403,27 @@ def test_notify_callback_power_expectation(h6199):
     h6199._expected_state["is_on"] = (True, time.monotonic() + 60)
     field_revision = h6199._field_revisions.get("is_on", 0)
 
-    cb(None, bytearray([0xAA, 0x01, 0x00, 0x00]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x00])))
     assert h6199.is_on is True
     assert h6199._field_revisions.get("is_on", 0) == field_revision
     assert "is_on" in h6199._expected_state
 
-    cb(None, bytearray([0xAA, 0x01, 0x01, 0x00]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x01])))
     assert h6199.is_on is True
     assert h6199._field_revisions["is_on"] == field_revision + 1
     assert "is_on" in h6199._expected_state
 
 
-def test_notify_callback_color_temp_window(h6199):
-    """A stale aa05 STATIC reply must not clear an optimistic color temp within the window."""
-    h6199.profile = replace(h6199.profile, static_readback_echoes_color=True)
+def test_notify_callback_static_readback_keeps_color_temp(h6199):
+    """A static reply carries no colour, so it cannot replace an optimistic colour temperature."""
     cb = h6199._notify_callback
     reply = bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30]))
 
     h6199.color_temp_kelvin = 4000
     h6199.rgb_color = (1, 2, 3)
-    h6199._expected_state["color_temp_kelvin"] = (4000, time.monotonic() + 60)
     cb(None, reply)
     assert h6199.color_temp_kelvin == 4000
     assert h6199.rgb_color == (1, 2, 3)
-    assert "color_temp_kelvin" in h6199._expected_state
-
-    # Past the deadline the device reply wins: kelvin cleared, rgb adopted.
-    h6199._expected_state["color_temp_kelvin"] = (4000, time.monotonic() - 1)
-    cb(None, reply)
-    assert h6199.color_temp_kelvin is None
-    assert h6199.rgb_color == (10, 20, 30)
-    assert "color_temp_kelvin" not in h6199._expected_state
 
 
 def test_notify_callback_effect_window(h6199):
@@ -459,52 +449,46 @@ def test_notify_callback_music_auto_color_clears_manual_color(h6199):
     assert h6199._field_revisions["music_color"] == revision + 1
 
 
-def test_active_custom_id_sticky_clear(h6199):
+def test_active_custom_id_sticky_clear(coord):
     """Custom identity survives only a matching mode with same-connection ownership."""
-    h6199.profile = replace(h6199.profile, static_readback_echoes_color=True)
-    cb = h6199._notify_callback
-    h6199.custom_effects = {
+    cb = coord._notify_callback
+    coord.custom_effects = {
         "segments": CustomEffect("segments", "Segments", "segments", SegmentContent(colors=((255, 0, 0),))),
         "flame": CustomEffect("flame", "Flame", "flame", VibrantContent(stops=((0, 0, 0), (255, 0, 0)))),
     }
-    for payload, expected_field, expected_value in (
-        ([0x15, 0x01, 10, 20, 30], "rgb_color", (10, 20, 30)),
-        ([0x15, 0x02, 50], "white_brightness", 50),
-    ):
-        h6199.active_custom_id, h6199.effect = "segments", "Segments"
-        h6199.diy_slot = proto.AUTHORED_DIY_SLOT
-        cb(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
-        assert (h6199.active_custom_id, h6199.effect) == ("segments", "Segments")
-        assert h6199.diy_slot is None
-        assert h6199.color_mode is proto.ParsedMode.COLOUR
-        assert getattr(h6199, expected_field) == expected_value
-    h6199.active_custom_id, h6199.effect = "flame", "Flame"
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
-    assert h6199.active_custom_id is None and h6199.effect is None
-    h6199.active_custom_id, h6199.effect = "flame", "Flame"
-    h6199._owned_diy_effect_id = "flame"
-    h6199.music_mode, h6199.video_mode = "rhythm", "movie"
+    coord.active_custom_id, coord.effect = "segments", "Segments"
+    coord.diy_slot = proto.AUTHORED_DIY_SLOT
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01])))
+    assert (coord.active_custom_id, coord.effect) == ("segments", "Segments")
+    assert coord.diy_slot is None
+    assert coord.color_mode is proto.ParsedMode.COLOUR
+    coord.active_custom_id, coord.effect = "flame", "Flame"
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01])))
+    assert coord.active_custom_id is None and coord.effect is None
+    coord.active_custom_id, coord.effect = "flame", "Flame"
+    coord._owned_diy_effect_id = "flame"
+    coord.music_mode, coord.video_mode = "rhythm", "movie"
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
-    assert (h6199.active_custom_id, h6199.effect) == ("flame", "Flame")
-    assert h6199.diy_slot == proto.AUTHORED_DIY_SLOT
-    assert (h6199.music_mode, h6199.video_mode) == ("off", "off")
-    h6199.active_custom_id, h6199.effect = "segments", "Segments"
+    assert (coord.active_custom_id, coord.effect) == ("flame", "Flame")
+    assert coord.diy_slot == proto.AUTHORED_DIY_SLOT
+    assert (coord.music_mode, coord.video_mode) == ("off", "off")
+    coord.active_custom_id, coord.effect = "segments", "Segments"
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
-    assert h6199.active_custom_id is None and h6199.effect is None
-    h6199.active_custom_id, h6199.effect = "flame", "Flame"
-    h6199._owned_diy_effect_id = None
+    assert coord.active_custom_id is None and coord.effect is None
+    coord.active_custom_id, coord.effect = "flame", "Flame"
+    coord._owned_diy_effect_id = None
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
-    assert h6199.active_custom_id is None and h6199.effect is None
-    h6199.active_custom_id, h6199.effect = "flame", "Flame"
+    assert coord.active_custom_id is None and coord.effect is None
+    coord.active_custom_id, coord.effect = "flame", "Flame"
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, 0xEF])))
-    assert h6199.active_custom_id is None and h6199.effect is None
-    assert h6199.diy_slot == 0xEF
-    for payload in ([0x04, 0x9D, 0x08], [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3], [0x00, 0x00, 0x01, 42]):
-        h6199.active_custom_id = "flame"
-        h6199.diy_slot = 0xEF
+    assert coord.active_custom_id is None and coord.effect is None
+    assert coord.diy_slot == 0xEF
+    for payload in ([0x04, 0x9D, 0x08], [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3]):
+        coord.active_custom_id = "flame"
+        coord.diy_slot = 0xEF
         cb(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
-        assert h6199.active_custom_id is None
-        assert h6199.diy_slot is None
+        assert coord.active_custom_id is None
+        assert coord.diy_slot is None
 
 
 def test_readback_mode_mutual_exclusion(h6199):
@@ -621,35 +605,19 @@ async def test_disconnect_drops_diy_identity_ownership(h6199):
     assert h6199._owned_diy_effect_id is None
 
 
-def test_newer_static_mode_rejects_delayed_diy_reply(h6199):
-    h6199.profile = replace(h6199.profile, static_readback_echoes_color=True)
-    h6199.color_mode = proto.ParsedMode.COLOUR
-    h6199.diy_slot = None
-    h6199._expected_state["color_mode"] = ((proto.ParsedMode.COLOUR, 0x01), time.monotonic() + 60)
-    cb = h6199._notify_callback
+def test_newer_static_mode_rejects_delayed_diy_reply(coord):
+    coord.color_mode = proto.ParsedMode.COLOUR
+    coord.diy_slot = None
+    coord._expected_state["color_mode"] = ((proto.ParsedMode.COLOUR, None), time.monotonic() + 60)
+    cb = coord._notify_callback
 
     static = bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30]))
     stale_diy = bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT]))
     cb(None, static)
     cb(None, stale_diy)
 
-    assert h6199.color_mode is proto.ParsedMode.COLOUR
-    assert h6199.diy_slot is None
-    assert h6199.rgb_color == (10, 20, 30)
-
-
-def test_static_submode_expectation_rejects_reordered_reply(h6199):
-    h6199.profile = replace(h6199.profile, static_readback_echoes_color=True)
-    h6199._expected_state["color_mode"] = ((proto.ParsedMode.COLOUR, 0x01), time.monotonic() + 60)
-    h6199._expected_state["rgb_color"] = ((10, 20, 30), time.monotonic() + 60)
-    cb = h6199._notify_callback
-
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x02, 80])))
-
-    assert h6199.color_mode is proto.ParsedMode.COLOUR
-    assert h6199.rgb_color == (10, 20, 30)
-    assert h6199.white_brightness == 100
+    assert coord.color_mode is proto.ParsedMode.COLOUR
+    assert coord.diy_slot is None
 
 
 def test_music_expectation_rejects_delayed_same_mode_reply(h6199):
@@ -976,9 +944,9 @@ async def test_scene_speed_rejects_a_scene_without_documented_metadata(coord):
 def test_notify_callback_poweroff_memory(h6199):
     cb = h6199._notify_callback
     assert h6199.poweroff_memory is None
-    cb(None, bytearray([0xAA, 0x41, 0x01, 0x00]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x41, [0x01])))
     assert h6199.poweroff_memory is True
-    cb(None, bytearray([0xAA, 0x41, 0x00, 0x00]))
+    cb(None, bytearray(proto.build_packet(0xAA, 0x41, [0x00])))
     assert h6199.poweroff_memory is False
 
 
@@ -1188,13 +1156,13 @@ async def test_set_schedule_timer_rollback(coord):
 
 
 def test_notify_callback_sleep_timer(coord):
-    coord._notify_callback(None, bytearray([0xAA, 0x11, 0x01, 80, 45, 0]))
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x11, [0x01, 80, 45, 0])))
     assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 45
     assert coord.sleep_timer_start_brightness == 80 and coord.sleep_timer_current_minutes == 0
 
 
 def test_notify_callback_wakeup_timer(coord):
-    coord._notify_callback(None, bytearray([0xAA, 0x12, 0x01, 100, 7, 30, 0x80, 10]))
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x12, [0x01, 100, 7, 30, 0x80, 10])))
     assert coord.wakeup_timer_enabled is True and coord.wakeup_timer_time == dtime(7, 30)
     assert coord.wakeup_timer_end_brightness == 100
     assert coord.wakeup_timer_repeat_days == frozenset()
@@ -1478,20 +1446,29 @@ def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
     """
     unknown = 401
     assert unknown not in proto.SCENE_EFFECT_BY_ID
-    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *unknown.to_bytes(2, "little")]))
+    coord._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *unknown.to_bytes(2, "little")])),
+    )
     assert coord.effect is None
     assert coord.unknown_scene_code == unknown
 
     # A scene we can name is reported by name, and leaves no stale code behind.
     known = next(iter(proto.SCENE_EFFECT_BY_ID))
-    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *known.to_bytes(2, "little")]))
+    coord._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *known.to_bytes(2, "little")])),
+    )
     assert coord.effect == proto.SCENE_EFFECT_BY_ID[known]
     assert coord.unknown_scene_code is None
 
     # Leaving scene mode drops it too, so it can never describe a light that is not in a scene.
-    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *unknown.to_bytes(2, "little")]))
+    coord._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *unknown.to_bytes(2, "little")])),
+    )
     assert coord.unknown_scene_code == unknown
-    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_STATIC, 0x00]))
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_STATIC, 0x00])))
     assert coord.unknown_scene_code is None
 
 
@@ -1503,32 +1480,33 @@ def test_a_scene_code_is_only_named_for_a_model_that_owns_the_name(h6199):
     into state and claim a scene the light is not running.
     """
     catalogue_only = next(code for code, name in proto.SCENE_EFFECT_BY_ID.items() if name not in h6199.scene_name_set)
-    h6199._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *catalogue_only.to_bytes(2, "little")]))
+    h6199._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *catalogue_only.to_bytes(2, "little")])),
+    )
     assert h6199.effect is None
     assert h6199.unknown_scene_code == catalogue_only
 
     # The three this model was captured starting are named, because a capture confirmed the code.
     for name in ("sunrise", "sunset", "candlelight"):
         code = next(c for c, n in proto.SCENE_EFFECT_BY_ID.items() if n == name)
-        h6199._apply_color_mode_payload(bytes([proto.COLOR_MODE_SCENE, *code.to_bytes(2, "little")]))
+        h6199._notify_callback(
+            None,
+            bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *code.to_bytes(2, "little")])),
+        )
         assert h6199.effect == name
         assert h6199.unknown_scene_code is None
 
 
 def test_video_readback_is_gated_on_the_model(coord, h6199):
-    """0x00 is the video selector, so noise and truncation land in the video branch.
+    """The same mode byte is video only in the H6199 status grammar."""
+    payload = [proto.COLOR_MODE_VIDEO, 0x00, 0x01, 42, 0x01, 55]
 
-    split_status_frame passes loose frames through without verifying the checksum, so a
-    short aa 05 frame reaches the decoder. On a model with no video mode that used to read
-    out as a confident game mode with a saturation.
-    """
-    payload = bytes([proto.COLOR_MODE_VIDEO, 0x00, 0x01, 42, 0x01, 55])
-
-    coord._apply_color_mode_payload(payload)
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
     assert coord.color_mode is proto.ParsedMode.UNKNOWN
     assert coord.video_mode == "off"
 
-    h6199._apply_color_mode_payload(payload)
+    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
     assert h6199.color_mode is proto.ParsedMode.VIDEO
     assert h6199.video_mode == "game"
     assert h6199.video_saturation == 42

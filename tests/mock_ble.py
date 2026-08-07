@@ -15,7 +15,8 @@ from custom_components.ha_govee_led_ble.protocol import (
     ParsedColorModeResponse,
     build_segment_brightness,
     build_segment_color,
-    parse_color_mode_response,
+    decode_status_frame,
+    parse_generated_color_mode,
 )
 from tools.ble.mock_ble.mock_device import RGB, FakeGoveeClient, GoveeDeviceSim
 
@@ -55,11 +56,9 @@ def segment_brightness_packet(brightness: int, mask: int) -> bytes:
 def parse_color_reply(sim: GoveeDeviceSim) -> ParsedColorModeResponse:
     """Round-trip the sim's aa 05 reply back through the production decoder."""
     (frame,) = sim.handle_write(COLOR_MODE_QUERY)
-    return parse_color_mode_response(
-        frame[2:-1],
-        static_echoes_color=sim.profile.static_readback_echoes_color,
-        video_supported=sim.profile.supports_video_mode,
-    )
+    decoded = decode_status_frame(frame, sim.model)
+    assert decoded is not None
+    return parse_generated_color_mode(decoded.generated, sim.model)
 
 
 @dataclass

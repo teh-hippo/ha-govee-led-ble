@@ -47,8 +47,10 @@ def test_identity_replies_roundtrip(model):
     sim = GoveeDeviceSim(model)
     (firmware,) = sim.handle_write(proto.FW_QUERY)
     (hardware,) = sim.handle_write(proto.HW_QUERY)
-    assert proto.parse_fw_version(proto.split_status_frame(firmware)[1]) == sim.firmware
-    assert proto.parse_hw_version(proto.split_status_frame(hardware)[1]) == sim.hardware
+    firmware_status = proto.decode_status_frame(firmware, model)
+    hardware_status = proto.decode_status_frame(hardware, model)
+    assert firmware_status is not None and firmware_status.generated.body.text == sim.firmware
+    assert hardware_status is not None and hardware_status.generated.body.text == sim.hardware
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -80,20 +82,14 @@ def test_color_temp_default_readback_is_static_rgb(model):
 
 
 async def test_ct_readback_keeps_coordinator_kelvin(mock_ble):
-    """A colour-temp read-back echoes the white point; the coordinator keeps CT, not RGB."""
+    """A static read-back carries no colour, so the coordinator keeps its optimistic CT."""
     sim, coord = mock_ble.sim, mock_ble.coordinator
     sim.handle_write(proto.build_color_temp(4000))
     coord.color_temp_kelvin, coord.rgb_color = 4000, proto.kelvin_to_rgb(4000)
     (frame,) = sim.handle_write(proto.COLOR_MODE_QUERY)
-    coord._apply_color_mode_payload(frame[2:-1])
+    coord._notify_callback(None, bytearray(frame))
     assert coord.color_temp_kelvin == 4000
-    coord._apply_color_mode_payload(bytes([proto.COLOR_MODE_STATIC, 0x01, 10, 20, 30]))
-    if not coord.profile.static_readback_echoes_color:
-        # The device sends no colour at all, so a read-back can never drop CT or repaint.
-        assert coord.color_temp_kelvin == 4000 and coord.rgb_color == proto.kelvin_to_rgb(4000)
-        return
-    # A genuinely different RGB read still drops CT and switches to RGB.
-    assert coord.color_temp_kelvin is None and coord.rgb_color == (10, 20, 30)
+    assert coord.rgb_color == proto.kelvin_to_rgb(4000)
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -119,7 +115,7 @@ def test_static_readback_reports_the_multi_effect_register(model):
     if sim.profile.static_readback_echoes_color:
         return
     parsed = parse_color_reply(sim)
-    assert parsed.multi_effect_flag == 1
+    assert parsed.multi_effect_flag == (1 if model == "H617A" else None)
     # Decoding the zero payload as a colour here would report the strip as black.
     assert parsed.rgb_color is None
 
@@ -139,7 +135,7 @@ async def test_colour_readback_is_accepted_and_never_blacks_out(mock_ble: MockBl
     # capture confirmed it can start, so an arbitrary catalogue code reads back unnamed there.
     sim.handle_write(proto.build_scene(SCENES["candlelight"].code))
     (reply,) = sim.handle_write(proto.COLOR_MODE_QUERY)
-    coord._apply_color_mode_payload(reply[2:-1])
+    coord._notify_callback(None, bytearray(reply))
     learned_effect = coord.effect
     assert learned_effect == "candlelight"
 
@@ -148,7 +144,8 @@ async def test_colour_readback_is_accepted_and_never_blacks_out(mock_ble: MockBl
     await coord.send_command(proto.build_color_rgb(10, 20, 30))
     coord.rgb_color = (10, 20, 30)
     (reply,) = sim.handle_write(proto.COLOR_MODE_QUERY)
-    assert coord._apply_color_mode_payload(reply[2:-1]), "reply dropped as stale; the mode never confirms"
+    coord._notify_callback(None, bytearray(reply))
+    assert coord.color_mode is proto.ParsedMode.COLOUR
     assert coord.effect is None
     assert coord.rgb_color == (10, 20, 30)
 
@@ -157,17 +154,17 @@ async def test_colour_readback_is_accepted_and_never_blacks_out(mock_ble: MockBl
     sim.handle_write(proto.build_packet(proto.COMMAND_HEADER, 0xA3, [0x01]))
     coord._expected_state.clear()
     (reply,) = sim.handle_write(proto.COLOR_MODE_QUERY)
-    coord._apply_color_mode_payload(reply[2:-1])
+    coord._notify_callback(None, bytearray(reply))
     assert coord.rgb_color == (10, 20, 30)
 
 
 @pytest.mark.parametrize("model", MODELS)
 def test_scene_command_roundtrips(model):
     sim = GoveeDeviceSim(model)
-    sim.handle_write(proto.build_scene(2205))
-    assert sim.scene_code == 2205
-    assert sim.effect == "candy"
-    assert parse_color_reply(sim).effect == "candy"
+    sim.handle_write(proto.build_scene(9))
+    assert sim.scene_code == 9
+    assert sim.effect == "candlelight"
+    assert parse_color_reply(sim).effect == "candlelight"
 
 
 @pytest.mark.parametrize("model", MODELS)

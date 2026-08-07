@@ -5,7 +5,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
-from typing import Any, cast
+from typing import Any
 
 from .const import MUSIC_MODE_SLUGS
 from .custom_effects import (
@@ -140,31 +140,24 @@ def _get(payload: bytes, index: int) -> int | None:
 class ParsedStatusEnvelope:
     domain: int
     payload: bytes
-    generated: Any | None
+    generated: Any
 
 
 def decode_status_frame(
     frame: bytes,
     model: str = "H617A",
 ) -> ParsedStatusEnvelope | None:
-    """Split an incoming status notification into ``(domain, payload)``.
-
-    Returns ``None`` for frames shorter than three bytes, without the status header, or
-    for a full envelope whose XOR checksum is invalid. Short notifications have no
-    checksum byte and keep everything after the domain.
-    """
-    if len(frame) < 3 or frame[0] != STATUS_HEADER:
+    """Parse one fixed-size status notification with its model-specific Kaitai class."""
+    if len(frame) != 20 or frame[0] != STATUS_HEADER:
         return None
-    if len(frame) == 20:
-        parsed = _parse_generated_status(frame, model)
-        if parsed is None:
-            return None
-        return ParsedStatusEnvelope(
-            int(parsed.domain),
-            bytes(frame[2:-1]),
-            parsed,
-        )
-    return ParsedStatusEnvelope(frame[1], bytes(frame[2:]), None)
+    parsed = _parse_generated_status(frame, model)
+    if parsed is None:
+        return None
+    return ParsedStatusEnvelope(
+        int(parsed.domain),
+        bytes(frame[2:-1]),
+        parsed,
+    )
 
 
 def split_status_frame(
@@ -866,144 +859,6 @@ def parse_generated_color_mode(
     return ParsedColorModeResponse(mode=ParsedMode.UNKNOWN)
 
 
-@dataclass(frozen=True)
-class ParsedDisplaySettingResponse:
-    """Decoded ``aa a9`` display-setting state."""
-
-    setting: int
-    reset_white_balance: tuple[int, int] | None = None
-    current_white_balance: tuple[int, int] | None = None
-    blank_screen: bool | None = None
-
-
-@dataclass(frozen=True)
-class ParsedRelativeBrightnessResponse:
-    """Decoded ``aa ae`` edge state in captured left/top/right/bottom order."""
-
-    left: int
-    top: int
-    right: int
-    bottom: int
-
-
-def parse_display_setting_response(payload: bytes) -> ParsedDisplaySettingResponse:
-    """Decode an ``aa a9`` display-setting reply."""
-    if len(payload) < 2:
-        raise ValueError("Display-setting payload is truncated")
-    setting, declared_length = payload[:2]
-    body = payload[2 : 2 + declared_length]
-    if len(body) != declared_length:
-        raise ValueError("Display-setting payload length does not match its declaration")
-    if setting == DISPLAY_SETTING_WHITE_BALANCE:
-        if len(body) != 6:
-            raise ValueError("White-balance state must contain reset and current triples")
-        return ParsedDisplaySettingResponse(
-            setting=setting,
-            reset_white_balance=(body[1], body[2]),
-            current_white_balance=(body[4], body[5]),
-        )
-    if setting == DISPLAY_SETTING_BLANK_SCREEN:
-        if len(body) != 6:
-            raise ValueError("Blank-screen state must contain its six-byte payload")
-        return ParsedDisplaySettingResponse(setting=setting, blank_screen=bool(body[0]))
-    return ParsedDisplaySettingResponse(setting=setting)
-
-
-def parse_relative_brightness_response(payload: bytes) -> ParsedRelativeBrightnessResponse:
-    """Decode an ``aa ae`` edge-state reply."""
-    if len(payload) < 6 or payload[0] != RELATIVE_BRIGHTNESS_HEAD or payload[1] != RELATIVE_BRIGHTNESS_EDGES:
-        raise ValueError("Relative-brightness state has an unsupported shape")
-    left, top, right, bottom = payload[2:6]
-    return ParsedRelativeBrightnessResponse(left, top, right, bottom)
-
-
-def parse_color_mode_response(
-    payload: bytes, *, static_echoes_color: bool = False, video_supported: bool = False
-) -> ParsedColorModeResponse:
-    """Decode an ``aa 05`` colour-mode reply.
-
-    The flags describe model-specific read-back behaviour. Callers with a
-    :class:`~.const.ModelProfile` pass its capabilities.
-    """
-    if not payload:
-        raise ValueError("Color mode payload is empty")
-    mode = payload[0]
-    if mode == COLOR_MODE_SCENE:
-        scene_bytes = payload[1:] or b"\x00"
-        while len(scene_bytes) > 1 and scene_bytes[-1] == 0:
-            scene_bytes = scene_bytes[:-1]
-        scene_code = int.from_bytes(scene_bytes, "little")
-        return ParsedColorModeResponse(
-            mode=ParsedMode.SCENE, effect=SCENE_EFFECT_BY_ID.get(scene_code), scene_code=scene_code
-        )
-    if mode == COLOR_MODE_DIY:
-        return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_slot=_get(payload, 1))
-    if mode == COLOR_MODE_VIDEO:
-        # The video selector is 0x00, so any short or zero-led aa 05 frame lands here, and
-        # split_status_frame passes loose frames through without verifying their checksum. On a
-        # model with no video mode that reads out as a confident "game, saturation N" from noise.
-        if not video_supported:
-            return ParsedColorModeResponse(mode=ParsedMode.UNKNOWN)
-        return ParsedColorModeResponse(
-            mode=ParsedMode.VIDEO,
-            video_mode="game" if bool(_get(payload, 2)) else "movie",
-            video_full_screen=bool(v) if (v := _get(payload, 1)) is not None else None,
-            video_saturation=_get(payload, 3),
-            video_sound_effects=bool(v) if (v := _get(payload, 4)) is not None else None,
-            video_sound_effects_softness=_get(payload, 5),
-        )
-    if mode == COLOR_MODE_MUSIC:
-        mode_id = _get(payload, 1)
-        style = _get(payload, 3)
-        color_parts = (_get(payload, 5), _get(payload, 6), _get(payload, 7))
-        music_color = (
-            cast(tuple[int, int, int], color_parts) if _get(payload, 4) == 0x01 and None not in color_parts else None
-        )
-        # byte5 (index 3) is Dynamic/Calm only for Rhythm; other modes repurpose it, so leave calm unset.
-        music_calm = bool(style) if mode_id == RHYTHM_MODE_ID and style is not None else None
-        return ParsedColorModeResponse(
-            mode=ParsedMode.MUSIC,
-            music_mode=MUSIC_SLUG_BY_ID.get(mode_id or -1),
-            music_sensitivity=_get(payload, 2),
-            music_calm=music_calm,
-            music_color=music_color,
-        )
-    if mode != COLOR_MODE_STATIC:
-        return ParsedColorModeResponse(mode=ParsedMode.UNKNOWN)
-    if not static_echoes_color:
-        # status_reply::cm_static. The byte after the mode is NOT a static sub-selector: it mirrors
-        # the 33 a3 register, and the rest of the window is always zero. Reading a colour out of it
-        # invents (0, 0, 0) whenever that register is set.
-        return ParsedColorModeResponse(mode=ParsedMode.COLOUR, multi_effect_flag=_get(payload, 1))
-    rgb_parts = (_get(payload, 2), _get(payload, 3), _get(payload, 4))
-    rgb_color = cast(tuple[int, int, int], rgb_parts) if _get(payload, 1) == 0x01 and None not in rgb_parts else None
-    return ParsedColorModeResponse(
-        mode=ParsedMode.COLOUR,
-        rgb_color=rgb_color,
-        white_brightness=(
-            _clamp(v, 0, 100) if _get(payload, 1) == 0x02 and (v := _get(payload, 2)) is not None else None
-        ),
-    )
-
-
-def _decode_version(payload: bytes) -> str | None:
-    """Decode an ASCII version string from a status payload, trimming NUL padding."""
-    text = payload.split(b"\x00", 1)[0].decode("ascii", "ignore").strip()
-    return text or None
-
-
-def parse_fw_version(payload: bytes) -> str | None:
-    """Decode the firmware version from an ``aa 06`` reply payload (e.g. ``"3.02.24"``)."""
-    return _decode_version(payload)
-
-
-def parse_hw_version(payload: bytes) -> str | None:
-    """Decode the hardware version from an ``aa 07 03`` reply payload."""
-    if not payload or payload[0] != 0x03:
-        return None
-    return _decode_version(payload[1:])
-
-
 # Timer encoders are capture-backed by govee_common::{sleep_timer,wake_timer} and
 # command_write::timer_schedule_cmd. Power-off memory remains an unsupported research lead.
 
@@ -1359,26 +1214,6 @@ BUILDER_EVIDENCE: dict[str, Evidence] = {
     "parse_static_write": Evidence(
         "VALIDATED",
         "command_write.ksy::{static_color,static_brightness}",
-    ),
-    "parse_color_mode_response": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::colormode_body and h6199_status_reply.ksy::colour_mode_body",
-    ),
-    "parse_display_setting_response": Evidence(
-        "VALIDATED",
-        "h6199_status_reply.ksy::display_setting_body",
-    ),
-    "parse_relative_brightness_response": Evidence(
-        "VALIDATED",
-        "h6199_status_reply.ksy::relative_brightness_body",
-    ),
-    "parse_fw_version": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::version_body and h6199_status_reply.ksy::version_body",
-    ),
-    "parse_hw_version": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::hw_version_body and h6199_status_reply.ksy::hardware_version_body",
     ),
     "parse_timer_repeat": Evidence(
         "VALIDATED",
