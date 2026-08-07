@@ -164,15 +164,6 @@ def test_wifi_credentials_are_withheld_from_both_columns_by_default():
     assert b"HOME".hex() not in rendered
     assert "withheld" in dg.render_payload(frame)
     assert "withheld" in dg.label(frame, "TX")
-    # The fragment index survives redaction: it is the structural half worth reading.
-    assert "idx=0x01" in dg.label(frame, "TX")
-
-
-def test_wifi_credentials_are_printed_when_explicitly_asked_for():
-    """Redaction has to be escapable, or the one capture that needs the bytes is unreadable."""
-    frame = _wifi_credential_frame()
-    assert b"hunter22".hex() in dg.render_payload(frame, show_secrets=True)
-    assert dg.label(frame, "TX", show_secrets=True).startswith("wifi-provision idx=0x01")
 
 
 def test_other_a1_uploads_are_not_redacted():
@@ -213,7 +204,6 @@ def test_device_mac_is_withheld_from_both_columns_by_default():
     assert "deadbeef" not in dg.label(frame, "RX")
     assert "withheld" in dg.render_payload(frame)
     assert "withheld" in dg.label(frame, "RX")
-    assert "deadbeef" in dg.render_payload(frame, show_secrets=True)
 
 
 def test_other_aa_replies_are_not_redacted():

@@ -263,18 +263,18 @@ def secret_reason(v: bytes) -> str | None:
     return None
 
 
-def render_payload(v: bytes, *, show_secrets: bool = False) -> str:
-    """The payload column, with credentials and hardware identity withheld by default."""
-    reason = None if show_secrets else secret_reason(v)
+def render_payload(v: bytes) -> str:
+    """The payload column, with credentials and hardware identity always withheld."""
+    reason = secret_reason(v)
     if reason is not None:
-        return v[:2].hex() + f" <{reason} withheld>"
+        return f"<{reason} withheld>"
     return v.hex()
 
 
-def label(v: bytes, direction: str, *, model: str = "auto", show_secrets: bool = False) -> str:
+def label(v: bytes, direction: str, *, model: str = "auto") -> str:
     """Best-effort human label using generated model-specific structures."""
     _require_direction(direction)
-    reason = None if show_secrets else secret_reason(v)
+    reason = secret_reason(v)
     h = v[0]
     if _is_music_stream(v):
         return describe_generated(v, direction, model) or "mic-stream"
@@ -285,8 +285,7 @@ def label(v: bytes, direction: str, *, model: str = "auto", show_secrets: bool =
         # The index survives redaction: the fragmentation is the structural part worth
         # reading and none of it is secret.
         if reason is not None:
-            generated = describe_generated(v, direction, model) or "wifi-provision"
-            return f"{generated} <{reason} withheld>"
+            return f"wifi-provision <{reason} withheld>"
         return describe_generated(v, direction, model) or "multi-frame(a1)"
     if h == 0xEE:
         # Device-initiated Wi-Fi association result, seen 2026-08-04 about eleven seconds
@@ -671,11 +670,6 @@ def main() -> int:
         help="print a capture holding more than one Govee source without narrowing it first",
     )
     parser.add_argument(
-        "--show-secrets",
-        action="store_true",
-        help="print payloads withheld by default: Wi-Fi credentials (a1 11) and the device Wi-Fi MAC (aa 14)",
-    )
-    parser.add_argument(
         "--model",
         choices=("auto", *MODELS),
         default="auto",
@@ -748,19 +742,36 @@ def main() -> int:
             govee += 1
             first = value not in seen
             seen.add(value)
+            reason = secret_reason(value)
+            if reason is not None:
+                payload_text = f"<{reason} withheld>"
+                label_text = f"<{reason} withheld>"
+            else:
+                payload_text = value.hex()
+                label_text = label(value, record.direction, model=opts.model)
             rows.append(
                 (
                     source,
                     record.direction,
                     record.opcode,
                     record.attribute_handle,
-                    value,
-                    label(value, record.direction, model=opts.model, show_secrets=opts.show_secrets),
+                    payload_text,
+                    label_text,
                     first,
                 )
             )
         elif opts.all and value:
-            rows.append((source, record.direction, record.opcode, record.attribute_handle, value, "(non-govee)", True))
+            rows.append(
+                (
+                    source,
+                    record.direction,
+                    record.opcode,
+                    record.attribute_handle,
+                    value.hex(),
+                    "(non-govee)",
+                    True,
+                )
+            )
 
     print(f"# {opts.capture}")
     print(f"# ATT writes/notifications: {total}   Govee packets: {govee}   unique Govee: {len(seen)}")
@@ -776,12 +787,9 @@ def main() -> int:
         for source in unattributed if wanted is None else [wanted]:
             print(f"# WARNING: {source} was never named; this capture cannot say which device it was")
     print(f"# {'source':<17} {'dir':<3} {'op':<12} {'hdl':<6} {'payload (hex)':<41} label")
-    for source, direction, opcode, handle, value, lab, first in rows:
+    for source, direction, opcode, handle, payload_text, lab, first in rows:
         mark = " " if first else "."
-        print(
-            f"{mark} {source:<17} {direction:<3} {WRITE_OPCODES[opcode]:<12} {handle:#06x} "
-            f"{render_payload(value, show_secrets=opts.show_secrets):<41} {lab}"
-        )
+        print(f"{mark} {source:<17} {direction:<3} {WRITE_OPCODES[opcode]:<12} {handle:#06x} {payload_text:<41} {lab}")
     if not opts.all:
         print("# ('.' = repeat of an earlier packet; pass --all to include non-Govee ATT values)")
     return 0
