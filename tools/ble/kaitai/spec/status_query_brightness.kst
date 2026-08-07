@@ -1,7 +1,7 @@
-id: status_reply_brightness_query
+id: status_query_brightness
 data: status_reply_brightness_query.bin
 imports:
-- status_reply
+- status_query
 provenance:
   kind: capture_frame
   schema_model: h617a
@@ -12,6 +12,6 @@ provenance:
 asserts:
 - actual: domain
   expected: 4
-- actual: body.brightness_pct
-  expected: 0
+- actual: body.zeros.size
+  expected: 17
 fixture_sha256: 06bd5f00069541557bd7e84251b1d5c4825d1f2d3a6ef8dc93f99e403dcdb3bc

@@ -16,6 +16,14 @@ H6199CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
 )
+StatusQuery = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.status_query").StatusQuery,
+)
+H6199StatusQuery = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_query").H6199StatusQuery,
+)
 GoveeShared = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_shared").GoveeShared,
@@ -98,6 +106,67 @@ def _command_types(model: str) -> tuple[Any, Any, Any]:
 
 def _child(child_type: Any, parent: Any) -> Any:
     return child_type(None, parent, parent._root)
+
+
+def _build_status_query(
+    domain: str,
+    model: str = "H617A",
+    *,
+    display_setting: str | None = None,
+) -> bytes:
+    root_type = H6199StatusQuery if model == "H6199" else StatusQuery
+    root = root_type()
+    root.header = b"\xaa"
+    root.domain = getattr(root_type.QueryDomain, domain)
+    if display_setting is not None:
+        body = _child(root_type.DisplaySettingQueryBody, root)
+        body.setting = getattr(root_type.DisplaySetting, display_setting)
+        body.zeros = [0] * 16
+    elif domain == "hardware":
+        body = _child(root_type.HardwareQueryBody, root)
+        body.selector = b"\x03"
+        body.zeros = [0] * 16
+    elif domain == "relative_brightness":
+        body = _child(root_type.RelativeBrightnessQueryBody, root)
+        body.selector = b"\x01"
+        body.zeros = [0] * 16
+    else:
+        body = _child(root_type.ZeroBody, root)
+        body.zeros = [0] * 17
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_power_query(model: str = "H617A") -> bytes:
+    return _build_status_query("power", model)
+
+
+def build_brightness_query(model: str = "H617A") -> bytes:
+    return _build_status_query("brightness", model)
+
+
+def build_colour_mode_query(model: str = "H617A") -> bytes:
+    return _build_status_query("colour_mode", model)
+
+
+def build_firmware_query(model: str = "H617A") -> bytes:
+    return _build_status_query("firmware", model)
+
+
+def build_hardware_query(model: str = "H617A") -> bytes:
+    return _build_status_query("hardware", model)
+
+
+def build_h6199_white_balance_query() -> bytes:
+    return _build_status_query("display_setting", "H6199", display_setting="white_balance")
+
+
+def build_h6199_blank_screen_query() -> bytes:
+    return _build_status_query("display_setting", "H6199", display_setting="blank_screen")
+
+
+def build_h6199_relative_brightness_query() -> bytes:
+    return _build_status_query("relative_brightness", "H6199")
 
 
 def _rgb(parent: Any, red: int, green: int, blue: int) -> Any:

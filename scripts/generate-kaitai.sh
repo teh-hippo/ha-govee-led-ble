@@ -17,6 +17,7 @@ case "$mode" in
       music_body
       scene_body
       scene_type1_body
+      status_query
       status_reply
     )
     package_args=(

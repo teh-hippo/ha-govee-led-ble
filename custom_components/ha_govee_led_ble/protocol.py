@@ -21,9 +21,12 @@ from .custom_effects import (
 from .generated_protocol_adapter import (
     build_brightness as _build_generated_brightness,
 )
+from .generated_protocol_adapter import build_brightness_query as _build_generated_brightness_query
+from .generated_protocol_adapter import build_colour_mode_query as _build_generated_colour_mode_query
 from .generated_protocol_adapter import (
     build_colour_temperature as _build_generated_colour_temperature,
 )
+from .generated_protocol_adapter import build_firmware_query as _build_generated_firmware_query
 from .generated_protocol_adapter import (
     build_h617a_diy as _build_generated_h617a_diy,
 )
@@ -34,7 +37,13 @@ from .generated_protocol_adapter import (
     build_h6199_blank_screen as _build_generated_blank_screen,
 )
 from .generated_protocol_adapter import (
+    build_h6199_blank_screen_query as _build_generated_blank_screen_query,
+)
+from .generated_protocol_adapter import (
     build_h6199_relative_brightness as _build_generated_relative_brightness,
+)
+from .generated_protocol_adapter import (
+    build_h6199_relative_brightness_query as _build_generated_relative_brightness_query,
 )
 from .generated_protocol_adapter import (
     build_h6199_scene as _build_generated_h6199_scene,
@@ -45,8 +54,13 @@ from .generated_protocol_adapter import (
 from .generated_protocol_adapter import (
     build_h6199_white_balance as _build_generated_white_balance,
 )
+from .generated_protocol_adapter import (
+    build_h6199_white_balance_query as _build_generated_white_balance_query,
+)
+from .generated_protocol_adapter import build_hardware_query as _build_generated_hardware_query
 from .generated_protocol_adapter import build_music_mode as _build_generated_music
 from .generated_protocol_adapter import build_power as _build_generated_power
+from .generated_protocol_adapter import build_power_query as _build_generated_power_query
 from .generated_protocol_adapter import (
     build_segment_brightness as _build_generated_segment_brightness,
 )
@@ -565,14 +579,14 @@ def build_custom_effect(content: EffectContent, *, segment_count: int) -> list[b
             raise EffectValidationError("unknown_kind_not_applyable")
 
 
-STATE_QUERY = build_packet(STATUS_HEADER, POWER_PACKET_TYPE, [])
-BRIGHTNESS_QUERY = build_packet(STATUS_HEADER, BRIGHTNESS_PACKET_TYPE, [])
-COLOR_MODE_QUERY = build_packet(STATUS_HEADER, COLOR_PACKET_TYPE, [])
-WHITE_BALANCE_QUERY = build_packet(STATUS_HEADER, DISPLAY_SETTING_PACKET_TYPE, [DISPLAY_SETTING_WHITE_BALANCE])
-BLANK_SCREEN_QUERY = build_packet(STATUS_HEADER, DISPLAY_SETTING_PACKET_TYPE, [DISPLAY_SETTING_BLANK_SCREEN])
-RELATIVE_BRIGHTNESS_QUERY = build_packet(STATUS_HEADER, RELATIVE_BRIGHTNESS_PACKET_TYPE, [RELATIVE_BRIGHTNESS_HEAD])
-FW_QUERY = build_packet(STATUS_HEADER, FIRMWARE_PACKET_TYPE, [])
-HW_QUERY = build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03])
+STATE_QUERY = _build_generated_power_query()
+BRIGHTNESS_QUERY = _build_generated_brightness_query()
+COLOR_MODE_QUERY = _build_generated_colour_mode_query()
+WHITE_BALANCE_QUERY = _build_generated_white_balance_query()
+BLANK_SCREEN_QUERY = _build_generated_blank_screen_query()
+RELATIVE_BRIGHTNESS_QUERY = _build_generated_relative_brightness_query()
+FW_QUERY = _build_generated_firmware_query()
+HW_QUERY = _build_generated_hardware_query()
 SLEEP_TIMER_QUERY = build_packet(STATUS_HEADER, 0x11, [])
 WAKEUP_TIMER_QUERY = build_packet(STATUS_HEADER, 0x12, [])
 SCHEDULE_TIMER_QUERY = build_packet(STATUS_HEADER, 0x23, [])
