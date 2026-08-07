@@ -55,7 +55,7 @@ from .generated_protocol_adapter import (
 )
 from .generated_protocol_adapter import parse_status as _parse_generated_status
 from .generated_protocol_adapter import xor_checksum
-from .scenes import SCENES, SceneSpeed
+from .scenes import MODEL_SCENES, SCENES, SceneSpeed
 
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
@@ -101,6 +101,9 @@ VIBRANT_DIY_SLOT = 0x84
 MUSIC_SLUG_BY_ID: dict[int, str] = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
 RHYTHM_MODE_ID = MUSIC_MODE_SLUGS["rhythm"]
 SCENE_EFFECT_BY_ID: dict[int, str] = {scene.code: name for name, scene in SCENES.items()}
+SCENE_EFFECT_BY_MODEL_ID: dict[str, dict[int, str]] = {
+    model: {scene.code: name for name, scene in scenes.items()} for model, scenes in MODEL_SCENES.items()
+}
 MULTI_PACKET_PREFIX = 0xA3
 # Scene Speed field locations are owned by govee_common::effect_layer.
 MOVE_IN_OFFSET = -5
@@ -767,6 +770,86 @@ class ParsedColorModeResponse:
     rgb_color: tuple[int, int, int] | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
+
+
+def parse_generated_color_mode(
+    generated: Any,
+    model: str,
+) -> ParsedColorModeResponse:
+    body = generated.body
+    mode = int(body.mode)
+    if model == "H6199":
+        if mode == COLOR_MODE_VIDEO:
+            detail = body.detail
+            return ParsedColorModeResponse(
+                mode=ParsedMode.VIDEO,
+                video_mode="game" if int(detail.source) == 1 else "movie",
+                video_full_screen=int(detail.region) == 1,
+                video_saturation=int(detail.saturation),
+                video_sound_effects=bool(detail.sound_effects),
+                video_sound_effects_softness=int(detail.softness),
+            )
+        if mode == COLOR_MODE_MUSIC:
+            detail = body.detail
+            fixed_colour = None
+            if detail.has_fixed_colour:
+                fixed_colour = (
+                    int(detail.fixed_colour.red),
+                    int(detail.fixed_colour.green),
+                    int(detail.fixed_colour.blue),
+                )
+            return ParsedColorModeResponse(
+                mode=ParsedMode.MUSIC,
+                music_mode=MUSIC_SLUG_BY_ID.get(int(detail.mode)),
+                music_sensitivity=int(detail.sensitivity),
+                music_calm=bool(detail.is_calm),
+                music_color=fixed_colour,
+            )
+        if mode == COLOR_MODE_SCENE:
+            scene_code = int(body.detail.scene_id)
+            return ParsedColorModeResponse(
+                mode=ParsedMode.SCENE,
+                effect=SCENE_EFFECT_BY_MODEL_ID["H6199"].get(scene_code),
+                scene_code=scene_code,
+            )
+        if mode == COLOR_MODE_STATIC:
+            return ParsedColorModeResponse(mode=ParsedMode.COLOUR)
+        return ParsedColorModeResponse(mode=ParsedMode.UNKNOWN)
+
+    if mode == COLOR_MODE_SCENE:
+        scene_code = int(body.mode_body.scene_id)
+        return ParsedColorModeResponse(
+            mode=ParsedMode.SCENE,
+            effect=SCENE_EFFECT_BY_MODEL_ID["H617A"].get(scene_code),
+            scene_code=scene_code,
+        )
+    if mode == COLOR_MODE_DIY:
+        return ParsedColorModeResponse(
+            mode=ParsedMode.DIY,
+            diy_slot=int(body.mode_body.slot),
+        )
+    if mode == COLOR_MODE_MUSIC:
+        detail = body.mode_body
+        music_color = None
+        if detail.manual_color_count >= 1:
+            music_color = (
+                int(detail.rgb.red),
+                int(detail.rgb.green),
+                int(detail.rgb.blue),
+            )
+        return ParsedColorModeResponse(
+            mode=ParsedMode.MUSIC,
+            music_mode=MUSIC_SLUG_BY_ID.get(int(detail.mode_id)),
+            music_sensitivity=int(detail.sensitivity),
+            music_calm=bool(detail.style) if int(detail.mode_id) == RHYTHM_MODE_ID else None,
+            music_color=music_color,
+        )
+    if mode == COLOR_MODE_STATIC:
+        return ParsedColorModeResponse(
+            mode=ParsedMode.COLOUR,
+            multi_effect_flag=int(body.mode_body.sub),
+        )
+    return ParsedColorModeResponse(mode=ParsedMode.UNKNOWN)
 
 
 @dataclass(frozen=True)

@@ -69,6 +69,7 @@ from .protocol import (
     parse_color_mode_response,
     parse_display_setting_response,
     parse_fw_version,
+    parse_generated_color_mode,
     parse_hw_version,
     parse_poweroff_memory,
     parse_relative_brightness_response,
@@ -488,10 +489,20 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         _LOGGER.debug("Ignoring stale %s for %s: %r (expecting %r)", field, self.address, value, expected)
         return False
 
-    def _apply_color_mode_payload(self, payload: bytes) -> tuple[str, ...]:
+    def _apply_color_mode_payload(
+        self,
+        payload: bytes,
+        generated: Any | None = None,
+    ) -> tuple[str, ...]:
         static_echoes_color = self.profile.static_readback_echoes_color
-        parsed = parse_color_mode_response(
-            payload, static_echoes_color=static_echoes_color, video_supported=self.profile.supports_video_mode
+        parsed = (
+            parse_generated_color_mode(generated, self.model)
+            if generated is not None and not static_echoes_color
+            else parse_color_mode_response(
+                payload,
+                static_echoes_color=static_echoes_color,
+                video_supported=self.profile.supports_video_mode,
+            )
         )
         if parsed.mode is ParsedMode.DIY:
             mode_detail = parsed.diy_slot
@@ -666,7 +677,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     self.brightness_pct = brightness_value
                     observed = ("brightness_pct",)
             elif domain == COLOR_PACKET_TYPE:
-                observed = self._apply_color_mode_payload(payload)
+                observed = self._apply_color_mode_payload(payload, generated)
             elif domain == DISPLAY_SETTING_PACKET_TYPE:
                 display_setting = parse_display_setting_response(payload)
                 current_white_balance: tuple[int, int] | None
