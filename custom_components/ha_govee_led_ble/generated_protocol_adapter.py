@@ -94,6 +94,18 @@ def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
     return parsed
 
 
+def parse_command(frame: bytes, model: str = "H617A") -> Any | None:
+    if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
+        return None
+    root_type = H6199CommandWrite if model == "H6199" else CommandWrite
+    try:
+        parsed = root_type(KaitaiStream(io.BytesIO(frame)))
+        parsed._read()
+    except KaitaiStructError, UnicodeDecodeError:
+        return None
+    return parsed
+
+
 def _command_types(model: str) -> tuple[Any, Any, Any]:
     if model == "H6199":
         return (

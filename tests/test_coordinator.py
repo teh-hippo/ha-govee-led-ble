@@ -526,7 +526,7 @@ def test_readback_mode_mutual_exclusion(h6199):
     )
 
 
-async def test_send_command_arms_expected_state(coord):
+async def test_send_command_arms_expected_state(coord, h6199):
     c = _c(write_gatt_char=AsyncMock())
     with patch.object(coord, "_ensure_connected", return_value=c):
         await coord.send_command(proto.build_power(True))
@@ -544,14 +544,16 @@ async def test_send_command_arms_expected_state(coord):
         assert coord._expected_state["music_mode"][0] == proto.MUSIC_SLUG_BY_ID[mode_id]
         assert "rgb_color" not in coord._expected_state
 
-        await coord.send_command(proto.build_video_mode(full_screen=False, game_mode=True, saturation=60))
-        assert coord._expected_state["video_mode"][0] == "game"
-        assert coord._expected_state["video_full_screen"][0] is False
-        assert coord._expected_state["video_saturation"][0] == 60
+    with patch.object(h6199, "_ensure_connected", return_value=c):
+        await h6199.send_command(proto.build_video_mode(full_screen=False, game_mode=True, saturation=60))
+        assert h6199._expected_state["video_mode"][0] == "game"
+        assert h6199._expected_state["video_full_screen"][0] is False
+        assert h6199._expected_state["video_saturation"][0] == 60
         # The frame is always full, so sound and softness are armed even when sound is off.
-        assert coord._expected_state["video_sound_effects"][0] is False
-        assert coord._expected_state["video_sound_effects_softness"][0] == 100
+        assert h6199._expected_state["video_sound_effects"][0] is False
+        assert h6199._expected_state["video_sound_effects_softness"][0] == 100
 
+    with patch.object(coord, "_ensure_connected", return_value=c):
         await coord.send_command(proto.build_diy_activate(proto.AUTHORED_DIY_SLOT))
         assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.DIY, proto.AUTHORED_DIY_SLOT)
 
@@ -1423,7 +1425,8 @@ def test_expectations_from_packet_covers_every_command_family():
     video = _expectations_from_packet(
         proto.build_video_mode(
             full_screen=False, game_mode=True, saturation=42, sound_effects=True, sound_effects_softness=55
-        )
+        ),
+        "H6199",
     )
     assert video["video_mode"] == "game"
     assert video["video_full_screen"] is False

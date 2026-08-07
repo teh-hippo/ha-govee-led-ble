@@ -34,14 +34,8 @@ from .protocol import (
     BLANK_SCREEN_QUERY,
     BRIGHTNESS_PACKET_TYPE,
     BRIGHTNESS_QUERY,
-    COLOR_MODE_DIY,
-    COLOR_MODE_MUSIC,
     COLOR_MODE_QUERY,
-    COLOR_MODE_SCENE,
-    COLOR_MODE_STATIC,
-    COLOR_MODE_VIDEO,
     COLOR_PACKET_TYPE,
-    COMMAND_HEADER,
     DISPLAY_SETTING_PACKET_TYPE,
     FIRMWARE_PACKET_TYPE,
     FW_QUERY,
@@ -53,7 +47,7 @@ from .protocol import (
     READ_UUID,
     RELATIVE_BRIGHTNESS_PACKET_TYPE,
     RELATIVE_BRIGHTNESS_QUERY,
-    SCENE_EFFECT_BY_ID,
+    SCENE_EFFECT_BY_MODEL_ID,
     SCHEDULE_TIMER_QUERY,
     SLEEP_TIMER_QUERY,
     WAKEUP_TIMER_QUERY,
@@ -64,6 +58,7 @@ from .protocol import (
     ParsedTimerSchedule,
     SegmentColorGroup,
     build_segment_paint,
+    decode_command_frame,
     decode_status_frame,
     kelvin_to_rgb,
     parse_generated_color_mode,
@@ -109,42 +104,115 @@ _COLOR_EXPECTATION_FIELDS = frozenset(
 )
 
 
-def _expectations_from_packet(packet: bytes, *, static_echoes_color: bool = False) -> dict[str, Any]:
+def _expected_color_mode_from_generated(
+    generated: Any,
+    model: str,
+    *,
+    static_echoes_color: bool,
+) -> tuple[ParsedMode, int | None] | None:
+    if model == "H6199":
+        if generated.opcode.name != "mode":
+            return None
+        mode = getattr(generated.body.sub_mode, "name", None)
+        detail = generated.body.detail
+        if mode == "music":
+            return ParsedMode.MUSIC, None
+        if mode == "video":
+            return ParsedMode.VIDEO, None
+        if mode == "scene":
+            return ParsedMode.SCENE, None
+        if mode == "static_colour":
+            return ParsedMode.COLOUR, (int(detail.operation) if static_echoes_color else None)
+        return None
+    if generated.opcode.name != "multi":
+        return None
+    mode = getattr(generated.body.sub, "name", None)
+    detail = generated.body.sub_body
+    if mode == "diy":
+        return ParsedMode.DIY, int(detail.slot)
+    if mode == "music":
+        return ParsedMode.MUSIC, None
+    if mode == "scene":
+        return ParsedMode.SCENE, None
+    if mode == "static":
+        return ParsedMode.COLOUR, (int(detail.static_sub) if static_echoes_color else None)
+    return None
+
+
+def _expectations_from_packet(
+    packet: bytes,
+    model: str = "H617A",
+    *,
+    static_echoes_color: bool = False,
+) -> dict[str, Any]:
     """Map an outgoing command to the optimistic fields its replies should confirm."""
-    if len(packet) < 3 or packet[0] != COMMAND_HEADER:
+    generated = decode_command_frame(packet, model)
+    if generated is None:
         return {}
-    if packet[1] == POWER_PACKET_TYPE:
-        return {"is_on": bool(packet[2])}
-    if packet[1] == BRIGHTNESS_PACKET_TYPE:
-        return {"brightness_pct": packet[2]}
-    if packet[1] != COLOR_PACKET_TYPE or len(packet) < 4:
+    operation = getattr(generated.opcode, "name", None)
+    if operation is None:
         return {}
+    if operation == "power":
+        return {"is_on": bool(generated.body.is_on)}
+    if operation == "brightness":
+        return {"brightness_pct": int(generated.body.percent)}
     expectations: dict[str, Any] = {}
-    if color_mode := _expected_color_mode_from_packet(packet, static_echoes_color=static_echoes_color):
+    if color_mode := _expected_color_mode_from_generated(
+        generated,
+        model,
+        static_echoes_color=static_echoes_color,
+    ):
         expectations["color_mode"] = color_mode
-    if packet[2] == COLOR_MODE_MUSIC:
-        music_mode = MUSIC_SLUG_BY_ID.get(packet[3])
-        expectations["music_mode"] = music_mode
-        expectations["music_sensitivity"] = packet[4]
-        if music_mode == "rhythm":
-            expectations["music_calm"] = bool(packet[5])
-        expectations["music_color"] = tuple(packet[7:10]) if packet[6] == 0x01 else None
-        return expectations
-    if packet[2] == COLOR_MODE_VIDEO and len(packet) >= 8:
-        expectations.update(
-            {
-                "video_mode": "game" if packet[4] else "movie",
-                "video_full_screen": bool(packet[3]),
-                "video_saturation": packet[5],
-                "video_sound_effects": bool(packet[6]),
-                "video_sound_effects_softness": packet[7],
-            }
-        )
-        return expectations
-    if packet[2] == COLOR_MODE_SCENE and len(packet) >= 5:
-        expectations["effect"] = SCENE_EFFECT_BY_ID.get(int.from_bytes(packet[3:5], "little"))
-        return expectations
-    if (static := parse_static_write(packet)) and static.whole_strip:
+    if model == "H6199":
+        if operation != "mode":
+            return expectations
+        mode = getattr(generated.body.sub_mode, "name", None)
+        detail = generated.body.detail
+        if mode == "music":
+            music_mode = MUSIC_SLUG_BY_ID.get(int(detail.mode))
+            expectations["music_mode"] = music_mode
+            expectations["music_sensitivity"] = int(detail.sensitivity)
+            if music_mode == "rhythm":
+                expectations["music_calm"] = bool(detail.is_calm)
+            expectations["music_color"] = (
+                (int(detail.fixed_colour.red), int(detail.fixed_colour.green), int(detail.fixed_colour.blue))
+                if detail.has_fixed_colour
+                else None
+            )
+            return expectations
+        if mode == "video":
+            expectations.update(
+                {
+                    "video_mode": detail.source.name,
+                    "video_full_screen": detail.region.name == "all",
+                    "video_saturation": int(detail.saturation),
+                    "video_sound_effects": bool(detail.sound_effects),
+                    "video_sound_effects_softness": int(detail.softness),
+                }
+            )
+            return expectations
+        if mode == "scene":
+            expectations["effect"] = SCENE_EFFECT_BY_MODEL_ID[model].get(int(detail.scene_id))
+            return expectations
+    elif operation == "multi":
+        mode = getattr(generated.body.sub, "name", None)
+        detail = generated.body.sub_body
+        if mode == "music":
+            music_mode = MUSIC_SLUG_BY_ID.get(int(detail.mode_id))
+            expectations["music_mode"] = music_mode
+            expectations["music_sensitivity"] = int(detail.sensitivity)
+            if music_mode == "rhythm":
+                expectations["music_calm"] = bool(detail.style)
+            expectations["music_color"] = (
+                (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
+                if detail.manual_color_count
+                else None
+            )
+            return expectations
+        if mode == "scene":
+            expectations["effect"] = SCENE_EFFECT_BY_MODEL_ID[model].get(int(detail.code))
+            return expectations
+    if (static := parse_static_write(packet, model)) and static.whole_strip:
         if static.rgb is not None:
             expectations["rgb_color"] = static.rgb
         elif static.kelvin is not None:
@@ -155,25 +223,19 @@ def _expectations_from_packet(packet: bytes, *, static_echoes_color: bool = Fals
 
 
 def _expected_color_mode_from_packet(
-    packet: bytes, *, static_echoes_color: bool = False
+    packet: bytes,
+    model: str = "H617A",
+    *,
+    static_echoes_color: bool = False,
 ) -> tuple[ParsedMode, int | None] | None:
-    if len(packet) < 4 or packet[0] != COMMAND_HEADER or packet[1] != COLOR_PACKET_TYPE:
+    generated = decode_command_frame(packet, model)
+    if generated is None:
         return None
-    match packet[2]:
-        case value if value == COLOR_MODE_DIY:
-            return ParsedMode.DIY, packet[3]
-        case value if value == COLOR_MODE_MUSIC:
-            return ParsedMode.MUSIC, None
-        case value if value == COLOR_MODE_VIDEO:
-            return ParsedMode.VIDEO, None
-        case value if value == COLOR_MODE_STATIC:
-            # The write-side sub only survives into the reply on models that echo it; elsewhere
-            # the same byte carries the 33 a3 register, so expecting it here never matches.
-            return ParsedMode.COLOUR, (packet[3] if static_echoes_color else None)
-        case value if value == COLOR_MODE_SCENE:
-            return ParsedMode.SCENE, None
-        case _:
-            return None
+    return _expected_color_mode_from_generated(
+        generated,
+        model,
+        static_echoes_color=static_echoes_color,
+    )
 
 
 class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin):
@@ -445,7 +507,11 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
 
     def _arm_expected(self, packet: bytes) -> None:
-        expectations = _expectations_from_packet(packet, static_echoes_color=self.profile.static_readback_echoes_color)
+        expectations = _expectations_from_packet(
+            packet,
+            self.model,
+            static_echoes_color=self.profile.static_readback_echoes_color,
+        )
         if "color_mode" in expectations:
             for field in _COLOR_EXPECTATION_FIELDS:
                 self._expected_state.pop(field, None)

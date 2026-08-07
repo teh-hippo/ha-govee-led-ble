@@ -67,6 +67,7 @@ from .generated_protocol_adapter import (
 from .generated_protocol_adapter import (
     build_segment_colour as _build_generated_segment_colour,
 )
+from .generated_protocol_adapter import parse_command as _parse_generated_command
 from .generated_protocol_adapter import parse_status as _parse_generated_status
 from .generated_protocol_adapter import xor_checksum
 from .scenes import MODEL_SCENES, SCENES, SceneSpeed
@@ -168,6 +169,10 @@ def split_status_frame(
     if decoded is None:
         return None
     return decoded.domain, decoded.payload
+
+
+def decode_command_frame(frame: bytes, model: str = "H617A") -> Any | None:
+    return _parse_generated_command(frame, model)
 
 
 def build_packet(cmd_type: int, action: int, params: list[int]) -> bytes:
@@ -283,35 +288,66 @@ class ParsedStaticWrite:
         return self.segment_mask == ALL_SEGMENTS_MASK
 
 
-def parse_static_write(packet: bytes) -> ParsedStaticWrite | None:
-    """Read back a ``33 05 15`` frame this module built, or None if it is not one.
-
-    The inverse of build_segment_color / build_color_temp / build_segment_brightness. Callers
-    that need these fields must come through here rather than index the frame themselves: the
-    offsets belong to command_write::static_color, and every private copy of them is free to
-    drift. One already had. Sub 0x03 is documented but unbuilt, so it reads as None.
-    """
-    if len(packet) < 4 or packet[0] != COMMAND_HEADER or packet[1] != COLOR_PACKET_TYPE:
+def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite | None:
+    """Convert a generated static command into the coordinator's semantic state."""
+    generated = decode_command_frame(packet, model)
+    if generated is None:
         return None
-    if packet[2] != COLOR_MODE_STATIC:
+    if model == "H6199":
+        if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
+            return None
+        detail = generated.body.detail
+        operation = int(detail.operation)
+        if detail.operation.name == "colour":
+            rgb = (int(detail.red), int(detail.green), int(detail.blue))
+            kelvin = int(detail.kelvin)
+            if rgb == (0, 0, 0) and kelvin:
+                preview = detail.preview
+                return ParsedStaticWrite(
+                    sub=operation,
+                    segment_mask=int(detail.segment_mask),
+                    kelvin=kelvin,
+                    kelvin_companion_rgb=(int(preview.red), int(preview.green), int(preview.blue)),
+                )
+            return ParsedStaticWrite(
+                sub=operation,
+                segment_mask=int(detail.segment_mask),
+                rgb=rgb,
+            )
+        if detail.operation.name == "brightness":
+            return ParsedStaticWrite(
+                sub=operation,
+                segment_mask=int(detail.brightness_segment_mask),
+                brightness_pct=int(detail.brightness_percent),
+            )
         return None
-    sub = packet[3]
-    if sub == STATIC_SUB_COLOR and len(packet) >= 14:
-        rgb = (packet[4], packet[5], packet[6])
-        kelvin = (packet[7] << 8) | packet[8]
-        mask = packet[12] | (packet[13] << 8)
-        # A colour-temperature set zeroes the direct RGB and carries a preview instead; a direct
-        # paint zeroes the kelvin. A deliberate black paint is rgb, not a 0 K temperature.
+    if generated.opcode.name != "multi" or getattr(generated.body.sub, "name", None) != "static":
+        return None
+    detail = generated.body.sub_body
+    sub = int(detail.static_sub)
+    body = detail.static_body
+    if sub == STATIC_SUB_COLOR:
+        rgb = (int(body.rgb_direct.red), int(body.rgb_direct.green), int(body.rgb_direct.blue))
+        kelvin = int(body.kelvin)
+        mask = int(body.mask.bits)
         if rgb == (0, 0, 0) and kelvin:
             return ParsedStaticWrite(
                 sub=sub,
                 segment_mask=mask,
                 kelvin=kelvin,
-                kelvin_companion_rgb=(packet[9], packet[10], packet[11]),
+                kelvin_companion_rgb=(
+                    int(body.rgb_preview.red),
+                    int(body.rgb_preview.green),
+                    int(body.rgb_preview.blue),
+                ),
             )
         return ParsedStaticWrite(sub=sub, segment_mask=mask, rgb=rgb)
-    if sub == STATIC_SUB_BRIGHTNESS and len(packet) >= 7:
-        return ParsedStaticWrite(sub=sub, segment_mask=packet[5] | (packet[6] << 8), brightness_pct=packet[4])
+    if sub == STATIC_SUB_BRIGHTNESS:
+        return ParsedStaticWrite(
+            sub=sub,
+            segment_mask=int(body.mask.bits),
+            brightness_pct=int(body.percent),
+        )
     return None
 
 
@@ -1068,223 +1104,3 @@ def parse_poweroff_memory(payload: bytes) -> ParsedPowerOffMemory:
     if not payload:
         raise ValueError("power-off memory payload is empty")
     return ParsedPowerOffMemory(enabled=bool(payload[0]), mode=_get(payload, 1))
-
-
-# Every public builder/parser and query constant cites its canonical Kaitai structure.
-# VALIDATED means the current byte layout is capture-backed. EXPERIMENTAL is reserved for
-# unreachable research leads and requires a matching source marker on the function.
-@dataclass(frozen=True)
-class Evidence:
-    """Where a builder's byte layout is proven, and whether it is VALIDATED or EXPERIMENTAL."""
-
-    status: str
-    source: str
-
-
-BUILDER_EVIDENCE: dict[str, Evidence] = {
-    "build_packet": Evidence(
-        "VALIDATED",
-        "command_write.ksy and h6199_command_write.ksy roots; 20-byte XOR envelopes",
-    ),
-    "build_power": Evidence(
-        "VALIDATED",
-        "command_write.ksy::power_cmd and h6199_command_write.ksy::power_body",
-    ),
-    "build_brightness": Evidence(
-        "VALIDATED",
-        "command_write.ksy::brightness_cmd and h6199_command_write.ksy::brightness_body",
-    ),
-    "build_segment_color": Evidence(
-        "VALIDATED",
-        "command_write.ksy::static_color and h6199_command_write.ksy::static_colour_body",
-    ),
-    "build_segment_brightness": Evidence(
-        "VALIDATED",
-        "command_write.ksy::static_brightness and h6199_command_write.ksy::static_colour_body operation brightness",
-    ),
-    "build_segment_paint": Evidence(
-        "VALIDATED",
-        "command_write.ksy::static_color; one captured frame per colour group",
-    ),
-    "build_color_rgb": Evidence(
-        "VALIDATED",
-        "command_write.ksy::static_color and h6199_command_write.ksy::static_colour_body",
-    ),
-    "build_color_temp": Evidence(
-        "VALIDATED",
-        "command_write.ksy::static_color and h6199_command_write.ksy::static_colour_body; "
-        "Kelvin and mask are capture-backed, while the companion RGB algorithm remains non-vendor-exact",
-    ),
-    "build_white_brightness": Evidence(
-        "VALIDATED",
-        "command_write.ksy::static_brightness with the all-segments mask",
-    ),
-    "build_scene": Evidence(
-        "VALIDATED",
-        "command_write.ksy::scene_activate",
-    ),
-    "build_a3_multi": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::a3_header and the body specs importing it",
-    ),
-    "build_scene_multi": Evidence(
-        "VALIDATED",
-        "scene_body.ksy, scene_type1_body.ksy and command_write.ksy::scene_activate",
-    ),
-    "build_h6199_scene": Evidence(
-        "VALIDATED",
-        "h6199_command_write.ksy::scene_body class-1 built-in activations",
-    ),
-    "build_diy_activate": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::diy_selector via command_write.ksy::multi_cmd",
-    ),
-    "build_segment_content": Evidence(
-        "VALIDATED",
-        "command_write.ksy::{static_color,static_brightness} dispatcher",
-    ),
-    "build_sketch": Evidence(
-        "VALIDATED",
-        "diy_type03.ksy plus govee_common.ksy::diy_selector",
-    ),
-    "build_vibrant": Evidence(
-        "VALIDATED",
-        "diy_type03.ksy Vibrant body plus govee_common.ksy::diy_selector",
-    ),
-    "build_flat_diy": Evidence(
-        "VALIDATED",
-        "diy_type04.ksy::flat_body plus govee_common.ksy::diy_selector",
-    ),
-    "build_combo": Evidence(
-        "VALIDATED",
-        "diy_type04.ksy::combo_body plus govee_common.ksy::diy_selector",
-    ),
-    "build_custom_effect": Evidence(
-        "VALIDATED",
-        "command_write.ksy, diy_type03.ksy and diy_type04.ksy per-kind dispatch",
-    ),
-    "build_music_mode_with_color": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::music_selector and h6199_command_write.ksy::music_body",
-    ),
-    "build_music_params_a3": Evidence(
-        "VALIDATED",
-        "music_body.ksy root and mode-specific tail types",
-    ),
-    "build_video_mode": Evidence(
-        "VALIDATED",
-        "h6199_command_write.ksy::video_body",
-    ),
-    "build_video_white_balance": Evidence(
-        "VALIDATED",
-        "h6199_command_write.ksy::white_balance_payload",
-    ),
-    "build_blank_screen": Evidence(
-        "VALIDATED",
-        "h6199_command_write.ksy::blank_screen_payload",
-    ),
-    "build_relative_brightness": Evidence(
-        "VALIDATED",
-        "h6199_command_write.ksy::relative_brightness_body",
-    ),
-    "build_relative_brightness_edges": Evidence(
-        "VALIDATED",
-        "h6199_command_write.ksy::relative_brightness_body per-edge differentials",
-    ),
-    "build_timer_schedule": Evidence(
-        "VALIDATED",
-        "command_write.ksy::timer_schedule_cmd and govee_common.ksy::timer_slot",
-    ),
-    "build_timer_sleep": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::sleep_timer through command_write.ksy",
-    ),
-    "build_timer_wakeup": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::wake_timer through command_write.ksy",
-    ),
-    "build_poweroff_memory": Evidence(
-        "EXPERIMENTAL",
-        "status_reply.ksy documents the absent H617A aa 41 reply; no supporting write grammar",
-    ),
-    "split_status_frame": Evidence(
-        "VALIDATED",
-        "status_reply.ksy and h6199_status_reply.ksy roots",
-    ),
-    "parse_static_write": Evidence(
-        "VALIDATED",
-        "command_write.ksy::{static_color,static_brightness}",
-    ),
-    "parse_timer_repeat": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::{timer_slot,wake_timer}",
-    ),
-    "parse_timer_schedule": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::timer_slot",
-    ),
-    "parse_timer_schedule_table": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::timer_body",
-    ),
-    "parse_timer_sleep": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::sleep_timer through status_reply.ksy",
-    ),
-    "parse_timer_wakeup": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::wake_timer through status_reply.ksy",
-    ),
-    "parse_poweroff_memory": Evidence(
-        "EXPERIMENTAL",
-        "status_reply.ksy documents the absent H617A aa 41 reply; parser shape is unobserved",
-    ),
-    "STATE_QUERY": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::power_body query envelope; query/reply direction is external",
-    ),
-    "BRIGHTNESS_QUERY": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::brightness_body query envelope; query/reply direction is external",
-    ),
-    "COLOR_MODE_QUERY": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::colormode_body and h6199_status_query.ksy::zero_body",
-    ),
-    "WHITE_BALANCE_QUERY": Evidence(
-        "VALIDATED",
-        "h6199_status_query.ksy::display_setting_query_body white_balance",
-    ),
-    "BLANK_SCREEN_QUERY": Evidence(
-        "VALIDATED",
-        "h6199_status_query.ksy::display_setting_query_body blank_screen",
-    ),
-    "RELATIVE_BRIGHTNESS_QUERY": Evidence(
-        "VALIDATED",
-        "h6199_status_query.ksy::relative_brightness_query_body",
-    ),
-    "FW_QUERY": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::version_body query envelope and h6199_status_query.ksy::zero_body",
-    ),
-    "HW_QUERY": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::hw_version_body query envelope and h6199_status_query.ksy::hardware_query_body",
-    ),
-    "SLEEP_TIMER_QUERY": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::sleep_timer query envelope through status_reply.ksy",
-    ),
-    "WAKEUP_TIMER_QUERY": Evidence(
-        "VALIDATED",
-        "govee_common.ksy::wake_timer query envelope through status_reply.ksy",
-    ),
-    "SCHEDULE_TIMER_QUERY": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::timer_body query envelope",
-    ),
-    "KEEP_ALIVE": Evidence(
-        "VALIDATED",
-        "status_reply.ksy::power_body query envelope; identical to STATE_QUERY",
-    ),
-}

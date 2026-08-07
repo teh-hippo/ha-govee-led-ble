@@ -222,7 +222,7 @@ class GoveeDeviceSim:
             self._apply_static(frame)
 
     def _apply_static(self, frame: bytes) -> None:
-        static = parse_static_write(frame)
+        static = parse_static_write(frame, self.model)
         if static is None:
             return
         if static.brightness_pct is not None:

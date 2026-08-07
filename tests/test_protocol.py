@@ -122,12 +122,7 @@ def test_color():
 
 
 def test_parse_static_write_round_trips_every_33_05_15_builder():
-    """The 33 05 15 offsets live here and nowhere else.
-
-    The coordinator and the simulator each kept a private copy, and the copies had already
-    drifted: a deliberate black paint read as an rgb write in one and as a 0 K colour
-    temperature in the other.
-    """
+    """Generated command readers preserve the semantic inverse for both models."""
     rgb = proto.parse_static_write(proto.build_segment_color([3], 10, 20, 30))
     assert rgb is not None and rgb.rgb == (10, 20, 30) and rgb.segment_mask == 0x0004
     assert rgb.kelvin is None and not rgb.whole_strip
@@ -146,6 +141,8 @@ def test_parse_static_write_round_trips_every_33_05_15_builder():
     level = proto.parse_static_write(proto.build_segment_brightness(range(1, 8), 17))
     assert level is not None and level.brightness_pct == 17 and level.segment_mask == 0x007F
     assert proto.parse_static_write(proto.build_white_brightness(80)).brightness_pct == 80
+    h6199 = proto.parse_static_write(proto.build_segment_color([3], 10, 20, 30, "H6199"), "H6199")
+    assert h6199 is not None and h6199.rgb == (10, 20, 30) and h6199.segment_mask == 0x0004
 
     assert proto.parse_static_write(bytes.fromhex("330515030000")) is None  # sub 0x03 is unbuilt
     assert proto.parse_static_write(proto.build_power(True)) is None
