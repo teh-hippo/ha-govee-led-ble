@@ -40,8 +40,6 @@ seq:
         'command_op::power': power_body
         'command_op::brightness': brightness_body
         'command_op::mode': mode_body
-        'command_op::schedule': schedule_body
-        'command_op::clock': clock_body
         'command_op::display_setting': display_setting_body
         'command_op::relative_brightness': relative_brightness_body
   - id: checksum
@@ -52,8 +50,6 @@ enums:
     0x01: power
     0x04: brightness
     0x05: mode
-    0x09: clock
-    0x23: schedule
     0xa9: display_setting
     0xae: relative_brightness
   mode_sel:
@@ -604,64 +600,3 @@ types:
         doc: |
           little-endian target mask at frame offsets 5..6. Trials addressed
           segment 1 (0x0001), segments 2 and 4 (0x000a), and all fifteen (0x7fff).
-  clock_body:
-    seq:
-      - id: hour
-        type: u1
-        doc: 'local hour; captured as 13 at 13:35 and as 9 at 09:54 in separate sessions'
-      - id: minute
-        type: u1
-        doc: 'local minute; captured as 35 and as 54 in those same two sessions'
-      - id: second
-        type: u1
-        doc: 'local second; captured as 21 and as 44, moving independently of the fields either side'
-      - id: weekday
-        type: u1
-        doc: |
-          ISO weekday, Monday being 1. Captured as 1 on Monday
-          and as 2 on Tuesday . One sample could not tell a weekday from any other
-          small constant; the second, on a known different day, is what names it.
-      - id: flag1
-        type: u1
-        doc: 'unknown clock field, captured as 1 in both sessions and so still not distinguishable from a constant'
-      - id: utc_offset_hours
-        type: s1
-        doc: |
-          apparent signed UTC-offset hour component; captured as +10 in
-          Australia/Sydney both times. Still inferred rather than confirmed because both
-          captures were taken in the same zone, so nothing has yet moved this byte. A
-          capture with the phone on a different offset would settle it.
-      - id: utc_offset_minutes
-        type: u1
-        doc: 'apparent UTC-offset minute component; captured as 0 in Australia/Sydney, unvaried for the same reason as the hours field'
-  schedule_body:
-    seq:
-      - id: slot
-        type: u1
-        doc: |
-          which of the four schedule slots this write addresses, counting
-          from zero. Captured as 0 and 1 by enabling the app's first and second timer rows
-          with nothing else changed between them, which is what separates a slot index from
-          a flag that happened to be zero.
-      - id: flags
-        type: u1
-        doc: |
-          schedule flags. Bit 0x80 marks the slot enabled and is set in
-          every captured write, including the two that carried no time at all. Bit 0x01 is
-          the action the slot performs: the byte read 0x80 while the app showed "Off" and
-          0x81 after the same slot was switched to "On". The remaining bits have never been
-          seen set and are deliberately not named.
-      - id: hour
-        type: u1
-        doc: 'hour the slot fires; captured as 0 for an untouched slot and 7 after setting 7:30'
-      - id: minute
-        type: u1
-        doc: 'minute the slot fires; captured as 0 and then 30 (0x1e) from the same edit'
-      - id: repeat_mask
-        type: u1
-        doc: |
-          repeat days, as 0x80 plus one bit per weekday from Monday at 0x01.
-          Captured as 0x80 with no days chosen and 0x95 after choosing Monday, Wednesday and
-          Friday, which is 0x80 | 0x01 | 0x04 | 0x10. That value matters: 0x80 on its own
-          looks like a "fire once" flag, and 0x95 is the reading that rules it out by naming
-          three days while keeping the same high bit.

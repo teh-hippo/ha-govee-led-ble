@@ -22,7 +22,6 @@ import pytest
 from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.custom_effects import ComboContent, FlatContent
-from custom_components.ha_govee_led_ble.protocol import Weekday
 from custom_components.ha_govee_led_ble.scenes import SCENES
 from tools.ble import wifi_provision
 from tools.ble.mock_ble.mock_device import GoveeDeviceSim
@@ -56,23 +55,6 @@ def test_fixture_directory_is_the_kaitai_corpus():
         ("command_write_diy", lambda: proto.build_diy_activate(0xF0, 0x00)),
         ("command_write_diy_saved", lambda: proto.build_diy_activate(0x20, 0x03)),
         ("command_write_music", lambda: proto.build_music_mode_with_color(0x03, 99, (0, 230, 210), calm=False)),
-        ("command_write_timer_sleep", lambda: proto.build_timer_sleep(True, 50, 16, 16)),
-        (
-            "command_write_timer_wake",
-            lambda: proto.build_timer_wakeup(True, 100, 17, 1, proto.parse_timer_repeat(0x00), 29),
-        ),
-        (
-            "command_write_timer_schedule",
-            lambda: proto.build_timer_schedule(0, True, True, 7, 30, proto.parse_timer_repeat(0xC0)),
-        ),
-        (
-            "command_write_timer_schedule_off_action",
-            lambda: proto.build_timer_schedule(2, True, False, 0, 0, proto.parse_timer_repeat(0x80)),
-        ),
-        (
-            "command_write_timer_schedule_weekdays",
-            lambda: proto.build_timer_schedule(2, True, True, 0, 0, proto.parse_timer_repeat(0x95)),
-        ),
     ],
 )
 def test_builder_reproduces_the_captured_frame(name, built):
@@ -97,14 +79,6 @@ def test_builder_reproduces_the_captured_frame(name, built):
         ("h6199_segment_brightness_one", lambda: proto.build_segment_brightness([1], 17)),
         ("h6199_segment_brightness_pair", lambda: proto.build_segment_brightness([2, 4], 37)),
         ("h6199_segment_brightness_all", lambda: proto.build_segment_brightness(proto.ALL_SEGMENTS, 73)),
-        (
-            "h6199_command_schedule_slot0_0730_mwf",
-            lambda: proto.build_timer_schedule(0, True, True, 7, 30, proto.parse_timer_repeat(0x95)),
-        ),
-        (
-            "h6199_command_schedule_slot1_enabled",
-            lambda: proto.build_timer_schedule(1, True, False, 0, 0, proto.parse_timer_repeat(0x80)),
-        ),
         (
             "h6199_command_music_rhythm",
             lambda: proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["rhythm"], 99, None),
@@ -241,13 +215,6 @@ def test_h6199_colour_temperature_shape_matches_while_the_companion_curve_differ
     assert tuple(built[9:12]) == proto.kelvin_to_rgb(kelvin)
 
 
-def test_timer_repeat_survives_a_round_trip_through_the_weekday_set():
-    """0x95 is the reading that killed "bit 0x80 means fire once": it also names three days."""
-    days = proto.parse_timer_repeat(0x95)
-    assert days == frozenset({Weekday.MON, Weekday.WED, Weekday.FRI})
-    assert proto.build_timer_schedule(2, True, True, 0, 0, days) == fixture("command_write_timer_schedule_weekdays")
-
-
 def test_colour_temperature_matches_the_capture_except_companion_rgb():
     """Pin the unresolved companion-RGB divergence instead of claiming byte parity."""
     captured = fixture("command_write_color_temp")
@@ -289,7 +256,6 @@ def payload_of(name: str) -> bytes:
     [
         ("status_reply_power", 0x01),
         ("status_reply_brightness", 0x04),
-        ("status_reply_unit_count", 0x40),
         ("status_reply_fw", 0x06),
         ("status_reply_hw", 0x07),
         ("status_reply_cm_music", 0x05),
@@ -307,26 +273,6 @@ def test_version_strings_decode_the_same_as_the_grammar():
 def test_hardware_version_rejects_a_payload_without_its_prefix():
     """The 0x03 prefix is what separates the two version replies, so dropping it must fail."""
     assert proto.parse_hw_version(payload_of("status_reply_fw")) is None
-
-
-def test_schedule_table_decodes_all_four_slots():
-    slots = proto.parse_timer_schedule_table(payload_of("status_reply_timer"))
-    assert len(slots) == 4
-    assert (slots[0].enabled, slots[0].on_action) == (True, True)
-    assert (slots[0].hour, slots[0].minute) == (7, 30)
-    assert slots[0].repeat_days == proto.parse_timer_repeat(0xC0)
-
-
-def test_the_device_stores_the_repeat_byte_rather_than_the_app_remembering_it():
-    """Slot 2 read back 0x95 moments after it was written, against 0x80 in the earlier table.
-
-    This is the whole point of holding both tables: one table alone cannot tell a stored
-    value from an app-side default echoed back.
-    """
-    before = proto.parse_timer_schedule_table(payload_of("status_reply_timer"))
-    after = proto.parse_timer_schedule_table(payload_of("status_reply_timer_stored_repeat"))
-    assert before[2].repeat_days == frozenset()
-    assert after[2].repeat_days == frozenset({Weekday.MON, Weekday.WED, Weekday.FRI})
 
 
 def test_colour_mode_replies_decode_the_same_as_the_grammar():

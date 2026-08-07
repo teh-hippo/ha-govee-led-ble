@@ -7,4 +7,4 @@ id: status_reply_reject_segments_g07
 data: status_reply_reject_segments_g07.bin
 imports:
   - status_reply
-exception: ValidationNotAnyOfError
+exception: ValidationGreaterThanError

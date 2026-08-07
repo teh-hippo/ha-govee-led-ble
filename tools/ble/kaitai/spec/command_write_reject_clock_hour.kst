@@ -1,8 +1,0 @@
-# The grammar must FAIL CLOSED on a frame it cannot mean. Hour 0x30 = 48 is outside the
-# 0..23 the clock write pins, so a parser that accepts it is reading the field wrongly.
-# The XOR is recomputed so the rejection is attributable to the hour alone.
-id: command_write_reject_clock_hour
-data: command_write_reject_clock_hour.bin
-imports:
-  - command_write
-exception: ValidationGreaterThanError

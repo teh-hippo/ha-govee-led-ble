@@ -3,50 +3,12 @@
 # reading: a constant cannot take many values. Migrating such a claim to per-fixture
 # asserts leaves every row green while the falsification quietly disappears.
 
-- id: command_write_timer_slots_vary
-  doc: >
-    The schedule slot index is a real per-entry field, not a fixed byte. Three captured
-    writes carry two distinct indices, so a grammar pinning it to one value is dead.
-  cases: command_write_timer_schedule*
-  collect: body.index
-  distinct_at_least: 2
-
-# Pairwise differentials. "Exactly one byte moved, and it is <field>" is one claim in two
-# halves: the value half is an ordinary assert, and the "nothing else moved" half is what
-# pins the field to that byte. Only the second half needs to be here.
-
 - id: command_write_power_one_byte
   doc: >
     The power write differs from its off/on counterpart at exactly the payload byte and
     the checksum, so is_on is that byte and the opcode carries no on/off information.
   between: [command_write_power_off, command_write_power_on]
   differs_at: [2, 19]
-
-- id: command_write_timer_slot2_controlled_pair
-  doc: >
-    Both slot-2 writes were captured 2026-07-27 against the same slot with only the
-    enable/action bits and the repeat mask changed. They differ at exactly those two
-    payload bytes and the checksum, which is what makes the pair a controlled comparison
-    rather than two unrelated observations, and what lets enable_and_type 0x80 versus
-    0x81 be read as one bit rather than a different frame shape.
-  between: [command_write_timer_schedule_off_action, command_write_timer_schedule_weekdays]
-  differs_at: [3, 6, 19]
-
-- id: status_reply_timer_table_stored_repeat
-  doc: >
-    The two aa 23 tables were read minutes apart around a single write to slot 2. They
-    differ at the slot-0 enable byte, at slot 2's repeat byte, and at the checksum, and
-    nowhere else. That confinement is what makes the read-back evidence of storage rather
-    than of the app echoing its own state back: an app-side default would not move one
-    slot's repeat byte while leaving the other three tables identical.
-  between: [status_reply_timer, status_reply_timer_stored_repeat]
-  differs_at: [3, 14, 19]
-
-# workshop_body isolation proofs. Each Apply in these captures moved one control and the
-# capture shows which bytes followed. The decoded value of each field is asserted in its
-# own case; what lives here is the other half, that NOTHING ELSE MOVED, which is what
-# actually pins a field to its offset. Ten of them stand behind the confirmed fields in
-# govee_common::effect_layer.
 
 - id: workshop_select_type_segment_isolated
   doc: Select Type and its two params occupy body offsets 6..8 and nothing else.
@@ -400,32 +362,6 @@
     the mask, and 0x7fff is simply all fifteen segments named at once.
   between: [h6199_command_colour_segment_1, h6199_command_colour_red]
   differs_at: [12, 13, 19]
-
-- id: h6199_schedule_slot_index_moves_alone
-  doc: >
-    Enabling the second timer row rather than the first moves exactly the slot byte and the
-    checksum. Everything else about the two writes is identical, which is what makes byte 2
-    a slot index rather than a flag that was zero by coincidence.
-  between: [h6199_command_schedule_slot0_enabled, h6199_command_schedule_slot1_enabled]
-  differs_at: [2, 19]
-
-- id: h6199_schedule_settings_stay_in_their_own_bytes
-  doc: >
-    Configuring a slot moves the flag, hour, minute and repeat bytes and nothing else, while
-    the slot index holds still. Taken with the pair above, each of the two things a schedule
-    write can change, WHICH slot and WHAT it does, moves a disjoint set of bytes.
-  between: [h6199_command_schedule_slot0_enabled, h6199_command_schedule_slot0_0730_mwf]
-  differs_at: [3, 4, 5, 6, 19]
-
-- id: h6199_clock_fields_vary_between_sessions
-  doc: >
-    Two connect-time clock writes taken on different days at different times of day. A
-    single one of these cannot tell an hour, a weekday or a constant apart; the pair moves
-    hour, minute, second and weekday together and leaves the offset bytes alone, which is
-    exactly the shape a local clock has and the reason those four are named and the offset
-    is still not.
-  between: [h6199_command_clock, h6199_command_clock_tuesday]
-  differs_within: [2, 3, 4, 5, 19]
 
 - id: h6199_music_modes_vary
   doc: >

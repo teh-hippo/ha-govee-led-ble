@@ -62,11 +62,7 @@ seq:
       cases:
         'command_op::power': power_cmd
         'command_op::brightness': brightness_cmd
-        'command_op::clock': clock_cmd
         'command_op::multi': multi_cmd
-        'command_op::timer_sleep': govee_common::sleep_timer
-        'command_op::timer_wake': govee_common::wake_timer
-        'command_op::timer_schedule': timer_schedule_cmd
         'command_op::multi_effect': multi_effect_cmd
     doc: 'bytes 2..18, interpreted per opcode (unmatched opcodes fall back to raw)'
   - id: checksum
@@ -77,10 +73,6 @@ enums:
     0x01: power
     0x04: brightness
     0x05: multi
-    0x09: clock
-    0x11: timer_sleep
-    0x12: timer_wake
-    0x23: timer_schedule
     0xa3: multi_effect
   multi_sub:
     0x04: scene
@@ -203,90 +195,6 @@ types:
         valid: 0
         repeat: eos
         doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
-  clock_cmd:
-    doc: |
-      op 0x09. Wall-clock time-sync the app pushes as the first frame on every
-      connect. Live differential (device connect at 16:43:16 then 16:51:29,
-      ): the minute byte moved 0x2b->0x33 and the second byte 0x10->0x1d
-      exactly tracking the phone clock, the hour held 0x10=16. Body is
-      hour/minute/second then a weekday byte, flag1, and the local UTC offset as
-      signed hours plus an unsigned minute remainder; the rest is zero-padded.
-      Weekday isolated across days : a Friday connect read
-      33 09 16 16 03 05 01 0a (22:22:03, weekday 0x05), one calendar day after the
-      0x04 Thursday captures, so the byte is the day of week with Mon=1 (Thu=4,
-      Fri=5); flag1=0x01 and the UTC offset was +10:00 across all three captures.
-
-      NO protocol.py BUILDER EXISTS, AND ANYONE ADDING ONE MUST READ THE OFFSET FIRST.
-      The 0x0a 0x00 in every capture above is UTC+10:00, i.e. this rig's timezone, not a
-      protocol constant. A builder that copies it from a capture would ship UTC+10 to
-      every user on earth. Derive both components from the local offset instead.
-
-      IT CAN NOW BE READ BACK. aa a5 group 0x31 returns a
-      live clock (hour, minute and second isolated by a timed double-read), so this
-      register is no longer write-only and no longer needs a connect capture to
-      observe. See status_reply::segments_body. The read-back does NOT use this body
-      layout field for field: there a zero byte separates minute from second, the
-      weekday trails at index 10 and flag1 at index 11.
-
-      THE WHOLE BODY IS NOW A CLOSED LOOP. Crafted writes
-      verified by aa a5 31 reads settled several things at once, with the app closed and
-      the Home Assistant entry released.
-      (1) Hour, minute and second are echoed back exactly as written.
-      (2) The weekday is STORED VERBATIM, not derived: driving it to 0x06 on a Tuesday
-          read back 0x06. Six of six writes matched.
-      (3) NEITHER REGISTER GATES THE FRAME. Writing flag1 = 0x00 and, separately,
-          utc_offset_hours = 0x00 was accepted each time and the clock took, so neither
-          byte is validated. They were varied ONE AT A TIME, because a frame changing
-          both could not attribute a rejection to either.
-      (4) BOTH REGISTERS ARE STORED AND MIRRORED, in different groups of the aa a5 window.
-          flag1 is at group 0x31 index 11 and utc_offset_hours at group 0x32 index 1. Both were
-          proven with arbitrary non-binary sentinels so a coincidence between one-bit
-          states was excluded: flag1 read back 0x05, 0x5a and 0x3c as written, and
-          utc_offset_hours completed a full round trip 0x0a -> 0x5a -> 0x0a with its sentinel
-          appearing nowhere else across a 27-group sweep. So calling these "two
-          constant flag bytes" understated them; they are registers, not padding.
-
-      THE OFFSET MEANING IS NOW LIVE-CONFIRMED. The phone
-      was changed from Australia/Sydney (+10:00) to Australia/Adelaide (+09:30), the
-      vendor app connected and performed its normal sync, and aa a5 group 0x32 changed
-      to indices 1..2 = 09 1e. The phone was restored to Sydney without reopening the
-      app and the device still returned 09 1e, proving these are stored hour and minute
-      components written by the Adelaide sync rather than values consulted at read time.
-    seq:
-      - id: hour
-        type: u1
-        valid:
-          max: 23
-        doc: 'hour 0..23; 0x10=16 matched the wall clock in both connect captures'
-      - id: minute
-        type: u1
-        valid:
-          max: 59
-        doc: 'minute 0..59; 0x2b=43 -> 0x33=51 tracked the wall clock across two connects'
-      - id: second
-        type: u1
-        valid:
-          max: 59
-        doc: 'second 0..59; 0x10=16 -> 0x1d=29 changed with elapsed time'
-      - id: weekday
-        type: u1
-        doc: 'day of week, Mon=1; isolated across days: 0x04 on Thu , 0x05 on Fri  (byte tracked the calendar day)'
-      - id: flag1
-        type: u1
-        doc: '0x01 in every app capture, but NOT a constant and NOT ignored. It is a stored 8-bit register mirrored at status_reply aa a5 31 body index 11: crafted writes of 0x05 and 0x5a read back exactly, 6 of 6 driven writes matched, and the clock write was accepted every time so the byte does not gate the frame. WHAT IT CONTROLS is still unestablished, which is why this stays INFERRED. NO IMMEDIATE VISIBLE EFFECT []: driven to 0x5a with eyes on a solid blue strip at 100% and about 20 s of settling, storage confirmed by read-back in the same window, and nothing changed. That rules out a fast visible effect and nothing more: it may act on a timescale, in a mode, or against a condition absent from the trip. Recasting it as a constant is NOT available either, since it is a demonstrably stored register. Its read-back makes it cheap to test further: drive it and watch for any device behaviour that follows.'
-      - id: utc_offset_hours
-        type: s1
-        doc: 'signed whole-hour component of the phone local UTC offset. Australia/Sydney app syncs stored 0x0a (+10); changing the phone to Australia/Adelaide and reconnecting the app stored 0x09 while the following field stored 0x1e, exactly +09:30, read back through status_reply aa a5 group 0x32 on . Restoring the phone to Sydney without reopening the app left 09 1e stored, proving this is device state written during sync. Earlier crafted writes established the byte is mirrored at group 0x32 index 1 and is not frame-gating.'
-      - id: utc_offset_minutes
-        type: u1
-        valid:
-          max: 59
-        doc: 'unsigned minute remainder of the phone local UTC offset. It was 0x00 in every Sydney (+10:00) connect capture, then stored and read back as 0x1e after an Adelaide (+09:30) app sync on . The half-hour observation separates this field from the zero padding that follows.'
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
-        doc: 'trailing zero padding to the 17-byte body window after the confirmed UTC offset minute field; grammar-enforced all-zero'
   multi_cmd:
     doc: |
       op 0x05. Second-level dispatcher: the first body byte selects the sub-command,
@@ -558,37 +466,3 @@ types:
           max: 100
         repeat: eos
         doc: 'one raw 0..100 relative-brightness percentage per segment, index i = segment i+1; 1f 64 43 64.. captured with segment 1 at 31%, segment 3 at 67% and the rest at 100%'
-  timer_schedule_cmd:
-    doc: |
-      op 0x23. One scheduled on/off timer slot: the slot index then the shared
-      timer_slot record (govee_common). protocol.build_timer_schedule. Live
-      : enabling slot 0 (07:30, repeat 0xc0) wrote 33 23 00 81 07 1e c0,
-      disabling wrote 33 23 00 01 07 1e c0 (enable bit 0x80 cleared). The aa 23
-      read-back of the four-slot table is modelled in status_reply.timer_body.
-
-      A second, single-variable series on slot 2 (capture h617a-timer-)
-      walked enable -> action -> repeat one byte at a time, which is what separated
-      the two bits of enable_and_type and falsified the old "0x80 = fire once" reading
-      of repeat:
-
-        33 23 02 81 00 00 80   enable the slot, app shows On / Do not repeat
-        33 23 02 80 00 00 80   action On -> Off, enable bit still set
-        33 23 02 80 00 00 95   repeat -> Mon+Wed+Fri, 0x80 STAYS SET
-        33 23 02 81 00 00 80   restore action
-        33 23 02 01 00 00 80   restore disabled
-        33 23 02 81 00 00 95   enabled|on with weekdays (readback capture)
-
-      THE ACK IS NOT AN ECHO. All six writes were acked with the constant
-      33 23 00 00 .., so a write is only verified by the aa 23 read-back.
-    seq:
-      - id: index
-        type: u1
-        doc: 'slot index 0..3; 0x00 written live (res-timer-sched-on/off) and 0x02 written live , each landing in the matching positional slot of the aa 23 four-slot table'
-      - id: slot
-        type: govee_common::timer_slot
-        doc: 'the scheduled slot record (enable_and_type / hour / minute / repeat)'
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
-        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'

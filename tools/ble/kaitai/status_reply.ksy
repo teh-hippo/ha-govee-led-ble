@@ -107,11 +107,7 @@ seq:
         'aa_domain::fw_version': version_body
         'aa_domain::hw_version': hw_version_body
         'aa_domain::segments': segments_body
-        'aa_domain::unit_count': unit_count_body
-        'aa_domain::timer': timer_body
         'aa_domain::multi_effect': multi_effect_body
-        'aa_domain::sleep_timer': govee_common::sleep_timer
-        'aa_domain::wake_timer': govee_common::wake_timer
     doc: 'bytes 2..18, interpreted per domain (unmatched domains fall back to raw)'
   - id: checksum
     type: u1
@@ -123,10 +119,6 @@ enums:
     0x05: colormode
     0x06: fw_version
     0x07: hw_version
-    0x11: sleep_timer
-    0x12: wake_timer
-    0x23: timer
-    0x40: unit_count
     0xa3: multi_effect
     0xa5: segments
   color_mode:
@@ -218,91 +210,6 @@ types:
       - id: brightness_pct
         type: u1
         doc: 'whole-strip brightness percent (frame offset 2); raw percent, not 0..255 scaled. PROVEN TO TRACK : with the strip driven from the app, the read-back returned 5 while the slider read 5% and 7 while it read 7%, across two separate device-page opens, and the matching writes were 33 04 05 / 33 04 07 / 33 04 03. Earlier corpus captures all read 0x05 only because the lab strip is pinned at 5%; 100 was observed historically. 0 in the query.'
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
-        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
-  unit_count_body:
-    doc: |
-      domain 0x40, a count of 15. Query aa 40 00 (all-zero body) -> reply aa 40 00 0f.
-      Byte-identical in all 20 replies across the 14 corpus captures carrying a connect
-      burst (re-derived ).
-      THE VALUE IS SOUND, THE FIELD SPLIT IS NOT. 00 0f is equally a u2be holding 15
-      and two bytes holding 0 and 15, and no capture separates them because the count
-      never exceeds 255. Do not repeat the argument that a big-endian field would be
-      unusual here: command_write::static_color.kelvin is a CONFIRMED_LIVE u2be on
-      this same device, so endianness is not a tiebreak. Both bytes are therefore
-      INFERRED, and the split stays open until a device reports a count above 255 or
-      a non-zero byte appears at offset 2.
-      WHAT THE 15 COUNTS IS NOT FULLY DETERMINED, but one reading is now dead and one
-      is positively corroborated. On this strip the app's segment count, the 5 aa a5
-      groups x 3 slots, and the IC count all equal 15, so this device alone separates
-      nothing; the agreement is a coincidence of the hardware, not attribution.
-
-      READING (a) "the app segment count" IS DEAD, on two models and neither of them
-      this one, so it is recorded as the reason the old "IC / segment count" label was
-      unearned rather than as an H617A fact:
-        - ConsciousCode/govee_h7015 reads aa 40 -> 00 1e = 30 on a string light whose
-          15 app segments are proven by an exhaustive per-bit bitmap sweep in its
-          raw.log (bit 15 is shown to alias back to segment 0, so the count is 15 and
-          not 16).
-        - our own H6199 DreamView T1 reads aa 40 -> 00 26 = 38 (live , direct
-          read, see below), against the 15 segments egold555/Govee-Reverse-Engineering
-          documents for that model.
-      Two devices, both counting well past their app segment count.
-
-      READING (b) "the live colour-buffer extent" IS CORROBORATED ON THIS DEVICE, and
-      that part IS an H617A fact because it was measured here [CONFIRMED_LIVE
-      ]. aa a5 was read out past the five groups the app uses: groups 01..05
-      return brightness+RGB in range (0x64 on fourteen slots, 0x1f on slot 1, matching
-      this strip's actual retained paint), and groups 06..0a return data that is NOT
-      colour, with leading bytes 0x73, 0x08, 0xfe, 0x00, 0x13, 0x45, 0xff, 0x0b, 0x01,
-      i.e. outside the 0..100 brightness range the first five obey. So the colour
-      region ends at group 05, the extent is 15, and it equals this count. The same
-      boundary holds on the H7015, whose colour region runs 01..0a for an extent of 30
-      against its own 0x40 of 30, and whose first non-colour body has the same shape as
-      our group 06. See segments_body for the region boundary itself.
-
-      READING (c) "the IC or physical LED count" IS UNTOUCHED and still co-varies with
-      (b) on every device known, so (b) versus (c) is NOT settled. Two live strains on
-      (b) to resolve before it is promoted:
-        - the H6199's 38 is not a whole number of 3-slot aa a5 groups, so if (b) is
-          right that model's colour region cannot be shaped like this one's;
-        - the H7015's 30 also equals its plausible physical LED count (15 bulbs x 2
-          beads, retail sourced and NOT capture-backed), which is exactly what (c)
-          predicts too.
-
-      A NOTE ON THE INSTRUMENT. The H6199 count was NOT obtainable by app-sniff: with
-      the device connected over BLE and powered on, the vendor app sends only aa 01
-      power polls and never asks aa 40, and never asks aa 04 either while still showing
-      a brightness figure, so it is feeding that device's UI from its WiFi/cloud path.
-      The value came from reading the register directly off the firmware. The H7015 app
-      does not query 0x40 either. Absence of a query is therefore NOT evidence that a
-      model lacks the register.
-
-      THAT DIAGNOSIS IS NOW CONFIRMED, AND IT IS FIXABLE AT THE PHONE. Measured
-      : with the iPhone in Airplane Mode and Bluetooth re-enabled, so the app
-      had no IP path at all, the same device page immediately asked aa 04 and got
-      brightness=30, and went on to ask aa 0f, aa 23, aa 12, aa 11, aa a9, aa ae, aa 35,
-      aa 05 and four groups of aa a5 segment colours, none of which it had asked for
-      minutes earlier over the same BLE link with WiFi up. The H6199 has no LAN API, so
-      the app's only non-BLE route is Govee's cloud, and severing the phone's IP
-      connectivity forces the whole UI onto the wire. Capture H6199 with the phone
-      offline; a capture taken with WiFi up understates the protocol rather than
-      revealing it. aa 40 was still not asked in that session, so the paragraph above
-      stands for this register specifically.
-
-      Our integration never reads this domain (segment count comes from a hardcoded
-      ModelProfile), so the open label costs nothing.
-    seq:
-      - id: reserved
-        type: u1
-        valid: 0
-        doc: 'frame offset 2; 0x00 in every query and every reply, 0x00 on the external H7015 reading, and 0x00 on the H6199 reading of 38. Either a reserved byte or the high byte of a u2be count; not separable, because no device yet observed counts past 255.'
-      - id: count
-        type: u1
-        doc: 'frame offset 3; reads 15 on the H617A, 38 on the H6199 and 30 on the external H7015, so this is a genuine per-device varying count and not a protocol constant. PROVENANCE DIFFERS PER READING, and only the first is reproducible here: the H617A 15 is capture-backed 24 times over across 20 captures in the archive, every one from a single H617A, written here as D0:35:34:AA:BB:CC because the real address is rig identity and does not belong in a tracked spec; D0:35:34 is Govee''s OUI, which is the only part of it the reading depends on (swept ); the H6199 38 was read directly off the firmware register and is NOT in any capture, because as the type doc explains the vendor app never issues aa 40 to that model, so the two files named h6199-aa40* contain aa 01 polls and no aa 40 at all; the H7015 30 is external. Do not go looking for the 38 in the archive, and do not treat its absence there as a contradiction. The one-byte width is not corroborated by any of them, since a u2be over offsets 2..3 yields the same value. Deliberately named "count" rather than "segment_count": see the type doc for why naming it after segments asserts more than the captures show, and note the app segment count is now the one reading positively excluded.'
       - id: padding
         type: u1
         valid: 0
@@ -680,7 +587,8 @@ types:
       - id: group
         type: u1
         valid:
-          any-of: [1, 2, 3, 4, 5, 49, 50]
+          min: 1
+          max: 5
         doc: 'raw group id. Only the modelled colour groups 01..05 and clock groups 0x31..0x32 are accepted. Direct reads prove groups 06+ answer with unrelated state, so accepting an unknown group as one of these layouts would be a silent wrong answer.'
       - id: segments
         type: segment
@@ -688,64 +596,11 @@ types:
         repeat-expr: 3
         if: group >= 1 and group <= 5
         doc: 'three 4-byte segment records'
-      - id: clock
-        type:
-          switch-on: group
-          cases:
-            49: clock_group_31
-            50: clock_group_32
-        if: group == 49 or group == 50
-        doc: 'typed extended clock state for group 0x31 or 0x32'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
         doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
-  clock_group_31:
-    seq:
-      - id: prefix
-        size: 6
-        doc: 'six-byte opaque prefix held across timed reads and crafted clock writes'
-      - id: hour
-        type: u1
-        valid:
-          max: 23
-        doc: 'stored clock hour; isolated by timed reads and reproduced by crafted writes'
-      - id: minute
-        type: u1
-        valid:
-          max: 59
-        doc: 'stored clock minute; isolated by a live minute rollover and reproduced by crafted writes'
-      - id: separator
-        contents: [0x00]
-        doc: 'raw zero separator between minute and second in every group 0x31 reply'
-      - id: second
-        type: u1
-        valid:
-          max: 59
-        doc: 'stored clock second; isolated by timed reads and reproduced by crafted writes'
-      - id: weekday
-        type: u1
-        doc: 'stored weekday with Mon=1; moved across calendar days and followed crafted writes exactly'
-      - id: flag1
-        type: u1
-        doc: 'stored mirror of command_write::clock_cmd::flag1, isolated with arbitrary sentinels; its purpose remains unknown'
-  clock_group_32:
-    seq:
-      - id: prefix
-        contents: [0x00]
-        doc: 'raw zero prefix before the UTC offset'
-      - id: utc_offset_hours
-        type: s1
-        doc: 'signed whole-hour UTC offset stored by app clock sync; changed from Sydney +10 to Adelaide +9 on '
-      - id: utc_offset_minutes
-        type: u1
-        valid:
-          max: 59
-        doc: 'unsigned minute remainder of the UTC offset; changed from Sydney 0 to Adelaide 30 on '
-      - id: tail
-        size: 9
-        doc: 'nine-byte opaque tail retained because no field inside it has been isolated'
   segment:
     seq:
       - id: brightness
@@ -754,30 +609,3 @@ types:
       - id: colour
         type: govee_common::rgb
         doc: 'per-segment RGB (shared rgb type); held ff 00 00 across a brightness-only write, so brightness and colour are independently addressable'
-  timer_body:
-    doc: |
-      aa 23 read-back: a 0xff table marker then four 4-byte scheduled-timer slot
-      records, mirroring protocol.parse_timer_schedule_table. Live :
-      enabling slot 0 (07:30 Sunday, repeat 0xc0) read back 81 07 1e c0 with the
-      enable bit 0x80 set, while the three disabled slots read 01 .. .. .. (enable
-      bit clear, on-action bit set).
-
-      THIS READ IS THE ONLY VERIFICATION 0x23 HAS. The
-      0x23 ack is a constant 33 23 00 00 .. that does not echo the write, so a
-      schedule change is confirmed only here. Reading slot 2 immediately after writing
-      it returned the written bytes verbatim, first ff 01 07 1e c0 01 09 10 80
-      01 00 00 95 01 00 00 80 and then the same table with slot 2 back at 01 00 00 80
-      once restored, which establishes that the device stores the repeat byte rather
-      than the app merely remembering it.
-
-      The table also cross-checks against the app's own Timer page, whose four rows
-      read 7:30 Sunday, 9:16 do-not-repeat and two unset slots.
-    seq:
-      - id: marker
-        contents: [0xff]
-        doc: 'raw 0xff table marker'
-      - id: slots
-        type: govee_common::timer_slot
-        repeat: expr
-        repeat-expr: 4
-        doc: 'four 4-byte scheduled-timer slot records (the slot index is positional 0..3)'
