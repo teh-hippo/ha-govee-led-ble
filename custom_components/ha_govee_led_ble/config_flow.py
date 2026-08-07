@@ -1,14 +1,27 @@
 """Config flow for HA Govee LED BLE."""
 
+from __future__ import annotations
+
 import re
 from typing import Any
 
 import voluptuous as vol
 from homeassistant.components.bluetooth import BluetoothServiceInfo
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.const import CONF_ADDRESS
+from homeassistant.core import callback
+from homeassistant.helpers import config_validation as cv
 
-from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES, resolve_model
+from .const import (
+    CONF_EFFECT_FAMILIES,
+    CONF_MODEL,
+    DOMAIN,
+    EFFECT_FAMILIES,
+    MODEL_PROFILES,
+    default_effect_families,
+    resolve_model,
+    supported_effect_families,
+)
 
 MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
 _MANUAL_ADDRESS_PATTERN = re.compile(r"^[0-9A-F]{12}$")
@@ -30,9 +43,14 @@ def _normalize_manual_address(address: str) -> str:
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 4
+    VERSION = 5
 
     _discovered: dict[str, str]
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(_config_entry: ConfigEntry) -> GoveeOptionsFlow:
+        return GoveeOptionsFlow()
 
     async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfo) -> ConfigFlowResult:
         model = _extract_model(discovery_info.name)
@@ -76,4 +94,31 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+
+class GoveeOptionsFlow(OptionsFlowWithReload):
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        raw_model = self.config_entry.data.get(CONF_MODEL)
+        model = resolve_model(raw_model) if isinstance(raw_model, str) else None
+        if model is None:
+            return self.async_abort(reason="not_supported")
+        supported = supported_effect_families(model)
+        if user_input is not None:
+            selected = set(user_input[CONF_EFFECT_FAMILIES]) & supported
+            ordered = [family for family in EFFECT_FAMILIES if family in selected]
+            return self.async_create_entry(data={CONF_EFFECT_FAMILIES: ordered})
+        defaults = default_effect_families(model)
+        current = self.config_entry.options.get(
+            CONF_EFFECT_FAMILIES,
+            [family for family in EFFECT_FAMILIES if family in defaults],
+        )
+        choices = {family: family.title() for family in EFFECT_FAMILIES if family in supported}
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_EFFECT_FAMILIES, default=current): cv.multi_select(choices),
+                }
+            ),
         )

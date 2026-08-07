@@ -15,7 +15,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from .const import DOMAIN, get_profile
+from .const import DOMAIN, default_effect_families, get_profile
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .protocol import (
     BLANK_SCREEN_QUERY,
@@ -220,7 +220,14 @@ def _expected_color_mode_from_packet(
 class GoveeBLECoordinator(_ActiveModeMixin):
     """Manages BLE connection lifecycle for a Govee device."""
 
-    def __init__(self, hass: HomeAssistant, address: str, model: str) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        address: str,
+        model: str,
+        *,
+        effect_families: frozenset[str] | None = None,
+    ) -> None:
         profile = get_profile(model)
         super().__init__(
             hass,
@@ -229,6 +236,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             update_interval=timedelta(seconds=30) if profile.state_readable else None,
         )
         self.address, self.model, self.profile = address, model, profile
+        self.effect_families = default_effect_families(model) if effect_families is None else effect_families
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
         self._control_lock = asyncio.Lock()
@@ -516,11 +524,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if not self._accept_expected("color_mode", observed_color_mode):
             return ()
         self.color_mode = parsed.mode
-        # The parser names a scene code from one shared catalogue, which is an H617A numbering.
-        # It agrees with H6199 wire for the three codes a capture confirmed and diverges after
-        # that (Forest is 2163 there and 212 here), so a name is only trusted for a model that
-        # owns it. Otherwise this would put a name outside effect_list into state, and assert a
-        # scene the light is not running.
+        # Only expose a scene that belongs to this model and is enabled in this entry's options.
         scene_effect = parsed.effect if parsed.effect in self.scene_name_set else None
         # A scene we cannot name still leaves the light running something, and effect has to stay
         # None because HA rejects one outside effect_list. Keep the raw id so the state is honest

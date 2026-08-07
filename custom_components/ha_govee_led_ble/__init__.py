@@ -8,7 +8,16 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES, resolve_model
+from .const import (
+    CONF_EFFECT_FAMILIES,
+    CONF_MODEL,
+    DOMAIN,
+    EFFECT_FAMILIES,
+    MODEL_PROFILES,
+    default_effect_families,
+    effect_families_from_options,
+    resolve_model,
+)
 from .coordinator import GoveeBLECoordinator
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
@@ -105,7 +114,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
         model = next((candidate for candidate in MODEL_PROFILES if candidate in entry.title.upper()), None)
     if model is not None:
         data[CONF_MODEL] = model
-    hass.config_entries.async_update_entry(entry, data=data, options=options, version=4)
+        defaults = default_effect_families(model)
+        options.setdefault(CONF_EFFECT_FAMILIES, [family for family in EFFECT_FAMILIES if family in defaults])
+    hass.config_entries.async_update_entry(entry, data=data, options=options, version=5)
     return True
 
 
@@ -172,7 +183,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         )
         return False
     ir.async_delete_issue(hass, DOMAIN, issue_id)
-    coordinator = GoveeBLECoordinator(hass, entry.unique_id, model)
+    coordinator = GoveeBLECoordinator(
+        hass,
+        entry.unique_id,
+        model,
+        effect_families=effect_families_from_options(model, entry.options),
+    )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     _maybe_flag_music_mode_replaced(hass, entry)

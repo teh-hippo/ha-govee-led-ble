@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from .const import MUSIC_MODE_SLUGS
+from .const import EFFECT_FAMILY_SCENES, MUSIC_MODE_SLUGS
 from .coordinator_base import _CoordinatorBase
 from .protocol import (
     RHYTHM_MODE_ID,
@@ -15,7 +15,7 @@ from .protocol import (
     build_scene_multi,
     build_white_brightness,
 )
-from .scenes import SCENES, SceneEntry, get_scene_names
+from .scenes import MODEL_SCENES, SceneEntry
 
 
 @dataclass(frozen=True)
@@ -51,9 +51,9 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     @property
     def scene_name_set(self) -> frozenset[str]:
-        if self.profile.scene_source == "api":
-            return frozenset(get_scene_names())
-        return frozenset(self.profile.builtin_scenes)
+        if EFFECT_FAMILY_SCENES not in self.effect_families:
+            return frozenset()
+        return frozenset(MODEL_SCENES[self.model])
 
     @property
     def active_mode(self) -> str:
@@ -74,7 +74,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         """Return the active H617A scene and its complete catalogue Speed metadata."""
         if not self.profile.supports_scene_speed or self.active_mode != "scene" or self.effect is None:
             return None
-        scene = SCENES.get(self.effect)
+        scene = MODEL_SCENES[self.model].get(self.effect)
         if scene is None or scene.speed is None:
             return None
         _ = scene.speed.option_count
@@ -82,7 +82,11 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     def _sync_scene_speed(self, scene_name: str | None, *, speed_index: int | None = None) -> None:
         """Tie the optimistic speed position to one scene, defaulting on a scene change."""
-        scene = SCENES.get(scene_name) if self.profile.supports_scene_speed and scene_name is not None else None
+        scene = (
+            MODEL_SCENES[self.model].get(scene_name)
+            if self.profile.supports_scene_speed and scene_name is not None
+            else None
+        )
         if scene is None or scene.speed is None:
             self.scene_speed_scene_code = self.scene_speed_index = None
             return

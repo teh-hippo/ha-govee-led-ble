@@ -1,17 +1,24 @@
 """Constants for HA Govee LED BLE."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
+CONF_EFFECT_FAMILIES = "effect_families"
+EFFECT_FAMILY_SCENES = "scenes"
+EFFECT_FAMILY_MUSIC = "music"
+EFFECT_FAMILY_VIDEO = "video"
+EFFECT_FAMILIES = (EFFECT_FAMILY_SCENES, EFFECT_FAMILY_MUSIC, EFFECT_FAMILY_VIDEO)
 
 
 @dataclass(frozen=True)
 class ModelProfile:
     name: str
     state_readable: bool = False
-    scene_source: str = "none"
-    builtin_scenes: tuple[str, ...] = ()
+    supports_scenes: bool = False
+    uses_h6199_scene_protocol: bool = False
     supports_scene_speed: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
@@ -74,7 +81,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617A": ModelProfile(
         "H617A LED Strip",
         state_readable=True,
-        scene_source="api",
+        supports_scenes=True,
         supports_scene_speed=True,
         music_modes=tuple(MUSIC_MODE_SLUGS),
         supports_music_color=True,
@@ -92,20 +99,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
-        # Only the three scenes the light already holds. Every H6199 scene write carries a kind
-        # byte saying whether a definition has to be uploaded first, and across fifteen captured
-        # scenes it predicted an 0xA3 upload with no exceptions: kind 1 for Sunrise, Sunset and
-        # Candlelight and nothing on the wire before them, kind 2 for the other twelve and a body
-        # of between 51 and 170 bytes each time (h6199_command_write::scene_body::kind). We hold
-        # none of those bodies, so the other twelve cannot be started and are not offered.
-        #
-        # The three names and codes are the shared catalogue's own, which the captures confirm
-        # rather than assume: 0, 1 and 9 in both. That agreement does not extend past them.
-        # Forest is 2163 in the catalogue and 212 on H6199 wire, so the catalogue is an H617A
-        # numbering that happens to coincide at the low end, and reading a code out of it for
-        # any scene this list does not name would be sending the wrong scene.
-        scene_source="builtin",
-        builtin_scenes=("candlelight", "sunrise", "sunset"),
+        supports_scenes=True,
+        uses_h6199_scene_protocol=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
         # The three registers the app reaches from the same video sheet, each modelled from an
@@ -151,3 +146,29 @@ def resolve_model(model: str) -> str | None:
 def get_profile(model: str) -> ModelProfile:
     resolved = resolve_model(model)
     return MODEL_PROFILES[resolved] if resolved is not None else UNSUPPORTED_PROFILE
+
+
+def supported_effect_families(model: str) -> frozenset[str]:
+    profile = get_profile(model)
+    families: set[str] = set()
+    if profile.supports_scenes:
+        families.add(EFFECT_FAMILY_SCENES)
+    if profile.supports_music_mode:
+        families.add(EFFECT_FAMILY_MUSIC)
+    if profile.supports_video_mode:
+        families.add(EFFECT_FAMILY_VIDEO)
+    return frozenset(families)
+
+
+def default_effect_families(model: str) -> frozenset[str]:
+    supported = supported_effect_families(model)
+    if model == "H6199":
+        return frozenset({EFFECT_FAMILY_VIDEO}) & supported
+    return supported
+
+
+def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:
+    selected = options.get(CONF_EFFECT_FAMILIES)
+    if not isinstance(selected, list | tuple | set | frozenset):
+        return default_effect_families(model)
+    return frozenset(str(value) for value in selected) & supported_effect_families(model)

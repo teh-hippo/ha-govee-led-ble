@@ -14,6 +14,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_EFFECT,
     ATTR_RGB_COLOR,
+    EFFECT_OFF,
     ColorMode,
     LightEntity,
     LightEntityFeature,
@@ -26,7 +27,14 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN, MUSIC_MODES, ModelProfile
+from .const import (
+    DOMAIN,
+    EFFECT_FAMILY_MUSIC,
+    EFFECT_FAMILY_SCENES,
+    EFFECT_FAMILY_VIDEO,
+    MUSIC_MODES,
+    ModelProfile,
+)
 from .coordinator import GoveeBLECoordinator
 from .entity import GoveeBLEEntity
 from .light_services import (
@@ -38,12 +46,12 @@ from .protocol import (
     build_brightness,
     build_color_rgb,
     build_color_temp,
-    build_h6199_scene,
+    build_h6199_scene_multi,
     build_power,
     build_scene_multi,
     kelvin_to_rgb,
 )
-from .scenes import SCENES, SceneEntry
+from .scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SceneEntry
 
 # fmt: on
 
@@ -58,7 +66,8 @@ _EFFECT_QUOTE_CHARS = "\"'“”‘’"
 
 
 def _normalize_effect_name(effect_name: str) -> str:
-    return effect_name.strip().strip(_EFFECT_QUOTE_CHARS).strip().lower()
+    stripped = effect_name.strip().strip(_EFFECT_QUOTE_CHARS).strip()
+    return " ".join(stripped.split()).casefold()
 
 
 # First-class mode effects on the light effect list: display label -> mode slug.
@@ -76,10 +85,8 @@ def _scene_packets(profile: ModelProfile, scene: SceneEntry, *, speed_index: int
     the H617A write is two bytes with nothing there. Sharing one builder sent an H617A frame to
     an H6199, which differs from the captured one at exactly that byte.
     """
-    if profile.scene_source == "builtin":
-        if scene.param:
-            raise ValueError("H6199 uploaded scenes are not supported")
-        return build_h6199_scene(scene.code, scene.music_code)
+    if profile.uses_h6199_scene_protocol:
+        return build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
     return build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed, speed_index=speed_index)
 
 
@@ -153,7 +160,6 @@ async def async_setup_entry(
 class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, LightEntity):
     _attr_name = None
     _attr_supported_color_modes = {ColorMode.RGB, ColorMode.COLOR_TEMP}
-    _attr_supported_features = LightEntityFeature.EFFECT
     _attr_min_color_temp_kelvin = MIN_COLOR_TEMP_KELVIN
     _attr_max_color_temp_kelvin = MAX_COLOR_TEMP_KELVIN
 
@@ -193,20 +199,38 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def effect(self) -> str | None:
-        for label, mode in _VIDEO_EFFECTS.items():
-            if mode == self.coordinator.video_mode:
-                return label
-        for label, slug in _MUSIC_EFFECTS.items():
-            if slug == self.coordinator.music_mode:
-                return label
-        return self.coordinator.effect
+        families = self.coordinator.effect_families
+        if EFFECT_FAMILY_VIDEO in families:
+            for label, mode in _VIDEO_EFFECTS.items():
+                if mode == self.coordinator.video_mode:
+                    return label
+        if EFFECT_FAMILY_MUSIC in families:
+            for label, slug in _MUSIC_EFFECTS.items():
+                if slug == self.coordinator.music_mode:
+                    return label
+        if EFFECT_FAMILY_SCENES in families and self.coordinator.effect is not None:
+            return MODEL_SCENE_LABELS[self.coordinator.model].get(self.coordinator.effect)
+        return EFFECT_OFF if self.effect_list else None
+
+    @property
+    def supported_features(self) -> LightEntityFeature:
+        return LightEntityFeature.EFFECT if self.effect_list else LightEntityFeature(0)
 
     @property
     def effect_list(self) -> list[str]:
         p = self.coordinator.profile
-        scenes = sorted(self.coordinator.scene_name_set)
-        music = [label for label, slug in _MUSIC_EFFECTS.items() if slug in p.music_modes]
-        video = list(_VIDEO_EFFECTS) if p.supports_video_mode else []
+        families = self.coordinator.effect_families
+        scenes = (
+            sorted(MODEL_SCENE_LABELS[self.coordinator.model].values(), key=str.casefold)
+            if EFFECT_FAMILY_SCENES in families
+            else []
+        )
+        music = (
+            [label for label, slug in _MUSIC_EFFECTS.items() if slug in p.music_modes]
+            if EFFECT_FAMILY_MUSIC in families
+            else []
+        )
+        video = list(_VIDEO_EFFECTS) if EFFECT_FAMILY_VIDEO in families else []
         return [*scenes, *music, *video]
 
     @property
@@ -359,7 +383,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     async def _apply_effect(self, effect_name: str) -> None:
         key = _normalize_effect_name(effect_name)
         coordinator = self.coordinator
-        scene = SCENES.get(key) if key in coordinator.scene_name_set else None
+        scene = (
+            MODEL_SCENES[coordinator.model].get(key) if EFFECT_FAMILY_SCENES in coordinator.effect_families else None
+        )
         if scene is not None:
             speed_index = coordinator.scene_speed_index if coordinator.scene_speed_scene_code == scene.code else None
             for packet in _scene_packets(coordinator.profile, scene, speed_index=speed_index):
@@ -369,7 +395,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             coordinator.music_mode = coordinator.video_mode = "off"
             coordinator._sync_scene_speed(key, speed_index=speed_index)
             return
-        if coordinator.profile.supports_video_mode:
+        if EFFECT_FAMILY_VIDEO in coordinator.effect_families:
             mode = next((m for label, m in _VIDEO_EFFECTS.items() if _normalize_effect_name(label) == key), None)
             if mode is not None:
                 await self._async_set_video_mode(
@@ -382,7 +408,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     sound_effects_softness=coordinator.video_sound_effects_softness,
                 )
                 return
-        if coordinator.profile.supports_music_mode:
+        if EFFECT_FAMILY_MUSIC in coordinator.effect_families:
             slug = next(
                 (
                     candidate

@@ -135,5 +135,16 @@
         }
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Effects",
+        "description": "Choose which effect families appear on the light entity.",
+        "data": {
+          "effect_families": "Effect families"
+        }
+      }
+    }
   }
 }

@@ -128,6 +128,7 @@ async def test_colour_readback_is_accepted_and_never_blacks_out(mock_ble: MockBl
     strip to (0, 0, 0) as soon as anything has written the 33 a3 register.
     """
     sim, coord = mock_ble.sim, mock_ble.coordinator
+    coord.effect_families = frozenset({"scenes", "music", "video"})
     await coord._ensure_connected()
     # Let the stale effect arrive from the device rather than poking it in, so the state under
     # test is one the coordinator actually reaches.
@@ -284,6 +285,7 @@ async def test_ensure_connected_converges_core_state(mock_ble: MockBle):
 
 async def test_refresh_state_converges_effect(mock_ble: MockBle):
     sim, coord = mock_ble.sim, mock_ble.coordinator
+    coord.effect_families = frozenset({"scenes"})
     sim.handle_write(proto.build_scene(SCENES["candlelight"].code))
     coord.effect = None
     assert await coord.refresh_state(expected_effect="candlelight") is True
@@ -302,6 +304,7 @@ async def test_refresh_state_converges_music_mode(mock_ble: MockBle):
 async def test_music_effect_confirms_via_music_mode(mock_ble: MockBle, monkeypatch):
     """End to end (un-mocked): the readback lands in music_mode, so the confirm converges."""
     coord = mock_ble.coordinator
+    coord.effect_families = frozenset({"music"})
     light = GoveeBLELight(coord)
     notified = MagicMock()
     monkeypatch.setattr(light, "async_write_ha_state", notified)

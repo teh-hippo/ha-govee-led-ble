@@ -8,7 +8,7 @@ from custom_components.ha_govee_led_ble import (
     _restore_relative_brightness_enablement,
     async_migrate_entry,
 )
-from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_EFFECT_FAMILIES, CONF_MODEL, DOMAIN
 
 _ADDR = "AA:BB:CC:DD:EE:FF"
 _BASE = "aabbccddeeff"
@@ -25,8 +25,8 @@ async def test_migrate_bumps_version_and_strips_experimental(hass: HomeAssistant
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 4
-    assert dict(entry.options) == {"keep_me": 1}
+    assert entry.version == 5
+    assert dict(entry.options) == {"keep_me": 1, CONF_EFFECT_FAMILIES: ["scenes", "music"]}
 
 
 async def test_clean_install_migrates(hass: HomeAssistant):
@@ -34,7 +34,8 @@ async def test_clean_install_migrates(hass: HomeAssistant):
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 4
+    assert entry.version == 5
+    assert entry.options == {CONF_EFFECT_FAMILIES: ["scenes", "music"]}
 
 
 async def test_migrate_strips_experimental_without_music_calm(hass: HomeAssistant):
@@ -42,17 +43,17 @@ async def test_migrate_strips_experimental_without_music_calm(hass: HomeAssistan
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 4
-    assert dict(entry.options) == {}
+    assert entry.version == 5
+    assert dict(entry.options) == {CONF_EFFECT_FAMILIES: ["scenes", "music"]}
 
 
-async def test_migrate_current_entry_bumps_to_v4(hass: HomeAssistant):
+async def test_migrate_current_entry_bumps_to_v5(hass: HomeAssistant):
     entry = MockConfigEntry(domain=DOMAIN, unique_id=_ADDR, version=2, data={CONF_MODEL: "H617A"})
     entry.add_to_hass(hass)
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 4
+    assert entry.version == 5
 
 
 async def test_migrate_recovers_model_from_legacy_title(hass: HomeAssistant):
@@ -61,8 +62,9 @@ async def test_migrate_recovers_model_from_legacy_title(hass: HomeAssistant):
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 4
+    assert entry.version == 5
     assert entry.data == {CONF_MODEL: "H6199"}
+    assert entry.options == {CONF_EFFECT_FAMILIES: ["video"]}
 
 
 async def test_v4_migration_preserves_enabled_relative_brightness_entities(hass: HomeAssistant):
@@ -80,6 +82,6 @@ async def test_v4_migration_preserves_enabled_relative_brightness_entities(hass:
     registry.async_update_entity(enabled.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
     _restore_relative_brightness_enablement(hass, entry)
 
-    assert entry.version == 4
+    assert entry.version == 5
     restored = registry.async_get(enabled.entity_id)
     assert restored is not None and restored.disabled_by is None

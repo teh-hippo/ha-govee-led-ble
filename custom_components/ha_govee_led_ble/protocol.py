@@ -443,6 +443,16 @@ def build_h6199_scene(scene_code: int, music_code: int = 0) -> list[bytes]:
     return [_build_generated_h6199_scene(scene_code, music_code)]
 
 
+def build_h6199_scene_multi(
+    scene_param_b64: str,
+    scene_code: int,
+    scene_type: int,
+    music_code: int = 0,
+) -> list[bytes]:
+    packets = build_a3_multi(scene_type, base64.b64decode(scene_param_b64)) if scene_param_b64 else []
+    return [*packets, *build_h6199_scene(scene_code, music_code)]
+
+
 STATE_QUERY = _build_generated_power_query()
 BRIGHTNESS_QUERY = _build_generated_brightness_query()
 COLOR_MODE_QUERY = _build_generated_colour_mode_query()

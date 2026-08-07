@@ -36,6 +36,7 @@ async def async_get_config_entry_diagnostics(
     coordinator_data = {
         "address": coordinator.address,
         "model": coordinator.model,
+        "effect_families": sorted(coordinator.effect_families),
         "state_readable": coordinator.profile.state_readable,
         "supports_scene_speed": coordinator.profile.supports_scene_speed,
         "supports_video_mode": coordinator.profile.supports_video_mode,

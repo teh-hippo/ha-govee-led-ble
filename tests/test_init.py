@@ -16,7 +16,7 @@ from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, MODEL_P
 
 
 def _entry(**kw):
-    d = dict(entry_id="test_entry_id", unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H617A"})
+    d = dict(entry_id="test_entry_id", unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H617A"}, options={})
     return MagicMock(**({**d, "domain": DOMAIN, "state": ConfigEntryState.LOADED, "runtime_data": None} | kw))
 
 
@@ -30,7 +30,12 @@ async def test_setup_entry(hass: HomeAssistant):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
         cls.return_value.profile = MODEL_PROFILES["H617A"]
         assert await async_setup_entry(hass, entry) is True
-    cls.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", "H617A")
+    cls.assert_called_once_with(
+        hass,
+        "AA:BB:CC:DD:EE:FF",
+        "H617A",
+        effect_families=frozenset({"scenes", "music"}),
+    )
     assert entry.runtime_data is cls.return_value
     cleanup.assert_awaited_once_with(hass, entry)
     fwd.assert_awaited_once()

@@ -17,7 +17,7 @@ from custom_components.ha_govee_led_ble.coordinator import (
     _expectations_from_packet,
     _expected_color_mode_from_packet,
 )
-from custom_components.ha_govee_led_ble.scenes import SCENES
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 
@@ -114,6 +114,7 @@ async def test_disconnect_does_not_clear_replacement_client(coord):
 
 
 def test_notify_callback(h6199):
+    h6199.effect_families = frozenset({"scenes", "music", "video"})
     cb = h6199._notify_callback
     cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x01])))
     assert h6199.is_on is True
@@ -189,7 +190,8 @@ def test_display_replies_reject_stale_composite_values_atomically(h6199):
 
 
 def test_notify_callback_parses_full_frame_with_checksum(h6199):
-    """The scenes here are ones this model was captured starting, because it names no others."""
+    """Full H6199 scene replies resolve through the model catalogue when enabled."""
+    h6199.effect_families = frozenset({"scenes"})
     cb = h6199._notify_callback
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x01, 0x00])))
     assert h6199.effect == "sunset"
@@ -431,6 +433,7 @@ def test_notify_callback_music_auto_color_clears_manual_color(h6199):
 
 def test_readback_mode_mutual_exclusion(h6199):
     """Each parsed readback mode leaves exactly one mode truthful, clearing any stale others."""
+    h6199.effect_families = frozenset({"scenes", "music", "video"})
     cb = h6199._notify_callback
     music = bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3]))
     video = bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 42]))
@@ -511,6 +514,7 @@ def test_music_expectation_rejects_delayed_same_mode_reply(h6199):
 
 
 def test_scene_expectation_rejects_delayed_same_mode_reply(h6199):
+    h6199.effect_families = frozenset({"scenes"})
     sunrise_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "sunrise")
     candlelight_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "candlelight")
     h6199._expected_state["color_mode"] = ((proto.ParsedMode.SCENE, None), time.monotonic() + 60)
@@ -1094,30 +1098,22 @@ def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
     assert coord.unknown_scene_code is None
 
 
-def test_a_scene_code_is_only_named_for_a_model_that_owns_the_name(h6199):
-    """The catalogue is an H617A numbering, so naming an H6199 readback from it invents state.
-
-    Forest is 2163 in the catalogue and 212 on this model's wire, so agreement past the three
-    captured codes is coincidence. Naming a code anyway would put a value outside effect_list
-    into state and claim a scene the light is not running.
-    """
-    catalogue_only = next(code for code, name in proto.SCENE_EFFECT_BY_ID.items() if name not in h6199.scene_name_set)
+def test_h6199_scene_codes_are_named_only_when_scenes_are_enabled(h6199):
+    scene = MODEL_SCENES["H6199"]["forest"]
     h6199._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *catalogue_only.to_bytes(2, "little")])),
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *scene.code.to_bytes(2, "little")])),
     )
     assert h6199.effect is None
-    assert h6199.unknown_scene_code == catalogue_only
+    assert h6199.unknown_scene_code == scene.code
 
-    # The three this model was captured starting are named, because a capture confirmed the code.
-    for name in ("sunrise", "sunset", "candlelight"):
-        code = next(c for c, n in proto.SCENE_EFFECT_BY_ID.items() if n == name)
-        h6199._notify_callback(
-            None,
-            bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *code.to_bytes(2, "little")])),
-        )
-        assert h6199.effect == name
-        assert h6199.unknown_scene_code is None
+    h6199.effect_families = frozenset({"scenes"})
+    h6199._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *scene.code.to_bytes(2, "little")])),
+    )
+    assert h6199.effect == "forest"
+    assert h6199.unknown_scene_code is None
 
 
 def test_video_readback_is_gated_on_the_model(coord, h6199):

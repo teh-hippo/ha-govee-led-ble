@@ -15,7 +15,7 @@ from custom_components.ha_govee_led_ble.light import (
     _coerce_segment_colors,
     async_setup_entry,
 )
-from custom_components.ha_govee_led_ble.scenes import SCENES
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENES
 
 
 @pytest.fixture
@@ -38,11 +38,12 @@ def test_basic_and_color_props(light, mock_coordinator):
     assert light.unique_id == "aabbccddeeff" and light.is_on is False
     mock_coordinator.brightness_pct = 50
     assert light.brightness == 128
-    assert light.effect_list[: len(SCENES)] == sorted(SCENES.keys())
+    labels = sorted(MODEL_SCENE_LABELS["H617A"].values(), key=str.casefold)
+    assert light.effect_list[: len(labels)] == labels
     mock_coordinator.effect = "rainbow"
-    assert light.effect == "rainbow"
+    assert light.effect == "Rainbow"
     mock_coordinator.effect = None
-    assert light.effect is None
+    assert light.effect == "off"
     mock_coordinator.rgb_color = (128, 64, 32)
     mock_coordinator.color_temp_kelvin = 4000
     light._attr_color_mode = ColorMode.RGB
@@ -115,15 +116,18 @@ async def test_power_rollback(light, mock_coordinator):
 
 def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinator):
     el = light.effect_list
-    assert el[: len(SCENES)] == sorted(SCENES.keys())
+    labels = sorted(MODEL_SCENE_LABELS["H617A"].values(), key=str.casefold)
+    assert el[: len(labels)] == labels
     assert "Music: Energetic" in el and "Music: Piano Keys" in el
     assert "Video: Movie" not in el and "music: energetic" not in el
     h = h6199_light.effect_list
-    assert h[:3] == ["candlelight", "sunrise", "sunset"]
-    assert "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
+    assert h == ["Video: Movie", "Video: Game"]
+
+    mock_h6199_coordinator.effect_families = frozenset({"scenes", "music", "video"})
+    h = h6199_light.effect_list
+    assert "Sunrise" in h and "Music: Rhythm" in h and h[-2:] == ["Video: Movie", "Video: Game"]
     assert "Music: Bloom" not in h and "Music: Shiny" not in h
-    # A scene needing an uploaded body is not offered, because we do not hold the body.
-    assert "forest" not in h and "aurora" not in h
+    assert "Forest" in h and "Aurora-A" in h
 
 
 async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
@@ -158,19 +162,27 @@ async def test_turn_on_scene_reuses_only_that_scenes_speed(light, mock_coordinat
 async def test_h6199_scene_disables_linked_music(h6199_light, mock_h6199_coordinator):
     co = mock_h6199_coordinator
     co.is_on = True
+    co.effect_families = frozenset({"scenes"})
     await h6199_light.async_turn_on(effect="sunrise")
     sent = [call.args[0] for call in co.send_command.call_args_list]
-    assert sent == proto.build_h6199_scene(SCENES["sunrise"].code)
+    scene = MODEL_SCENES["H6199"]["sunrise"]
+    assert sent == proto.build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
     assert sent[0][5:7] == b"\x00\x00"
     assert co.effect == "sunrise"
 
 
-async def test_h6199_refuses_a_scene_it_cannot_start(h6199_light, mock_h6199_coordinator):
-    """The catalogue holds Forest; this light does not, and its number differs here anyway."""
-    mock_h6199_coordinator.is_on = True
-    with pytest.raises(ServiceValidationError):
-        await h6199_light.async_turn_on(effect="forest")
-    mock_h6199_coordinator.send_command.assert_not_awaited()
+async def test_h6199_uploads_an_opted_in_scene(h6199_light, mock_h6199_coordinator):
+    co = mock_h6199_coordinator
+    co.is_on = True
+    co.effect_families = frozenset({"scenes"})
+    await h6199_light.async_turn_on(effect="forest")
+    scene = MODEL_SCENES["H6199"]["forest"]
+    assert [call.args[0] for call in co.send_command.await_args_list] == proto.build_h6199_scene_multi(
+        scene.param,
+        scene.code,
+        scene.scene_type,
+        scene.music_code,
+    )
 
 
 async def test_turn_on_unknown_effect_raises(light, mock_coordinator):
@@ -229,7 +241,7 @@ async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordin
     assert h6199_light.effect == "Video: Game"
     mock_h6199_coordinator.video_mode = "off"
     mock_h6199_coordinator.effect = "rainbow"
-    assert h6199_light.effect == "rainbow"
+    assert h6199_light.effect == "off"
 
 
 async def test_setup_entry_registers_segment_services(mock_coordinator):

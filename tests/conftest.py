@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 import pytest
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, default_effect_families
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.protocol import WHITE_BALANCE_RESET
-from custom_components.ha_govee_led_ble.scenes import get_scene_names
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 
 _IDENTITY_EXAMPLE = Path(__file__).parents[1] / "tools" / "harness" / "devices.local.env.example"
 
@@ -70,10 +70,14 @@ def _make_coord(**ov) -> MagicMock:
         data={},
     )
     d |= ov
-    profile = d["profile"]
+    model = d["model"]
+    assert isinstance(model, str)
+    d.setdefault("effect_families", default_effect_families(model))
+    effect_families = d["effect_families"]
+    assert isinstance(effect_families, frozenset)
     d.setdefault(
         "scene_name_set",
-        frozenset(get_scene_names()) if profile.scene_source == "api" else frozenset(profile.builtin_scenes),
+        frozenset(MODEL_SCENES[model]) if "scenes" in effect_families else frozenset(),
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
     c.send_command = AsyncMock()

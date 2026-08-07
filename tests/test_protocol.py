@@ -5,6 +5,7 @@ import base64
 import pytest
 
 from custom_components.ha_govee_led_ble import protocol as proto
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from tools.ble.generated_protocol_view import describe_generated, query_frames
 
 H = bytes.fromhex
@@ -256,6 +257,15 @@ def test_scene_multi():
 def test_build_h6199_scene_disables_linked_music():
     assert proto.build_h6199_scene(0) == [H("3305040000000000000000000000000000000032")]
     assert proto.build_h6199_scene(16182, 2) == [H("330504363f020000000000000000000000000039")]
+
+
+def test_build_h6199_scene_multi_uploads_catalogue_body_then_activates():
+    scene = MODEL_SCENES["H6199"]["forest"]
+    packets = proto.build_h6199_scene_multi(scene.param, scene.code, scene.scene_type, scene.music_code)
+    assert packets == [
+        *proto.build_a3_multi(scene.scene_type, base64.b64decode(scene.param)),
+        *proto.build_h6199_scene(scene.code, 0),
+    ]
 
 
 def test_build_a3_multi():

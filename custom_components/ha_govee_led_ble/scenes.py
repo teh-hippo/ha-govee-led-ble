@@ -137,19 +137,25 @@ def _legacy_h617a_key(entry: SceneEntry) -> str:
     return key
 
 
-def _model_scene_map(sku: str) -> dict[str, SceneEntry]:
+def _model_scene_catalogue(sku: str) -> tuple[dict[str, SceneEntry], dict[str, str]]:
     entries = SCENE_ENTRIES[sku]
     keys = [" ".join(entry.display_name.split()).casefold() for entry in entries]
     duplicates = {key for key, count in Counter(keys).items() if count > 1}
     scenes: dict[str, SceneEntry] = {}
+    labels: dict[str, str] = {}
     for entry, key in zip(entries, keys, strict=True):
+        label = entry.display_name
         if key in duplicates:
             key = f"{key} [{entry.category.lower()}]"
+            label = f"{label} [{entry.category}]"
         scenes[key] = entry
-    return scenes
+        labels[key] = label
+    return scenes, labels
 
 
-MODEL_SCENES: dict[str, dict[str, SceneEntry]] = {sku: _model_scene_map(sku) for sku in SCENE_ENTRIES}
+_MODEL_CATALOGUES = {sku: _model_scene_catalogue(sku) for sku in SCENE_ENTRIES}
+MODEL_SCENES: dict[str, dict[str, SceneEntry]] = {sku: catalogue[0] for sku, catalogue in _MODEL_CATALOGUES.items()}
+MODEL_SCENE_LABELS: dict[str, dict[str, str]] = {sku: catalogue[1] for sku, catalogue in _MODEL_CATALOGUES.items()}
 
 # Compatibility surface until the effect-options rewrite switches callers to model catalogues.
 SCENES: dict[str, SceneEntry] = {_legacy_h617a_key(entry): entry for entry in SCENE_ENTRIES["H617A"]}

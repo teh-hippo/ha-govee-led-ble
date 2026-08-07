@@ -23,6 +23,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     profile: ModelProfile
     address: str
     model: str
+    effect_families: frozenset[str]
     is_on: bool
     effect: str | None
     fw_version: str | None
