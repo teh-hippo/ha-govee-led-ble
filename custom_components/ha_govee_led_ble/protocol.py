@@ -21,7 +21,16 @@ from .custom_effects import (
 from .generated_protocol_adapter import (
     build_brightness as _build_generated_brightness,
 )
+from .generated_protocol_adapter import (
+    build_colour_temperature as _build_generated_colour_temperature,
+)
 from .generated_protocol_adapter import build_power as _build_generated_power
+from .generated_protocol_adapter import (
+    build_segment_brightness as _build_generated_segment_brightness,
+)
+from .generated_protocol_adapter import (
+    build_segment_colour as _build_generated_segment_colour,
+)
 from .generated_protocol_adapter import xor_checksum
 from .scenes import SCENES, SceneSpeed
 
@@ -138,42 +147,41 @@ def segments_to_mask(segments: Iterable[int]) -> int:
     return mask
 
 
-def build_segment_color(segments: Iterable[int], r: int, g: int, b: int) -> bytes:
+def build_segment_color(
+    segments: Iterable[int],
+    r: int,
+    g: int,
+    b: int,
+    model: str = "H617A",
+) -> bytes:
     mask = segments_to_mask(segments)
-    lo, hi = mask & 0xFF, (mask >> 8) & 0xFF
-    return build_packet(
-        0x33,
-        0x05,
-        [
-            COLOR_MODE_STATIC,
-            STATIC_SUB_COLOR,
-            _clamp(r, 0, 255),
-            _clamp(g, 0, 255),
-            _clamp(b, 0, 255),
-            0,
-            0,
-            0,
-            0,
-            0,
-            lo,
-            hi,
-        ],
-    )
+    return _build_generated_segment_colour(mask, r, g, b, model)
 
 
-def build_segment_brightness(segments: Iterable[int], pct: int) -> bytes:
+def build_segment_brightness(
+    segments: Iterable[int],
+    pct: int,
+    model: str = "H617A",
+) -> bytes:
     mask = segments_to_mask(segments)
-    lo, hi = mask & 0xFF, (mask >> 8) & 0xFF
-    return build_packet(0x33, 0x05, [COLOR_MODE_STATIC, STATIC_SUB_BRIGHTNESS, _clamp(pct, 0, 100), lo, hi])
+    return _build_generated_segment_brightness(mask, pct, model)
 
 
-def build_segment_paint(groups: Iterable[SegmentColorGroup]) -> list[bytes]:
+def build_segment_paint(
+    groups: Iterable[SegmentColorGroup],
+    model: str = "H617A",
+) -> list[bytes]:
     """One packet per (segments, colour) group; distinct colours require distinct packets."""
-    return [build_segment_color(segments, r, g, b) for segments, (r, g, b) in groups]
+    return [build_segment_color(segments, r, g, b, model) for segments, (r, g, b) in groups]
 
 
-def build_color_rgb(r: int, g: int, b: int) -> bytes:
-    return build_segment_color(ALL_SEGMENTS, r, g, b)
+def build_color_rgb(
+    r: int,
+    g: int,
+    b: int,
+    model: str = "H617A",
+) -> bytes:
+    return build_segment_color(ALL_SEGMENTS, r, g, b, model)
 
 
 def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
@@ -188,18 +196,14 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
     return int(red), _clamp(int(green), 0, 255), _clamp(int(blue), 0, 255)
 
 
-def build_color_temp(kelvin: int) -> bytes:
+def build_color_temp(kelvin: int, model: str = "H617A") -> bytes:
     k = _clamp(kelvin, 2000, 9000)
-    r, g, b = kelvin_to_rgb(k)
-    # command_write::static_color and h6199_command_write::static_colour_body.
-    return build_packet(
-        0x33, 0x05, [COLOR_MODE_STATIC, STATIC_SUB_COLOR, 0, 0, 0, (k >> 8) & 0xFF, k & 0xFF, r, g, b, 0xFF, 0x7F]
-    )
+    return _build_generated_colour_temperature(k, kelvin_to_rgb(k), model)
 
 
-def build_white_brightness(percent: int) -> bytes:
+def build_white_brightness(percent: int, model: str = "H617A") -> bytes:
     # Whole-strip brightness: per-segment brightness command with the all-segments mask (0x7fff)
-    return build_segment_brightness(ALL_SEGMENTS, percent)
+    return build_segment_brightness(ALL_SEGMENTS, percent, model)
 
 
 @dataclass(frozen=True)

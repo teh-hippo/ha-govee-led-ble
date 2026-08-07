@@ -1027,7 +1027,7 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                     if not 1 <= segment <= self.profile.segment_count:
                         raise ValueError(f"segment {segment} out of range 1..{self.profile.segment_count}")
                     self.segment_colors[segment - 1] = rgb
-            for packet in build_segment_paint(resolved):
+            for packet in build_segment_paint(resolved, self.model):
                 await self.send_command(packet)
         except Exception:
             self.segment_colors = snapshot

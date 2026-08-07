@@ -439,44 +439,20 @@ class CommandWrite(ReadWriteKaitaiStruct):
         def _read(self):
             self.code = self._io.read_u2le()
             self.scene_type = self._io.read_u1()
-            self.padding = []
-            i = 0
-            while not self._io.is_eof():
-                self.padding.append(self._io.read_u1())
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], self._io, u"/types/scene_activate/seq/2")
-                i += 1
-
             self._dirty = False
 
 
         def _fetch_instances(self):
             pass
-            for i in range(len(self.padding)):
-                pass
-
 
 
         def _write__seq(self, io=None):
             super(CommandWrite.SceneActivate, self)._write__seq(io)
             self._io.write_u2le(self.code)
             self._io.write_u1(self.scene_type)
-            for i in range(len(self.padding)):
-                pass
-                if self._io.is_eof():
-                    raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
-                self._io.write_u1(self.padding[i])
-
-            if not self._io.is_eof():
-                raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
 
 
         def _check(self):
-            for i in range(len(self.padding)):
-                pass
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], None, u"/types/scene_activate/seq/2")
-
             self._dirty = False
 
 
@@ -516,37 +492,18 @@ class CommandWrite(ReadWriteKaitaiStruct):
                 raise kaitaistruct.ValidationGreaterThanError(100, self.percent, self._io, u"/types/static_brightness/seq/0")
             self.mask = CommandWrite.SegmentMask(self._io, self, self._root)
             self.mask._read()
-            self.padding = []
-            i = 0
-            while not self._io.is_eof():
-                self.padding.append(self._io.read_u1())
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], self._io, u"/types/static_brightness/seq/2")
-                i += 1
-
             self._dirty = False
 
 
         def _fetch_instances(self):
             pass
             self.mask._fetch_instances()
-            for i in range(len(self.padding)):
-                pass
-
 
 
         def _write__seq(self, io=None):
             super(CommandWrite.StaticBrightness, self)._write__seq(io)
             self._io.write_u1(self.percent)
             self.mask._write__seq(self._io)
-            for i in range(len(self.padding)):
-                pass
-                if self._io.is_eof():
-                    raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
-                self._io.write_u1(self.padding[i])
-
-            if not self._io.is_eof():
-                raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
 
 
         def _check(self):
@@ -556,11 +513,6 @@ class CommandWrite(ReadWriteKaitaiStruct):
                 raise kaitaistruct.ConsistencyError(u"mask", self._root, self.mask._root)
             if self.mask._parent != self:
                 raise kaitaistruct.ConsistencyError(u"mask", self, self.mask._parent)
-            for i in range(len(self.padding)):
-                pass
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], None, u"/types/static_brightness/seq/2")
-
             self._dirty = False
 
 
@@ -748,14 +700,6 @@ class CommandWrite(ReadWriteKaitaiStruct):
             self.rgb_preview._read()
             self.mask = CommandWrite.SegmentMask(self._io, self, self._root)
             self.mask._read()
-            self.padding = []
-            i = 0
-            while not self._io.is_eof():
-                self.padding.append(self._io.read_u1())
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], self._io, u"/types/static_color/seq/4")
-                i += 1
-
             self._dirty = False
 
 
@@ -764,9 +708,6 @@ class CommandWrite(ReadWriteKaitaiStruct):
             self.rgb_direct._fetch_instances()
             self.rgb_preview._fetch_instances()
             self.mask._fetch_instances()
-            for i in range(len(self.padding)):
-                pass
-
 
 
         def _write__seq(self, io=None):
@@ -775,14 +716,6 @@ class CommandWrite(ReadWriteKaitaiStruct):
             self._io.write_u2be(self.kelvin)
             self.rgb_preview._write__seq(self._io)
             self.mask._write__seq(self._io)
-            for i in range(len(self.padding)):
-                pass
-                if self._io.is_eof():
-                    raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
-                self._io.write_u1(self.padding[i])
-
-            if not self._io.is_eof():
-                raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
 
 
         def _check(self):
@@ -790,11 +723,6 @@ class CommandWrite(ReadWriteKaitaiStruct):
                 raise kaitaistruct.ConsistencyError(u"mask", self._root, self.mask._root)
             if self.mask._parent != self:
                 raise kaitaistruct.ConsistencyError(u"mask", self, self.mask._parent)
-            for i in range(len(self.padding)):
-                pass
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], None, u"/types/static_color/seq/4")
-
             self._dirty = False
 
 

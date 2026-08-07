@@ -516,14 +516,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
             if ATTR_RGB_COLOR in kwargs:
                 r, g, b = kwargs[ATTR_RGB_COLOR]
-                await self.coordinator.send_command(build_color_rgb(r, g, b))
+                await self.coordinator.send_command(build_color_rgb(r, g, b, self.coordinator.model))
                 self.coordinator.rgb_color = (r, g, b)
                 self.coordinator.segment_colors = [(r, g, b)] * len(self.coordinator.segment_colors)
                 self._attr_color_mode, self.coordinator.color_temp_kelvin = ColorMode.RGB, None
                 self.coordinator._enter_static_mode()
             if ATTR_COLOR_TEMP_KELVIN in kwargs:
                 kelvin = kwargs[ATTR_COLOR_TEMP_KELVIN]
-                await self.coordinator.send_command(build_color_temp(kelvin))
+                await self.coordinator.send_command(build_color_temp(kelvin, self.coordinator.model))
                 self.coordinator.color_temp_kelvin = kelvin
                 self.coordinator.segment_colors = [kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors)
                 self._attr_color_mode = ColorMode.COLOR_TEMP

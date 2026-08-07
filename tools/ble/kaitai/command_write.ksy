@@ -74,10 +74,6 @@ types:
         type: u2le
       - id: scene_type
         type: u1
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
   segment_mask:
     seq:
       - id: bits
@@ -104,10 +100,6 @@ types:
         type: govee_shared::rgb
       - id: mask
         type: segment_mask
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
   static_brightness:
     seq:
       - id: percent
@@ -116,10 +108,6 @@ types:
           max: 100
       - id: mask
         type: segment_mask
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
   static_brightness_all:
     seq:
       - id: segment_percent

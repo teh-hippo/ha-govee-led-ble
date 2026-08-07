@@ -248,11 +248,11 @@ class _ActiveModeMixin(_CoordinatorBase):
         snap = self._pre_mode_snapshot
         match snap.kind:
             case "color_temp":
-                await self.send_command(build_color_temp(snap.kelvin))
+                await self.send_command(build_color_temp(snap.kelvin, self.model))
             case "white":
-                await self.send_command(build_white_brightness(snap.level))
+                await self.send_command(build_white_brightness(snap.level, self.model))
             case _:
-                await self.send_command(build_color_rgb(*snap.rgb))
+                await self.send_command(build_color_rgb(*snap.rgb, self.model))
         self._enter_static_mode()
 
     async def async_apply_music_params(self, mode_code: int) -> None:

@@ -264,7 +264,9 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                     build_power(True, self.coordinator.model)
                 )
                 self.coordinator.is_on = True
-                await self.coordinator.send_command(build_white_brightness(brightness))
+                await self.coordinator.send_command(
+                    build_white_brightness(brightness, self.coordinator.model)
+                )
 
             await apply()
             await self._refresh_with_retry(
@@ -302,7 +304,11 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         async with self.coordinator._control_lock:
             self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
             try:
-                packet = build_segment_brightness(segments, brightness)
+                packet = build_segment_brightness(
+                    segments,
+                    brightness,
+                    self.coordinator.model,
+                )
             except (TypeError, ValueError) as err:
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
