@@ -16,8 +16,8 @@ asserts:
   expected: 1
 - actual: content.config
   expected: 131
-- actual: content.step_count
+- actual: content.num_steps
   expected: 6
-- actual: content.palette_count
+- actual: content.num_palette
   expected: 4
 fixture_sha256: 541823c75fb69511946ad471ab6977f79eb0dbe8f5f3d9fd86a28b8dc0561c2d

@@ -1,11 +1,5 @@
-# Local throwaway toolchain
-node_modules/
 __pycache__/
 
-# Generated Kaitai parsers (regenerate: node compile.js <spec>.ksy).
-# Ignore every generated *.py; keep the hand-written tooling scripts BY NAME. A new
-# script not listed here runs green locally while staying invisible to git, so check
-# `git status --porcelain` after adding one.
+# Parsers generated into this directory by older tooling are disposable.
 *.py
-!evidence_lint.py
 !kst_runner.py

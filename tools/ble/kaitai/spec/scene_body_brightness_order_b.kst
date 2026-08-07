@@ -12,17 +12,17 @@ provenance:
 asserts:
 - actual: scene_type
   expected: 2
-- actual: record_count
+- actual: num_records
   expected: 1
 - actual: records.size
   expected: 1
 - actual: padding.size
   expected: 0
-- actual: records[0].rec_len
+- actual: records[0].len_body
   expected: 29
 - actual: records[0].body.select_type
   expected: 1
-- actual: records[0].body.colour_count
+- actual: records[0].body.num_palette
   expected: 2
 - actual: records[0].body.excess.size
   expected: 0

@@ -14,6 +14,6 @@ asserts:
   expected: 16
 - actual: content.blocks[0].brightness_is_gradient
   expected: false
-- actual: content.blocks[0].brightness_block_count
+- actual: content.blocks[0].num_brightness_blocks
   expected: 1
 fixture_sha256: f78956d14c9690b8637d58f2428c9d6959c480f3ad2f1cc37ccf07c1587cab6f

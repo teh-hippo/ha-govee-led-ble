@@ -12,11 +12,11 @@ provenance:
 asserts:
 - actual: kind
   expected: 2
-- actual: content.block_count
+- actual: content.num_blocks
   expected: 2
-- actual: content.blocks[0].len
+- actual: content.blocks[0].len_body
   expected: 29
-- actual: content.blocks[1].len
+- actual: content.blocks[1].len_body
   expected: 26
 - actual: content.blocks[1].overall_movement
   expected: 19

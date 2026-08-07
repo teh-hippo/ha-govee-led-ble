@@ -1,5 +1,6 @@
 target-version = "py314"
 line-length = 120
+extend-exclude = ["custom_components/ha_govee_led_ble/generated_protocol"]
 
 [lint]
 select = [

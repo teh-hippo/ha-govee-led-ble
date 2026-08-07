@@ -14,7 +14,7 @@ asserts:
   expected: 0
 - actual: body.speed
   expected: 51
-- actual: body.plen
+- actual: body.len_palette
   expected: 21
 - actual: body.palette.colours.size
   expected: 7

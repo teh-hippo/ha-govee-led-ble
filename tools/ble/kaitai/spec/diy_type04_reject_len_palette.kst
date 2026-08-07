@@ -1,5 +1,5 @@
-id: diy_type04_reject_plen
-data: diy_type04_reject_plen.bin
+id: diy_type04_reject_len_palette
+data: diy_type04_reject_len_palette.bin
 imports:
 - diy_type04
 provenance:

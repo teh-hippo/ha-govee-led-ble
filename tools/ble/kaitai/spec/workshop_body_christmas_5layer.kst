@@ -12,45 +12,45 @@ provenance:
 asserts:
 - actual: header.linecount
   expected: 9
-- actual: layer_count
+- actual: num_layers
   expected: 5
 - actual: layers.size
   expected: 5
-- actual: layers[0].record_len
+- actual: layers[0].len_body
   expected: 26
-- actual: layers[0].body.colour_count
+- actual: layers[0].body.num_palette
   expected: 1
 - actual: layers[0].body.palette.size
   expected: 1
 - actual: layers[0].body.excess.size
   expected: 0
-- actual: layers[1].record_len
+- actual: layers[1].len_body
   expected: 26
-- actual: layers[1].body.colour_count
+- actual: layers[1].body.num_palette
   expected: 1
 - actual: layers[1].body.palette.size
   expected: 1
 - actual: layers[1].body.excess.size
   expected: 0
-- actual: layers[2].record_len
+- actual: layers[2].len_body
   expected: 26
-- actual: layers[2].body.colour_count
+- actual: layers[2].body.num_palette
   expected: 1
 - actual: layers[2].body.palette.size
   expected: 1
 - actual: layers[2].body.excess.size
   expected: 0
-- actual: layers[3].record_len
+- actual: layers[3].len_body
   expected: 26
-- actual: layers[3].body.colour_count
+- actual: layers[3].body.num_palette
   expected: 1
 - actual: layers[3].body.palette.size
   expected: 1
 - actual: layers[3].body.excess.size
   expected: 0
-- actual: layers[4].record_len
+- actual: layers[4].len_body
   expected: 26
-- actual: layers[4].body.colour_count
+- actual: layers[4].body.num_palette
   expected: 1
 - actual: layers[4].body.palette.size
   expected: 1

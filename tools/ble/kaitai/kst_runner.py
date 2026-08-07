@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import io
+import os
 import sys
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
@@ -47,7 +48,9 @@ import yaml
 from kaitaistruct import KaitaiStream
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+GENERATED_DIR = Path(os.environ["KAITAI_GENERATED_DIR"]) if "KAITAI_GENERATED_DIR" in os.environ else None
+if GENERATED_DIR is not None:
+    sys.path.insert(0, str(GENERATED_DIR))
 
 FRAME_LENGTH = 20
 CHECKSUM_INDEX = 19
@@ -204,6 +207,7 @@ def run_case(case: Case) -> tuple[list[str], Any]:
         raise AssertUnevaluatableError(f"{case.id}: {case.module} defines no type {wanted!r}")
     try:
         parsed = grammar(KaitaiStream(io.BytesIO(case.data)))
+        parsed._read()
     except Exception as exc:  # noqa: BLE001 -- a rejected fixture is a result, not a crash
         if case.exception and type(exc).__name__ == case.exception:
             return [], None
@@ -219,6 +223,13 @@ def run_case(case: Case) -> tuple[list[str], Any]:
         expected = entry["expected"]
         if actual != expected:
             failures.append(f"{entry['actual']}: expected {expected!r}, got {actual!r}")
+    parsed._fetch_instances()
+    parsed._check()
+    output_stream = KaitaiStream(io.BytesIO(bytes(len(case.data))))
+    parsed._write(output_stream)
+    written = output_stream.to_byte_array()
+    if written != case.data:
+        failures.append("generated writer did not reproduce the fixture byte-for-byte")
     return failures, parsed
 
 
@@ -397,31 +408,17 @@ def run_aggregates(parsed_by_id: dict[str, Any], data_by_id: dict[str, bytes]) -
     return failed
 
 
-def check_parsers_are_current() -> None:
-    """Refuse to run against a parser older than the spec it was generated from.
-
-    The generated *.py parsers are gitignored build products and go stale silently. When they
-    do, the failure surfaces as an assert naming a field that plainly exists: on 2026-08-05 a
-    stale parser reported that MusicBody has no attribute is_calm, minutes after is_calm was
-    added and compiled elsewhere. That reads as a broken fixture rather than as a missing
-    build step, and this project's own instructions tell the reader to run this script right
-    after editing a .ksy, which is exactly when it is most likely to be stale.
-    """
-    stale = [
-        spec.name
-        for spec in sorted(HERE.glob("*.ksy"))
-        if (parser := spec.with_suffix(".py")).exists() and parser.stat().st_mtime < spec.stat().st_mtime
-    ]
-    if stale:
-        raise AssertUnevaluatableError(
-            "generated parser is older than its spec for: "
-            + ", ".join(stale)
-            + ". Recompile first, e.g. node tools/ble/kaitai/compile.js tools/ble/kaitai/<spec>.ksy"
-        )
+def check_parsers_are_available() -> None:
+    """Require the freshly generated parser directory supplied by check-kaitai.sh."""
+    if GENERATED_DIR is None:
+        raise AssertUnevaluatableError("KAITAI_GENERATED_DIR is not set; run bash scripts/check-kaitai.sh")
+    missing = [spec.stem for spec in sorted(HERE.glob("*.ksy")) if not (GENERATED_DIR / f"{spec.stem}.py").exists()]
+    if missing:
+        raise AssertUnevaluatableError(f"generated parser directory is missing: {', '.join(missing)}")
 
 
 def main() -> int:
-    check_parsers_are_current()
+    check_parsers_are_available()
     specs = sorted((HERE / "spec").glob("*.kst"))
     if not specs:
         print("no .kst fixtures found under spec/", file=sys.stderr)

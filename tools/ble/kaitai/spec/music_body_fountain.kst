@@ -12,7 +12,7 @@ provenance:
 asserts:
 - actual: mode
   expected: 53
-- actual: count
+- actual: num_palette
   expected: 7
 - actual: palette.size
   expected: 7

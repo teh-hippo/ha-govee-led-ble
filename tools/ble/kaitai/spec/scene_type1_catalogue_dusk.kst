@@ -18,11 +18,11 @@ asserts:
   expected: 0
 - actual: brightness_flag
   expected: true
-- actual: step_count
+- actual: num_steps
   expected: 1
 - actual: steps.size
   expected: 1
-- actual: palette_count
+- actual: num_palette
   expected: 2
 - actual: palette.size
   expected: 2

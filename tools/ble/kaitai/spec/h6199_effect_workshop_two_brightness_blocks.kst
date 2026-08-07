@@ -10,9 +10,9 @@ provenance:
   source_sha256: 878f308f36f6ccb322100d02179203f842697f3e8a99f688726ed6e00f64fbb2
   source_index: 1
 asserts:
-- actual: content.blocks[0].len
+- actual: content.blocks[0].len_body
   expected: 35
-- actual: content.blocks[0].brightness_block_count
+- actual: content.blocks[0].num_brightness_blocks
   expected: 2
 - actual: content.blocks[0].brightness_blocks.size
   expected: 2
@@ -24,7 +24,7 @@ asserts:
   expected: 255
 - actual: content.blocks[0].brightness_blocks[1].order
   expected: 0
-- actual: content.blocks[0].colour_count
+- actual: content.blocks[0].num_palette
   expected: 2
 - actual: content.blocks[0].excess.size
   expected: 0

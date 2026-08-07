@@ -12,7 +12,7 @@ provenance:
 asserts:
 - actual: kind
   expected: 2
-- actual: content.blocks[0].len
+- actual: content.blocks[0].len_body
   expected: 29
 - actual: content.blocks[0].brightness_scope_low
   expected: 0

@@ -172,6 +172,8 @@ types:
         type: segment_record
         repeat: expr
         repeat-expr: 'group == 4 ? 3 : 4'
+      - size: 4
+        if: group == 4
   version_body:
     seq:
       - id: text

@@ -13,12 +13,12 @@ seq:
   - id: mode
     type: u1
     enum: govee_common::music_mode
-  - id: count
+  - id: num_palette
     type: u1
   - id: palette
     type: govee_shared::rgb
     repeat: expr
-    repeat-expr: count
+    repeat-expr: num_palette
   - id: tail
     size: tail_len
     type:
@@ -114,19 +114,19 @@ types:
         type: u1
       - id: style
         type: u1
-      - id: count
+      - id: num_colors
         type: u1
         valid:
           max: 4
       - id: colors
         type: govee_shared::rgb
         repeat: expr
-        repeat-expr: count
+        repeat-expr: num_colors
       - id: padding
         type: u1
         valid: 0
         repeat: expr
-        repeat-expr: 12 - count * 3
+        repeat-expr: 12 - num_colors * 3
       - id: checksum
         type: u1
 enums:

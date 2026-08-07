@@ -36,13 +36,13 @@ types:
         type: u1
       - id: speed
         type: u1
-      - id: plen
+      - id: len_palette
         type: u1
         valid:
           expr: _ % 3 == 0
       - id: palette
         type: palette
-        size: plen
+        size: len_palette
       - id: padding
         type: u1
         valid: 0
@@ -53,13 +53,13 @@ types:
         type: u1
       - id: speed
         type: u1
-      - id: plen
+      - id: len_palette
         type: u1
         valid:
           expr: _ % 3 == 0
       - id: palette
         type: palette
-        size: plen
+        size: len_palette
       - id: seqlen
         type: u1
         valid:

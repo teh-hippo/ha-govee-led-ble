@@ -10,12 +10,12 @@ seq:
     type: govee_common::a3_header
   - id: a3_type
     contents: [0x02]
-  - id: layer_count
+  - id: num_layers
     type: u1
   - id: layers
     type: layer_record
     repeat: expr
-    repeat-expr: layer_count
+    repeat-expr: num_layers
   - id: padding
     type: u1
     valid: 0
@@ -23,8 +23,8 @@ seq:
 types:
   layer_record:
     seq:
-      - id: record_len
+      - id: len_body
         type: u1
       - id: body
         type: govee_shared::effect_layer
-        size: record_len
+        size: len_body

@@ -36,12 +36,12 @@ enums:
 types:
   scene_content:
     seq:
-      - id: block_count
+      - id: num_blocks
         type: u1
       - id: blocks
         type: block
         repeat: expr
-        repeat-expr: block_count
+        repeat-expr: num_blocks
       - id: padding
         type: u1
         valid: 0
@@ -69,11 +69,11 @@ types:
         repeat: eos
   block:
     seq:
-      - id: len
+      - id: len_body
         type: u1
       - id: body
         type: govee_shared::effect_layer
-        size: len
+        size: len_body
     instances:
       applied_area:
         value: body.applied_area
@@ -85,8 +85,8 @@ types:
         value: body.select_param_2
       layer_flags:
         value: body.layer_flags
-      brightness_block_count:
-        value: body.brightness_block_count
+      num_brightness_blocks:
+        value: body.num_brightness_blocks
       brightness_blocks:
         value: body.brightness_blocks
       distribution_direction:
@@ -95,8 +95,8 @@ types:
         value: body.colour_speed
       retention_time:
         value: body.colour_retention
-      colour_count:
-        value: body.colour_count
+      num_palette:
+        value: body.num_palette
       palette:
         value: body.palette
       selected_movement:

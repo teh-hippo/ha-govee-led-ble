@@ -24,11 +24,11 @@ asserts:
   expected: 255
 - actual: background.b
   expected: 255
-- actual: group_count
+- actual: num_groups
   expected: 1
 - actual: groups.size
   expected: 1
-- actual: groups[0].seg_count
+- actual: groups[0].num_segment_indices
   expected: 8
 - actual: groups[0].segment_indices.size
   expected: 8

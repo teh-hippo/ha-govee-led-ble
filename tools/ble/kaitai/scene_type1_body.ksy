@@ -16,12 +16,12 @@ seq:
 instances:
   config:
     value: content.config
-  step_count:
-    value: content.step_count
+  num_steps:
+    value: content.num_steps
   steps:
     value: content.steps
-  palette_count:
-    value: content.palette_count
+  num_palette:
+    value: content.num_palette
   palette:
     value: content.palette
   padding:

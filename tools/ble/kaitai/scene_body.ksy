@@ -13,12 +13,12 @@ seq:
     enum: scene_type
     valid:
       eq: scene_type::scene_v2
-  - id: record_count
+  - id: num_records
     type: u1
   - id: records
     type: record
     repeat: expr
-    repeat-expr: record_count
+    repeat-expr: num_records
   - id: padding
     type: u1
     valid: 0
@@ -31,8 +31,8 @@ enums:
 types:
   record:
     seq:
-      - id: rec_len
+      - id: len_body
         type: u1
       - id: body
         type: govee_shared::effect_layer
-        size: rec_len
+        size: len_body

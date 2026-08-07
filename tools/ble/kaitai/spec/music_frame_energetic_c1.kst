@@ -17,7 +17,7 @@ asserts:
   expected: 99
 - actual: style
   expected: 0
-- actual: count
+- actual: num_colors
   expected: 1
 - actual: colors.size
   expected: 1

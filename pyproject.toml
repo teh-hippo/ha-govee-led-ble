@@ -7,6 +7,7 @@ license = "MIT"
 dependencies = [
     "bleak>=0.21.0",
     "bleak-retry-connector>=3.0.0",
+    "kaitaistruct==0.11",
 ]
 
 [dependency-groups]
@@ -22,7 +23,6 @@ dev = [
     "pyserial>=3.5",
     "ruff>=0.9",
     "serialx[esphome]>=1.8.2",
-    "kaitaistruct>=0.11",
     "pyyaml>=6.0.3",
     "defusedxml>=0.7.1",
 ]
@@ -33,6 +33,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
+omit = ["custom_components/ha_govee_led_ble/generated_protocol/*"]
 
 [tool.coverage.report]
 fail_under = 90

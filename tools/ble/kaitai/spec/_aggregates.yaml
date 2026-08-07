@@ -46,9 +46,9 @@
   - 27
   - 30
   - 33
-- id: workshop_record_len_law
+- id: workshop_len_body_law
   cases: workshop_body_*
-  collect: layers[0].record_len
+  collect: layers[0].len_body
   distinct_at_least: 3
 - id: music_body_modes_span_the_param_family
   cases: music_body_*
@@ -81,9 +81,9 @@
   cases: music_stream_*
   collect: colour.r
   distinct_at_least: 3
-- id: diy_type04_plen_varies
+- id: diy_type04_len_palette_varies
   cases: diy_type04_flat_*
-  collect: body.plen
+  collect: body.len_palette
   distinct_at_least: 3
 - id: diy_type04_seqlen_varies
   cases: diy_type04_combo_*
@@ -97,21 +97,21 @@
   cases: diy_type03_*
   collect: effect
   distinct_at_least: 3
-- id: diy_type03_group_counts_vary
+- id: diy_type03_num_groups_vary
   cases: diy_type03_*
-  collect: group_count
+  collect: num_groups
   distinct_at_least: 3
 - id: diy_type03_linecounts_vary
   cases: diy_type03_*
   collect: header.linecount
   distinct_at_least: 2
-- id: scene_type1_palette_count_varies
+- id: scene_type1_num_palette_varies
   cases: scene_type1_*
-  collect: palette_count
+  collect: num_palette
   distinct_at_least: 3
-- id: scene_type1_step_count_varies
+- id: scene_type1_num_steps_varies
   cases: scene_type1_*
-  collect: step_count
+  collect: num_steps
   distinct_at_least: 3
 - id: scene_brightness_order_one_byte
   between:
@@ -125,9 +125,9 @@
   - scene_body_brightness_gradient
   differs_at:
   - 9
-- id: scene_record_counts_vary
+- id: scene_num_records_vary
   cases: scene_body_*
-  collect: record_count
+  collect: num_records
   distinct_at_least: 2
 - id: h6199_command_write_power_one_byte
   between:
@@ -296,9 +296,9 @@
   cases: h6199_scene_*
   collect: body.detail.scene_class
   distinct_at_least: 3
-- id: h6199_effect_block_count_varies
+- id: h6199_effect_num_blocks_varies
   cases: h6199_effect_scene_*
-  collect: content.block_count
+  collect: content.num_blocks
   distinct_at_least: 3
 - id: h6199_effect_chunk_count_varies
   cases: h6199_effect_*
@@ -306,7 +306,7 @@
   distinct_at_least: 3
 - id: h6199_effect_first_block_length_varies
   cases: h6199_effect_scene_*
-  collect: content.blocks[0].len
+  collect: content.blocks[0].len_body
   distinct_at_least: 3
 - id: h6199_effect_diy_speed_moves_alone
   between:
@@ -481,13 +481,13 @@
   - h6199_effect_workshop_order_darkest_brightest
   differs_at:
   - 13
-- id: h6199_workshop_brightness_block_count_varies
+- id: h6199_workshop_num_brightness_blocks_varies
   cases: h6199_effect_workshop_*
-  collect: content.blocks[0].brightness_block_count
+  collect: content.blocks[0].num_brightness_blocks
   distinct_at_least: 2
-- id: h6199_workshop_colour_count_varies
+- id: h6199_workshop_num_palette_varies
   cases: h6199_effect_workshop_*
-  collect: content.blocks[0].colour_count
+  collect: content.blocks[0].num_palette
   distinct_at_least: 2
 - id: h6199_workshop_select_type_has_all_four_values
   cases: h6199_effect_workshop_*

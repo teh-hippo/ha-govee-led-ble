@@ -76,10 +76,8 @@ jobs:
       - uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
         with:
-          node-version: "26"
-          cache: npm
-          cache-dependency-path: tools/ble/kaitai/package-lock.json
+          install_args: github:kaitai-io/kaitai_struct_compiler
       - run: uv sync --locked
       - run: bash scripts/check-kaitai.sh

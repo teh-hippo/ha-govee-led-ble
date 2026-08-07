@@ -48,7 +48,8 @@
     ],
     "requirements": [
         "bleak>=0.21.0",
-        "bleak-retry-connector>=3.0.0"
+        "bleak-retry-connector>=3.0.0",
+        "kaitaistruct==0.11"
     ],
     "version": "5.2.0"
 }

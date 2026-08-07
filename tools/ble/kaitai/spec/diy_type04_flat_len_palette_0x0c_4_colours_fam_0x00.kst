@@ -1,5 +1,5 @@
-id: diy_type04_flat_plen_0x0c_4_colours_fam_0x00
-data: diy_type04_flat_plen_0x0c_4_colours_fam_0x00.bin
+id: diy_type04_flat_len_palette_0x0c_4_colours_fam_0x00
+data: diy_type04_flat_len_palette_0x0c_4_colours_fam_0x00.bin
 imports:
 - diy_type04
 provenance:
@@ -14,7 +14,7 @@ asserts:
   expected: 0
 - actual: body.speed
   expected: 100
-- actual: body.plen
+- actual: body.len_palette
   expected: 12
 - actual: body.palette.colours.size
   expected: 4

@@ -74,24 +74,24 @@ types:
         type: u1
       - id: layer_flags
         type: u1
-      - id: brightness_block_count
+      - id: num_brightness_blocks
         type: u1
       - id: brightness_blocks
         type: brightness_block
         repeat: expr
-        repeat-expr: brightness_block_count
+        repeat-expr: num_brightness_blocks
       - id: direction_distribution
         type: u1
       - id: colour_speed
         type: u1
       - id: colour_retention
         type: u1
-      - id: colour_count
+      - id: num_palette
         type: u1
       - id: palette
         type: rgb
         repeat: expr
-        repeat-expr: colour_count
+        repeat-expr: num_palette
       - id: selected_area_movement
         type: movement
       - id: overall_movement
@@ -115,7 +115,7 @@ types:
         type: u1
         valid:
           expr: 'layout <= 1 and colour_stride == 3'
-      - id: step_count
+      - id: num_steps
         type: u1
       - id: steps
         type:
@@ -124,14 +124,14 @@ types:
             0: scene_type1_step
             1: scene_type1_step_inline_colour
         repeat: expr
-        repeat-expr: step_count
-      - id: palette_count
+        repeat-expr: num_steps
+      - id: num_palette
         type: u1
         if: layout == 0
       - id: palette
         type: rgb
         repeat: expr
-        repeat-expr: palette_count
+        repeat-expr: num_palette
         if: layout == 0
       - id: padding
         type: u1

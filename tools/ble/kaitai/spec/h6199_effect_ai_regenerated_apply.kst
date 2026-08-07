@@ -14,10 +14,10 @@ asserts:
   expected: 4
 - actual: kind
   expected: 2
-- actual: content.block_count
+- actual: content.num_blocks
   expected: 2
-- actual: content.blocks[0].len
+- actual: content.blocks[0].len_body
   expected: 29
-- actual: content.blocks[1].len
+- actual: content.blocks[1].len_body
   expected: 32
 fixture_sha256: cadc53d9378b7ada5d0e8d46ee3bb97187fa6e0c27f51cc5efcf225fcc360793

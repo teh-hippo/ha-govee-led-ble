@@ -19,12 +19,12 @@ seq:
     type: u1
   - id: background
     type: govee_shared::rgb
-  - id: group_count
+  - id: num_groups
     type: u1
   - id: groups
     type: paint_group
     repeat: expr
-    repeat-expr: group_count
+    repeat-expr: num_groups
   - id: padding
     type: u1
     valid: 0
@@ -42,11 +42,11 @@ enums:
 types:
   paint_group:
     seq:
-      - id: seg_count
+      - id: num_segment_indices
         type: u1
       - id: fill
         type: govee_shared::rgb
       - id: segment_indices
         type: u1
         repeat: expr
-        repeat-expr: seg_count
+        repeat-expr: num_segment_indices

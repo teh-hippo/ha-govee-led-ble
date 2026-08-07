@@ -10,21 +10,21 @@ provenance:
 asserts:
 - actual: header.linecount
   expected: 4
-- actual: layer_count
+- actual: num_layers
   expected: 2
 - actual: layers.size
   expected: 2
-- actual: layers[0].record_len
+- actual: layers[0].len_body
   expected: 29
-- actual: layers[0].body.colour_count
+- actual: layers[0].body.num_palette
   expected: 2
 - actual: layers[0].body.palette.size
   expected: 2
 - actual: layers[0].body.excess.size
   expected: 0
-- actual: layers[1].record_len
+- actual: layers[1].len_body
   expected: 26
-- actual: layers[1].body.colour_count
+- actual: layers[1].body.num_palette
   expected: 1
 - actual: layers[1].body.palette.size
   expected: 1

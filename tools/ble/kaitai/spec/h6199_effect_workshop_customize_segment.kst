@@ -16,9 +16,9 @@ asserts:
   expected: 1
 - actual: content.blocks[0].select_param_2
   expected: 0
-- actual: content.blocks[0].brightness_block_count
+- actual: content.blocks[0].num_brightness_blocks
   expected: 2
-- actual: content.blocks[0].colour_count
+- actual: content.blocks[0].num_palette
   expected: 1
 - actual: content.blocks[0].excess.size
   expected: 0
