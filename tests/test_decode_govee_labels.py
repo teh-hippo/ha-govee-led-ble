@@ -129,14 +129,9 @@ def test_the_two_display_settings_are_told_apart_by_their_selector():
 
 
 @pytest.mark.parametrize("percent", [12, 36, 100])
-def test_relative_brightness_label_reports_every_edge_unnamed(percent):
-    """The count sits after a head byte, and which edge is which is not isolated.
-
-    Reading the head as the count truncates the label to one edge, so all four are asserted;
-    naming them would state a permutation our own bytes cannot tell from any other.
-    """
-    label = dg.label(proto.build_relative_brightness(percent), "TX")
-    assert label == f"relative brightness edges={','.join([str(percent)] * 4)}"
+def test_relative_brightness_label_reports_every_named_edge(percent):
+    label = dg.label(proto.build_relative_brightness(percent), "TX", model="H6199")
+    assert label == f"relative brightness left={percent},top={percent},right={percent},bottom={percent}"
 
 
 def _wifi_credential_frame() -> bytes:
@@ -177,7 +172,7 @@ def test_wifi_credentials_are_printed_when_explicitly_asked_for():
     """Redaction has to be escapable, or the one capture that needs the bytes is unreadable."""
     frame = _wifi_credential_frame()
     assert b"hunter22".hex() in dg.render_payload(frame, show_secrets=True)
-    assert dg.label(frame, "TX", show_secrets=True).startswith("multi-frame(a1) sub=0x11")
+    assert dg.label(frame, "TX", show_secrets=True).startswith("wifi-provision idx=0x01")
 
 
 def test_other_a1_uploads_are_not_redacted():
@@ -252,7 +247,7 @@ def test_device_initiated_reports_are_not_filtered_out():
     assert dg._is_govee(_wifi_connect_result(0x01))
 
 
-@pytest.mark.parametrize(("status", "expected"), [(0x00, "connected"), (0x01, "NOT connected")])
+@pytest.mark.parametrize(("status", "expected"), [(0x00, "associated"), (0x01, "not_connected")])
 def test_wifi_connect_result_reports_the_status_byte(status, expected):
     label = dg.label(_wifi_connect_result(status), "RX")
     assert "wifi-connect" in label

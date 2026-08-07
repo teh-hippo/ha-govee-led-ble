@@ -111,7 +111,7 @@ if [ "$mode" = app ]; then
     exit 1
   }
   capture_start_log="$HARNESS_RUN_DIR/capture-start.log"
-  GOVEE_EXPECTED_PEER="$DEVICE_EXPECTED_PEER" \
+  GOVEE_EXPECTED_PEER="$DEVICE_EXPECTED_PEER" GOVEE_MODEL="$DEVICE_SKU" \
     capture start "$session_capture" "${HARNESS_PREDICTION_SHA:--}" \
     >"$capture_start_log" 2>&1 &
   capture_start_pid=$!

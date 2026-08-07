@@ -166,8 +166,14 @@ case "${1:-}" in
     suffix="$(capture_suffix)"
     out="$CAP/$name.$suffix"; rm -f "$out"
     pid="$(start_logger "$out" "$name")"
-    printf '%s %s %s %s %s %s\n' \
-      "$pid" "$name" "$(date --iso-8601=ns)" "$sha" "${GOVEE_EXPECTED_PEER:--}" "$suffix" > "$STATE"
+    model="${GOVEE_MODEL:--}"
+    [ "$model" = - ] || [ "$model" = H617A ] || [ "$model" = H6199 ] || {
+      stop_logger "$pid"
+      echo "GOVEE_MODEL must be H617A or H6199" >&2
+      exit 1
+    }
+    printf '%s %s %s %s %s %s %s\n' \
+      "$pid" "$name" "$(date --iso-8601=ns)" "$sha" "${GOVEE_EXPECTED_PEER:--}" "$suffix" "$model" > "$STATE"
     : > "$CAP/$name.actions.tsv"
     for _ in $(seq 1 "$PREFLIGHT_SECONDS"); do
       sleep 1; [ "$(frames_seen "$out")" -gt 0 ] && break
@@ -205,17 +211,21 @@ case "${1:-}" in
     ;;
   stop)
     [ -f "$STATE" ] || { echo "no capture running"; exit 1; }
-    read -r pid name started sha peer suffix < "$STATE"
+    read -r pid name started sha peer suffix model < "$STATE"
     suffix="${suffix:-pcapng}"
+    model="${model:--}"
+    decode_model="$model"
+    [ "$decode_model" = - ] && decode_model=auto
     out="$CAP/$name.$suffix"
     kill -INT "$pid" 2>/dev/null || true
     for _ in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 0.3; done
     kill "$pid" 2>/dev/null || true
     rm -f "$STATE"
-    printf '{"capture":"%s","started_at":"%s","stopped_at":"%s","actions":"%s.actions.tsv","prediction_sha256":%s,"expected_peer":%s}\n' \
+    printf '{"capture":"%s","started_at":"%s","stopped_at":"%s","actions":"%s.actions.tsv","prediction_sha256":%s,"expected_peer":%s,"model":%s}\n' \
       "$name" "$started" "$(date --iso-8601=ns)" "$name" \
       "$([ "${sha:--}" = - ] && echo null || echo "\"$sha\"")" \
-      "$([ "${peer:--}" = - ] && echo null || echo "\"$peer\"")" > "$CAP/$name.meta.json"
+      "$([ "${peer:--}" = - ] && echo null || echo "\"$peer\"")" \
+      "$([ "$model" = - ] && echo null || echo "\"$model\"")" > "$CAP/$name.meta.json"
     echo "stopped '$name'"
     if [ "${peer:--}" = - ]; then
       # --allow-unattributed, because an unbound session is ad-hoc or direct-mode and a
@@ -225,7 +235,8 @@ case "${1:-}" in
       # rather than a result to interpret. That refusal is the whole reason this branch
       # checks an exit status at all. It used to ignore one, and on 2026-08-05 an unbound
       # session holding two live connections stopped clean and was read as one light.
-      if ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out" --allow-unattributed; then
+      if ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out" \
+        --allow-unattributed --model "$decode_model"; then
         echo "capture '$name' is not usable as evidence about one device" >&2
         echo "  the phone was talking to more than one thing on BLE while this recorded," >&2
         echo "  so no reading off it belongs to any particular device. Narrow it with" >&2
@@ -234,7 +245,8 @@ case "${1:-}" in
         echo "  disconnected." >&2
         exit 3
       fi
-    elif ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out" --peer "$peer"; then
+    elif ! uv run --project "$REPO_DIR" python "$SELF_DIR/decode_govee.py" "$out" \
+      --peer "$peer" --model "$decode_model"; then
       # The decoder already said which peers it did see. This adds the one thing it cannot
       # know: that the session was FOR this device, so a capture without it is a failed run
       # to repeat, not a result to interpret.

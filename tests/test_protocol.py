@@ -14,6 +14,7 @@ from custom_components.ha_govee_led_ble.custom_effects import (
     UnknownContent,
     VibrantContent,
 )
+from tools.ble.generated_protocol_view import describe_generated, query_frames
 
 H = bytes.fromhex
 
@@ -554,6 +555,25 @@ def test_constants():
         0x13,
         0x15,
     )
+
+
+def test_generated_tool_queries_match_runtime_queries():
+    h617a = dict(query_frames("H617A"))
+    assert h617a == {
+        "power": proto.STATE_QUERY,
+        "brightness": proto.BRIGHTNESS_QUERY,
+        "colour_mode": proto.COLOR_MODE_QUERY,
+        "firmware": proto.FW_QUERY,
+        "hardware": proto.HW_QUERY,
+    }
+    h6199 = dict(query_frames("H6199"))
+    assert h6199["white_balance"] == proto.WHITE_BALANCE_QUERY
+    assert h6199["blank_screen"] == proto.BLANK_SCREEN_QUERY
+    assert h6199["relative_brightness"] == proto.RELATIVE_BRIGHTNESS_QUERY
+    labels = {name: describe_generated(frame, "TX", "H6199") for name, frame in h6199.items()}
+    assert labels["white_balance"] == "query display_setting.white_balance"
+    assert labels["blank_screen"] == "query display_setting.blank_screen"
+    assert labels["relative_brightness"] == "query relative_brightness"
 
 
 def test_firmware_hardware_version_decode():

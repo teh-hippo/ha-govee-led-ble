@@ -41,6 +41,38 @@ import sys
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tools.ble.generated_protocol_view import (
+        MODELS,
+        describe_generated,
+        is_music_stream,
+        is_wifi_provision,
+        status_domain,
+        sum8_checksum,
+        xor_checksum,
+    )
+elif __package__:
+    from .generated_protocol_view import (
+        MODELS,
+        describe_generated,
+        is_music_stream,
+        is_wifi_provision,
+        status_domain,
+        sum8_checksum,
+        xor_checksum,
+    )
+else:
+    from generated_protocol_view import (
+        MODELS,
+        describe_generated,
+        is_music_stream,
+        is_wifi_provision,
+        status_domain,
+        sum8_checksum,
+        xor_checksum,
+    )
 
 ATT_CID = 0x0004
 WRITE_OPCODES = {0x12: "WriteReq", 0x52: "WriteCmd", 0x1D: "Indication", 0x1B: "Notification"}
@@ -73,21 +105,15 @@ class CaptureTrace:
 
 
 def _xor_ok(v: bytes) -> bool:
-    checksum = 0
-    for byte in v[:19]:
-        checksum ^= byte
-    return len(v) == 20 and checksum == v[19]
+    return len(v) == 20 and xor_checksum(v[:19]) == v[19]
 
 
 def _sum8_ok(v: bytes) -> bool:
-    return len(v) == 7 and (sum(v[:6]) & 0xFF) == v[6]
+    return len(v) == 7 and sum8_checksum(v[:6]) == v[6]
 
 
 def _is_music_stream(v: bytes) -> bool:
-    # The phone-microphone music path (music_stream.ksy). A 7-byte a5 02 83 <rgb> frame
-    # on the same write handle, checksummed by SUM rather than XOR, which is exactly why
-    # it slipped past _is_govee for a whole session and showed up as "(non-govee)".
-    return len(v) == 7 and v[:3] == b"\xa5\x02\x83" and _sum8_ok(v)
+    return is_music_stream(v)
 
 
 def _is_govee(v: bytes) -> bool:
@@ -124,27 +150,6 @@ def _is_govee(v: bytes) -> bool:
     if _is_music_stream(v):
         return True
     return len(v) == 20 and v[0] in (0x33, 0xAA, 0xA3, 0xA1, 0xEE) and _xor_ok(v)
-
-
-# Observed 0xAA query/status types (phone TX = query, light RX = reply).
-AA_TYPES = {
-    0x01: "power",
-    0x04: "brightness",
-    0x05: "colormode",
-    0x06: "fw-ver",
-    0x07: "hw-ver",
-    0x0B: "?0b",
-    0x11: "sleep-timer",
-    0x12: "wake-timer",
-    0x23: "timer",
-    0x40: "count-40",
-    0xA3: "multi",
-    0xA5: "segments",
-}
-
-
-def _ascii(b: bytes) -> str:
-    return "".join(chr(x) for x in b if 32 <= x < 127)
 
 
 def reassemble_a3(frames: Iterable[bytes]) -> bytes:
@@ -218,65 +223,6 @@ def _require_direction(direction: str) -> None:
         raise ValueError(f"direction must be one of {DIRECTIONS}, got {direction!r}")
 
 
-def _label_aa(v: bytes, direction: str) -> str:
-    t = v[1]
-    name = AA_TYPES.get(t, f"type={t:#04x}")
-    if direction == "TX":
-        return f"query {name}"
-    data = v[2:19]
-    if t in (0x06, 0x07):
-        return f"reply {name}={_ascii(data)!r}"
-    if t == 0x01:
-        return f"reply power={'on' if data[0] else 'off'}"
-    if t == 0x05:
-        return f"reply colormode {data[0]:#04x} {data[1]:#04x}"
-    if t == 0x40:
-        # status_reply::unit_count_body: the value 15 is corroborated, but neither the
-        # u1/u2be split nor what it counts is. Do not print it as a segment count.
-        return f"reply count={data[1]}" + (f" reserved={data[0]:#04x}" if data[0] else "")
-    if t == 0x04:
-        return f"reply brightness={data[0]}%"
-    if t == 0xA5:
-        segs = " ".join(data[1:13][i : i + 4].hex() for i in range(0, 12, 4))
-        return f"reply segments group={data[0]} [{segs}]"
-    return f"reply {name} {data.hex()}"
-
-
-def _segment_mask(pair: bytes) -> str:
-    """Render a command_write::segment_mask, which is u2le, NOT the raw byte order.
-
-    Printing the two bytes in wire order reads like a big-endian value and silently
-    transposes the bitmap: an all-segments 0x7fff shows up as 0xff7f, which looks like
-    a 15-bit map that skips bit 7 and uses bit 15. That misreading was made and caught
-    on 2026-07-27; render the value the spec defines and list the segments outright so
-    it cannot happen from decoder output again.
-    """
-    bits = int.from_bytes(pair, "little")
-    if bits == 0x7FFF:
-        return "0x7fff(all)"
-    segments = [str(i + 1) for i in range(15) if bits & (1 << i)]
-    return f"0x{bits:04x}(seg {','.join(segments) if segments else '-'})"
-
-
-def _label_display_setting(v: bytes) -> str:
-    """Render a 33 a9 write on its selector (h6199_command_write::display_setting_body).
-
-    The register is a selector, a payload length and a payload, not a flat body, and two
-    unrelated settings ride it. One label for the whole register printed a blank-screen toggle
-    as if it were white balance, which is the same misreading the simulator made and which reads
-    as a setting nobody touched rather than as an unknown frame.
-    """
-    setting, length = v[2], v[3]
-    payload = v[4 : 4 + length]
-    if setting == 0x00 and length >= 3:
-        # The two gains, not a position: the app's strip picks a table index and writes the pair
-        # it names, so the quantity the user set is not in the frame.
-        return f"white balance manual={payload[0]} gains=({payload[1]},{payload[2]})"
-    if setting == 0x0A and length >= 1:
-        return f"blank screen {'on' if payload[0] else 'off'} tail={payload[1:].hex()}"
-    return f"display setting={setting:#04x} {payload.hex()}"
-
-
 def _is_wifi_credential_frame(v: bytes) -> bool:
     """An 0xA1 multi-part upload carrying sub-opcode 0x11, the Wi-Fi credential push.
 
@@ -285,7 +231,7 @@ def _is_wifi_credential_frame(v: bytes) -> bool:
     a two-byte big-endian length and the cloud endpoint. The SSID and passphrase are plain
     UTF-8, so these frames are a network password in clear.
     """
-    return len(v) >= 2 and v[0] == 0xA1 and v[1] == 0x11
+    return is_wifi_provision(v)
 
 
 def _is_device_mac_frame(v: bytes) -> bool:
@@ -300,7 +246,7 @@ def _is_device_mac_frame(v: bytes) -> bool:
     routine decode should not be able to put a permanent hardware identifier into a
     terminal, a transcript, or a pasted excerpt.
     """
-    return len(v) >= 2 and v[0] == 0xAA and v[1] == 0x14
+    return status_domain(v, "H6199") == 0x14
 
 
 def secret_reason(v: bytes) -> str | None:
@@ -325,13 +271,13 @@ def render_payload(v: bytes, *, show_secrets: bool = False) -> str:
     return v.hex()
 
 
-def label(v: bytes, direction: str, *, show_secrets: bool = False) -> str:
-    """Best-effort human label using the known Govee command map."""
+def label(v: bytes, direction: str, *, model: str = "auto", show_secrets: bool = False) -> str:
+    """Best-effort human label using generated model-specific structures."""
     _require_direction(direction)
     reason = None if show_secrets else secret_reason(v)
     h = v[0]
     if _is_music_stream(v):
-        return f"mic-stream rgb=({v[3]},{v[4]},{v[5]})"
+        return describe_generated(v, direction, model) or "mic-stream"
     if h == 0xA3:
         return f"multi-frame idx={v[1]:#04x} {v[2:12].hex()}"
     if h == 0xA1:
@@ -339,8 +285,9 @@ def label(v: bytes, direction: str, *, show_secrets: bool = False) -> str:
         # The index survives redaction: the fragmentation is the structural part worth
         # reading and none of it is secret.
         if reason is not None:
-            return f"multi-frame(a1) sub=0x11 idx={v[2]:#04x} <{reason} withheld>"
-        return f"multi-frame(a1) sub={v[1]:#04x} idx={v[2]:#04x} {v[3:12].hex()}"
+            generated = describe_generated(v, direction, model) or "wifi-provision"
+            return f"{generated} <{reason} withheld>"
+        return describe_generated(v, direction, model) or "multi-frame(a1)"
     if h == 0xEE:
         # Device-initiated Wi-Fi association result, seen 2026-08-04 about eleven seconds
         # after an a1 11 credential write, from both the app and a direct write of the same
@@ -348,74 +295,10 @@ def label(v: bytes, direction: str, *, show_secrets: bool = False) -> str:
         # test that could not possibly exist, so "not connected" is measured while
         # "connected" is the app's own reading of the same byte carried over. Stated that
         # way round deliberately: a successful association has never been captured here.
-        if v[1] == 0x11:
-            state = "connected" if v[2] == 0 else "NOT connected"
-            return f"wifi-connect result={v[2]:#04x} ({state})"
-        return f"device-report type={v[1]:#04x} {v[2:12].hex()}"
+        return describe_generated(v, direction, model) or "device-report"
     if reason is not None:
-        return f"reply type={v[1]:#04x} <{reason} withheld>"
-    if h == 0xAA:
-        return _label_aa(v, direction)
-    if h != 0x33:
-        return "?"
-    action = v[1]
-    if direction == "RX":  # device ack/echo of a 0x33 command; payload is a status, not a set value
-        names = {
-            0x01: "power",
-            0x04: "brightness",
-            0x05: "colour",
-            0x09: "time/cfg",
-            0xA9: "display setting",
-            0xAE: "relative brightness",
-        }
-        return f"ack {names.get(action, f'action={action:#04x}')}"
-    if action == 0x01:
-        return f"power {'on' if v[2] else 'off'}"
-    if action == 0x04:
-        return f"brightness {v[2]}%"
-    if action == 0x05:
-        mode = v[2]
-        modes = {0x15: "static", 0x04: "scene", 0x00: "video", 0x13: "music", 0x0A: "diy"}
-        detail = modes.get(mode, f"mode={mode:#04x}")
-        if mode == 0x15 and v[3] == 0x01:
-            kelvin = int.from_bytes(v[7:9], "big")
-            if kelvin:
-                return f"colortemp {kelvin}K preview=({v[9]},{v[10]},{v[11]}) mask={_segment_mask(v[12:14])}"
-            return f"color rgb=({v[4]},{v[5]},{v[6]}) mask={_segment_mask(v[12:14])}"
-        if mode == 0x15 and v[3] == 0x02:
-            return f"brightness {v[4]}% mask={_segment_mask(v[5:7])}"
-        if mode == 0x15 and v[3] == 0x03:
-            # command_write::static_brightness_all: one 0..100 percent per segment,
-            # index i = segment i+1, no mask. Rendering it as a bare hex run hid it
-            # for as long as we had captures containing it.
-            percents = list(v[4:19])
-            shown = ",".join(f"s{i + 1}={p}" for i, p in enumerate(percents) if p != 100)
-            return f"seg brightness all ({shown or 'all 100%'})"
-        if mode == 0x04:
-            # status_reply::cm_scene.scene_id is u2le. Falling through to the generic
-            # "sub=v[3]" line below renders its LOW BYTE as if it were a selector, so
-            # scene 1173 reads as sub=0x95. Same misreading class as the segment mask.
-            return f"scene id={int.from_bytes(v[3:5], 'little')} {v[3:13].hex()}"
-        if mode == 0x0A:
-            # govee_common::diy_selector: slot then type_byte, two independent u1 fields.
-            return f"diy slot={v[3]:#04x} type={v[4]:#04x} {v[3:13].hex()}"
-        if mode == 0x13:
-            # h6199_command_write::music_body. Named rather than left to the generic line
-            # below, which rendered it "color/music sub=0x03" and read as a colour write.
-            names = {0x03: "rhythm", 0x04: "spectrum", 0x05: "energetic", 0x06: "rolling"}
-            return f"music {names.get(v[3], f'mode={v[3]:#04x}')} sensitivity={v[4]}"
-        return f"color/{detail} sub={v[3]:#04x} {v[3:13].hex()}"
-    if action == 0x09:
-        return f"time/cfg {v[2:9].hex()}"
-    if action == 0xA9:
-        return _label_display_setting(v)
-    if action == 0xAE:
-        # h6199_command_write::relative_brightness_body. The count sits after a head byte, so the
-        # head is not it, and WHICH edge each percentage belongs to is not isolated. Printed in
-        # wire order and unnamed for that reason: a label reading "top=100" would be a claim the
-        # captures do not support.
-        return f"relative brightness edges={','.join(str(p) for p in v[4 : 4 + v[3]])}"
-    return f"cmd action={action:#04x} {v[2:13].hex()}"
+        return f"reply <{reason} withheld>"
+    return describe_generated(v, direction, model) or "?"
 
 
 _PCAPNG_SHB = 0x0A0D0D0A
@@ -792,6 +675,12 @@ def main() -> int:
         action="store_true",
         help="print payloads withheld by default: Wi-Fi credentials (a1 11) and the device Wi-Fi MAC (aa 14)",
     )
+    parser.add_argument(
+        "--model",
+        choices=("auto", *MODELS),
+        default="auto",
+        help="protocol model used for generated labels (default auto)",
+    )
     opts = parser.parse_args()
 
     data = open(opts.capture, "rb").read()
@@ -866,7 +755,7 @@ def main() -> int:
                     record.opcode,
                     record.attribute_handle,
                     value,
-                    label(value, record.direction, show_secrets=opts.show_secrets),
+                    label(value, record.direction, model=opts.model, show_secrets=opts.show_secrets),
                     first,
                 )
             )
@@ -878,6 +767,7 @@ def main() -> int:
     # Always printed, and always before the rows, because "this capture holds two lights"
     # is a fact that invalidates every reading below it and must not have to be noticed.
     print(f"# Govee sources: {_render_sources(sources) or 'none'}")
+    print(f"# Protocol model: {opts.model}")
     if wanted is not None:
         print(f"# filtered to source {wanted}")
     elif len(sources) > 1:

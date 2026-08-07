@@ -281,11 +281,17 @@ _ABSENT_PEER = "D5:36:36:DD:EE:FF"
 
 
 def _record_session(
-    tmp_path: Path, name: str, *, expected_peer: str | None, capture: bytes | None = None
+    tmp_path: Path,
+    name: str,
+    *,
+    expected_peer: str | None,
+    capture: bytes | None = None,
+    model: str = "H617A",
 ) -> subprocess.CompletedProcess[str]:
     """Start a capture over the committed fixture and stop it, returning stop's result."""
     stub = _stub_logger(tmp_path, writes=capture if capture is not None else _PCAPNG_FIXTURE.read_bytes())
     env = _capture_env(tmp_path, stub)
+    env["GOVEE_MODEL"] = model
     if expected_peer is not None:
         env["GOVEE_EXPECTED_PEER"] = expected_peer
     started = subprocess.run(  # noqa: S603
@@ -330,6 +336,7 @@ def test_a_session_that_did_capture_its_light_passes_and_records_the_binding(tmp
     assert result.returncode == 0, result.stderr
     meta = json.loads((tmp_path / "captures" / "right-light.meta.json").read_text())
     assert meta["expected_peer"] == _FIXTURE_PEER
+    assert meta["model"] == "H617A"
     assert f"filtered to source {_FIXTURE_PEER}" in result.stdout
 
 

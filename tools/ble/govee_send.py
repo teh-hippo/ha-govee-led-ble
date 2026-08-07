@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-r"""Drive a Govee H617A RGBIC LED strip over BLE to verify the reverse-engineered protocol.
+r"""Drive a supported Govee RGBIC device over BLE to verify the generated protocol.
 
 This runs on the lab against the host Bluetooth radio. An LXC gets its own network
 namespace and the kernel only allows ``AF_BLUETOOTH`` in ``init_net``, so BlueZ stays on
@@ -16,7 +16,7 @@ Govee frames are exactly 20 bytes: header 0x33 (command), 0xAA (query/status) or
 
 Subcommands:
   build   Complete a frame (zero-pad + checksum) and print it. No BLE, so it is offline-testable.
-  scan    Discovery only: list devices (name/address/RSSI); flag Govee_H617A_*. Does not connect.
+  scan    Discovery only: list devices (name/address/RSSI); flag Govee_*. Does not connect.
   send    Connect, write one or more frames, optionally subscribe and print notifications.
   query   Connect, subscribe, send the standard status queries, and print the 20-byte replies.
 
@@ -35,65 +35,19 @@ import asyncio
 import re
 import sys
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tools.ble.generated_protocol_view import MODELS, describe_generated, query_frames, sum8_checksum, xor_checksum
+elif __package__:
+    from .generated_protocol_view import MODELS, describe_generated, query_frames, sum8_checksum, xor_checksum
+else:
+    from generated_protocol_view import MODELS, describe_generated, query_frames, sum8_checksum, xor_checksum
 
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 NOTIFY_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
-DEFAULT_NAME_PREFIX = "Govee_H617A_"
+DEFAULT_NAME_PREFIX = "Govee_"
 FRAME_LEN = 20
-
-# Standard status queries the app issues; replies arrive on the notify characteristic.
-QUERY_FRAMES = [
-    "aa 01",
-    "aa 04",
-    "aa 05",
-    "aa 06",
-    "aa 07",
-    "aa 23",
-    "aa a5 01",
-    "aa a5 02",
-    "aa a5 03",
-    "aa a5 04",
-    "aa a5 05",
-]
-
-# 0xAA status/query types, mirrored from decode_govee.py so labels stay consistent.
-AA_TYPES = {
-    0x01: "power",
-    0x04: "brightness",
-    0x05: "colormode",
-    0x06: "fw-ver",
-    0x07: "hw-ver",
-    0x0B: "?0b",
-    0x11: "?11",
-    0x12: "?12",
-    0x23: "segcfg",
-    0x40: "count?",
-    0xA3: "multi",
-    0xA5: "segments",
-}
-CMD_MODES = {0x15: "static", 0x04: "scene", 0x00: "video", 0x13: "music", 0x0A: "diy"}
-
-# Domains seen acknowledging a write; mirrored from decode_govee.label so the two
-# labellers cannot drift.
-ACK_DOMAINS = {0x01: "power", 0x04: "brightness", 0x05: "colour", 0x09: "time/cfg", 0xA9: "calibration"}
-
-
-def xor_checksum(data: bytes) -> int:
-    """XOR of every byte; Govee uses this over bytes 0..18 as the 20th byte."""
-    checksum = 0
-    for byte in data:
-        checksum ^= byte
-    return checksum
-
-
-def sum8_checksum(data: bytes) -> int:
-    """Low 8 bits of the sum; used by the 7-byte a5 02 83 phone-microphone stream.
-
-    A genuinely different algorithm, not a coincidence: a captured 33 05 15 static
-    write checksums to 0xa7 under XOR and 0xaf under sum, and a5 02 83 0f 0f 00 gives
-    0x48 under sum against 0x24 under XOR. The device selects by opcode.
-    """
-    return sum(data) & 0xFF
 
 
 def parse_hex(text: str) -> bytes:
@@ -127,66 +81,16 @@ def complete_frame(text: str, mode: str = "xor") -> bytes:
     return body + bytes([xor_checksum(body)])
 
 
-def _ascii(data: bytes) -> str:
-    return "".join(chr(x) for x in data if 32 <= x < 127)
-
-
-def _describe_aa(frame: bytes, direction: str) -> str:
-    kind = frame[1]
-    name = AA_TYPES.get(kind, f"type=0x{kind:02x}")
-    if direction == "TX":
-        return f"query {name}"
-    data = frame[2:19]
-    if kind in (0x06, 0x07):
-        return f"reply {name}={_ascii(data)!r}"
-    if kind == 0x01:
-        return f"reply power={'on' if data[0] else 'off'}"
-    if kind == 0x05:
-        return f"reply colormode 0x{data[0]:02x} 0x{data[1]:02x}"
-    if kind == 0x40:
-        return f"reply count?={data[0] * 256 + data[1]}"
-    if kind == 0x04:
-        return f"reply brightness={data[0]}%"
-    if kind == 0xA5:
-        segs = " ".join(data[1:13][i : i + 4].hex() for i in range(0, 12, 4))
-        return f"reply segments group={data[0]} [{segs}]"
-    return f"reply {name} {data.hex()}"
-
-
-def describe(frame: bytes, direction: str) -> str:
+def describe(frame: bytes, direction: str, model: str = "auto") -> str:
     """Best-effort human label for a frame; direction is 'TX' (write) or 'RX' (notify)."""
-    if len(frame) == 7 and frame[0] == 0xA5 and frame[1] == 0x02 and frame[2] == 0x83:
-        ok = frame[6] == sum8_checksum(frame[:6])
-        return f"mic-stream rgb=({frame[3]},{frame[4]},{frame[5]}) sum8{'' if ok else ' MISMATCH'}"
+    if generated := describe_generated(frame, direction, model):
+        return generated
     if len(frame) != FRAME_LEN:
         return f"(len={len(frame)})"
     head = frame[0]
     if head == 0xA3:
         return f"multi-frame idx=0x{frame[1]:02x} {frame[2:12].hex()}"
-    if head == 0xAA:
-        return _describe_aa(frame, direction)
-    if head != 0x33:
-        return "?"
-    action = frame[1]
-    # A write draws a 33 <same action> 00 acknowledgement with an all-zero body, so an
-    # inbound 0x33 frame carries no set value. Labelling it as a command invents one:
-    # the ack for `33 04 07` is `33 04 00`, which reads as "brightness 0%" if direction
-    # is ignored. decode_govee.label applies the same rule.
-    if direction == "RX":
-        return f"ack {ACK_DOMAINS.get(action, f'action=0x{action:02x}')}"
-    if action == 0x01:
-        return f"power {'on' if frame[2] else 'off'}"
-    if action == 0x04:
-        return f"brightness {frame[2]}%"
-    if action == 0x05:
-        mode = frame[2]
-        if mode == 0x15 and frame[3] == 0x01:
-            return f"static color rgb=({frame[4]},{frame[5]},{frame[6]}) mask=0x{frame[13]:02x}{frame[12]:02x}"
-        if mode == 0x15 and frame[3] == 0x02:
-            return f"static brightness {frame[4]}% mask=0x{frame[6]:02x}{frame[5]:02x}"
-        detail = CMD_MODES.get(mode, f"mode=0x{mode:02x}")
-        return f"{detail} sub=0x{frame[3]:02x} {frame[3:13].hex()}"
-    return f"cmd action=0x{action:02x} {frame[2:13].hex()}"
+    return f"frame header=0x{head:02x}"
 
 
 async def cmd_scan(args: argparse.Namespace) -> int:
@@ -248,10 +152,10 @@ async def cmd_send(args: argparse.Namespace) -> int:
     start = time.monotonic()
     notifications: list[bytes] = []
 
-    def on_notify(_characteristic, data: bytearray) -> None:
+    def on_notify(_characteristic: object, data: bytearray) -> None:
         payload = bytes(data)
         notifications.append(payload)
-        print(f"  NOTIFY  t={time.monotonic() - start:5.2f}s  {payload.hex()}  {describe(payload, 'RX')}")
+        print(f"  NOTIFY  t={time.monotonic() - start:5.2f}s  {payload.hex()}  {describe(payload, 'RX', args.model)}")
 
     async with BleakClient(target, timeout=args.timeout) as client:
         print(f"# connected to {client.address}")
@@ -259,7 +163,7 @@ async def cmd_send(args: argparse.Namespace) -> int:
             await client.start_notify(NOTIFY_UUID, on_notify)
         start = time.monotonic()
         for frame in frames:
-            print(f"  WRITE            {frame.hex()}  {describe(frame, 'TX')}")
+            print(f"  WRITE            {frame.hex()}  {describe(frame, 'TX', args.model)}")
             await client.write_gatt_char(WRITE_UUID, frame, response=response)
             await asyncio.sleep(args.gap)
         if args.listen > 0:
@@ -273,23 +177,23 @@ async def cmd_send(args: argparse.Namespace) -> int:
 async def cmd_query(args: argparse.Namespace) -> int:
     from bleak import BleakClient
 
-    frames = [(text, complete_frame(text)) for text in QUERY_FRAMES]
+    frames = query_frames(args.model)
     target = args.address
 
     start = time.monotonic()
     replies: list[bytes] = []
 
-    def on_notify(_characteristic, data: bytearray) -> None:
+    def on_notify(_characteristic: object, data: bytearray) -> None:
         payload = bytes(data)
         replies.append(payload)
-        print(f"  REPLY  t={time.monotonic() - start:5.2f}s  {payload.hex()}  {describe(payload, 'RX')}")
+        print(f"  REPLY  t={time.monotonic() - start:5.2f}s  {payload.hex()}  {describe(payload, 'RX', args.model)}")
 
     async with BleakClient(target, timeout=args.timeout) as client:
         print(f"# connected to {client.address}")
         await client.start_notify(NOTIFY_UUID, on_notify)
         start = time.monotonic()
-        for text, frame in frames:
-            print(f"  QUERY            {frame.hex()}  {describe(frame, 'TX')}  ({text})")
+        for name, frame in frames:
+            print(f"  QUERY            {frame.hex()}  {describe(frame, 'TX', args.model)}  ({name})")
             await client.write_gatt_char(WRITE_UUID, frame, response=None)
             await asyncio.sleep(args.gap)
         print(f"# waiting {args.listen:.1f}s for replies...", file=sys.stderr)
@@ -323,7 +227,7 @@ def cmd_build(args: argparse.Namespace) -> int:
                 )
             else:
                 note = f"padded {len(raw)}->19B, xor=0x{checksum:02x} appended"
-        print(f"{text!r:>26}  ->  {frame.hex()}  ({len(frame)}B, {note})  {describe(frame, 'TX')}")
+        print(f"{text!r:>26}  ->  {frame.hex()}  ({len(frame)}B, {note})  {describe(frame, 'TX', args.model)}")
     return status
 
 
@@ -357,6 +261,16 @@ def _add_connect_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--timeout", type=float, default=20.0, help="Connect timeout in seconds (default 20)")
 
 
+def _add_model_arg(parser: argparse.ArgumentParser, *, allow_auto: bool) -> None:
+    choices = ("auto", *MODELS) if allow_auto else MODELS
+    parser.add_argument(
+        "--model",
+        choices=choices,
+        default="auto" if allow_auto else "H617A",
+        help="Protocol model used for generated queries and labels",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="govee_send.py",
@@ -383,10 +297,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_build.add_argument("frames", nargs="+", metavar="HEXFRAME", help="Frame body as hex, e.g. '33 01 01' or '330101'")
     _add_checksum_arg(p_build)
+    _add_model_arg(p_build, allow_auto=True)
 
     p_scan = sub.add_parser(
         "scan",
-        help="List nearby BLE devices; flag Govee_H617A_* (no connection)",
+        help="List nearby BLE devices; flag Govee_* (no connection)",
         description="Discover nearby BLE devices and print name/address/RSSI, flagging "
         "any whose name matches the prefix. Does not connect to anything.",
     )
@@ -424,6 +339,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_connect_args(p_send)
     _add_checksum_arg(p_send)
+    _add_model_arg(p_send, allow_auto=True)
 
     p_query = sub.add_parser(
         "query",
@@ -436,6 +352,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_query.add_argument("--gap", type=float, default=0.3, help="Delay between successive queries (default 0.3)")
     _add_connect_args(p_query)
+    _add_model_arg(p_query, allow_auto=False)
 
     return parser
 

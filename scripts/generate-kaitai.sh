@@ -14,7 +14,10 @@ case "$mode" in
       h6199_effect_upload
       h6199_status_query
       h6199_status_reply
+      h6199_wifi_provision
+      h6199_wifi_result
       music_body
+      music_stream
       scene_body
       scene_type1_body
       status_query

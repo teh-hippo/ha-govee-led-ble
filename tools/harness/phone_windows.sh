@@ -164,13 +164,18 @@ require_bluetooth_transport() {
     echo "Windows BLE Python is missing at $WINDOWS_CLIENT_PYTHON" >&2
     return 1
   }
-  "$WINDOWS_CLIENT_PYTHON" -c "import bleak" >/dev/null 2>&1 || {
-    echo "Bleak is not installed in the Windows BLE environment" >&2
+  "$WINDOWS_CLIENT_PYTHON" -c "import bleak, kaitaistruct" >/dev/null 2>&1 || {
+    echo "Bleak and kaitaistruct 0.11 must be installed in the Windows BLE environment" >&2
     return 1
   }
 }
 
 govee_send() {
+  mkdir -p "$WSL_WINDOWS_TOOL_DIR/generated_protocol"
+  find "$WSL_WINDOWS_TOOL_DIR/generated_protocol" -maxdepth 1 -type f -name '*.py' -delete
+  cp "$REPO_DIR/custom_components/ha_govee_led_ble/generated_protocol/"*.py \
+    "$WSL_WINDOWS_TOOL_DIR/generated_protocol/"
+  cp "$REPO_DIR/tools/ble/generated_protocol_view.py" "$WSL_WINDOWS_TOOL_DIR/generated_protocol_view.py"
   cp "$REPO_DIR/tools/ble/govee_send.py" "$WSL_WINDOWS_TOOL_DIR/govee_send.py"
   "$WINDOWS_CLIENT_PYTHON" "$WINDOWS_TOOL_DIR\\govee_send.py" "$@" |
     tr -d '\r'
