@@ -20,6 +20,10 @@ GoveeShared = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_shared").GoveeShared,
 )
+GoveeCommon = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_common").GoveeCommon,
+)
 
 
 def _check_tree(value: Any, seen: set[int] | None = None) -> None:
@@ -227,5 +231,119 @@ def build_segment_brightness(
     brightness.mask = segment_mask
     static.static_body = brightness
     multi.sub_body = static
+    root.body = multi
+    return _serialize_xor(root)
+
+
+def build_h6199_scene(scene_code: int, music_code: int = 0) -> bytes:
+    root = H6199CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6199CommandWrite.CommandOp.mode
+    mode = _child(H6199CommandWrite.ModeBody, root)
+    mode.sub_mode = H6199CommandWrite.ModeSel.scene
+    detail = _child(H6199CommandWrite.SceneBody, mode)
+    detail.scene_id = max(0, min(0xFFFF, scene_code))
+    detail.music_code = max(0, min(0xFFFF, music_code))
+    mode.detail = detail
+    root.body = mode
+    return _serialize_xor(root)
+
+
+def build_h6199_video(
+    full_screen: bool,
+    game_mode: bool,
+    saturation: int,
+    sound_effects: bool,
+    softness: int,
+) -> bytes:
+    root = H6199CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6199CommandWrite.CommandOp.mode
+    mode = _child(H6199CommandWrite.ModeBody, root)
+    mode.sub_mode = H6199CommandWrite.ModeSel.video
+    detail = _child(H6199CommandWrite.VideoBody, mode)
+    detail.region = H6199CommandWrite.VideoRegion.all if full_screen else H6199CommandWrite.VideoRegion.part
+    detail.source = H6199CommandWrite.VideoSource.game if game_mode else H6199CommandWrite.VideoSource.movie
+    detail.saturation = max(0, min(100, saturation))
+    detail.sound_effects = int(sound_effects)
+    detail.softness = max(1, min(100, softness))
+    detail.relative_brightness_percent = 0
+    mode.detail = detail
+    root.body = mode
+    return _serialize_xor(root)
+
+
+def build_h6199_white_balance(red: int, blue: int) -> bytes:
+    root = H6199CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6199CommandWrite.CommandOp.display_setting
+    body = _child(H6199CommandWrite.DisplaySettingBody, root)
+    body.setting = H6199CommandWrite.DisplaySetting.white_balance
+    body.len = 3
+    payload = _child(H6199CommandWrite.WhiteBalancePayload, body)
+    payload.manual = 1
+    payload.red = max(0, min(255, red))
+    payload.blue = max(0, min(255, blue))
+    body.payload = payload
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_h6199_relative_brightness(
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+) -> bytes:
+    root = H6199CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6199CommandWrite.CommandOp.relative_brightness
+    body = _child(H6199CommandWrite.RelativeBrightnessBody, root)
+    body.selector = b"\x01"
+    body.edge_count = 4
+    body.left_percent = max(0, min(100, left))
+    body.top_percent = max(0, min(100, top))
+    body.right_percent = max(0, min(100, right))
+    body.bottom_percent = max(0, min(100, bottom))
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_music_mode(
+    mode_id: int,
+    sensitivity: int,
+    colour: tuple[int, int, int] | None,
+    calm: bool,
+    model: str = "H617A",
+) -> bytes:
+    if model == "H6199":
+        root = H6199CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H6199CommandWrite.CommandOp.mode
+        mode = _child(H6199CommandWrite.ModeBody, root)
+        mode.sub_mode = H6199CommandWrite.ModeSel.music
+        detail = _child(H6199CommandWrite.MusicBody, mode)
+        detail.mode = H6199CommandWrite.MusicMode(mode_id)
+        detail.sensitivity = max(0, min(100, sensitivity))
+        detail.is_calm = int(calm)
+        detail.has_fixed_colour = int(colour is not None)
+        detail.fixed_colour = _rgb(detail, *(colour or (0, 0, 0)))
+        mode.detail = detail
+        root.body = mode
+        return _serialize_xor(root)
+
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.multi
+    multi = _child(CommandWrite.MultiCmd, root)
+    multi.sub = CommandWrite.MultiSub.music
+    selector = _child(GoveeCommon.MusicSelector, multi)
+    selector.mode_id = GoveeCommon.MusicMode(mode_id)
+    selector.sensitivity = max(0, min(100, sensitivity))
+    selector.style = int(calm)
+    selector.manual_color_count = int(colour is not None)
+    if colour is not None:
+        selector.rgb = _rgb(selector, *colour)
+    multi.sub_body = selector
     root.body = multi
     return _serialize_xor(root)

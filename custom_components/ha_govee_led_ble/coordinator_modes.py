@@ -235,7 +235,13 @@ class _ActiveModeMixin(_CoordinatorBase):
         await self.send_command(build_power(True, self.model))
         self.is_on = True
         await self.send_command(
-            build_music_mode_with_color(mode_id, sensitivity=self.music_sensitivity, color=color, calm=calm)
+            build_music_mode_with_color(
+                mode_id,
+                sensitivity=self.music_sensitivity,
+                color=color,
+                calm=calm,
+                model=self.model,
+            )
         )
         if mode_id in _MUSIC_STYLE_COMPANION:
             await self._send_music_params(mode_id)

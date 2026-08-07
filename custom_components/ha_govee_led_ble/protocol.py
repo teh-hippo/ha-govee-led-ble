@@ -24,6 +24,19 @@ from .generated_protocol_adapter import (
 from .generated_protocol_adapter import (
     build_colour_temperature as _build_generated_colour_temperature,
 )
+from .generated_protocol_adapter import (
+    build_h6199_relative_brightness as _build_generated_relative_brightness,
+)
+from .generated_protocol_adapter import (
+    build_h6199_scene as _build_generated_h6199_scene,
+)
+from .generated_protocol_adapter import (
+    build_h6199_video as _build_generated_video,
+)
+from .generated_protocol_adapter import (
+    build_h6199_white_balance as _build_generated_white_balance,
+)
+from .generated_protocol_adapter import build_music_mode as _build_generated_music
 from .generated_protocol_adapter import build_power as _build_generated_power
 from .generated_protocol_adapter import (
     build_segment_brightness as _build_generated_segment_brightness,
@@ -377,9 +390,7 @@ def build_scene_multi(
 
 def build_h6199_scene(scene_code: int, music_code: int = 0) -> list[bytes]:
     """Build one H6199 activation with linked scene music disabled by default."""
-    scene = _clamp(scene_code, 0, 0xFFFF).to_bytes(2, "little")
-    music = _clamp(music_code, 0, 0xFFFF).to_bytes(2, "little")
-    return [build_packet(0x33, 0x05, [0x04, *scene, *music])]
+    return [_build_generated_h6199_scene(scene_code, music_code)]
 
 
 # --- Custom-effect content encoders -------------------------------------------------------------
@@ -548,15 +559,13 @@ def build_video_mode(
     on this model, not 0..255 levels. Softness keeps its captured floor of 1 and persists while
     sound effects are off, which is the form every captured write takes.
     """
-    params = [
-        COLOR_MODE_VIDEO,
-        int(full_screen),
-        int(game_mode),
-        _clamp(saturation, 0, 100),
-        int(sound_effects),
-        _clamp(sound_effects_softness, 1, 100),
-    ]
-    return build_packet(0x33, 0x05, params)
+    return _build_generated_video(
+        full_screen,
+        game_mode,
+        saturation,
+        sound_effects,
+        sound_effects_softness,
+    )
 
 
 # The app's complete white-balance strip, in cool-to-warm order. Every position was captured
@@ -614,9 +623,7 @@ def build_video_white_balance(red: int, blue: int) -> bytes:
     on the vendor app's encoder rather than on a capture that varied it, and no capture has yet
     been taken with Auto White Balance on.
     """
-    return _build_display_setting(
-        DISPLAY_SETTING_WHITE_BALANCE, [WHITE_BALANCE_MANUAL, _clamp(red, 0, 255), _clamp(blue, 0, 255)]
-    )
+    return _build_generated_white_balance(red, blue)
 
 
 def build_blank_screen(enabled: bool) -> bytes:
@@ -641,15 +648,7 @@ def build_relative_brightness(percent: int) -> bytes:
 
 def build_relative_brightness_edges(left: int, top: int, right: int, bottom: int) -> bytes:
     """Build independent H6199 edge brightness values in captured left/top/right/bottom order."""
-    return build_packet(
-        0x33,
-        RELATIVE_BRIGHTNESS_PACKET_TYPE,
-        [
-            RELATIVE_BRIGHTNESS_HEAD,
-            RELATIVE_BRIGHTNESS_EDGES,
-            *(_clamp(value, 0, 100) for value in (left, top, right, bottom)),
-        ],
-    )
+    return _build_generated_relative_brightness(left, top, right, bottom)
 
 
 def build_music_mode_with_color(
@@ -657,12 +656,15 @@ def build_music_mode_with_color(
     sensitivity: int = 99,
     color: tuple[int, int, int] | None = None,
     calm: bool = False,
+    model: str = "H617A",
 ) -> bytes:
-    # byte 5 STYLE = Dynamic(0)/Calm(1); byte 6 COUNT = manual colour count (0 = auto-colour on).
-    params = [0x13, mode_id, _clamp(sensitivity, 0, 100), int(calm)]
-    if color is not None:
-        params.extend([0x01, *(_clamp(channel, 0, 255) for channel in color)])
-    return build_packet(0x33, 0x05, params)
+    return _build_generated_music(
+        mode_id,
+        sensitivity,
+        color,
+        calm,
+        model,
+    )
 
 
 # --- H617A music per-mode movement parameters --------------------------------------------------

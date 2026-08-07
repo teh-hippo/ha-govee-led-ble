@@ -687,6 +687,23 @@ def test_music_mode_style_count_per_mode():
         _valid(pkt)
 
 
+def test_h6199_music_mode_uses_the_model_schema():
+    assert proto.build_music_mode_with_color(0x03, 99, model="H6199") == H("3305130363000000000000000000000000000045")
+    assert proto.build_music_mode_with_color(
+        0x03,
+        62,
+        (255, 0, 0),
+        model="H6199",
+    ) == H("330513033e0001ff0000000000000000000000e6")
+    assert proto.build_music_mode_with_color(
+        0x03,
+        62,
+        (0, 0, 255),
+        calm=True,
+        model="H6199",
+    ) == H("330513033e01010000ff000000000000000000e7")
+
+
 # Music per-mode movement params. Every expected frame below is replayed
 # byte-exact from validate-20260709-122350.pcap + validation-report-20260709-123428.json; assembling
 # the a3 fragments (dropping each frame's `a3 <idx>` prefix and trailing XOR) must reproduce it. Each

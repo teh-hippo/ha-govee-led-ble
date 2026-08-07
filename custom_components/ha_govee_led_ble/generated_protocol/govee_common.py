@@ -90,44 +90,20 @@ class GoveeCommon(ReadWriteKaitaiStruct):
         def _read(self):
             self.slot = self._io.read_u1()
             self.type_byte = self._io.read_u1()
-            self.padding = []
-            i = 0
-            while not self._io.is_eof():
-                self.padding.append(self._io.read_u1())
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], self._io, u"/types/diy_selector/seq/2")
-                i += 1
-
             self._dirty = False
 
 
         def _fetch_instances(self):
             pass
-            for i in range(len(self.padding)):
-                pass
-
 
 
         def _write__seq(self, io=None):
             super(GoveeCommon.DiySelector, self)._write__seq(io)
             self._io.write_u1(self.slot)
             self._io.write_u1(self.type_byte)
-            for i in range(len(self.padding)):
-                pass
-                if self._io.is_eof():
-                    raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
-                self._io.write_u1(self.padding[i])
-
-            if not self._io.is_eof():
-                raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
 
 
         def _check(self):
-            for i in range(len(self.padding)):
-                pass
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], None, u"/types/diy_selector/seq/2")
-
             self._dirty = False
 
 
@@ -147,14 +123,6 @@ class GoveeCommon(ReadWriteKaitaiStruct):
                 self.rgb = govee_shared.GoveeShared.Rgb(self._io)
                 self.rgb._read()
 
-            self.padding = []
-            i = 0
-            while not self._io.is_eof():
-                self.padding.append(self._io.read_u1())
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], self._io, u"/types/music_selector/seq/5")
-                i += 1
-
             self._dirty = False
 
 
@@ -163,9 +131,6 @@ class GoveeCommon(ReadWriteKaitaiStruct):
             if self.manual_color_count >= 1:
                 pass
                 self.rgb._fetch_instances()
-
-            for i in range(len(self.padding)):
-                pass
 
 
 
@@ -179,24 +144,11 @@ class GoveeCommon(ReadWriteKaitaiStruct):
                 pass
                 self.rgb._write__seq(self._io)
 
-            for i in range(len(self.padding)):
-                pass
-                if self._io.is_eof():
-                    raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
-                self._io.write_u1(self.padding[i])
-
-            if not self._io.is_eof():
-                raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
 
 
         def _check(self):
             if self.manual_color_count >= 1:
                 pass
-
-            for i in range(len(self.padding)):
-                pass
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], None, u"/types/music_selector/seq/5")
 
             self._dirty = False
 

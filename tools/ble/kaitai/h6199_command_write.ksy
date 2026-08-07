@@ -128,10 +128,6 @@ types:
           cases:
             'display_setting::white_balance': white_balance_payload
             'display_setting::blank_screen': blank_screen_payload
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
   white_balance_payload:
     seq:
       - id: manual

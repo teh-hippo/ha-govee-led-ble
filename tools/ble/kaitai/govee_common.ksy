@@ -19,10 +19,6 @@ types:
         type: u1
       - id: type_byte
         type: u1
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
   music_selector:
     seq:
       - id: mode_id
@@ -37,10 +33,6 @@ types:
       - id: rgb
         type: govee_shared::rgb
         if: manual_color_count >= 1
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
 enums:
   music_mode:
     0x05: energetic

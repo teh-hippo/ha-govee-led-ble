@@ -3,8 +3,8 @@
 
 import kaitaistruct
 from kaitaistruct import ReadWriteKaitaiStruct, KaitaiStream, BytesIO
-from custom_components.ha_govee_led_ble.generated_protocol import govee_shared
 from custom_components.ha_govee_led_ble.generated_protocol import govee_common
+from custom_components.ha_govee_led_ble.generated_protocol import govee_shared
 from enum import IntEnum
 
 
