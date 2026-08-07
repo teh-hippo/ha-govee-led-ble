@@ -5,17 +5,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bleak.exc import BleakError
 from homeassistant.components.number import NumberMode
-from homeassistant.const import EntityCategory
 
-from custom_components.ha_govee_led_ble.coordinator_modes import MUSIC_PARAM_SPECS
 from custom_components.ha_govee_led_ble.h6199_controls import H6199ParameterNumber as N
 from custom_components.ha_govee_led_ble.h6199_controls import (
     H6199WhiteBalanceNumber,
     _set_with_rollback,
-    _supports_number_param,
     async_setup_number_entry,
 )
-from custom_components.ha_govee_led_ble.h6199_controls import MusicParamNumber as MPNumber
 from custom_components.ha_govee_led_ble.number import SceneSpeedNumber
 from custom_components.ha_govee_led_ble.number import async_setup_entry as async_setup_number_platform
 from custom_components.ha_govee_led_ble.protocol import (
@@ -31,18 +27,9 @@ from custom_components.ha_govee_led_ble.scenes import SCENES
 
 def test_native_value_property(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.music_sensitivity = 42
-    assert N(c, key="music_sensitivity", name="T").native_value == 42.0
-    assert N(c, key="music_sensitivity", name="T").entity_registry_enabled_default is True
-
-
-async def test_music_sensitivity(mock_h6199_coordinator):
-    (c := mock_h6199_coordinator).music_mode, c.music_color = "rolling", (10, 20, 30)
-    entity = N(c, key="music_sensitivity", name="T")
-    assert (entity.native_min_value, entity.native_max_value) == (1, 100)
-    await entity.async_set_native_value(77)
-    assert c.music_sensitivity == 77
-    c.async_select_music_slug.assert_awaited_once_with("rolling")
+    c.video_saturation = 42
+    assert N(c, key="video_saturation", name="T").native_value == 42.0
+    assert N(c, key="video_saturation", name="T").entity_registry_enabled_default is True
 
 
 async def test_rollback_restores_the_previous_value_when_the_write_fails(mock_h6199_coordinator):
@@ -50,63 +37,51 @@ async def test_rollback_restores_the_previous_value_when_the_write_fails(mock_h6
     covers the path where nothing is sent; this one covers the write FAILING, which is the
     only path where the optimistic value has to be put back."""
     c = mock_h6199_coordinator
-    c.music_sensitivity = 55
-    c.is_on, c.music_mode = True, "rolling"
-    c.async_select_music_slug = AsyncMock(side_effect=BleakError("timeout"))
+    c.video_saturation = 55
+    c.is_on, c.video_mode = True, "movie"
+    c.send_command = AsyncMock(side_effect=BleakError("timeout"))
     with pytest.raises(BleakError):
-        await N(c, key="music_sensitivity", name="T").async_set_native_value(20)
-    assert c.music_sensitivity == 55
-
-
-def test_supports_number_param_unknown_key(mock_h6199_coordinator):
-    assert _supports_number_param(mock_h6199_coordinator, "unknown") is False
+        await N(c, key="video_saturation", name="T").async_set_native_value(20)
+    assert c.video_saturation == 55
 
 
 async def test_set_with_rollback_noop(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     reapply = AsyncMock()
-    await _set_with_rollback(c, key="music_sensitivity", value=c.music_sensitivity, reapply=reapply)
+    await _set_with_rollback(c, key="video_saturation", value=c.video_saturation, reapply=reapply)
     reapply.assert_not_called()
     c.async_set_updated_data.assert_not_called()
 
 
 async def test_control_transactions_are_serialized(mock_h6199_coordinator):
     c = mock_h6199_coordinator
-    c.music_sensitivity = 10
+    c.video_saturation = 10
     first_started = asyncio.Event()
     release_first = asyncio.Event()
     applied: list[int] = []
 
     async def reapply(coordinator):
-        applied.append(coordinator.music_sensitivity)
+        applied.append(coordinator.video_saturation)
         if len(applied) == 1:
             first_started.set()
             await release_first.wait()
         return True
 
-    first = asyncio.create_task(_set_with_rollback(c, key="music_sensitivity", value=20, reapply=reapply))
+    first = asyncio.create_task(_set_with_rollback(c, key="video_saturation", value=20, reapply=reapply))
     await first_started.wait()
-    second = asyncio.create_task(_set_with_rollback(c, key="music_sensitivity", value=30, reapply=reapply))
+    second = asyncio.create_task(_set_with_rollback(c, key="video_saturation", value=30, reapply=reapply))
     await asyncio.sleep(0)
     assert applied == [20]
     release_first.set()
     await asyncio.gather(first, second)
     assert applied == [20, 30]
-    assert c.music_sensitivity == 30
+    assert c.video_saturation == 30
 
 
 async def test_setup_number_entry_h617a(mock_coordinator):
     add = MagicMock()
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_coordinator), add)
-    keys = [entity._key for entity in add.call_args.args[0]]
-    assert keys == [
-        "music_sensitivity",
-        "music_separation_point",
-        "music_hopping_brightness",
-        "music_piano_key_count",
-        "music_daynight_segments",
-        "music_daynight_speed",
-    ]
+    add.assert_not_called()
 
 
 async def test_scene_speed_number_tracks_the_active_scene(mock_coordinator):
@@ -165,7 +140,6 @@ async def test_setup_number_entry_h6199(mock_h6199_coordinator):
     entities = add.call_args.args[0]
     keys = [entity._key for entity in entities]
     assert keys == [
-        "music_sensitivity",
         "video_saturation",
         "video_sound_effects_softness",
         "relative_brightness",
@@ -187,7 +161,6 @@ async def test_setup_number_entry_without_supported_params(mock_h6199_coordinato
     c = mock_h6199_coordinator
     c.profile = replace(
         c.profile,
-        music_modes=(),
         supports_video_mode=False,
         supports_video_sound_effects=False,
         supports_relative_brightness=False,
@@ -202,8 +175,7 @@ async def test_h617a_gets_no_h6199_display_controls(mock_coordinator):
     """The two models share the table, so the gate is what keeps a strip free of TV settings."""
     add = MagicMock()
     await async_setup_number_entry(MagicMock(), MagicMock(runtime_data=mock_coordinator), add)
-    keys = [entity._key for entity in add.call_args.args[0]]
-    assert not {"video_saturation", "relative_brightness", "white_balance"} & set(keys)
+    add.assert_not_called()
 
 
 def test_white_balance_slider_maps_the_complete_captured_curve(mock_h6199_coordinator):
@@ -395,31 +367,3 @@ async def test_number_added_to_hass_triggers_restore(mock_h6199_coordinator):
         await entity.async_added_to_hass()
     super_added.assert_awaited_once()
     entity._async_restore_state.assert_awaited_once()
-
-
-def _mspec(key):
-    return next(s for s in MUSIC_PARAM_SPECS if s.key == key)
-
-
-async def test_music_param_number_is_experimental_and_config(mock_coordinator):
-    ent = MPNumber(mock_coordinator, _mspec("music_daynight_speed"))
-    assert ent._attr_entity_registry_enabled_default is False
-    assert ent._attr_entity_category is EntityCategory.CONFIG
-    assert (ent.native_min_value, ent.native_max_value) == (1, 50)
-    assert ent.native_value == 10.0
-
-
-async def test_music_param_number_reapplies_when_mode_active(mock_coordinator):
-    c = mock_coordinator
-    c.is_on, c.music_mode = True, "day_and_night"
-    await MPNumber(c, _mspec("music_daynight_speed")).async_set_native_value(30)
-    assert c.music_daynight_speed == 30
-    c.async_apply_music_params.assert_awaited_once_with(0x37)
-
-
-async def test_music_param_number_stores_only_when_inactive(mock_coordinator):
-    c = mock_coordinator
-    c.is_on, c.music_mode = True, "off"
-    await MPNumber(c, _mspec("music_separation_point")).async_set_native_value(4)
-    assert c.music_separation_point == 4
-    c.async_apply_music_params.assert_not_awaited()

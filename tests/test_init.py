@@ -7,7 +7,6 @@ from homeassistant.helpers import issue_registry as ir
 
 from custom_components.ha_govee_led_ble import (
     _async_cleanup_legacy_entities,
-    _async_cleanup_unsupported_entities,
     _maybe_flag_white_balance_replaced,
     async_setup,
     async_setup_entry,
@@ -77,12 +76,12 @@ async def test_cleanup_legacy_entities(hass: HomeAssistant):
             entity_id="number.govee_video_sound_effects_softness",
         ),
     ]
-    keep = MagicMock(unique_id="112233445566_music_sensitivity", entity_id="number.govee_music_sensitivity")
+    retired = MagicMock(unique_id="112233445566_music_sensitivity", entity_id="number.govee_music_sensitivity")
     with (
         patch("custom_components.ha_govee_led_ble.er.async_get", return_value=registry),
         patch(
             "custom_components.ha_govee_led_ble.er.async_entries_for_config_entry",
-            return_value=[stale, stale2, stale4, *removed_surface, *current, keep],
+            return_value=[stale, stale2, stale4, *removed_surface, *current, retired],
         ),
     ):
         await _async_cleanup_legacy_entities(hass, entry)
@@ -92,9 +91,10 @@ async def test_cleanup_legacy_entities(hass: HomeAssistant):
             call("number.govee_white_brightness"),
             call("switch.govee_music_calm"),
             *[call(entity.entity_id) for entity in removed_surface],
+            call(retired.entity_id),
         ]
     )
-    assert registry.async_remove.call_count == 3 + len(removed_surface)
+    assert registry.async_remove.call_count == 4 + len(removed_surface)
     assert hass.data[DOMAIN][f"{entry.entry_id}_white_balance_from"] == [
         "number.govee_white_balance_red",
         "number.govee_white_balance_blue",
@@ -124,45 +124,7 @@ def test_white_balance_replacement_issue_names_old_and_new_entities(hass: HomeAs
     }
 
 
-async def test_cleanup_unsupported_h6199_entities(hass: HomeAssistant, mock_h6199_coordinator):
-    entry = _entry(data={CONF_MODEL: "H6199"})
-    registry = MagicMock()
-    stale = [
-        MagicMock(unique_id=f"112233445566{suffix}", entity_id=f"entity.{index}")
-        for index, suffix in enumerate(
-            (
-                "_sleep_timer",
-                "_sleep_timer_duration",
-                "_wakeup_timer",
-                "_wakeup_timer_time",
-                "_poweroff_memory",
-            )
-        )
-    ]
-    keep = MagicMock(unique_id="112233445566_music_sensitivity", entity_id="number.keep")
-    with (
-        patch("custom_components.ha_govee_led_ble.er.async_get", return_value=registry),
-        patch(
-            "custom_components.ha_govee_led_ble.er.async_entries_for_config_entry",
-            return_value=[*stale, keep],
-        ),
-    ):
-        await _async_cleanup_unsupported_entities(hass, entry, mock_h6199_coordinator.profile)
-    assert registry.async_remove.call_count == len(stale)
-    registry.async_remove.assert_has_calls([call(entity.entity_id) for entity in stale])
-
-
-async def test_async_setup_registers_card():
+async def test_async_setup_needs_no_frontend_registration():
     hass = MagicMock()
     hass.data = {}
-    hass.http.async_register_static_paths = AsyncMock()
-    with (
-        patch("custom_components.ha_govee_led_ble.async_get_integration", new_callable=AsyncMock) as gi,
-        patch("custom_components.ha_govee_led_ble.frontend.add_extra_js_url") as addjs,
-    ):
-        gi.return_value.version = "9.9.9"
-        assert await async_setup(hass, {}) is True
-        hass.http.async_register_static_paths.assert_awaited_once()
-        addjs.assert_called_once()
-        assert await async_setup(hass, {}) is True
-        hass.http.async_register_static_paths.assert_awaited_once()
+    assert await async_setup(hass, {}) is True

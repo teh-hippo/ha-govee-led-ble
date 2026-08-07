@@ -1,23 +1,3 @@
-set_video_mode:
-  target: {entity: {integration: ha_govee_led_ble}}
-  fields:
-    mode: {required: true, example: "movie", selector: {select: {options: ["movie", "game"]}}}
-    saturation: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
-    capture_region: {required: false, selector: {select: {options: ["full", "part"]}}}
-    full_screen: {default: true, selector: {boolean:}}
-    sound_effects: {default: false, selector: {boolean:}}
-    sound_effects_softness: {selector: {number: {min: 1, max: 100, step: 1, unit_of_measurement: "%"}}}
-set_music_mode:
-  target: {entity: {integration: ha_govee_led_ble}}
-  fields:
-    mode: {required: true, example: "energetic", selector: {select: {options: ["energetic", "rhythm", "spectrum", "rolling", "separation", "hopping", "piano keys", "fountain", "day and night", "bloom", "shiny", "energic"]}}}
-    sensitivity: {default: 99, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
-    calm: {required: false, selector: {boolean:}}
-    color: {required: false, selector: {color_rgb:}}
-set_white_brightness:
-  target: {entity: {integration: ha_govee_led_ble}}
-  fields:
-    brightness: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
 paint_segments:
   target: {entity: {integration: ha_govee_led_ble}}
   fields:
@@ -35,36 +15,3 @@ set_segment_brightness:
   fields:
     segments: {required: true, selector: {select: {multiple: true, options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]}}}
     brightness: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
-save_effect:
-  target: {entity: {integration: ha_govee_led_ble}}
-  fields:
-    name: {required: true, example: "Sunset", selector: {text:}}
-    content:
-      required: false
-      example: '{"kind": "vibrant", "stops": [[255, 120, 0], [0, 0, 255]]}'
-      selector: {object:}
-    capture_current: {default: false, selector: {boolean:}}
-delete_effect:
-  target: {entity: {integration: ha_govee_led_ble}}
-  fields:
-    id: {required: false, example: "a1b2c3d4", selector: {text:}}
-    name: {required: false, example: "Sunset", selector: {text:}}
-rename_effect:
-  target: {entity: {integration: ha_govee_led_ble}}
-  fields:
-    id: {required: false, example: "a1b2c3d4", selector: {text:}}
-    from_name: {required: false, example: "Sunset", selector: {text:}}
-    to: {required: true, example: "Dawn", selector: {text:}}
-update_effect:
-  target: {entity: {integration: ha_govee_led_ble}}
-  fields:
-    id: {required: true, example: "a1b2c3d4", selector: {text:}}
-    name: {required: false, example: "Dawn", selector: {text:}}
-    content:
-      required: false
-      example: '{"kind": "vibrant", "stops": [[255, 120, 0], [0, 0, 255]]}'
-      selector: {object:}
-export_effect:
-  target: {entity: {integration: ha_govee_led_ble}}
-  fields:
-    id: {required: true, example: "a1b2c3d4", selector: {text:}}

@@ -1,8 +1,7 @@
 """Active-mode derivation and mode-switching for the Govee BLE coordinator."""
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 from .const import MUSIC_MODE_SLUGS
 from .coordinator_base import _CoordinatorBase
@@ -33,19 +32,6 @@ class PreModeSnapshot:
     level: int = 100
 
 
-# Fountain direction, as the two bytes it occupies on the wire. The FIRST is the real control
-# (music_body.ksy::fountain_tail.start_point); the SECOND is a piece count the app derives from
-# the segment count -- segments/3, or segments/4 when the first byte is 1. These literals are
-# therefore correct for a 15-segment strip and only for one: 15/3 = 5 and 15/4 = 3. The H617A is
-# always 15 (Support.supportFactor15PiecesNoGradual), and no other model reaches this table
-# because fountain is absent from _H6199_MUSIC_MODES, so there is nothing to fix here -- but do
-# not carry these numbers to another model without recomputing them.
-FOUNTAIN_DIRECTION_BYTES: dict[str, tuple[int, int]] = {
-    "clockwise": (0x00, 0x05),
-    "counterclockwise": (0x02, 0x05),
-    "two_way": (0x01, 0x03),
-}
-
 BLOOM_MODE_ID = MUSIC_MODE_SLUGS["bloom"]
 SHINY_MODE_ID = MUSIC_MODE_SLUGS["shiny"]
 # Modes whose govee_common::music_selector style byte carries Dynamic/Calm.
@@ -58,58 +44,6 @@ _MUSIC_STYLE_COMPANION: dict[int, dict[bool, dict[int, int]]] = {
     BLOOM_MODE_ID: {False: {27: 0x50}, True: {27: 0x14}},
     SHINY_MODE_ID: {False: {20: 0x05, 21: 0x64}, True: {20: 0x14, 21: 0x46}},
 }
-
-
-def _encode_byte(value: Any) -> int:
-    return int(value)
-
-
-def _encode_bool(value: Any) -> int:
-    return int(bool(value))
-
-
-def _encode_fountain_direction(value: Any) -> int:
-    return FOUNTAIN_DIRECTION_BYTES[value][1]
-
-
-@dataclass(frozen=True)
-class MusicParamSpec:
-    """One capture-pinned music_body parameter: its coordinator field, A3 offset,
-    encoder, and the entity shape/bounds it drives. ``mode_code`` ties it to the active music mode."""
-
-    key: str
-    mode_code: int
-    offset: int
-    kind: Literal["number", "switch", "select"]
-    encode: Callable[[Any], int]
-    min_value: int = 0
-    max_value: int = 0
-    options: tuple[str, ...] = ()
-
-
-# Absolute music_body offsets, one entry per user-facing control; derived/coupled bytes
-# (Separation companion, Piano half, Fountain direction pair, style companion) are not listed here
-# because _send_music_params synthesises them from their controlling param at send time.
-MUSIC_PARAM_SPECS: tuple[MusicParamSpec, ...] = (
-    MusicParamSpec("music_separation_point", 0x32, 20, "number", _encode_byte, min_value=1, max_value=5),
-    MusicParamSpec("music_separation_gradient", 0x32, 21, "switch", _encode_bool),
-    MusicParamSpec("music_hopping_brightness", 0x33, 29, "number", _encode_byte, min_value=0, max_value=50),
-    MusicParamSpec("music_piano_key_count", 0x34, 27, "number", _encode_byte, min_value=8, max_value=15),
-    MusicParamSpec(
-        "music_fountain_direction",
-        0x35,
-        28,
-        "select",
-        _encode_fountain_direction,
-        options=("clockwise", "counterclockwise", "two_way"),
-    ),
-    MusicParamSpec("music_daynight_segments", 0x37, 26, "number", _encode_byte, min_value=1, max_value=7),
-    MusicParamSpec("music_daynight_speed", 0x37, 27, "number", _encode_byte, min_value=1, max_value=50),
-)
-
-
-def music_params_for_mode(mode_code: int) -> tuple[MusicParamSpec, ...]:
-    return tuple(spec for spec in MUSIC_PARAM_SPECS if spec.mode_code == mode_code)
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -125,7 +59,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     def active_mode(self) -> str:
         if not self.is_on:
             return "off"
-        if self.active_custom_id is not None or self.diy_slot is not None:
+        if self.diy_slot is not None:
             return "custom"
         if self.effect in self.scene_name_set:
             return "scene"
@@ -207,19 +141,9 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     def _enter_static_mode(self) -> None:
         """Clear every non-static mode so exactly one operating mode is active."""
-        self.effect = self.active_custom_id = None
+        self.effect = None
         self.diy_slot = None
-        self._owned_diy_effect_id = None
         self.music_mode = self.video_mode = "off"
-
-    @property
-    def music_style(self) -> str:
-        """Dynamic/Calm view for Rhythm, Bloom and Shiny, backed by ``music_calm``."""
-        return "calm" if self.music_calm else "dynamic"
-
-    @music_style.setter
-    def music_style(self, value: str) -> None:
-        self.music_calm = value == "calm"
 
     async def async_select_music_slug(self, slug: str) -> None:
         if slug == "off":
@@ -244,11 +168,11 @@ class _ActiveModeMixin(_CoordinatorBase):
             )
         )
         if mode_id in _MUSIC_STYLE_COMPANION:
-            await self._send_music_params(mode_id)
+            for packet in build_music_params_a3(mode_id, _MUSIC_STYLE_COMPANION[mode_id][self.music_calm]):
+                await self.send_command(packet)
         self.music_mode, self.video_mode = slug, "off"
-        self.effect, self.active_custom_id = None, None
+        self.effect = None
         self.diy_slot = None
-        self._owned_diy_effect_id = None
 
     async def async_restore_pre_mode(self) -> None:
         snap = self._pre_mode_snapshot
@@ -260,25 +184,3 @@ class _ActiveModeMixin(_CoordinatorBase):
             case _:
                 await self.send_command(build_color_rgb(*snap.rgb, self.model))
         self._enter_static_mode()
-
-    async def async_apply_music_params(self, mode_code: int) -> None:
-        """Re-send the active mode's a3 movement frame, merging every stored param for that mode so
-        multi-param modes never clobber a sibling field."""
-        await self._send_music_params(mode_code)
-
-    async def _send_music_params(self, mode_code: int) -> None:
-        overrides = {spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code)}
-        if mode_code == 0x35:
-            start_point, piece_num = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
-            overrides.update({26: start_point, 28: piece_num})
-        if mode_code == 0x32:
-            # Separation's companion byte is gradient-coupled (0x5e on / 0x61 off, live 2026-07-21).
-            overrides[22] = 0x5E if self.music_separation_gradient else 0x61
-        if mode_code == 0x34:
-            # Piano Keys [30] is a derived byte: floor(key_count / 2) (9->4, 15->7 live 2026-07-21).
-            overrides[30] = self.music_piano_key_count // 2
-        companion = _MUSIC_STYLE_COMPANION.get(mode_code)
-        if companion is not None:
-            overrides.update(companion[self.music_calm])
-        for packet in build_music_params_a3(mode_code, overrides):
-            await self.send_command(packet)

@@ -4,11 +4,9 @@ The inverse of :mod:`custom_components.ha_govee_led_ble.protocol`: decode the
 ``0x33`` command frames the integration writes (mutating internal state) and
 answer the ``aa 01/04/05`` query frames with status frames that
 the generated status decoder reconstructs into the coordinator's optimistic
-fields. Experimental timer writes (``0x33 11/12/23``) update timer state and the
-matching ``aa 11/12/23`` queries echo it back. Paired with
-:class:`FakeGoveeClient`, the real coordinator and entities run end-to-end with
-no hardware, and removing the transport patch restores real hardware behaviour
-unchanged.
+fields. Paired with :class:`FakeGoveeClient`, the real coordinator and entities
+run end-to-end with no hardware, and removing the transport patch restores real
+hardware behaviour unchanged.
 """
 
 from collections.abc import Callable
@@ -51,12 +49,6 @@ _MUSIC_LABEL_BY_ID = {code: f"music: {name}" for name, code in MUSIC_MODES.items
 # byte as a query domain reads it back. Distinct from protocol.MULTI_PACKET_PREFIX, which is the
 # 0xa3 *fragment* header and arrives as frame[0] rather than as a command action.
 MULTI_EFFECT_ACTION = 0xA3
-# Experimental timer command/reply actions (mirror protocol's 0x11/0x12/0x23).
-SLEEP_TIMER_ACTION = 0x11
-WAKEUP_TIMER_ACTION = 0x12
-SCHEDULE_TIMER_ACTION = 0x23
-SCHEDULE_ENABLE_BIT = 0x80
-SCHEDULE_SLOTS = 4
 
 
 class GoveeDeviceSim:
@@ -91,11 +83,6 @@ class GoveeDeviceSim:
         count = self.profile.segment_count
         self.segments: list[RGB] = [self.rgb_color] * count
         self.segment_brightness: list[int] = [100] * count
-        self.sleep_timer: tuple[int, int, int, int] | None = (0, 50, 16, 16) if self.profile.supports_timers else None
-        self.wakeup_timer: tuple[int, int, int, int, int, int] | None = (
-            (0, 100, 17, 1, 0, 29) if self.profile.supports_timers else None
-        )
-        self.schedule_timers: list[tuple[int, int, int, int] | None] = [None] * SCHEDULE_SLOTS
 
     def handle_write(self, data: bytes) -> list[bytes]:
         """Apply a command or answer a query; return status frames to notify."""
@@ -123,16 +110,6 @@ class GoveeDeviceSim:
             return [build_packet(STATUS_HEADER, HARDWARE_PACKET_TYPE, [0x03, *self.hardware.encode("ascii")])]
         if domain == MULTI_EFFECT_ACTION:
             return [build_packet(STATUS_HEADER, MULTI_EFFECT_ACTION, [self.multi_effect_flag])]
-        if domain == SLEEP_TIMER_ACTION and self.sleep_timer is not None:
-            return [build_packet(STATUS_HEADER, SLEEP_TIMER_ACTION, list(self.sleep_timer))]
-        if domain == WAKEUP_TIMER_ACTION and self.wakeup_timer is not None:
-            return [build_packet(STATUS_HEADER, WAKEUP_TIMER_ACTION, list(self.wakeup_timer))]
-        if domain == SCHEDULE_TIMER_ACTION:
-            # The real aa 23 reply is the whole table: 0xff prefix + four 4-byte slot records.
-            table = [0xFF]
-            for record in self.schedule_timers:
-                table.extend(record if record is not None else (0, 0, 0, 0))
-            return [build_packet(STATUS_HEADER, SCHEDULE_TIMER_ACTION, table)]
         return []
 
     def _color_mode_payload(self) -> list[int]:
@@ -180,12 +157,6 @@ class GoveeDeviceSim:
             self.relative_brightness = list(frame[4 : 4 + frame[3]])
         elif action == MULTI_EFFECT_ACTION:
             self.multi_effect_flag = frame[2]
-        elif action == SLEEP_TIMER_ACTION:
-            self.sleep_timer = (frame[2], frame[3], frame[4], frame[5])
-        elif action == WAKEUP_TIMER_ACTION:
-            self.wakeup_timer = (frame[2], frame[3], frame[4], frame[5], frame[6], frame[7])
-        elif action == SCHEDULE_TIMER_ACTION:
-            self._apply_schedule_command(frame)
 
     def _apply_display_setting(self, frame: bytes) -> None:
         """Route a 33 a9 write on its selector (h6199_command_write::display_setting_body).
@@ -199,16 +170,6 @@ class GoveeDeviceSim:
             self.video_white_balance = (payload[1], payload[2])
         elif setting == DISPLAY_SETTING_BLANK_SCREEN and self.profile.supports_blank_screen:
             self.blank_screen = bool(payload[0])
-
-    def _apply_schedule_command(self, frame: bytes) -> None:
-        index = frame[2]
-        if not 0 <= index < SCHEDULE_SLOTS:
-            return
-        # A cleared slot (enable bit low) drops the record so queries stop reporting it.
-        if frame[3] & SCHEDULE_ENABLE_BIT:
-            self.schedule_timers[index] = (frame[3], frame[4], frame[5], frame[6])
-        else:
-            self.schedule_timers[index] = None
 
     def _apply_color_command(self, frame: bytes) -> None:
         sub = frame[2]

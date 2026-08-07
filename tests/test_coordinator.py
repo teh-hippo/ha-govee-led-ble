@@ -1,6 +1,5 @@
 import time
 from dataclasses import replace
-from datetime import time as dtime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,7 +17,6 @@ from custom_components.ha_govee_led_ble.coordinator import (
     _expectations_from_packet,
     _expected_color_mode_from_packet,
 )
-from custom_components.ha_govee_led_ble.custom_effects import CustomEffect, SegmentContent, VibrantContent
 from custom_components.ha_govee_led_ble.scenes import SCENES
 
 M = "custom_components.ha_govee_led_ble.coordinator"
@@ -41,20 +39,12 @@ def _c(**kw):
 async def test_initial_state_and_update(coord, h6199):
     assert (coord.is_on, coord.brightness_pct, coord.rgb_color) == (False, 100, (255, 255, 255))
     assert coord.effect is None and coord.address == "AA:BB:CC:DD:EE:FF" and coord.model == "H617A"
-    assert (coord.music_mode, coord.video_mode, coord.active_custom_id, coord.diy_slot) == ("off", "off", None, None)
+    assert (coord.music_mode, coord.video_mode, coord.diy_slot) == ("off", "off", None)
     assert coord.color_mode is None
     assert coord.profile == MODEL_PROFILES["H617A"] and coord.profile.state_readable
-    assert (
-        coord.profile.supports_music_mode
-        and coord.profile.supports_music_style
-        and not coord.profile.supports_video_mode
-    )
+    assert coord.profile.supports_music_mode and not coord.profile.supports_video_mode
     assert h6199.profile == MODEL_PROFILES["H6199"] and h6199.profile.state_readable
-    assert (
-        h6199.profile.supports_video_mode
-        and not h6199.profile.supports_white_brightness
-        and not h6199.profile.supports_music_style
-    )
+    assert h6199.profile.supports_video_mode and not h6199.profile.supports_white_brightness
     coord.is_on, coord.brightness_pct, coord.rgb_color = True, 75, (255, 0, 128)
     exp = {
         "is_on": True,
@@ -234,14 +224,7 @@ async def test_start_notify(coord, h6199):
         bt.async_ble_device_from_address.return_value = MagicMock()
         await coord._ensure_connected()
     c2.start_notify.assert_called_once()
-    for q in (
-        proto.KEEP_ALIVE,
-        proto.BRIGHTNESS_QUERY,
-        proto.COLOR_MODE_QUERY,
-        proto.SLEEP_TIMER_QUERY,
-        proto.WAKEUP_TIMER_QUERY,
-        proto.SCHEDULE_TIMER_QUERY,
-    ):
+    for q in (proto.KEEP_ALIVE, proto.BRIGHTNESS_QUERY, proto.COLOR_MODE_QUERY):
         c2.write_gatt_char.assert_any_await(proto.WRITE_UUID, q, response=False)
     await coord.disconnect()
     h6199._client = _c(start_notify=AsyncMock(side_effect=BleakError("fail")))
@@ -358,7 +341,7 @@ async def test_send_state_queries_include_h6199_display_state(h6199):
     ]
 
 
-async def test_send_state_queries_include_h617a_timers(coord):
+async def test_send_state_queries_include_h617a_core_state(coord):
     c = _c(write_gatt_char=AsyncMock())
     coord._client = c
     assert await coord._send_state_queries() is True
@@ -366,9 +349,6 @@ async def test_send_state_queries_include_h617a_timers(coord):
         proto.KEEP_ALIVE,
         proto.BRIGHTNESS_QUERY,
         proto.COLOR_MODE_QUERY,
-        proto.SLEEP_TIMER_QUERY,
-        proto.WAKEUP_TIMER_QUERY,
-        proto.SCHEDULE_TIMER_QUERY,
     ]
 
 
@@ -449,48 +429,6 @@ def test_notify_callback_music_auto_color_clears_manual_color(h6199):
     assert h6199._field_revisions["music_color"] == revision + 1
 
 
-def test_active_custom_id_sticky_clear(coord):
-    """Custom identity survives only a matching mode with same-connection ownership."""
-    cb = coord._notify_callback
-    coord.custom_effects = {
-        "segments": CustomEffect("segments", "Segments", "segments", SegmentContent(colors=((255, 0, 0),))),
-        "flame": CustomEffect("flame", "Flame", "flame", VibrantContent(stops=((0, 0, 0), (255, 0, 0)))),
-    }
-    coord.active_custom_id, coord.effect = "segments", "Segments"
-    coord.diy_slot = proto.AUTHORED_DIY_SLOT
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01])))
-    assert (coord.active_custom_id, coord.effect) == ("segments", "Segments")
-    assert coord.diy_slot is None
-    assert coord.color_mode is proto.ParsedMode.COLOUR
-    coord.active_custom_id, coord.effect = "flame", "Flame"
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01])))
-    assert coord.active_custom_id is None and coord.effect is None
-    coord.active_custom_id, coord.effect = "flame", "Flame"
-    coord._owned_diy_effect_id = "flame"
-    coord.music_mode, coord.video_mode = "rhythm", "movie"
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
-    assert (coord.active_custom_id, coord.effect) == ("flame", "Flame")
-    assert coord.diy_slot == proto.AUTHORED_DIY_SLOT
-    assert (coord.music_mode, coord.video_mode) == ("off", "off")
-    coord.active_custom_id, coord.effect = "segments", "Segments"
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
-    assert coord.active_custom_id is None and coord.effect is None
-    coord.active_custom_id, coord.effect = "flame", "Flame"
-    coord._owned_diy_effect_id = None
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
-    assert coord.active_custom_id is None and coord.effect is None
-    coord.active_custom_id, coord.effect = "flame", "Flame"
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, 0xEF])))
-    assert coord.active_custom_id is None and coord.effect is None
-    assert coord.diy_slot == 0xEF
-    for payload in ([0x04, 0x9D, 0x08], [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3]):
-        coord.active_custom_id = "flame"
-        coord.diy_slot = 0xEF
-        cb(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
-        assert coord.active_custom_id is None
-        assert coord.diy_slot is None
-
-
 def test_readback_mode_mutual_exclusion(h6199):
     """Each parsed readback mode leaves exactly one mode truthful, clearing any stale others."""
     cb = h6199._notify_callback
@@ -498,31 +436,28 @@ def test_readback_mode_mutual_exclusion(h6199):
     video = bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 42]))
     scene = bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09, 0x00]))
 
-    h6199.video_mode, h6199.effect, h6199.active_custom_id = "game", "candlelight", "flame"
+    h6199.video_mode, h6199.effect = "game", "candlelight"
     cb(None, music)
-    assert (h6199.music_mode, h6199.video_mode, h6199.effect, h6199.active_custom_id) == (
+    assert (h6199.music_mode, h6199.video_mode, h6199.effect) == (
         "spectrum",
         "off",
         None,
-        None,
     )
 
-    h6199.music_mode, h6199.effect, h6199.active_custom_id = "rhythm", "candlelight", "flame"
+    h6199.music_mode, h6199.effect = "rhythm", "candlelight"
     cb(None, video)
-    assert (h6199.video_mode, h6199.music_mode, h6199.effect, h6199.active_custom_id) == (
+    assert (h6199.video_mode, h6199.music_mode, h6199.effect) == (
         "game",
         "off",
         None,
-        None,
     )
 
-    h6199.music_mode, h6199.video_mode, h6199.active_custom_id = "rhythm", "movie", "flame"
+    h6199.music_mode, h6199.video_mode = "rhythm", "movie"
     cb(None, scene)
-    assert (h6199.effect, h6199.music_mode, h6199.video_mode, h6199.active_custom_id) == (
+    assert (h6199.effect, h6199.music_mode, h6199.video_mode) == (
         "candlelight",
         "off",
         "off",
-        None,
     )
 
 
@@ -554,9 +489,6 @@ async def test_send_command_arms_expected_state(coord, h6199):
         assert h6199._expected_state["video_sound_effects_softness"][0] == 100
 
     with patch.object(coord, "_ensure_connected", return_value=c):
-        await coord.send_command(proto.build_diy_activate(proto.AUTHORED_DIY_SLOT))
-        assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.DIY, proto.AUTHORED_DIY_SLOT)
-
         await coord.send_command(proto.build_color_rgb(10, 20, 30))
         assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.COLOUR, None)
         assert coord._expected_state["rgb_color"][0] == (10, 20, 30)
@@ -564,62 +496,6 @@ async def test_send_command_arms_expected_state(coord, h6199):
         await coord.send_command(proto.build_scene(9))
         assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.SCENE, None)
         assert coord._expected_state["effect"][0] == proto.SCENE_EFFECT_BY_ID[9]
-
-
-def test_diy_expectation_rejects_stale_static_reply(h6199):
-    h6199.custom_effects = {
-        "flame": CustomEffect("flame", "Flame", "flame", VibrantContent(stops=((0, 0, 0), (255, 0, 0))))
-    }
-    h6199.active_custom_id, h6199.effect = "flame", "Flame"
-    h6199.diy_slot = proto.AUTHORED_DIY_SLOT
-    h6199._owned_diy_effect_id = "flame"
-    h6199._expected_state["color_mode"] = (
-        (proto.ParsedMode.DIY, proto.AUTHORED_DIY_SLOT),
-        time.monotonic() + 60,
-    )
-    cb = h6199._notify_callback
-
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
-    assert (h6199.active_custom_id, h6199.effect, h6199.diy_slot) == (
-        "flame",
-        "Flame",
-        proto.AUTHORED_DIY_SLOT,
-    )
-    assert h6199.rgb_color == (255, 255, 255)
-    assert "color_mode" in h6199._expected_state
-
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT])))
-    assert (h6199.active_custom_id, h6199.effect, h6199.diy_slot) == (
-        "flame",
-        "Flame",
-        proto.AUTHORED_DIY_SLOT,
-    )
-    assert "color_mode" in h6199._expected_state
-
-
-async def test_disconnect_drops_diy_identity_ownership(h6199):
-    h6199.active_custom_id, h6199.effect = "flame", "Flame"
-    h6199.diy_slot = proto.AUTHORED_DIY_SLOT
-    h6199._owned_diy_effect_id = "flame"
-    await h6199.disconnect()
-    assert h6199.active_custom_id is None and h6199.effect is None
-    assert h6199.diy_slot == proto.AUTHORED_DIY_SLOT
-    assert h6199._owned_diy_effect_id is None
-
-
-def test_newer_static_mode_rejects_delayed_diy_reply(coord):
-    coord.color_mode = proto.ParsedMode.COLOUR
-    coord.diy_slot = None
-    coord._expected_state["color_mode"] = ((proto.ParsedMode.COLOUR, None), time.monotonic() + 60)
-    cb = coord._notify_callback
-
-    static = bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30]))
-    stale_diy = bytearray(proto.build_packet(0xAA, 0x05, [0x0A, proto.AUTHORED_DIY_SLOT]))
-    cb(None, static)
-    cb(None, stale_diy)
-
-    assert coord.color_mode is proto.ParsedMode.COLOUR
-    assert coord.diy_slot is None
 
 
 def test_music_expectation_rejects_delayed_same_mode_reply(h6199):
@@ -649,17 +525,14 @@ def test_scene_expectation_rejects_delayed_same_mode_reply(h6199):
 
 
 def test_unknown_mode_clears_restored_metadata(h6199):
-    h6199.custom_effects = {
-        "flame": CustomEffect("flame", "Flame", "flame", VibrantContent(stops=((0, 0, 0), (255, 0, 0))))
-    }
-    h6199.effect, h6199.active_custom_id = "Flame", "flame"
-    h6199.diy_slot = proto.AUTHORED_DIY_SLOT
+    h6199.effect = "Flame"
+    h6199.diy_slot = 0xF0
     h6199.music_mode, h6199.video_mode = "rhythm", "movie"
 
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x99, 0x01])))
 
     assert h6199.color_mode is proto.ParsedMode.UNKNOWN
-    assert h6199.effect is None and h6199.active_custom_id is None
+    assert h6199.effect is None
     assert h6199.diy_slot is None
     assert (h6199.music_mode, h6199.video_mode) == ("off", "off")
 
@@ -943,261 +816,10 @@ async def test_scene_speed_rejects_a_scene_without_documented_metadata(coord):
         await coord.async_set_scene_speed(0)
 
 
-def test_notify_callback_poweroff_memory(h6199):
-    cb = h6199._notify_callback
-    assert h6199.poweroff_memory is None
-    cb(None, bytearray(proto.build_packet(0xAA, 0x41, [0x01])))
-    assert h6199.poweroff_memory is True
-    cb(None, bytearray(proto.build_packet(0xAA, 0x41, [0x00])))
-    assert h6199.poweroff_memory is False
-
-
-def test_notify_callback_poweroff_memory_full_frame(h6199):
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x41, [0x01, 0x02])))
-    assert h6199.poweroff_memory is True
-
-
 def test_notify_callback_unknown_domain_ignored(h6199):
-    h6199.poweroff_memory = None
+    revision = h6199._domain_revisions.get(0x99, 0)
     h6199._notify_callback(None, bytearray([0xAA, 0x99, 0x01, 0x00]))
-    assert h6199.poweroff_memory is None
-
-
-def test_timer_initial_state(coord):
-    assert coord.sleep_timer_enabled is None and coord.sleep_timer_minutes is None
-    assert coord.sleep_timer_start_brightness is None and coord.sleep_timer_current_minutes is None
-    assert coord.wakeup_timer_enabled is None and coord.wakeup_timer_time is None
-    assert coord.wakeup_timer_end_brightness is None
-    assert coord.wakeup_timer_repeat_days is None
-    assert coord.wakeup_timer_duration_minutes is None
-    assert coord.schedule_timers == [None, None, None, None]
-
-
-async def test_set_sleep_timer_sends_and_updates(coord):
-    coord.sleep_timer_enabled = False
-    coord.sleep_timer_start_brightness = 61
-    coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
-        patch.object(coord, "async_set_updated_data") as pushed,
-    ):
-        await coord.async_set_sleep_timer(enabled=True, minutes=45)
-    assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 45
-    assert coord.sleep_timer_start_brightness == 61 and coord.sleep_timer_current_minutes == 45
-    sc.assert_awaited_once_with(proto.build_timer_sleep(True, 61, 45, 45))
-    pushed.assert_called_once()
-
-
-async def test_set_sleep_timer_rollback(coord):
-    coord.sleep_timer_enabled = False
-    coord.sleep_timer_start_brightness = 61
-    coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
-    with (
-        patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
-        pytest.raises(BleakError),
-    ):
-        await coord.async_set_sleep_timer(enabled=True, minutes=45)
-    assert coord.sleep_timer_enabled is False and coord.sleep_timer_minutes == 16
-    assert coord.sleep_timer_start_brightness == 61 and coord.sleep_timer_current_minutes == 16
-
-
-async def test_set_sleep_timer_reads_hidden_state_before_writing(coord):
-    calls = 0
-
-    async def refresh(query, domain, accept, timeout=2.0):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            coord.sleep_timer_enabled = False
-            coord.sleep_timer_start_brightness = 73
-            coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
-        return accept()
-
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_query_state", side_effect=refresh),
-        patch.object(coord, "async_set_updated_data"),
-    ):
-        await coord.async_set_sleep_timer(minutes=30)
-
-    sc.assert_awaited_once_with(proto.build_timer_sleep(False, 73, 30, 30))
-
-
-async def test_set_sleep_timer_verification_failure_rolls_back(coord):
-    coord.sleep_timer_enabled = False
-    coord.sleep_timer_start_brightness = 61
-    coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=False),
-        pytest.raises(RuntimeError, match="not confirmed"),
-    ):
-        await coord.async_set_sleep_timer(enabled=True, minutes=45)
-    assert sc.await_count == 2
-    assert coord.sleep_timer_enabled is False and coord.sleep_timer_minutes == 16
-    assert coord.sleep_timer_start_brightness == 61 and coord.sleep_timer_current_minutes == 16
-
-
-async def test_set_sleep_timer_partial_updates(coord):
-    coord.sleep_timer_enabled = False
-    coord.sleep_timer_start_brightness = 61
-    coord.sleep_timer_minutes = coord.sleep_timer_current_minutes = 16
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
-        patch.object(coord, "async_set_updated_data"),
-    ):
-        await coord.async_set_sleep_timer(enabled=True)
-        assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 16
-        assert sc.await_args.args[0] == proto.build_timer_sleep(True, 61, 16, 16)
-        await coord.async_set_sleep_timer(minutes=30)
-    assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 30
-    assert coord.sleep_timer_current_minutes == 30
-
-
-async def test_set_wakeup_timer_sends_and_updates(coord):
-    coord.wakeup_timer_enabled = False
-    coord.wakeup_timer_end_brightness = 83
-    coord.wakeup_timer_time = dtime(6, 15)
-    coord.wakeup_timer_repeat_days = frozenset({proto.Weekday.MON, proto.Weekday.FRI})
-    coord.wakeup_timer_duration_minutes = 29
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
-        patch.object(coord, "async_set_updated_data"),
-    ):
-        await coord.async_set_wakeup_timer(enabled=True, wake_time=dtime(7, 30))
-    assert coord.wakeup_timer_enabled is True and coord.wakeup_timer_time == dtime(7, 30)
-    sc.assert_awaited_once_with(
-        proto.build_timer_wakeup(
-            True,
-            83,
-            7,
-            30,
-            frozenset({proto.Weekday.MON, proto.Weekday.FRI}),
-            29,
-        )
-    )
-
-
-async def test_set_wakeup_timer_rollback(coord):
-    coord.wakeup_timer_enabled = False
-    coord.wakeup_timer_end_brightness = 83
-    coord.wakeup_timer_time = dtime(7, 30)
-    coord.wakeup_timer_repeat_days = frozenset()
-    coord.wakeup_timer_duration_minutes = 29
-    with (
-        patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
-        pytest.raises(BleakError),
-    ):
-        await coord.async_set_wakeup_timer(enabled=True, wake_time=dtime(6, 0))
-    assert coord.wakeup_timer_enabled is False and coord.wakeup_timer_time == dtime(7, 30)
-    assert coord.wakeup_timer_end_brightness == 83 and coord.wakeup_timer_duration_minutes == 29
-
-
-async def test_set_wakeup_timer_partial_updates(coord):
-    coord.wakeup_timer_enabled = False
-    coord.wakeup_timer_end_brightness = 83
-    coord.wakeup_timer_time = dtime(6, 15)
-    coord.wakeup_timer_repeat_days = frozenset()
-    coord.wakeup_timer_duration_minutes = 29
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
-        patch.object(coord, "async_set_updated_data"),
-    ):
-        await coord.async_set_wakeup_timer(enabled=True)
-        assert coord.wakeup_timer_enabled is True and coord.wakeup_timer_time == dtime(6, 15)
-        assert sc.await_args.args[0] == proto.build_timer_wakeup(True, 83, 6, 15, (), 29)
-        await coord.async_set_wakeup_timer(wake_time=dtime(8, 0))
-    assert coord.wakeup_timer_time == dtime(8, 0)
-
-
-async def test_set_schedule_timer_sends_and_updates(coord):
-    days = [proto.Weekday.MON, proto.Weekday.FRI]
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
-        patch.object(coord, "async_set_updated_data"),
-    ):
-        await coord.async_set_schedule_timer(1, on_action=True, hour=6, minute=15, days=days)
-    record = coord.schedule_timers[1]
-    assert record is not None and record.enabled and record.on_action and (record.hour, record.minute) == (6, 15)
-    assert record.repeat_days == frozenset(days)
-    sc.assert_awaited_once_with(proto.build_timer_schedule(1, True, True, 6, 15, frozenset(days)))
-
-
-async def test_clear_schedule_timer_sends_and_updates(coord):
-    previous = proto.ParsedTimerSchedule(
-        enabled=True,
-        on_action=True,
-        hour=8,
-        minute=15,
-        repeat_days=frozenset({proto.Weekday.TUE}),
-    )
-    coord.schedule_timers[2] = previous
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_query_state", new_callable=AsyncMock, return_value=True),
-        patch.object(coord, "async_set_updated_data"),
-    ):
-        await coord.async_clear_schedule_timer(2)
-    assert coord.schedule_timers[2] is None
-    sc.assert_awaited_once_with(proto.build_timer_schedule(2, False, True, 8, 15, frozenset({proto.Weekday.TUE})))
-
-
-async def test_set_schedule_timer_rollback(coord):
-    before = list(coord.schedule_timers)
-    with (
-        patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
-        pytest.raises(BleakError),
-    ):
-        await coord.async_set_schedule_timer(0, on_action=True, hour=1, minute=2)
-    assert coord.schedule_timers == before
-
-
-def test_notify_callback_sleep_timer(coord):
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x11, [0x01, 80, 45, 0])))
-    assert coord.sleep_timer_enabled is True and coord.sleep_timer_minutes == 45
-    assert coord.sleep_timer_start_brightness == 80 and coord.sleep_timer_current_minutes == 0
-
-
-def test_notify_callback_wakeup_timer(coord):
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x12, [0x01, 100, 7, 30, 0x80, 10])))
-    assert coord.wakeup_timer_enabled is True and coord.wakeup_timer_time == dtime(7, 30)
-    assert coord.wakeup_timer_end_brightness == 100
-    assert coord.wakeup_timer_repeat_days == frozenset()
-    assert coord.wakeup_timer_duration_minutes == 10
-
-
-def test_notify_callback_schedule_timer(coord):
-    # aa 23 reply is the full table: 0xff prefix + four 4-byte slot records.
-    table = [0xFF, 0x81, 6, 15, 0x83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x23, table)))
-    record = coord.schedule_timers[0]
-    assert record is not None and record.enabled and record.on_action and (record.hour, record.minute) == (6, 15)
-    assert record.repeat_days == frozenset({proto.Weekday.MON, proto.Weekday.TUE})
-
-
-def test_notify_callback_timer_full_frames(coord):
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x11, [1, 90, 20, 0])))
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x12, [1, 100, 5, 0, 0x80, 15])))
-    assert coord.sleep_timer_minutes == 20 and coord.wakeup_timer_time == dtime(5, 0)
-    assert coord.sleep_timer_start_brightness == 90
-    assert coord.wakeup_timer_duration_minutes == 15
-
-
-def test_notify_callback_sleep_timer_short_payload_ignored(coord):
-    coord._notify_callback(None, bytearray([0xAA, 0x11, 0x01, 80]))
-    assert coord.sleep_timer_enabled is None and coord.sleep_timer_minutes is None
-
-
-def test_notify_callback_schedule_out_of_range_slot_ignored(coord):
-    revision = coord._domain_revisions.get(0x23, 0)
-    coord._notify_callback(None, bytearray([0xAA, 0x23, 0x09, 0x81, 6, 15, 0x80]))
-    assert coord.schedule_timers == [None, None, None, None]
-    assert coord._domain_revisions.get(0x23, 0) == revision
+    assert h6199._domain_revisions.get(0x99, 0) == revision
 
 
 def test_available_reflects_link_or_presence(coord):
@@ -1433,9 +1055,6 @@ def test_expectations_from_packet_covers_every_command_family():
     assert video["video_saturation"] == 42
     assert video["video_sound_effects"] is True
     assert video["video_sound_effects_softness"] == 55
-
-    diy = proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0xF0])
-    assert _expectations_from_packet(diy)["color_mode"] == (proto.ParsedMode.DIY, 0xF0)
 
     assert _expectations_from_packet(b"\x00\x01") == {}
     assert _expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}

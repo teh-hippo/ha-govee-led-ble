@@ -1,14 +1,5 @@
 """HA Govee LED BLE integration."""
 
-from pathlib import Path
-
-from homeassistant.components import frontend
-
-# Home Assistant 2026.8 moved StaticPathConfig into homeassistant.components.http.server and
-# re-exports it from the package root without an explicit export, which strict mypy rejects.
-# The submodule does not exist in 2026.7, so importing from it directly would break at runtime.
-# unused-ignore keeps the comment valid on versions where the import still type checks cleanly.
-from homeassistant.components.http import StaticPathConfig  # type: ignore[attr-defined, unused-ignore]
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -16,11 +7,9 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.loader import async_get_integration
 
-from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES, ModelProfile, resolve_model
+from .const import CONF_MODEL, DOMAIN, MODEL_PROFILES, resolve_model
 from .coordinator import GoveeBLECoordinator
-from .coordinator_effects import build_effect_store
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
@@ -29,14 +18,27 @@ PLATFORMS = [
     Platform.LIGHT,
     Platform.NUMBER,
     Platform.SELECT,
-    Platform.SENSOR,
     Platform.SWITCH,
-    Platform.TIME,
 ]
 _LEGACY_ENTITY_SUFFIXES = {
+    "_active_mode",
     "_effect_preview",
+    "_music_daynight_segments",
+    "_music_daynight_speed",
+    "_music_fountain_direction",
+    "_music_hopping_brightness",
+    "_music_piano_key_count",
+    "_music_sensitivity",
+    "_music_separation_gradient",
+    "_music_separation_point",
+    "_music_style",
+    "_poweroff_memory",
     "_reduce_motion",
+    "_sleep_timer",
+    "_sleep_timer_duration",
     "_video_brightness",
+    "_wakeup_timer",
+    "_wakeup_timer_time",
     "_white_brightness",
     "_white_balance_blue",
     "_white_balance_preset",
@@ -46,15 +48,6 @@ _LEGACY_ENTITY_SUFFIXES = {
 }
 # The 2.x experimental options flag, removed in 3.0.0; stripped from migrated entries.
 _LEGACY_EXPERIMENTAL_OPTION = "experimental"
-_CARD_URL = "/ha_govee_led_ble/govee-led-ble-card.js"
-_CARD_FILE = Path(__file__).parent / "www" / "govee-led-ble-card.js"
-_CARD_REGISTERED = "card_registered"
-_TIMER_ENTITY_SUFFIXES = {
-    "_sleep_timer",
-    "_sleep_timer_duration",
-    "_wakeup_timer",
-    "_wakeup_timer_time",
-}
 _RELATIVE_BRIGHTNESS_SUFFIXES = {
     "_relative_brightness",
     "_relative_brightness_left",
@@ -69,13 +62,6 @@ def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    data = hass.data.setdefault(DOMAIN, {})
-    if data.get(_CARD_REGISTERED) or not _CARD_FILE.is_file():
-        return True
-    await hass.http.async_register_static_paths([StaticPathConfig(_CARD_URL, str(_CARD_FILE), False)])
-    integration = await async_get_integration(hass, DOMAIN)
-    frontend.add_extra_js_url(hass, f"{_CARD_URL}?v={integration.version}")
-    data[_CARD_REGISTERED] = True
     return True
 
 
@@ -91,24 +77,6 @@ async def _async_cleanup_legacy_entities(hass: HomeAssistant, entry: GoveeBLECon
         hass.data.setdefault(DOMAIN, {})[f"{entry.entry_id}_white_balance_from"] = replaced_white_balance
 
 
-async def _async_cleanup_unsupported_entities(
-    hass: HomeAssistant,
-    entry: GoveeBLEConfigEntry,
-    profile: ModelProfile,
-) -> None:
-    suffixes: set[str] = set()
-    if not profile.supports_timers:
-        suffixes.update(_TIMER_ENTITY_SUFFIXES)
-    if not profile.supports_poweroff_memory:
-        suffixes.add("_poweroff_memory")
-    if not suffixes:
-        return
-    registry = er.async_get(hass)
-    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if entity.unique_id and any(entity.unique_id.endswith(suffix) for suffix in suffixes):
-            registry.async_remove(entity.entity_id)
-
-
 def _addr(entry: GoveeBLEConfigEntry) -> str:
     assert entry.unique_id is not None
     return entry.unique_id.replace(":", "").lower()
@@ -118,10 +86,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
     options = dict(entry.options)
     if entry.version < 2:
         options = {k: v for k, v in options.items() if k != _LEGACY_EXPERIMENTAL_OPTION}
-        # Capture the old switch.music_calm id now; select.music_style is registered only after setup.
-        old_id = er.async_get(hass).async_get_entity_id("switch", DOMAIN, f"{_addr(entry)}_music_calm")
-        if old_id:
-            hass.data.setdefault(DOMAIN, {})[f"{entry.entry_id}_music_calm_from"] = old_id
     if entry.version < 4:
         enabled_relative_brightness = [
             entity.entity_id
@@ -143,23 +107,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
         data[CONF_MODEL] = model
     hass.config_entries.async_update_entry(entry, data=data, options=options, version=4)
     return True
-
-
-def _maybe_flag_music_calm_replaced(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
-    """Warn migrated entries that switch.music_calm is now select.music_style (both ids resolved)."""
-    old_id = hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_music_calm_from", None)
-    if old_id is None:
-        return
-    new_id = er.async_get(hass).async_get_entity_id("select", DOMAIN, f"{_addr(entry)}_music_style")
-    ir.async_create_issue(
-        hass,
-        DOMAIN,
-        "music_calm_replaced",
-        is_fixable=False,
-        severity=ir.IssueSeverity.WARNING,
-        translation_key="music_calm_replaced",
-        translation_placeholders={"old": old_id, "new": new_id or "select.music_style"},
-    )
 
 
 def _maybe_flag_music_mode_replaced(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
@@ -228,14 +175,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     coordinator = GoveeBLECoordinator(hass, entry.unique_id, model)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
-    coordinator.attach_effect_store(build_effect_store(hass, entry.entry_id))
-    await coordinator.async_load_effects()
     _maybe_flag_music_mode_replaced(hass, entry)
     await _async_cleanup_legacy_entities(hass, entry)
-    await _async_cleanup_unsupported_entities(hass, entry, coordinator.profile)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _restore_relative_brightness_enablement(hass, entry)
-    _maybe_flag_music_calm_replaced(hass, entry)
     _maybe_flag_white_balance_replaced(hass, entry)
     return True
 
@@ -248,4 +191,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
 
 async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
     ir.async_delete_issue(hass, DOMAIN, _unsupported_model_issue_id(entry))
-    await build_effect_store(hass, entry.entry_id).async_remove()

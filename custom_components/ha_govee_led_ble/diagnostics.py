@@ -47,11 +47,7 @@ async def async_get_config_entry_diagnostics(
         "music_modes": list(coordinator.profile.music_modes),
         "supports_music_color": coordinator.profile.supports_music_color,
         "supports_white_brightness": coordinator.profile.supports_white_brightness,
-        "supports_diy": coordinator.profile.supports_diy,
-        "custom_effect_kinds": sorted(coordinator.profile.custom_effect_kinds),
         "supports_segments": coordinator.profile.supports_segments,
-        "supports_timers": coordinator.profile.supports_timers,
-        "supports_poweroff_memory": coordinator.profile.supports_poweroff_memory,
         "segment_count": coordinator.profile.segment_count,
         "connected": bool(client and client.is_connected),
         "available": coordinator.available,
@@ -68,10 +64,8 @@ async def async_get_config_entry_diagnostics(
         "scene_speed_position": (
             coordinator.scene_speed_index + 1 if coordinator.scene_speed_index is not None else None
         ),
-        "active_custom_id": coordinator.active_custom_id,
         "diy_slot": coordinator.diy_slot,
         "color_mode": coordinator.color_mode.name.lower() if coordinator.color_mode is not None else None,
-        "custom_effect_count": len(coordinator.custom_effects),
         "video_saturation": coordinator.video_saturation,
         "video_sound_effects": coordinator.video_sound_effects,
         "video_sound_effects_softness": coordinator.video_sound_effects_softness,

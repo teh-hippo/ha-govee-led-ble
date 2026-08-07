@@ -4,20 +4,10 @@ import base64
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import Enum, IntEnum, auto
+from enum import Enum, auto
 from typing import Any
 
 from .const import MUSIC_MODE_SLUGS
-from .custom_effects import (
-    RGB,
-    ComboContent,
-    EffectContent,
-    EffectValidationError,
-    FlatContent,
-    SegmentContent,
-    SketchContent,
-    VibrantContent,
-)
 from .generated_protocol_adapter import (
     build_brightness as _build_generated_brightness,
 )
@@ -27,9 +17,6 @@ from .generated_protocol_adapter import (
     build_colour_temperature as _build_generated_colour_temperature,
 )
 from .generated_protocol_adapter import build_firmware_query as _build_generated_firmware_query
-from .generated_protocol_adapter import (
-    build_h617a_diy as _build_generated_h617a_diy,
-)
 from .generated_protocol_adapter import (
     build_h617a_scene as _build_generated_h617a_scene,
 )
@@ -100,19 +87,6 @@ COLOR_MODE_DIY = 0x0A
 # exist on the write side only: the aa 05 15 read-back does not echo them (status_reply::cm_static).
 STATIC_SUB_COLOR = 0x01
 STATIC_SUB_BRIGHTNESS = 0x02
-# The DIY slot is an app-assigned per-entry id echoed back by aa 05 0a, not an addressing scheme we
-# own; see govee_common::diy_selector. Only two values are genuinely reserved, and both are fixed by
-# the editor SURFACE rather than by any entry: Finger Sketch always 0x20, Colour > Vibrant always
-# 0x84. 0xF0 is NOT reserved - the spec records it as the id of one saved user DIY on the capture
-# account, alongside 0x17, 0x32, 0x98 and 0xBE. We must still name a slot when activating content we
-# author ourselves, so we reuse that observed id and accept that the vendor app may label our effect
-# with whatever entry holds it. Named for what it is rather than "default", which invited the reading
-# that it was a safe scratch value.
-AUTHORED_DIY_SLOT = 0xF0
-SKETCH_DIY_SLOT = 0x20
-VIBRANT_DIY_SLOT = 0x84
-
-
 MUSIC_SLUG_BY_ID: dict[int, str] = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
 RHYTHM_MODE_ID = MUSIC_MODE_SLUGS["rhythm"]
 SCENE_EFFECT_BY_ID: dict[int, str] = {scene.code: name for name, scene in SCENES.items()}
@@ -131,10 +105,6 @@ _SCENE_COLOUR_SPEED_BASE_OFFSET = 7
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
-
-
-def _get(payload: bytes, index: int) -> int | None:
-    return payload[index] if len(payload) > index else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -473,141 +443,6 @@ def build_h6199_scene(scene_code: int, music_code: int = 0) -> list[bytes]:
     return [_build_generated_h6199_scene(scene_code, music_code)]
 
 
-# --- Custom-effect content encoders -------------------------------------------------------------
-# Every builder returns list[bytes]; the store/entity layers never see raw bytes. Packet bytes
-# live only here, with body layouts owned by diy_type03.ksy and diy_type04.ksy.
-
-
-def build_diy_activate(slot: int, type_byte: int | None = None) -> bytes:
-    """Build the selector documented by govee_common::diy_selector.
-
-    ``slot`` is app-assigned. Finger Sketch appends its captured type byte; the other
-    current builders omit it.
-    """
-    return _build_generated_h617a_diy(slot, type_byte)
-
-
-def _group_indices[T](values: Iterable[T | None], *, start: int) -> list[tuple[T, list[int]]]:
-    """Group non-``None`` values to their ``start``-based indices, preserving first-seen order."""
-    grouped: dict[T, list[int]] = {}
-    order: list[T] = []
-    for index, value in enumerate(values, start=start):
-        if value is None:
-            continue
-        if value not in grouped:
-            grouped[value] = []
-            order.append(value)
-        grouped[value].append(index)
-    return [(value, grouped[value]) for value in order]
-
-
-def _group_by_colour(colors: Iterable[RGB | None]) -> list[tuple[RGB, list[int]]]:
-    return _group_indices(colors, start=1)  # write-path segment indices are 1-based
-
-
-def _group_by_level(levels: Iterable[int | None]) -> list[tuple[int, list[int]]]:
-    return _group_indices(levels, start=1)
-
-
-def _group_by_colour_0based(colors: Iterable[RGB | None]) -> list[tuple[RGB, list[int]]]:
-    return _group_indices(colors, start=0)  # Finger Sketch segment indices are 0-based
-
-
-def build_segment_content(content: SegmentContent, *, segment_count: int) -> list[bytes]:
-    """Static per-segment paint via the live write-path (Tier 1). ``colors[i]`` targets segment ``i+1``."""
-    packets = [build_segment_color(indices, *rgb) for rgb, indices in _group_by_colour(content.colors)]
-    if content.brightness:
-        packets += [build_segment_brightness(indices, pct) for pct, indices in _group_by_level(content.brightness)]
-    return packets
-
-
-def build_sketch(content: SketchContent, *, segment_count: int) -> list[bytes]:
-    # VALIDATED: Finger Sketch live H617A 3.02.24 (2026-07-16) and app 7.2.10 (2026-07-31).
-    # The 2026-07-31 capture is the one that pins the framing: its body needs TWO chunks, and
-    # only a two-chunk body can tell the two A3 forms apart. The 2026-07-16 body fitted in one,
-    # where build_a3_multi forces a terminator whatever the flag says, so `terminator=True`
-    # rode along unfalsifiable and wrong for every larger sketch.
-    body = bytes([content.motion, content.speed, content.brightness, *content.background])
-    groups = _group_by_colour_0based(content.colors)
-    body += bytes([len(groups)])
-    for rgb, indices in groups:
-        body += bytes([len(indices), *rgb, *indices])
-    return [*build_a3_multi(0x03, body), build_diy_activate(SKETCH_DIY_SLOT, 0x03)]
-
-
-_VIBRANT_GAMMA = 2.2  # Vibrant interpolates each channel in gamma-2.2 linear light (measured 2026-07-20)
-
-
-def _interpolate(stops: tuple[RGB, ...], n: int, *, gamma: float | None = None) -> list[RGB]:
-    """RGB gradient of ``stops`` across ``n`` segments (endpoints inclusive).
-
-    Linear in sRGB by default; pass ``gamma`` (Vibrant uses ``2.2``) to interpolate in linear
-    light, which is what the app writes on the wire.
-    """
-    if n <= 0:
-        return []
-    if n == 1 or len(stops) == 1:
-        return [stops[0]] * n
-    exponent = gamma if gamma is not None else 1.0
-
-    def _mix(a: int, b: int, fraction: float) -> int:
-        lower, upper = math.pow(a / 255, exponent), math.pow(b / 255, exponent)
-        return round(math.pow(lower + (upper - lower) * fraction, 1 / exponent) * 255)
-
-    span = len(stops) - 1
-    result: list[RGB] = []
-    for index in range(n):
-        position = index * span / (n - 1)
-        lower = min(int(position), span - 1)
-        fraction = position - lower
-        start_rgb, end_rgb = stops[lower], stops[lower + 1]
-        channels = [_mix(a, b, fraction) for a, b in zip(start_rgb, end_rgb, strict=True)]
-        result.append((channels[0], channels[1], channels[2]))
-    return result
-
-
-def build_vibrant(content: VibrantContent, *, segment_count: int) -> list[bytes]:
-    # VALIDATED: Vibrant live H617A 3.02.24 (2026-07-20); TYPE 0x03 gradient body + 33 05 0a 84 03.
-    seg_rgb = _interpolate(content.stops, segment_count, gamma=_VIBRANT_GAMMA)
-    body = bytes([0x09, 0x00, 0x64, 0x01, 0x01, 0x01])  # motion Clockwise, speed 0, brightness 100, bg (1,1,1)
-    groups = _group_by_colour_0based(seg_rgb)
-    body += bytes([len(groups)])
-    for rgb, indices in groups:
-        body += bytes([len(indices), *rgb, *indices])
-    return [*build_a3_multi(0x03, body), build_diy_activate(VIBRANT_DIY_SLOT, 0x03)]
-
-
-def build_flat_diy(content: FlatContent) -> list[bytes]:
-    # VALIDATED: flat DIY live H617A 3.02.24; TYPE 0x04 body + 33 05 0a <slot>, two-frame envelope.
-    palette = b"".join(bytes(colour) for colour in content.palette)
-    body = bytes([content.family, content.variant, content.speed, len(palette)]) + palette
-    return [*build_a3_multi(0x04, body), build_diy_activate(AUTHORED_DIY_SLOT)]
-
-
-def build_combo(content: ComboContent, *, slot: int = AUTHORED_DIY_SLOT) -> list[bytes]:
-    palette = b"".join(bytes(colour) for colour in content.palette)
-    sequence = b"".join(bytes([family, variant]) for family, variant in content.effects)
-    body = bytes([0xFF, content.variant, content.speed, len(palette)]) + palette + bytes([len(sequence)]) + sequence
-    return [*build_a3_multi(0x04, body), build_diy_activate(slot)]
-
-
-def build_custom_effect(content: EffectContent, *, segment_count: int) -> list[bytes]:
-    """Route a content object to its per-kind encoder; ``UnknownContent`` is never applyable (#7a)."""
-    match content:
-        case SegmentContent():
-            return build_segment_content(content, segment_count=segment_count)
-        case SketchContent():
-            return build_sketch(content, segment_count=segment_count)
-        case VibrantContent():
-            return build_vibrant(content, segment_count=segment_count)
-        case FlatContent():
-            return build_flat_diy(content)
-        case ComboContent():
-            return build_combo(content)
-        case _:  # UnknownContent (or any future unhandled kind): preserved on load, never applyable (#7a)
-            raise EffectValidationError("unknown_kind_not_applyable")
-
-
 STATE_QUERY = _build_generated_power_query()
 BRIGHTNESS_QUERY = _build_generated_brightness_query()
 COLOR_MODE_QUERY = _build_generated_colour_mode_query()
@@ -616,9 +451,6 @@ BLANK_SCREEN_QUERY = _build_generated_blank_screen_query()
 RELATIVE_BRIGHTNESS_QUERY = _build_generated_relative_brightness_query()
 FW_QUERY = _build_generated_firmware_query()
 HW_QUERY = _build_generated_hardware_query()
-SLEEP_TIMER_QUERY = build_packet(STATUS_HEADER, 0x11, [])
-WAKEUP_TIMER_QUERY = build_packet(STATUS_HEADER, 0x12, [])
-SCHEDULE_TIMER_QUERY = build_packet(STATUS_HEADER, 0x23, [])
 KEEP_ALIVE = STATE_QUERY
 
 
@@ -777,7 +609,7 @@ def build_music_params_a3(
     body = bytearray(_MUSIC_PARAM_TEMPLATE[mode])
     if palette is not None:
         if len(palette) != _MUSIC_PARAM_COUNT[mode]:
-            raise EffectValidationError("palette_count_mismatch")
+            raise ValueError("palette count does not match the captured mode template")
         body[2 : 2 + 3 * len(palette)] = bytes(channel for rgb in palette for channel in rgb)
     for offset, value in overrides.items():
         body[offset - _MUSIC_PARAM_BASE] = _clamp(value, 0, 255)
@@ -893,214 +725,3 @@ def parse_generated_color_mode(
             multi_effect_flag=int(body.mode_body.sub),
         )
     return ParsedColorModeResponse(mode=ParsedMode.UNKNOWN)
-
-
-# Timer encoders are capture-backed by govee_common::{sleep_timer,wake_timer} and
-# command_write::timer_schedule_cmd. Power-off memory remains an unsupported research lead.
-
-
-class Weekday(IntEnum):
-    """Timer repeat-mask bit positions (Mon=bit0 .. Sun=bit6)."""
-
-    MON = 0
-    TUE = 1
-    WED = 2
-    THU = 3
-    FRI = 4
-    SAT = 5
-    SUN = 6
-
-
-TIMER_REPEAT_ONCE = 0x80  # high bit set with no weekday bits -> fires once
-
-
-def timer_repeat(days: Iterable[Weekday] = ()) -> int:
-    """Encode weekdays as a timer repeat byte (Mon=bit0 .. Sun=bit6).
-
-    Empty yields 0x80 (fires once); every weekday selected yields 0x00 (every day, as the app
-    sends it); any other subset is 0x80 | mask.
-    """
-    mask = 0
-    for day in days:
-        if not 0 <= int(day) <= 6:
-            raise ValueError(f"weekday {day!r} out of range 0..6")
-        mask |= 1 << int(day)
-    if mask == 0x7F:
-        return 0x00
-    return TIMER_REPEAT_ONCE | mask
-
-
-def parse_timer_repeat(repeat: int) -> frozenset[Weekday]:
-    """Decode a timer repeat byte to its weekday set (empty = one-time, all seven = every day)."""
-    if (repeat & TIMER_REPEAT_ONCE) == 0:
-        return frozenset(Weekday)
-    return frozenset(day for day in Weekday if repeat & (1 << int(day)))
-
-
-def build_timer_schedule(
-    index: int,
-    enabled: bool,
-    on_action: bool,
-    hour: int,
-    minute: int,
-    repeat_days: Iterable[Weekday] = (),
-) -> bytes:
-    """Build a scheduled on/off timer slot (0x23); repeat_days empty = fire once."""
-    if not 0 <= index <= 3:
-        raise ValueError(f"timer slot {index} out of range 0..3")
-    enable_and_type = (0x80 if enabled else 0x00) | (0x01 if on_action else 0x00)
-    params = [index, enable_and_type, _clamp(hour, 0, 23), _clamp(minute, 0, 59), timer_repeat(repeat_days)]
-    return build_packet(0x33, 0x23, params)
-
-
-def build_timer_sleep(enabled: bool, start_brightness: int, close_minutes: int, current_minutes: int = 0) -> bytes:
-    """Build a sleep/fade-off timer (0x11): fade from start_brightness over close_minutes."""
-    params = [
-        int(enabled),
-        _clamp(start_brightness, 10, 100),
-        _clamp(close_minutes, 0, 255),
-        _clamp(current_minutes, 0, 255),
-    ]
-    return build_packet(0x33, 0x11, params)
-
-
-def build_timer_wakeup(
-    enabled: bool,
-    end_brightness: int,
-    hour: int,
-    minute: int,
-    repeat_days: Iterable[Weekday] = (),
-    duration_minutes: int = 10,
-) -> bytes:
-    """Build a wake-up/sunrise timer (0x12): ramp to end_brightness over duration_minutes."""
-    params = [
-        int(enabled),
-        _clamp(end_brightness, 10, 100),
-        _clamp(hour, 0, 23),
-        _clamp(minute, 0, 59),
-        timer_repeat(repeat_days),
-        _clamp(duration_minutes, 10, 60),
-    ]
-    return build_packet(0x33, 0x12, params)
-
-
-def build_poweroff_memory(enabled: bool) -> bytes:
-    """Build a power-off memory toggle (0x41): restore last state after power loss.
-
-    PROVEN ABSENT ON THE H617A. 2026-07-29: this opcode is not acknowledged. In a single
-    connection, 33 04 and 33 01 both acked either side of two 33 41 writes that did not,
-    and every other command opcode used that session acked as well. The device does not
-    recognise 0x41 in either direction; aa 41 answers nothing before or after a write.
-
-    Unreachable anyway, since no ModelProfile sets supports_poweroff_memory. Kept for a
-    model that does have it, not for this one. An external fuzz reports 0x41 as power-off
-    memory on a different SKU, which is a lead for that SKU only.
-
-    AND THE H617A DOES NOT NEED IT: IT RESTORES ITS PRIOR STATE UNCONDITIONALLY. Observed
-    2026-07-29 with mains power cut for about fifteen seconds and a person watching. The
-    strip was staged on, solid blue, brightness 1%, and came back on, solid blue, at 1%,
-    with aa 01, aa 04, aa 05 and aa a3 all reading their pre-cut values. So the absence of
-    a configurable toggle is not the absence of the behaviour, and nothing about this
-    device's restore behaviour should be read as evidence about opcode 0x41 either way.
-
-    ONE THING ONLY EYES COULD SEE: before applying the saved state the firmware runs a
-    power-on self-test, sweeping red then green then blue at near-full brightness for a
-    moment. It is transient, so any read taken after settling shows only the restored
-    state and misses it entirely.
-    """
-    # EXPERIMENTAL: harness=TBD encoding=decode-only
-    return build_packet(0x33, 0x41, [int(enabled)])
-
-
-@dataclass(frozen=True)
-class ParsedTimerSchedule:
-    enabled: bool
-    on_action: bool
-    hour: int
-    minute: int
-    repeat_days: frozenset[Weekday]
-
-
-@dataclass(frozen=True)
-class ParsedSleepTimer:
-    enabled: bool
-    start_brightness: int
-    close_minutes: int
-    current_minutes: int
-
-
-@dataclass(frozen=True)
-class ParsedWakeUpTimer:
-    enabled: bool
-    end_brightness: int
-    hour: int
-    minute: int
-    repeat_days: frozenset[Weekday]
-    duration_minutes: int
-
-
-@dataclass(frozen=True)
-class ParsedPowerOffMemory:
-    enabled: bool
-    mode: int | None = None
-
-
-def parse_timer_schedule(payload: bytes) -> ParsedTimerSchedule:
-    """Decode one scheduled-timer slot record [enableAndType, hh, mm, repeat]."""
-    # Slot record layout confirmed live 2026-07-09 (weekday bits Mon=bit0..Sun=bit6).
-    if len(payload) < 4:
-        raise ValueError("scheduled timer payload too short")
-    enable_and_type = payload[0]
-    return ParsedTimerSchedule(
-        enabled=bool(enable_and_type & 0x80),
-        on_action=bool(enable_and_type & 0x01),
-        hour=payload[1],
-        minute=payload[2],
-        repeat_days=parse_timer_repeat(payload[3]),
-    )
-
-
-def parse_timer_schedule_table(payload: bytes) -> list[ParsedTimerSchedule]:
-    """Decode the full aa 23 reply (0xff prefix + four 4-byte slot records) into per-slot timers."""
-    body = payload[1:] if payload[:1] == b"\xff" else payload
-    return [parse_timer_schedule(body[i : i + 4]) for i in range(0, len(body) - 3, 4)]
-
-
-def parse_timer_sleep(payload: bytes) -> ParsedSleepTimer:
-    """Decode a sleep-timer aa 11 reply [enable, startBri, closeMin, curMin]."""
-    if len(payload) < 3:
-        raise ValueError("sleep timer payload too short")
-    return ParsedSleepTimer(
-        enabled=bool(payload[0]),
-        start_brightness=payload[1],
-        close_minutes=payload[2],
-        current_minutes=payload[3] if len(payload) > 3 else 0,
-    )
-
-
-def parse_timer_wakeup(payload: bytes) -> ParsedWakeUpTimer:
-    """Decode a wake-up aa 12 reply [enable, endBri, hh, mm, repeat, duration]."""
-    if len(payload) < 6:
-        raise ValueError("wake-up timer payload too short")
-    return ParsedWakeUpTimer(
-        enabled=bool(payload[0]),
-        end_brightness=payload[1],
-        hour=payload[2],
-        minute=payload[3],
-        repeat_days=parse_timer_repeat(payload[4]),
-        duration_minutes=payload[5],
-    )
-
-
-def parse_poweroff_memory(payload: bytes) -> ParsedPowerOffMemory:
-    """Decode a power-off memory aa 41 reply [enabled, mode].
-
-    NO SUCH REPLY EXISTS ON THE H617A, and the unset-versus-unsupported confound is now
-    closed. 2026-07-29: aa 41 was queried before and after a 33 41 01 write and answered
-    nothing either time, and the write itself was never acknowledged while controls in the
-    same connection were. So the register cannot be read AND cannot be written here.
-    """
-    # EXPERIMENTAL: harness=TBD encoding=decode-only
-    if not payload:
-        raise ValueError("power-off memory payload is empty")
-    return ParsedPowerOffMemory(enabled=bool(payload[0]), mode=_get(payload, 1))

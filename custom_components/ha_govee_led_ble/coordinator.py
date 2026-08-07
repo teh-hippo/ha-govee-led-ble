@@ -3,9 +3,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import Callable
 from datetime import datetime, timedelta
-from datetime import time as dt_time
 from typing import Any
 
 from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
@@ -18,19 +16,8 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .const import DOMAIN, get_profile
-from .coordinator_base import (
-    POWEROFF_MEMORY_PACKET_TYPE,
-    SCHEDULE_TIMER_PACKET_TYPE,
-    SLEEP_TIMER_PACKET_TYPE,
-    WAKEUP_TIMER_PACKET_TYPE,
-)
-from .coordinator_base import TIMER_SCHEDULE_SLOTS as TIMER_SCHEDULE_SLOTS
-from .coordinator_effects import EffectStore, _CustomEffectMixin
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
-from .coordinator_timers import _TimerWriteMixin
-from .custom_effects import CustomEffect, SegmentContent, uses_diy_slot
 from .protocol import (
-    AUTHORED_DIY_SLOT,
     BLANK_SCREEN_QUERY,
     BRIGHTNESS_PACKET_TYPE,
     BRIGHTNESS_QUERY,
@@ -48,25 +35,17 @@ from .protocol import (
     RELATIVE_BRIGHTNESS_PACKET_TYPE,
     RELATIVE_BRIGHTNESS_QUERY,
     SCENE_EFFECT_BY_MODEL_ID,
-    SCHEDULE_TIMER_QUERY,
-    SLEEP_TIMER_QUERY,
-    WAKEUP_TIMER_QUERY,
     WHITE_BALANCE_QUERY,
     WHITE_BALANCE_RESET,
     WRITE_UUID,
     ParsedMode,
-    ParsedTimerSchedule,
     SegmentColorGroup,
     build_segment_paint,
     decode_command_frame,
     decode_status_frame,
     kelvin_to_rgb,
     parse_generated_color_mode,
-    parse_poweroff_memory,
     parse_static_write,
-    parse_timer_schedule_table,
-    parse_timer_sleep,
-    parse_timer_wakeup,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -238,7 +217,7 @@ def _expected_color_mode_from_packet(
     )
 
 
-class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin):
+class GoveeBLECoordinator(_ActiveModeMixin):
     """Manages BLE connection lifecycle for a Govee device."""
 
     def __init__(self, hass: HomeAssistant, address: str, model: str) -> None:
@@ -267,17 +246,12 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.hw_version: str | None = None
         self.music_mode = "off"
         self.video_mode = "off"
-        self.active_custom_id: str | None = None
         self.diy_slot: int | None = None
         self.color_mode: ParsedMode | None = None
         self._scene_code: int | None = None
         self.scene_speed_scene_code: int | None = None
         self.scene_speed_index: int | None = None
-        self._owned_diy_effect_id: str | None = None
         self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
-        self.custom_effects: dict[str, CustomEffect] = {}
-        self._store_lock = asyncio.Lock()
-        self._effect_store: EffectStore | None = None
         self.segment_colors: list[tuple[int, int, int]] = [self.rgb_color] * profile.segment_count
         self.video_saturation = self.white_brightness = 100
         self.music_sensitivity = 99
@@ -294,27 +268,6 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self.relative_brightness_right: int | None = None
         self.relative_brightness_bottom: int | None = None
         self.blank_screen: bool | None = None
-        # Per-mode music movement defaults reproduce the captured music_body.ksy templates.
-        self.music_separation_point = 1
-        self.music_separation_gradient = True
-        self.music_hopping_brightness = 50
-        self.music_piano_key_count = 15
-        self.music_fountain_direction = "clockwise"
-        self.music_daynight_segments = 1
-        self.music_daynight_speed = 10
-        # Power-off memory (restore last state after power loss); None until a reply is seen.
-        self.poweroff_memory: bool | None = None
-        # Timer state is unknown until the device replies.
-        self.sleep_timer_enabled: bool | None = None
-        self.sleep_timer_start_brightness: int | None = None
-        self.sleep_timer_minutes: int | None = None
-        self.sleep_timer_current_minutes: int | None = None
-        self.wakeup_timer_enabled: bool | None = None
-        self.wakeup_timer_end_brightness: int | None = None
-        self.wakeup_timer_time: dt_time | None = None
-        self.wakeup_timer_repeat_days: frozenset[Any] | None = None
-        self.wakeup_timer_duration_minutes: int | None = None
-        self.schedule_timers: list[ParsedTimerSchedule | None] = [None] * TIMER_SCHEDULE_SLOTS
         self.packet_log: list[dict[str, Any]] = []
         self._expected_state: dict[str, tuple[Any, float]] = {}
         self._notify_started_monotonic: float | None = None
@@ -576,67 +529,46 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
         self._scene_code = parsed.scene_code if scene_effect is None else None
         observed: list[str] = []
         accept_parameters = True
-        active_custom = self.custom_effects.get(self.active_custom_id) if self.active_custom_id is not None else None
-        # Readback mirror of _enter_static_mode: committing one mode clears the others so exactly one
-        # is ever truthful. Static segment effects and slot-backed DIY effects retain only matching metadata.
+        # Readback mirror of _enter_static_mode: committing one mode clears the others.
         if parsed.mode is ParsedMode.MUSIC:
             if parsed.music_mode is not None and self._accept_expected("music_mode", parsed.music_mode):
                 self.music_mode = parsed.music_mode
-                self.video_mode, self.effect, self.active_custom_id = "off", None, None
+                self.video_mode, self.effect = "off", None
                 self.diy_slot = None
-                self._owned_diy_effect_id = None
                 observed.append("music_mode")
             else:
                 accept_parameters = False
         elif parsed.mode is ParsedMode.VIDEO:
             if parsed.video_mode is not None and self._accept_expected("video_mode", parsed.video_mode):
                 self.video_mode = parsed.video_mode
-                self.music_mode, self.effect, self.active_custom_id = "off", None, None
+                self.music_mode, self.effect = "off", None
                 self.diy_slot = None
-                self._owned_diy_effect_id = None
                 observed.append("video_mode")
             else:
                 accept_parameters = False
         elif parsed.mode is ParsedMode.DIY:
-            known_custom = (
-                parsed.diy_slot == AUTHORED_DIY_SLOT
-                and active_custom is not None
-                and self._owned_diy_effect_id == active_custom.id
-                and uses_diy_slot(active_custom.content)
-            )
-            readback_effect = self.effect if known_custom else None
-            if self._accept_expected("effect", readback_effect):
-                self.effect = readback_effect
+            if self._accept_expected("effect", None):
+                self.effect = None
                 self.music_mode = self.video_mode = "off"
                 self.diy_slot = parsed.diy_slot
-                if not known_custom:
-                    self.active_custom_id = None
-                    self._owned_diy_effect_id = None
                 observed.append("effect")
             else:
                 accept_parameters = False
         elif parsed.mode is ParsedMode.SCENE:
             if self._accept_expected("effect", scene_effect):
                 self.effect = scene_effect
-                self.music_mode, self.video_mode, self.active_custom_id = "off", "off", None
+                self.music_mode, self.video_mode = "off", "off"
                 self.diy_slot = None
-                self._owned_diy_effect_id = None
                 self._sync_scene_speed(scene_effect)
                 observed.append("effect")
         elif parsed.mode is ParsedMode.COLOUR:
-            known_custom = active_custom is not None and isinstance(active_custom.content, SegmentContent)
-            readback_effect = self.effect if known_custom else None
-            if self._accept_expected("effect", readback_effect):
-                self.effect, self.music_mode, self.video_mode = readback_effect, "off", "off"
+            if self._accept_expected("effect", None):
+                self.effect, self.music_mode, self.video_mode = None, "off", "off"
                 self.diy_slot = None
-                if not known_custom:
-                    self.active_custom_id = None
-                self._owned_diy_effect_id = None
                 observed.append("effect")
         else:
-            self.effect = self.active_custom_id = None
+            self.effect = None
             self.diy_slot = None
-            self._owned_diy_effect_id = None
             self.music_mode = self.video_mode = "off"
             observed.append("effect")
         if accept_parameters:
@@ -659,43 +591,6 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
             if accept_rgb and accept_kelvin:
                 self.rgb_color, self.color_temp_kelvin = parsed.rgb_color, None
         return tuple(observed)
-
-    def _apply_sleep_timer_payload(self, payload: bytes) -> tuple[str, ...]:
-        parsed = parse_timer_sleep(payload)
-        self.sleep_timer_enabled = parsed.enabled
-        self.sleep_timer_start_brightness = parsed.start_brightness
-        self.sleep_timer_minutes = parsed.close_minutes
-        self.sleep_timer_current_minutes = parsed.current_minutes
-        return (
-            "sleep_timer_enabled",
-            "sleep_timer_start_brightness",
-            "sleep_timer_minutes",
-            "sleep_timer_current_minutes",
-        )
-
-    def _apply_wakeup_timer_payload(self, payload: bytes) -> tuple[str, ...]:
-        parsed = parse_timer_wakeup(payload)
-        self.wakeup_timer_enabled = parsed.enabled
-        self.wakeup_timer_end_brightness = parsed.end_brightness
-        self.wakeup_timer_time = dt_time(parsed.hour, parsed.minute)
-        self.wakeup_timer_repeat_days = parsed.repeat_days
-        self.wakeup_timer_duration_minutes = parsed.duration_minutes
-        return (
-            "wakeup_timer_enabled",
-            "wakeup_timer_end_brightness",
-            "wakeup_timer_time",
-            "wakeup_timer_repeat_days",
-            "wakeup_timer_duration_minutes",
-        )
-
-    def _apply_schedule_timer_payload(self, payload: bytes) -> tuple[str, ...]:
-        # The aa 23 reply is the full table: 0xff prefix + four 4-byte slot records.
-        if len(payload) != 17 or payload[:1] != b"\xff":
-            raise ValueError("Schedule timer reply must contain the complete four-slot table")
-        for slot, parsed in enumerate(parse_timer_schedule_table(payload)):
-            if slot < TIMER_SCHEDULE_SLOTS:
-                self.schedule_timers[slot] = parsed
-        return ("schedule_timers",)
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
@@ -773,14 +668,6 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 self._note_identity(fw_version=generated.body.text or None)
             elif domain == HARDWARE_PACKET_TYPE:
                 self._note_identity(hw_version=generated.body.text or None)
-            elif domain == POWEROFF_MEMORY_PACKET_TYPE:
-                self.poweroff_memory = parse_poweroff_memory(payload).enabled
-            elif domain == SLEEP_TIMER_PACKET_TYPE:
-                observed = self._apply_sleep_timer_payload(payload)
-            elif domain == WAKEUP_TIMER_PACKET_TYPE:
-                observed = self._apply_wakeup_timer_payload(payload)
-            elif domain == SCHEDULE_TIMER_PACKET_TYPE:
-                observed = self._apply_schedule_timer_payload(payload)
             self._mark_received(domain, *observed)
             self.async_set_updated_data(self.data or {})
         except IndexError, ValueError:
@@ -819,44 +706,12 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 query_relative_brightness if query_relative_brightness is not None else full_query
             ):
                 queries.append(RELATIVE_BRIGHTNESS_QUERY)
-            if self.profile.supports_timers and full_query:
-                queries.extend((SLEEP_TIMER_QUERY, WAKEUP_TIMER_QUERY, SCHEDULE_TIMER_QUERY))
             for query in queries:
                 self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
             return True
         except BleakError:
             return False
-
-    async def refresh_query_state(
-        self,
-        query: bytes,
-        domain: int,
-        accept: Callable[[], bool],
-        timeout: float = 2.0,
-    ) -> bool:
-        """Query one register until a fresh reply satisfies ``accept``."""
-        async with self._lock:
-            client = await self._ensure_connected()
-        baseline = self._domain_revisions.get(domain, 0)
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            try:
-                async with self._lock:
-                    if self._client is not client:
-                        return False
-                    self._record_packet("tx", query)
-                    await client.write_gatt_char(WRITE_UUID, query, response=False)
-            except BleakError:
-                await self._disconnect_if_current(client)
-                return False
-            if self._domain_revisions.get(domain, 0) > baseline and accept():
-                return True
-            if (remaining := deadline - time.monotonic()) > 0:
-                await asyncio.sleep(min(0.25, remaining))
-        if self._domain_revisions.get(domain, 0) <= baseline:
-            await self._disconnect_if_current(client)
-        return False
 
     async def _send_identity_queries(self) -> None:
         """Query firmware and hardware for DeviceInfo, sending only unknowns.
@@ -1142,6 +997,3 @@ class GoveeBLECoordinator(_TimerWriteMixin, _ActiveModeMixin, _CustomEffectMixin
                 self._notify_started_monotonic = None
                 self._last_rx_monotonic = None
                 self._expected_state.clear()
-                if self.active_custom_id == self._owned_diy_effect_id:
-                    self.active_custom_id = self.effect = None
-                self._owned_diy_effect_id = None

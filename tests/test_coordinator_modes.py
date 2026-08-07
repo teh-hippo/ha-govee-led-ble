@@ -6,7 +6,7 @@ from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import MUSIC_MODE_SLUGS
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import PreModeSnapshot
-from custom_components.ha_govee_led_ble.light_services import apply_active_music_mode, apply_active_video_mode
+from custom_components.ha_govee_led_ble.light_services import apply_active_video_mode
 
 
 @pytest.fixture
@@ -24,9 +24,8 @@ def _sent(sc):
 
 
 async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
-    coord.is_on, coord.effect, coord.active_custom_id = True, "prior effect", "diy-42"
-    coord.diy_slot = proto.AUTHORED_DIY_SLOT
-    coord._owned_diy_effect_id = "diy-42"
+    coord.is_on, coord.effect = True, "prior effect"
+    coord.diy_slot = 0xF0
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_select_music_slug("rhythm")
     assert _sent(sc) == [
@@ -35,9 +34,8 @@ async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
     ]
     assert coord.is_on is True
     assert (coord.music_mode, coord.video_mode) == ("rhythm", "off")
-    assert coord.effect is None and coord.active_custom_id is None
+    assert coord.effect is None
     assert coord.diy_slot is None
-    assert coord._owned_diy_effect_id is None
 
 
 async def test_h6199_music_reapply_preserves_fixed_colour(h6199):
@@ -126,18 +124,6 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
     ]
 
 
-def test_music_style_reconciles_calm_bool(coord):
-    """The music-style select is a Dynamic/Calm view over ``music_calm``."""
-    coord.music_calm = False
-    assert coord.music_style == "dynamic"
-    coord.music_calm = True
-    assert coord.music_style == "calm"
-    coord.music_style = "dynamic"
-    assert coord.music_calm is False
-    coord.music_style = "calm"
-    assert coord.music_calm is True
-
-
 @pytest.mark.parametrize(
     ("snapshot", "expected"),
     [
@@ -149,16 +135,14 @@ def test_music_style_reconciles_calm_bool(coord):
 async def test_restore_pre_mode_re_emits_matching_builder(coord, snapshot, expected):
     coord._pre_mode_snapshot = snapshot
     coord.music_mode, coord.video_mode = "rhythm", "movie"
-    coord.effect, coord.active_custom_id = "leftover", "diy-1"
-    coord.diy_slot = proto.AUTHORED_DIY_SLOT
-    coord._owned_diy_effect_id = "diy-1"
+    coord.effect = "leftover"
+    coord.diy_slot = 0xF0
     with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
         await coord.async_restore_pre_mode()
     assert _sent(sc) == [expected]
     assert (coord.music_mode, coord.video_mode) == ("off", "off")
-    assert coord.effect is None and coord.active_custom_id is None
+    assert coord.effect is None
     assert coord.diy_slot is None
-    assert coord._owned_diy_effect_id is None
 
 
 async def test_select_off_routes_to_restore_and_clears_music_mode(coord):
@@ -176,35 +160,6 @@ async def test_fresh_off_falls_back_to_white_rgb(coord):
         await coord.async_select_music_slug("off")
     assert _sent(sc) == [proto.build_color_rgb(255, 255, 255)]
     assert (coord.music_mode, coord.video_mode) == ("off", "off")
-
-
-async def test_apply_active_music_mode_reapplies_from_music_mode(coord):
-    """A param tweak while music is live re-sends the music frame via the single music-apply path."""
-    coord.is_on, coord.music_mode, coord.music_sensitivity = True, "spectrum", 66
-    with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
-        patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
-    ):
-        assert await apply_active_music_mode(coord) is True
-    assert _sent(sc) == [
-        proto.build_power(True),
-        proto.build_music_mode_with_color(MUSIC_MODE_SLUGS["spectrum"], sensitivity=66, color=None, calm=False),
-    ]
-    refresh.assert_awaited_once_with(
-        expected_on=True,
-        expected_music_mode="spectrum",
-        expected_music_sensitivity=66,
-        expected_music_calm=None,
-        expected_music_color=None,
-        expected_music_auto_color=True,
-    )
-
-
-async def test_apply_active_music_mode_noop_when_music_off(coord):
-    coord.is_on, coord.music_mode = True, "off"
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        assert await apply_active_music_mode(coord) is False
-    assert _sent(sc) == []
 
 
 async def test_apply_active_video_mode_noop_when_video_off(coord):
@@ -234,40 +189,3 @@ async def test_apply_active_video_mode_requires_readback(h6199):
         expected_video_sound_effects=True,
         expected_video_sound_effects_softness=27,
     )
-
-
-async def test_apply_music_params_merges_all_params_for_mode(coord):
-    """A per-mode apply merges every stored param so a sibling field is never clobbered."""
-    coord.music_separation_point, coord.music_separation_gradient = 5, False
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        await coord.async_apply_music_params(0x32)
-    # gradient off -> the coupled companion byte [22] is 0x61 (0x5e when on), live-confirmed 2026-07-21.
-    assert _sent(sc) == proto.build_music_params_a3(0x32, {20: 5, 21: 0, 22: 0x61})
-
-
-async def test_apply_music_params_separation_gradient_couples_companion(coord):
-    """The separation gradient toggle drives the coupled companion byte (0x5e on / 0x61 off)."""
-    for gradient, companion in ((True, 0x5E), (False, 0x61)):
-        coord.music_separation_gradient = gradient
-        with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-            await coord.async_apply_music_params(0x32)
-        expected = proto.build_music_params_a3(
-            0x32, {20: coord.music_separation_point, 21: int(gradient), 22: companion}
-        )
-        assert _sent(sc) == expected
-
-
-async def test_apply_music_params_piano_derives_half_from_key_count(coord):
-    """Piano Keys [30] is a derived byte floor(key_count/2), synthesised on send (live 2026-07-21)."""
-    for keys, half in ((15, 7), (9, 4)):
-        coord.music_piano_key_count = keys
-        with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-            await coord.async_apply_music_params(0x34)
-        assert _sent(sc) == proto.build_music_params_a3(0x34, {27: keys, 30: half})
-
-
-async def test_apply_music_params_encodes_fountain_direction(coord):
-    coord.music_fountain_direction = "counterclockwise"
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        await coord.async_apply_music_params(0x35)
-    assert _sent(sc) == proto.build_music_params_a3(0x35, {26: 0x02, 28: 0x05})

@@ -30,18 +30,7 @@ def test_unknown_models_fail_closed():
     assert resolve_model("H9999") is None
 
 
-def test_timer_and_poweroff_capabilities():
-    assert MODEL_PROFILES["H617A"].supports_timers
-    assert not MODEL_PROFILES["H6199"].supports_timers
-    assert all(not MODEL_PROFILES[model].supports_poweroff_memory for model in ("H617A", "H6199"))
-
-
-def test_timer_and_poweroff_capabilities_default_false():
-    assert not ModelProfile("x").supports_timers
-    assert not ModelProfile("x").supports_poweroff_memory
-
-
-def test_model_specific_music_and_custom_effect_capabilities():
+def test_model_specific_music_capabilities():
     assert MODEL_PROFILES["H617A"].music_modes == (
         "energetic",
         "rhythm",
@@ -63,11 +52,3 @@ def test_model_specific_music_and_custom_effect_capabilities():
     assert not MODEL_PROFILES["H6199"].supports_white_brightness
     assert not MODEL_PROFILES["H6199"].static_readback_echoes_color
     assert MODEL_PROFILES["H6199"].supports_video_sound_effects
-    assert MODEL_PROFILES["H617A"].custom_effect_kinds == {
-        "segments",
-        "sketch",
-        "vibrant",
-        "flat",
-        "combo",
-    }
-    assert MODEL_PROFILES["H6199"].custom_effect_kinds == {"segments"}

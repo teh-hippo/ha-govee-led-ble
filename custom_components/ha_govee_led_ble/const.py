@@ -22,13 +22,8 @@ class ModelProfile:
     music_sensitivity_min: int = 0
     music_sensitivity_max: int = 99
     supports_music_color: bool = False
-    supports_music_style: bool = False
-    supports_music_params: bool = False
     supports_white_brightness: bool = False
     static_readback_echoes_color: bool = False
-    supports_diy: bool = False
-    supports_timers: bool = False
-    supports_poweroff_memory: bool = False
     segment_count: int = 0
     supports_segment_writes: bool = False
 
@@ -39,13 +34,6 @@ class ModelProfile:
     @property
     def supports_music_mode(self) -> bool:
         return bool(self.music_modes)
-
-    @property
-    def custom_effect_kinds(self) -> frozenset[str]:
-        kinds = {"segments"} if self.supports_segments else set()
-        if self.supports_diy:
-            kinds.update({"sketch", "vibrant", "flat", "combo"})
-        return frozenset(kinds)
 
 
 MUSIC_MODES: dict[str, int] = {
@@ -90,10 +78,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_scene_speed=True,
         music_modes=tuple(MUSIC_MODE_SLUGS),
         supports_music_color=True,
-        supports_music_style=True,
-        supports_music_params=True,
-        supports_diy=True,
-        supports_timers=True,
         segment_count=15,
         supports_segment_writes=True,
         # supports_white_brightness stays false, and NOT because the command does nothing. Driven

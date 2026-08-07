@@ -5,15 +5,6 @@ import base64
 import pytest
 
 from custom_components.ha_govee_led_ble import protocol as proto
-from custom_components.ha_govee_led_ble.custom_effects import (
-    ComboContent,
-    EffectValidationError,
-    FlatContent,
-    SegmentContent,
-    SketchContent,
-    UnknownContent,
-    VibrantContent,
-)
 from tools.ble.generated_protocol_view import describe_generated, query_frames
 
 H = bytes.fromhex
@@ -318,230 +309,12 @@ def test_a3_reassembly_rule():
             assert body[1] >= 2, "the app never emits a lone frame"
 
 
-def test_build_diy_activate():
-    # govee_common::diy_selector with captured slot 0xF0.
-    assert proto.build_diy_activate(0xF0) == H("33050af0000000000000000000000000000000cc")
-    assert proto.build_diy_activate(0xBE)[:4] == H("33050abe")
-    _valid(proto.build_diy_activate(0xF0))
-
-
-def test_interpolate_linear_gradient():
-    assert proto._interpolate((), 0) == []
-    assert proto._interpolate(((10, 20, 30),), 3) == [(10, 20, 30), (10, 20, 30), (10, 20, 30)]
-    assert proto._interpolate(((0, 0, 0), (255, 255, 255)), 1) == [(0, 0, 0)]
-    assert proto._interpolate(((0, 0, 0), (255, 255, 255)), 3) == [(0, 0, 0), (128, 128, 128), (255, 255, 255)]
-    three = proto._interpolate(((0, 0, 0), (100, 100, 100), (200, 200, 200)), 5)
-    assert three == [(0, 0, 0), (50, 50, 50), (100, 100, 100), (150, 150, 150), (200, 200, 200)]
-
-
-def test_build_segment_content_matches_captured_frames():
-    # Tier 1 reuses the validated live write-path; byte-identical to captured colour/brightness frames.
-    single = SegmentContent(colors=(None, None, (10, 20, 30)))  # paints segment 3 only
-    assert proto.build_segment_content(single, segment_count=15) == [H("330515010a141e00000000000400000000000026")]
-    whole = SegmentContent(colors=((10, 20, 30),) * 15)  # one colour group over the whole strip
-    assert proto.build_segment_content(whole, segment_count=15) == [H("330515010a141e0000000000ff7f0000000000a2")]
-    # distinct colours -> one frame each, first-seen order; None leaves a segment untouched
-    two = SegmentContent(colors=((255, 0, 0), (255, 0, 0), None, (0, 0, 255)))
-    assert proto.build_segment_content(two, segment_count=15) == [
-        proto.build_segment_color([1, 2], 255, 0, 0),
-        proto.build_segment_color([4], 0, 0, 255),
-    ]
-    # optional per-segment brightness groups append after the colour frames
-    lit = SegmentContent(colors=(None, (1, 2, 3)), brightness=(None, 50))
-    assert proto.build_segment_content(lit, segment_count=15) == [
-        proto.build_segment_color([2], 1, 2, 3),
-        H("3305150232020000000000000000000000000011"),
-    ]
-    for frame in proto.build_segment_content(lit, segment_count=15):
-        _valid(frame)
-
-
-def test_build_sketch_matches_live_capture():
-    # Finger Sketch live H617A 3.02.24 (2026-07-16): Clockwise, bg white, 3 red segments 0,1,2.
-    content = SketchContent(
-        motion=0x09,
-        speed=0x33,
-        brightness=0x64,
-        background=(255, 255, 255),
-        colors=((255, 0, 0), (255, 0, 0), (255, 0, 0)),
-    )
-    frames = proto.build_sketch(content, segment_count=15)
-    assert frames == [
-        H("a300010203093364ffffff0103ff0000000102fc"),  # 01 <count 2> 03 EFFECT SPEED BRIGHT <bg> <groups>
-        H("a3ff00000000000000000000000000000000005c"),  # empty 0xFF terminator frame
-        H("33050a200300000000000000000000000000001f"),  # activation 33 05 0a <slot 0x20> <type 0x03>
-    ]
-    for frame in frames:
-        _valid(frame)
-
-
-def test_build_sketch_spanning_two_chunks_matches_live_capture():
-    """Finger Sketch live, app 7.2.10, captured 2026-07-31: Clockwise, bg white, 8 red segments.
-
-    This is the case the single-chunk vector above CANNOT test. `build_a3_multi` forces a
-    terminator whenever the body fits one chunk, so on that vector the `terminator` flag makes
-    no difference and rode along wrong: the encoder declared three frames and appended an empty
-    0xFF, where the app sends two and puts real data in the 0xFF frame. Any sketch with more
-    than about four painted segments took the wrong form.
-    """
-    colors: list[tuple[int, int, int] | None] = [None] * 16
-    for index in (0, 1, 2, 8, 9, 10, 11, 12):
-        colors[index] = (255, 0, 0)
-    content = SketchContent(
-        motion=0x09,
-        speed=0x28,
-        brightness=0x32,
-        background=(255, 255, 255),
-        colors=tuple(colors),
-    )
-    frames = proto.build_sketch(content, segment_count=15)
-    assert frames == [
-        H("a300010203092832ffffff0108ff0000000102ba"),  # 01 <count 2> 03 ... first 17 payload bytes
-        H("a3ff08090a0b0c00000000000000000000000050"),  # 0xFF frame carrying REAL data, not empty
-        H("33050a200300000000000000000000000000001f"),  # activation is unchanged by body length
-    ]
-    for frame in frames:
-        _valid(frame)
-
-
-def test_build_sketch_matches_catalogue():
-    # diy_type03.ksy Clockwise body with one sparse paint group.
-    content = SketchContent(
-        motion=0x09,
-        speed=0x33,
-        brightness=0x64,
-        background=(0, 0, 255),
-        colors=((0, 255, 0), (0, 255, 0), (0, 255, 0), None, (0, 255, 0)),
-    )
-    body = H("0933640000ff010400ff0000010204")  # EFFECT SPEED BRIGHT <bg> <groups> <segcount fill segidx...>
-    frames = proto.build_sketch(content, segment_count=15)
-    # Composition through the shared fragmenter, in the form the app actually sends. This body
-    # spans two chunks, so the framing is not free here: asserting the terminated form was an
-    # assumption rather than evidence, and it stood until a two-chunk sketch was captured on
-    # 2026-07-31. A composition test cannot pin wire behaviour; the live vectors above do that.
-    assert frames == [*proto.build_a3_multi(0x03, body), proto.build_diy_activate(0x20, 0x03)]
-    assert frames[-1] == H("33050a200300000000000000000000000000001f")  # activation 33 05 0a 20 03
-    for frame in frames:
-        _valid(frame)
-
-
-def test_build_vibrant_matches_live_capture():
-    # VALIDATED live H617A 3.02.24 (2026-07-20): Vibrant is a TYPE 0x03 gradient sharing the Finger
-    # Sketch grammar. Stops interpolate per channel in gamma-2.2 linear light to the captured 15
-    # fills; body is motion/speed/brightness/bg + 15 single-segment groups; activation 33 05 0a 84 03.
-    content = VibrantContent(stops=((255, 127, 0), (255, 255, 0), (0, 255, 0)))
-    body = H(
-        "0900640101010f"  # motion 09, speed 00, brightness 64, bg 01 01 01, group count 0f
-        "01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff0007"
-        "01eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
-    )
-    frames = proto.build_vibrant(content, segment_count=15)
-    assert frames == [*proto.build_a3_multi(0x03, body), proto.build_diy_activate(0x84, 0x03)]
-    # on-wire preamble 01 <linecount> 03: a complete 15-entry body is five A3 chunks, so linecount 0x05.
-    assert frames[0][2:5] == H("010503")
-    assert frames[-1] == H("33050a84030000000000000000000000000000bb")
-    for frame in frames:
-        _valid(frame)
-
-
-def test_build_flat_diy_matches_catalogue():
-    # diy_type04.ksy Jumping1 with the captured default palette and speed.
-    content = FlatContent(family=0x01, variant=0x00, speed=0x32, palette=_DEFAULT_PALETTE)
-    body = H("01003215ff0000ff7d00ffff0000ff000000ff00ffff8b00ff")  # FAMILY VARIANT SPEED PLEN <7 colours>
-    frames = proto.build_flat_diy(content)
-    assert frames == [*proto.build_a3_multi(0x04, body), proto.build_diy_activate(0xF0)]
-    assert frames[-1] == H("33050af0000000000000000000000000000000cc")
-    for frame in frames:
-        _valid(frame)
-
-
-def test_build_flat_diy_single_chunk_live():
-    # Live H617A: a 1-3 colour flat body fits one A3 chunk, yet the app always sends a numbered
-    # data frame + an empty 0xFF terminator (linecount 0x02), never a lone frame. Byte-pinned to
-    # captures h617a-diy-jumping1-a (Jumping1, one colour 8B00FF) and diy-crossing (Crossing,
-    # three colours); the activation slot is app-assigned (0xF0 default here).
-    jumping1 = FlatContent(family=0x01, variant=0x00, speed=0x64, palette=((0x8B, 0x00, 0xFF),))
-    assert proto.build_flat_diy(jumping1) == [
-        H("a300010204010064038b00ff00000000000000b6"),
-        H("a3ff00000000000000000000000000000000005c"),
-        H("33050af0000000000000000000000000000000cc"),
-    ]
-    crossing = FlatContent(
-        family=0x0A, variant=0x00, speed=0x64, palette=((0xFF, 0, 0), (0xFF, 0x7D, 0), (0xFF, 0xFF, 0))
-    )
-    assert proto.build_flat_diy(crossing) == [
-        H("a3000102040a006409ff0000ff7d00ffff0000be"),
-        H("a3ff00000000000000000000000000000000005c"),
-        H("33050af0000000000000000000000000000000cc"),
-    ]
-    for frame in proto.build_flat_diy(jumping1) + proto.build_flat_diy(crossing):
-        _valid(frame)
-
-
-def test_build_combo_matches_catalogue():
-    # diy_type04.ksy Combo with two captured family/variant pairs.
-    content = ComboContent(variant=0x00, speed=0x32, palette=_DEFAULT_PALETTE, effects=((0x00, 0x00), (0x03, 0x03)))
-    # FF <var> <speed> is not pinned by CAT (defaults shown); the tail from PLEN onward is the worked example.
-    body = H("ff003215ff0000ff7d00ffff0000ff000000ff00ffff8b00ff0400000303")
-    frames = proto.build_combo(content)
-    assert frames == [*proto.build_a3_multi(0x04, body), proto.build_diy_activate(0xF0)]
-    # CAT worked example ends 04 00 00 03 03 00 on the wire: seqlen, both pairs, then one a3 zero-pad byte.
-    assert frames[-2][13:19] == H("040000030300")
-    assert frames[-1] == H("33050af0000000000000000000000000000000cc")
-    for frame in frames:
-        _valid(frame)
-
-
-def test_build_combo_matches_current_ios_capture():
-    content = ComboContent(
-        speed=0x33,
-        palette=((255, 0, 0),),
-        effects=((0x00, 0x00), (0x01, 0x00), (0x03, 0x03), (0x08, 0x09)),
-    )
-    body = H("ff003303ff0000080000010003030809")
-    frames = proto.build_combo(content, slot=0xEF)
-    assert frames == [*proto.build_a3_multi(0x04, body), H("33050aef000000000000000000000000000000d3")]
-    for frame in frames:
-        _valid(frame)
-
-
-def test_build_combo_matches_direct_f0_probe():
-    content = ComboContent(
-        speed=0x33,
-        palette=((255, 0, 0), (0, 0, 255)),
-        effects=((0x00, 0x00), (0x03, 0x03)),
-    )
-    assert proto.build_combo(content) == [
-        H("a300010204ff003306ff00000000ff0400000369"),
-        H("a3ff03000000000000000000000000000000005f"),
-        H("33050af0000000000000000000000000000000cc"),
-    ]
-
-
-def test_build_custom_effect_dispatches_each_kind():
-    seg = SegmentContent(colors=(None, None, (10, 20, 30)))
-    assert proto.build_custom_effect(seg, segment_count=15) == [H("330515010a141e00000000000400000000000026")]
-    sketch = SketchContent(colors=((0, 255, 0),))
-    assert proto.build_custom_effect(sketch, segment_count=15) == proto.build_sketch(sketch, segment_count=15)
-    vibrant = VibrantContent(stops=((255, 0, 0), (0, 0, 255)))
-    assert proto.build_custom_effect(vibrant, segment_count=15) == proto.build_vibrant(vibrant, segment_count=15)
-    flat = FlatContent(family=0x01, variant=0x00, palette=((0xFF, 0, 0),))
-    assert proto.build_custom_effect(flat, segment_count=15) == proto.build_flat_diy(flat)
-    combo = ComboContent(palette=((0xFF, 0, 0),), effects=((0x00, 0x00),))
-    assert proto.build_custom_effect(combo, segment_count=15) == proto.build_combo(combo)
-    with pytest.raises(proto.EffectValidationError):
-        proto.build_custom_effect(UnknownContent(kind="mystery", raw={}), segment_count=15)
-
-
 def test_constants():
     assert proto.STATE_QUERY == H("AA010000000000000000000000000000000000AB")
     assert proto.BRIGHTNESS_QUERY == H("AA040000000000000000000000000000000000AE")
     assert proto.COLOR_MODE_QUERY == H("AA050000000000000000000000000000000000AF")
     assert proto.FW_QUERY == H("AA060000000000000000000000000000000000AC")
     assert proto.HW_QUERY == H("AA070300000000000000000000000000000000AE")
-    assert proto.SLEEP_TIMER_QUERY == H("AA110000000000000000000000000000000000BB")
-    assert proto.WAKEUP_TIMER_QUERY == H("AA120000000000000000000000000000000000B8")
-    assert proto.SCHEDULE_TIMER_QUERY == H("AA23000000000000000000000000000000000089")
     assert proto.KEEP_ALIVE == proto.STATE_QUERY
     assert (proto.COMMAND_HEADER, proto.STATUS_HEADER) == (0x33, 0xAA)
     assert (proto.POWER_PACKET_TYPE, proto.BRIGHTNESS_PACKET_TYPE, proto.COLOR_PACKET_TYPE) == (0x01, 0x04, 0x05)
@@ -833,7 +606,7 @@ def test_build_music_params_a3_writes_derived_offsets():
 
 def test_build_music_params_a3_palette_guard_and_overlay():
     # A palette whose length differs from the captured colour count is rejected so offsets never shift.
-    with pytest.raises(EffectValidationError):
+    with pytest.raises(ValueError):
         proto.build_music_params_a3(0x32, {}, palette=[(1, 2, 3)])
     # A correctly-sized palette overwrites only the RGB region, leaving the params/tail verbatim.
     palette = [(1, 2, 3)] * proto._MUSIC_PARAM_COUNT[0x32]
@@ -877,9 +650,9 @@ def test_static_readback_carries_no_colour():
 
 
 def test_parse_direct_diy_slot_readback():
-    parsed = _parse_color(bytes([0x0A, proto.AUTHORED_DIY_SLOT]))
+    parsed = _parse_color(bytes([0x0A, 0xF0]))
     assert parsed.mode is proto.ParsedMode.DIY
-    assert parsed.diy_slot == proto.AUTHORED_DIY_SLOT
+    assert parsed.diy_slot == 0xF0
 
 
 def test_parse_music_calm_only_for_rhythm():
@@ -896,114 +669,3 @@ def test_parse_music_calm_only_for_rhythm():
 def test_parse_padded_scene_and_unknown_mode():
     assert _parse_color(bytes([0x04, 0x9D, 0x08, 0x00, 0x00])).effect == "candy"
     assert _parse_color(bytes([0x99, 0x01, 0x02])) == proto.ParsedColorModeResponse()
-
-
-W = proto.Weekday
-
-
-def test_timer_repeat():
-    # Mon=bit0 .. Sun=bit6; empty = one-time (0x80), every weekday = every day (0x00), else 0x80|mask.
-    assert proto.timer_repeat() == proto.TIMER_REPEAT_ONCE == 0x80  # fire once
-    assert proto.timer_repeat([W.TUE]) == 0x82  # Tue-only
-    assert proto.timer_repeat([W.MON, W.TUE]) == 0x83  # Mon+Tue
-    assert proto.timer_repeat([W.MON]) == 0x81
-    assert proto.timer_repeat([W.SUN]) == 0xC0  # 0x80 | (1 << 6)
-    assert proto.timer_repeat(list(W)) == 0x00  # every day (app sends 0x00, not 0xff)
-    assert proto.timer_repeat([W.TUE, W.TUE]) == 0x82  # duplicates collapse
-    for bad in ([7], [-1]):
-        with pytest.raises(ValueError):
-            proto.timer_repeat(bad)
-
-
-def test_parse_timer_repeat():
-    assert proto.parse_timer_repeat(0x80) == frozenset()  # one-time
-    assert proto.parse_timer_repeat(0x82) == frozenset({W.TUE})
-    assert proto.parse_timer_repeat(H("82")[0]) == frozenset({W.TUE})  # raw repeat byte 0x82 -> Tue
-    assert proto.parse_timer_repeat(0x83) == frozenset({W.MON, W.TUE})
-    assert proto.parse_timer_repeat(0x00) == frozenset(W)  # every day (app's canonical form)
-    assert proto.parse_timer_repeat(0xFF) == frozenset(W)  # tolerated alias -> re-encodes to 0x00
-    for byte in (0x00, 0x80, 0x81, 0x82, 0x83, 0xC0):
-        assert proto.timer_repeat(proto.parse_timer_repeat(byte)) == byte  # round-trip
-
-
-def test_timer_schedule():
-    # slot0 enabled+on 06:00 one-time (spec cross-check 33 23 00 81 06 00 80).
-    assert proto.build_timer_schedule(0, True, True, 6, 0, []) == H("3323008106008000000000000000000000000017")
-    assert proto.build_timer_schedule(0, True, True, 6, 0, [W.TUE]) == H("3323008106008200000000000000000000000015")
-    assert proto.build_timer_schedule(1, True, False, 22, 30, [W.MON, W.TUE]) == H(
-        "33230180161e830000000000000000000000001a"
-    )
-    assert proto.build_timer_schedule(3, True, True, 7, 15, list(W)) == H("33230381070f000000000000000000000000009a")
-    assert proto.build_timer_schedule(2, False, False, 0, 0, []) == H("3323020000008000000000000000000000000092")
-    clamp = proto.build_timer_schedule(0, True, True, 25, 61, [])  # hour/minute clamp to 23/59
-    assert (clamp[4], clamp[5]) == (23, 59)
-    _valid(clamp)
-    for bad in (-1, 4, 9):
-        with pytest.raises(ValueError):
-            proto.build_timer_schedule(bad, True, True, 6, 0, [])
-
-
-def test_timer_sleep():
-    assert proto.build_timer_sleep(True, 50, 30) == H("331101321e00000000000000000000000000000f")
-    # enable=1, startBri clamps 5->10, closeMin=200, curMin=7.
-    assert proto.build_timer_sleep(True, 5, 200, 7) == H("3311010ac80700000000000000000000000000e6")
-    assert proto.build_timer_sleep(False, 150, 300)[2:6] == bytes([0, 100, 255, 0])  # enable/bri/close clamp
-    _valid(proto.build_timer_sleep(True, 50, 30))
-
-
-def test_timer_wakeup():
-    # enable=1, endBri=80, 07:30, repeat Mon-Fri (0x9f), duration=20.
-    assert proto.build_timer_wakeup(True, 80, 7, 30, [W.MON, W.TUE, W.WED, W.THU, W.FRI], 20) == H(
-        "33120150071e9f140000000000000000000000e2"
-    )
-    # endBri 5->10, hour 25->23, minute 61->59, repeat one-time (0x80), duration 100->60.
-    assert proto.build_timer_wakeup(True, 5, 25, 61, [], 100) == H("3312010a173b803c0000000000000000000000ba")
-    assert proto.build_timer_wakeup(True, 50, 6, 0)[7] == 10  # duration default clamps up to 10
-    _valid(proto.build_timer_wakeup(True, 80, 7, 30, [W.SAT, W.SUN], 30))
-
-
-def test_poweroff_memory():
-    assert proto.build_poweroff_memory(True) == H("3341010000000000000000000000000000000073")
-    assert proto.build_poweroff_memory(False) == H("3341000000000000000000000000000000000072")
-
-
-def test_parse_timer_schedule():
-    p = proto.parse_timer_schedule(bytes([0x81, 6, 0, 0x80]))
-    assert (p.enabled, p.on_action, p.hour, p.minute, p.repeat_days) == (True, True, 6, 0, frozenset())
-    p = proto.parse_timer_schedule(bytes([0x80, 22, 30, 0x83]))
-    assert (p.enabled, p.on_action, p.repeat_days) == (True, False, frozenset({W.MON, W.TUE}))
-    assert proto.parse_timer_schedule(bytes([0x00, 0, 0, 0x80])).enabled is False
-    with pytest.raises(ValueError):
-        proto.parse_timer_schedule(bytes([0x81, 6, 0]))
-
-
-def test_parse_timer_schedule_table():
-    # Real aa 23 reply captured live: 0xff prefix + four 4-byte slot records.
-    slots = proto.parse_timer_schedule_table(bytes.fromhex("ff800c17c0810910808100008081000080"))
-    assert len(slots) == 4
-    assert (slots[0].enabled, slots[0].on_action, slots[0].hour, slots[0].minute) == (True, False, 12, 23)
-    assert (slots[1].enabled, slots[1].on_action, slots[1].hour, slots[1].minute) == (True, True, 9, 16)
-    assert all(s.enabled for s in slots)
-    # tolerates a body without the 0xff prefix
-    assert len(proto.parse_timer_schedule_table(bytes.fromhex("810600808100008081000080810000ff"))) == 4
-
-
-def test_parse_timer_sleep_and_wakeup():
-    s = proto.parse_timer_sleep(bytes([1, 50, 30, 7]))
-    assert (s.enabled, s.start_brightness, s.close_minutes, s.current_minutes) == (True, 50, 30, 7)
-    assert proto.parse_timer_sleep(bytes([0, 10, 5])).current_minutes == 0  # curMin optional
-    with pytest.raises(ValueError):
-        proto.parse_timer_sleep(bytes([1, 50]))
-    w = proto.parse_timer_wakeup(bytes([1, 80, 7, 30, 0x9F, 20]))
-    assert (w.enabled, w.end_brightness, w.hour, w.minute, w.duration_minutes) == (True, 80, 7, 30, 20)
-    assert w.repeat_days == frozenset({W.MON, W.TUE, W.WED, W.THU, W.FRI})
-    with pytest.raises(ValueError):
-        proto.parse_timer_wakeup(bytes([1, 80, 7, 30, 0x9F]))
-
-
-def test_parse_poweroff_memory():
-    p = proto.parse_poweroff_memory(bytes([1, 2]))
-    assert (p.enabled, p.mode) == (True, 2)
-    assert proto.parse_poweroff_memory(bytes([0])) == proto.ParsedPowerOffMemory(enabled=False, mode=None)
-    with pytest.raises(ValueError):
-        proto.parse_poweroff_memory(b"")

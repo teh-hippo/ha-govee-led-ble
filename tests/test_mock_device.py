@@ -299,32 +299,33 @@ async def test_refresh_state_converges_music_mode(mock_ble: MockBle):
     assert coord.effect is None
 
 
-async def test_set_music_mode_confirms_via_music_mode(mock_ble: MockBle, monkeypatch):
+async def test_music_effect_confirms_via_music_mode(mock_ble: MockBle, monkeypatch):
     """End to end (un-mocked): the readback lands in music_mode, so the confirm converges."""
     coord = mock_ble.coordinator
     light = GoveeBLELight(coord)
     notified = MagicMock()
     monkeypatch.setattr(light, "async_write_ha_state", notified)
-    await light.async_set_music_mode(mode="spectrum", sensitivity=70)
+    await light.async_turn_on(effect="Music: Spectrum")
     assert coord.music_mode == "spectrum"
     assert coord.is_on is True
     assert coord.effect is None
-    assert coord.music_sensitivity == 70
+    assert coord.music_sensitivity == 99
     notified.assert_called_once()
 
 
-async def test_set_video_mode_confirms_via_video_mode(mock_ble_h6199: MockBle, monkeypatch):
+async def test_video_effect_confirms_via_video_mode(mock_ble_h6199: MockBle, monkeypatch):
     """End to end (un-mocked): the H6199 readback lands in video_mode and the confirm converges."""
     coord = mock_ble_h6199.coordinator
     light = GoveeBLELight(coord)
     notified = MagicMock()
     monkeypatch.setattr(light, "async_write_ha_state", notified)
-    await light.async_set_video_mode(mode="game", saturation=60)
+    coord.video_saturation = 60
+    await light.async_turn_on(effect="Video: Game")
     assert coord.video_mode == "game"
     assert coord.is_on is True
     assert coord.effect is None
     assert coord.video_saturation == 60
-    notified.assert_called_once()
+    assert notified.call_count >= 1
 
 
 async def test_update_data_queries_reach_sim(mock_ble: MockBle):

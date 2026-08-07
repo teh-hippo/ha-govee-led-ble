@@ -60,23 +60,13 @@ def _make_coord(**ov) -> MagicMock:
         music_sensitivity=100,
         music_calm=False,
         music_color=None,
-        music_separation_point=1,
-        music_separation_gradient=True,
-        music_hopping_brightness=50,
-        music_piano_key_count=15,
-        music_fountain_direction="clockwise",
-        music_daynight_segments=1,
-        music_daynight_speed=10,
         segment_colors=[(255, 255, 255)] * 15,
-        active_custom_id=None,
         diy_slot=None,
         color_mode=None,
         scene_speed_scene_code=None,
         scene_speed_index=None,
-        _owned_diy_effect_id=None,
         music_mode="off",
         video_mode="off",
-        custom_effects={},
         data={},
     )
     d |= ov
@@ -89,17 +79,11 @@ def _make_coord(**ov) -> MagicMock:
     c.send_command = AsyncMock()
     c._control_lock = asyncio.Lock()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
-    c.resolve_custom = MagicMock(return_value=None)
-    c.is_custom_effect_supported = MagicMock(return_value=True)
-    c.custom_effect_display_names = MagicMock(return_value=[])
-    c.custom_effect_index = MagicMock(return_value={})
-    c.quarantined_custom_effect_index = MagicMock(return_value={})
     c.unknown_scene_code = None
 
     def _enter_static_mode() -> None:
-        c.effect = c.active_custom_id = None
+        c.effect = None
         c.diy_slot = None
-        c._owned_diy_effect_id = None
         c.music_mode = c.video_mode = "off"
 
     c._enter_static_mode = MagicMock(side_effect=_enter_static_mode)
