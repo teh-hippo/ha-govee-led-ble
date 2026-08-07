@@ -25,6 +25,12 @@ from .generated_protocol_adapter import (
     build_colour_temperature as _build_generated_colour_temperature,
 )
 from .generated_protocol_adapter import (
+    build_h617a_diy as _build_generated_h617a_diy,
+)
+from .generated_protocol_adapter import (
+    build_h617a_scene as _build_generated_h617a_scene,
+)
+from .generated_protocol_adapter import (
     build_h6199_relative_brightness as _build_generated_relative_brightness,
 )
 from .generated_protocol_adapter import (
@@ -271,8 +277,7 @@ def parse_static_write(packet: bytes) -> ParsedStaticWrite | None:
 
 
 def build_scene(scene_id: int) -> bytes:
-    # Scene id is a fixed 2-byte little-endian field (validated live).
-    return build_packet(0x33, 0x05, [0x04, *scene_id.to_bytes(2, "little")])
+    return _build_generated_h617a_scene(scene_id)
 
 
 def _a3_frame(index: int, chunk: bytes) -> bytes:
@@ -404,10 +409,7 @@ def build_diy_activate(slot: int, type_byte: int | None = None) -> bytes:
     ``slot`` is app-assigned. Finger Sketch appends its captured type byte; the other
     current builders omit it.
     """
-    params = [COLOR_MODE_DIY, slot]
-    if type_byte is not None:
-        params.append(type_byte)
-    return build_packet(0x33, 0x05, params)
+    return _build_generated_h617a_diy(slot, type_byte)
 
 
 def _group_indices[T](values: Iterable[T | None], *, start: int) -> list[tuple[T, list[int]]]:

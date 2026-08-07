@@ -249,6 +249,34 @@ def build_h6199_scene(scene_code: int, music_code: int = 0) -> bytes:
     return _serialize_xor(root)
 
 
+def build_h617a_scene(scene_code: int) -> bytes:
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.multi
+    multi = _child(CommandWrite.MultiCmd, root)
+    multi.sub = CommandWrite.MultiSub.scene
+    detail = _child(CommandWrite.SceneActivate, multi)
+    detail.code = max(0, min(0xFFFF, scene_code))
+    detail.scene_type = 0
+    multi.sub_body = detail
+    root.body = multi
+    return _serialize_xor(root)
+
+
+def build_h617a_diy(slot: int, type_byte: int | None = None) -> bytes:
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.multi
+    multi = _child(CommandWrite.MultiCmd, root)
+    multi.sub = CommandWrite.MultiSub.diy
+    detail = _child(GoveeCommon.DiySelector, multi)
+    detail.slot = max(0, min(255, slot))
+    detail.type_byte = max(0, min(255, type_byte or 0))
+    multi.sub_body = detail
+    root.body = multi
+    return _serialize_xor(root)
+
+
 def build_h6199_video(
     full_screen: bool,
     game_mode: bool,
