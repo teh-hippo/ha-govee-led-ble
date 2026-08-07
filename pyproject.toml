@@ -49,6 +49,8 @@ module = [
     "bleak.*",
     "bleak_retry_connector.*",
     "homeassistant.*",
+    "kaitaistruct",
+    "kaitaistruct.*",
     "pytest_homeassistant_custom_component.*",
     # pymobiledevice3 is a uv TOOL, deliberately not a project dependency: only the harness
     # needs it, it never ships with the integration, and adding it here would drag a large

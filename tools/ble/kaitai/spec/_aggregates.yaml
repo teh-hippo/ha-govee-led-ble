@@ -292,9 +292,9 @@
   - 4
   - 5
   - 19
-- id: h6199_scene_class_has_three_values
+- id: h6199_scene_music_codes_vary
   cases: h6199_scene_*
-  collect: body.detail.scene_class
+  collect: body.detail.music_code
   distinct_at_least: 3
 - id: h6199_effect_num_blocks_varies
   cases: h6199_effect_scene_*

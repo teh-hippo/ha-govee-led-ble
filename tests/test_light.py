@@ -177,14 +177,13 @@ async def test_turn_on_scene_reuses_only_that_scenes_speed(light, mock_coordinat
     co._sync_scene_speed.assert_called_once_with("glacier", speed_index=0)
 
 
-async def test_h6199_scene_uses_its_own_activation_frame(h6199_light, mock_h6199_coordinator):
-    """Applying a scene here used to send the H617A frame, which differs at the kind byte."""
+async def test_h6199_scene_disables_linked_music(h6199_light, mock_h6199_coordinator):
     co = mock_h6199_coordinator
     co.is_on = True
     await h6199_light.async_turn_on(effect="sunrise")
     sent = [call.args[0] for call in co.send_command.call_args_list]
     assert sent == proto.build_h6199_scene(SCENES["sunrise"].code)
-    assert sent != proto.build_scene_multi("", SCENES["sunrise"].code, 0)
+    assert sent[0][5:7] == b"\x00\x00"
     assert co.effect == "sunrise"
 
 

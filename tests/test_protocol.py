@@ -256,8 +256,9 @@ def test_scene_multi():
     assert (pkts[-1][3], pkts[-1][4]) == (0x73, 0x08)
 
 
-def test_build_h6199_scene_matches_current_ios_captures():
-    assert proto.build_h6199_scene(0) == [H("3305040000010000000000000000000000000033")]
+def test_build_h6199_scene_disables_linked_music():
+    assert proto.build_h6199_scene(0) == [H("3305040000000000000000000000000000000032")]
+    assert proto.build_h6199_scene(16182, 2) == [H("330504363f020000000000000000000000000039")]
 
 
 def test_build_a3_multi():

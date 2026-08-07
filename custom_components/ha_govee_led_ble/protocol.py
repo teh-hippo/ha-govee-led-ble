@@ -373,9 +373,11 @@ def build_scene_multi(
     return [*build_a3_multi(scene_type, payload), build_scene(scene_code)]
 
 
-def build_h6199_scene(scene_code: int) -> list[bytes]:
-    """Build one H6199 activation for a scene already stored by the light."""
-    return [build_packet(0x33, 0x05, [0x04, *scene_code.to_bytes(2, "little"), 0x01])]
+def build_h6199_scene(scene_code: int, music_code: int = 0) -> list[bytes]:
+    """Build one H6199 activation with linked scene music disabled by default."""
+    scene = _clamp(scene_code, 0, 0xFFFF).to_bytes(2, "little")
+    music = _clamp(music_code, 0, 0xFFFF).to_bytes(2, "little")
+    return [build_packet(0x33, 0x05, [0x04, *scene, *music])]
 
 
 # --- Custom-effect content encoders -------------------------------------------------------------

@@ -85,7 +85,7 @@ def _scene_packets(profile: ModelProfile, scene: SceneEntry, *, speed_index: int
     if profile.scene_source == "builtin":
         if scene.param:
             raise ValueError("H6199 uploaded scenes are not supported")
-        return build_h6199_scene(scene.code)
+        return build_h6199_scene(scene.code, scene.music_code)
     return build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed, speed_index=speed_index)
 
 

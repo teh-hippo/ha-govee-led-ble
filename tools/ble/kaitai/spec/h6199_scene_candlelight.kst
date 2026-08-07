@@ -16,6 +16,6 @@ asserts:
   expected: 4
 - actual: body.detail.scene_id
   expected: 9
-- actual: body.detail.scene_class
+- actual: body.detail.music_code
   expected: 1
 fixture_sha256: 4ed04cd7910e9f72df9baf743228496d6c3d031470eec4b1c7e67cfa522ee5c2

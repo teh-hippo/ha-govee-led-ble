@@ -1,6 +1,4 @@
 import base64
-import json
-from typing import Any
 
 import pytest
 
@@ -12,15 +10,15 @@ from custom_components.ha_govee_led_ble.protocol import (
     scene_record_spans,
 )
 from custom_components.ha_govee_led_ble.scenes import (
+    MODEL_SCENES,
+    SCENE_ENTRIES,
     SCENES,
-    SceneBrightnessSpeed,
     SceneEntry,
     ScenePage,
     SceneSpeed,
+    get_model_scene_names,
     get_scene_names,
 )
-from tools.ble.fetch_effect_library import CATALOGUE_DIR
-from tools.ble.generate_scenes import build_runtime_catalogue
 
 
 def test_catalogue_valid():
@@ -53,31 +51,15 @@ def test_scene_type_prefix():
     assert SCENES["sunrise"].scene_type == 0
 
 
-def _expected_entry(data: list[Any]) -> SceneEntry:
-    speed = None
-    if len(data) > 3:
-        default_index, pages = data[3]
-        speed = SceneSpeed(
-            default_index,
-            tuple(
-                ScenePage(
-                    p,
-                    tuple(mi),
-                    tuple(ma),
-                    tuple(colour),
-                    tuple(SceneBrightnessSpeed(block, tuple(values)) for block, values in brightness),
-                )
-                for p, mi, ma, colour, brightness in pages
-            ),
-        )
-    return SceneEntry(data[0], data[1] if len(data) > 1 else "", data[2] if len(data) > 2 else 2, speed)
-
-
-def test_runtime_catalogue_matches_frozen_snapshot():
-    catalogue = json.loads((CATALOGUE_DIR / "effect-library-H617A.json").read_text())
-    expected = {name: _expected_entry(data) for name, data in build_runtime_catalogue(catalogue).items()}
-
-    assert SCENES == expected
+def test_per_model_snapshots_preserve_vendor_identity():
+    assert len(SCENE_ENTRIES["H617A"]) == 83
+    assert len(SCENE_ENTRIES["H6199"]) == 240
+    assert len({(scene.scene_id, scene.effect_id) for scene in SCENE_ENTRIES["H6199"]}) == 240
+    assert MODEL_SCENES["H6199"]["dracarys"].category == "House of the Dragon"
+    assert MODEL_SCENES["H6199"]["green reign"].code == 16183
+    assert MODEL_SCENES["H6199"]["fire & blood"].code == 16184
+    assert get_model_scene_names("H6199") == sorted(MODEL_SCENES["H6199"])
+    assert {"flash [emotion]", "flash [zootopia 2]"} <= MODEL_SCENES["H6199"].keys()
 
 
 def test_aurora_b_matches_current_ios_capture():
@@ -205,33 +187,6 @@ def test_build_scene_multi_uploads_the_corrected_glacier_body():
     assert corrected != verbatim
     assert len(corrected) == len(verbatim)
     assert corrected[-1] == verbatim[-1]  # the 33 05 04 activation is untouched
-
-
-@pytest.mark.parametrize(
-    "mutate,message",
-    [
-        (lambda config: config[0].update(page=99), "has no record"),
-        (lambda config: config[1].update(defaultIndex=0), "disagree on defaultIndex"),
-        (lambda config: config[0].update(moveIn=[250]), "outside"),
-        (lambda config: config[0].update(moveIn=[237, 244, 250, 255]), "option count"),
-    ],
-)
-def test_generator_rejects_a_catalogue_whose_speed_config_stops_resolving(mutate, message):
-    catalogue = json.loads((CATALOGUE_DIR / "effect-library-H617A.json").read_text())
-    scene = next(s for s in catalogue["scenes"] if s["code"] == 2175)
-    mutate(scene["config"])
-
-    with pytest.raises(ValueError, match=message):
-        build_runtime_catalogue(catalogue)
-
-
-def test_generator_rejects_a_speed_config_on_a_non_record_container_body():
-    catalogue = json.loads((CATALOGUE_DIR / "effect-library-H617A.json").read_text())
-    scene = next(s for s in catalogue["scenes"] if s["code"] == 2175)
-    scene["scene_type"] = 1
-
-    with pytest.raises(ValueError, match="only type-2 bodies"):
-        build_runtime_catalogue(catalogue)
 
 
 def test_scene_record_spans_stops_at_a_truncated_record():

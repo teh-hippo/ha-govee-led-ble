@@ -80,8 +80,8 @@ types:
     seq:
       - id: scene_id
         type: u2le
-      - id: scene_class
-        type: u1
+      - id: music_code
+        type: u2le
   video_body:
     seq:
       - id: region

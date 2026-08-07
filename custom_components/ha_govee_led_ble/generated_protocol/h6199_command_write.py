@@ -672,7 +672,7 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
 
         def _read(self):
             self.scene_id = self._io.read_u2le()
-            self.scene_class = self._io.read_u1()
+            self.music_code = self._io.read_u2le()
             self._dirty = False
 
 
@@ -683,7 +683,7 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
         def _write__seq(self, io=None):
             super(H6199CommandWrite.SceneBody, self)._write__seq(io)
             self._io.write_u2le(self.scene_id)
-            self._io.write_u1(self.scene_class)
+            self._io.write_u2le(self.music_code)
 
 
         def _check(self):
