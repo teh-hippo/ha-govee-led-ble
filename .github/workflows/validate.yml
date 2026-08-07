@@ -76,7 +76,7 @@ jobs:
       - uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
         with:
           python-version: "3.14"
-      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+      - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
       - run: uv sync --locked
