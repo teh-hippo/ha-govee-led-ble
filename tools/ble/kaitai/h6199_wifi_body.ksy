@@ -21,61 +21,61 @@ doc: |
 seq:
   - id: ssid_len
     type: u1
-    doc: '[CONFIRMED_LIVE] length in bytes of the SSID that follows, at body offset 0'
+    doc: 'length in bytes of the SSID that follows, at body offset 0'
   - id: ssid
     size: ssid_len
     type: str
     encoding: UTF-8
-    doc: '[CONFIRMED_LIVE] network name, length-prefixed rather than terminated'
+    doc: 'network name, length-prefixed rather than terminated'
   - id: password_len
     type: u1
     doc: |
-      [CONFIRMED_LIVE] length in bytes of the passphrase that follows. An open network is
+      length in bytes of the passphrase that follows. An open network is
       sent as a single zero here with no passphrase bytes, which is why this cannot be read
       as a fixed-width field.
   - id: password
     size: password_len
     type: str
     encoding: UTF-8
-    doc: '[CONFIRMED_LIVE] passphrase in clear'
+    doc: 'passphrase in clear'
   - id: run_mode
     type: u1
     doc: |
-      [INFERRED] app environment selector, captured as 0x00. Read in the vendor app as a
+      app environment selector, captured as 0x00. Read in the vendor app as a
       build-time constant choosing between release and internal backends rather than
       anything per-device. No capture varies it, because no capture has been taken from a
       non-release build, so it stays inferred.
   - id: tz_hour
     type: u1
     doc: |
-      [CONFIRMED_LIVE] whole hours of the phone's UTC offset. Captured as 10 in a UTC+10
+      whole hours of the phone's UTC offset. Captured as 10 in a UTC+10
       zone, which is what checked the alignment of this whole run of single bytes rather
       than merely their shape: a layout off by one here would have put 10 somewhere else.
   - id: iot_version
     type: u1
-    doc: '[INFERRED] IoT backend version selector, captured as 0x00 and never varied; read in the vendor app as a build constant echoed later as an HTTP header'
+    doc: 'IoT backend version selector, captured as 0x00 and never varied; read in the vendor app as a build constant echoed later as an HTTP header'
   - id: tz_minute
     type: u1
     doc: |
-      [CONFIRMED_LIVE] remaining minutes of the phone's UTC offset, captured as 0. Separate
+      remaining minutes of the phone's UTC offset, captured as 0. Separate
       from tz_hour and NOT adjacent to it, which is the detail a layout guessed from field
       names would get wrong: iot_version sits between them.
   - id: api_len
     type: u2
-    doc: '[CONFIRMED_LIVE] length of the endpoint URL, BIG-endian, in a frame family that is otherwise little-endian'
+    doc: 'length of the endpoint URL, BIG-endian, in a frame family that is otherwise little-endian'
   - id: api
     size: api_len
     type: str
     encoding: UTF-8
     doc: |
-      [CONFIRMED_LIVE] the cloud endpoint the device is told to use, captured as
+      the cloud endpoint the device is told to use, captured as
       https://device.govee.com. The app never sends a free-form value: it selects one of six
       compiled-in URLs using a support level the DEVICE reports over aa ab, and ours reports
       the level that selects this one. Nothing validates it, and it is not signed, so the
       field is a lever on where the device checks in even though the app never treats it as
       one.
 
-      A controlled same-length endpoint was pushed on 2026-08-06 and honoured immediately.
+      A controlled same-length endpoint was pushed on  and honoured immediately.
       The H6199 accepted a self-signed TLS certificate and sent six empty-body POST retries
       to /device/v1/base/config. The query carried device, SKU and Wi-Fi-version keys; their
       values are private and not fixtures. This disproves both a compiled-host replacement
@@ -84,14 +84,14 @@ seq:
   - id: matter_wifi_flag
     type: u1
     doc: |
-      [INFERRED] captured as 0x00 and never varied. Read in the vendor app as set only by
+      captured as 0x00 and never varied. Read in the vendor app as set only by
       the Matter pairing flow, and this SKU has no Matter, so it is expected to be inert
       here. Named rather than left opaque because the write side names it and the value is
       consistent with that reading; it is inferred because no H6199 capture varies it.
   - id: security_type
     type: u1
     doc: |
-      [INFERRED] captured as 0x00. Read in the vendor app as meaning "work it out yourself"
+      captured as 0x00. Read in the vendor app as meaning "work it out yourself"
       for a network the app picked from a scan, with non-zero values only for a manually
       typed hidden SSID. Our captures were manual entry forced by an offline phone and still
       carried 0x00, so the value is consistent with the reading but not isolated by it.

@@ -26,7 +26,7 @@ doc: |
   any SKU is adjustable, so no capture on any device can isolate these fields by moving
   a control, and waiting for one would wait forever. A catalogue differential is not a
   weaker substitute for a capture here, it is the only instrument that can reach these
-  bytes. That is also why every structural field below is [INFERRED] and cannot be
+  bytes. That is also why every structural field below is and cannot be
   promoted by device work.
 
   THE EVIDENCE THAT REMAINS IN-REPO. Two sources, both kept beside this spec. First,
@@ -36,7 +36,7 @@ doc: |
   type-1 fixtures. Their whole job is breadth that no H617A param can supply: their
   palette_counts are 1, 2, 3, 4, 5, 6, 7 and 10.
 
-  A LARGER CORPUS WAS REMOVED ON 2026-07-28. A frozen 27-SKU third-party archive
+  A LARGER CORPUS WAS REMOVED ON . A frozen 27-SKU third-party archive
   previously backed the numbers here and let three of these fields carry
   CONFIRMED_LIVE. It was retired along with the sweep that read it, and those fields
   were downgraded in the same change rather than left resting on prose. What it showed
@@ -83,7 +83,7 @@ doc: |
   tests/test_protocol_wire_parity.py), so they prove self-consistency and exact
   consumption, not wire truth. The one genuine wire datum is below.
 
-  CATALOGUE PARAM == BODY PAYLOAD HERE TOO. [CONFIRMED_LIVE 2026-07-23] A captured
+  CATALOGUE PARAM == BODY PAYLOAD HERE TOO. A captured
   Halloween application uploaded a 51-byte A3 body, which is the 3-byte A3/type
   prefix plus this 45-byte param plus 3 bytes of chunk padding, so the frozen param
   is the payload for type 1 exactly as it is for type 2 (see scene_body.ksy). This is
@@ -92,29 +92,29 @@ doc: |
   capture alone cannot show is where the field boundaries inside those bytes fall,
   and no capture on this hardware ever will, because nothing varies them.
 
-  THE FORMAT LOOKS MODEL-INDEPENDENT. [INFERRED] The two local catalogues corroborate
+  THE FORMAT LOOKS MODEL-INDEPENDENT. The two local catalogues corroborate
   at the byte level: H617A and H6199 ship byte-identical type-1 params (H617A 1173 /
   1170 against H6199 110 / 107). Cross-model generality beyond that pair was argued
-  from the 27-SKU archive retired on 2026-07-28 and is no longer reproducible in-repo,
+  from the 27-SKU archive retired on  and is no longer reproducible in-repo,
   so it stays an inference. All of this is evidence about vendor catalogue data, never
   about H6199 device behaviour, which stays out of scope here.
 seq:
   - id: header
     type: govee_common::a3_header
-    doc: '[CONFIRMED_LIVE] shared A3 body header 01 <linecount>'
+    doc: 'shared A3 body header 01 <linecount>'
   - id: scene_type
     type: u1
     valid:
       eq: 1
-    doc: '[CONFIRMED_LIVE] A3 body type byte (frame offset 2); guard fails the grammar closed on anything but type 1, mirroring scene_body.ksy which guards for type 2. Wire-true from the captured Halloween upload.'
+    doc: 'A3 body type byte (frame offset 2); guard fails the grammar closed on anything but type 1, mirroring scene_body.ksy which guards for type 2. Wire-true from the captured Halloween upload.'
   - id: config
     type: u1
     valid:
       expr: 'layout <= 1 and colour_stride == 3'
-    doc: '[INFERRED] A PACKED CONFIG BYTE, named for what it is rather than for what a pair of identical samples made it look like. Bits 0-2 are the colour-component stride in bytes, bit 3 is ignored by the vendor splitters, bits 4-6 select the record layout, and bit 7 is orthogonal to the layout dispatch (the app labels it follow-system-brightness, which is a method name and not a wire fact, so the instance below is named for the bit). Every fixture we hold is 0x83, which is stride 3 layout 0. THE DECOMPOSITION IS LOAD-BEARING, NOT DECORATIVE: the instances below are consumed by this guard and by the steps switch, so a wrong bit assignment fails the parse instead of sitting beside it in prose. That is a weaker instrument than it sounds while every sample is 0x83, because some wrong assignments still yield stride 3 layout 0; only a body with a different config byte separates the bit positions outright, and crafting a 0x93 is the cheapest way to get one. THE GUARD FAILS CLOSED ON TWO DIFFERENT THINGS FOR TWO DIFFERENT REASONS. Layout 2 and above is rejected because the vendor rejects it outright, so there is nothing to model. Stride 4 and 5 are rejected although the vendor accepts them, because they are its RGBW and RGBWW colour widths: a property of hardware that has white channels, not of this body format. This spec is the H617A''s, the H617A is stride 3, and widening it from vendor code would be inferring another model''s behaviour, which is the one move this repo does not make. Layout is not the same kind of claim: it is a property of the body, and 0x93 and 0x95 were both seen in our own retired type-1 corpus, which is why both layouts are grammar here and only one of the strides is.'
+    doc: 'A PACKED CONFIG BYTE, named for what it is rather than for what a pair of identical samples made it look like. Bits 0-2 are the colour-component stride in bytes, bit 3 is ignored by the vendor splitters, bits 4-6 select the record layout, and bit 7 is orthogonal to the layout dispatch (the app labels it follow-system-brightness, which is a method name and not a wire fact, so the instance below is named for the bit). Every fixture we hold is 0x83, which is stride 3 layout 0. THE DECOMPOSITION IS LOAD-BEARING, NOT DECORATIVE: the instances below are consumed by this guard and by the steps switch, so a wrong bit assignment fails the parse instead of sitting beside it in prose. That is a weaker instrument than it sounds while every sample is 0x83, because some wrong assignments still yield stride 3 layout 0; only a body with a different config byte separates the bit positions outright, and crafting a 0x93 is the cheapest way to get one. THE GUARD FAILS CLOSED ON TWO DIFFERENT THINGS FOR TWO DIFFERENT REASONS. Layout 2 and above is rejected because the vendor rejects it outright, so there is nothing to model. Stride 4 and 5 are rejected although the vendor accepts them, because they are its RGBW and RGBWW colour widths: a property of hardware that has white channels, not of this body format. This spec is the H617A''s, the H617A is stride 3, and widening it from vendor code would be inferring another model''s behaviour, which is the one move this repo does not make. Layout is not the same kind of claim: it is a property of the body, and 0x93 and 0x95 were both seen in our own retired type-1 corpus, which is why both layouts are grammar here and only one of the strides is.'
   - id: step_count
     type: u1
-    doc: '[INFERRED] the number of steps that follow. DOWNGRADED 2026-07-28 from CONFIRMED_LIVE when the frozen cross-SKU corpus that carried it was removed from the repo: that tag rested on 37 catalogue params, and an analysis whose input is gone is prose, not evidence. What survives in-repo is the captured Halloween body, which pins this byte at 6 and consumes exactly, plus the eight catalogue params in the type-1 fixtures, whose step_counts are 1 and 2. Two live values cannot separate a count from a fixed field, and no type-1 scene on any SKU is adjustable, so no capture on this hardware can close it either. Closing it properly needs a fresh catalogue differential or a device with adjustable type-1 scenes. Both vendor splitters multiply it and use it as the slice bound, which is consistent with a count but is code rather than wire.'
+    doc: 'the number of steps that follow. DOWNGRADED  from CONFIRMED_LIVE when the frozen cross-SKU corpus that carried it was removed from the repo: that tag rested on 37 catalogue params, and an analysis whose input is gone is prose, not evidence. What survives in-repo is the captured Halloween body, which pins this byte at 6 and consumes exactly, plus the eight catalogue params in the type-1 fixtures, whose step_counts are 1 and 2. Two live values cannot separate a count from a fixed field, and no type-1 scene on any SKU is adjustable, so no capture on this hardware can close it either. Closing it properly needs a fresh catalogue differential or a device with adjustable type-1 scenes. Both vendor splitters multiply it and use it as the slice bound, which is consistent with a count but is code rather than wire.'
   - id: steps
     type:
       switch-on: layout
@@ -123,32 +123,32 @@ seq:
         1: step_inline_colour
     repeat: expr
     repeat-expr: step_count
-    doc: '[INFERRED] step_count fixed-width records whose width the config byte selects. DOWNGRADED 2026-07-28 with step_count above: the width-1..16 solver that admitted 5 as the only fitting geometry ran over the frozen cross-SKU corpus, which is no longer in the repo. Width 5 still consumes the captured Halloween body and all eight type-1 fixtures with zero residue, so the layout-0 geometry is not in doubt for what we hold; what is gone is the breadth that made it the ONLY admissible width. The layout-1 branch is unexercised by every fixture we have and exists because the alternative was a paragraph of prose describing a record geometry, which is the one thing this repo keeps out of prose.'
+    doc: 'step_count fixed-width records whose width the config byte selects. DOWNGRADED  with step_count above: the width-1..16 solver that admitted 5 as the only fitting geometry ran over the frozen cross-SKU corpus, which is no longer in the repo. Width 5 still consumes the captured Halloween body and all eight type-1 fixtures with zero residue, so the layout-0 geometry is not in doubt for what we hold; what is gone is the breadth that made it the ONLY admissible width. The layout-1 branch is unexercised by every fixture we have and exists because the alternative was a paragraph of prose describing a record geometry, which is the one thing this repo keeps out of prose.'
   - id: palette_count
     type: u1
     if: layout == 0
-    doc: '[INFERRED] the number of palette colours that follow, layout 0 only: layout 1 carries a colour inside every record and has no palette section at all, so the byte is absent rather than zero. DOWNGRADED 2026-07-28 with the fields above when the frozen cross-SKU corpus left the repo. THE FALSIFICATION SURVIVES INTACT: the eight type-1 catalogue params kept alongside this spec take palette_count 1, 2, 3, 4, 5, 6, 7 and 10, each consuming exactly, and a constant cannot take eight values, so the rival reading of a fixed 0x04 selector stays dead. The 10 (cards_game) does the most work of the eight: being the only value above 7 it also rules out a 3-bit field. The tag drops to inferred not because the argument weakened but because its evidence is catalogue format rather than a device control being moved, and no type-1 scene on any SKU is adjustable, so no capture can promote it.'
+    doc: 'the number of palette colours that follow, layout 0 only: layout 1 carries a colour inside every record and has no palette section at all, so the byte is absent rather than zero. DOWNGRADED  with the fields above when the frozen cross-SKU corpus left the repo. THE FALSIFICATION SURVIVES INTACT: the eight type-1 catalogue params kept alongside this spec take palette_count 1, 2, 3, 4, 5, 6, 7 and 10, each consuming exactly, and a constant cannot take eight values, so the rival reading of a fixed 0x04 selector stays dead. The 10 (cards_game) does the most work of the eight: being the only value above 7 it also rules out a 3-bit field. The tag drops to inferred not because the argument weakened but because its evidence is catalogue format rather than a device control being moved, and no type-1 scene on any SKU is adjustable, so no capture can promote it.'
   - id: palette
     type: govee_common::rgb
     repeat: expr
     repeat-expr: palette_count
     if: layout == 0
-    doc: '[CONFIRMED_LIVE] the effect palette, shared govee_common::rgb, palette_count entries. The length is variable, not fixed at four, and decodes to the colours the effects show: oranges for Halloween, pinks and purples for Sweet. Present only under layout 0, for the reason given on palette_count.'
+    doc: 'the effect palette, shared govee_common::rgb, palette_count entries. The length is variable, not fixed at four, and decodes to the colours the effects show: oranges for Halloween, pinks and purples for Sweet. Present only under layout 0, for the reason given on palette_count.'
   - id: padding
     type: u1
     valid: 0
     repeat: eos
-    doc: '[CONFIRMED_LIVE] transport zero padding to the A3 chunk boundary; grammar-enforced all-zero. Wire-true from the captured Halloween upload, which padded 48 body bytes to 51.'
+    doc: 'transport zero padding to the A3 chunk boundary; grammar-enforced all-zero. Wire-true from the captured Halloween upload, which padded 48 body bytes to 51.'
 instances:
   colour_stride:
     value: 'config & 0x07'
-    doc: '[INFERRED] config bits 0-2: the width in bytes of one colour, which the vendor maps 3 to RGB, 4 to RGBW and 5 to RGBWW. Guarded to 3 on the config field, so this reads 3 in everything that parses; it is here because the guard and the layout-1 record both need to say WHICH quantity is pinned, and a magic 0x83 said nothing.'
+    doc: 'config bits 0-2: the width in bytes of one colour, which the vendor maps 3 to RGB, 4 to RGBW and 5 to RGBWW. Guarded to 3 on the config field, so this reads 3 in everything that parses; it is here because the guard and the layout-1 record both need to say WHICH quantity is pinned, and a magic 0x83 said nothing.'
   layout:
     value: '(config >> 4) & 0x07'
-    doc: '[INFERRED] config bits 4-6: the record layout selector, and the switch the steps field dispatches on. 0 is fixed 5-byte steps with one shared palette after them; 1 is per-record colour and no palette section. Bit 3 sits between the two instances and is read by neither vendor splitter, so it is deliberately not modelled: an instance for it would name a bit nothing consumes.'
+    doc: 'config bits 4-6: the record layout selector, and the switch the steps field dispatches on. 0 is fixed 5-byte steps with one shared palette after them; 1 is per-record colour and no palette section. Bit 3 sits between the two instances and is read by neither vendor splitter, so it is deliberately not modelled: an instance for it would name a bit nothing consumes.'
   brightness_flag:
     value: '(config & 0x80) != 0'
-    doc: '[INFERRED] config bit 7, named for the bit rather than for the app method that sets it, because what is established numerically is only that no layout dispatch consults it. It is what makes 0x03 and 0x83 the same layout. Nothing in this grammar reads it, which is the honest state of the evidence: it is decoded so a fixture can pin it, not because we know what it does.'
+    doc: 'config bit 7, named for the bit rather than for the app method that sets it, because what is established numerically is only that no layout dispatch consults it. It is what makes 0x03 and 0x83 the same layout. Nothing in this grammar reads it, which is the honest state of the evidence: it is decoded so a fixture can pin it, not because we know what it does.'
 types:
   step:
     doc: |
@@ -159,10 +159,10 @@ types:
     seq:
       - id: colour
         type: govee_common::rgb
-        doc: '[CONFIRMED_LIVE] the step colour, shared govee_common::rgb'
+        doc: 'the step colour, shared govee_common::rgb'
       - id: value
         type: u2
-        doc: '[INFERRED] 16-bit little-endian value at step offset 3; 5,5,5,5,5,6 across Halloween and 50 for Sweet, so it varies and is a real field. Duration or speed is the obvious reading and is NOT established, because no type-1 scene on any SKU is adjustable, so no control anywhere can be moved against it. THE SPLIT AMBIGUITY IS UNRESOLVED ON THE WIRE: the high byte is 0x00 in every step record we hold, so two independent u1 bytes fit those bytes identically, and only a device shipping a step value above 255 can decide it by observation. What has changed is that the reading is no longer chosen by analogy alone. The vendor takes bytes 0,1,2 as three separate unsigned bytes and bytes 3..4 as ONE 2-byte integer, on both the read and the write path, and its 2-byte helper writes the low byte first; so the encoder that produces these params treats this as u2le. That is code, not wire, so the tag stays inferred. It agrees with the analogy that chose it: every other multi-byte field in this family is little-endian (see status_reply::cm_scene.scene_id), and contrast status_reply::unit_count_body, which is modelled as two bytes precisely because its 16-bit reading would have to be big-endian.'
+        doc: '16-bit little-endian value at step offset 3; 5,5,5,5,5,6 across Halloween and 50 for Sweet, so it varies and is a real field. Duration or speed is the obvious reading and is NOT established, because no type-1 scene on any SKU is adjustable, so no control anywhere can be moved against it. THE SPLIT AMBIGUITY IS UNRESOLVED ON THE WIRE: the high byte is 0x00 in every step record we hold, so two independent u1 bytes fit those bytes identically, and only a device shipping a step value above 255 can decide it by observation. What has changed is that the reading is no longer chosen by analogy alone. The vendor takes bytes 0,1,2 as three separate unsigned bytes and bytes 3..4 as ONE 2-byte integer, on both the read and the write path, and its 2-byte helper writes the low byte first; so the encoder that produces these params treats this as u2le. That is code, not wire, so the tag stays inferred. It agrees with the analogy that chose it: every other multi-byte field in this family is little-endian (see status_reply::cm_scene.scene_id), and contrast status_reply::unit_count_body, which is modelled as two bytes precisely because its 16-bit reading would have to be big-endian.'
   step_inline_colour:
     doc: |
       One layout-1 record: the same 5-byte step above, followed by one inline colour of
@@ -180,7 +180,7 @@ types:
     seq:
       - id: param
         type: step
-        doc: '[INFERRED] the same 5-byte step record layout 0 uses, reused unchanged'
+        doc: 'the same 5-byte step record layout 0 uses, reused unchanged'
       - id: colour
         type: govee_common::rgb
-        doc: '[INFERRED] the per-record colour, shared govee_common::rgb because the config guard pins colour_stride to 3; a stride 4 or 5 body would carry one or two further channel bytes here and is failed closed on the config field rather than modelled'
+        doc: 'the per-record colour, shared govee_common::rgb because the config guard pins colour_stride to 3; a stride 4 or 5 body would carry one or two further channel bytes here and is failed closed on the config field rather than modelled'

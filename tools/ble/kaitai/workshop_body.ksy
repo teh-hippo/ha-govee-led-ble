@@ -20,7 +20,7 @@ doc: |
   matrix, colour-family, brightness, movement and priority differentials); captures
   are ground truth. This is a DECODE-ONLY structural spec and models no write side.
 
-  Activation (2026-07-25, live): a Workshop effect is applied by uploading this body
+  Activation (, live): a Workshop effect is applied by uploading this body
   then writing 33 05 04 91 01 02 -- colour-mode 0x04 with the u2le id 0x0191 (401) and
   a trailing 0x02. The id 401 is FIXED for every Workshop item: a newly crafted
   one-layer effect and the pre-existing five-layer Christmas both activate with it, and
@@ -38,36 +38,36 @@ seq:
   - id: header
     type: govee_common::a3_header
     doc: >
-      [CONFIRMED_LIVE] shared A3 body header 01 <linecount>. linecount is the 17-byte
+      shared A3 body header 01 <linecount>. linecount is the 17-byte
       data-chunk count and equals len/17 (02 for one layer, 03/04 for larger, 09 for
       the five-layer Christmas body); the body is zero-padded to whole 17-byte chunks.
   - id: a3_type
     contents: [0x02]
     doc: >
-      [CONFIRMED_LIVE] A3 TYPE 0x02; Workshop is always type 0x02 (raw). This is the
+      A3 TYPE 0x02; Workshop is always type 0x02 (raw). This is the
       SAME positional byte that scene_body.ksy calls `scene_type` (reassembled-body
       offset 2); the two specs name one byte differently. It is NOT the activation
       frame's scene-type byte in command_write.ksy, which is independent -- an
       Effects Lab scene edit carries A3 type 0x02 here yet activates with 0x00.
   - id: layer_count
     type: u1
-    doc: '[CONFIRMED_LIVE] number of length-prefixed layer records that follow (1/2/5 seen).'
+    doc: 'number of length-prefixed layer records that follow (1/2/5 seen).'
   - id: layers
     type: layer_record
     repeat: expr
     repeat-expr: layer_count
-    doc: '[CONFIRMED_LIVE] layer_count length-prefixed records, emitted in creation order.'
+    doc: 'layer_count length-prefixed records, emitted in creation order.'
   - id: padding
     type: u1
     valid: 0
     repeat: eos
-    doc: '[CONFIRMED_LIVE] transport zero padding to the 17-byte A3 chunk boundary; grammar-enforced all-zero.'
+    doc: 'transport zero padding to the 17-byte A3 chunk boundary; grammar-enforced all-zero.'
 types:
   layer_record:
     doc: |
       One Workshop layer: a 1-byte length then that many record bytes. The record
       length grows only with the colour count M (record_len == 23 + 3*M), confirmed
-      byte-exact for M = 1, 2 and 3, and extended 2026-07-25 to M = 4 and M = 5 by the
+      byte-exact for M = 1, 2 and 3, and extended  to M = 4 and M = 5 by the
       Effects Lab bodies (record_len 35 and 38). The rule was also used as an advance
       PREDICTION: a hand-crafted two-colour layer was predicted to emit record_len 29
       before it was applied, and the capture matched, along with r1 = 0x00 (whole
@@ -75,8 +75,8 @@ types:
     seq:
       - id: record_len
         type: u1
-        doc: '[CONFIRMED_LIVE] r0: number of record bytes that follow this length byte (0x1a M=1, 0x1d M=2, 0x20 M=3).'
+        doc: 'r0: number of record bytes that follow this length byte (0x1a M=1, 0x1d M=2, 0x20 M=3).'
       - id: body
         type: govee_common::effect_layer
         size: record_len
-        doc: '[CONFIRMED_LIVE] the record body, constrained to record_len bytes.'
+        doc: 'the record body, constrained to record_len bytes.'

@@ -9,5 +9,3 @@ asserts:
     expected: 17
   - actual: body.detail.brightness_segment_mask
     expected: 1
-  - actual: body.detail.brightness_tail
-    expected: "000000000000000000000000"

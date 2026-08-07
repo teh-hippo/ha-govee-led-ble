@@ -13,7 +13,7 @@ doc: |
   captures are ground truth. Field meanings cross-checked against
   protocol.split_status_frame / parse_color_mode_response / parse_fw_version /
   parse_hw_version.
-  THE ANSWERING SET IS LARGER THAN THE APP REVEALS. [CONFIRMED_LIVE 2026-07-29] Every
+  THE ANSWERING SET IS LARGER THAN THE APP REVEALS. Every
   domain modelled here was found because the vendor app asks for it, which makes the list
   app-shaped rather than device-shaped. A direct sweep of 31 unqueried domains found a
   TWELFTH that answers: aa 0f returns a body whose first byte is 0x0f, i.e. query
@@ -31,7 +31,7 @@ doc: |
   aa 0f carries a non-zero body. This is the same trap that has twice nearly become a
   finding, on 0xa3 and on 0x01.
 
-  NEITHER DOES aa 26, AND THAT DISPOSES OF AN EXTERNAL CLAIM. [CONFIRMED_LIVE 2026-07-29]
+  NEITHER DOES aa 26, AND THAT DISPOSES OF AN EXTERNAL CLAIM.
   A compiled external reference lists 0x26 as a "status flags" domain, with no data format
   given, derived from cloud MQTT op.command payloads rather than from BLE and on a model it
   does not state. Queried three times here with no notification on any of them, in a burst
@@ -39,21 +39,21 @@ doc: |
   Transport numbering does not carry across. 0x25 and 0x27 were silent in the same burst,
   recorded as observation only since no prediction covered them.
 
-  aa 41 DOES NOT ANSWER ON THIS DEVICE. [CONFIRMED_LIVE 2026-07-29] Queried in the sweep
+  aa 41 DOES NOT ANSWER ON THIS DEVICE. Queried in the sweep
   and again afterwards, with no notification either time, exactly like 0x14. This matters
   because protocol.parse_poweroff_memory is shipped claiming an aa 41 reply of
   [enabled, mode]; it is marked EXPERIMENTAL with no live capture, and there is now a
   negative measurement against it on the H617A. An external fuzz of one other model reports
   0x41 as power-off memory there, which is a lead for that model and not evidence here.
 
-  SWEEP HAZARD, RECORDED AFTER THE FACT. The 2026-07-29 sweep included aa ff and aa 0e
+  SWEEP HAZARD, RECORDED AFTER THE FACT. The  sweep included aa ff and aa 0e
   before it was known that on an external model those are respectively a device that
   softlocked and needed a power cycle, and a restart register. Our reads were passive and
   the H617A answered benignly, but that was luck rather than diligence. Do not sweep 0xff
   or 0xee again, and treat any unqueried domain as write-unsafe until shown otherwise.
 
   ONE OBSERVED H617A DOMAIN IS STILL NOT MODELLED here (falls back to raw), attributed
-  on the full connect query->reply burst live 2026-07-24 (fw 3.02.24, hw 3.01.01):
+  on the full connect query->reply burst live  (fw 3.02.24, hw 3.01.01):
   0x14, which the H617A answers NOT ONCE however often it is queried, so its purpose
   is unknown and there is no reply to model. Scope that to the H617A deliberately.
   The corpus also holds two H6199 captures, and one of them does carry a single aa 14
@@ -61,9 +61,9 @@ doc: |
   line, so the reading must never be used to infer H617A behaviour, and no spec here
   models it. No count is quoted for the H617A queries because check-kaitai.sh already
   treats hand-copied figures as drift-prone.
-  Domain 0xa3 WAS in that list until 2026-07-28 and is now modelled below as
+  Domain 0xa3 WAS in that list until  and is now modelled below as
   multi_effect_body, because it is RESOLVED as a genuine state read-back rather than
-  an echo. [CONFIRMED_LIVE 2026-07-27c] Its reply was byte-identical to the query in
+  an echo. Its reply was byte-identical to the query in
   all 28 matched pairs across 20 captures, spanning static, scene, off and music
   states, which could never settle the question by observation alone: the checksum is
   the XOR of bytes 0..18, so an all-zero body and a bare echo of the query serialise
@@ -72,17 +72,17 @@ doc: |
   state. Every corpus reply was all-zero because the app only ever writes 0x00, not
   because the register is inert. Note the immediate ack to 33 a3 01 is 33 a3 00, i.e.
   the ack does NOT mirror the written value, so only the aa a3 read is trustworthy.
-  THIS IS A GENERAL RULE, NOT AN a3 QUIRK. [CONFIRMED_LIVE 2026-07-27e] Writing
+  THIS IS A GENERAL RULE, NOT AN a3 QUIRK. Writing
   33 04 07 likewise acked 33 04 00 while the aa 04 read correctly returned 07. Never
   read a written value back off the ack; issue the matching aa query. The family of
   opcodes confirmed to ack with a constant rather than a mirror is now 0x01, 0x04, 0x05,
-  0x12, 0x23 and 0xa3; 0x12 was added 2026-07-28 by the first crafted 33 12 write, and
+  0x12, 0x23 and 0xa3; 0x12 was added  by the first crafted 33 12 write, and
   0x01 the same day by a headless power A/B (33 01 01 and 33 01 00 both acked 33 01 00).
   Treat non-mirroring as the DEFAULT for any opcode not yet checked.
-  Brightness (0x04) and the 0x40 count were raw here until 2026-07-26 and are now
+  Brightness (0x04) and the 0x40 count were raw here until  and are now
   modelled below. The sleep-timer (0x11) and wake-timer (0x12) read-backs are also
   modelled below, sharing govee_common.sleep_timer / wake_timer with the 0x11 /
-  0x12 command writes (write<->read-back byte-identical, live 2026-07-23). The
+  0x12 command writes (write<->read-back byte-identical, live ). The
   colour-mode DIY (0x0a) and music (0x13) read-backs likewise share
   govee_common::diy_selector / music_selector with the matching 33 05 writes.
   Every field carries exactly one evidence tag in its doc. The vocabulary and what
@@ -91,11 +91,11 @@ doc: |
 seq:
   - id: header
     contents: [0xaa]
-    doc: '[CONFIRMED_LIVE] status header, raw 0xaa'
+    doc: 'status header, raw 0xaa'
   - id: domain
     type: u1
     enum: aa_domain
-    doc: '[CONFIRMED_LIVE] domain selector byte (frame offset 1)'
+    doc: 'domain selector byte (frame offset 1)'
   - id: body
     size: 17
     type:
@@ -112,10 +112,10 @@ seq:
         'aa_domain::multi_effect': multi_effect_body
         'aa_domain::sleep_timer': govee_common::sleep_timer
         'aa_domain::wake_timer': govee_common::wake_timer
-    doc: '[CONFIRMED_LIVE] bytes 2..18, interpreted per domain (unmatched domains fall back to raw)'
+    doc: 'bytes 2..18, interpreted per domain (unmatched domains fall back to raw)'
   - id: checksum
     type: u1
-    doc: '[CONFIRMED_LIVE] raw XOR of bytes[0..18]; opaque, host-validated'
+    doc: 'raw XOR of bytes[0..18]; opaque, host-validated'
 enums:
   aa_domain:
     0x01: power
@@ -150,26 +150,26 @@ types:
       evidence, and cm_static::sub for the same register surfacing inside the aa 05
       colour-mode reply.
 
-      EVERY CAPTURED REPLY IS ALL-ZERO. [CONFIRMED_LIVE] 35 replies across 26 captures
+      EVERY CAPTURED REPLY IS ALL-ZERO. 35 replies across 26 captures
       carry one distinct payload, flag 0x00, because the app only ever writes 0x00.
       The grammar therefore round-trips the corpus reply, while the crafted 0x01
       read-back proves the field is not a constant.
     seq:
       - id: flag
         type: u1
-        doc: '[INFERRED] read-back of the 0xa3 register. 0x00 in all 35 corpus replies; read back as 0x01 immediately after a crafted 33 a3 01 write and 0x00 again after restore (2026-07-27c), so it tracks stored state. What the value MEANS is open and is documented once on command_write::multi_effect_cmd::flag.'
+        doc: 'read-back of the 0xa3 register. 0x00 in all 35 corpus replies; read back as 0x01 immediately after a crafted 33 a3 01 write and 0x00 again after restore (2026-07-27c), so it tracks stored state. What the value MEANS is open and is documented once on command_write::multi_effect_cmd::flag.'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   power_body:
     doc: |
       domain 0x01 power read-back: is_on then zero padding.
       NOTE a frame of the shape aa 01 0c 00 01 00 27 11 24 <b9> 17 <b11> 01 00 00 00
       was once recorded here as a "second, longer aa 01 form" emitted by the H617A.
       That attribution was WRONG and is retracted (offline corpus re-derivation,
-      2026-07-25). All 31 instances across the whole capture corpus arrive on ATT
+      ). All 31 instances across the whole capture corpus arrive on ATT
       handle 0x099d, whereas every genuine Govee frame uses handle 0x0010 (notify)
       or 0x0014 (write); all 31 also FAIL the Govee XOR checksum, and none carries a
       connection address. Bytes 9 and 11 are monotonic ~1 Hz counters and the 4-byte
@@ -180,12 +180,12 @@ types:
     seq:
       - id: is_on
         type: u1
-        doc: '[CONFIRMED_LIVE] raw power state, 0x00 off / 0x01 on. 0x01 was NOT witnessed until 2026-07-28, when a headless direct-mode write of 33 01 01 read back aa 01 01; every prior observation across the whole corpus was 0x00. That matters beyond filling a gap, because an all-zero body and a bare echo of the aa 01 query serialise to the identical 20 bytes (the same trap resolved for domain 0xa3, see this spec''s top doc), so no aa 01 reply before that write could distinguish a genuine state read-back from the device parroting the query. The 0x01 read settles it: the reply tracks stored power state. Restored to 0x00 afterwards.'
+        doc: 'raw power state, 0x00 off / 0x01 on. 0x01 was NOT witnessed until , when a headless direct-mode write of 33 01 01 read back aa 01 01; every prior observation across the whole corpus was 0x00. That matters beyond filling a gap, because an all-zero body and a bare echo of the aa 01 query serialise to the identical 20 bytes (the same trap resolved for domain 0xa3, see this spec''s top doc), so no aa 01 reply before that write could distinguish a genuine state read-back from the device parroting the query. The 0x01 read settles it: the reply tracks stored power state. Restored to 0x00 afterwards.'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   brightness_body:
     doc: |
       domain 0x04 whole-strip brightness read-back. Query aa 04 00 (all-zero body)
@@ -195,7 +195,7 @@ types:
       the same domain byte under the command header: 33 04 <percent> writes are
       captured at 20%, 8% and 1%.
 
-      CORRECTION 2026-07-26. This body was briefly modelled as a "group count"
+      CORRECTION . This body was briefly modelled as a "group count"
       because every captured reply carries 0x05 and the aa a5 read-back enumerates
       exactly five groups. That agreement is a coincidence. The replies are all 0x05
       because the lab strip is held at 5% under the approved 10% brightness limit,
@@ -205,7 +205,7 @@ types:
       quantity is not attribution, and the shipped decoder should be consulted before
       a domain is renamed.
 
-      THE WARNING WAS STILL LIVE IN OUR OWN TOOLING UNTIL 2026-07-29. govee_send.py
+      THE WARNING WAS STILL LIVE IN OUR OWN TOOLING UNTIL . govee_send.py
       labelled this domain "groups?" for three days after the correction, under a
       comment claiming its table was mirrored from decode_govee.py, which had said
       "brightness" the whole time. So every probe printed "reply groups?=5" while the
@@ -217,17 +217,17 @@ types:
     seq:
       - id: brightness_pct
         type: u1
-        doc: '[CONFIRMED_LIVE] whole-strip brightness percent (frame offset 2); raw percent, not 0..255 scaled. PROVEN TO TRACK 2026-07-26: with the strip driven from the app, the read-back returned 5 while the slider read 5% and 7 while it read 7%, across two separate device-page opens, and the matching writes were 33 04 05 / 33 04 07 / 33 04 03. Earlier corpus captures all read 0x05 only because the lab strip is pinned at 5%; 100 was observed historically. 0 in the query.'
+        doc: 'whole-strip brightness percent (frame offset 2); raw percent, not 0..255 scaled. PROVEN TO TRACK : with the strip driven from the app, the read-back returned 5 while the slider read 5% and 7 while it read 7%, across two separate device-page opens, and the matching writes were 33 04 05 / 33 04 07 / 33 04 03. Earlier corpus captures all read 0x05 only because the lab strip is pinned at 5%; 100 was observed historically. 0 in the query.'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   unit_count_body:
     doc: |
       domain 0x40, a count of 15. Query aa 40 00 (all-zero body) -> reply aa 40 00 0f.
       Byte-identical in all 20 replies across the 14 corpus captures carrying a connect
-      burst (re-derived 2026-07-27).
+      burst (re-derived ).
       THE VALUE IS SOUND, THE FIELD SPLIT IS NOT. 00 0f is equally a u2be holding 15
       and two bytes holding 0 and 15, and no capture separates them because the count
       never exceeds 255. Do not repeat the argument that a big-endian field would be
@@ -247,14 +247,14 @@ types:
           15 app segments are proven by an exhaustive per-bit bitmap sweep in its
           raw.log (bit 15 is shown to alias back to segment 0, so the count is 15 and
           not 16).
-        - our own H6199 DreamView T1 reads aa 40 -> 00 26 = 38 (live 2026-07-27, direct
+        - our own H6199 DreamView T1 reads aa 40 -> 00 26 = 38 (live , direct
           read, see below), against the 15 segments egold555/Govee-Reverse-Engineering
           documents for that model.
       Two devices, both counting well past their app segment count.
 
       READING (b) "the live colour-buffer extent" IS CORROBORATED ON THIS DEVICE, and
       that part IS an H617A fact because it was measured here [CONFIRMED_LIVE
-      2026-07-27]. aa a5 was read out past the five groups the app uses: groups 01..05
+      ]. aa a5 was read out past the five groups the app uses: groups 01..05
       return brightness+RGB in range (0x64 on fourteen slots, 0x1f on slot 1, matching
       this strip's actual retained paint), and groups 06..0a return data that is NOT
       colour, with leading bytes 0x73, 0x08, 0xfe, 0x00, 0x13, 0x45, 0xff, 0x0b, 0x01,
@@ -282,7 +282,7 @@ types:
       model lacks the register.
 
       THAT DIAGNOSIS IS NOW CONFIRMED, AND IT IS FIXABLE AT THE PHONE. Measured
-      2026-08-03: with the iPhone in Airplane Mode and Bluetooth re-enabled, so the app
+      : with the iPhone in Airplane Mode and Bluetooth re-enabled, so the app
       had no IP path at all, the same device page immediately asked aa 04 and got
       brightness=30, and went on to ask aa 0f, aa 23, aa 12, aa 11, aa a9, aa ae, aa 35,
       aa 05 and four groups of aa a5 segment colours, none of which it had asked for
@@ -299,15 +299,15 @@ types:
       - id: reserved
         type: u1
         valid: 0
-        doc: '[INFERRED] frame offset 2; 0x00 in every query and every reply, 0x00 on the external H7015 reading, and 0x00 on the H6199 reading of 38. Either a reserved byte or the high byte of a u2be count; not separable, because no device yet observed counts past 255.'
+        doc: 'frame offset 2; 0x00 in every query and every reply, 0x00 on the external H7015 reading, and 0x00 on the H6199 reading of 38. Either a reserved byte or the high byte of a u2be count; not separable, because no device yet observed counts past 255.'
       - id: count
         type: u1
-        doc: '[INFERRED] frame offset 3; reads 15 on the H617A, 38 on the H6199 and 30 on the external H7015, so this is a genuine per-device varying count and not a protocol constant. PROVENANCE DIFFERS PER READING, and only the first is reproducible here: the H617A 15 is capture-backed 24 times over across 20 captures in the archive, every one from a single H617A, written here as D0:35:34:AA:BB:CC because the real address is rig identity and does not belong in a tracked spec; D0:35:34 is Govee''s OUI, which is the only part of it the reading depends on (swept 2026-07-29); the H6199 38 was read directly off the firmware register and is NOT in any capture, because as the type doc explains the vendor app never issues aa 40 to that model, so the two files named h6199-aa40* contain aa 01 polls and no aa 40 at all; the H7015 30 is external. Do not go looking for the 38 in the archive, and do not treat its absence there as a contradiction. The one-byte width is not corroborated by any of them, since a u2be over offsets 2..3 yields the same value. Deliberately named "count" rather than "segment_count": see the type doc for why naming it after segments asserts more than the captures show, and note the app segment count is now the one reading positively excluded.'
+        doc: 'frame offset 3; reads 15 on the H617A, 38 on the H6199 and 30 on the external H7015, so this is a genuine per-device varying count and not a protocol constant. PROVENANCE DIFFERS PER READING, and only the first is reproducible here: the H617A 15 is capture-backed 24 times over across 20 captures in the archive, every one from a single H617A, written here as D0:35:34:AA:BB:CC because the real address is rig identity and does not belong in a tracked spec; D0:35:34 is Govee''s OUI, which is the only part of it the reading depends on (swept ); the H6199 38 was read directly off the firmware register and is NOT in any capture, because as the type doc explains the vendor app never issues aa 40 to that model, so the two files named h6199-aa40* contain aa 01 polls and no aa 40 at all; the H7015 30 is external. Do not go looking for the 38 in the archive, and do not treat its absence there as a contradiction. The one-byte width is not corroborated by any of them, since a u2be over offsets 2..3 yields the same value. Deliberately named "count" rather than "segment_count": see the type doc for why naming it after segments asserts more than the captures show, and note the app segment count is now the one reading positively excluded.'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   colormode_body:
     doc: |
       domain 0x05 colour-mode read-back. The first body byte selects the mode; the
@@ -315,14 +315,14 @@ types:
       where nothing is echoed and the byte that looks like the write-side sub is the
       33 a3 register instead (see cm_static). All four H617A mode selectors are seen live.
 
-      protocol.parse_color_mode_response read static as a mirror until 2026-07-31,
+      protocol.parse_color_mode_response read static as a mirror until ,
       which invented an rgb of (0, 0, 0) whenever that register was set. It now takes
       the mirror as a per-model flag, defaulting to the behaviour proven here.
     seq:
       - id: mode
         type: u1
         enum: color_mode
-        doc: '[CONFIRMED_LIVE] raw colour-mode selector (frame offset 2)'
+        doc: 'raw colour-mode selector (frame offset 2)'
       - id: mode_body
         size: 16
         type:
@@ -332,10 +332,10 @@ types:
             'color_mode::scene': cm_scene
             'color_mode::diy': govee_common::diy_selector
             'color_mode::music': govee_common::music_selector
-        doc: '[CONFIRMED_LIVE] the 16 bytes at frame offsets 3..18, interpreted per mode'
+        doc: 'the 16 bytes at frame offsets 3..18, interpreted per mode'
   cm_static:
     doc: |
-      mode 0x15 static read-back. Live H617A 2026-07-22 (driven over HA on
+      mode 0x15 static read-back. Live H617A  (driven over HA on
       light.cupboard_skirt): after setting a static RGB colour AND after setting a
       colour temperature, the reply is byte-identical -- aa 05 15 00 then an all-zero
       payload. The device echoes only the mode and sub 0x00; it never returns the
@@ -358,56 +358,56 @@ types:
     seq:
       - id: sub
         type: u1
-        doc: '[CONFIRMED_LIVE] frame offset 3. NOT a static sub-selector: it mirrors the 33 a3 register. Observed 0x00 across every RGB set and CT set, then 0x01 immediately after writing 33 a3 01 and 0x00 again after 33 a3 00, with no colour write in between (strip-eyes block 2026-07-27). See this type''s doc and command_write::multi_effect_cmd.'
+        doc: 'frame offset 3. NOT a static sub-selector: it mirrors the 33 a3 register. Observed 0x00 across every RGB set and CT set, then 0x01 immediately after writing 33 a3 01 and 0x00 again after 33 a3 00, with no colour write in between (strip-eyes block ). See this type''s doc and command_write::multi_effect_cmd.'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] all-zero payload within the 16-byte mode window; the set colour/kelvin/brightness is never echoed'
+        doc: 'all-zero payload within the 16-byte mode window; the set colour/kelvin/brightness is never echoed'
   cm_scene:
     doc: mode 0x04. Scene effect id, little-endian, at frame offset 3+.
     seq:
       - id: scene_id
         type: u2le
-        doc: '[CONFIRMED_LIVE] scene effect id (little-endian) at frame offset 3'
+        doc: 'scene effect id (little-endian) at frame offset 3'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
+        doc: 'trailing zero padding within the 16-byte mode window; grammar-enforced all-zero'
   version_body:
     doc: firmware version, ASCII, NUL-terminated (e.g. "3.02.24")
     seq:
       - id: text
         type: strz
         encoding: ASCII
-        doc: '[CONFIRMED_LIVE] firmware version ASCII string, NUL-terminated'
+        doc: 'firmware version ASCII string, NUL-terminated'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   hw_version_body:
     doc: hardware version; a 0x03 prefix then ASCII NUL-terminated (e.g. "3.01.01")
     seq:
       - id: prefix
         contents: [0x03]
-        doc: '[CONFIRMED_LIVE] raw 0x03 selector prefix'
+        doc: 'raw 0x03 selector prefix'
       - id: text
         type: strz
         encoding: ASCII
-        doc: '[CONFIRMED_LIVE] hardware version ASCII string, NUL-terminated'
+        doc: 'hardware version ASCII string, NUL-terminated'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   segments_body:
     doc: |
       group id then three segments of <brightness> <R> <G> <B> (aa a5 read-back).
 
       IT REPORTS THE RETAINED STATIC PAINT, NOT THE LIVE OUTPUT. [CONFIRMED_LIVE
-      2026-07-27] Isolated by a clean before/after with an intervening mode change.
+      ] Isolated by a clean before/after with an intervening mode change.
       Before: every segment read ff866b, the leftover of an earlier Color > Subsection
       test, with segment 1 at brightness 0x1f and the rest at 0x64. A More > Color
       Slider palette apply then wrote fifteen single-segment static colours, and
@@ -418,7 +418,7 @@ types:
       So a running scene, DIY or music effect does NOT overwrite these bytes, and this
       read cannot be used to learn what the strip is currently showing. It is the
       static layer the device will fall back to.
-      EXTENDED 2026-07-28 to the phone-microphone path: twenty a5 02 83 stream frames,
+      EXTENDED  to the phone-microphone path: twenty a5 02 83 stream frames,
       driven with the device confirmed in music mode by aa 05 (0x13 0x06), moved these
       bytes not at all, across three separate colours. So the exclusion covers the
       mic-stream family too, and any probe hoping to see a stream frame render must use
@@ -432,7 +432,7 @@ types:
       nothing is stored on the device and there is no snapshot register to model.
 
       THE COLOUR REGION ENDS AT GROUP 05, AND THIS TYPE MODELS ONLY THAT REGION.
-      [CONFIRMED_LIVE 2026-07-27] The app only ever asks 01..05, so nothing in the
+      The app only ever asks 01..05, so nothing in the
       corpus showed what lies past it. Read directly, groups 06..0a DO answer, but not
       with colour: their leading bytes are 0x73, 0x08, 0xfe, 0x00, 0x13, 0x45, 0xff,
       0x0b and 0x01, well outside the 0..100 that every one of the fifteen real slots
@@ -446,17 +446,17 @@ types:
       colour-buffer reading of that register. See unit_count_body.
 
       THE REGISTER HAS NO UPPER BOUND, AND IT REACHES LIVE STATE WELL OUTSIDE THE
-      COLOUR REGION. [CONFIRMED_LIVE 2026-07-27c] A direct sweep asked groups 0b, 0c,
+      COLOUR REGION. A direct sweep asked groups 0b, 0c,
       0d, 0e, 0f, 10, 11, 12, 13, 14, 18, 1c, 20, 30 and ff. EVERY ONE ANSWERED; there
       is no silent boundary and no error frame anywhere in that range, so
       "aa a5 <group>" is not a bounded table lookup.
 
       THE WEEKDAY IS INDEX 10, NOT INDEX 5, AND INDEX 5 IS A CONSTANT.
-      [CONFIRMED_LIVE 2026-07-28] This corrects a wrong attribution recorded on
+      This corrects a wrong attribution recorded on
       2026-07-27d, which read index 5 as 0x01 on a Monday and took the agreement with
       command_write::clock_cmd's Mon=1 convention as corroboration. That entry flagged
       its own weakness correctly (one day cannot separate a weekday from a constant)
-      and a re-read on another day settled it the other way: on Tuesday 2026-07-28
+      and a re-read on another day settled it the other way: on Tuesday
       index 5 still read 0x01.
       Index 10 is the weekday, isolated by DRIVING it rather than waiting for the
       calendar. Crafted 33 09 writes moved it to exactly the value written, six times
@@ -467,7 +467,7 @@ types:
       days and across every written weekday, so it is positively excluded as the weekday
       and stays unexplained.
 
-      INDEX 11 MIRRORS command_write::clock_cmd::flag1. [CONFIRMED_LIVE 2026-07-28]
+      INDEX 11 MIRRORS command_write::clock_cmd::flag1.
       Proven with arbitrary non-binary values, which is what separates a mirror from a
       coincidence between two one-bit states: writing flag1 = 0x05 read back 0x05 and
       flag1 = 0x5a read back 0x5a, matching in 6 of 6 driven writes. So this byte is a
@@ -477,7 +477,7 @@ types:
       no 0x5a anywhere here. Its mirror is in group 0x32 instead.
 
       GROUP 0x31 CARRIES A LIVE WALL CLOCK, and that, not the music match below, is what
-      establishes the window reading. [CONFIRMED_LIVE 2026-07-27d] Body index 6 is the
+      establishes the window reading. Body index 6 is the
       hour, index 7 the minute and index 9 the second. Isolated by a deliberate timed
       double-read against an otherwise untouched device: at host 17:26:46 it returned
       00030206 0001111a 00300101 (17:26:48) and at host 17:27:34 it returned
@@ -485,7 +485,7 @@ types:
       minute rolled 0x1a -> 0x1b exactly as the second wrapped, and EVERY OTHER BYTE
       HELD. So aa a5 reads live device state from an address space the vendor app never
       asks about, which is the capability the flat-window reading was really claiming.
-      Hour, minute and second were re-confirmed on 2026-07-28 by crafted writes: the
+      Hour, minute and second were re-confirmed on  by crafted writes: the
       read-back returned each written time, which also makes this register the closed
       loop that any future clock experiment should verify against.
 
@@ -497,14 +497,14 @@ types:
       days under crafted writes, and remain unexplained.
 
       GROUP 0x32 INDICES 1..2 MIRROR THE UTC OFFSET. [CONFIRMED_LIVE
-      2026-07-28] The last clock_cmd body field without a read-back now has one, and it
+      ] The last clock_cmd body field without a read-back now has one, and it
       is in a DIFFERENT group from the other five. Sentinel-confirmed with a full round
       trip across three 27-group sweeps: baseline 0x0a, then 0x5a after writing
       utc_offset_hours = 0x5a, then 0x0a again after restoring. The sentinel appeared NOWHERE else
       in the window in any phase, so the attribution is unambiguous rather than a
       pattern match.
 
-      [CONFIRMED_LIVE 2026-08-02] Changing the phone from Australia/Sydney (+10:00)
+      Changing the phone from Australia/Sydney (+10:00)
       to Australia/Adelaide (+09:30), then letting the vendor app reconnect, changed
       indices 1..2 from the Sydney shape 0a 00 to 09 1e. Restoring the phone to Sydney
       without reopening the app left 09 1e stored. This independently establishes the
@@ -530,7 +530,7 @@ types:
       window is now a proven instrument for asking it.
 
       THE MIRROR IS CLOCK-SPECIFIC, NOT A GENERAL REGISTER FILE. [CONFIRMED_LIVE
-      2026-07-28] Worth stating plainly, because two mirrors in two different groups
+      ] Worth stating plainly, because two mirrors in two different groups
       invites the reading that the window mirrors registers generally, and it does not.
       Both known mirrors belong to the SAME command register, 33 09. A sentinel probe
       wrote 0x5a into the sleep-timer (0x11) and then, separately, the wake-timer
@@ -548,7 +548,7 @@ types:
       returns 00000000 0005640a 00500701, embedding 05 64 0a, byte-for-byte the
       shiny_tail (style companion 05 64, then the constant 0x0a) of the music mode
       loaded when it was first read. That looked like the window landing on live music
-      parameters. It is not. [CONFIRMED_LIVE 2026-07-27d] The body came back
+      parameters. It is not. The body came back
       byte-identical across THREE independent changes to the very state it was supposed
       to mirror: a music -> DIY colour-mode change, a genuine music-mode change to
       Separation (33 05 13 32 63, aa 05 confirmed 0x13 0x32), and a Shiny Dynamic ->
@@ -561,21 +561,21 @@ types:
       bound, proven to return live non-colour state, will happily hand back anything.
 
       THE WINDOW IS OVERWHELMINGLY STATIC, AND WHAT MOVES IN IT IS TIME, NOT OUTPUT.
-      [CONFIRMED_LIVE 2026-07-27e] A 27-group sweep (01..0c, 0f, 10, 18, 20, 2e, 2f,
+      A 27-group sweep (01..0c, 0f, 10, 18, 20, 2e, 2f,
       30..36, 40, ff) was read repeatedly over twelve minutes and five connections.
       EXACTLY THREE groups ever moved: 0x31, 0x34 and 0x35. The other twenty-four were
       byte-identical every time, across a whole-strip brightness change and a
       colour-mode change alike. Reads are passive: 36 consecutive queries moved nothing,
       which rules out a received-command counter and so protects the untouched-device
       framing that every read-only probe here depends on.
-      REFINED 2026-07-28: that holds for a device being observed, but not for one being
+      REFINED : that holds for a device being observed, but not for one being
       driven. Re-running the same 27-group list around a crafted clock write brought
       0x32 to life as well, so the correct statement is that three groups move on their
       own and a fourth moves when its register is written. See the group 0x32 note
       above.
 
       GROUPS 0x34 AND 0x35 HOLD ONE 32-BIT MILLISECOND COUNTER, SPLIT ACROSS THE GROUP
-      BOUNDARY AS TWO 16-BIT LITTLE-ENDIAN HALVES. [CONFIRMED_LIVE 2026-07-27f] The low
+      BOUNDARY AS TWO 16-BIT LITTLE-ENDIAN HALVES. The low
       half is group 0x34 body indices 10..11; the high half is group 0x35 body indices
       1..2. Both are little-endian. It advances 1000 per second, so the low half wraps
       every 65.536 s and the whole field every 49.7 days.
@@ -599,7 +599,7 @@ types:
           wrongly: 4*256 - 24 = 1000. Byte order here has flapped before, so prefer a
           prediction across runs to any within-run fit.
         * THE HIGH HALF ROLLS OVER EXACTLY WHEN THE LOW HALF WRAPS, OBSERVED DIRECTLY.
-          [CONFIRMED_LIVE 2026-07-27f] A carry was predicted from an anchor and then
+          A carry was predicted from an anchor and then
           watched happen. Anchored at device clock 19:39:42 with the field at
           65649415 ms, the low half was predicted to wrap 24 minutes later at 20:04:01;
           it was observed at 20:04:01, sampled every 4.6 s throughout. At that one
@@ -616,7 +616,7 @@ types:
           field tracks the independent 0x31 wall clock to within 1.03 s across twelve
           minutes and nine wraps.
         * IT IS UPTIME SINCE POWER-ON, PROVEN BY CUTTING THE POWER.
-          [CONFIRMED_LIVE 2026-07-29] This paragraph used to say the opposite, and the
+          This paragraph used to say the opposite, and the
           reasoning it gave for doing so was sound: the field had never been seen near
           zero, and a notional zero merely CONSISTENT with an overnight power event is
           not evidence of one. The way to settle it was never a better fit to passive
@@ -634,7 +634,7 @@ types:
           whether the field is 32 bits or the low half of something wider is still not
           decidable, and nothing here depends on it.
         * AT LEAST TWO MORE BOOT-SCOPED COUNTERS SHARE GROUP 0x35, AND THE "ONLY INDICES
-          1 AND 2 MOVE" CLAIM ABOVE IS A WINDOW ARTEFACT. [INFERRED 2026-07-29] The same
+          1 AND 2 MOVE" CLAIM ABOVE IS A WINDOW ARTEFACT. The same
           power cut zeroed two further fields that four minutes of passive sampling had
           shown as byte-identical: read as little-endian words, indices 5..6 went 1380 to
           0 and indices 10..11 went 49 to 0. Both are far too slow to move inside a
@@ -659,7 +659,7 @@ types:
       showing, and anything needing a render observable still needs a human looking at
       the light.
 
-      WHOLE-STRIP BRIGHTNESS IS NOT MIRRORED HERE EITHER. [CONFIRMED_LIVE 2026-07-27e]
+      WHOLE-STRIP BRIGHTNESS IS NOT MIRRORED HERE EITHER.
       A 5% -> 7% change, verified on the wire by aa 04, left all twenty-four static
       groups byte-identical, colour region 01..05 included. That independently upholds
       the retained-paint claim above: per-segment paint is held separately from
@@ -681,13 +681,13 @@ types:
         type: u1
         valid:
           any-of: [1, 2, 3, 4, 5, 49, 50]
-        doc: '[CONFIRMED_LIVE] raw group id. Only the modelled colour groups 01..05 and clock groups 0x31..0x32 are accepted. Direct reads prove groups 06+ answer with unrelated state, so accepting an unknown group as one of these layouts would be a silent wrong answer.'
+        doc: 'raw group id. Only the modelled colour groups 01..05 and clock groups 0x31..0x32 are accepted. Direct reads prove groups 06+ answer with unrelated state, so accepting an unknown group as one of these layouts would be a silent wrong answer.'
       - id: segments
         type: segment
         repeat: expr
         repeat-expr: 3
         if: group >= 1 and group <= 5
-        doc: '[CONFIRMED_LIVE] three 4-byte segment records'
+        doc: 'three 4-byte segment records'
       - id: clock
         type:
           switch-on: group
@@ -695,74 +695,74 @@ types:
             49: clock_group_31
             50: clock_group_32
         if: group == 49 or group == 50
-        doc: '[CONFIRMED_LIVE] typed extended clock state for group 0x31 or 0x32'
+        doc: 'typed extended clock state for group 0x31 or 0x32'
       - id: padding
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
+        doc: 'trailing zero padding to the 17-byte body window; grammar-enforced all-zero'
   clock_group_31:
     seq:
       - id: prefix
         size: 6
-        doc: '[CONFIRMED_LIVE] six-byte opaque prefix held across timed reads and crafted clock writes'
+        doc: 'six-byte opaque prefix held across timed reads and crafted clock writes'
       - id: hour
         type: u1
         valid:
           max: 23
-        doc: '[CONFIRMED_LIVE] stored clock hour; isolated by timed reads and reproduced by crafted writes'
+        doc: 'stored clock hour; isolated by timed reads and reproduced by crafted writes'
       - id: minute
         type: u1
         valid:
           max: 59
-        doc: '[CONFIRMED_LIVE] stored clock minute; isolated by a live minute rollover and reproduced by crafted writes'
+        doc: 'stored clock minute; isolated by a live minute rollover and reproduced by crafted writes'
       - id: separator
         contents: [0x00]
-        doc: '[CONFIRMED_LIVE] raw zero separator between minute and second in every group 0x31 reply'
+        doc: 'raw zero separator between minute and second in every group 0x31 reply'
       - id: second
         type: u1
         valid:
           max: 59
-        doc: '[CONFIRMED_LIVE] stored clock second; isolated by timed reads and reproduced by crafted writes'
+        doc: 'stored clock second; isolated by timed reads and reproduced by crafted writes'
       - id: weekday
         type: u1
-        doc: '[CONFIRMED_LIVE] stored weekday with Mon=1; moved across calendar days and followed crafted writes exactly'
+        doc: 'stored weekday with Mon=1; moved across calendar days and followed crafted writes exactly'
       - id: flag1
         type: u1
-        doc: '[INFERRED] stored mirror of command_write::clock_cmd::flag1, isolated with arbitrary sentinels; its purpose remains unknown'
+        doc: 'stored mirror of command_write::clock_cmd::flag1, isolated with arbitrary sentinels; its purpose remains unknown'
   clock_group_32:
     seq:
       - id: prefix
         contents: [0x00]
-        doc: '[CONFIRMED_LIVE] raw zero prefix before the UTC offset'
+        doc: 'raw zero prefix before the UTC offset'
       - id: utc_offset_hours
         type: s1
-        doc: '[CONFIRMED_LIVE] signed whole-hour UTC offset stored by app clock sync; changed from Sydney +10 to Adelaide +9 on 2026-08-02'
+        doc: 'signed whole-hour UTC offset stored by app clock sync; changed from Sydney +10 to Adelaide +9 on '
       - id: utc_offset_minutes
         type: u1
         valid:
           max: 59
-        doc: '[CONFIRMED_LIVE] unsigned minute remainder of the UTC offset; changed from Sydney 0 to Adelaide 30 on 2026-08-02'
+        doc: 'unsigned minute remainder of the UTC offset; changed from Sydney 0 to Adelaide 30 on '
       - id: tail
         size: 9
-        doc: '[CONFIRMED_LIVE] nine-byte opaque tail retained because no field inside it has been isolated'
+        doc: 'nine-byte opaque tail retained because no field inside it has been isolated'
   segment:
     seq:
       - id: brightness
         type: u1
-        doc: '[CONFIRMED_LIVE] per-segment brightness percent. PROVEN TO TRACK 2026-07-28 headless: with segment 1 sitting at 0x1f and segments 2 and 3 at 0x64, writing 33 05 15 02 0a 01 00 (segment 1, 10 percent) moved aa a5 01 to 0a ff 00 00 while both the colour bytes and the other two records stayed byte-identical, then a write of 0x1f restored it exactly. Earlier corpus replies were all 0x64 because nothing had ever driven a single segment down.'
+        doc: 'per-segment brightness percent. PROVEN TO TRACK  headless: with segment 1 sitting at 0x1f and segments 2 and 3 at 0x64, writing 33 05 15 02 0a 01 00 (segment 1, 10 percent) moved aa a5 01 to 0a ff 00 00 while both the colour bytes and the other two records stayed byte-identical, then a write of 0x1f restored it exactly. Earlier corpus replies were all 0x64 because nothing had ever driven a single segment down.'
       - id: colour
         type: govee_common::rgb
-        doc: '[CONFIRMED_LIVE] per-segment RGB (shared rgb type); held ff 00 00 across a brightness-only write, so brightness and colour are independently addressable'
+        doc: 'per-segment RGB (shared rgb type); held ff 00 00 across a brightness-only write, so brightness and colour are independently addressable'
   timer_body:
     doc: |
       aa 23 read-back: a 0xff table marker then four 4-byte scheduled-timer slot
-      records, mirroring protocol.parse_timer_schedule_table. Live 2026-07-22:
+      records, mirroring protocol.parse_timer_schedule_table. Live :
       enabling slot 0 (07:30 Sunday, repeat 0xc0) read back 81 07 1e c0 with the
       enable bit 0x80 set, while the three disabled slots read 01 .. .. .. (enable
       bit clear, on-action bit set).
 
-      THIS READ IS THE ONLY VERIFICATION 0x23 HAS. [CONFIRMED_LIVE 2026-07-27] The
+      THIS READ IS THE ONLY VERIFICATION 0x23 HAS. The
       0x23 ack is a constant 33 23 00 00 .. that does not echo the write, so a
       schedule change is confirmed only here. Reading slot 2 immediately after writing
       it returned the written bytes verbatim, first ff 01 07 1e c0 01 09 10 80
@@ -775,9 +775,9 @@ types:
     seq:
       - id: marker
         contents: [0xff]
-        doc: '[CONFIRMED_LIVE] raw 0xff table marker'
+        doc: 'raw 0xff table marker'
       - id: slots
         type: govee_common::timer_slot
         repeat: expr
         repeat-expr: 4
-        doc: '[CONFIRMED_LIVE] four 4-byte scheduled-timer slot records (the slot index is positional 0..3)'
+        doc: 'four 4-byte scheduled-timer slot records (the slot index is positional 0..3)'

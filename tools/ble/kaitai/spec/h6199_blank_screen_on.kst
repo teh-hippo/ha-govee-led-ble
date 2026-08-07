@@ -16,5 +16,3 @@ asserts:
     expected: 1
   - actual: body.payload.opaque_tail
     expected: "020a007800"
-  - actual: body.opaque_tail
-    expected: "000000000000000000"

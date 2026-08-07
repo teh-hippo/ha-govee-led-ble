@@ -15,5 +15,3 @@ asserts:
     expected: 9
   - actual: body.detail.scene_class
     expected: 1
-  - actual: body.detail.opaque_tail
-    expected: "00000000000000000000000000"

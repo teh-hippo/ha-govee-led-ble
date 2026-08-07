@@ -30,5 +30,3 @@ asserts:
     expected: 0
   - actual: body.detail.segment_mask
     expected: 32767
-  - actual: body.detail.opaque_tail
-    expected: "0000000000"

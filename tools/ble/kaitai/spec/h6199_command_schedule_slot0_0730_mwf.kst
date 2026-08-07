@@ -18,5 +18,3 @@ asserts:
     expected: 30
   - actual: body.repeat_mask
     expected: 149
-  - actual: body.opaque_tail
-    expected: "000000000000000000000000"

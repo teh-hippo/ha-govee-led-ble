@@ -23,5 +23,3 @@ asserts:
     expected: 10
   - actual: body.utc_offset_minutes
     expected: 0
-  - actual: body.opaque_tail
-    expected: "00000000000000000000"

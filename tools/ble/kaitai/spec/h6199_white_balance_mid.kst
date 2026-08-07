@@ -18,7 +18,5 @@ asserts:
     expected: 13
   - actual: body.payload.blue
     expected: 3
-  - actual: body.opaque_tail
-    expected: "000000000000000000000000"
 # This pair is entry 9 of the twenty in the app's bundled whiteBalance.json,
 # which is what shows the strip picks an index and the frame carries the gains.

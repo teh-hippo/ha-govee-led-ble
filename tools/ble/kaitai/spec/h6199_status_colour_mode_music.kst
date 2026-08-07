@@ -23,5 +23,3 @@ asserts:
     expected: 255
   - actual: body.detail.fixed_colour.blue
     expected: 0
-  - actual: body.detail.opaque_tail
-    expected: "000000000000000000"

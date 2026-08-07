@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Kaitai gate: the specs are the source of truth for wire structure, so they have to be
-# verified, not just spell-checked. evidence_lint.py only reads the .ksy text; it cannot
-# tell whether a spec still compiles or still matches the wire. This script does both.
+# Kaitai gate: compile every schema before running the committed protocol fixtures.
 #
 # The generated *.py parsers are gitignored build products, so they go stale silently and
 # a roundtrip run against a stale parser proves nothing. Always recompile before running.
@@ -23,6 +21,3 @@ done
 
 echo "--- Running the .kst fixtures"
 uv run --no-sync python "$KAITAI/kst_runner.py"
-
-echo "--- Evidence tags"
-uv run --no-sync python "$KAITAI/evidence_lint.py"

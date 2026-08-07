@@ -12,7 +12,7 @@ doc: |
 
     a5 02 83 <R> <G> <B> <sum8>
 
-  HOW IT WAS FOUND, AND WHY IT WAS INVISIBLE. [CONFIRMED_LIVE 2026-07-27]
+  HOW IT WAS FOUND, AND WHY IT WAS INVISIBLE.
   Music > Sound Pickup Method > From mobile phone > Start Pickup. The capture showed
   1343 ATT operations but only 42 "Govee" packets, because decode_govee._is_govee
   validates the standard XOR checksum and every one of these frames failed it. The
@@ -27,11 +27,11 @@ doc: |
   not traffic we had been silently discarding all along.
 
   THE SUM-8 RULE, RE-MEASURED WITHOUT THE FILTER THAT USED TO SELECT FOR IT.
-  [CONFIRMED_LIVE 2026-07-29] The earlier count came from a scan that kept only frames
+  The earlier count came from a scan that kept only frames
   whose sum-8 already verified, which cannot distinguish "every frame obeys the rule"
   from "the frames obeying the rule obey the rule". Re-run over every byte sequence
   matching the a5 02 83 prefix in s2-phonemic.pcap, s2-pickup-stop.pcap and
-  h617a-mic-lifecycle-2026-07-27.pcap, with no checksum filter at all: 4682 candidates,
+  h617a-mic-lifecycle-.pcap, with no checksum filter at all: 4682 candidates,
   4682 sum-8 valid, 0 valid under neither scheme, and 4681 in which the two schemes give
   different bytes so the frame actively separates them. Exactly one frame is valid under
   both, which is the coincidence you would expect and not a counter-example.
@@ -43,7 +43,7 @@ doc: |
   accident, and all sixteen were confirmed present in those captures.
 
   WHAT THE PHONE ACTUALLY SENDS. The three payload bytes are a whole-strip RGB
-  triple, streamed at almost exactly 20 Hz. [CONFIRMED_LIVE 2026-07-27b] The
+  triple, streamed at almost exactly 20 Hz. The
   dedicated lifecycle capture measured 19.4, 20.1, 20.0 and 20.0 frames per second
   across four independent windows totalling 165 seconds and 3294 frames, so the rate
   is steady and source-independent. An earlier note in this file said "roughly 41 Hz
@@ -63,7 +63,7 @@ doc: |
   device behaviour, and nothing here should be read as a device capability.
 
   THE HUES ARE CHOSEN APP-SIDE, NOT DERIVED FROM THE MUSIC PALETTE.
-  [CONFIRMED_LIVE 2026-07-27b] Isolated two independent ways. First, the on-device
+  Isolated two independent ways. First, the on-device
   mode active throughout the lifecycle capture was Shiny, whose palette (music_body
   fixtures) is red/orange/yellow/green/blue: the stream carried white but never
   orange, so it cannot be reading that palette. Second and decisively, the phone
@@ -89,7 +89,7 @@ doc: |
   streaming, and the UI hides them.
 
   THE STREAM OUTLIVES ITS OWN UI CONTROL, AND THE STOPPING TRIGGER IS NOW ISOLATED.
-  [CONFIRMED_LIVE 2026-07-27b] A dedicated capture drove the whole lifecycle with
+  A dedicated capture drove the whole lifecycle with
   timestamped marks. The results, in order:
     * Switching Sound Pickup Method to "From mobile phone" emits NOTHING. The stream
       begins 1.7 s after the separate "Start Pickup" tap, not at the method switch.
@@ -111,7 +111,7 @@ doc: |
 
   NOT MODELLED HERE. A 2-byte notification on handle 0x0022 (values 0x0051 and
   0x0050 observed) is visible during the stream, and an earlier draft of this doc
-  implied it was related. It is NOT. [CONFIRMED_LIVE 2026-07-27] A corpus-wide scan
+  implied it was related. It is NOT. A corpus-wide scan
   found handle 0x0022 traffic in ALL 63 captures we hold, including ones recorded
   long before this opcode existed, so it belongs to some other service and has
   nothing to do with the stream. Corrected here rather than deleted, because the
@@ -124,7 +124,7 @@ seq:
   - id: opcode
     contents: [0xa5]
     doc: |
-      [CONFIRMED_LIVE] stream opcode 0xa5, constant across every captured frame, 3294 of them in the 2026-07-27 lifecycle capture alone.
+      stream opcode 0xa5, constant across every captured frame, 3294 of them in the  lifecycle capture alone.
       It is a FOURTH opcode alongside 0x33 write, 0xaa read and 0xa3 multi-part write
       (see command_write.ksy for that set), and unlike those three it is checksummed
       by sum rather than XOR. Do not confuse it with the 0xa5 REGISTER read
@@ -134,7 +134,7 @@ seq:
   - id: stream_sub
     contents: [0x02]
     doc: |
-      [CONFIRMED_LIVE] THE DEVICE DISPATCHES ON THIS BYTE, isolated 2026-07-29. Constant 0x02 in
+      THE DEVICE DISPATCHES ON THIS BYTE, isolated . Constant 0x02 in
       every captured frame, which is only consistency; the byte was then isolated with
       eyes on the strip. A valid a5 02 83 frame rendered, a5 03 83 with this byte alone
       changed rendered NOTHING across 30 frames, and the valid frame rendered again
@@ -146,7 +146,7 @@ seq:
   - id: stream_mode
     contents: [0x83]
     doc: |
-      [CONFIRMED_LIVE] THE DEVICE DISPATCHES ON THIS BYTE, isolated 2026-07-29 the same
+      THE DEVICE DISPATCHES ON THIS BYTE, isolated  the same
       way as stream_sub and in the same session: a5 02 84, differing from a rendering
       frame by this byte alone, rendered nothing across 30 frames, between two valid
       frames that both rendered. Meaning not isolated. The high bit is suggestive of a
@@ -162,13 +162,13 @@ seq:
 
       THE RENDER IS TRANSIENT AND SELF-REVERTING. The streamed colour appears during the
       burst and the strip returns to its retained paint on its own, with nothing written
-      to restore it. That is why the 2026-07-28 headless attempt was not-informative:
+      to restore it. That is why the  headless attempt was not-informative:
       aa a5 01..05 reports RETAINED per-segment paint, not live rendered output, so no
       read-back could ever have observed this. The instrument was wrong, not the question.
   - id: colour
     type: govee_common::rgb
     doc: |
-      [CONFIRMED_LIVE] whole-strip RGB, the shared rgb type. Confirmed by the hue
+      whole-strip RGB, the shared rgb type. Confirmed by the hue
       structure of the stream: every captured frame collapses to one of seven
       normalised hues under per-frame max-normalisation, each scaled by a decaying
       envelope, which is what a colour channel triple looks like and is not what three
@@ -181,8 +181,8 @@ seq:
   - id: checksum
     type: u1
     doc: |
-      [CONFIRMED_LIVE] low 8 bits of the arithmetic SUM of bytes[0..5], NOT the XOR
-      used by every 20-byte frame. Valid on every captured frame, including all 3294 in the 2026-07-27 lifecycle capture. See
+      low 8 bits of the arithmetic SUM of bytes[0..5], NOT the XOR
+      used by every 20-byte frame. Valid on every captured frame, including all 3294 in the  lifecycle capture. See
       checksum_expected for the computed form.
 instances:
   checksum_expected:

@@ -34,18 +34,18 @@ seq:
     doc: |
       bytes[0..1], the shared A3 reassembled-body header 01 <linecount>. linecount is
       the A3 data-chunk count (never below 0x02); Flat/Combo bodies span 1-2 chunks.
-      [CONFIRMED_LIVE] round-tripped in every captured Flat and Combo body.
+      round-tripped in every captured Flat and Combo body.
   - id: a3_type
     contents: [0x04]
     doc: |
       byte[2] = 0x04, the A3 payload TYPE selecting the Flat/Combo DIY family.
-      [CONFIRMED_LIVE]
+
   - id: family
     type: u1
     doc: |
       byte[3]. 0xFF selects the Combo layout; any other value IS the flat family
       code (equal to the app's internal effect-family code) and selects the Flat
-      layout. Read once here and switched below. [CONFIRMED_LIVE]
+      layout. Read once here and switched below.
   - id: body
     type:
       switch-on: family
@@ -54,7 +54,7 @@ seq:
         _: flat_body
     doc: |
       Remainder after the family byte at byte[3]: combo_body when FAMILY == 0xFF,
-      otherwise flat_body. [CONFIRMED_LIVE]
+      otherwise flat_body.
 types:
   palette:
     doc: |
@@ -67,7 +67,7 @@ types:
         repeat: eos
         doc: |
           ordered RGB triplets filling the PLEN-byte palette region; count =
-          PLEN / 3. [CONFIRMED_LIVE]
+          PLEN / 3.
   family_variant:
     doc: |
       one Combo sequence entry: a (FAMILY, VARIANT) pair reusing the flat effect
@@ -76,11 +76,11 @@ types:
       - id: family
         type: u1
         doc: |
-          effect family code, reuses the flat FAMILY value. [CONFIRMED_LIVE]
+          effect family code, reuses the flat FAMILY value.
       - id: variant
         type: u1
         doc: |
-          family-specific VARIANT selector for this chained effect. [CONFIRMED_LIVE]
+          family-specific VARIANT selector for this chained effect.
   flat_body:
     doc: |
       Flat DIY (FAMILY != 0xFF). After the family byte at byte[3] the body is:
@@ -93,30 +93,30 @@ types:
         type: u1
         doc: |
           byte[4], family-specific VARIANT selector (no global formula), raw.
-          [CONFIRMED_LIVE]
+
       - id: speed
         type: u1
         doc: |
-          byte[5], SPEED 0-100 (default 0x32 = 50). [CONFIRMED_LIVE]
+          byte[5], SPEED 0-100 (default 0x32 = 50).
       - id: plen
         type: u1
         valid:
           expr: _ % 3 == 0
         doc: |
-          byte[6], PLEN = palette length in bytes = colours x 3. [CONFIRMED_LIVE]
+          byte[6], PLEN = palette length in bytes = colours x 3.
       - id: palette
         type: palette
         size: plen
         doc: |
           byte[7 ..], PLEN bytes of ordered RGB triplets (PLEN / 3 colours).
-          [CONFIRMED_LIVE]
+
       - id: padding
         type: u1
         valid: 0
         repeat: eos
         doc: |
           transport zero padding to the 17-byte A3 chunk boundary (includes the
-          empty 0xFF terminator chunk); grammar-enforced all-zero. [CONFIRMED_LIVE]
+          empty 0xFF terminator chunk); grammar-enforced all-zero.
   combo_body:
     doc: |
       Combo DIY (FAMILY == 0xFF). After the 0xFF family byte at byte[3] the body is:
@@ -129,43 +129,43 @@ types:
       - id: variant
         type: u1
         doc: |
-          byte[4], shared VARIANT for the chained effects, raw. [CONFIRMED_LIVE]
+          byte[4], shared VARIANT for the chained effects, raw.
       - id: speed
         type: u1
         doc: |
           byte[5], shared SPEED 0-100 (0x33 = 51 in the Combo captures).
-          [CONFIRMED_LIVE]
+
       - id: plen
         type: u1
         valid:
           expr: _ % 3 == 0
         doc: |
           byte[6], PLEN = shared palette length in bytes = colours x 3.
-          [CONFIRMED_LIVE]
+
       - id: palette
         type: palette
         size: plen
         doc: |
           byte[7 ..], PLEN bytes of ordered RGB triplets (PLEN / 3 colours) shared
-          by every chained effect. [CONFIRMED_LIVE]
+          by every chained effect.
       - id: seqlen
         type: u1
         valid:
           expr: _ % 2 == 0
         doc: |
           byte[7+PLEN], SEQLEN = sequence length in bytes = 2 x effect_count.
-          [CONFIRMED_LIVE]
+
       - id: pairs
         type: family_variant
         repeat: expr
         repeat-expr: seqlen / 2
         doc: |
           SEQLEN / 2 chained (FAMILY, VARIANT) effect pairs, each reusing the flat
-          effect codes. [CONFIRMED_LIVE]
+          effect codes.
       - id: padding
         type: u1
         valid: 0
         repeat: eos
         doc: |
           transport zero padding to the 17-byte A3 chunk boundary (includes the
-          empty 0xFF terminator chunk); grammar-enforced all-zero. [CONFIRMED_LIVE]
+          empty 0xFF terminator chunk); grammar-enforced all-zero.

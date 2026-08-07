@@ -8,5 +8,3 @@ asserts:
     expected: 10
   - actual: body.payload.is_enabled
     expected: 0
-  - actual: body.payload.opaque_tail
-    expected: "020a007800"

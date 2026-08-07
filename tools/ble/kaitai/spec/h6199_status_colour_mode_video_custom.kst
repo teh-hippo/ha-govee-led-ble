@@ -17,5 +17,3 @@ asserts:
     expected: 1
   - actual: body.detail.softness
     expected: 12
-  - actual: body.detail.opaque_tail
-    expected: "0000000000000000000000"

@@ -14,11 +14,11 @@ doc: |
 seq:
   - id: header
     contents: [0xaa]
-    doc: '[CONFIRMED_LIVE] H6199 status-query header at frame offset 0'
+    doc: 'H6199 status-query header at frame offset 0'
   - id: domain
     type: u1
     enum: query_domain
-    doc: '[CONFIRMED_LIVE] H6199 queried register at frame offset 1'
+    doc: 'H6199 queried register at frame offset 1'
   - id: body
     size: 17
     type:
@@ -34,10 +34,10 @@ seq:
         'query_domain::subordinate_21': zero_body
         'query_domain::display_setting': display_setting_query_body
         'query_domain::relative_brightness': relative_brightness_query_body
-    doc: '[CONFIRMED_LIVE] H6199 query body at frame offsets 2..18, selected by the queried register'
+    doc: 'H6199 query body at frame offsets 2..18, selected by the queried register'
   - id: checksum
     type: u1
-    doc: '[CONFIRMED_LIVE] raw XOR checksum byte at frame offset 19; validated by the fixture runner'
+    doc: 'raw XOR checksum byte at frame offset 19; validated by the fixture runner'
 enums:
   query_domain:
     0x01: power
@@ -60,40 +60,40 @@ types:
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] all-zero H6199 query body; grammar-enforced across the captured power, brightness, colour-mode, firmware, identity and subordinate-version queries'
+        doc: 'all-zero H6199 query body; grammar-enforced across the captured power, brightness, colour-mode, firmware, identity and subordinate-version queries'
   hardware_query_body:
     seq:
       - id: selector
         contents: [0x03]
-        doc: '[CONFIRMED_LIVE] H6199 hardware-version query selector at frame offset 2'
+        doc: 'H6199 hardware-version query selector at frame offset 2'
       - id: zeros
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] all-zero remainder after the H6199 hardware query selector'
+        doc: 'all-zero remainder after the H6199 hardware query selector'
   display_setting_query_body:
     seq:
       - id: setting
         type: u1
         enum: display_setting
         doc: |
-          [CONFIRMED_LIVE] which 0xa9 display setting is requested, at frame offset 2.
+          which 0xa9 display setting is requested, at frame offset 2.
           Captured as 0x00 immediately before the white-balance reply and 0x0a immediately
           before the blank-screen reply.
       - id: zeros
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] all-zero remainder after the H6199 display-setting selector'
+        doc: 'all-zero remainder after the H6199 display-setting selector'
   relative_brightness_query_body:
     seq:
       - id: selector
         contents: [0x01]
         doc: |
-          [CONFIRMED_LIVE] relative-brightness query selector at frame offset 2, captured
+          relative-brightness query selector at frame offset 2, captured
           immediately before the device replied with its four edge percentages.
       - id: zeros
         type: u1
         valid: 0
         repeat: eos
-        doc: '[CONFIRMED_LIVE] all-zero remainder after the relative-brightness query selector'
+        doc: 'all-zero remainder after the relative-brightness query selector'

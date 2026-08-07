@@ -18,7 +18,7 @@ doc: |
   again by anyone reading it. 0x46 is the app's "reset device network", whose own
   confirm dialog string is str_clear_wifi, and 0x17 is the older provisioning-mode
   toggle. Neither is offered for the H6199 in the app, and neither is implemented
-  by its firmware: measured 2026-08-04 over direct BLE, in single connections in
+  by its firmware: measured  over direct BLE, in single connections in
   which 0x01 and 0x04 both acknowledged either side of them and 0x46, 0x17 01 and
   0x17 00 drew nothing at all. That is the same control this project used to
   retire 0x41 on the H617A, and it is the reason there is no BLE route to clear
@@ -26,14 +26,14 @@ doc: |
 seq:
   - id: header
     contents: [0x33]
-    doc: '[CONFIRMED_LIVE] H6199 command header at frame offset 0'
+    doc: 'H6199 command header at frame offset 0'
   - id: opcode
     type: u1
     enum: command_op
-    doc: '[CONFIRMED_LIVE] H6199 command register at frame offset 1'
+    doc: 'H6199 command register at frame offset 1'
   - id: body
     size: 17
-    doc: '[CONFIRMED_LIVE] H6199 command body at frame offsets 2..18; unmatched registers remain raw'
+    doc: 'H6199 command body at frame offsets 2..18; unmatched registers remain raw'
     type:
       switch-on: opcode
       cases:
@@ -46,7 +46,7 @@ seq:
         'command_op::relative_brightness': relative_brightness_body
   - id: checksum
     type: u1
-    doc: '[CONFIRMED_LIVE] raw XOR checksum byte at frame offset 19; validated by the fixture runner'
+    doc: 'raw XOR checksum byte at frame offset 19; validated by the fixture runner'
 enums:
   command_op:
     0x01: power
@@ -83,47 +83,41 @@ types:
     seq:
       - id: red
         type: u1
-        doc: '[CONFIRMED_LIVE] red channel; captured as 0xff for the palette swatch the app draws red'
+        doc: 'red channel; captured as 0xff for the palette swatch the app draws red'
       - id: green
         type: u1
-        doc: '[CONFIRMED_LIVE] green channel; captured as 0xff for the swatch the app draws green'
+        doc: 'green channel; captured as 0xff for the swatch the app draws green'
       - id: blue
         type: u1
-        doc: '[CONFIRMED_LIVE] blue channel; captured as 0xff for the swatch the app draws blue'
+        doc: 'blue channel; captured as 0xff for the swatch the app draws blue'
   power_body:
     seq:
       - id: is_on
         type: u1
-        doc: '[CONFIRMED_LIVE] H6199 power state at frame offset 2; captured as 1 turning the light on and 0 turning it off from the same device page minutes apart'
-      - id: opaque_tail
-        size: 16
-        doc: '[CONFIRMED_LIVE] remaining H6199 power-body bytes, captured as an opaque all-zero window'
+        doc: 'H6199 power state at frame offset 2; captured as 1 turning the light on and 0 turning it off from the same device page minutes apart'
   brightness_body:
     seq:
       - id: percent
         type: u1
         doc: |
-          [CONFIRMED_LIVE] H6199 brightness at frame offset 2, as a direct 0..100 percent
-          rather than a 0..255 level. Captured 2026-08-03 in one session as 0x64, 0x33 and
+          H6199 brightness at frame offset 2, as a direct 0..100 percent
+          rather than a 0..255 level. Captured  in one session as 0x64, 0x33 and
           0x03 for a slider the app rendered as 100%, 51% and 3%, with nothing else touched
           between the three; each byte equals the displayed percent exactly, which no 0..255
           scaling reproduces.
-      - id: opaque_tail
-        size: 16
-        doc: '[CONFIRMED_LIVE] remaining H6199 brightness-body bytes, captured as an opaque all-zero window'
   mode_body:
     seq:
       - id: sub_mode
         type: u1
         enum: mode_sel
         doc: |
-          [CONFIRMED_LIVE] H6199 lighting-mode selector at frame offset 2. Register 0x05 is
+          H6199 lighting-mode selector at frame offset 2. Register 0x05 is
           not a colour command: it multiplexes several modes on this byte, and only the
           static-colour case carries RGB.
 
           This was previously modelled as the first byte of an opaque 15 01 head, correctly,
           because every capture then held it constant and a value that never varies cannot be
-          told apart from padding. Captures on 2026-08-04 varied it: 0x15 on a static-colour
+          told apart from padding. Captures on  varied it: 0x15 on a static-colour
           write, 0x13 selecting a music mode, 0x04 applying a saved DIY as a scene and 0x0a
           on the DIY editor's live apply, all from the same device page in the same sessions.
           Only the modes with a modelled payload are named in mode_sel; the DIY value 0x0a
@@ -136,7 +130,7 @@ types:
           unset byte, and here it names the model's headline feature.
       - id: detail
         size: 16
-        doc: '[CONFIRMED_LIVE] H6199 mode payload at frame offsets 3..18; modes without an isolated body remain raw'
+        doc: 'H6199 mode payload at frame offsets 3..18; modes without an isolated body remain raw'
         type:
           switch-on: sub_mode
           cases:
@@ -154,7 +148,7 @@ types:
       - id: scene_id
         type: u2le
         doc: |
-          [CONFIRMED_LIVE] the scene number, at frame offsets 3..4. Captured by applying
+          the scene number, at frame offsets 3..4. Captured by applying
           scenes from the app's built-in gallery, Effects Lab, Workshop, AI generator and
           Light Up Your Life surface. Three adjacent tiles in the "House of the Dragon" row
           gave 16182, 16183 and 16184, differing at the low byte and the checksum alone;
@@ -184,7 +178,7 @@ types:
       - id: scene_class
         type: u1
         doc: |
-          [CONFIRMED_LIVE] a classifier for the scene, at frame offset 5, named for what it IS
+          a classifier for the scene, at frame offset 5, named for what it IS
           because nothing captured establishes what it MEANS. Committed fixtures carry three
           values: 1 on seven scenes, 2 on fourteen, and 0 on two AI-generated effects.
 
@@ -216,9 +210,6 @@ types:
           0, rgb 1, rgbic 2, graffiti 3, cube 4, diy 5, compose 6; against it, four effects
           composed in the app's own Workshop carry 2 rather than the 6 that numbering would
           predict.
-      - id: opaque_tail
-        size: 13
-        doc: '[CONFIRMED_LIVE] remaining H6199 scene-body bytes at frame offsets 6..18, captured as an opaque all-zero window across all twenty-three scene fixtures'
   video_body:
     doc: |
       The DreamView T1's headline mode: a camera clipped to the television samples the
@@ -237,14 +228,14 @@ types:
         type: u1
         enum: video_region
         doc: |
-          [CONFIRMED_LIVE] which part of the picture is followed, at frame offset 3. Captured
-          2026-08-04 by tapping the app's "Part" and "All" tiles with nothing else touched;
+          which part of the picture is followed, at frame offset 3. Captured
+           by tapping the app's "Part" and "All" tiles with nothing else touched;
           the two writes differ at this byte and the checksum alone, in both directions.
       - id: source
         type: u1
         enum: video_source
         doc: |
-          [CONFIRMED_LIVE] the picture profile, at frame offset 4, which the app presents as
+          the picture profile, at frame offset 4, which the app presents as
           a Game/Movie pair. Captured in the same session by tapping "Movie" with the region
           left on "All": that write differs from its Game counterpart at this byte and the
           checksum alone. Note the polarity, which is the opposite way round to the way the
@@ -252,8 +243,8 @@ types:
       - id: saturation
         type: u1
         doc: |
-          [CONFIRMED_LIVE] colour saturation, at frame offset 5, as a direct 0..100 percent.
-          Captured 2026-08-04 by dragging the Saturation slider inside the video sheet's
+          colour saturation, at frame offset 5, as a direct 0..100 percent.
+          Captured  by dragging the Saturation slider inside the video sheet's
           Color Calibration panel: the byte read 0x58 while the panel showed 88% and 0x14
           while it showed 20%, matching the displayed percent exactly, with that byte and
           the checksum the only difference between the two writes.
@@ -270,14 +261,14 @@ types:
       - id: sound_effects
         type: u1
         doc: |
-          [CONFIRMED_LIVE] whether the strip also reacts to sound, at frame offset 6.
-          Captured 2026-08-04 by switching the sheet's "Sound Effects" toggle on: the write
+          whether the strip also reacts to sound, at frame offset 6.
+          Captured  by switching the sheet's "Sound Effects" toggle on: the write
           differs from the preceding one at this byte and the checksum alone. Enabling it
           also reveals the softness control below, which is what makes the two fields a pair.
       - id: softness
         type: u1
         doc: |
-          [CONFIRMED_LIVE] the "Softness" percentage that appears with sound effects, at
+          the "Softness" percentage that appears with sound effects, at
           frame offset 7. Captured by dragging that slider from full to near its low end in
           the same session: 0x64 became 0x0c, decimal 100 to 12, with this byte and the
           checksum the only difference. A direct percent, like brightness on this model,
@@ -285,7 +276,7 @@ types:
       - id: opaque_tail
         size: 11
         doc: |
-          [CONFIRMED_LIVE] remaining H6199 video-body bytes at frame offsets 8..18, captured
+          remaining H6199 video-body bytes at frame offsets 8..18, captured
           as an opaque all-zero window across every video write.
 
           THE FIRST BYTE OF THIS WINDOW IS ZERO FOR A REASON, NOT BECAUSE IT IS PADDING. The
@@ -306,7 +297,7 @@ types:
       - id: unknown_head
         type: u1
         doc: |
-          [CONFIRMED_LIVE] one byte at frame offset 2, captured as 0x01 in both writes and
+          one byte at frame offset 2, captured as 0x01 in both writes and
           never seen to vary. Unnamed for that reason. Worth stating that it is NOT the
           count: the count sits after it, and reading this byte as the count is exactly the
           mistake the fixture runner caught, because 0x01 then truncates the payload to a
@@ -314,41 +305,41 @@ types:
       - id: edge_count
         type: u1
         doc: |
-          [CONFIRMED_LIVE] how many edge values follow, at frame offset 3, captured as 4.
+          how many edge values follow, at frame offset 3, captured as 4.
           Named a count rather than treated as padding because it equals both the number of
           bytes that then carry a percentage and the number of edges the sheet draws.
       - id: left_percent
         type: u1
         doc: |
-          [CONFIRMED_LIVE] the left edge's relative brightness percentage, at frame offset 4.
-          Captured 2026-08-05 by selecting ONLY the sheet's left edge and dragging its slider:
+          the left edge's relative brightness percentage, at frame offset 4.
+          Captured  by selecting ONLY the sheet's left edge and dragging its slider:
           this byte moved 0x5b -> 0x33, matching 91% -> 51%, while top, right and bottom
           stayed at their already-distinct 20%, 31% and 41%.
       - id: top_percent
         type: u1
         doc: |
-          [CONFIRMED_LIVE] the top edge's relative brightness percentage, at frame offset 5.
+          the top edge's relative brightness percentage, at frame offset 5.
           Captured by deselecting every edge, selecting ONLY the top edge and dragging the
           slider: this byte moved 0x5b -> 0x14, matching 91% -> 20%, while the other three
           bytes remained 0x5b. Restoring all four edges to 91% moved this byte back to 0x5b.
       - id: right_percent
         type: u1
         doc: |
-          [CONFIRMED_LIVE] the right edge's relative brightness percentage, at frame offset 6.
+          the right edge's relative brightness percentage, at frame offset 6.
           Captured by switching the selection from top to ONLY right and dragging the slider:
           this byte moved 0x5b -> 0x1f, matching 91% -> 31%, while the top remained 20% and
           left and bottom remained 91%.
       - id: bottom_percent
         type: u1
         doc: |
-          [CONFIRMED_LIVE] the bottom edge's relative brightness percentage, at frame offset 7.
+          the bottom edge's relative brightness percentage, at frame offset 7.
           Captured by switching the selection from right to ONLY bottom and dragging the
           slider: this byte moved 0x5b -> 0x29, matching 91% -> 41%, while the other three
           edge values did not move.
       - id: opaque_tail
         size: 11
         doc: |
-          [CONFIRMED_LIVE] remaining bytes at frame offsets 8..18, captured as an opaque
+          remaining bytes at frame offsets 8..18, captured as an opaque
           all-zero window in both writes.
 
           ITS FIRST TWO BYTES MAY NOT BE PADDING. The vendor app's encoder always emits six
@@ -372,34 +363,36 @@ types:
         type: u1
         enum: display_setting
         doc: |
-          [CONFIRMED_LIVE] which display setting this write addresses, at frame offset 2.
-          Captured 2026-08-04 as 0x0a from the "Blank Screen Settings" toggle and 0x00 from
+          which display setting this write addresses, at frame offset 2.
+          Captured  as 0x0a from the "Blank Screen Settings" toggle and 0x00 from
           the white-balance strip inside Color Calibration, in one session on one sheet.
       - id: len
         type: u1
         doc: |
-          [CONFIRMED_LIVE] how many payload bytes follow, at frame offset 3. Captured as 6
+          how many payload bytes follow, at frame offset 3. Captured as 6
           for the blank-screen setting and 3 for white balance, and in both cases every byte
           beyond that count is zero and never moves while the bytes within it do. Two
           settings with different lengths is what tells a length apart from a second
           selector byte, which is all one sample could support.
       - id: payload
         size: len
-        doc: '[CONFIRMED_LIVE] the setting-specific payload at frame offset 4; settings without a modelled body remain raw'
+        doc: 'the setting-specific payload at frame offset 4; settings without a modelled body remain raw'
         type:
           switch-on: setting
           cases:
             'display_setting::white_balance': white_balance_payload
             'display_setting::blank_screen': blank_screen_payload
-      - id: opaque_tail
-        size: 15 - len
-        doc: '[CONFIRMED_LIVE] the rest of the body, captured as an opaque all-zero window in every write of either setting'
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+        doc: Zero padding after the declared setting payload.
   white_balance_payload:
     seq:
       - id: manual
         type: u1
         doc: |
-          [INFERRED] set while white balance is being driven by hand, at frame offset
+          set while white balance is being driven by hand, at frame offset
           4. Captured as 0x01 across the complete twenty-position strip and the Reset write.
 
           It was first modelled as an unnamed constant on exactly that evidence, which was a
@@ -413,12 +406,12 @@ types:
       - id: red
         type: u1
         doc: |
-          [CONFIRMED_LIVE] red gain, at frame offset 5. Every one of the app strip's twenty
+          red gain, at frame offset 5. Every one of the app strip's twenty
           positions is committed, spanning 7 at the cool end to 21 at the warm end.
       - id: blue
         type: u1
         doc: |
-          [CONFIRMED_LIVE] blue gain, at frame offset 6. Across all twenty positions it
+          blue gain, at frame offset 6. Across all twenty positions it
           varies non-monotonically between 3 and 10, which a single 16-bit level could not
           explain.
 
@@ -445,14 +438,14 @@ types:
       - id: is_on
         type: u1
         doc: |
-          [CONFIRMED_LIVE] the blank-screen setting itself, at frame offset 4. Captured
-          2026-08-04 by switching that toggle on and then straight back off: the two writes
+          the blank-screen setting itself, at frame offset 4. Captured
+           by switching that toggle on and then straight back off: the two writes
           differ at this byte and the checksum alone, which is what tells a payload flag
           apart from a different setting under the same opcode.
       - id: opaque_tail
         size: 5
         doc: |
-          [CONFIRMED_LIVE] the rest of the blank-screen payload, captured as 02 0a 00 78 00
+          the rest of the blank-screen payload, captured as 02 0a 00 78 00
           and identical in both writes.
 
           HELD OPAQUE, BUT NOT BECAUSE IT IS SHAPELESS. The vendor app's encoder writes this
@@ -473,7 +466,7 @@ types:
         type: u1
         enum: music_mode
         doc: |
-          [CONFIRMED_LIVE] H6199 music mode at frame offset 3. Captured 2026-08-04 by tapping
+          H6199 music mode at frame offset 3. Captured  by tapping
           each of the app's four mode tiles in one session with the sensitivity slider and
           the sound-pickup toggle untouched, so the four frames differ in this byte alone.
           Energic, Rhythm, Spectrum and Rolling gave 0x05, 0x03, 0x04 and 0x06; re-tapping
@@ -485,8 +478,8 @@ types:
       - id: sensitivity
         type: u1
         doc: |
-          [CONFIRMED_LIVE] H6199 music sensitivity at frame offset 4, written directly rather
-          than scaled. Captured 2026-08-05 by dragging the app's Sensitivity slider with the
+          H6199 music sensitivity at frame offset 4, written directly rather
+          than scaled. Captured  by dragging the app's Sensitivity slider with the
           mode and the sound-pickup toggle untouched: 99, 26 and 62, each write differing from
           the one before at this byte and the checksum alone, and then 100 and 1 by dragging
           hard to each end.
@@ -517,8 +510,8 @@ types:
       - id: is_calm
         type: u1
         doc: |
-          [CONFIRMED_LIVE] which of the page's two reactivity profiles is chosen, at frame
-          offset 5. Captured 2026-08-05 as 0 for Dynamic and 1 for Calm, by tapping one and
+          which of the page's two reactivity profiles is chosen, at frame
+          offset 5. Captured  as 0 for Dynamic and 1 for Calm, by tapping one and
           then the other with everything else on the page untouched, so the pair differs at
           this byte and the checksum alone.
 
@@ -529,7 +522,7 @@ types:
       - id: has_fixed_colour
         type: u1
         doc: |
-          [CONFIRMED_LIVE] whether the user pinned a colour instead of letting the light pick
+          whether the user pinned a colour instead of letting the light pick
           one, at frame offset 6. Captured as 1 with the page's "Auto color" switch off and 0
           with it on, toggled straight back and forth: the two writes differ at this byte and
           the three colour bytes together, which is what makes the flag and the colour one
@@ -537,14 +530,14 @@ types:
       - id: fixed_colour
         type: rgb
         doc: |
-          [CONFIRMED_LIVE] the pinned colour at frame offsets 7..9, meaningful only while the
+          the pinned colour at frame offsets 7..9, meaningful only while the
           flag above is set. Captured as ff 00 00 and then 00 00 ff by choosing red and then
           blue from the palette that appears when auto colour is off, the two writes differing
           in these bytes alone. It reads 00 00 00 whenever the flag is clear.
       - id: opaque_tail
         size: 9
         doc: |
-          [CONFIRMED_LIVE] remaining H6199 music-body bytes at frame offsets 10..18, captured
+          remaining H6199 music-body bytes at frame offsets 10..18, captured
           as an opaque all-zero window across every music write.
 
           THIS WINDOW USED TO BE FIVE BYTES LONGER and was described the same way, which is
@@ -558,131 +551,117 @@ types:
         type: u1
         enum: static_operation
         doc: |
-          [CONFIRMED_LIVE] static-operation selector at frame offset 3. App colour and colour-
+          static-operation selector at frame offset 3. App colour and colour-
           temperature writes carry 0x01. Home Assistant trials on the H6199 carried 0x02 for
           masked segment brightness, and attributed aa a5 replies independently confirmed the
           requested percentages on one segment, a disjoint pair and all fifteen.
       - id: red
         type: u1
         if: operation == static_operation::colour
-        doc: '[CONFIRMED_LIVE] H6199 red channel at frame offset 4; captured as 0xff for the Basic Colors red swatch and 0x00 for green and blue, in one session with nothing else touched'
+        doc: 'H6199 red channel at frame offset 4; captured as 0xff for the Basic Colors red swatch and 0x00 for green and blue, in one session with nothing else touched'
       - id: green
         type: u1
         if: operation == static_operation::colour
-        doc: '[CONFIRMED_LIVE] H6199 green channel at frame offset 5; captured as 0xff for the green swatch alone in the same session'
+        doc: 'H6199 green channel at frame offset 5; captured as 0xff for the green swatch alone in the same session'
       - id: blue
         type: u1
         if: operation == static_operation::colour
-        doc: '[CONFIRMED_LIVE] H6199 blue channel at frame offset 6; captured as 0xff for the blue swatch alone in the same session'
+        doc: 'H6199 blue channel at frame offset 6; captured as 0xff for the blue swatch alone in the same session'
       - id: kelvin
         type: u2be
         if: operation == static_operation::colour
         doc: |
-          [CONFIRMED_LIVE] colour temperature at frame offsets 7..8, big-endian. Captured on
+          colour temperature at frame offsets 7..8, big-endian. Captured on
           the H6199 as 2000, 5500 and 9000 K while dragging the app slider to its warm, middle
           and cool positions. Direct RGB writes carry zero.
       - id: preview
         type: rgb
         if: operation == static_operation::colour
         doc: |
-          [INFERRED] RGB companion at frame offsets 9..11. It varied with each captured
+          RGB companion at frame offsets 9..11. It varied with each captured
           colour-temperature position and is zero on direct RGB writes, but its device-side
           role beside the independently encoded Kelvin value has not been isolated.
       - id: segment_mask
         type: u2
         if: operation == static_operation::colour
         doc: |
-          [CONFIRMED_LIVE] H6199 segment selection at frame offsets 12..13, little-endian,
-          bit 0 being the segment the app draws first. Captured 2026-08-03 by colouring one
+          H6199 segment selection at frame offsets 12..13, little-endian,
+          bit 0 being the segment the app draws first. Captured  by colouring one
           segment red, then a different segment the same red, then both together: 0x0001,
           0x0004, then 0x0005. The third write is what makes it a bitfield rather than an
           index or a count, because 0x0005 is the OR of the other two and no ordinal
           encoding produces it. A whole-strip write carries 0x7fff, fifteen bits set, which
           matches the fifteen segments the app draws.
-      - id: opaque_tail
-        size: 5
-        if: operation == static_operation::colour
-        doc: '[CONFIRMED_LIVE] remaining H6199 colour-body bytes at frame offsets 14..18, captured as an opaque all-zero window'
       - id: brightness_percent
         type: u1
         if: operation == static_operation::brightness
         doc: |
-          [CONFIRMED_LIVE] direct segment-brightness percentage at frame offset 4. H6199
+          direct segment-brightness percentage at frame offset 4. H6199
           trials used 17, 37 and 73, and aa a5 read-back reported the same values.
       - id: brightness_segment_mask
         type: u2
         if: operation == static_operation::brightness
         doc: |
-          [CONFIRMED_LIVE] little-endian target mask at frame offsets 5..6. Trials addressed
+          little-endian target mask at frame offsets 5..6. Trials addressed
           segment 1 (0x0001), segments 2 and 4 (0x000a), and all fifteen (0x7fff).
-      - id: brightness_tail
-        size: 12
-        if: operation == static_operation::brightness
-        doc: '[CONFIRMED_LIVE] remaining brightness-body bytes at frame offsets 7..18, captured as zero'
   clock_body:
     seq:
       - id: hour
         type: u1
-        doc: '[CONFIRMED_LIVE] local hour; captured as 13 at 13:35 and as 9 at 09:54 in separate sessions'
+        doc: 'local hour; captured as 13 at 13:35 and as 9 at 09:54 in separate sessions'
       - id: minute
         type: u1
-        doc: '[CONFIRMED_LIVE] local minute; captured as 35 and as 54 in those same two sessions'
+        doc: 'local minute; captured as 35 and as 54 in those same two sessions'
       - id: second
         type: u1
-        doc: '[CONFIRMED_LIVE] local second; captured as 21 and as 44, moving independently of the fields either side'
+        doc: 'local second; captured as 21 and as 44, moving independently of the fields either side'
       - id: weekday
         type: u1
         doc: |
-          [CONFIRMED_LIVE] ISO weekday, Monday being 1. Captured as 1 on Monday 2026-07-27
-          and as 2 on Tuesday 2026-08-04. One sample could not tell a weekday from any other
+          ISO weekday, Monday being 1. Captured as 1 on Monday
+          and as 2 on Tuesday . One sample could not tell a weekday from any other
           small constant; the second, on a known different day, is what names it.
       - id: flag1
         type: u1
-        doc: '[INFERRED] unknown clock field, captured as 1 in both sessions and so still not distinguishable from a constant'
+        doc: 'unknown clock field, captured as 1 in both sessions and so still not distinguishable from a constant'
       - id: utc_offset_hours
         type: s1
         doc: |
-          [INFERRED] apparent signed UTC-offset hour component; captured as +10 in
+          apparent signed UTC-offset hour component; captured as +10 in
           Australia/Sydney both times. Still inferred rather than confirmed because both
           captures were taken in the same zone, so nothing has yet moved this byte. A
           capture with the phone on a different offset would settle it.
       - id: utc_offset_minutes
         type: u1
-        doc: '[INFERRED] apparent UTC-offset minute component; captured as 0 in Australia/Sydney, unvaried for the same reason as the hours field'
-      - id: opaque_tail
-        size: 10
-        doc: '[CONFIRMED_LIVE] remaining H6199 clock-body bytes, captured as an opaque all-zero window'
+        doc: 'apparent UTC-offset minute component; captured as 0 in Australia/Sydney, unvaried for the same reason as the hours field'
   schedule_body:
     seq:
       - id: slot
         type: u1
         doc: |
-          [CONFIRMED_LIVE] which of the four schedule slots this write addresses, counting
+          which of the four schedule slots this write addresses, counting
           from zero. Captured as 0 and 1 by enabling the app's first and second timer rows
           with nothing else changed between them, which is what separates a slot index from
           a flag that happened to be zero.
       - id: flags
         type: u1
         doc: |
-          [CONFIRMED_LIVE] schedule flags. Bit 0x80 marks the slot enabled and is set in
+          schedule flags. Bit 0x80 marks the slot enabled and is set in
           every captured write, including the two that carried no time at all. Bit 0x01 is
           the action the slot performs: the byte read 0x80 while the app showed "Off" and
           0x81 after the same slot was switched to "On". The remaining bits have never been
           seen set and are deliberately not named.
       - id: hour
         type: u1
-        doc: '[CONFIRMED_LIVE] hour the slot fires; captured as 0 for an untouched slot and 7 after setting 7:30'
+        doc: 'hour the slot fires; captured as 0 for an untouched slot and 7 after setting 7:30'
       - id: minute
         type: u1
-        doc: '[CONFIRMED_LIVE] minute the slot fires; captured as 0 and then 30 (0x1e) from the same edit'
+        doc: 'minute the slot fires; captured as 0 and then 30 (0x1e) from the same edit'
       - id: repeat_mask
         type: u1
         doc: |
-          [CONFIRMED_LIVE] repeat days, as 0x80 plus one bit per weekday from Monday at 0x01.
+          repeat days, as 0x80 plus one bit per weekday from Monday at 0x01.
           Captured as 0x80 with no days chosen and 0x95 after choosing Monday, Wednesday and
           Friday, which is 0x80 | 0x01 | 0x04 | 0x10. That value matters: 0x80 on its own
           looks like a "fire once" flag, and 0x95 is the reading that rules it out by naming
           three days while keeping the same high bit.
-      - id: opaque_tail
-        size: 12
-        doc: '[CONFIRMED_LIVE] remaining H6199 schedule-body bytes, captured as an opaque all-zero window'

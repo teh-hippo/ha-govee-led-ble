@@ -24,18 +24,18 @@ doc: |
 seq:
   - id: header
     contents: [0xa1]
-    doc: '[CONFIRMED_LIVE] H6199 multi-part upload header at frame offset 0'
+    doc: 'H6199 multi-part upload header at frame offset 0'
   - id: sub_opcode
     type: u1
     valid: 0x11
     doc: |
-      [CONFIRMED_LIVE] H6199 upload sub-register at frame offset 1, 0x11 for Wi-Fi
+      H6199 upload sub-register at frame offset 1, 0x11 for Wi-Fi
       provisioning. This byte is what makes 0xA1 a family rather than a single command, and
       it is repeated on every frame of the sequence rather than appearing once in a header.
   - id: index
     type: u1
     doc: |
-      [CONFIRMED_LIVE] H6199 frame index at frame offset 2. 0x00 is the header frame, 0x01
+      H6199 frame index at frame offset 2. 0x00 is the header frame, 0x01
       upwards are data frames in order, and 0xff is a dedicated empty terminator that is
       always sent regardless of whether the last data frame was full.
 
@@ -44,21 +44,21 @@ seq:
       this model is written from H6199 captures rather than derived from the other one.
   - id: payload
     size: 16
-    doc: '[CONFIRMED_LIVE] H6199 frame payload at offsets 3..18; on the header frame byte 0 is the data-frame count and the rest is zero, and on the terminator the whole window is zero'
+    doc: 'H6199 frame payload at offsets 3..18; on the header frame byte 0 is the data-frame count and the rest is zero, and on the terminator the whole window is zero'
   - id: checksum
     type: u1
-    doc: '[CONFIRMED_LIVE] raw XOR checksum byte at frame offset 19; validated by the fixture runner'
+    doc: 'raw XOR checksum byte at frame offset 19; validated by the fixture runner'
 instances:
   is_header:
     value: index == 0
-    doc: '[CONFIRMED_LIVE] the first frame of a sequence, whose payload byte 0 states how many data frames follow'
+    doc: 'the first frame of a sequence, whose payload byte 0 states how many data frames follow'
   is_terminator:
     value: index == 0xff
-    doc: '[CONFIRMED_LIVE] the empty closing frame of a sequence'
+    doc: 'the empty closing frame of a sequence'
   data_frame_count:
     value: payload[0]
     if: index == 0
     doc: |
-      [CONFIRMED_LIVE] number of data frames the header announces. Captured as 3, 4 and 5
+      number of data frames the header announces. Captured as 3, 4 and 5
       for 48-, 49- and 65-byte bodies, exactly ceil(body_length / 16). Each sequence then
       carried precisely that many indexed data frames before the empty terminator.

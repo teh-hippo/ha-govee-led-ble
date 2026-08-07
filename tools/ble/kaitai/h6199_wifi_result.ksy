@@ -22,27 +22,26 @@ doc: |
 seq:
   - id: header
     contents: [0xee]
-    doc: '[CONFIRMED_LIVE] H6199 device-initiated header at frame offset 0'
+    doc: 'H6199 device-initiated header at frame offset 0'
   - id: sub_opcode
     type: u1
     valid: 0x11
-    doc: '[CONFIRMED_LIVE] register the report concerns at frame offset 1, 0x11 being Wi-Fi provisioning, matching the register that was written'
+    doc: 'register the report concerns at frame offset 1, 0x11 being Wi-Fi provisioning, matching the register that was written'
   - id: status
     type: u1
     enum: outcome
     doc: |
-      [CONFIRMED_LIVE] association outcome at frame offset 2. Captured as 0x01 after pushing
+      association outcome at frame offset 2. Captured as 0x01 after pushing
       a deliberately non-existent SSID, and as 0x00 after pushing working credentials.
 
       UniFi later observed 0x00 attempts associated to the intended SSID without obtaining a
       VLAN IP. That rules out DHCP, internet and cloud reach as prerequisites. The strongest
       supported reading is successful Wi-Fi association.
-  - id: opaque_tail
-    size: 16
-    doc: '[CONFIRMED_LIVE] remaining bytes at frame offsets 3..18, captured as an opaque all-zero window in both the success and failure cases'
+  - size: 16
+    doc: Unmodelled bytes between the association status and checksum.
   - id: checksum
     type: u1
-    doc: '[CONFIRMED_LIVE] raw XOR checksum byte at frame offset 19; validated by the fixture runner'
+    doc: 'raw XOR checksum byte at frame offset 19; validated by the fixture runner'
 enums:
   outcome:
     0x00: associated

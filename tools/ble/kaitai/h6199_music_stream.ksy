@@ -10,7 +10,7 @@ doc: |
 
   Modelled independently from the H617A frame of the same shape and importing nothing, per
   the charter. Every claim below is measured on 1662 H6199 frames, 266 of them distinct,
-  captured 2026-08-05 with the light off Govee's cloud so BLE was its only path. That the
+  captured  with the light off Govee's cloud so BLE was its only path. That the
   two models agree is an OBSERVATION here rather than an inheritance: nothing in this file
   was read across, and the checksum in particular was re-derived instead of assumed.
 
@@ -29,22 +29,22 @@ seq:
   - id: magic
     contents: [0xa5, 0x02, 0x83]
     doc: |
-      [CONFIRMED_LIVE] the stream opcode at frame offsets 0..2, identical in all 266 distinct
+      the stream opcode at frame offsets 0..2, identical in all 266 distinct
       frames. Held as one literal rather than split into an opcode and a sub-code because
       nothing has ever varied any of the three, and where the boundary falls is a guess.
   - id: red
     type: u1
-    doc: '[CONFIRMED_LIVE] red channel at frame offset 3; 96 distinct values across the corpus, spanning 0 to 254'
+    doc: 'red channel at frame offset 3; 96 distinct values across the corpus, spanning 0 to 254'
   - id: green
     type: u1
-    doc: '[CONFIRMED_LIVE] green channel at frame offset 4; 109 distinct values, spanning 0 to 254'
+    doc: 'green channel at frame offset 4; 109 distinct values, spanning 0 to 254'
   - id: blue
     type: u1
-    doc: '[CONFIRMED_LIVE] blue channel at frame offset 5; 120 distinct values, spanning 0 to 254'
+    doc: 'blue channel at frame offset 5; 120 distinct values, spanning 0 to 254'
   - id: checksum
     type: u1
     doc: |
-      [CONFIRMED_LIVE] the low eight bits of the sum of frame offsets 0..5, validated by the
+      the low eight bits of the sum of frame offsets 0..5, validated by the
       fixture runner, which also refuses a corpus with no frame separating this scheme from
       XOR. Every fixture here is such a frame.
 

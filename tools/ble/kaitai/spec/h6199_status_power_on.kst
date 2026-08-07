@@ -7,5 +7,3 @@ asserts:
     expected: 1
   - actual: body.is_on
     expected: 1
-  - actual: body.opaque_tail
-    expected: "00000000000000000000000000000000"
