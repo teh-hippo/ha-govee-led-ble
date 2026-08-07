@@ -196,45 +196,21 @@ class CommandWrite(ReadWriteKaitaiStruct):
             self.percent = self._io.read_u1()
             if not self.percent <= 100:
                 raise kaitaistruct.ValidationGreaterThanError(100, self.percent, self._io, u"/types/brightness_cmd/seq/0")
-            self.padding = []
-            i = 0
-            while not self._io.is_eof():
-                self.padding.append(self._io.read_u1())
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], self._io, u"/types/brightness_cmd/seq/1")
-                i += 1
-
             self._dirty = False
 
 
         def _fetch_instances(self):
             pass
-            for i in range(len(self.padding)):
-                pass
-
 
 
         def _write__seq(self, io=None):
             super(CommandWrite.BrightnessCmd, self)._write__seq(io)
             self._io.write_u1(self.percent)
-            for i in range(len(self.padding)):
-                pass
-                if self._io.is_eof():
-                    raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
-                self._io.write_u1(self.padding[i])
-
-            if not self._io.is_eof():
-                raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
 
 
         def _check(self):
             if not self.percent <= 100:
                 raise kaitaistruct.ValidationGreaterThanError(100, self.percent, None, u"/types/brightness_cmd/seq/0")
-            for i in range(len(self.padding)):
-                pass
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], None, u"/types/brightness_cmd/seq/1")
-
             self._dirty = False
 
 
@@ -438,43 +414,19 @@ class CommandWrite(ReadWriteKaitaiStruct):
 
         def _read(self):
             self.is_on = self._io.read_u1()
-            self.padding = []
-            i = 0
-            while not self._io.is_eof():
-                self.padding.append(self._io.read_u1())
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], self._io, u"/types/power_cmd/seq/1")
-                i += 1
-
             self._dirty = False
 
 
         def _fetch_instances(self):
             pass
-            for i in range(len(self.padding)):
-                pass
-
 
 
         def _write__seq(self, io=None):
             super(CommandWrite.PowerCmd, self)._write__seq(io)
             self._io.write_u1(self.is_on)
-            for i in range(len(self.padding)):
-                pass
-                if self._io.is_eof():
-                    raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
-                self._io.write_u1(self.padding[i])
-
-            if not self._io.is_eof():
-                raise kaitaistruct.ConsistencyError(u"padding", 0, self._io.size() - self._io.pos())
 
 
         def _check(self):
-            for i in range(len(self.padding)):
-                pass
-                if not self.padding[i] == 0:
-                    raise kaitaistruct.ValidationNotEqualError(0, self.padding[i], None, u"/types/power_cmd/seq/1")
-
             self._dirty = False
 
 

@@ -493,7 +493,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             await self._async_turn_on(**kwargs)
 
     async def _async_turn_on(self, **kwargs: Any) -> None:
-        power_on = partial(self.coordinator.send_command, build_power(True))
+        power_on = partial(
+            self.coordinator.send_command,
+            build_power(True, self.coordinator.model),
+        )
         with self._rollback():
             if not self.coordinator.is_on:
                 await power_on()
@@ -503,7 +506,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
 
                 async def apply_brightness() -> None:
-                    await self.coordinator.send_command(build_brightness(pct))
+                    await self.coordinator.send_command(build_brightness(pct, self.coordinator.model))
 
                 await apply_brightness()
                 self.coordinator.brightness_pct = pct
@@ -534,7 +537,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             await self._async_turn_off(**kwargs)
 
     async def _async_turn_off(self, **kwargs: Any) -> None:
-        power_off = partial(self.coordinator.send_command, build_power(False))
+        power_off = partial(
+            self.coordinator.send_command,
+            build_power(False, self.coordinator.model),
+        )
         with self._rollback():
             await power_off()
             self.coordinator.is_on = False

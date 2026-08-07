@@ -69,7 +69,7 @@ async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
         return False
     for _ in range(2):
         if not coord.is_on:
-            await coord.send_command(build_power(True))
+            await coord.send_command(build_power(True, coord.model))
             coord.is_on = True
         await apply_video_mode_from_state(coord, game_mode=coord.video_mode == "game")
         if await coord.refresh_state(
@@ -172,7 +172,9 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 sound_effects=resolved_sound, sound_effects_softness=resolved_softness)
             # fmt: on
             async def apply() -> None:
-                await self.coordinator.send_command(build_power(True))
+                await self.coordinator.send_command(
+                    build_power(True, self.coordinator.model)
+                )
                 self.coordinator.is_on = True
                 await self.coordinator.send_command(packet)
 
@@ -258,7 +260,9 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._require_support("set_white_brightness", supported=self.coordinator.profile.supports_white_brightness)
         with self._rollback():
             async def apply() -> None:
-                await self.coordinator.send_command(build_power(True))
+                await self.coordinator.send_command(
+                    build_power(True, self.coordinator.model)
+                )
                 self.coordinator.is_on = True
                 await self.coordinator.send_command(build_white_brightness(brightness))
 

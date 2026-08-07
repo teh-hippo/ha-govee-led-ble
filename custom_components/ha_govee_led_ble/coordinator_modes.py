@@ -232,7 +232,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         mode_id = MUSIC_MODE_SLUGS[slug]
         calm = self.music_calm if mode_id in MUSIC_STYLE_MODE_IDS else False
         color = self.music_color if self.profile.supports_music_color else None
-        await self.send_command(build_power(True))
+        await self.send_command(build_power(True, self.model))
         self.is_on = True
         await self.send_command(
             build_music_mode_with_color(mode_id, sensitivity=self.music_sensitivity, color=color, calm=calm)

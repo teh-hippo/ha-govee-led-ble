@@ -18,6 +18,11 @@ from .custom_effects import (
     SketchContent,
     VibrantContent,
 )
+from .generated_protocol_adapter import (
+    build_brightness as _build_generated_brightness,
+)
+from .generated_protocol_adapter import build_power as _build_generated_power
+from .generated_protocol_adapter import xor_checksum
 from .scenes import SCENES, SceneSpeed
 
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
@@ -82,13 +87,6 @@ def _get(payload: bytes, index: int) -> int | None:
     return payload[index] if len(payload) > index else None
 
 
-def xor_checksum(data: bytes | bytearray) -> int:
-    checksum = 0
-    for part in data:
-        checksum ^= part
-    return checksum
-
-
 def split_status_frame(frame: bytes) -> tuple[int, bytes] | None:
     """Split an incoming status notification into ``(domain, payload)``.
 
@@ -112,12 +110,12 @@ def build_packet(cmd_type: int, action: int, params: list[int]) -> bytes:
     return bytes(payload)
 
 
-def build_power(on: bool) -> bytes:
-    return build_packet(0x33, 0x01, [int(on)])
+def build_power(on: bool, model: str = "H617A") -> bytes:
+    return _build_generated_power(on, model)
 
 
-def build_brightness(percent: int) -> bytes:
-    return build_packet(0x33, 0x04, [_clamp(percent, 0, 100)])
+def build_brightness(percent: int, model: str = "H617A") -> bytes:
+    return _build_generated_brightness(percent, model)
 
 
 SEGMENT_COUNT = 15

@@ -48,20 +48,12 @@ types:
     seq:
       - id: is_on
         type: u1
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
   brightness_cmd:
     seq:
       - id: percent
         type: u1
         valid:
           max: 100
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
   multi_cmd:
     seq:
       - id: sub

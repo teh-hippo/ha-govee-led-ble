@@ -79,14 +79,16 @@ def test_packet_basics():
 @pytest.mark.parametrize(
     "on,h", [(True, "3301010000000000000000000000000000000033"), (False, "3301000000000000000000000000000000000032")]
 )
-def test_power(on, h):
-    pkt = proto.build_power(on)
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+def test_power(on, h, model):
+    pkt = proto.build_power(on, model)
     assert pkt == H(h) and len(pkt) == 20
 
 
 @pytest.mark.parametrize("val,exp", [(100, 100), (0, 0), (200, 100), (-10, 0)])
-def test_brightness(val, exp):
-    pkt = proto.build_brightness(val)
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+def test_brightness(val, exp, model):
+    pkt = proto.build_brightness(val, model)
     assert pkt[0:2] == bytes([0x33, 0x04]) and pkt[2] == exp
     _valid(pkt)
 
