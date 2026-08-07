@@ -1,10 +1,17 @@
-# H6199 whole-strip brightness reply at 3 percent.
 id: h6199_status_brightness_3
 data: h6199_status_brightness_3.bin
 imports:
-  - h6199_status_reply
+- h6199_status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: dv-diy-apply.pcap
+  source_sha256: 2c64690ee14e2bf450835f5c2d372482567838e3b28904c09e7e7601662aabbd
+  source_index: 2
 asserts:
-  - actual: domain
-    expected: 4
-  - actual: body.percent
-    expected: 3
+- actual: domain
+  expected: 4
+- actual: body.percent
+  expected: 3
+fixture_sha256: 8080113d946171a8fa9c40a9cd3774db8d7db4784d79b314ee5419e8f61096ba

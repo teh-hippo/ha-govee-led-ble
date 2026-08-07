@@ -1,10 +1,17 @@
-# Attributable H6199 power read-back while the device page showed off.
 id: h6199_status_power_off
 data: h6199_status_power_off.bin
 imports:
-  - h6199_status_reply
+- h6199_status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: dv-diy-apply.pcap
+  source_sha256: 2c64690ee14e2bf450835f5c2d372482567838e3b28904c09e7e7601662aabbd
+  source_index: 1
 asserts:
-  - actual: domain
-    expected: 1
-  - actual: body.is_on
-    expected: 0
+- actual: domain
+  expected: 1
+- actual: body.is_on
+  expected: 0
+fixture_sha256: 897d4b099d2084059bf2373c8d7041fddba84059b83d0d5624c0d47e23191112

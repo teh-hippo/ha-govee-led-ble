@@ -1,57 +1,61 @@
-# Christmas again with rec0 direction/distribution moved to 0x80, Unified plus Backward.
-# Against the christmas_5layer body it differs at exactly one byte, which is what pins r13.
 id: workshop_body_r13_direction
 data: workshop_body_r13_direction.bin
 imports:
-  - workshop_body
+- workshop_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: header.linecount
-    expected: 9
-  - actual: layer_count
-    expected: 5
-  - actual: layers.size
-    expected: 5
-  - actual: layers[0].record_len
-    expected: 26
-  - actual: layers[0].body.colour_count
-    expected: 1
-  - actual: layers[0].body.palette.size
-    expected: 1
-  - actual: layers[0].body.excess.size
-    expected: 0
-  - actual: layers[1].record_len
-    expected: 26
-  - actual: layers[1].body.colour_count
-    expected: 1
-  - actual: layers[1].body.palette.size
-    expected: 1
-  - actual: layers[1].body.excess.size
-    expected: 0
-  - actual: layers[2].record_len
-    expected: 26
-  - actual: layers[2].body.colour_count
-    expected: 1
-  - actual: layers[2].body.palette.size
-    expected: 1
-  - actual: layers[2].body.excess.size
-    expected: 0
-  - actual: layers[3].record_len
-    expected: 26
-  - actual: layers[3].body.colour_count
-    expected: 1
-  - actual: layers[3].body.palette.size
-    expected: 1
-  - actual: layers[3].body.excess.size
-    expected: 0
-  - actual: layers[4].record_len
-    expected: 26
-  - actual: layers[4].body.colour_count
-    expected: 1
-  - actual: layers[4].body.palette.size
-    expected: 1
-  - actual: layers[4].body.excess.size
-    expected: 0
-  - actual: layers[0].body.direction_distribution
-    expected: 128
-  - actual: layers[0].body.direction_is_backward
-    expected: true
+- actual: header.linecount
+  expected: 9
+- actual: layer_count
+  expected: 5
+- actual: layers.size
+  expected: 5
+- actual: layers[0].record_len
+  expected: 26
+- actual: layers[0].body.colour_count
+  expected: 1
+- actual: layers[0].body.palette.size
+  expected: 1
+- actual: layers[0].body.excess.size
+  expected: 0
+- actual: layers[1].record_len
+  expected: 26
+- actual: layers[1].body.colour_count
+  expected: 1
+- actual: layers[1].body.palette.size
+  expected: 1
+- actual: layers[1].body.excess.size
+  expected: 0
+- actual: layers[2].record_len
+  expected: 26
+- actual: layers[2].body.colour_count
+  expected: 1
+- actual: layers[2].body.palette.size
+  expected: 1
+- actual: layers[2].body.excess.size
+  expected: 0
+- actual: layers[3].record_len
+  expected: 26
+- actual: layers[3].body.colour_count
+  expected: 1
+- actual: layers[3].body.palette.size
+  expected: 1
+- actual: layers[3].body.excess.size
+  expected: 0
+- actual: layers[4].record_len
+  expected: 26
+- actual: layers[4].body.colour_count
+  expected: 1
+- actual: layers[4].body.palette.size
+  expected: 1
+- actual: layers[4].body.excess.size
+  expected: 0
+- actual: layers[0].body.direction_distribution
+  expected: 128
+- actual: layers[0].body.direction_is_backward
+  expected: true
+fixture_sha256: c6aeb70e123c733870341fb2b34df0ec18fcd252fe505db9bc497f4d5a3af70a

@@ -1,9 +1,23 @@
-# Halloween-A, the second and final type-1 body in the frozen H6199 catalogue.
 id: h6199_effect_builtin_halloween
 data: h6199_effect_builtin_halloween.bin
-imports: [h6199_effect_upload]
+imports:
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260806-134525.pcap
+  source_sha256: 8dfb9a68a65535d9d4f3dadc4447dce8cc21e754c7f0eada0d64d621171ff58f
+  source_index: 1
 asserts:
-  - {actual: chunk_count, expected: 3}
-  - {actual: kind, expected: 1}
-  - actual: content.opaque_body
-    expected: "8306fff5000500ffffff0500ffe9ff0500ffffff0500ffe9d90500fff8ff060004ff1e00ff5a00ff3200ff7800000000"
+- actual: chunk_count
+  expected: 3
+- actual: kind
+  expected: 1
+- actual: content.config
+  expected: 131
+- actual: content.step_count
+  expected: 6
+- actual: content.palette_count
+  expected: 4
+fixture_sha256: 541823c75fb69511946ad471ab6977f79eb0dbe8f5f3d9fd86a28b8dc0561c2d

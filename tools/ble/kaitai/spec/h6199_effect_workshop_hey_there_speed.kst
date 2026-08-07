@@ -1,19 +1,23 @@
-# H6199 effect definition uploaded over 0xA3, captured 2026-08-05 from the Govee Home
-# iOS app driving the DreamView T1. The one-layer Workshop effect "Hey There" applied
-# after then dragging the Color Changing Speed slider alone, which the editor showed as 92%. These three are a controlled sequence: each differs from the one before at a
-# single byte, which is what opened a block interior that had been wholly opaque.
 id: h6199_effect_workshop_hey_there_speed
 data: h6199_effect_workshop_hey_there_speed.bin
 imports:
-  - h6199_effect_upload
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-workshop.pcap
+  source_sha256: 7dd5b61515ba1781cb5c7bf43d420310b7a0ab14cadc7abd557029288a0f7f2e
+  source_index: 1
 asserts:
-  - actual: kind
-    expected: 2
-  - actual: content.block_count
-    expected: 1
-  - actual: content.blocks[0].len
-    expected: 29
-  - actual: content.blocks[0].colour_change_speed
-    expected: "ea"
-  - actual: content.blocks[0].retention_time
-    expected: "c3"
+- actual: kind
+  expected: 2
+- actual: content.block_count
+  expected: 1
+- actual: content.blocks[0].len
+  expected: 29
+- actual: content.blocks[0].colour_change_speed
+  expected: 234
+- actual: content.blocks[0].retention_time
+  expected: 195
+fixture_sha256: 0f00b063bf1a91905efd2fe5fc6c6d381d86cd52d49175411c934dd8c582cbed

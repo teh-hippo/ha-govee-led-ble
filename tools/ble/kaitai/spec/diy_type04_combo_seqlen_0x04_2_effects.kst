@@ -1,70 +1,75 @@
-# combo seqlen=0x04 (2 effects). Capture: combo-3.pcap.
 id: diy_type04_combo_seqlen_0x04_2_effects
 data: diy_type04_combo_seqlen_0x04_2_effects.bin
 imports:
-  - diy_type04
+- diy_type04
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: family
-    expected: 255
-  - actual: body.variant
-    expected: 0
-  - actual: body.speed
-    expected: 51
-  - actual: body.plen
-    expected: 21
-  - actual: body.palette.colours.size
-    expected: 7
-  - actual: body.palette.colours[0].r
-    expected: 255
-  - actual: body.palette.colours[0].g
-    expected: 0
-  - actual: body.palette.colours[0].b
-    expected: 0
-  - actual: body.palette.colours[1].r
-    expected: 255
-  - actual: body.palette.colours[1].g
-    expected: 127
-  - actual: body.palette.colours[1].b
-    expected: 0
-  - actual: body.palette.colours[2].r
-    expected: 255
-  - actual: body.palette.colours[2].g
-    expected: 255
-  - actual: body.palette.colours[2].b
-    expected: 0
-  - actual: body.palette.colours[3].r
-    expected: 0
-  - actual: body.palette.colours[3].g
-    expected: 255
-  - actual: body.palette.colours[3].b
-    expected: 0
-  - actual: body.palette.colours[4].r
-    expected: 0
-  - actual: body.palette.colours[4].g
-    expected: 0
-  - actual: body.palette.colours[4].b
-    expected: 255
-  - actual: body.palette.colours[5].r
-    expected: 0
-  - actual: body.palette.colours[5].g
-    expected: 255
-  - actual: body.palette.colours[5].b
-    expected: 255
-  - actual: body.palette.colours[6].r
-    expected: 139
-  - actual: body.palette.colours[6].g
-    expected: 0
-  - actual: body.palette.colours[6].b
-    expected: 255
-  - actual: body.seqlen
-    expected: 4
-  - actual: body.pairs.size
-    expected: 2
-  - actual: body.pairs[0].family
-    expected: 0
-  - actual: body.pairs[0].variant
-    expected: 0
-  - actual: body.pairs[1].family
-    expected: 1
-  - actual: body.pairs[1].variant
-    expected: 0
+- actual: family
+  expected: 255
+- actual: body.variant
+  expected: 0
+- actual: body.speed
+  expected: 51
+- actual: body.plen
+  expected: 21
+- actual: body.palette.colours.size
+  expected: 7
+- actual: body.palette.colours[0].r
+  expected: 255
+- actual: body.palette.colours[0].g
+  expected: 0
+- actual: body.palette.colours[0].b
+  expected: 0
+- actual: body.palette.colours[1].r
+  expected: 255
+- actual: body.palette.colours[1].g
+  expected: 127
+- actual: body.palette.colours[1].b
+  expected: 0
+- actual: body.palette.colours[2].r
+  expected: 255
+- actual: body.palette.colours[2].g
+  expected: 255
+- actual: body.palette.colours[2].b
+  expected: 0
+- actual: body.palette.colours[3].r
+  expected: 0
+- actual: body.palette.colours[3].g
+  expected: 255
+- actual: body.palette.colours[3].b
+  expected: 0
+- actual: body.palette.colours[4].r
+  expected: 0
+- actual: body.palette.colours[4].g
+  expected: 0
+- actual: body.palette.colours[4].b
+  expected: 255
+- actual: body.palette.colours[5].r
+  expected: 0
+- actual: body.palette.colours[5].g
+  expected: 255
+- actual: body.palette.colours[5].b
+  expected: 255
+- actual: body.palette.colours[6].r
+  expected: 139
+- actual: body.palette.colours[6].g
+  expected: 0
+- actual: body.palette.colours[6].b
+  expected: 255
+- actual: body.seqlen
+  expected: 4
+- actual: body.pairs.size
+  expected: 2
+- actual: body.pairs[0].family
+  expected: 0
+- actual: body.pairs[0].variant
+  expected: 0
+- actual: body.pairs[1].family
+  expected: 1
+- actual: body.pairs[1].variant
+  expected: 0
+fixture_sha256: 10be66035fb26e97cf9c5d3b04a27268283d75befb3f99055e0561a0cc80ddc2

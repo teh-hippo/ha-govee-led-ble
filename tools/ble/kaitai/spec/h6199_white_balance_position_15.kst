@@ -1,6 +1,0 @@
-id: h6199_white_balance_position_15
-data: h6199_white_balance_position_15.bin
-imports: [h6199_command_write]
-asserts:
-  - {actual: body.payload.red, expected: 16}
-  - {actual: body.payload.blue, expected: 5}

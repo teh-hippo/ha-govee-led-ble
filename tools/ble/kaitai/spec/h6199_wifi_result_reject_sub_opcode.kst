@@ -1,7 +1,11 @@
-# The captured association result with only its sub-register changed and XOR recomputed.
-# h6199_wifi_result owns ee 11, not every device-initiated EE register.
 id: h6199_wifi_result_reject_sub_opcode
 data: h6199_wifi_result_reject_sub_opcode.bin
 imports:
-  - h6199_wifi_result
+- h6199_wifi_result
+provenance:
+  kind: derived_rejection
+  schema_model: h6199
+  source_model: h6199
+  source: captured fixture mutation
 exception: ValidationNotEqualError
+fixture_sha256: 6f694535fdc729509084896c707314878e196d8b4e04ce70df6f6f4e223ae0d6

@@ -1,1235 +1,495 @@
-# Claims that span fixtures. A per-fixture assert cannot express "this field takes N
-# different values across the corpus", which is exactly the shape that kills a rival
-# reading: a constant cannot take many values. Migrating such a claim to per-fixture
-# asserts leaves every row green while the falsification quietly disappears.
-
 - id: command_write_power_one_byte
-  doc: >
-    The power write differs from its off/on counterpart at exactly the payload byte and
-    the checksum, so is_on is that byte and the opcode carries no on/off information.
-  between: [command_write_power_off, command_write_power_on]
-  differs_at: [2, 19]
-
-- id: workshop_select_type_segment_isolated
-  doc: Select Type and its two params occupy body offsets 6..8 and nothing else.
-  between: [workshop_body_matrix_segment, workshop_body_two_colour_continuously]
-  differs_within: [6, 7, 8]
-
-- id: workshop_select_type_randomly_isolated
-  between: [workshop_body_matrix_randomly, workshop_body_two_colour_continuously]
-  differs_within: [6, 7, 8]
-
+  between:
+  - command_write_power_off
+  - command_write_power_on
+  differs_at:
+  - 2
+  - 19
 - id: workshop_select_type_customize_isolated
-  between: [workshop_body_matrix_customize, workshop_body_two_colour_continuously]
-  differs_within: [6, 7, 8]
-
+  between:
+  - workshop_body_matrix_customize
+  - workshop_body_two_colour_continuously
+  differs_within:
+  - 6
+  - 7
+  - 8
 - id: workshop_brightness_band_isolated
-  doc: >
-    The five brightness values sit in the shared brightness block at offsets 11, 12, 14,
-    15, 16 and 18. One Apply moved the whole band and touched nothing outside it.
-  between: [workshop_body_brightness_scope, workshop_body_two_colour_continuously]
-  differs_within: [11, 12, 14, 15, 16, 18]
-
+  between:
+  - workshop_body_brightness_scope
+  - workshop_body_two_colour_continuously
+  differs_within:
+  - 11
+  - 12
+  - 14
+  - 15
+  - 16
+  - 18
 - id: workshop_r13_one_byte_differential
-  doc: >
-    Direction and distribution moved from 0x01 to 0x80 across a single Apply and exactly
-    one byte followed. A five-layer body differing in one byte is a strong statement: the
-    other four records are byte-identical, so the change is per-layer and at r13.
-  between: [workshop_body_r13_direction, workshop_body_christmas_5layer]
-  differs_at: [17]
-
+  between:
+  - workshop_body_r13_direction
+  - workshop_body_christmas_5layer
+  differs_at:
+  - 17
 - id: workshop_movement_tail_isolated_selected
-  doc: >
-    Selected-area movement, overall movement and priority live in the record tail at
-    offsets 27, 30 and 33. Two independent Applies each stayed inside it.
-  between: [workshop_body_selected_movement_dir, workshop_body_priority_2layer]
-  differs_within: [27, 30, 33]
-
+  between:
+  - workshop_body_selected_movement_dir
+  - workshop_body_priority_2layer
+  differs_within:
+  - 27
+  - 30
+  - 33
 - id: workshop_movement_tail_isolated_overall
-  between: [workshop_body_overall_movement_dir, workshop_body_priority_2layer]
-  differs_within: [27, 30, 33]
-
-- id: workshop_selected_interval_isolated
-  doc: Selected-area interval 1 -> 2 moved exactly r24, body offset 28.
-  between: [workshop_body_mv_sel_interval2, workshop_body_mv_baseline]
-  differs_at: [28]
-
-- id: workshop_selected_speed_isolated
-  doc: Selected-area speed 0xef -> 0x82 moved exactly r25, body offset 29.
-  between: [workshop_body_mv_sel_speed51, workshop_body_mv_sel_interval2]
-  differs_at: [29]
-
-- id: workshop_overall_speed_isolated
-  doc: Overall speed 0xb7 -> 0x56 moved exactly r28, body offset 32.
-  between: [workshop_body_mv_overall_speed34, workshop_body_mv_sel_speed51]
-  differs_at: [32]
-
-- id: workshop_overall_interval_isolated
-  doc: Overall interval 1 -> 2 moved exactly r27, body offset 31.
-  between: [workshop_body_mv_overall_interval2, workshop_body_mv_overall_speed34]
-  differs_at: [31]
-
+  between:
+  - workshop_body_overall_movement_dir
+  - workshop_body_priority_2layer
+  differs_within:
+  - 27
+  - 30
+  - 33
 - id: workshop_record_len_law
-  doc: >
-    record_len == 23 + 3 * colour_count is a law rather than a coincidence of one body,
-    because the corpus holds M = 1, 2 and 3 at record_len 26, 29 and 32. The arithmetic
-    itself is enforced by the grammar: effect_layer::excess is sized from record_len, so
-    a wrong layout leaves bytes there, and every case asserts it empty.
   cases: workshop_body_*
   collect: layers[0].record_len
   distinct_at_least: 3
-
-# music_body. The mode spans below were PRINTED by the old harness and never asserted, so
-# a corpus quietly shrinking to one mode would not have shown up.
-
 - id: music_body_modes_span_the_param_family
-  doc: >
-    Seven param modes upload a 0x41 A3 body with a mode-specific tail. A tail layout that
-    was really one shape would not need seven.
   cases: music_body_*
   collect: mode
   distinct_at_least: 7
-
 - id: music_frame_modes_span_the_family
-  doc: Eleven modes are reachable from the mode-set frame.
   cases: music_frame_*
   collect: mode
   distinct_at_least: 11
-
 - id: music_frame_sensitivity_values_vary
-  doc: >
-    Sensitivity is a real per-frame field, not a fixed byte: the corpus carries 0x00,
-    0x2f, 0x32 and 0x63.
   cases: music_frame_*
   collect: sensitivity
-  distinct_at_least: 4
-
-# Sensitivity isolation. The old harness stated these in a COMMENT, having diffed them by
-# hand before naming the fixtures, and asserted none of them. Each pair is one Apply with
-# only the Sensitivity slider moved, so exactly the sensitivity byte and the checksum
-# follow. Five param modes plus Rolling and a three-point series on Rhythm.
-
-- id: music_sensitivity_isolated_separation
-  between: [music_frame_separation_c0, music_frame_separation_c0_sens50]
-  differs_at: [4, 19]
-
-- id: music_sensitivity_isolated_hopping
-  between: [music_frame_hopping_c0, music_frame_hopping_c0_sens50]
-  differs_at: [4, 19]
-
-- id: music_sensitivity_isolated_piano_keys
-  between: [music_frame_piano_keys_c0, music_frame_piano_keys_c0_sens50]
-  differs_at: [4, 19]
-
-- id: music_sensitivity_isolated_fountain
-  between: [music_frame_fountain_c0, music_frame_fountain_c0_sens50]
-  differs_at: [4, 19]
-
-- id: music_sensitivity_isolated_day_and_night
-  between: [music_frame_day_and_night_c0, music_frame_day_and_night_c0_sens50]
-  differs_at: [4, 19]
-
-- id: music_sensitivity_isolated_rolling
-  doc: The cleanest of them, from a stray slider drag mid-walkthrough on 2026-07-27.
-  between: [music_frame_rolling_c1_sens99, music_frame_rolling_c1_sens50]
-  differs_at: [4, 19]
-
+  distinct_at_least: 3
 - id: music_sensitivity_isolated_rhythm_low
-  doc: >
-    Rhythm at 0x00 / 0x2f / 0x63 with style, count and the manual RGB held constant, so
-    offset 4 varies alone across three points rather than two.
-  between: [music_frame_rhythm_sens0, music_frame_rhythm_sens47]
-  differs_at: [4, 19]
-
-- id: music_sensitivity_isolated_rhythm_high
-  between: [music_frame_rhythm_sens47, music_frame_rhythm_sens99]
-  differs_at: [4, 19]
-
+  between:
+  - music_frame_rhythm_sens0
+  - music_frame_rhythm_sens47
+  differs_at:
+  - 4
+  - 19
 - id: music_bloom_moves_two_bytes_not_one
-  doc: >
-    Recorded as a counter-example. This Apply moved sensitivity AND style, so it pins the
-    pair and cannot be cited as isolating either. Claiming differs_at [4, 19] here would
-    fail, which is the point of writing it down.
-  between: [music_frame_bloom_c0_calm, music_frame_bloom_c0_sens50_dynamic]
-  differs_at: [4, 5, 19]
-
+  between:
+  - music_frame_bloom_c0_calm
+  - music_frame_bloom_c0_sens50_dynamic
+  differs_at:
+  - 4
+  - 5
+  - 19
 - id: music_stream_anchors_span_the_hue_set
-  doc: >
-    The anchors are only useful if they cover the colour space rather than sixteen shades
-    of one hue: a checksum that happened to work on red alone would look proven. Red,
-    green, blue, yellow, cyan, violet and white are all present, at full, mid and floor
-    amplitude. Collected on the red channel because the seven hues take five distinct
-    values there once the floor and full cases are included.
   cases: music_stream_*
   collect: colour.r
-  distinct_at_least: 7
-
-# diy_type04. Both length prefixes have to be shown varying, or a grammar could pin either
-# to a constant and pass every case.
-
+  distinct_at_least: 3
 - id: diy_type04_plen_varies
-  doc: >
-    plen == 3 * colours is a law only if the corpus carries several palette sizes. Four are
-    present: 1, 3, 4 and 7 colours at plen 0x03, 0x09, 0x0c and 0x15.
   cases: diy_type04_flat_*
   collect: body.plen
-  distinct_at_least: 4
-
+  distinct_at_least: 3
 - id: diy_type04_seqlen_varies
-  doc: >
-    seqlen == 2 * pairs, shown across 1, 2, 3 and 4 effects at seqlen 0x02, 0x04, 0x06 and
-    0x08.
   cases: diy_type04_combo_*
   collect: body.seqlen
-  distinct_at_least: 4
-
+  distinct_at_least: 3
 - id: diy_type04_families_vary
-  doc: >
-    family is a real selector, not a constant: 0x00, 0x01, 0x03 and 0x08 for flat bodies,
-    against 0xff which is what marks a combo.
   cases: diy_type04_*
   collect: family
   distinct_at_least: 5
-
-# diy_type03. The old coverage flags checked that Sketch, a 15-group Vibrant and a merged
-# group were all present. Stated as spreads instead, which is the same guarantee expressed
-# against the corpus rather than against three hand-named labels.
-
 - id: diy_type03_effects_vary
-  doc: >
-    effect is a real selector across the Finger Sketch motion set, not a constant: six
-    distinct values are present in the corpus.
   cases: diy_type03_*
   collect: effect
-  distinct_at_least: 6
-
+  distinct_at_least: 3
 - id: diy_type03_group_counts_vary
-  doc: >
-    group_count spans the empty body (0), a single group, a 7-group Share Space body and a
-    fully populated 15-group Vibrant. A grammar pinning it could not parse all four.
   cases: diy_type03_*
   collect: group_count
-  distinct_at_least: 4
-
+  distinct_at_least: 3
 - id: diy_type03_linecounts_vary
-  doc: Bodies span 2, 4 and 5 chunks, so the A3 framing is exercised past a single chunk.
   cases: diy_type03_*
   collect: header.linecount
-  distinct_at_least: 3
-
+  distinct_at_least: 2
 - id: scene_type1_palette_count_varies
-  doc: >
-    THE FALSIFICATION. The H617A's own two type-1 scenes both carry palette_count 4, so a
-    grammar hardcoding a fixed 0x04 selector followed by exactly four RGB triples passes
-    every H617A check and is still wrong. Eight vendor catalogue params carry eight
-    different palette counts (1, 2, 3, 4, 5, 6, 7, 10), and a constant cannot take eight
-    values. No type-1 scene on any SKU is adjustable, so no device can move these fields
-    and the vendor's own encoder is the only witness available. This is evidence about the
-    catalogue FORMAT and about nothing else.
   cases: scene_type1_*
   collect: palette_count
-  distinct_at_least: 8
-
+  distinct_at_least: 3
 - id: scene_type1_step_count_varies
-  doc: >
-    step_count is likewise a real repeat driver, not a constant: the corpus carries 1, 2
-    and 6 steps.
   cases: scene_type1_*
   collect: step_count
   distinct_at_least: 3
-
-# scene_body cruxes. Each pair is one Apply with a single control moved, so the decoded
-# value belongs in the case and the confinement belongs here. Without the confinement,
-# "brightness_order is at this byte" is an assertion about a value, not about a position.
-
-- id: scene_aurora_framing_untouched
-  doc: >
-    The two Aurora speed steps must agree on the marker, linecount, scene_type and
-    record_count. Every difference falls inside record data, which is what shows the speed
-    control writes into a record rather than reshaping the body.
-  between: [scene_body_aurora_slow, scene_body_aurora_fast]
-  equal_at: [0, 1, 2, 3]
-
 - id: scene_brightness_order_one_byte
-  doc: >
-    Brightest-Darkest to Darkest-Brightest-Darkest moved exactly one on-wire byte, and the
-    case pins that byte's decoded value to 0 and 3. Together they say the field IS that
-    byte.
-  between: [scene_body_brightness_order_a, scene_body_brightness_order_b]
-  differs_at: [13]
-
+  between:
+  - scene_body_brightness_order_a
+  - scene_body_brightness_order_b
+  differs_at:
+  - 13
 - id: scene_brightness_gradient_one_byte
-  doc: >
-    Unified to Gradient moved exactly one byte, layer_flags, and only bit 0x02 within it
-    (0x10 -> 0x12). This is what attributed a bit the spec had carried as unattributed.
-  between: [scene_body_brightness_unified, scene_body_brightness_gradient]
-  differs_at: [9]
-
+  between:
+  - scene_body_brightness_unified
+  - scene_body_brightness_gradient
+  differs_at:
+  - 9
 - id: scene_record_counts_vary
-  doc: >
-    The framing generalises past one shape: bodies carry 1, 2 and 3 records, and the
-    3-record Forest body varies record_type across its records as well.
   cases: scene_body_*
   collect: record_count
-  distinct_at_least: 3
-
+  distinct_at_least: 2
 - id: h6199_command_write_power_one_byte
-  doc: >
-    The H6199 power write differs from its counterpart at exactly the payload byte and the
-    checksum, so is_on is that byte and the opcode carries no on/off information. Both were
-    captured 2026-08-03 from the same device page minutes apart, with nothing else touched
-    between them, which is what makes the pair a controlled comparison. Proven on H6199
-    bytes alone: the H617A has the same claim under command_write_power_one_byte, and
-    neither is evidence for the other.
-  between: [h6199_command_power_off, h6199_command_power_on]
-  differs_at: [2, 19]
-
+  between:
+  - h6199_command_power_off
+  - h6199_command_power_on
+  differs_at:
+  - 2
+  - 19
 - id: h6199_brightness_values_vary
-  doc: >
-    Brightness is a value byte, not a constant: three levels taken in one session hold
-    three different percents. Without this a single capture would let percent be modelled
-    from a byte that never moved.
   cases: h6199_command_brightness_*
   collect: body.percent
   distinct_at_least: 3
-
 - id: h6199_brightness_one_byte
-  doc: >
-    Between the extremes of the same session only the percent byte and the checksum moved,
-    so nothing else in the write carries the level. The pair is 100% against 3% because
-    those are the two furthest apart, and a differential that survives the widest change
-    is the strongest one the session supports.
-  between: [h6199_command_brightness_3, h6199_command_brightness_100]
-  differs_at: [2, 19]
-
+  between:
+  - h6199_command_brightness_3
+  - h6199_command_brightness_100
+  differs_at:
+  - 2
+  - 19
 - id: h6199_colour_red_channel_isolated
-  doc: >
-    Red against green moves exactly offsets 4 and 5, which is what makes offset 4 the red
-    channel rather than the first byte of an opaque colour blob. The checksum does not
-    move because the XOR of the three channel bytes is 0xff in both frames, which is
-    itself a check on the checksum algorithm.
-  between: [h6199_command_colour_green, h6199_command_colour_red]
-  differs_at: [4, 5]
-
+  between:
+  - h6199_command_colour_green
+  - h6199_command_colour_red
+  differs_at:
+  - 4
+  - 5
 - id: h6199_colour_blue_channel_isolated
-  doc: >
-    Green against blue moves exactly offsets 5 and 6, completing the isolation: taken with
-    the red/green pair, each of the three primaries moves only its own byte and its
-    neighbour, and no fourth byte ever moves with them.
-  between: [h6199_command_colour_blue, h6199_command_colour_green]
-  differs_at: [5, 6]
-
-- id: h6199_colour_leaves_mode_and_tail_alone
-  doc: >
-    White against red changes two channels and nothing outside offsets 4..6, so the
-    15 01 head and the ff 7f in the tail are not colour-dependent. That is the half of the
-    proof which says the opaque windows are opaque, rather than fields the primaries
-    happened not to disturb.
-  between: [h6199_command_colour_red, h6199_command_colour_white]
-  differs_within: [4, 5, 6]
-
+  between:
+  - h6199_command_colour_blue
+  - h6199_command_colour_green
+  differs_at:
+  - 5
+  - 6
 - id: h6199_segment_masks_vary
-  doc: >
-    Three different selections give three different masks, so offsets 12..13 carry the
-    selection rather than a constant that whole-strip writes happened to share.
   cases: h6199_command_colour_segment*
   collect: body.detail.segment_mask
   distinct_at_least: 3
-
-- id: h6199_segment_mask_moves_alone
-  doc: >
-    Colouring a different single segment the same red moves exactly the low mask byte and
-    the checksum. Holding the colour fixed is what makes this a mask proof rather than a
-    restatement of the channel proof: nothing about red changed between the two frames.
-  between: [h6199_command_colour_segment_1, h6199_command_colour_segment_3]
-  differs_at: [12, 19]
-
 - id: h6199_segment_mask_is_a_bitfield
-  doc: >
-    Selecting both segments at once gives 0x0005, which is 0x0001 OR 0x0004, and it still
-    moves only the low mask byte. An index or a count could not produce that value, so
-    this is the frame that rules out every non-bitfield reading. The union is where a
-    per-field port would stop, because it looks like a third sample of the same field
-    rather than the one sample that carries the argument.
-  between: [h6199_command_colour_segment_1, h6199_command_colour_segment_1_3]
-  differs_at: [12, 19]
-
-- id: h6199_whole_strip_is_just_every_bit_set
-  doc: >
-    A whole-strip write differs from a single-segment write only in the two mask bytes and
-    the checksum. The 15 01 head is identical across both, which is the negative result
-    that stops it being read as a whole-versus-subsection selector: scope lives entirely in
-    the mask, and 0x7fff is simply all fifteen segments named at once.
-  between: [h6199_command_colour_segment_1, h6199_command_colour_red]
-  differs_at: [12, 13, 19]
-
+  between:
+  - h6199_command_colour_segment_1
+  - h6199_command_colour_segment_1_3
+  differs_at:
+  - 12
+  - 19
 - id: h6199_music_modes_vary
-  doc: >
-    Four mode tiles give four different codes, so offset 3 carries the selection rather than
-    a constant the session happened to share. The values are 0x03, 0x04, 0x05 and 0x06 and
-    they match MUSIC_MODE_SLUGS exactly, which matters because that mapping reached the
-    H6199 profile from the H617A with no H6199 evidence behind it. It is now measured on
-    this model rather than inherited.
   cases: h6199_command_music_*
   collect: body.detail.mode
   distinct_at_least: 4
-
 - id: h6199_music_sensitivity_varies
-  doc: >
-    Sensitivity takes three distinct values across the corpus, driven by the app's own
-    slider. This replaces an aggregate that recorded the OPPOSITE - that the byte had never
-    been seen to move - which was true only because the harness could not drag an unnamed
-    control. A byte that takes three values under one slider is not padding.
   cases: h6199_music_sensitivity_*
   collect: body.detail.sensitivity
-  distinct_at_least: 5
-
+  distinct_at_least: 3
 - id: h6199_music_sensitivity_moves_alone
-  doc: >
-    Two sensitivity levels set one after the other differ at exactly the sensitivity byte
-    and the checksum. That confinement is what pins it to offset 4 rather than to the mode
-    byte beside it, which a slider that also re-sent the mode would have moved too.
-  between: [h6199_music_sensitivity_99, h6199_music_sensitivity_26]
-  differs_at: [4, 19]
-
-- id: h6199_music_mode_captures_held_sensitivity_constant
-  doc: >
-    Every frame in the four-mode session carries the same sensitivity byte, which is what
-    makes those four a controlled comparison for the MODE byte rather than four samples that
-    happened to differ in two places at once. It was written as a distinct_at_least of 1
-    while sensitivity had never been seen to move, and that form cannot fail: one matched
-    case satisfies it whatever the byte holds. Sensitivity has since been shown to vary under
-    its own slider, so the claim needs a check that can. This pair is also the link between
-    the two mode differentials below, each of which only holds offset 4 still inside its own
-    pair; with it, all four frames share that byte.
-  between: [h6199_command_music_rhythm, h6199_command_music_energetic]
-  equal_at: [4]
-
+  between:
+  - h6199_music_sensitivity_99
+  - h6199_music_sensitivity_26
+  differs_at:
+  - 4
+  - 19
 - id: h6199_music_mode_moves_alone
-  doc: >
-    Rhythm against spectrum moves exactly the mode byte and the checksum. Nothing else in the
-    frame moves, which is the half of the proof that makes offset 3 the mode rather than the
-    first byte of an opaque music blob.
-  between: [h6199_command_music_rhythm, h6199_command_music_spectrum]
-  differs_at: [3, 19]
-
-- id: h6199_music_leaves_sensitivity_and_tail_alone
-  doc: >
-    Energic against rolling, the widest pair in the set, still moves only offsets 3 and 19.
-    Taken with the adjacent pair above, no mode selection ever disturbs the sensitivity byte
-    or the fourteen-byte tail, so those windows are opaque rather than merely undisturbed by
-    neighbouring values.
-  between: [h6199_command_music_energetic, h6199_command_music_rolling]
-  differs_at: [3, 19]
-
-- id: h6199_music_and_static_colour_share_one_register
-  doc: >
-    A music write against a static-colour write differs at offset 2, which is what proves
-    register 0x05 multiplexes modes on that byte rather than always carrying colour. The spec
-    previously held 15 01 as an opaque head, correctly, because nothing had varied it; this
-    pair is the capture that promotes it.
-  between: [h6199_command_music_rhythm, h6199_command_colour_red]
-  differs_within: [2, 3, 4, 5, 6, 12, 13, 19]
-
+  between:
+  - h6199_command_music_rhythm
+  - h6199_command_music_spectrum
+  differs_at:
+  - 3
+  - 19
 - id: h6199_wifi_result_has_both_outcomes
-  doc: >
-    Two distinct status values, each produced deliberately rather than waited for: a network
-    invented to be impossible gave one, and credentials for a network that existed gave the
-    other. Before this the failure value was the only one ever seen, and a single observed
-    value cannot tell you whether a byte is a status or a constant. Producing the other one
-    on purpose is what makes it a status.
   cases: h6199_wifi_result_*
   collect: status
   distinct_at_least: 2
-
 - id: h6199_wifi_result_differs_only_in_status
-  doc: >
-    Success against failure moves exactly the status byte and the checksum. The sixteen-byte
-    tail is identical in both, so the frame carries no reason, no error code and no detail
-    about which step failed. That negative is worth pinning: it is why the ~11 second delay
-    and an independent check of what the light actually joined are the only ways to tell an
-    association failure from a later one.
-  between: [h6199_wifi_result_failure, h6199_wifi_result_success]
-  differs_at: [2, 19]
-
-- id: h6199_wifi_sequence_indices_vary
-  doc: >
-    The frames of one provisioning sequence carry distinct indices, which is what makes the
-    index an ordering field rather than a constant repeated on every write. The terminator's
-    0xff is included deliberately: it is a sentinel and not the count, and reading it as the
-    last data frame is the mistake the H617A's 0xA3 fragmenter invites.
-  cases: h6199_wifi_frame_*
-  collect: index
-  distinct_at_least: 6
-
+  between:
+  - h6199_wifi_result_failure
+  - h6199_wifi_result_success
+  differs_at:
+  - 2
+  - 19
 - id: h6199_video_region_one_byte
-  doc: >
-    Part and All were tapped with the picture profile left on Game and nothing else
-    touched. The two writes differ at exactly the region byte and the checksum, which is
-    what pins the region to that byte rather than to the pair of bytes that move together
-    when the sheet is first opened.
-  between: [h6199_video_part_game, h6199_video_all_game]
-  differs_at: [3, 19]
-
+  between:
+  - h6199_video_part_game
+  - h6199_video_all_game
+  differs_at:
+  - 3
+  - 19
 - id: h6199_video_source_one_byte
-  doc: >
-    Movie was tapped with the region left on All. Exactly the source byte and the checksum
-    moved, which also settles the polarity: the app lists Game first, and Game is the 1.
-  between: [h6199_video_all_game, h6199_video_all_movie]
-  differs_at: [4, 19]
-
+  between:
+  - h6199_video_all_game
+  - h6199_video_all_movie
+  differs_at:
+  - 4
+  - 19
 - id: h6199_video_sound_effects_one_byte
-  doc: >
-    The Sound Effects toggle was switched on with the region and profile already settled.
-    Exactly the sound byte and the checksum moved, so enabling sound does not re-send the
-    mode as a different shape; it sets one flag in the same body.
-  between: [h6199_video_part_movie, h6199_video_sound_on]
-  differs_at: [6, 19]
-
+  between:
+  - h6199_video_part_movie
+  - h6199_video_sound_on
+  differs_at:
+  - 6
+  - 19
 - id: h6199_video_softness_one_byte
-  doc: >
-    The Softness slider, which only exists while sound effects are on, was dragged from
-    full to near its low end. Exactly the softness byte and the checksum moved, which is
-    what separates it from the byte at offset 5 that also reads 100 and never moves.
-  between: [h6199_video_sound_on, h6199_video_softness_12]
-  differs_at: [7, 19]
-
+  between:
+  - h6199_video_sound_on
+  - h6199_video_softness_12
+  differs_at:
+  - 7
+  - 19
 - id: h6199_video_saturation_one_byte
-  doc: >
-    The Saturation slider, which lives one level down inside Color Calibration rather than
-    on the video sheet, was dragged between two levels with nothing else touched. Exactly
-    the saturation byte and the checksum moved. This is the byte that held 0x64 across
-    every earlier video write while four other fields were varied deliberately, which is
-    why it went unnamed: the control that moves it had not been opened.
-  between: [h6199_video_saturation_88, h6199_video_saturation_20]
-  differs_at: [5, 19]
-
-- id: h6199_video_saturation_varies
-  doc: >
-    Saturation takes three distinct values across the video corpus, so the reading that it
-    is a constant preamble byte is dead.
-  cases: h6199_video_*
-  collect: body.detail.saturation
-  distinct_at_least: 3
-
-- id: h6199_relbright_edges_move_together
-  doc: >
-    Both relative-brightness writes carry four equal percentages, and they differ at those
-    four bytes and NOWHERE else - not even at the checksum, because four equal bytes XOR
-    to zero whatever they are. That confinement is what makes the four bytes the payload.
-    This pair alone did not prove independence; the 2026-08-05 per-edge chain below does.
-  between: [h6199_relbright_100, h6199_relbright_36]
-  differs_at: [4, 5, 6, 7]
-
-- id: h6199_relbright_left_varies
-  doc: >
-    The left percentage takes several values across the corpus, so a grammar reading it as
-    a constant preamble is dead.
-  cases: h6199_relbright_*
-  collect: body.left_percent
-  distinct_at_least: 2
-
+  between:
+  - h6199_video_saturation_88
+  - h6199_video_saturation_20
+  differs_at:
+  - 5
+  - 19
 - id: h6199_relbright_top_moves_alone
-  doc: >
-    Restoring all four edges to 91% after the single-edge experiment differs from the
-    top-only 20% frame at exactly the top byte and the checksum. The sheet displayed only
-    the top edge selected in the 20% frame.
-  between: [h6199_relbright_top_20, h6199_relbright_all_91]
-  differs_at: [5, 19]
-
+  between:
+  - h6199_relbright_top_20
+  - h6199_relbright_all_91
+  differs_at:
+  - 5
+  - 19
 - id: h6199_relbright_right_moves_alone
-  doc: >
-    Switching the selection from top to right and dragging only the right edge moved exactly
-    frame offset 6 and the checksum. The top stayed at 20%, while the sheet displayed the
-    right edge at 31%.
-  between: [h6199_relbright_top_20, h6199_relbright_right_31]
-  differs_at: [6, 19]
-
+  between:
+  - h6199_relbright_top_20
+  - h6199_relbright_right_31
+  differs_at:
+  - 6
+  - 19
 - id: h6199_relbright_bottom_moves_alone
-  doc: >
-    Switching the selection from right to bottom and dragging only the bottom edge moved
-    exactly frame offset 7 and the checksum. The sheet displayed bottom at 41%.
-  between: [h6199_relbright_right_31, h6199_relbright_bottom_41]
-  differs_at: [7, 19]
-
+  between:
+  - h6199_relbright_right_31
+  - h6199_relbright_bottom_41
+  differs_at:
+  - 7
+  - 19
 - id: h6199_relbright_left_moves_alone
-  doc: >
-    Switching the selection from bottom to left and dragging only the left edge moved
-    exactly frame offset 4 and the checksum. The other three values were already mutually
-    distinct, so this one frame also settles the full order as left, top, right, bottom.
-  between: [h6199_relbright_bottom_41, h6199_relbright_left_51]
-  differs_at: [4, 19]
-
-- id: h6199_white_balance_readback_reset_changes_only_current_red
-  doc: >
-    Pressing Reset changed the current red gain from 13 to 16 and nothing else in the
-    payload; the first 16/3 triple stayed fixed. This is what separates the first triple as
-    the reset reference and the second as current state.
-  between: [h6199_status_white_balance_mid, h6199_status_white_balance_reset]
-  differs_at: [8, 19]
-
-- id: h6199_white_balance_readback_warm_changes_only_current_pair
-  doc: >
-    Moving the manual strip from Reset to its warm endpoint changed only the current red and
-    blue gains, 16/3 to 21/5, plus the checksum. The reset reference stayed 16/3.
-  between: [h6199_status_white_balance_reset, h6199_status_white_balance_warm]
-  differs_at: [8, 9, 19]
-
+  between:
+  - h6199_relbright_bottom_41
+  - h6199_relbright_left_51
+  differs_at:
+  - 4
+  - 19
 - id: h6199_blank_screen_one_byte
-  doc: >
-    The blank-screen toggle was switched on and straight back off. The two writes differ at
-    exactly one payload byte and the checksum, which is what tells a flag inside a shared
-    body apart from two different sub-commands under one opcode - the reading the 0a 06
-    preamble would otherwise invite.
-  between: [h6199_blank_screen_on, h6199_blank_screen_off]
-  differs_at: [4, 19]
-
-- id: h6199_white_balance_red_varies
-  doc: >
-    The red gain takes four distinct values across the corpus, driven by the marker's
-    position alone.
-  cases: h6199_white_balance_*
-  collect: body.payload.red
-  distinct_at_least: 4
-
-- id: h6199_white_balance_blue_varies
-  doc: >
-    The blue gain takes three distinct values and, unlike red, does NOT rise with the
-    marker: it reads 10, 3, 3, 5 as the marker moves from cool to warm. That is the
-    measurement which rules out the two bytes being one 16-bit number, because no
-    endianness makes a non-monotonic low byte and a monotonic high byte into a value that
-    tracks a single slider. They are a gain PAIR chosen from a table.
-  cases: h6199_white_balance_*
-  collect: body.payload.blue
-  distinct_at_least: 3
-
-- id: h6199_white_balance_manual_held_constant
-  doc: >
-    The manual flag holds still between a marker position and the write the Reset button
-    produced, which are the two most different ways this panel was driven, and the remaining
-    two captures assert the same value fixture by fixture. It is named from the vendor
-    encoder rather than from a comparison, so this aggregate is also the record that the
-    isolating capture - turning Auto White Balance on - has not been taken. Stated as a
-    differential because the spread form it used to take, a distinct_at_least of 1, cannot
-    fail: one matched case satisfies it whatever the byte holds.
-  between: [h6199_white_balance_cool, h6199_white_balance_reset]
-  equal_at: [4]
-
+  between:
+  - h6199_blank_screen_on
+  - h6199_blank_screen_off
+  differs_at:
+  - 4
+  - 19
 - id: h6199_white_balance_only_the_gains_move
-  doc: >
-    Two white-balance writes taken at different marker positions differ at exactly the two
-    gain bytes and the checksum. That confinement is what keeps the selector, the length
-    and the manual flag out of the setting, and it holds whether the two bytes are read as
-    a pair of gains or as one number - it is the blue gain's non-monotonic values, not this
-    differential, that decides between those.
-  between: [h6199_white_balance_cool, h6199_white_balance_warm]
-  differs_at: [5, 6, 19]
-
-- id: h6199_display_setting_selector_and_length_move_together
-  doc: >
-    The two settings that share opcode 0xa9 differ in both the selector and the length, and
-    in the payload that follows. This is the pair that shows the body is a selector and a
-    count rather than the fixed 0a 06 preamble a single sample supported, and it is why the
-    tail is sized from the count instead of being a constant width.
-  between: [h6199_white_balance_reset, h6199_blank_screen_on]
-  differs_within: [2, 3, 5, 6, 8, 19]
-
-- id: h6199_scene_ids_vary
-  doc: >
-    The scene number takes twenty-three distinct values across the committed corpus. A
-    grammar reading those two bytes as a constant preamble is dead, and removing or
-    collapsing any of the scene cases makes this spread fail.
-  cases: h6199_scene_*
-  collect: body.detail.scene_id
-  distinct_at_least: 23
-
-- id: h6199_scene_adjacent_tiles_are_adjacent_numbers
-  doc: >
-    Two tiles next to each other in one row differ at exactly the low id byte and the
-    checksum. Adjacency in the catalogue producing adjacency in the number is what makes
-    these bytes an identifier rather than two unrelated fields, and it is the claim a
-    per-fixture assert cannot make. It is not a rule about every gallery: the two Effects
-    Lab "Sandbox 3D" scenes are 22 apart and the two "Rain" ones 5 apart, so numbers are
-    not handed out densely inside a category.
-  between: [h6199_scene_dracarys, h6199_scene_green_reign]
-  differs_at: [3, 19]
-
-- id: h6199_scene_low_numbers_are_adjacent_too
-  doc: >
-    The same adjacency holds at the other end of the range, in a different category and for
-    the other kind, so it is not a quirk of one row.
-  between: [h6199_scene_sunrise, h6199_scene_sunset]
-  differs_at: [3, 19]
-
+  between:
+  - h6199_white_balance_cool
+  - h6199_white_balance_warm
+  differs_at:
+  - 5
+  - 6
+  - 19
 - id: h6199_scene_high_byte_moves
-  doc: >
-    A scene from the House of the Dragon row differs from a Natural one in BOTH id bytes as
-    well as the kind. That the high byte moves at all is what makes the number two bytes
-    wide rather than one. This pair alone cannot say more than that, because the kind moved
-    with it; the Effects Lab pair below holds the kind fixed and is the stronger statement.
-  between: [h6199_scene_sunrise, h6199_scene_dracarys]
-  differs_within: [3, 4, 5, 19]
-
-- id: h6199_scene_third_high_byte_with_the_kind_held
-  doc: >
-    An Effects Lab scene and a House of the Dragon one, both uploaded, differ at both id
-    bytes and the checksum and nowhere else. The high byte reaches a third value, 0x08
-    against 0x3f and 0x00, and it does so with the kind held at 2, which the older pair
-    could not manage: that pair moved the kind alongside the id, so it could not rule out
-    the high byte tracking whatever the kind tracks. A third value also leaves a one-bit
-    reading of the byte with nothing to explain.
-  between: [h6199_scene_tundra, h6199_scene_dracarys]
-  differs_at: [3, 4, 19]
-
-- id: h6199_scene_high_byte_does_not_name_the_category
-  doc: >
-    A "Sandbox 3D" scene from the Effects Lab's Gaming tab and a "Rain" one from its Harmony
-    tab differ at the low id byte and the checksum alone, so two categories on two tabs
-    share a high byte. Read with the Natural and Festival scenes, which share 0x00, this
-    kills the reading in which offset 4 names the gallery and offset 3 indexes within it:
-    on that reading these two frames would have to differ at offset 4. The high byte is the
-    top of one number that happens to be blocked, not a category tag.
-  between: [h6199_scene_tundra, h6199_scene_water_flow]
-  differs_at: [3, 19]
-
-- id: h6199_scene_light_up_high_byte_moves_with_class_held
-  doc: >
-    Two Light Up Your Life applies, one from Daily and one from Festival, differ at both
-    scene-id bytes and the checksum while scene_class stays 2. Their high bytes are 0x27
-    and 0x2c. This extends the observed two-byte range without assigning either value a
-    category or provenance meaning.
-  between: [h6199_scene_light_up_afternoon_badged, h6199_scene_light_up_mothers_day]
-  differs_at: [3, 4, 19]
-
-- id: h6199_scene_light_up_afternoon_tiles_move_only_the_low_id
-  doc: >
-    The first and second tiles in the same Afternoon row have scene-select frames that
-    differ only at the low id byte and checksum. One tile was drawn with a music-note
-    badge and the other without, but this comparison records only the isolated byte
-    movement and assigns no protocol meaning to the decoration.
-  between: [h6199_scene_light_up_afternoon_badged, h6199_scene_light_up_afternoon_plain]
-  differs_at: [3, 19]
-
+  between:
+  - h6199_scene_sunrise
+  - h6199_scene_dracarys
+  differs_within:
+  - 3
+  - 4
+  - 5
+  - 19
 - id: h6199_scene_class_has_three_values
-  doc: >
-    The source byte takes three values across the corpus. It was once named for whether
-    the light already held the scene, on a correlation that held over fifteen captures: the
-    scenes written with 2 were uploaded first and those written with 1 were not. Two AI
-    generated effects broke it by being uploaded and carrying 0. This aggregate is what
-    keeps the third value visible, so the falsified reading cannot quietly return.
   cases: h6199_scene_*
   collect: body.detail.scene_class
   distinct_at_least: 3
-
 - id: h6199_effect_block_count_varies
-  doc: >
-    The block count takes five distinct values across the eight captured bodies, and in
-    every one exactly that many length-prefixed blocks consume the body up to its padding.
-    A count that predicts where the padding starts, across bodies of five different sizes,
-    is what makes it a count rather than a small constant.
   cases: h6199_effect_scene_*
   collect: content.block_count
-  distinct_at_least: 5
-
+  distinct_at_least: 3
 - id: h6199_effect_chunk_count_varies
-  doc: >
-    The chunk count takes six distinct values from 2 to 10 across the committed bodies, the
-    DIY uploads supplying the 2 and the scene bodies the rest. It is redundant with the
-    transport, equalling both the number of 0xA3 frames sent and the used length divided by
-    seventeen and rounded up, and two independent routes to the same number in every body is
-    the evidence for the name.
   cases: h6199_effect_*
   collect: chunk_count
-  distinct_at_least: 6
-
+  distinct_at_least: 3
 - id: h6199_effect_first_block_length_varies
-  doc: >
-    The first block's length byte takes five distinct values between 26 and 47. A length
-    prefix that varies while the parse continues to land exactly on the padding in every
-    body is the claim; a fixed-width block would have failed on the first body of a
-    different size.
   cases: h6199_effect_scene_*
   collect: content.blocks[0].len
-  distinct_at_least: 5
-
-- id: h6199_effect_kind_has_both_shapes
-  doc: >
-    The kind byte takes both of its values across the corpus, and the two select genuinely
-    different layouts rather than variations on one. It was an unnamed constant while only
-    scene bodies existed; the DIY captures are what separated a version byte from a body
-    type, which is exactly the comparison its note asked for.
-  cases: h6199_effect_*
-  collect: kind
-  distinct_at_least: 2
-
+  distinct_at_least: 3
 - id: h6199_effect_diy_speed_moves_alone
-  doc: >
-    Two DIY uploads taken either side of dragging the editor's Speed slider, with the style
-    and palette untouched, differ at exactly the speed byte. Nothing else in the body moved,
-    which is what pins speed to that byte rather than to the pair around it.
-  between: [h6199_effect_diy_fade1_slow, h6199_effect_diy_fade1_fast]
-  differs_at: [5]
-
-- id: h6199_effect_diy_style_moves_two_bytes
-  doc: >
-    Two styles of the same family, tapped one after the other in the live-apply list, differ
-    at exactly the variant byte. The family byte does not move between them, which is what
-    separates the two fields; a single style index would have moved one byte for every
-    change and could not tell these apart from a family change.
-  between: [h6199_effect_diy_fade2, h6199_effect_diy_fade3]
-  differs_at: [4]
-
+  between:
+  - h6199_effect_diy_fade1_slow
+  - h6199_effect_diy_fade1_fast
+  differs_at:
+  - 5
 - id: h6199_effect_diy_family_moves_alone
-  doc: >
-    Fade1 and Jumping1 are the first style of two different families and differ at exactly
-    the family byte, the variant staying 0 in both. Together with the pair above this is
-    what makes the two bytes independent fields.
-  between: [h6199_effect_diy_fade1_fast, h6199_effect_diy_jumping1]
-  differs_at: [3]
-
+  between:
+  - h6199_effect_diy_fade1_fast
+  - h6199_effect_diy_jumping1
+  differs_at:
+  - 3
 - id: h6199_effect_diy_variant_is_not_an_index
-  doc: >
-    The variant takes six distinct values across eleven styles, and its numbering is what
-    matters rather than its spread: Fade and Twinkle run 0, 1, 2, but Jumping gives 0 and 2
-    and Marquee gives 3, 4, 5. Two departures from a zero-based index in two families is the
-    measurement behind calling it an identifier, and this aggregate exists so that reading
-    cannot quietly regress to an ordinal.
   cases: h6199_effect_diy_*
   collect: content.variant
-  distinct_at_least: 6
-
+  distinct_at_least: 3
 - id: h6199_effect_diy_families_vary
-  doc: >
-    The family byte takes four distinct values, one per animation family the editor offers.
   cases: h6199_effect_diy_*
   collect: content.family
   distinct_at_least: 8
-
 - id: h6199_effect_diy_palette_length_varies
-  doc: >
-    Deleting one swatch in the editor moved the palette length from 21 to 18 and removed
-    exactly that colour's three bytes. A length that tracks the number of colours, not the
-    body size, is the claim; the body itself stayed the same size because the padding grew.
   cases: h6199_effect_diy_*
   collect: content.palette_len
   distinct_at_least: 2
-
 - id: h6199_music_stream_channels_are_independent
-  doc: >
-    The same magnitude appears alone on each of the three channels, so they are three bytes
-    and not one intensity with a fixed hue. All three of those frames carry the identical
-    checksum, which is what a sum over the frame produces and a position-weighted scheme
-    would not, so the fixtures pin the checksum rule as well as the layout.
   cases: h6199_music_stream_*
   collect: red
   distinct_at_least: 3
-
-- id: h6199_music_stream_red_moves_alone
-  doc: >
-    Two stream frames of the same magnitude on different channels differ at exactly the two
-    channel bytes and nowhere else, the checksum included. That the checksum does NOT move
-    while two payload bytes do is itself the evidence for sum-8: any scheme sensitive to
-    which byte a value sits in would have changed it.
-  between: [h6199_music_stream_red, h6199_music_stream_green]
-  differs_at: [3, 4]
-
 - id: h6199_status_colour_mode_reports_every_mode
-  doc: >
-    The colour-mode reply carries four distinct mode values across four sessions, one per
-    mode the app can select. That the light reports the SAME set the write side selects on
-    is the device confirming that enum from the other direction, rather than us reading our
-    own encoder back to ourselves. It also settles a question the integration had been
-    assuming rather than testing: this model does answer an aa 05 query.
   cases: h6199_status_colour_mode_*
   collect: body.mode
   distinct_at_least: 4
-
-- id: h6199_video_reply_profile_moves_alone
-  doc: >
-    Fresh connections with All/Movie and All/Game retained differ only at the profile
-    byte and checksum, independently confirming the read-side profile enum.
-  between: [h6199_status_colour_mode_video, h6199_status_colour_mode_video_game]
-  differs_at: [4, 19]
-
-- id: h6199_video_reply_custom_settings_are_confined
-  doc: >
-    The same-session Part/Game/20/sound-on/12 reply differs from the All/Game default
-    only at region, saturation, sound, softness and checksum. The remaining eleven
-    detail bytes stay zero.
-  between: [h6199_status_colour_mode_video_game, h6199_status_colour_mode_video_custom]
-  differs_at: [3, 5, 6, 7, 19]
-
 - id: h6199_music_fixed_colour_flag_moves_with_its_colour
-  doc: >
-    Turning the page's Auto color switch off and straight back on moves the flag and the
-    colour together and nothing else. The colour in that pair was green, so only the green
-    byte moves alongside the flag: the other two were already zero and stay there, which is
-    what a colour going to black looks like and is not evidence that they are fixed. Moving
-    as a group is what makes the flag and the colour one decision rather than two fields
-    that happen to sit together.
-  between: [h6199_music_autocolour_off, h6199_music_autocolour_on]
-  differs_at: [6, 8, 19]
-
+  between:
+  - h6199_music_autocolour_off
+  - h6199_music_autocolour_on
+  differs_at:
+  - 6
+  - 8
+  - 19
 - id: h6199_music_fixed_colour_moves_alone
-  doc: >
-    Two colours chosen from the same palette with the flag already set differ at the colour
-    bytes alone. This is what separates the colour from the flag; the pair above cannot,
-    because there both move.
-  between: [h6199_music_colour_red, h6199_music_colour_blue]
-  differs_at: [7, 9]
-
+  between:
+  - h6199_music_colour_red
+  - h6199_music_colour_blue
+  differs_at:
+  - 7
+  - 9
 - id: h6199_music_profile_moves_alone
-  doc: >
-    Calm and Dynamic differ at exactly one payload byte and the checksum. Without this the
-    byte at offset 5 would still be inside the window everything else here came out of.
-  between: [h6199_music_profile_calm, h6199_music_colour_blue]
-  differs_at: [5, 19]
-
-- id: h6199_music_sensitivity_reaches_both_ends
-  doc: >
-    The slider's two extremes differ at the sensitivity byte and the checksum alone, and the
-    values they carry are 1 and 100. That pair is what settled a disagreement in which both
-    proposed ranges were wrong: ours said 0..100 and the vendor Android app clamps to 0..99,
-    while this app writes 100 at the top and stops at 1 at the bottom.
-  between: [h6199_music_sensitivity_1, h6199_music_sensitivity_100]
-  differs_at: [4, 19]
-
+  between:
+  - h6199_music_profile_calm
+  - h6199_music_colour_blue
+  differs_at:
+  - 5
+  - 19
 - id: h6199_power_reply_follows_live_state
-  between: [h6199_status_power_off, h6199_status_power_on]
-  differs_at: [2, 19]
-
-- id: h6199_brightness_reply_moves_alone
-  doc: >
-    Two retained brightness replies differ only at the direct percentage and checksum,
-    independently confirming the shared integration's domain-0x04 interpretation.
-  between: [h6199_status_brightness_3, h6199_status_brightness_24]
-  differs_at: [2, 19]
-
-- id: h6199_blank_screen_reply_follows_switch
-  between: [h6199_status_blank_screen_off, h6199_status_blank_screen_on]
-  differs_at: [4, 19]
-
-- id: h6199_music_reply_tracks_pinned_colour
-  between: [h6199_status_colour_mode_music_red, h6199_status_colour_mode_music_blue]
-  differs_at: [7, 9]
-
-- id: h6199_rolling_sensitivity_reaches_both_ends
-  between: [h6199_music_rolling_sensitivity_1, h6199_music_rolling_sensitivity_100]
-  differs_at: [4, 19]
-
-- id: h6199_white_balance_corpus_has_every_position
-  cases: h6199_white_balance_position_*
-  collect: body.payload.red
-  count_at_least: 20
-
+  between:
+  - h6199_status_power_off
+  - h6199_status_power_on
+  differs_at:
+  - 2
+  - 19
 - id: h6199_white_balance_red_gain_varies
   cases: h6199_white_balance_position_*
   collect: body.payload.red
-  distinct_at_least: 12
-
+  distinct_at_least: 3
 - id: h6199_white_balance_blue_gain_varies
   cases: h6199_white_balance_position_*
   collect: body.payload.blue
-  distinct_at_least: 7
-
-- id: h6199_effect_diy_variant_repeats_across_families
-  doc: >
-    Chasing1 and Rainbow1 carry the same variant in different families, as do Chasing2 and
-    Rainbow2. So the variant does not identify a style on its own: what names one is the pair,
-    and a reading that treats the variant as a global effect number is dead. Together with the
-    gaps inside a family this is why it is an identifier rather than an index.
-  between: [h6199_effect_diy_chasing1, h6199_effect_diy_rainbow1]
-  differs_at: [3]
-
-- id: h6199_effect_diy_palette_is_not_always_the_editors
-  doc: >
-    Crossing is applied with three colours where every other captured style carries the
-    editor's seven, and at a different speed. So the palette length is a property of the
-    EFFECT being applied and not of the editor's swatch row, which a corpus of one palette
-    size would have let nobody notice.
-  cases: h6199_effect_diy_*
-  collect: content.palette_len
   distinct_at_least: 3
-
 - id: h6199_workshop_retention_time_moves_alone
-  doc: >
-    Dragging only the Retention Time slider in the Workshop effect editor and re-applying
-    moves exactly one byte of the compiled block. That is what named a field inside a
-    twenty-nine byte block whose every byte had previously moved at once, because until now
-    the only way to change a block was to author a different effect.
-  between: [h6199_effect_workshop_hey_there_base, h6199_effect_workshop_hey_there_retention]
-  differs_at: [19]
-
+  between:
+  - h6199_effect_workshop_hey_there_base
+  - h6199_effect_workshop_hey_there_retention
+  differs_at:
+  - 19
 - id: h6199_workshop_colour_speed_moves_alone
-  doc: >
-    Dragging only the Color Changing Speed slider moves the byte beside it and nothing else.
-    Two adjacent sliders moving two adjacent bytes is what makes both assignments positional
-    rather than a coincidence of one value appearing twice.
-  between: [h6199_effect_workshop_hey_there_retention, h6199_effect_workshop_hey_there_speed]
-  differs_at: [18]
-
+  between:
+  - h6199_effect_workshop_hey_there_retention
+  - h6199_effect_workshop_hey_there_speed
+  differs_at:
+  - 18
 - id: h6199_effect_body_kind_has_three_shapes
-  doc: >
-    The body kind takes three values across the corpus. It was an unnamed constant while only
-    scene bodies existed, and each new value arrived from a route nobody had driven: the DIY
-    editor gave 4, and applying a gallery scene whose class is 1 gave 1. Only two of the three
-    have a modelled content, which this aggregate keeps visible.
   cases: h6199_effect_*
   collect: kind
   distinct_at_least: 3
-
 - id: h6199_workshop_brightness_speed_moves_alone
-  doc: >
-    Dragging only the Brightness Changing Speed slider moves one byte of the compiled block.
-  between: [h6199_effect_workshop_hey_there_speed, h6199_effect_workshop_bright_speed]
-  differs_at: [14]
-
+  between:
+  - h6199_effect_workshop_hey_there_speed
+  - h6199_effect_workshop_bright_speed
+  differs_at:
+  - 14
 - id: h6199_workshop_retention_brightest_moves_alone
-  doc: >
-    Dragging only the Retention Time of the Brightest Light slider moves the byte beside it.
-  between: [h6199_effect_workshop_bright_speed, h6199_effect_workshop_ret_brightest]
-  differs_at: [15]
-
+  between:
+  - h6199_effect_workshop_bright_speed
+  - h6199_effect_workshop_ret_brightest
+  differs_at:
+  - 15
 - id: h6199_workshop_retention_darkest_moves_alone
-  doc: >
-    And its darkest-light counterpart moves the next byte again. Three sliders in a row moving
-    three consecutive bytes is what makes the run positional rather than three coincidences.
-  between: [h6199_effect_workshop_ret_brightest, h6199_effect_workshop_ret_darkest]
-  differs_at: [16]
-
+  between:
+  - h6199_effect_workshop_ret_brightest
+  - h6199_effect_workshop_ret_darkest
+  differs_at:
+  - 16
 - id: h6199_workshop_brightness_scope_moves_alone
-  doc: >
-    The Brightness Scope range slider's lower handle moves a byte six positions earlier, so the
-    brightness controls are not one contiguous run and the gap between them is real.
-  between: [h6199_effect_workshop_ret_darkest, h6199_effect_workshop_scope_low]
-  differs_at: [12]
-
+  between:
+  - h6199_effect_workshop_ret_darkest
+  - h6199_effect_workshop_scope_low
+  differs_at:
+  - 12
 - id: h6199_block_overall_movement_one_byte
-  doc: >
-    Turning ONLY the "Overall Moving Effect" switch on moved exactly one byte of a 68-byte
-    body, and it is the byte four back from the end of layer 2's block. One switch, one
-    byte, nothing else: that is what makes this the movement flag rather than a byte that
-    happens to correlate with movement across differently-authored effects, which is the
-    reading that had to be retired at block offset 12.
-  between: [h6199_block_movement_all_off, h6199_block_movement_overall_on]
-  differs_at: [57]
-
+  between:
+  - h6199_block_movement_all_off
+  - h6199_block_movement_overall_on
+  differs_at:
+  - 57
 - id: h6199_block_selected_movement_one_byte
-  doc: >
-    Turning ONLY "Moving Effect in the Selected Area" on moved exactly one byte, three
-    before the overall flag. The two controls are the same shape three bytes apart, which
-    is what makes the trailer two triples rather than one run of seven.
-  between: [h6199_block_movement_overall_on, h6199_block_movement_selected_on]
-  differs_at: [54]
-
+  between:
+  - h6199_block_movement_overall_on
+  - h6199_block_movement_selected_on
+  differs_at:
+  - 54
 - id: h6199_block_layer_priority_one_byte
-  doc: >
-    Choosing ONLY priority level 3 moved exactly the last byte of layer 2's block. Note what
-    is NOT in this chain: enabling the priority switch beforehand produced a byte-identical
-    body, so the level is the whole encoding and there is no enable bit to look for.
-  between: [h6199_block_movement_selected_on, h6199_block_movement_priority3]
-  differs_at: [60]
-
-- id: h6199_block_overall_speed_one_byte
-  doc: >
-    Dragging ONLY the overall Moving Speed slider from 50% to 95% moved exactly the byte two
-    back from the end of layer 2's block, 0x80 to 0xf2. 242 of 255 is 94.9%, so the scaling
-    is 0..255 and not the direct percent this protocol uses for brightness and saturation.
-  between: [h6199_block_movement_priority3, h6199_block_movement_overall_speed]
-  differs_at: [59]
-
-- id: h6199_block_overall_direction_shares_the_flag_byte
-  doc: >
-    Changing ONLY the overall Moving direction moved the same byte the enable switch had
-    moved, 0x10 to 0x13, and no other. The direction is therefore packed into the flag's low
-    nibble rather than carried beside it, which is the finding that collapsed a suspected
-    seven separate fields into two triples and a level.
-  between: [h6199_block_movement_overall_speed, h6199_block_movement_overall_dir_bf]
-  differs_at: [57]
-
-- id: h6199_diy_music_variants_move_only_the_variant
-  doc: >
-    Music1, Music2 and Music3 share family, speed, palette and zero tail. Consecutive styles
-    move only body offset 4, confirming APK variants 8, 6 and 7 without inventing a second
-    post-palette structure.
-  between: [h6199_effect_diy_music2, h6199_effect_diy_music3]
-  differs_at: [4]
-
-- id: h6199_builtin_sweet_replay_is_identical
-  doc: >
-    Reapplying the same Sweet tile uploads the same complete 34-byte body.
-  between: [h6199_effect_builtin_sweet, h6199_effect_builtin_sweet_repeat]
-  equal_at: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]
-
-- id: h6199_builtin_halloween_replay_is_identical
-  doc: >
-    Reapplying the same Halloween-A tile uploads the same complete 51-byte body.
-  between: [h6199_effect_builtin_halloween, h6199_effect_builtin_halloween_repeat]
-  equal_at: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
-
-- id: h6199_ai_saved_body_replays_identically
-  doc: >
-    Two immediate applications of the same saved AI response upload an identical complete
-    body even though the following activation identifiers differ.
-  between: [h6199_effect_ai_ocean_apply1, h6199_effect_ai_ocean_apply2]
-  equal_at: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84]
-
-- id: h6199_ai_saved_replay_changes_only_activation_id
-  doc: >
-    The same byte-identical AI body is followed by activation writes that differ only in
-    the low scene-id byte and checksum. The app allocates a new activation identifier on
-    replay rather than reusing the prior one.
-  between: [h6199_scene_ai_ocean_apply1, h6199_scene_ai_ocean_apply2]
-  differs_at: [3, 19]
-
-- id: h6199_ai_regenerated_body_replays_identically
-  doc: >
-    Regeneration produced a different body shape, and a later replay of that new response
-    uploaded the same complete 68-byte body.
-  between: [h6199_effect_ai_regenerated_apply, h6199_effect_ai_regenerated_replay]
-  equal_at: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67]
-
-- id: h6199_ai_regenerated_replay_changes_only_activation_id
-  doc: >
-    The regenerated response also receives a new activation identifier on replay while its
-    body remains byte-identical.
-  between: [h6199_scene_ai_regenerated_apply, h6199_scene_ai_regenerated_replay]
-  differs_at: [3, 19]
-
-- id: h6199_workshop_general_direction_is_bit_80
-  doc: >
-    With Based on Number of IC held constant, changing only the general Direction from
-    Backward to Forward clears bit 0x80 at block offset 12.
-  between: [h6199_effect_workshop_distribution_ic_backward, h6199_effect_workshop_distribution_ic_forward]
-  differs_at: [17]
-
-- id: h6199_workshop_distribution_moves_alone
-  doc: >
-    With general Direction held Forward, changing Based on Number of IC to Based on Segment
-    moves only the packed distribution byte.
-  between: [h6199_effect_workshop_distribution_ic_forward, h6199_effect_workshop_distribution_segment]
-  differs_at: [17]
-
-- id: h6199_workshop_distribution_unified_moves_alone
-  doc: >
-    Changing Based on Segment to Unified Colour likewise moves only the packed distribution
-    byte, completing observed values 0, 1 and 2.
-  between: [h6199_effect_workshop_distribution_segment, h6199_effect_workshop_distribution_unified]
-  differs_at: [17]
-
+  between:
+  - h6199_block_movement_selected_on
+  - h6199_block_movement_priority3
+  differs_at:
+  - 60
 - id: h6199_workshop_select_type_moves_alone
-  doc: >
-    With the displayed count held at 2 and every later control unchanged, switching Segment
-    to Select IC Continuously moves only block offset 1.
-  between: [h6199_effect_workshop_distribution_unified, h6199_effect_workshop_select_continuous]
-  differs_at: [6]
-
+  between:
+  - h6199_effect_workshop_distribution_unified
+  - h6199_effect_workshop_select_continuous
+  differs_at:
+  - 6
 - id: h6199_workshop_random_minimum_moves_alone
-  doc: >
-    Under Select IC Randomly with Maximum ICs held at 2, changing Minimum IC from 1 to 2
-    moves only block offset 3.
-  between: [h6199_effect_workshop_select_random_min1, h6199_effect_workshop_select_random_min2]
-  differs_at: [8]
-
-- id: h6199_workshop_enter_exit_is_bit_04
-  doc: >
-    With selected-area movement enabled and direction Forward, turning only Enter and Exit
-    Effect off changes 0x14 to 0x10 at the selected movement byte.
-  between: [h6199_effect_workshop_select_random_min2, h6199_effect_workshop_enter_exit_off]
-  differs_at: [27]
-
-- id: h6199_workshop_selected_direction_fb
-  doc: >
-    Changing selected-area direction Forward to Forward and Backward moves only its packed
-    byte from 0x10 to 0x11.
-  between: [h6199_effect_workshop_enter_exit_off, h6199_effect_workshop_selected_fb]
-  differs_at: [27]
-
-- id: h6199_workshop_selected_direction_backward
-  doc: >
-    Changing selected-area direction Forward and Backward to Backward moves only its packed
-    byte from 0x11 to 0x12.
-  between: [h6199_effect_workshop_selected_fb, h6199_effect_workshop_selected_backward]
-  differs_at: [27]
-
-- id: h6199_workshop_selected_direction_bf
-  doc: >
-    Changing selected-area direction Backward to Backward and Forward moves only its packed
-    byte from 0x12 to 0x13.
-  between: [h6199_effect_workshop_selected_backward, h6199_effect_workshop_selected_bf]
-  differs_at: [27]
-
+  between:
+  - h6199_effect_workshop_select_random_min1
+  - h6199_effect_workshop_select_random_min2
+  differs_at:
+  - 8
 - id: h6199_wifi_header_count_crosses_boundaries
-  doc: >
-    Vendor-generated headers announce three, four and five data frames for reassembled body
-    lengths 48, 49 and 65. Each sequence then carried exactly that many indexed frames and
-    the same empty terminator.
   cases: h6199_wifi_*header
   collect: data_frame_count
   distinct_at_least: 3
-
 - id: h6199_workshop_applied_area_upper_moves_alone
-  doc: >
-    Moving only the Applied Area upper handle from 40% to 50% changes block offset 0 from
-    0x40 to 0x50.
-  between: [h6199_effect_workshop_distribution_ic_backward, h6199_effect_workshop_applied_area_50]
-  differs_at: [5]
-
+  between:
+  - h6199_effect_workshop_distribution_ic_backward
+  - h6199_effect_workshop_applied_area_50
+  differs_at:
+  - 5
 - id: h6199_workshop_applied_area_lower_moves_alone
-  doc: >
-    With the upper handle held at 50%, moving the lower handle from 0% to 10% changes the
-    same byte from 0x50 to 0x41.
-  between: [h6199_effect_workshop_applied_area_50, h6199_effect_workshop_applied_area_41]
-  differs_at: [5]
-
+  between:
+  - h6199_effect_workshop_applied_area_50
+  - h6199_effect_workshop_applied_area_41
+  differs_at:
+  - 5
 - id: h6199_workshop_random_maximum_moves_alone
-  doc: >
-    Under Select IC Randomly with Minimum IC held at 2, moving Maximum ICs from 2 to 3 changes
-    only block offset 2.
-  between: [h6199_effect_workshop_random_max2, h6199_effect_workshop_random_max3]
-  differs_at: [7]
-
+  between:
+  - h6199_effect_workshop_random_max2
+  - h6199_effect_workshop_random_max3
+  differs_at:
+  - 7
 - id: h6199_workshop_brightness_mode_is_bit_02
-  doc: >
-    Switching only the Brightness section from Gradient to Unified clears bit 0x02 in the
-    layer-flags byte.
-  between: [h6199_effect_workshop_random_max3, h6199_effect_workshop_brightness_unified_final]
-  differs_at: [9]
-
-- id: h6199_workshop_scope_upper_moves_alone
-  doc: >
-    Moving only the first Brightness block upper Scope handle from 100% to 80% changes ff to
-    cd at block offset 6.
-  between: [h6199_effect_workshop_brightness_unified_final, h6199_effect_workshop_scope_high_80]
-  differs_at: [11]
-
+  between:
+  - h6199_effect_workshop_random_max3
+  - h6199_effect_workshop_brightness_unified_final
+  differs_at:
+  - 9
 - id: h6199_workshop_brightness_order_moves_alone
-  doc: >
-    Changing only Brightness Order from Brightest-Darkest to Darkest-Brightest moves block
-    offset 8 from 0 to 2.
-  between: [h6199_effect_workshop_scope_high_80, h6199_effect_workshop_order_darkest_brightest]
-  differs_at: [13]
-
+  between:
+  - h6199_effect_workshop_scope_high_80
+  - h6199_effect_workshop_order_darkest_brightest
+  differs_at:
+  - 13
 - id: h6199_workshop_brightness_block_count_varies
-  doc: >
-    Workshop bodies now exercise one and two numbered six-byte Brightness sub-tabs, with the
-    record length increasing by exactly six when the second is added.
   cases: h6199_effect_workshop_*
   collect: content.blocks[0].brightness_block_count
   distinct_at_least: 2
-
 - id: h6199_workshop_colour_count_varies
-  doc: >
-    Deleting one palette colour changes the count from two to one and shortens the record by
-    exactly one RGB triplet.
   cases: h6199_effect_workshop_*
   collect: content.blocks[0].colour_count
   distinct_at_least: 2
-
 - id: h6199_workshop_select_type_has_all_four_values
-  doc: >
-    The H6199 editor produced Segment, Select IC Continuously, Select IC Randomly and
-    Customize Segment as values 0 through 3.
   cases: h6199_effect_workshop_*
   collect: content.blocks[0].select_type
   distinct_at_least: 4

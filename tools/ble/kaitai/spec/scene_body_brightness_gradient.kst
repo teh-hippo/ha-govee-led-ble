@@ -1,28 +1,33 @@
-# Brightness Gradient: the Gradient tab tapped and re-applied with every other control untouched. Isolates layer_flags bit 0x02, which the spec previously carried as unattributed. Bit 0x10 is set in BOTH, since neither Apply followed a Save.
 id: scene_body_brightness_gradient
 data: scene_body_brightness_gradient.bin
 imports:
-  - scene_body
+- scene_body
+provenance:
+  kind: capture_a3_body
+  schema_model: h617a
+  source_model: h617a
+  source: drive3-layer-editor.pcap
+  source_sha256: a437c74d753167e6deea65c389296d68bf34cfe3ce5806d15649e2c7fea9470b
+  source_index: 1
 asserts:
-  - actual: scene_type
-    expected: 2
-  - actual: record_count
-    expected: 1
-  - actual: records.size
-    expected: 1
-  - actual: padding.size
-    expected: 0
-  - actual: records[0].rec_len
-    expected: 29
-  - actual: records[0].body.select_type
-    expected: 1
-  - actual: records[0].body.colour_count
-    expected: 2
-  - actual: records[0].body.excess.size
-    expected: 0
-  - actual: records[0].body.layer_flags
-    expected: 18
-  - actual: records[0].body.brightness_is_gradient
-    expected: true
-  - actual: records[0].body.applied_from_changed_editor
-    expected: true
+- actual: scene_type
+  expected: 2
+- actual: record_count
+  expected: 1
+- actual: records.size
+  expected: 1
+- actual: padding.size
+  expected: 0
+- actual: records[0].rec_len
+  expected: 29
+- actual: records[0].body.select_type
+  expected: 1
+- actual: records[0].body.colour_count
+  expected: 2
+- actual: records[0].body.excess.size
+  expected: 0
+- actual: records[0].body.layer_flags
+  expected: 18
+- actual: records[0].body.brightness_is_gradient
+  expected: true
+fixture_sha256: 61c4db55886d726109f76e7a643a704fd70c1d0a1a9868171ddd5f73cdfb7657

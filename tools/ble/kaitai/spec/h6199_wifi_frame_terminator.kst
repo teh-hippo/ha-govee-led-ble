@@ -1,19 +1,21 @@
-# H6199 Wi-Fi provisioning frame, captured 2026-08-04 from the Govee Home iOS app driving the
-# DreamView T1 with the phone in Airplane Mode, which is what made the app offer manual SSID
-# entry at all. The network is INVENTED: no real credentials are committed here. The same six
-# frames were later written back from our own radio and drew the same acknowledgement, so the
-# sequence is confirmed from both directions.
-
 id: h6199_wifi_frame_terminator
 data: h6199_wifi_frame_terminator.bin
 imports:
-  - h6199_wifi_provision
+- h6199_wifi_provision
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260805-161335.pcap
+  source_sha256: 5458d630536efce5edc196b7049c40c4888c9bc00f575303d135bed44f85ef1f
+  source_index: 1
 asserts:
-  - actual: sub_opcode
-    expected: 17
-  - actual: index
-    expected: 255
-  - actual: is_terminator
-    expected: true
-  - actual: payload
-    expected: "00000000000000000000000000000000"
+- actual: sub_opcode
+  expected: 17
+- actual: index
+  expected: 255
+- actual: is_terminator
+  expected: true
+- actual: payload
+  expected: '00000000000000000000000000000000'
+fixture_sha256: c1752518b62b30259bf429a9c54a58f2a1bea25c782f915109ffffa13e0a71f1

@@ -1,22 +1,30 @@
 id: music_frame_energetic_c1
 data: music_frame_energetic_c1.bin
 imports:
-  - music_body
+- music_body
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: h617a-music-recapture-2026-07-27.pcap
+  source_sha256: 21425bafdb8f068657b1236ab9cdb731f990413aa4fb45aa79c954b86d452159
+  source_index: 1
 type: mode_set_frame
 asserts:
-  - actual: mode
-    expected: 5
-  - actual: sensitivity
-    expected: 99
-  - actual: style
-    expected: 0
-  - actual: count
-    expected: 1
-  - actual: colors.size
-    expected: 1
-  - actual: colors[0].r
-    expected: 0
-  - actual: colors[0].g
-    expected: 230
-  - actual: colors[0].b
-    expected: 210
+- actual: mode
+  expected: 5
+- actual: sensitivity
+  expected: 99
+- actual: style
+  expected: 0
+- actual: count
+  expected: 1
+- actual: colors.size
+  expected: 1
+- actual: colors[0].r
+  expected: 0
+- actual: colors[0].g
+  expected: 230
+- actual: colors[0].b
+  expected: 210
+fixture_sha256: 40e24fd3e18fa25ba5015d236a257186ad6d5c952d6428d3688fbf38eb71b93e

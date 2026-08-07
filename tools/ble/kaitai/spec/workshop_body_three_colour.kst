@@ -1,28 +1,31 @@
-# Three colours: colour_count 3 with record_len 32 = 23 + 9, and a red/blue/green palette.
-# With the one-colour and two-colour bodies this is the whole M = 1, 2, 3 series, which is
-# what makes record_len == 23 + 3M a law rather than a coincidence of one body.
 id: workshop_body_three_colour
 data: workshop_body_three_colour.bin
 imports:
-  - workshop_body
+- workshop_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: header.linecount
-    expected: 3
-  - actual: layer_count
-    expected: 1
-  - actual: layers.size
-    expected: 1
-  - actual: layers[0].record_len
-    expected: 32
-  - actual: layers[0].body.colour_count
-    expected: 3
-  - actual: layers[0].body.palette.size
-    expected: 3
-  - actual: layers[0].body.excess.size
-    expected: 0
-  - actual: layers[0].body.palette[0].r
-    expected: 255
-  - actual: layers[0].body.palette[1].b
-    expected: 255
-  - actual: layers[0].body.palette[2].g
-    expected: 255
+- actual: header.linecount
+  expected: 3
+- actual: layer_count
+  expected: 1
+- actual: layers.size
+  expected: 1
+- actual: layers[0].record_len
+  expected: 32
+- actual: layers[0].body.colour_count
+  expected: 3
+- actual: layers[0].body.palette.size
+  expected: 3
+- actual: layers[0].body.excess.size
+  expected: 0
+- actual: layers[0].body.palette[0].r
+  expected: 255
+- actual: layers[0].body.palette[1].b
+  expected: 255
+- actual: layers[0].body.palette[2].g
+  expected: 255
+fixture_sha256: 48b74c9d03ad18813ac20ce5ab5c32fcfa9183979f198250bea378af776070d5

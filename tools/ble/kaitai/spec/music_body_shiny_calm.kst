@@ -1,17 +1,21 @@
 id: music_body_shiny_calm
 data: music_body_shiny_calm.bin
 imports:
-  - music_body
+- music_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: mode
-    expected: 49
-  - actual: count
-    expected: 5
-  - actual: palette.size
-    expected: 5
-  - actual: tail_len
-    expected: 3
-  - actual: tail.style_companion
-    expected: "1446"
-  - actual: tail.fixed2
-    expected: 10
+- actual: mode
+  expected: 49
+- actual: count
+  expected: 5
+- actual: palette.size
+  expected: 5
+- actual: tail_len
+  expected: 3
+- actual: tail.style_companion
+  expected: 5190
+fixture_sha256: 6d4d5f4785228f7a5b25106ee9b67a1f0ebd331836aa51a94a37dec304521c1b

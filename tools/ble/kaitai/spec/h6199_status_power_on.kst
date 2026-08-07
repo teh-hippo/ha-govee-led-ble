@@ -1,9 +1,17 @@
 id: h6199_status_power_on
 data: h6199_status_power_on.bin
 imports:
-  - h6199_status_reply
+- h6199_status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: dv-diy-apply.pcap
+  source_sha256: 2c64690ee14e2bf450835f5c2d372482567838e3b28904c09e7e7601662aabbd
+  source_index: 1
 asserts:
-  - actual: domain
-    expected: 1
-  - actual: body.is_on
-    expected: 1
+- actual: domain
+  expected: 1
+- actual: body.is_on
+  expected: 1
+fixture_sha256: d6d0bfcce14949c448ef19a49c42d104dd99fb2fe57451ccc1afa0360379d3cf

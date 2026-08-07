@@ -1,7 +1,11 @@
-# A captured one-colour Flat body with PLEN changed from 3 to 4. A palette byte count
-# that is not divisible by RGB width cannot describe this grammar.
 id: diy_type04_reject_plen
 data: diy_type04_reject_plen.bin
 imports:
-  - diy_type04
+- diy_type04
+provenance:
+  kind: derived_rejection
+  schema_model: h617a
+  source_model: h617a
+  source: captured fixture mutation
 exception: ValidationExprError
+fixture_sha256: a672fb28f64cbed65f7a01638950e63589fc7a6774b85bd7871b6e7b28a308fb

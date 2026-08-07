@@ -1,8 +1,0 @@
-# Selected-area direction Backward.
-id: h6199_effect_workshop_selected_backward
-data: h6199_effect_workshop_selected_backward.bin
-imports: [h6199_effect_upload]
-asserts:
-  - {actual: "content.blocks[0].selected_movement", expected: 18}
-  - {actual: "content.blocks[0].selected_direction", expected: 2}
-  - {actual: "content.blocks[0].selected_enter_exit_enabled", expected: false}

@@ -1,40 +1,43 @@
-# The two-layer baseline for the movement and priority tail. r13 reads 0x83 here, which is
-# backward plus based-on-segment plus the gradient bit, so the byte carries three
-# independent things rather than one enum.
 id: workshop_body_priority_2layer
 data: workshop_body_priority_2layer.bin
 imports:
-  - workshop_body
+- workshop_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: header.linecount
-    expected: 4
-  - actual: layer_count
-    expected: 2
-  - actual: layers.size
-    expected: 2
-  - actual: layers[0].record_len
-    expected: 29
-  - actual: layers[0].body.colour_count
-    expected: 2
-  - actual: layers[0].body.palette.size
-    expected: 2
-  - actual: layers[0].body.excess.size
-    expected: 0
-  - actual: layers[1].record_len
-    expected: 26
-  - actual: layers[1].body.colour_count
-    expected: 1
-  - actual: layers[1].body.palette.size
-    expected: 1
-  - actual: layers[1].body.excess.size
-    expected: 0
-  - actual: layers[0].body.direction_distribution
-    expected: 131
-  - actual: layers[0].body.direction_is_backward
-    expected: true
-  - actual: layers[0].body.selected_area_movement.packed
-    expected: 0
-  - actual: layers[0].body.overall_movement.packed
-    expected: 16
-  - actual: layers[0].body.priority
-    expected: 2
+- actual: header.linecount
+  expected: 4
+- actual: layer_count
+  expected: 2
+- actual: layers.size
+  expected: 2
+- actual: layers[0].record_len
+  expected: 29
+- actual: layers[0].body.colour_count
+  expected: 2
+- actual: layers[0].body.palette.size
+  expected: 2
+- actual: layers[0].body.excess.size
+  expected: 0
+- actual: layers[1].record_len
+  expected: 26
+- actual: layers[1].body.colour_count
+  expected: 1
+- actual: layers[1].body.palette.size
+  expected: 1
+- actual: layers[1].body.excess.size
+  expected: 0
+- actual: layers[0].body.direction_distribution
+  expected: 131
+- actual: layers[0].body.direction_is_backward
+  expected: true
+- actual: layers[0].body.selected_area_movement.packed
+  expected: 0
+- actual: layers[0].body.overall_movement.packed
+  expected: 16
+- actual: layers[0].body.priority
+  expected: 2
+fixture_sha256: 794b9a636bcf5e27f692e4edd74e8ce68dc828c32e17b98645787c8f1ae7f84f

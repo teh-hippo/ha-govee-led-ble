@@ -1,24 +1,29 @@
-# Sketch with nothing painted: group_count 0, the empty-body edge case. Extracted from a capture no longer in the archive.
 id: diy_type03_anchor_sketch_nopaint
 data: diy_type03_anchor_sketch_nopaint.bin
 imports:
-  - diy_type03
+- diy_type03
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: header.linecount
-    expected: 2
-  - actual: effect
-    expected: 2
-  - actual: speed
-    expected: 51
-  - actual: brightness
-    expected: 100
-  - actual: background.r
-    expected: 255
-  - actual: background.g
-    expected: 255
-  - actual: background.b
-    expected: 255
-  - actual: group_count
-    expected: 0
-  - actual: groups.size
-    expected: 0
+- actual: header.linecount
+  expected: 2
+- actual: effect
+  expected: 2
+- actual: speed
+  expected: 51
+- actual: brightness
+  expected: 100
+- actual: background.r
+  expected: 255
+- actual: background.g
+  expected: 255
+- actual: background.b
+  expected: 255
+- actual: group_count
+  expected: 0
+- actual: groups.size
+  expected: 0
+fixture_sha256: a409b27b639d338f70d60fb1afd8e1fbcd346882b1568e565a62dfd61ef08f0d

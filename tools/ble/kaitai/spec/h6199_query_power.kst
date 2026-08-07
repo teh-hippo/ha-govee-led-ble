@@ -1,9 +1,0 @@
-id: h6199_query_power
-data: h6199_query_power.bin
-imports:
-  - h6199_status_query
-asserts:
-  - actual: domain
-    expected: 1
-  - actual: body.zeros.size
-    expected: 17

@@ -1,10 +1,11 @@
-# aa a5 group 0x06, read live 2026-07-27 by asking past the five groups the app uses. The
-# device answers, but not with colour: parsed as three <brightness><R><G><B> records these
-# report brightnesses well past 100 on a 0..100 field. Before the group range-check they
-# parsed silently and produced exactly that nonsense, which is the silent-wrong-answer
-# failure mode that has twice nearly become a finding. The grammar must refuse them.
 id: status_reply_reject_segments_g06
 data: status_reply_reject_segments_g06.bin
 imports:
-  - status_reply
+- status_reply
+provenance:
+  kind: derived_rejection
+  schema_model: h617a
+  source_model: h617a
+  source: captured fixture mutation
 exception: ValidationGreaterThanError
+fixture_sha256: a8352486a964bd6b0d6127f673ca97e7edabc1fc91cd07769189e2379a66a79f

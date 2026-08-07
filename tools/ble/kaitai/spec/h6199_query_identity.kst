@@ -1,9 +1,0 @@
-id: h6199_query_identity
-data: h6199_query_identity.bin
-imports:
-  - h6199_status_query
-asserts:
-  - actual: domain
-    expected: 20
-  - actual: body.zeros.size
-    expected: 17

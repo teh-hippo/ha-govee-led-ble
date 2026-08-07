@@ -1,23 +1,29 @@
-# Music mode with a manual colour. manual_color_count 1 is what makes the rgb triple
-# present, so the count is a real length prefix rather than a flag.
 id: command_write_music
 data: command_write_music.bin
 imports:
-  - command_write
+- command_write
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: h617a-music-recapture-2026-07-27.pcap
+  source_sha256: 21425bafdb8f068657b1236ab9cdb731f990413aa4fb45aa79c954b86d452159
+  source_index: 1
 asserts:
-  - actual: body.sub
-    expected: 19
-  - actual: body.sub_body.mode_id
-    expected: 3
-  - actual: body.sub_body.sensitivity
-    expected: 99
-  - actual: body.sub_body.style
-    expected: 0
-  - actual: body.sub_body.manual_color_count
-    expected: 1
-  - actual: body.sub_body.rgb.r
-    expected: 0
-  - actual: body.sub_body.rgb.g
-    expected: 230
-  - actual: body.sub_body.rgb.b
-    expected: 210
+- actual: body.sub
+  expected: 19
+- actual: body.sub_body.mode_id
+  expected: 3
+- actual: body.sub_body.sensitivity
+  expected: 99
+- actual: body.sub_body.style
+  expected: 0
+- actual: body.sub_body.manual_color_count
+  expected: 1
+- actual: body.sub_body.rgb.r
+  expected: 0
+- actual: body.sub_body.rgb.g
+  expected: 230
+- actual: body.sub_body.rgb.b
+  expected: 210
+fixture_sha256: 1337ef05d9b9673042e7997b7bc8b692d99ce3e02414098bc238583d79624610

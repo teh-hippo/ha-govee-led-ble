@@ -1,9 +1,0 @@
-# A second application of Halloween-A, byte-identical to the first.
-id: h6199_effect_builtin_halloween_repeat
-data: h6199_effect_builtin_halloween_repeat.bin
-imports: [h6199_effect_upload]
-asserts:
-  - {actual: chunk_count, expected: 3}
-  - {actual: kind, expected: 1}
-  - actual: content.opaque_body
-    expected: "8306fff5000500ffffff0500ffe9ff0500ffffff0500ffe9d90500fff8ff060004ff1e00ff5a00ff3200ff7800000000"

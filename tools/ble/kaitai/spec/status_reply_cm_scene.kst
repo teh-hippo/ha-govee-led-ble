@@ -1,13 +1,19 @@
-# Colour-mode read-back, scene. The code is little-endian, which the single-byte value
-# here cannot show on its own; command_write_scene carries a two-byte code that does.
 id: status_reply_cm_scene
 data: status_reply_cm_scene.bin
 imports:
-  - status_reply
+- status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: h617a-timer-2026-07-27.pcap
+  source_sha256: 77f11be6c42ded41ed067a3c968aeb4c465040327c986fbed0b985b9edda03f9
+  source_index: 1
 asserts:
-  - actual: domain
-    expected: 5
-  - actual: body.mode
-    expected: 4
-  - actual: body.mode_body.scene_id
-    expected: 9
+- actual: domain
+  expected: 5
+- actual: body.mode
+  expected: 4
+- actual: body.mode_body.scene_id
+  expected: 9
+fixture_sha256: 4561e25d097cffb53e3b5f34969a960674d10a43ed3f7bb6962eb3e30fda1286

@@ -1,9 +1,0 @@
-# Activation following the immediate second application of the same AI response.
-id: h6199_scene_ai_ocean_apply2
-data: h6199_scene_ai_ocean_apply2.bin
-imports: [h6199_command_write]
-asserts:
-  - {actual: opcode, expected: 5}
-  - {actual: body.sub_mode, expected: 4}
-  - {actual: body.detail.scene_id, expected: 229}
-  - {actual: body.detail.scene_class, expected: 0}

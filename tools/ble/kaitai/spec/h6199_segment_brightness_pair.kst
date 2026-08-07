@@ -1,11 +1,17 @@
 id: h6199_segment_brightness_pair
 data: h6199_segment_brightness_pair.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: retained_fixture
+  schema_model: h6199
+  source_model: h6199
+  source: pre-provenance corpus
 asserts:
-  - actual: body.detail.operation
-    expected: 2
-  - actual: body.detail.brightness_percent
-    expected: 37
-  - actual: body.detail.brightness_segment_mask
-    expected: 10
+- actual: body.detail.operation
+  expected: 2
+- actual: body.detail.brightness_percent
+  expected: 37
+- actual: body.detail.brightness_segment_mask
+  expected: 10
+fixture_sha256: c8f8f9ec8799e955901579ef60a6422c57cecd0f09df4a7bfa44253093fa199d

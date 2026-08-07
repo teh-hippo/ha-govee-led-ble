@@ -1,19 +1,25 @@
 id: music_body_separation_a
 data: music_body_separation_a.bin
 imports:
-  - music_body
+- music_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: mode
-    expected: 50
-  - actual: count
-    expected: 5
-  - actual: palette.size
-    expected: 5
-  - actual: tail_len
-    expected: 3
-  - actual: tail.point
-    expected: 2
-  - actual: tail.gradient
-    expected: 0
-  - actual: tail.companion
-    expected: 97
+- actual: mode
+  expected: 50
+- actual: count
+  expected: 5
+- actual: palette.size
+  expected: 5
+- actual: tail_len
+  expected: 3
+- actual: tail.point
+  expected: 2
+- actual: tail.gradient
+  expected: 0
+- actual: tail.companion
+  expected: 97
+fixture_sha256: ed98cf194ecac86cb58f9d541d3ae3b3449c770c1d75f598d27e86cd95c17bb2

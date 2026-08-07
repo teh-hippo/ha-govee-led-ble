@@ -1,9 +1,21 @@
-# Vendor-generated 65-byte provisioning body: five data frames.
 id: h6199_wifi_shape5_header
 data: h6199_wifi_shape5_header.bin
-imports: [h6199_wifi_provision]
+imports:
+- h6199_wifi_provision
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260805-161335.pcap
+  source_sha256: 5458d630536efce5edc196b7049c40c4888c9bc00f575303d135bed44f85ef1f
+  source_index: 1
 asserts:
-  - {actual: sub_opcode, expected: 17}
-  - {actual: index, expected: 0}
-  - {actual: is_header, expected: true}
-  - {actual: data_frame_count, expected: 5}
+- actual: sub_opcode
+  expected: 17
+- actual: index
+  expected: 0
+- actual: is_header
+  expected: true
+- actual: data_frame_count
+  expected: 5
+fixture_sha256: fdc0531689914ff68e7307f9b017211db790ed08846f124ca46347bb7022fcba

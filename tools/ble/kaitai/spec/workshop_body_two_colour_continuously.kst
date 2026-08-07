@@ -1,27 +1,33 @@
-# The baseline every select-type and brightness differential is measured against: one
-# layer, Select IC Continuously, two colours, record_len 29 = 23 + 6.
 id: workshop_body_two_colour_continuously
 data: workshop_body_two_colour_continuously.bin
 imports:
-  - workshop_body
+- workshop_body
+provenance:
+  kind: capture_a3_body
+  schema_model: h617a
+  source_model: h617a
+  source: s11-modes.pcap
+  source_sha256: e246a8e1afc93bdb96256971f5c83ce975d4b204e219cc1e339f5ed91c8a142d
+  source_index: 2
 asserts:
-  - actual: header.linecount
-    expected: 2
-  - actual: layer_count
-    expected: 1
-  - actual: layers.size
-    expected: 1
-  - actual: layers[0].record_len
-    expected: 29
-  - actual: layers[0].body.colour_count
-    expected: 2
-  - actual: layers[0].body.palette.size
-    expected: 2
-  - actual: layers[0].body.excess.size
-    expected: 0
-  - actual: layers[0].body.select_type
-    expected: 1
-  - actual: layers[0].body.select_param_1
-    expected: 0
-  - actual: layers[0].body.select_param_2
-    expected: 15
+- actual: header.linecount
+  expected: 2
+- actual: layer_count
+  expected: 1
+- actual: layers.size
+  expected: 1
+- actual: layers[0].record_len
+  expected: 29
+- actual: layers[0].body.colour_count
+  expected: 2
+- actual: layers[0].body.palette.size
+  expected: 2
+- actual: layers[0].body.excess.size
+  expected: 0
+- actual: layers[0].body.select_type
+  expected: 1
+- actual: layers[0].body.select_param_1
+  expected: 0
+- actual: layers[0].body.select_param_2
+  expected: 15
+fixture_sha256: 7ecaab430691f9f45d1c5aa54046f0b7a5da0198c658103960aab640d6033c7e

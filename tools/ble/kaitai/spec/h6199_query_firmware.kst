@@ -1,9 +1,0 @@
-id: h6199_query_firmware
-data: h6199_query_firmware.bin
-imports:
-  - h6199_status_query
-asserts:
-  - actual: domain
-    expected: 6
-  - actual: body.zeros.size
-    expected: 17

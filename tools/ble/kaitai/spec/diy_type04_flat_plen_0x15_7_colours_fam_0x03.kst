@@ -1,58 +1,65 @@
-# flat plen=0x15 (7 colours) fam=0x03. Capture: diy-marquee.pcap.
 id: diy_type04_flat_plen_0x15_7_colours_fam_0x03
 data: diy_type04_flat_plen_0x15_7_colours_fam_0x03.bin
 imports:
-  - diy_type04
+- diy_type04
+provenance:
+  kind: capture_a3_body
+  schema_model: h617a
+  source_model: h617a
+  source: drive3-layer-editor.pcap
+  source_sha256: a437c74d753167e6deea65c389296d68bf34cfe3ce5806d15649e2c7fea9470b
+  source_index: 1
 asserts:
-  - actual: family
-    expected: 3
-  - actual: body.variant
-    expected: 3
-  - actual: body.speed
-    expected: 50
-  - actual: body.plen
-    expected: 21
-  - actual: body.palette.colours.size
-    expected: 7
-  - actual: body.palette.colours[0].r
-    expected: 255
-  - actual: body.palette.colours[0].g
-    expected: 0
-  - actual: body.palette.colours[0].b
-    expected: 0
-  - actual: body.palette.colours[1].r
-    expected: 255
-  - actual: body.palette.colours[1].g
-    expected: 125
-  - actual: body.palette.colours[1].b
-    expected: 0
-  - actual: body.palette.colours[2].r
-    expected: 255
-  - actual: body.palette.colours[2].g
-    expected: 255
-  - actual: body.palette.colours[2].b
-    expected: 0
-  - actual: body.palette.colours[3].r
-    expected: 0
-  - actual: body.palette.colours[3].g
-    expected: 255
-  - actual: body.palette.colours[3].b
-    expected: 0
-  - actual: body.palette.colours[4].r
-    expected: 0
-  - actual: body.palette.colours[4].g
-    expected: 0
-  - actual: body.palette.colours[4].b
-    expected: 255
-  - actual: body.palette.colours[5].r
-    expected: 0
-  - actual: body.palette.colours[5].g
-    expected: 255
-  - actual: body.palette.colours[5].b
-    expected: 255
-  - actual: body.palette.colours[6].r
-    expected: 139
-  - actual: body.palette.colours[6].g
-    expected: 0
-  - actual: body.palette.colours[6].b
-    expected: 255
+- actual: family
+  expected: 3
+- actual: body.variant
+  expected: 3
+- actual: body.speed
+  expected: 50
+- actual: body.plen
+  expected: 21
+- actual: body.palette.colours.size
+  expected: 7
+- actual: body.palette.colours[0].r
+  expected: 255
+- actual: body.palette.colours[0].g
+  expected: 0
+- actual: body.palette.colours[0].b
+  expected: 0
+- actual: body.palette.colours[1].r
+  expected: 255
+- actual: body.palette.colours[1].g
+  expected: 125
+- actual: body.palette.colours[1].b
+  expected: 0
+- actual: body.palette.colours[2].r
+  expected: 255
+- actual: body.palette.colours[2].g
+  expected: 255
+- actual: body.palette.colours[2].b
+  expected: 0
+- actual: body.palette.colours[3].r
+  expected: 0
+- actual: body.palette.colours[3].g
+  expected: 255
+- actual: body.palette.colours[3].b
+  expected: 0
+- actual: body.palette.colours[4].r
+  expected: 0
+- actual: body.palette.colours[4].g
+  expected: 0
+- actual: body.palette.colours[4].b
+  expected: 255
+- actual: body.palette.colours[5].r
+  expected: 0
+- actual: body.palette.colours[5].g
+  expected: 255
+- actual: body.palette.colours[5].b
+  expected: 255
+- actual: body.palette.colours[6].r
+  expected: 139
+- actual: body.palette.colours[6].g
+  expected: 0
+- actual: body.palette.colours[6].b
+  expected: 255
+fixture_sha256: f9a8bc8d757aac1d542cd8c6f2d72811c298b7e5b75a78949bce576c1cbf22e2

@@ -1,25 +1,27 @@
-# H6199 effect definition uploaded over 0xA3, captured 2026-08-05 from the Govee Home iOS
-# app driving the DreamView T1. The two-layer Workshop effect "Moving Christmas" re-applied
-# after then choosing ONLY the overall Moving direction "Backward and Forward". These six are a controlled chain: each
-# differs from the one before at a single byte, which is what named the block's trailer.
-# Block 0 is layer 1 and block 1 is layer 2, and they are 29 and 26 bytes, which is what
-# made the trailer's END anchoring visible rather than assumed.
 id: h6199_block_movement_overall_dir_bf
 data: h6199_block_movement_overall_dir_bf.bin
 imports:
-  - h6199_effect_upload
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260805-150954.pcap
+  source_sha256: e008eba3122f9ee482aa1fd6aeb0e2561961ae6050ad6f988e10b3c0bb2fac65
+  source_index: 1
 asserts:
-  - actual: kind
-    expected: 2
-  - actual: content.block_count
-    expected: 2
-  - actual: content.blocks[0].len
-    expected: 29
-  - actual: content.blocks[1].len
-    expected: 26
-  - actual: content.blocks[1].overall_movement
-    expected: "13"
-  - actual: content.blocks[1].overall_movement_interval
-    expected: "00"
-  - actual: content.blocks[0].overall_movement
-    expected: "10"
+- actual: kind
+  expected: 2
+- actual: content.block_count
+  expected: 2
+- actual: content.blocks[0].len
+  expected: 29
+- actual: content.blocks[1].len
+  expected: 26
+- actual: content.blocks[1].overall_movement
+  expected: 19
+- actual: content.blocks[1].overall_movement_interval
+  expected: 0
+- actual: content.blocks[0].overall_movement
+  expected: 16
+fixture_sha256: 87c465fc0eac2bf3b8abc26d82c37a89c38364c50c1ae62be61539c712f6170f

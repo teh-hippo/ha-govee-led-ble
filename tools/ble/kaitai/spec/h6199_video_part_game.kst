@@ -1,24 +1,27 @@
-# H6199 video-mode write, captured 2026-08-04 from the Govee Home iOS app driving the DreamView T1
-# over BLE. The light was off Govee's cloud entirely, so the app could reach it by no path
-# but this one. The video sheet's controls were driven one at a time, so consecutive writes are controlled comparisons.
 id: h6199_video_part_game
 data: h6199_video_part_game.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260804-150025.pcap
+  source_sha256: c891ece36d3115967de53b2d1ca7f6c40fa5224da9f64218fd21a2df3fe3bf15
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 5
-  - actual: body.sub_mode
-    expected: 0
-  - actual: body.detail.region
-    expected: 0
-  - actual: body.detail.source
-    expected: 1
-  - actual: body.detail.saturation
-    expected: 100
-  - actual: body.detail.sound_effects
-    expected: 0
-  - actual: body.detail.softness
-    expected: 100
-  - actual: body.detail.opaque_tail
-    expected: "0000000000000000000000"
+- actual: opcode
+  expected: 5
+- actual: body.sub_mode
+  expected: 0
+- actual: body.detail.region
+  expected: 0
+- actual: body.detail.source
+  expected: 1
+- actual: body.detail.saturation
+  expected: 100
+- actual: body.detail.sound_effects
+  expected: 0
+- actual: body.detail.softness
+  expected: 100
+fixture_sha256: ccca9174afa09277743492861fde9de0f1912c2d446f2de5f591e818fa9a9711

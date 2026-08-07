@@ -1,84 +1,89 @@
-# Vibrant with all 15 groups, linecount 5. Extracted from a capture no longer in the archive.
 id: diy_type03_anchor_vibrant_15g
 data: diy_type03_anchor_vibrant_15g.bin
 imports:
-  - diy_type03
+- diy_type03
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: header.linecount
-    expected: 5
-  - actual: effect
-    expected: 9
-  - actual: speed
-    expected: 0
-  - actual: brightness
-    expected: 100
-  - actual: background.r
-    expected: 1
-  - actual: background.g
-    expected: 1
-  - actual: background.b
-    expected: 1
-  - actual: group_count
-    expected: 15
-  - actual: groups.size
-    expected: 15
-  - actual: groups[0].seg_count
-    expected: 1
-  - actual: groups[0].segment_indices.size
-    expected: 1
-  - actual: groups[1].seg_count
-    expected: 1
-  - actual: groups[1].segment_indices.size
-    expected: 1
-  - actual: groups[2].seg_count
-    expected: 1
-  - actual: groups[2].segment_indices.size
-    expected: 1
-  - actual: groups[3].seg_count
-    expected: 1
-  - actual: groups[3].segment_indices.size
-    expected: 1
-  - actual: groups[4].seg_count
-    expected: 1
-  - actual: groups[4].segment_indices.size
-    expected: 1
-  - actual: groups[5].seg_count
-    expected: 1
-  - actual: groups[5].segment_indices.size
-    expected: 1
-  - actual: groups[6].seg_count
-    expected: 1
-  - actual: groups[6].segment_indices.size
-    expected: 1
-  - actual: groups[7].seg_count
-    expected: 1
-  - actual: groups[7].segment_indices.size
-    expected: 1
-  - actual: groups[8].seg_count
-    expected: 1
-  - actual: groups[8].segment_indices.size
-    expected: 1
-  - actual: groups[9].seg_count
-    expected: 1
-  - actual: groups[9].segment_indices.size
-    expected: 1
-  - actual: groups[10].seg_count
-    expected: 1
-  - actual: groups[10].segment_indices.size
-    expected: 1
-  - actual: groups[11].seg_count
-    expected: 1
-  - actual: groups[11].segment_indices.size
-    expected: 1
-  - actual: groups[12].seg_count
-    expected: 1
-  - actual: groups[12].segment_indices.size
-    expected: 1
-  - actual: groups[13].seg_count
-    expected: 1
-  - actual: groups[13].segment_indices.size
-    expected: 1
-  - actual: groups[14].seg_count
-    expected: 1
-  - actual: groups[14].segment_indices.size
-    expected: 1
+- actual: header.linecount
+  expected: 5
+- actual: effect
+  expected: 9
+- actual: speed
+  expected: 0
+- actual: brightness
+  expected: 100
+- actual: background.r
+  expected: 1
+- actual: background.g
+  expected: 1
+- actual: background.b
+  expected: 1
+- actual: group_count
+  expected: 15
+- actual: groups.size
+  expected: 15
+- actual: groups[0].seg_count
+  expected: 1
+- actual: groups[0].segment_indices.size
+  expected: 1
+- actual: groups[1].seg_count
+  expected: 1
+- actual: groups[1].segment_indices.size
+  expected: 1
+- actual: groups[2].seg_count
+  expected: 1
+- actual: groups[2].segment_indices.size
+  expected: 1
+- actual: groups[3].seg_count
+  expected: 1
+- actual: groups[3].segment_indices.size
+  expected: 1
+- actual: groups[4].seg_count
+  expected: 1
+- actual: groups[4].segment_indices.size
+  expected: 1
+- actual: groups[5].seg_count
+  expected: 1
+- actual: groups[5].segment_indices.size
+  expected: 1
+- actual: groups[6].seg_count
+  expected: 1
+- actual: groups[6].segment_indices.size
+  expected: 1
+- actual: groups[7].seg_count
+  expected: 1
+- actual: groups[7].segment_indices.size
+  expected: 1
+- actual: groups[8].seg_count
+  expected: 1
+- actual: groups[8].segment_indices.size
+  expected: 1
+- actual: groups[9].seg_count
+  expected: 1
+- actual: groups[9].segment_indices.size
+  expected: 1
+- actual: groups[10].seg_count
+  expected: 1
+- actual: groups[10].segment_indices.size
+  expected: 1
+- actual: groups[11].seg_count
+  expected: 1
+- actual: groups[11].segment_indices.size
+  expected: 1
+- actual: groups[12].seg_count
+  expected: 1
+- actual: groups[12].segment_indices.size
+  expected: 1
+- actual: groups[13].seg_count
+  expected: 1
+- actual: groups[13].segment_indices.size
+  expected: 1
+- actual: groups[14].seg_count
+  expected: 1
+- actual: groups[14].segment_indices.size
+  expected: 1
+fixture_sha256: f703498323f757648aa7f1c76a3e26a3827e741644f977d4e05cd5b43b35e354

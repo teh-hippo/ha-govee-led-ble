@@ -1,7 +1,11 @@
-# The captured Wi-Fi header with only its sub-register changed and XOR recomputed.
-# h6199_wifi_provision must not parse another A1 family member as provisioning.
 id: h6199_wifi_reject_sub_opcode
 data: h6199_wifi_reject_sub_opcode.bin
 imports:
-  - h6199_wifi_provision
+- h6199_wifi_provision
+provenance:
+  kind: derived_rejection
+  schema_model: h6199
+  source_model: h6199
+  source: captured fixture mutation
 exception: ValidationNotEqualError
+fixture_sha256: abc6314433f116d8f3d79f9fa7cf064e50e645d456cd58087fd19452b6c0ccbc

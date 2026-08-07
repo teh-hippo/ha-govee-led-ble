@@ -1,12 +1,17 @@
-# H6199 power-off write, captured 2026-08-03 in the same session as
-# h6199_command_power_on and against the same device page, which is what makes the pair a
-# controlled comparison rather than two unrelated observations.
 id: h6199_command_power_off
 data: h6199_command_power_off.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: h6199-modes.pcap
+  source_sha256: 3b9f2197fc501c18d61a14f88e7c0ee59147b9608767bec90b9be95c620af1d0
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 1
-  - actual: body.is_on
-    expected: 0
+- actual: opcode
+  expected: 1
+- actual: body.is_on
+  expected: 0
+fixture_sha256: 406894dad6e9c51d3a2f8b7e6dc13040bbf0f03aaf5487ce50265c0fd75a15a9

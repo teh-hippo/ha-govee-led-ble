@@ -1,12 +1,17 @@
-# The H6199's own report of how a provisioning attempt ended, produced deliberately on our
-# own radio 2026-08-04. This one followed a network invented to be impossible; the light tried
-# for about eleven seconds, reported this, and returned to its stored network.
 id: h6199_wifi_result_failure
 data: h6199_wifi_result_failure.bin
 imports:
-  - h6199_wifi_result
+- h6199_wifi_result
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-wifi-20260804-000504.pcap
+  source_sha256: 4cde967098b9ee3343f1813476bf5349da7b385542febb3abe73b6b3964ac876
+  source_index: 2
 asserts:
-  - actual: sub_opcode
-    expected: 17
-  - actual: status
-    expected: 1
+- actual: sub_opcode
+  expected: 17
+- actual: status
+  expected: 1
+fixture_sha256: 42b8af6fd9b72210ce7e0adef9c64b559934e7ee4f7fc52e191c248ded8f496c

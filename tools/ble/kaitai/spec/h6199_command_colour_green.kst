@@ -1,32 +1,35 @@
-# H6199 static-colour write, captured 2026-08-03 from the Govee Home iOS app driving the
-# DreamView T1 over BLE with the phone in Airplane Mode. One of four Basic Colors swatches
-# tapped in a single session with nothing else touched, so any pair of them is a controlled
-# comparison. The three primaries are what isolate the channels: a single mixed colour
-# moves every channel byte at once and proves none of them.
 id: h6199_command_colour_green
 data: h6199_command_colour_green.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-colour-20260803-223632.pcap
+  source_sha256: efcff8435adc54d4971acbba5b63868c4457130bd0fc46f78eb106f6ebdf6124
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 5
-  - actual: body.sub_mode
-    expected: 21
-  - actual: body.detail.operation
-    expected: 1
-  - actual: body.detail.red
-    expected: 0
-  - actual: body.detail.green
-    expected: 255
-  - actual: body.detail.blue
-    expected: 0
-  - actual: body.detail.kelvin
-    expected: 0
-  - actual: body.detail.preview.red
-    expected: 0
-  - actual: body.detail.preview.green
-    expected: 0
-  - actual: body.detail.preview.blue
-    expected: 0
-  - actual: body.detail.segment_mask
-    expected: 32767
+- actual: opcode
+  expected: 5
+- actual: body.sub_mode
+  expected: 21
+- actual: body.detail.operation
+  expected: 1
+- actual: body.detail.red
+  expected: 0
+- actual: body.detail.green
+  expected: 255
+- actual: body.detail.blue
+  expected: 0
+- actual: body.detail.kelvin
+  expected: 0
+- actual: body.detail.preview.red
+  expected: 0
+- actual: body.detail.preview.green
+  expected: 0
+- actual: body.detail.preview.blue
+  expected: 0
+- actual: body.detail.segment_mask
+  expected: 32767
+fixture_sha256: 1f76d915467ccd9af494e600d8e3b5a331dd225d8bb912f5134ba2d2920364b8

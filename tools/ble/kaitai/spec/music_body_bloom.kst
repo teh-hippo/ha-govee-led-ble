@@ -1,17 +1,21 @@
 id: music_body_bloom
 data: music_body_bloom.bin
 imports:
-  - music_body
+- music_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: mode
-    expected: 48
-  - actual: count
-    expected: 7
-  - actual: palette.size
-    expected: 7
-  - actual: tail_len
-    expected: 2
-  - actual: tail.fixed0
-    expected: 10
-  - actual: tail.style_companion
-    expected: 20
+- actual: mode
+  expected: 48
+- actual: count
+  expected: 7
+- actual: palette.size
+  expected: 7
+- actual: tail_len
+  expected: 2
+- actual: tail.style_companion
+  expected: 20
+fixture_sha256: e94aedd67012677271197f712d4086a7267cb991f0ec2bc70578ba8be017b738

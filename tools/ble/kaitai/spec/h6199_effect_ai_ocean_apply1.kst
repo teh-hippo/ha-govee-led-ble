@@ -1,10 +1,23 @@
-# First application of one saved AI ocean-ripples response.
 id: h6199_effect_ai_ocean_apply1
 data: h6199_effect_ai_ocean_apply1.bin
-imports: [h6199_effect_upload]
+imports:
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260806-134525.pcap
+  source_sha256: 8dfb9a68a65535d9d4f3dadc4447dce8cc21e754c7f0eada0d64d621171ff58f
+  source_index: 1
 asserts:
-  - {actual: chunk_count, expected: 5}
-  - {actual: kind, expected: 2}
-  - {actual: content.block_count, expected: 2}
-  - {actual: "content.blocks[0].len", expected: 32}
-  - {actual: "content.blocks[1].len", expected: 38}
+- actual: chunk_count
+  expected: 5
+- actual: kind
+  expected: 2
+- actual: content.block_count
+  expected: 2
+- actual: content.blocks[0].len
+  expected: 32
+- actual: content.blocks[1].len
+  expected: 38
+fixture_sha256: 13bcb642ddc87c6e9544197e0ba79c538c1bf64278f72cff4b0c0d1f0b3522c3

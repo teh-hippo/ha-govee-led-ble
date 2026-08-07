@@ -1,29 +1,31 @@
-# Colour temperature, same static_color layout as the RGB case with the roles swapped:
-# rgb_direct zeroed, kelvin populated, and the preview triple carrying the app's own
-# rendering of that temperature. Holding both cases is what proves the layout is one
-# structure rather than two, since a per-mode layout would not need the zeroed halves.
 id: command_write_color_temp
 data: command_write_color_temp.bin
 imports:
-  - command_write
+- command_write
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: body.sub
-    expected: 21
-  - actual: body.sub_body.static_sub
-    expected: 1
-  - actual: body.sub_body.static_body.rgb_direct.r
-    expected: 0
-  - actual: body.sub_body.static_body.rgb_direct.g
-    expected: 0
-  - actual: body.sub_body.static_body.rgb_direct.b
-    expected: 0
-  - actual: body.sub_body.static_body.kelvin
-    expected: 3600
-  - actual: body.sub_body.static_body.rgb_preview.r
-    expected: 255
-  - actual: body.sub_body.static_body.rgb_preview.g
-    expected: 203
-  - actual: body.sub_body.static_body.rgb_preview.b
-    expected: 141
-  - actual: body.sub_body.static_body.mask.bits
-    expected: 32767
+- actual: body.sub
+  expected: 21
+- actual: body.sub_body.static_sub
+  expected: 1
+- actual: body.sub_body.static_body.rgb_direct.r
+  expected: 0
+- actual: body.sub_body.static_body.rgb_direct.g
+  expected: 0
+- actual: body.sub_body.static_body.rgb_direct.b
+  expected: 0
+- actual: body.sub_body.static_body.kelvin
+  expected: 3600
+- actual: body.sub_body.static_body.rgb_preview.r
+  expected: 255
+- actual: body.sub_body.static_body.rgb_preview.g
+  expected: 203
+- actual: body.sub_body.static_body.rgb_preview.b
+  expected: 141
+- actual: body.sub_body.static_body.mask.bits
+  expected: 32767
+fixture_sha256: 577dc0bf8fc5ef69d2cd0a3277d7d4507c12d3316daf5625ce55a80bf1fe2102

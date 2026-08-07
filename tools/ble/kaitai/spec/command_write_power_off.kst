@@ -1,8 +1,15 @@
-# Power off. Byte 2 is the only payload; the rest is padding.
 id: command_write_power_off
 data: command_write_power_off.bin
 imports:
-  - command_write
+- command_write
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: aa-h617a-state.pcap
+  source_sha256: c53ff3c9c9ac8e9d7676eb01a0740e68ba5282f4571ff12650179cecf75c1399
+  source_index: 1
 asserts:
-  - actual: body.is_on
-    expected: 0
+- actual: body.is_on
+  expected: 0
+fixture_sha256: 406894dad6e9c51d3a2f8b7e6dc13040bbf0f03aaf5487ce50265c0fd75a15a9

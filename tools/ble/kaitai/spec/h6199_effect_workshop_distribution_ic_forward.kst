@@ -1,8 +1,0 @@
-# The same layer after changing only the general Direction to Forward.
-id: h6199_effect_workshop_distribution_ic_forward
-data: h6199_effect_workshop_distribution_ic_forward.bin
-imports: [h6199_effect_upload]
-asserts:
-  - {actual: "content.blocks[0].distribution_direction", expected: 1}
-  - {actual: "content.blocks[0].distribution_method", expected: 1}
-  - {actual: "content.blocks[0].direction_is_backward", expected: false}

@@ -1,16 +1,24 @@
 id: music_frame_piano_keys_c0
 data: music_frame_piano_keys_c0.bin
 imports:
-  - music_body
+- music_body
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: session-cupboard-20260730-011004.pcap
+  source_sha256: 871ceea6b93056318616020d8e121687c7228b30b7b764f07692c0e1ba5d3a90
+  source_index: 1
 type: mode_set_frame
 asserts:
-  - actual: mode
-    expected: 52
-  - actual: sensitivity
-    expected: 99
-  - actual: style
-    expected: 0
-  - actual: count
-    expected: 0
-  - actual: colors.size
-    expected: 0
+- actual: mode
+  expected: 52
+- actual: sensitivity
+  expected: 99
+- actual: style
+  expected: 0
+- actual: count
+  expected: 0
+- actual: colors.size
+  expected: 0
+fixture_sha256: 05299617fb27d341caeb7ddd1b7ab68ea377d2f0f60ed98f98eceacba9a8bb37

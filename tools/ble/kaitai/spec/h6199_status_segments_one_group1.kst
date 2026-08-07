@@ -1,15 +1,23 @@
 id: h6199_status_segments_one_group1
 data: h6199_status_segments_one_group1.bin
 imports:
-  - h6199_status_reply
+- h6199_status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260805-232300.pcap
+  source_sha256: 93ebb0f7dccd8107179e02d6e41c497c74a3e92cbfd71340b3af30a06b9e35b5
+  source_index: 1
 asserts:
-  - actual: body.group
-    expected: 1
-  - actual: body.segments[0].brightness_percent
-    expected: 17
-  - actual: body.segments[1].brightness_percent
-    expected: 100
-  - actual: body.segments[2].brightness_percent
-    expected: 100
-  - actual: body.segments[3].brightness_percent
-    expected: 100
+- actual: body.group
+  expected: 1
+- actual: body.segments[0].brightness_percent
+  expected: 17
+- actual: body.segments[1].brightness_percent
+  expected: 100
+- actual: body.segments[2].brightness_percent
+  expected: 100
+- actual: body.segments[3].brightness_percent
+  expected: 100
+fixture_sha256: 0610293512c78a0f4aec7707d81d190fb7b33e1b7ba239a92ce1d6b327edbfca

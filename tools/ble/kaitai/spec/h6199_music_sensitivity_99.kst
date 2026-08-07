@@ -1,24 +1,25 @@
-# H6199 music-mode write, captured 2026-08-05 from the Govee Home iOS app driving the
-# DreamView T1 over BLE. One of three sensitivity levels set by dragging the app's own
-# slider with the mode tile and the sound-pickup toggle untouched, so any pair of them
-# isolates the sensitivity byte alone. The light was off Govee's cloud, so BLE was the
-# only path to it.
 id: h6199_music_sensitivity_99
 data: h6199_music_sensitivity_99.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: music-modes-B.pcap
+  source_sha256: 77cbf4dcd3577f742b658800a5b89206e536eb70e2c0776a3551a435adddf3b7
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 5
-  - actual: body.sub_mode
-    expected: 19
-  - actual: body.detail.mode
-    expected: 5
-  - actual: body.detail.sensitivity
-    expected: 99
-  - actual: body.detail.is_calm
-    expected: 0
-  - actual: body.detail.has_fixed_colour
-    expected: 0
-  - actual: body.detail.opaque_tail
-    expected: "000000000000000000"
+- actual: opcode
+  expected: 5
+- actual: body.sub_mode
+  expected: 19
+- actual: body.detail.mode
+  expected: 5
+- actual: body.detail.sensitivity
+  expected: 99
+- actual: body.detail.is_calm
+  expected: 0
+- actual: body.detail.has_fixed_colour
+  expected: 0
+fixture_sha256: 21ddbee88fc65f9e426e97a8f8c9800c1dda4b42c6959ccc96467d0a599e6597

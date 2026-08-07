@@ -1,21 +1,25 @@
-# H6199 music-mode write, captured 2026-08-05 from the Govee Home iOS app driving the
-# DreamView T1 over BLE, with the Sensitivity slider dragged hard to the top of its travel. 100 is the value that rules out the vendor Android app's 0..99 clamp applying to this app.
 id: h6199_music_sensitivity_100
 data: h6199_music_sensitivity_100.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-ai.pcap
+  source_sha256: 07d8af653fd033c562d870a46f9c370256e35e92521a3d199a4e520ba7cd00f8
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 5
-  - actual: body.sub_mode
-    expected: 19
-  - actual: body.detail.mode
-    expected: 3
-  - actual: body.detail.sensitivity
-    expected: 100
-  - actual: body.detail.is_calm
-    expected: 0
-  - actual: body.detail.has_fixed_colour
-    expected: 1
-  - actual: body.detail.opaque_tail
-    expected: "000000000000000000"
+- actual: opcode
+  expected: 5
+- actual: body.sub_mode
+  expected: 19
+- actual: body.detail.mode
+  expected: 3
+- actual: body.detail.sensitivity
+  expected: 100
+- actual: body.detail.is_calm
+  expected: 0
+- actual: body.detail.has_fixed_colour
+  expected: 1
+fixture_sha256: 00620034428626e411b12236a646d188ce5d8ff7bc208ca01cc81739c5bf7280

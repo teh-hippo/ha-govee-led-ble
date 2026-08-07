@@ -1,25 +1,29 @@
-# Colour-mode read-back, music, shared govee_common::music_selector. manual_color_count 1
-# is what makes the rgb triple meaningful.
 id: status_reply_cm_music
 data: status_reply_cm_music.bin
 imports:
-  - status_reply
+- status_reply
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: domain
-    expected: 5
-  - actual: body.mode
-    expected: 19
-  - actual: body.mode_body.mode_id
-    expected: 6
-  - actual: body.mode_body.sensitivity
-    expected: 99
-  - actual: body.mode_body.style
-    expected: 0
-  - actual: body.mode_body.manual_color_count
-    expected: 1
-  - actual: body.mode_body.rgb.r
-    expected: 255
-  - actual: body.mode_body.rgb.g
-    expected: 0
-  - actual: body.mode_body.rgb.b
-    expected: 0
+- actual: domain
+  expected: 5
+- actual: body.mode
+  expected: 19
+- actual: body.mode_body.mode_id
+  expected: 6
+- actual: body.mode_body.sensitivity
+  expected: 99
+- actual: body.mode_body.style
+  expected: 0
+- actual: body.mode_body.manual_color_count
+  expected: 1
+- actual: body.mode_body.rgb.r
+  expected: 255
+- actual: body.mode_body.rgb.g
+  expected: 0
+- actual: body.mode_body.rgb.b
+  expected: 0
+fixture_sha256: 8d6ea0ffb89479bd632d14584af91c8cd8ff8ee5cb22654dcf03e972354d6f24

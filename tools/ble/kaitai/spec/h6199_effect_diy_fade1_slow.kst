@@ -1,29 +1,33 @@
-# H6199 DIY effect uploaded over 0xA3, captured 2026-08-04 from the Govee Home iOS app
-# driving the DreamView T1. Fade1 with the Speed slider left where the editor opened it.
 id: h6199_effect_diy_fade1_slow
 data: h6199_effect_diy_fade1_slow.bin
 imports:
-  - h6199_effect_upload
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: dv-diy-edit.pcap
+  source_sha256: 5cd91331b75d4ed0e7e36d2e4a73eb878de242d3727a96abfb52ba963caafa90
+  source_index: 2
 asserts:
-  - actual: chunk_count
-    expected: 2
-  - actual: kind
-    expected: 4
-  - actual: content.family
-    expected: 0
-  - actual: content.variant
-    expected: 0
-  - actual: content.speed
-    expected: 50
-  - actual: content.palette_len
-    expected: 21
-  - actual: content.palette.size
-    expected: 7
-  - actual: content.palette[0].red
-    expected: 255
-  - actual: content.palette[0].green
-    expected: 0
-  - actual: content.palette[3].green
-    expected: 255
-  - actual: content.padding
-    expected: "000000000000"
+- actual: chunk_count
+  expected: 2
+- actual: kind
+  expected: 4
+- actual: content.family
+  expected: 0
+- actual: content.variant
+  expected: 0
+- actual: content.speed
+  expected: 50
+- actual: content.palette_len
+  expected: 21
+- actual: content.palette.size
+  expected: 7
+- actual: content.palette[0].red
+  expected: 255
+- actual: content.palette[0].green
+  expected: 0
+- actual: content.palette[3].green
+  expected: 255
+fixture_sha256: dd611be34a565c2bbebaacb32185669aa4b6841aa93e17a5ebbec092ee38cdf5

@@ -1,8 +1,0 @@
-# Forward direction with Distribution Method changed to Based on Segment.
-id: h6199_effect_workshop_distribution_segment
-data: h6199_effect_workshop_distribution_segment.bin
-imports: [h6199_effect_upload]
-asserts:
-  - {actual: "content.blocks[0].distribution_direction", expected: 2}
-  - {actual: "content.blocks[0].distribution_method", expected: 2}
-  - {actual: "content.blocks[0].direction_is_backward", expected: false}

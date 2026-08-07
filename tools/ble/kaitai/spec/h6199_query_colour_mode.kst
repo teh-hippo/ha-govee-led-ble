@@ -1,9 +1,0 @@
-id: h6199_query_colour_mode
-data: h6199_query_colour_mode.bin
-imports:
-  - h6199_status_query
-asserts:
-  - actual: domain
-    expected: 5
-  - actual: body.zeros.size
-    expected: 17

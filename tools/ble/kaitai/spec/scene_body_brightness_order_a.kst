@@ -1,24 +1,31 @@
-# Effects Lab Brightness Order A, captured live 2026-07-26 on the user-authored scene "Hey There" (activation 33 05 04 92 01, code 402). Apply-before, every other control untouched.
 id: scene_body_brightness_order_a
 data: scene_body_brightness_order_a.bin
 imports:
-  - scene_body
+- scene_body
+provenance:
+  kind: capture_a3_body
+  schema_model: h617a
+  source_model: h617a
+  source: s11-modes.pcap
+  source_sha256: e246a8e1afc93bdb96256971f5c83ce975d4b204e219cc1e339f5ed91c8a142d
+  source_index: 2
 asserts:
-  - actual: scene_type
-    expected: 2
-  - actual: record_count
-    expected: 1
-  - actual: records.size
-    expected: 1
-  - actual: padding.size
-    expected: 0
-  - actual: records[0].rec_len
-    expected: 29
-  - actual: records[0].body.select_type
-    expected: 1
-  - actual: records[0].body.colour_count
-    expected: 2
-  - actual: records[0].body.excess.size
-    expected: 0
-  - actual: records[0].body.brightness_blocks[0].brightness_order
-    expected: 0
+- actual: scene_type
+  expected: 2
+- actual: record_count
+  expected: 1
+- actual: records.size
+  expected: 1
+- actual: padding.size
+  expected: 0
+- actual: records[0].rec_len
+  expected: 29
+- actual: records[0].body.select_type
+  expected: 1
+- actual: records[0].body.colour_count
+  expected: 2
+- actual: records[0].body.excess.size
+  expected: 0
+- actual: records[0].body.brightness_blocks[0].brightness_order
+  expected: 0
+fixture_sha256: 7ecaab430691f9f45d1c5aa54046f0b7a5da0198c658103960aab640d6033c7e

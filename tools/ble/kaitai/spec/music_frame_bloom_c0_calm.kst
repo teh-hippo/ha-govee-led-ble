@@ -1,16 +1,22 @@
 id: music_frame_bloom_c0_calm
 data: music_frame_bloom_c0_calm.bin
 imports:
-  - music_body
+- music_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 type: mode_set_frame
 asserts:
-  - actual: mode
-    expected: 48
-  - actual: sensitivity
-    expected: 99
-  - actual: style
-    expected: 1
-  - actual: count
-    expected: 0
-  - actual: colors.size
-    expected: 0
+- actual: mode
+  expected: 48
+- actual: sensitivity
+  expected: 99
+- actual: style
+  expected: 1
+- actual: count
+  expected: 0
+- actual: colors.size
+  expected: 0
+fixture_sha256: 4f16256eeb3ef30d789edae16ea23758b6532640cd00a0ee0077b41aba9820be

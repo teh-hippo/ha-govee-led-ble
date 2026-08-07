@@ -1,14 +1,19 @@
-# Workshop activation, code 0x0191. The only H617A activation observed using scene_type
-# 0x02, which is the whole reason this fixture sits beside the ordinary scene above: the
-# type byte is a real field and not a constant.
 id: command_write_scene_workshop
 data: command_write_scene_workshop.bin
 imports:
-  - command_write
+- command_write
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: s11-modes.pcap
+  source_sha256: e246a8e1afc93bdb96256971f5c83ce975d4b204e219cc1e339f5ed91c8a142d
+  source_index: 2
 asserts:
-  - actual: body.sub
-    expected: 4
-  - actual: body.sub_body.code
-    expected: 401
-  - actual: body.sub_body.scene_type
-    expected: 2
+- actual: body.sub
+  expected: 4
+- actual: body.sub_body.code
+  expected: 401
+- actual: body.sub_body.scene_type
+  expected: 2
+fixture_sha256: 440bba3987495ce19f634daada9755b5447af052db8caa42959769579c592a93

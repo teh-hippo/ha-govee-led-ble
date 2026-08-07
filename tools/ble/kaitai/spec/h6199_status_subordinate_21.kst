@@ -1,10 +1,17 @@
-# Second H6199 subordinate version reply from the attributable connect burst.
 id: h6199_status_subordinate_21
 data: h6199_status_subordinate_21.bin
 imports:
-  - h6199_status_reply
+- h6199_status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: dv-diy-apply.pcap
+  source_sha256: 2c64690ee14e2bf450835f5c2d372482567838e3b28904c09e7e7601662aabbd
+  source_index: 2
 asserts:
-  - actual: domain
-    expected: 33
-  - actual: body.text
-    expected: "1.00.33"
+- actual: domain
+  expected: 33
+- actual: body.text
+  expected: 1.00.33
+fixture_sha256: db6d595ae495c7a28e41a702207f19c0168b7927d221967eb82188c48a52c30a

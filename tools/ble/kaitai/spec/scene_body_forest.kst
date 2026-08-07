@@ -1,44 +1,49 @@
-# Forest, record_count 3 with record_type 1/2/0, live 2026-07-22. Proves the framing generalises past Aurora's two same-type records.
 id: scene_body_forest
 data: scene_body_forest.bin
 imports:
-  - scene_body
+- scene_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: scene_type
-    expected: 2
-  - actual: record_count
-    expected: 3
-  - actual: records.size
-    expected: 3
-  - actual: padding.size
-    expected: 13
-  - actual: records[0].rec_len
-    expected: 38
-  - actual: records[0].body.select_type
-    expected: 1
-  - actual: records[0].body.colour_count
-    expected: 5
-  - actual: records[0].body.excess.size
-    expected: 0
-  - actual: records[1].rec_len
-    expected: 35
-  - actual: records[1].body.select_type
-    expected: 2
-  - actual: records[1].body.colour_count
-    expected: 4
-  - actual: records[1].body.excess.size
-    expected: 0
-  - actual: records[2].rec_len
-    expected: 26
-  - actual: records[2].body.select_type
-    expected: 0
-  - actual: records[2].body.colour_count
-    expected: 1
-  - actual: records[2].body.excess.size
-    expected: 0
-  - actual: records[0].body.select_type
-    expected: 1
-  - actual: records[1].body.select_type
-    expected: 2
-  - actual: records[2].body.select_type
-    expected: 0
+- actual: scene_type
+  expected: 2
+- actual: record_count
+  expected: 3
+- actual: records.size
+  expected: 3
+- actual: padding.size
+  expected: 13
+- actual: records[0].rec_len
+  expected: 38
+- actual: records[0].body.select_type
+  expected: 1
+- actual: records[0].body.colour_count
+  expected: 5
+- actual: records[0].body.excess.size
+  expected: 0
+- actual: records[1].rec_len
+  expected: 35
+- actual: records[1].body.select_type
+  expected: 2
+- actual: records[1].body.colour_count
+  expected: 4
+- actual: records[1].body.excess.size
+  expected: 0
+- actual: records[2].rec_len
+  expected: 26
+- actual: records[2].body.select_type
+  expected: 0
+- actual: records[2].body.colour_count
+  expected: 1
+- actual: records[2].body.excess.size
+  expected: 0
+- actual: records[0].body.select_type
+  expected: 1
+- actual: records[1].body.select_type
+  expected: 2
+- actual: records[2].body.select_type
+  expected: 0
+fixture_sha256: ac23834db3cc7c551a1b56337328613c2665d49907ec047ca1a96b9526d87054

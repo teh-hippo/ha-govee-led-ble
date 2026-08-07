@@ -1,16 +1,23 @@
-# Blue at the floor.
 id: music_stream_blue_floor
 data: music_stream_blue_floor.bin
 imports:
-  - music_stream
+- music_stream
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: h617a-mic-lifecycle-2026-07-27.pcap
+  source_sha256: cf4d8ce9230611b5ee29b15730a2d0ebddedf7b9a6d33661d5f01ae12dde067c
+  source_index: 1
 asserts:
-  - actual: colour.r
-    expected: 0
-  - actual: colour.g
-    expected: 0
-  - actual: colour.b
-    expected: 20
-  - actual: checksum
-    expected: 62
-  - actual: checksum_expected
-    expected: 62
+- actual: colour.r
+  expected: 0
+- actual: colour.g
+  expected: 0
+- actual: colour.b
+  expected: 20
+- actual: checksum
+  expected: 62
+- actual: checksum_expected
+  expected: 62
+fixture_sha256: 23c53c877e8ececeb30107909ceee5eff25dff669b310b3b5ee2636a8dee7490

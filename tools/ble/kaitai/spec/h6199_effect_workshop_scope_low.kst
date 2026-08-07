@@ -1,20 +1,25 @@
-# H6199 effect definition uploaded over 0xA3, captured 2026-08-05 from the Govee Home
-# iOS app driving the DreamView T1. The one-layer Workshop effect "Hey There" re-applied
-# after the Brightness Scope range slider's lower handle dragged alone, taking the label from 0% to 35%. Each fixture in this chain differs from the one before at a single byte.
 id: h6199_effect_workshop_scope_low
 data: h6199_effect_workshop_scope_low.bin
 imports:
-  - h6199_effect_upload
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-workshop.pcap
+  source_sha256: 7dd5b61515ba1781cb5c7bf43d420310b7a0ab14cadc7abd557029288a0f7f2e
+  source_index: 1
 asserts:
-  - actual: kind
-    expected: 2
-  - actual: content.blocks[0].len
-    expected: 29
-  - actual: content.blocks[0].brightness_scope_low
-    expected: "5b"
-  - actual: content.blocks[0].brightness_change_speed
-    expected: "ed"
-  - actual: content.blocks[0].retention_time_brightest
-    expected: "9a"
-  - actual: content.blocks[0].retention_time_darkest
-    expected: "c3"
+- actual: kind
+  expected: 2
+- actual: content.blocks[0].len
+  expected: 29
+- actual: content.blocks[0].brightness_scope_low
+  expected: 91
+- actual: content.blocks[0].brightness_change_speed
+  expected: 237
+- actual: content.blocks[0].retention_time_brightest
+  expected: 154
+- actual: content.blocks[0].retention_time_darkest
+  expected: 195
+fixture_sha256: c73c41931d9446cb1d60ee702fef9c999229f8e5103ab62bd9772510991591d8

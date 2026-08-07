@@ -1,21 +1,25 @@
-# aa a5 group 5, the last group inside the colour region. Three DIFFERENT colours, unlike
-# group 1 above, so the three records are per-segment rather than one value repeated.
-# Group 6 and beyond answer with non-colour data and are the reject fixtures below, which
-# is how the region boundary was established.
 id: status_reply_segments_last
 data: status_reply_segments_last.bin
 imports:
-  - status_reply
+- status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: drive3-snapshot.pcap
+  source_sha256: 4c63560851f738333b9ff39a7bbe5e1d3f0bb49525c1ea742dbf9ac073537c31
+  source_index: 1
 asserts:
-  - actual: domain
-    expected: 165
-  - actual: body.group
-    expected: 5
-  - actual: body.segments[0].colour.r
-    expected: 165
-  - actual: body.segments[1].colour.r
-    expected: 210
-  - actual: body.segments[1].colour.g
-    expected: 120
-  - actual: body.segments[2].colour.b
-    expected: 225
+- actual: domain
+  expected: 165
+- actual: body.group
+  expected: 5
+- actual: body.segments[0].colour.r
+  expected: 165
+- actual: body.segments[1].colour.r
+  expected: 210
+- actual: body.segments[1].colour.g
+  expected: 120
+- actual: body.segments[2].colour.b
+  expected: 225
+fixture_sha256: bb61b5a8205b79e001e00b255be1d2310528bb18c40b1bde4009460c823ed3bf

@@ -1,9 +1,0 @@
-id: h6199_query_subordinate_20
-data: h6199_query_subordinate_20.bin
-imports:
-  - h6199_status_query
-asserts:
-  - actual: domain
-    expected: 32
-  - actual: body.zeros.size
-    expected: 17

@@ -1,21 +1,25 @@
 id: music_body_piano_keys
 data: music_body_piano_keys.bin
 imports:
-  - music_body
+- music_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: mode
-    expected: 52
-  - actual: count
-    expected: 7
-  - actual: palette.size
-    expected: 7
-  - actual: tail_len
-    expected: 5
-  - actual: tail.gradient
-    expected: 0
-  - actual: tail.key_count
-    expected: 9
-  - actual: tail.fixed
-    expected: "0a04"
-  - actual: tail.derived_half
-    expected: 4
+- actual: mode
+  expected: 52
+- actual: count
+  expected: 7
+- actual: palette.size
+  expected: 7
+- actual: tail_len
+  expected: 5
+- actual: tail.gradient
+  expected: 0
+- actual: tail.key_count
+  expected: 9
+- actual: tail.derived_half
+  expected: 4
+fixture_sha256: cf6934f9e8af385c0a7d7786dca901cd4d82525d429638aaa568ce61288a9be9

@@ -1,31 +1,35 @@
-# H6199 static-colour write addressing both of those segments together, captured 2026-08-03 from the Govee Home iOS
-# app driving the DreamView T1 over BLE with the phone in Airplane Mode. Taken in one
-# session from the Color tab's Subsection view by holding the colour at red and changing
-# only which segments were ticked, so the mask is the sole variable across the three.
 id: h6199_command_colour_segment_1_3
 data: h6199_command_colour_segment_1_3.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-segmask-20260803-233225.pcap
+  source_sha256: a426e66f48a6fed953a70518b407256a0553545badfb9914f6fbca6d55b3bf98
+  source_index: 2
 asserts:
-  - actual: opcode
-    expected: 5
-  - actual: body.sub_mode
-    expected: 21
-  - actual: body.detail.operation
-    expected: 1
-  - actual: body.detail.red
-    expected: 255
-  - actual: body.detail.green
-    expected: 0
-  - actual: body.detail.blue
-    expected: 0
-  - actual: body.detail.kelvin
-    expected: 0
-  - actual: body.detail.preview.red
-    expected: 0
-  - actual: body.detail.preview.green
-    expected: 0
-  - actual: body.detail.preview.blue
-    expected: 0
-  - actual: body.detail.segment_mask
-    expected: 5
+- actual: opcode
+  expected: 5
+- actual: body.sub_mode
+  expected: 21
+- actual: body.detail.operation
+  expected: 1
+- actual: body.detail.red
+  expected: 255
+- actual: body.detail.green
+  expected: 0
+- actual: body.detail.blue
+  expected: 0
+- actual: body.detail.kelvin
+  expected: 0
+- actual: body.detail.preview.red
+  expected: 0
+- actual: body.detail.preview.green
+  expected: 0
+- actual: body.detail.preview.blue
+  expected: 0
+- actual: body.detail.segment_mask
+  expected: 5
+fixture_sha256: c948673ee4739aa862d844557cf31acdeb6ee076a1102394034802f6f71186cc

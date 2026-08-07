@@ -1,8 +1,19 @@
-# Random selection with Maximum ICs 2 and Minimum IC 2.
 id: h6199_effect_workshop_random_max2
 data: h6199_effect_workshop_random_max2.bin
-imports: [h6199_effect_upload]
+imports:
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260806-230607.pcap
+  source_sha256: 878f308f36f6ccb322100d02179203f842697f3e8a99f688726ed6e00f64fbb2
+  source_index: 1
 asserts:
-  - {actual: "content.blocks[0].select_type", expected: 2}
-  - {actual: "content.blocks[0].select_param_1", expected: 2}
-  - {actual: "content.blocks[0].select_param_2", expected: 2}
+- actual: content.blocks[0].select_type
+  expected: 2
+- actual: content.blocks[0].select_param_1
+  expected: 2
+- actual: content.blocks[0].select_param_2
+  expected: 2
+fixture_sha256: 226f14859bd1a9359972541b9348a2993832b46ab9eb13c0c469dc25733ee451

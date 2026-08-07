@@ -1,9 +1,17 @@
 id: h6199_status_blank_screen_on
 data: h6199_status_blank_screen_on.bin
 imports:
-  - h6199_status_reply
+- h6199_status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260805-223417.pcap
+  source_sha256: 11f77cbc56ca506fc1b6b1143d5b5dc8da540b246a0fde1202f47d8ab36bef14
+  source_index: 1
 asserts:
-  - actual: body.setting
-    expected: 10
-  - actual: body.payload.is_enabled
-    expected: 1
+- actual: body.setting
+  expected: 10
+- actual: body.payload.is_enabled
+  expected: 1
+fixture_sha256: fe8b2050355f32d54aaaaad93db1ab017e034e57fb1b598243e0518030a068d8

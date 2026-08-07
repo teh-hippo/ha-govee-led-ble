@@ -1,31 +1,35 @@
-# The brightness band moved away from the baseline in one Apply. Five decoded values here,
-# and the differential below is what confines them to their bytes.
 id: workshop_body_brightness_scope
 data: workshop_body_brightness_scope.bin
 imports:
-  - workshop_body
+- workshop_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: header.linecount
-    expected: 2
-  - actual: layer_count
-    expected: 1
-  - actual: layers.size
-    expected: 1
-  - actual: layers[0].record_len
-    expected: 29
-  - actual: layers[0].body.colour_count
-    expected: 2
-  - actual: layers[0].body.palette.size
-    expected: 2
-  - actual: layers[0].body.excess.size
-    expected: 0
-  - actual: layers[0].body.brightness_blocks[0].brightness_scope_start
-    expected: 198
-  - actual: layers[0].body.brightness_blocks[0].brightness_scope_end
-    expected: 57
-  - actual: layers[0].body.brightness_blocks[0].brightness_speed
-    expected: 255
-  - actual: layers[0].body.brightness_blocks[0].brightest_retention
-    expected: 200
-  - actual: layers[0].body.brightness_blocks[0].darkest_retention
-    expected: 48
+- actual: header.linecount
+  expected: 2
+- actual: layer_count
+  expected: 1
+- actual: layers.size
+  expected: 1
+- actual: layers[0].record_len
+  expected: 29
+- actual: layers[0].body.colour_count
+  expected: 2
+- actual: layers[0].body.palette.size
+  expected: 2
+- actual: layers[0].body.excess.size
+  expected: 0
+- actual: layers[0].body.brightness_blocks[0].brightness_scope_start
+  expected: 198
+- actual: layers[0].body.brightness_blocks[0].brightness_scope_end
+  expected: 57
+- actual: layers[0].body.brightness_blocks[0].brightness_speed
+  expected: 255
+- actual: layers[0].body.brightness_blocks[0].brightest_retention
+  expected: 200
+- actual: layers[0].body.brightness_blocks[0].darkest_retention
+  expected: 48
+fixture_sha256: 8c15477de3328c2a2b696f36523901980c67db4a5fa45f95cdcbd45762a4a275

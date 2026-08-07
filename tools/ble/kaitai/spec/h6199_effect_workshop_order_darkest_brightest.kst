@@ -1,7 +1,17 @@
-# First Brightness block order changed to Darkest-Brightest.
 id: h6199_effect_workshop_order_darkest_brightest
 data: h6199_effect_workshop_order_darkest_brightest.bin
-imports: [h6199_effect_upload]
+imports:
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260806-230607.pcap
+  source_sha256: 878f308f36f6ccb322100d02179203f842697f3e8a99f688726ed6e00f64fbb2
+  source_index: 1
 asserts:
-  - {actual: "content.blocks[0].brightness_blocks[0].order", expected: 2}
-  - {actual: "content.blocks[0].brightness_blocks[0].scope_high", expected: "cd"}
+- actual: content.blocks[0].brightness_blocks[0].order
+  expected: 2
+- actual: content.blocks[0].brightness_blocks[0].scope_high
+  expected: 205
+fixture_sha256: 6fa7f12226ce2aff3bc299a5673f17e4a6419337d46954fac7db67190eb133d7

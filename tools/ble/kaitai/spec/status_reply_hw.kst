@@ -1,13 +1,17 @@
-# Hardware version. Carries a leading 0x03 the firmware reply does not, which is why the
-# two have separate body types rather than one shared version string. The prefix is not
-# asserted here because the grammar enforces it with contents:, so a frame lacking it does
-# not parse at all.
 id: status_reply_hw
 data: status_reply_hw.bin
 imports:
-  - status_reply
+- status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: aa-a3-requery.pcap
+  source_sha256: abbcba4d90cb77020caac2db840c7dfde4123444cc70398dd7e906acfd6148ff
+  source_index: 2
 asserts:
-  - actual: domain
-    expected: 7
-  - actual: body.text
-    expected: "3.01.01"
+- actual: domain
+  expected: 7
+- actual: body.text
+  expected: 3.01.01
+fixture_sha256: fa87ecbf99faf47ad99f77819c9af4d0526423f6d6907df4daf008a27f9e830f

@@ -1,25 +1,27 @@
-# H6199 effect definition uploaded over 0xA3, captured 2026-08-05 from the Govee Home iOS
-# app driving the DreamView T1. The two-layer Workshop effect "Moving Christmas" re-applied
-# after turning all three of its movement and priority switches off. These six are a controlled chain: each
-# differs from the one before at a single byte, which is what named the block's trailer.
-# Block 0 is layer 1 and block 1 is layer 2, and they are 29 and 26 bytes, which is what
-# made the trailer's END anchoring visible rather than assumed.
 id: h6199_block_movement_all_off
 data: h6199_block_movement_all_off.bin
 imports:
-  - h6199_effect_upload
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: dv-diy-apply.pcap
+  source_sha256: 2c64690ee14e2bf450835f5c2d372482567838e3b28904c09e7e7601662aabbd
+  source_index: 2
 asserts:
-  - actual: kind
-    expected: 2
-  - actual: content.block_count
-    expected: 2
-  - actual: content.blocks[0].len
-    expected: 29
-  - actual: content.blocks[1].len
-    expected: 26
-  - actual: content.blocks[1].selected_movement
-    expected: 0
-  - actual: content.blocks[1].overall_movement
-    expected: "00"
-  - actual: content.blocks[1].layer_priority
-    expected: "00"
+- actual: kind
+  expected: 2
+- actual: content.block_count
+  expected: 2
+- actual: content.blocks[0].len
+  expected: 29
+- actual: content.blocks[1].len
+  expected: 26
+- actual: content.blocks[1].selected_movement
+  expected: 0
+- actual: content.blocks[1].overall_movement
+  expected: 0
+- actual: content.blocks[1].layer_priority
+  expected: 0
+fixture_sha256: cb3b6ac7b490bd9f23bf284bba720d8709c71bc5acb724d2b8db30b670655dbf

@@ -1,19 +1,25 @@
-# H6199 DIY effect uploaded over 0xA3, captured 2026-08-05 from the Govee Home iOS app
-# driving the DreamView T1. Rainbow1, which carries the SAME variant as Chasing1 in a different family, tapped in the editor's live-apply list.
 id: h6199_effect_diy_rainbow1
 data: h6199_effect_diy_rainbow1.bin
 imports:
-  - h6199_effect_upload
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-ai.pcap
+  source_sha256: 07d8af653fd033c562d870a46f9c370256e35e92521a3d199a4e520ba7cd00f8
+  source_index: 1
 asserts:
-  - actual: kind
-    expected: 4
-  - actual: content.family
-    expected: 9
-  - actual: content.variant
-    expected: 9
-  - actual: content.speed
-    expected: 50
-  - actual: content.palette_len
-    expected: 21
-  - actual: content.palette.size
-    expected: 7
+- actual: kind
+  expected: 4
+- actual: content.family
+  expected: 9
+- actual: content.variant
+  expected: 9
+- actual: content.speed
+  expected: 50
+- actual: content.palette_len
+  expected: 21
+- actual: content.palette.size
+  expected: 7
+fixture_sha256: a5744b3efba0b652bc5a87b3540e7f360763b0bb2675a17bbd0832d9348f077f

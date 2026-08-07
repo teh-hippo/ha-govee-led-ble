@@ -34,6 +34,7 @@ pattern matches nothing.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import io
 import sys
@@ -71,6 +72,7 @@ class Case:
     exception: str | None
     invariants: list[str] = field(default_factory=list)
     imports: list[str] = field(default_factory=list)
+    provenance: dict[str, Any] = field(default_factory=dict)
 
 
 def class_name(module: str) -> str:
@@ -79,25 +81,36 @@ def class_name(module: str) -> str:
 
 def load_case(path: Path) -> Case:
     doc = yaml.safe_load(path.read_text())
-    for required in ("id", "data", "imports"):
+    for required in ("id", "data", "imports", "provenance", "fixture_sha256"):
         if required not in doc:
             raise AssertUnevaluatableError(f"{path.name}: missing required key {required!r}")
     source = HERE / "src" / doc["data"]
     if not source.exists():
         raise AssertUnevaluatableError(f"{path.name}: no such fixture {source}")
+    provenance = doc["provenance"]
+    if not isinstance(provenance, dict):
+        raise AssertUnevaluatableError(f"{path.name}: provenance must be a mapping")
+    for required in ("kind", "schema_model", "source_model", "source"):
+        if not provenance.get(required):
+            raise AssertUnevaluatableError(f"{path.name}: provenance is missing {required!r}")
+    data = source.read_bytes()
+    fixture_sha256 = hashlib.sha256(data).hexdigest()
+    if doc["fixture_sha256"] != fixture_sha256:
+        raise AssertUnevaluatableError(f"{path.name}: fixture_sha256 does not match {source.name}")
     imports = doc["imports"]
     modules = imports if isinstance(imports, list) else [imports]
     return Case(
         path=path,
         id=doc["id"],
         source=source,
-        data=source.read_bytes(),
+        data=data,
         module=modules[0],
         root=doc.get("type"),
         asserts=doc.get("asserts") or [],
         exception=doc.get("exception"),
         invariants=doc.get("skip_invariants") or [],
         imports=modules,
+        provenance=provenance,
     )
 
 

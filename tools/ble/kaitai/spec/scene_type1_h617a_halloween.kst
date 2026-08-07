@@ -1,50 +1,57 @@
-# H617A wire anchor: Halloween, catalogue code 1173. The device receives exactly this body; a captured Halloween application confirmed catalogue param == A3 payload.
 id: scene_type1_h617a_halloween
 data: scene_type1_h617a_halloween.bin
 imports:
-  - scene_type1_body
+- scene_type1_body
+provenance:
+  kind: capture_a3_body
+  schema_model: h617a
+  source_model: h6199
+  source: session-dreamtv-20260806-134525.pcap
+  source_sha256: 8dfb9a68a65535d9d4f3dadc4447dce8cc21e754c7f0eada0d64d621171ff58f
+  source_index: 1
 asserts:
-  - actual: scene_type
-    expected: 1
-  - actual: config
-    expected: 131
-  - actual: colour_stride
-    expected: 3
-  - actual: layout
-    expected: 0
-  - actual: brightness_flag
-    expected: true
-  - actual: step_count
-    expected: 6
-  - actual: steps.size
-    expected: 6
-  - actual: palette_count
-    expected: 4
-  - actual: palette.size
-    expected: 4
-  - actual: padding.size
-    expected: 3
-  - actual: palette[0].r
-    expected: 255
-  - actual: palette[0].g
-    expected: 30
-  - actual: palette[0].b
-    expected: 0
-  - actual: palette[1].r
-    expected: 255
-  - actual: palette[1].g
-    expected: 90
-  - actual: palette[1].b
-    expected: 0
-  - actual: palette[2].r
-    expected: 255
-  - actual: palette[2].g
-    expected: 50
-  - actual: palette[2].b
-    expected: 0
-  - actual: palette[3].r
-    expected: 255
-  - actual: palette[3].g
-    expected: 120
-  - actual: palette[3].b
-    expected: 0
+- actual: scene_type
+  expected: 1
+- actual: config
+  expected: 131
+- actual: colour_stride
+  expected: 3
+- actual: layout
+  expected: 0
+- actual: brightness_flag
+  expected: true
+- actual: step_count
+  expected: 6
+- actual: steps.size
+  expected: 6
+- actual: palette_count
+  expected: 4
+- actual: palette.size
+  expected: 4
+- actual: padding.size
+  expected: 3
+- actual: palette[0].r
+  expected: 255
+- actual: palette[0].g
+  expected: 30
+- actual: palette[0].b
+  expected: 0
+- actual: palette[1].r
+  expected: 255
+- actual: palette[1].g
+  expected: 90
+- actual: palette[1].b
+  expected: 0
+- actual: palette[2].r
+  expected: 255
+- actual: palette[2].g
+  expected: 50
+- actual: palette[2].b
+  expected: 0
+- actual: palette[3].r
+  expected: 255
+- actual: palette[3].g
+  expected: 120
+- actual: palette[3].b
+  expected: 0
+fixture_sha256: 541823c75fb69511946ad471ab6977f79eb0dbe8f5f3d9fd86a28b8dc0561c2d

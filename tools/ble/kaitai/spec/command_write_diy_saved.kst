@@ -1,15 +1,19 @@
-# DIY activation from the Finger Sketch editor surface, slot 0x20 with type_byte 0x03.
-# Paired with the 0x00 case above, this is the whole observed range of type_byte, and
-# what separating the surface-class and selector readings turns on. See
-# govee_common::diy_selector.
 id: command_write_diy_saved
 data: command_write_diy_saved.bin
 imports:
-  - command_write
+- command_write
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: s17-sketch-slot.pcap
+  source_sha256: 959f8c8a05c680e3900d017a90b0f2e5cfbd20d78479cba849b2c7a0b7c87d6d
+  source_index: 1
 asserts:
-  - actual: body.sub
-    expected: 10
-  - actual: body.sub_body.slot
-    expected: 32
-  - actual: body.sub_body.type_byte
-    expected: 3
+- actual: body.sub
+  expected: 10
+- actual: body.sub_body.slot
+  expected: 32
+- actual: body.sub_body.type_byte
+  expected: 3
+fixture_sha256: d746f1faf539e2775896740100522a5f212125ee308ebc938e8eac817a33337e

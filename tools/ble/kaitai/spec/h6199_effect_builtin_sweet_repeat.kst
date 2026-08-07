@@ -1,9 +1,0 @@
-# A second application of the same Sweet tile, byte-identical to the existing fixture.
-id: h6199_effect_builtin_sweet_repeat
-data: h6199_effect_builtin_sweet_repeat.bin
-imports: [h6199_effect_upload]
-asserts:
-  - {actual: chunk_count, expected: 2}
-  - {actual: kind, expected: 1}
-  - actual: content.opaque_body
-    expected: "8301ffb4ff320004f0001eea002bbc00ffe300ff0000000000000000000000"

@@ -1,22 +1,25 @@
-# H6199 white-balance write, captured 2026-08-04 from the Govee Home iOS app driving the DreamView T1
-# over BLE. The light was off Govee's cloud entirely, so the app could reach it by no path
-# but this one. Taken by dragging the white-balance marker along its strip inside Color Calibration. The marker was driven hard to the cool end, and two different end positions gave this same value, so it is the clamp.
 id: h6199_white_balance_cool
 data: h6199_white_balance_cool.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260804-150025.pcap
+  source_sha256: c891ece36d3115967de53b2d1ca7f6c40fa5224da9f64218fd21a2df3fe3bf15
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 169
-  - actual: body.setting
-    expected: 0
-  - actual: body.len
-    expected: 3
-  - actual: body.payload.manual
-    expected: 1
-  - actual: body.payload.red
-    expected: 7
-  - actual: body.payload.blue
-    expected: 10
-# This pair is entry 0 of the twenty in the app's bundled whiteBalance.json,
-# which is what shows the strip picks an index and the frame carries the gains.
+- actual: opcode
+  expected: 169
+- actual: body.setting
+  expected: 0
+- actual: body.len
+  expected: 3
+- actual: body.payload.manual
+  expected: 1
+- actual: body.payload.red
+  expected: 7
+- actual: body.payload.blue
+  expected: 10
+fixture_sha256: 004ddda3280522f7d6f853303971d00f95c24d24fdc7dd49ef10717b08d6f327

@@ -1,10 +1,23 @@
-# The regenerated AI response, which changed shape and content from the first response.
 id: h6199_effect_ai_regenerated_apply
 data: h6199_effect_ai_regenerated_apply.bin
-imports: [h6199_effect_upload]
+imports:
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260806-134525.pcap
+  source_sha256: 8dfb9a68a65535d9d4f3dadc4447dce8cc21e754c7f0eada0d64d621171ff58f
+  source_index: 1
 asserts:
-  - {actual: chunk_count, expected: 4}
-  - {actual: kind, expected: 2}
-  - {actual: content.block_count, expected: 2}
-  - {actual: "content.blocks[0].len", expected: 29}
-  - {actual: "content.blocks[1].len", expected: 32}
+- actual: chunk_count
+  expected: 4
+- actual: kind
+  expected: 2
+- actual: content.block_count
+  expected: 2
+- actual: content.blocks[0].len
+  expected: 29
+- actual: content.blocks[1].len
+  expected: 32
+fixture_sha256: cadc53d9378b7ada5d0e8d46ee3bb97187fa6e0c27f51cc5efcf225fcc360793

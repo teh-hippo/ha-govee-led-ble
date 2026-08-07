@@ -1,17 +1,21 @@
-# H6199 scene-apply write, captured 2026-08-04 from the Govee Home iOS app driving the
-# DreamView T1 over BLE. The light was off Govee's cloud, so the app reached it by no path
-# but this one; the PHONE was online, which is what made the cloud-backed scene gallery
-# usable at all. Applied from the Natural row; no 0xA3 upload preceded it, so the light already held this scene.
 id: h6199_scene_sunrise
 data: h6199_scene_sunrise.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260804-150025.pcap
+  source_sha256: c891ece36d3115967de53b2d1ca7f6c40fa5224da9f64218fd21a2df3fe3bf15
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 5
-  - actual: body.sub_mode
-    expected: 4
-  - actual: body.detail.scene_id
-    expected: 0
-  - actual: body.detail.scene_class
-    expected: 1
+- actual: opcode
+  expected: 5
+- actual: body.sub_mode
+  expected: 4
+- actual: body.detail.scene_id
+  expected: 0
+- actual: body.detail.scene_class
+  expected: 1
+fixture_sha256: 3d72e9326b2cd1b8067705ba5cfae2ab25cd071ee3d1d6866806eb64cb441917

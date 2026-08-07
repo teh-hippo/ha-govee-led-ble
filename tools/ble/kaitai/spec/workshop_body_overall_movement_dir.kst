@@ -1,39 +1,43 @@
-# Overall movement packed 0x12: the same direction 2 as the selected-area case above but
-# with the enter-exit bit clear, which is what separates the two bits.
 id: workshop_body_overall_movement_dir
 data: workshop_body_overall_movement_dir.bin
 imports:
-  - workshop_body
+- workshop_body
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: header.linecount
-    expected: 4
-  - actual: layer_count
-    expected: 2
-  - actual: layers.size
-    expected: 2
-  - actual: layers[0].record_len
-    expected: 29
-  - actual: layers[0].body.colour_count
-    expected: 2
-  - actual: layers[0].body.palette.size
-    expected: 2
-  - actual: layers[0].body.excess.size
-    expected: 0
-  - actual: layers[1].record_len
-    expected: 26
-  - actual: layers[1].body.colour_count
-    expected: 1
-  - actual: layers[1].body.palette.size
-    expected: 1
-  - actual: layers[1].body.excess.size
-    expected: 0
-  - actual: layers[0].body.overall_movement.packed
-    expected: 18
-  - actual: layers[0].body.overall_movement.enabled
-    expected: true
-  - actual: layers[0].body.overall_movement.enter_exit_effect
-    expected: false
-  - actual: layers[0].body.overall_movement.direction
-    expected: 2
-  - actual: layers[0].body.priority
-    expected: 0
+- actual: header.linecount
+  expected: 4
+- actual: layer_count
+  expected: 2
+- actual: layers.size
+  expected: 2
+- actual: layers[0].record_len
+  expected: 29
+- actual: layers[0].body.colour_count
+  expected: 2
+- actual: layers[0].body.palette.size
+  expected: 2
+- actual: layers[0].body.excess.size
+  expected: 0
+- actual: layers[1].record_len
+  expected: 26
+- actual: layers[1].body.colour_count
+  expected: 1
+- actual: layers[1].body.palette.size
+  expected: 1
+- actual: layers[1].body.excess.size
+  expected: 0
+- actual: layers[0].body.overall_movement.packed
+  expected: 18
+- actual: layers[0].body.overall_movement.enabled
+  expected: true
+- actual: layers[0].body.overall_movement.enter_exit_effect
+  expected: false
+- actual: layers[0].body.overall_movement.direction
+  expected: 2
+- actual: layers[0].body.priority
+  expected: 0
+fixture_sha256: fcd9ab44cbd1877bd229100796fc3ae79b364f8a4292752f1f27f61f7928a9f8

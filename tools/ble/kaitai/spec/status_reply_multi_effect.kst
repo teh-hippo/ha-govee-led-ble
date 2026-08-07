@@ -1,13 +1,17 @@
-# The one distinct aa a3 reply in the corpus: 35 frames across 26 captures, all flag 0x00,
-# because the app only ever writes 0x00. The crafted 33 a3 01 probe (2026-07-27c) read
-# back 0x01 here, which is what proves the field is live state and not a constant, and is
-# why this domain is modelled rather than left raw.
 id: status_reply_multi_effect
 data: status_reply_multi_effect.bin
 imports:
-  - status_reply
+- status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: aa-a3-requery.pcap
+  source_sha256: abbcba4d90cb77020caac2db840c7dfde4123444cc70398dd7e906acfd6148ff
+  source_index: 2
 asserts:
-  - actual: domain
-    expected: 163
-  - actual: body.flag
-    expected: 0
+- actual: domain
+  expected: 163
+- actual: body.flag
+  expected: 0
+fixture_sha256: 2087b67896de404b52969bfdedab7bda3952b822a82093df745eef473bb1dbb3

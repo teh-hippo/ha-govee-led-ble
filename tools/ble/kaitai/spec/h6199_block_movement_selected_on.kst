@@ -1,25 +1,27 @@
-# H6199 effect definition uploaded over 0xA3, captured 2026-08-05 from the Govee Home iOS
-# app driving the DreamView T1. The two-layer Workshop effect "Moving Christmas" re-applied
-# after then turning ONLY "Moving Effect in the Selected Area" on as well. These six are a controlled chain: each
-# differs from the one before at a single byte, which is what named the block's trailer.
-# Block 0 is layer 1 and block 1 is layer 2, and they are 29 and 26 bytes, which is what
-# made the trailer's END anchoring visible rather than assumed.
 id: h6199_block_movement_selected_on
 data: h6199_block_movement_selected_on.bin
 imports:
-  - h6199_effect_upload
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260805-150954.pcap
+  source_sha256: e008eba3122f9ee482aa1fd6aeb0e2561961ae6050ad6f988e10b3c0bb2fac65
+  source_index: 1
 asserts:
-  - actual: kind
-    expected: 2
-  - actual: content.block_count
-    expected: 2
-  - actual: content.blocks[0].len
-    expected: 29
-  - actual: content.blocks[1].len
-    expected: 26
-  - actual: content.blocks[1].selected_movement
-    expected: 16
-  - actual: content.blocks[1].selected_movement_interval
-    expected: "00"
-  - actual: content.blocks[1].selected_movement_speed
-    expected: "80"
+- actual: kind
+  expected: 2
+- actual: content.block_count
+  expected: 2
+- actual: content.blocks[0].len
+  expected: 29
+- actual: content.blocks[1].len
+  expected: 26
+- actual: content.blocks[1].selected_movement
+  expected: 16
+- actual: content.blocks[1].selected_movement_interval
+  expected: 0
+- actual: content.blocks[1].selected_movement_speed
+  expected: 128
+fixture_sha256: 125d3001e08bc9ebeec0c70f38f4567848f16926bbbcdb04258063f9dc26a012

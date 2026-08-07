@@ -1,10 +1,17 @@
-# H6199 white-balance state query captured from the iOS device-page connect burst.
 id: h6199_query_white_balance
 data: h6199_query_white_balance.bin
 imports:
-  - h6199_status_query
+- h6199_status_query
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: dv-diy-apply.pcap
+  source_sha256: 2c64690ee14e2bf450835f5c2d372482567838e3b28904c09e7e7601662aabbd
+  source_index: 2
 asserts:
-  - actual: domain
-    expected: 169
-  - actual: body.setting
-    expected: 0
+- actual: domain
+  expected: 169
+- actual: body.setting
+  expected: 0
+fixture_sha256: 775f0ba86a7c0e8c2bd8b2846eceb0fcf1e2ee5dd49ee4f332b5c12e76690625

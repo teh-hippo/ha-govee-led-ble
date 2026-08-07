@@ -1,14 +1,19 @@
-# Colour-mode read-back, static. The byte after the mode is NOT a static sub-selector: it
-# mirrors the 33 a3 register. Writing 33 a3 01 moved this reply to 0x01 and restoring
-# 33 a3 00 moved it back, with no colour write in between. See cm_static's own doc.
 id: status_reply_cm_static
 data: status_reply_cm_static.bin
 imports:
-  - status_reply
+- status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: dv-diy-apply.pcap
+  source_sha256: 2c64690ee14e2bf450835f5c2d372482567838e3b28904c09e7e7601662aabbd
+  source_index: 2
 asserts:
-  - actual: domain
-    expected: 5
-  - actual: body.mode
-    expected: 21
-  - actual: body.mode_body.sub
-    expected: 0
+- actual: domain
+  expected: 5
+- actual: body.mode
+  expected: 21
+- actual: body.mode_body.sub
+  expected: 0
+fixture_sha256: b18a60d25a761207a37ac93876c844ff9654746e6c8d9878d49e2a7961a909c6

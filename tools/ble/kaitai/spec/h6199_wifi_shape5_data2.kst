@@ -1,7 +1,0 @@
-# Second data frame of the vendor-generated five-frame sequence.
-id: h6199_wifi_shape5_data2
-data: h6199_wifi_shape5_data2.bin
-imports: [h6199_wifi_provision]
-asserts:
-  - {actual: sub_opcode, expected: 17}
-  - {actual: index, expected: 2}

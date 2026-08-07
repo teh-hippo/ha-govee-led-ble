@@ -1,13 +1,17 @@
-# H6199 brightness write, captured 2026-08-03 from the Govee Home iOS app driving the
-# DreamView T1 over BLE with the phone in Airplane Mode. One of three levels taken in a
-# single session by dragging the device page's brightness slider and reading back the
-# percentage the app rendered, so the three differ only in the byte under test.
 id: h6199_command_brightness_100
 data: h6199_command_brightness_100.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260803-223212.pcap
+  source_sha256: 56fcc9aca4d10d929861258eefdac7e930e3c188800fa40c5094714d48a203c9
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 4
-  - actual: body.percent
-    expected: 100
+- actual: opcode
+  expected: 4
+- actual: body.percent
+  expected: 100
+fixture_sha256: 517f18c08c89c1de887ae10fb733d37417f7f77706cf00c7a52d05ac55944930

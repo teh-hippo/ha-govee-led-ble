@@ -1,46 +1,49 @@
-# Whole-strip per-segment relative brightness, static_sub 0x03: no mask at all, one byte
-# per segment instead. Captured 2026-07-27 as the last write of a per-segment snapshot
-# restore (drive3-static03), segment 1 at 31% and segment 3 at 67% isolated by a
-# single-segment differential, the rest at 100%. The 15 entries are what tie this field
-# to the segment count.
 id: command_write_seg_brightness_all
 data: command_write_seg_brightness_all.bin
 imports:
-  - command_write
+- command_write
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: drive3-static03.pcap
+  source_sha256: e7fd354acb6f7278686c6cec95768d3aba292db86cefe356a8d1e56be91daa7e
+  source_index: 1
 asserts:
-  - actual: body.sub
-    expected: 21
-  - actual: body.sub_body.static_sub
-    expected: 3
-  - actual: body.sub_body.static_body.segment_percent.size
-    expected: 15
-  - actual: body.sub_body.static_body.segment_percent[0]
-    expected: 31
-  - actual: body.sub_body.static_body.segment_percent[1]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[2]
-    expected: 67
-  - actual: body.sub_body.static_body.segment_percent[3]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[4]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[5]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[6]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[7]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[8]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[9]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[10]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[11]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[12]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[13]
-    expected: 100
-  - actual: body.sub_body.static_body.segment_percent[14]
-    expected: 100
+- actual: body.sub
+  expected: 21
+- actual: body.sub_body.static_sub
+  expected: 3
+- actual: body.sub_body.static_body.segment_percent.size
+  expected: 15
+- actual: body.sub_body.static_body.segment_percent[0]
+  expected: 31
+- actual: body.sub_body.static_body.segment_percent[1]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[2]
+  expected: 67
+- actual: body.sub_body.static_body.segment_percent[3]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[4]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[5]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[6]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[7]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[8]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[9]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[10]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[11]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[12]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[13]
+  expected: 100
+- actual: body.sub_body.static_body.segment_percent[14]
+  expected: 100
+fixture_sha256: e9e61d8a9b73305c7aa4f7d110bb559ca9f90bb2ff64632e064a963035b251ea

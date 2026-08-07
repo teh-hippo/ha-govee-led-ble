@@ -1,17 +1,19 @@
-# Colour-mode read-back, DIY on the Vibrant editor slot 0x84 with type_byte 0x03. Paired
-# with the 0x00 case above this is the whole observed range of type_byte on the read side,
-# and separating its two surviving readings is an open phone probe. See
-# govee_common::diy_selector.
 id: status_reply_cm_diy_saved
 data: status_reply_cm_diy_saved.bin
 imports:
-  - status_reply
+- status_reply
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: domain
-    expected: 5
-  - actual: body.mode
-    expected: 10
-  - actual: body.mode_body.slot
-    expected: 132
-  - actual: body.mode_body.type_byte
-    expected: 3
+- actual: domain
+  expected: 5
+- actual: body.mode
+  expected: 10
+- actual: body.mode_body.slot
+  expected: 132
+- actual: body.mode_body.type_byte
+  expected: 3
+fixture_sha256: 4b80f383403c4e91ba473c843e8f0e916e7a4cb51dbfebbbbc7e577c4c4ae4c6

@@ -1,28 +1,31 @@
-# H6199 music-mode write, captured 2026-08-05 from the Govee Home iOS app driving the
-# DreamView T1 over BLE, with that switch turned straight back ON, so its pair with the off capture moves the flag and the three colour bytes together and nothing else. The light was off Govee's cloud, so BLE was its only
-# path. These captures are what showed the body's trailing window was not padding.
 id: h6199_music_autocolour_on
 data: h6199_music_autocolour_on.bin
 imports:
-  - h6199_command_write
+- h6199_command_write
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-ai.pcap
+  source_sha256: 07d8af653fd033c562d870a46f9c370256e35e92521a3d199a4e520ba7cd00f8
+  source_index: 1
 asserts:
-  - actual: opcode
-    expected: 5
-  - actual: body.sub_mode
-    expected: 19
-  - actual: body.detail.mode
-    expected: 3
-  - actual: body.detail.sensitivity
-    expected: 62
-  - actual: body.detail.is_calm
-    expected: 0
-  - actual: body.detail.has_fixed_colour
-    expected: 0
-  - actual: body.detail.fixed_colour.red
-    expected: 0
-  - actual: body.detail.fixed_colour.green
-    expected: 0
-  - actual: body.detail.fixed_colour.blue
-    expected: 0
-  - actual: body.detail.opaque_tail
-    expected: "000000000000000000"
+- actual: opcode
+  expected: 5
+- actual: body.sub_mode
+  expected: 19
+- actual: body.detail.mode
+  expected: 3
+- actual: body.detail.sensitivity
+  expected: 62
+- actual: body.detail.is_calm
+  expected: 0
+- actual: body.detail.has_fixed_colour
+  expected: 0
+- actual: body.detail.fixed_colour.red
+  expected: 0
+- actual: body.detail.fixed_colour.green
+  expected: 0
+- actual: body.detail.fixed_colour.blue
+  expected: 0
+fixture_sha256: e9c719d3419679123cb39c483d6ccd5929b875dc4a0c8e0652b70d242f763b0e

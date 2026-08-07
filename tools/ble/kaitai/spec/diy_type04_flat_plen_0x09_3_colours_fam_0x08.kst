@@ -1,34 +1,39 @@
-# flat plen=0x09 (3 colours) fam=0x08. Capture: diy-chasing.pcap.
 id: diy_type04_flat_plen_0x09_3_colours_fam_0x08
 data: diy_type04_flat_plen_0x09_3_colours_fam_0x08.bin
 imports:
-  - diy_type04
+- diy_type04
+provenance:
+  kind: retained_fixture
+  schema_model: h617a
+  source_model: h617a
+  source: pre-provenance corpus
 asserts:
-  - actual: family
-    expected: 8
-  - actual: body.variant
-    expected: 9
-  - actual: body.speed
-    expected: 100
-  - actual: body.plen
-    expected: 9
-  - actual: body.palette.colours.size
-    expected: 3
-  - actual: body.palette.colours[0].r
-    expected: 255
-  - actual: body.palette.colours[0].g
-    expected: 0
-  - actual: body.palette.colours[0].b
-    expected: 0
-  - actual: body.palette.colours[1].r
-    expected: 255
-  - actual: body.palette.colours[1].g
-    expected: 125
-  - actual: body.palette.colours[1].b
-    expected: 0
-  - actual: body.palette.colours[2].r
-    expected: 255
-  - actual: body.palette.colours[2].g
-    expected: 255
-  - actual: body.palette.colours[2].b
-    expected: 0
+- actual: family
+  expected: 8
+- actual: body.variant
+  expected: 9
+- actual: body.speed
+  expected: 100
+- actual: body.plen
+  expected: 9
+- actual: body.palette.colours.size
+  expected: 3
+- actual: body.palette.colours[0].r
+  expected: 255
+- actual: body.palette.colours[0].g
+  expected: 0
+- actual: body.palette.colours[0].b
+  expected: 0
+- actual: body.palette.colours[1].r
+  expected: 255
+- actual: body.palette.colours[1].g
+  expected: 125
+- actual: body.palette.colours[1].b
+  expected: 0
+- actual: body.palette.colours[2].r
+  expected: 255
+- actual: body.palette.colours[2].g
+  expected: 255
+- actual: body.palette.colours[2].b
+  expected: 0
+fixture_sha256: e7525a2d886079cf33902f24a128c8ec39204441a1b00f44979475be7ff164e1

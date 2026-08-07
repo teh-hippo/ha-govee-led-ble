@@ -1,24 +1,31 @@
-# Effects Lab Brightness Order B, the same scene re-applied with only Brightness Order moved from Brightest-Darkest to Darkest-Brightest-Darkest.
 id: scene_body_brightness_order_b
 data: scene_body_brightness_order_b.bin
 imports:
-  - scene_body
+- scene_body
+provenance:
+  kind: capture_a3_body
+  schema_model: h617a
+  source_model: h617a
+  source: s21-r9.pcap
+  source_sha256: 365aa154ff983cae33548aa8fcb6d6931c6052081f637d9f01c282cfdc09709f
+  source_index: 1
 asserts:
-  - actual: scene_type
-    expected: 2
-  - actual: record_count
-    expected: 1
-  - actual: records.size
-    expected: 1
-  - actual: padding.size
-    expected: 0
-  - actual: records[0].rec_len
-    expected: 29
-  - actual: records[0].body.select_type
-    expected: 1
-  - actual: records[0].body.colour_count
-    expected: 2
-  - actual: records[0].body.excess.size
-    expected: 0
-  - actual: records[0].body.brightness_blocks[0].brightness_order
-    expected: 3
+- actual: scene_type
+  expected: 2
+- actual: record_count
+  expected: 1
+- actual: records.size
+  expected: 1
+- actual: padding.size
+  expected: 0
+- actual: records[0].rec_len
+  expected: 29
+- actual: records[0].body.select_type
+  expected: 1
+- actual: records[0].body.colour_count
+  expected: 2
+- actual: records[0].body.excess.size
+  expected: 0
+- actual: records[0].body.brightness_blocks[0].brightness_order
+  expected: 3
+fixture_sha256: 79c462e8b9049db8e62df8062d64c775da9796dc6340e240c64a709dc29234d6

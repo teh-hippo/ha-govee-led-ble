@@ -1,14 +1,31 @@
-# A second numbered Brightness sub-tab added to layer 1.
 id: h6199_effect_workshop_two_brightness_blocks
 data: h6199_effect_workshop_two_brightness_blocks.bin
-imports: [h6199_effect_upload]
+imports:
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-20260806-230607.pcap
+  source_sha256: 878f308f36f6ccb322100d02179203f842697f3e8a99f688726ed6e00f64fbb2
+  source_index: 1
 asserts:
-  - {actual: "content.blocks[0].len", expected: 35}
-  - {actual: "content.blocks[0].brightness_block_count", expected: 2}
-  - {actual: "content.blocks[0].brightness_blocks.size", expected: 2}
-  - {actual: "content.blocks[0].brightness_blocks[0].scope_high", expected: "cd"}
-  - {actual: "content.blocks[0].brightness_blocks[0].order", expected: 2}
-  - {actual: "content.blocks[0].brightness_blocks[1].scope_high", expected: "ff"}
-  - {actual: "content.blocks[0].brightness_blocks[1].order", expected: 0}
-  - {actual: "content.blocks[0].colour_count", expected: 2}
-  - {actual: "content.blocks[0].excess.size", expected: 0}
+- actual: content.blocks[0].len
+  expected: 35
+- actual: content.blocks[0].brightness_block_count
+  expected: 2
+- actual: content.blocks[0].brightness_blocks.size
+  expected: 2
+- actual: content.blocks[0].brightness_blocks[0].scope_high
+  expected: 205
+- actual: content.blocks[0].brightness_blocks[0].order
+  expected: 2
+- actual: content.blocks[0].brightness_blocks[1].scope_high
+  expected: 255
+- actual: content.blocks[0].brightness_blocks[1].order
+  expected: 0
+- actual: content.blocks[0].colour_count
+  expected: 2
+- actual: content.blocks[0].excess.size
+  expected: 0
+fixture_sha256: e3907a144dc4b8885c18426e3e066a46ac54ebb166699710702e9cf0b518bb2b

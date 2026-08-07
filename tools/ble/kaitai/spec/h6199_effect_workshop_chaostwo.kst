@@ -1,30 +1,31 @@
-# H6199 effect definition uploaded over 0xA3, captured 2026-08-05 from the Govee Home
-# iOS app driving the DreamView T1, by applying a five-block user effect, and the longest DIY-authored body captured from More then Workshop.
-# It arrives in the SCENE shape rather than the DIY one, even though a user authored it
-# in the DIY editor, so the two shapes are chosen by how the effect is applied and not
-# by who wrote it.
 id: h6199_effect_workshop_chaostwo
 data: h6199_effect_workshop_chaostwo.bin
 imports:
-  - h6199_effect_upload
+- h6199_effect_upload
+provenance:
+  kind: capture_a3_body
+  schema_model: h6199
+  source_model: h6199
+  source: session-dreamtv-ai.pcap
+  source_sha256: 07d8af653fd033c562d870a46f9c370256e35e92521a3d199a4e520ba7cd00f8
+  source_index: 1
 asserts:
-  - actual: chunk_count
-    expected: 11
-  - actual: kind
-    expected: 2
-  - actual: content.block_count
-    expected: 5
-  - actual: content.blocks.size
-    expected: 5
-  - actual: content.blocks[0].len
-    expected: 32
-  - actual: content.blocks[1].len
-    expected: 32
-  - actual: content.blocks[2].len
-    expected: 32
-  - actual: content.blocks[3].len
-    expected: 32
-  - actual: content.blocks[4].len
-    expected: 35
-  - actual: content.padding
-    expected: "000000000000000000000000000000"
+- actual: chunk_count
+  expected: 11
+- actual: kind
+  expected: 2
+- actual: content.block_count
+  expected: 5
+- actual: content.blocks.size
+  expected: 5
+- actual: content.blocks[0].len
+  expected: 32
+- actual: content.blocks[1].len
+  expected: 32
+- actual: content.blocks[2].len
+  expected: 32
+- actual: content.blocks[3].len
+  expected: 32
+- actual: content.blocks[4].len
+  expected: 35
+fixture_sha256: eaf0272f56da60086de1482c894f84a22226157208803ad7de7d558e343733ec

@@ -1,11 +1,19 @@
 id: h6199_query_hardware
 data: h6199_query_hardware.bin
 imports:
-  - h6199_status_query
+- h6199_status_query
+provenance:
+  kind: capture_frame
+  schema_model: h6199
+  source_model: h6199
+  source: dv-diy-apply.pcap
+  source_sha256: 2c64690ee14e2bf450835f5c2d372482567838e3b28904c09e7e7601662aabbd
+  source_index: 2
 asserts:
-  - actual: domain
-    expected: 7
-  - actual: body.selector
-    expected: "03"
-  - actual: body.zeros.size
-    expected: 16
+- actual: domain
+  expected: 7
+- actual: body.selector
+  expected: '03'
+- actual: body.zeros.size
+  expected: 16
+fixture_sha256: 775746a2e896d93b38db573773f136ce25c5b62325ee92b3831d748273d415af
