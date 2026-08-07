@@ -3,7 +3,7 @@
 # native rather than Windows-side. Pinned because the harness resolves this exact version
 # through `mise where`, and kept at 10.2.3 or later for the iOS 27 mounter fix that skips
 # the DDI upload when an image is already mounted.
-"pipx:pymobiledevice3" = "10.3.0"
+"pipx:pymobiledevice3" = "10.3.1"
 # Re-signs iOS bundles with our own Apple Development identity, which is how the phone rig
 # gets a WebDriverAgent it is allowed to run. Not in the mise registry, so named by repo.
 "github:zhlynn/zsign" = "latest"
