@@ -18,4 +18,10 @@ asserts:
   expected: 6
 - actual: body.payload.is_on
   expected: 0
+- actual: body.payload.detection
+  expected: 2
+- actual: body.payload.low_brightness_duration_seconds
+  expected: 10
+- actual: body.payload.same_tone_duration_seconds
+  expected: 120
 fixture_sha256: f309bc493affb24e030dcbd6fab99c4bf5f77900db30cebcee4c73bde752e60d

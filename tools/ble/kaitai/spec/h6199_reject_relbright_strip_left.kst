@@ -1,0 +1,11 @@
+id: h6199_reject_relbright_strip_left
+data: h6199_reject_relbright_strip_left.bin
+imports:
+- h6199_command_write
+provenance:
+  kind: derived_rejection
+  schema_model: h6199
+  source_model: h6199
+  source: captured fixture mutation
+exception: ValidationNotEqualError
+fixture_sha256: 547405b0b17c2159628bc287ef8e1278bd99645a2200a67cc73094343567b478

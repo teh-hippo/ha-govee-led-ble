@@ -18,4 +18,8 @@ asserts:
   expected: 71
 - actual: body.bottom_percent
   expected: 91
+- actual: body.strip_left_percent
+  expected: 0
+- actual: body.strip_right_percent
+  expected: 0
 fixture_sha256: 04763370af986a0b9c919913dd7e7e6618d82438ed666f3825b1189356539a35

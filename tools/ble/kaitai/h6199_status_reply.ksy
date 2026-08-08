@@ -44,6 +44,9 @@ enums:
   display_setting:
     0x00: white_balance
     0x0a: blank_screen
+  blank_screen_detection:
+    0x01: low_brightness
+    0x02: same_tone
   mode_sel:
     0x00: video
     0x04: scene
@@ -89,16 +92,30 @@ types:
       - id: current_blue
         type: u1
   blank_screen_state:
+    doc: |
+      Blank-screen detection policy. The app parser reads the same two modes and second-based
+      durations written by h6199_command_write::blank_screen_payload.
     seq:
       - id: is_enabled
         type: u1
-      - contents: [0x02, 0x0a, 0x00, 0x78, 0x00]
+      - id: detection
+        type: u1
+        enum: blank_screen_detection
+      - id: low_brightness_duration_seconds
+        type: u2
+      - id: same_tone_duration_seconds
+        type: u2
   relative_brightness_body:
+    doc: |
+      The shared app parser always reads six value slots. H6199 reports edge_count 4; the final
+      strip-left and strip-right slots belong to six-segment hardware and are retained without
+      constraining reads so an unexpected firmware value remains observable.
     seq:
       - id: selector
         contents: [0x01]
       - id: edge_count
-        contents: [0x04]
+        type: u1
+        valid: 0x04
       - id: left_percent
         type: u1
       - id: top_percent
@@ -106,6 +123,10 @@ types:
       - id: right_percent
         type: u1
       - id: bottom_percent
+        type: u1
+      - id: strip_left_percent
+        type: u1
+      - id: strip_right_percent
         type: u1
   colour_mode_body:
     seq:

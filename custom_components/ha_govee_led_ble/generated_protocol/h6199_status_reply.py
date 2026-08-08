@@ -14,6 +14,10 @@ class H6199StatusReply(ReadWriteKaitaiStruct):
     """H6199 20-byte status reply. The final byte is the XOR of bytes 0 through 18.
     """
 
+    class BlankScreenDetection(IntEnum):
+        low_brightness = 1
+        same_tone = 2
+
     class DisplaySetting(IntEnum):
         white_balance = 0
         blank_screen = 10
@@ -372,6 +376,9 @@ class H6199StatusReply(ReadWriteKaitaiStruct):
         self._dirty = False
 
     class BlankScreenState(ReadWriteKaitaiStruct):
+        """Blank-screen detection policy. The app parser reads the same two modes and second-based
+        durations written by h6199_command_write::blank_screen_payload.
+        """
         def __init__(self, _io=None, _parent=None, _root=None):
             super(H6199StatusReply.BlankScreenState, self).__init__(_io)
             self._parent = _parent
@@ -379,9 +386,9 @@ class H6199StatusReply(ReadWriteKaitaiStruct):
 
         def _read(self):
             self.is_enabled = self._io.read_u1()
-            self._unnamed1 = self._io.read_bytes(5)
-            if not self._unnamed1 == b"\x02\x0A\x00\x78\x00":
-                raise kaitaistruct.ValidationNotEqualError(b"\x02\x0A\x00\x78\x00", self._unnamed1, self._io, u"/types/blank_screen_state/seq/1")
+            self.detection = KaitaiStream.resolve_enum(H6199StatusReply.BlankScreenDetection, self._io.read_u1())
+            self.low_brightness_duration_seconds = self._io.read_u2le()
+            self.same_tone_duration_seconds = self._io.read_u2le()
             self._dirty = False
 
 
@@ -392,14 +399,12 @@ class H6199StatusReply(ReadWriteKaitaiStruct):
         def _write__seq(self, io=None):
             super(H6199StatusReply.BlankScreenState, self)._write__seq(io)
             self._io.write_u1(self.is_enabled)
-            self._io.write_bytes(self._unnamed1)
+            self._io.write_u1(int(self.detection))
+            self._io.write_u2le(self.low_brightness_duration_seconds)
+            self._io.write_u2le(self.same_tone_duration_seconds)
 
 
         def _check(self):
-            if len(self._unnamed1) != 5:
-                raise kaitaistruct.ConsistencyError(u"_unnamed1", 5, len(self._unnamed1))
-            if not self._unnamed1 == b"\x02\x0A\x00\x78\x00":
-                raise kaitaistruct.ValidationNotEqualError(b"\x02\x0A\x00\x78\x00", self._unnamed1, None, u"/types/blank_screen_state/seq/1")
             self._dirty = False
 
 
@@ -767,6 +772,10 @@ class H6199StatusReply(ReadWriteKaitaiStruct):
 
 
     class RelativeBrightnessBody(ReadWriteKaitaiStruct):
+        """The shared app parser always reads six value slots. H6199 reports edge_count 4; the final
+        strip-left and strip-right slots belong to six-segment hardware and are retained without
+        constraining reads so an unexpected firmware value remains observable.
+        """
         def __init__(self, _io=None, _parent=None, _root=None):
             super(H6199StatusReply.RelativeBrightnessBody, self).__init__(_io)
             self._parent = _parent
@@ -776,13 +785,15 @@ class H6199StatusReply(ReadWriteKaitaiStruct):
             self.selector = self._io.read_bytes(1)
             if not self.selector == b"\x01":
                 raise kaitaistruct.ValidationNotEqualError(b"\x01", self.selector, self._io, u"/types/relative_brightness_body/seq/0")
-            self.edge_count = self._io.read_bytes(1)
-            if not self.edge_count == b"\x04":
-                raise kaitaistruct.ValidationNotEqualError(b"\x04", self.edge_count, self._io, u"/types/relative_brightness_body/seq/1")
+            self.edge_count = self._io.read_u1()
+            if not self.edge_count == 4:
+                raise kaitaistruct.ValidationNotEqualError(4, self.edge_count, self._io, u"/types/relative_brightness_body/seq/1")
             self.left_percent = self._io.read_u1()
             self.top_percent = self._io.read_u1()
             self.right_percent = self._io.read_u1()
             self.bottom_percent = self._io.read_u1()
+            self.strip_left_percent = self._io.read_u1()
+            self.strip_right_percent = self._io.read_u1()
             self._dirty = False
 
 
@@ -793,11 +804,13 @@ class H6199StatusReply(ReadWriteKaitaiStruct):
         def _write__seq(self, io=None):
             super(H6199StatusReply.RelativeBrightnessBody, self)._write__seq(io)
             self._io.write_bytes(self.selector)
-            self._io.write_bytes(self.edge_count)
+            self._io.write_u1(self.edge_count)
             self._io.write_u1(self.left_percent)
             self._io.write_u1(self.top_percent)
             self._io.write_u1(self.right_percent)
             self._io.write_u1(self.bottom_percent)
+            self._io.write_u1(self.strip_left_percent)
+            self._io.write_u1(self.strip_right_percent)
 
 
         def _check(self):
@@ -805,10 +818,8 @@ class H6199StatusReply(ReadWriteKaitaiStruct):
                 raise kaitaistruct.ConsistencyError(u"selector", 1, len(self.selector))
             if not self.selector == b"\x01":
                 raise kaitaistruct.ValidationNotEqualError(b"\x01", self.selector, None, u"/types/relative_brightness_body/seq/0")
-            if len(self.edge_count) != 1:
-                raise kaitaistruct.ConsistencyError(u"edge_count", 1, len(self.edge_count))
-            if not self.edge_count == b"\x04":
-                raise kaitaistruct.ValidationNotEqualError(b"\x04", self.edge_count, None, u"/types/relative_brightness_body/seq/1")
+            if not self.edge_count == 4:
+                raise kaitaistruct.ValidationNotEqualError(4, self.edge_count, None, u"/types/relative_brightness_body/seq/1")
             self._dirty = False
 
 

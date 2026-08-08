@@ -1,0 +1,11 @@
+id: h6199_reject_relbright_edge_count
+data: h6199_reject_relbright_edge_count.bin
+imports:
+- h6199_command_write
+provenance:
+  kind: derived_rejection
+  schema_model: h6199
+  source_model: h6199
+  source: captured fixture mutation
+exception: ValidationNotEqualError
+fixture_sha256: 3bf6977e3a57d9f4413ba48b41dcd8e792603a23af98a96430d870757552a570

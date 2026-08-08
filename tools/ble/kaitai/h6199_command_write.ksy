@@ -45,6 +45,9 @@ enums:
   display_setting:
     0x00: white_balance
     0x0a: blank_screen
+  blank_screen_detection:
+    0x01: low_brightness
+    0x02: same_tone
   music_mode:
     0x03: rhythm
     0x04: spectrum
@@ -101,11 +104,15 @@ types:
         valid:
           max: 100
   relative_brightness_body:
+    doc: |
+      H6199 exposes four edge controls. The shared app controller always writes two additional
+      strip slots used by six-segment hardware, but its H6199 path leaves them at zero.
     seq:
       - id: selector
         contents: [0x01]
       - id: edge_count
         type: u1
+        valid: 0x04
       - id: left_percent
         type: u1
       - id: top_percent
@@ -114,6 +121,12 @@ types:
         type: u1
       - id: bottom_percent
         type: u1
+      - id: strip_left_percent
+        type: u1
+        valid: 0
+      - id: strip_right_percent
+        type: u1
+        valid: 0
   display_setting_body:
     seq:
       - id: setting
@@ -137,10 +150,20 @@ types:
       - id: blue
         type: u1
   blank_screen_payload:
+    doc: |
+      Blank-screen detection policy. The app UI labels the two policies Low Brightness and
+      Same Tone and stores both durations in seconds. The captured H6199 state selects Same
+      Tone with durations 10 and 120 seconds.
     seq:
       - id: is_on
         type: u1
-      - contents: [0x02, 0x0a, 0x00, 0x78, 0x00]
+      - id: detection
+        type: u1
+        enum: blank_screen_detection
+      - id: low_brightness_duration_seconds
+        type: u2
+      - id: same_tone_duration_seconds
+        type: u2
   music_body:
     seq:
       - id: mode

@@ -14,6 +14,10 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
     """H6199 20-byte command frame. The final byte is the XOR of bytes 0 through 18.
     """
 
+    class BlankScreenDetection(IntEnum):
+        low_brightness = 1
+        same_tone = 2
+
     class CommandOp(IntEnum):
         power = 1
         brightness = 4
@@ -237,6 +241,10 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
         self._dirty = False
 
     class BlankScreenPayload(ReadWriteKaitaiStruct):
+        """Blank-screen detection policy. The app UI labels the two policies Low Brightness and
+        Same Tone and stores both durations in seconds. The captured H6199 state selects Same
+        Tone with durations 10 and 120 seconds.
+        """
         def __init__(self, _io=None, _parent=None, _root=None):
             super(H6199CommandWrite.BlankScreenPayload, self).__init__(_io)
             self._parent = _parent
@@ -244,9 +252,9 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
 
         def _read(self):
             self.is_on = self._io.read_u1()
-            self._unnamed1 = self._io.read_bytes(5)
-            if not self._unnamed1 == b"\x02\x0A\x00\x78\x00":
-                raise kaitaistruct.ValidationNotEqualError(b"\x02\x0A\x00\x78\x00", self._unnamed1, self._io, u"/types/blank_screen_payload/seq/1")
+            self.detection = KaitaiStream.resolve_enum(H6199CommandWrite.BlankScreenDetection, self._io.read_u1())
+            self.low_brightness_duration_seconds = self._io.read_u2le()
+            self.same_tone_duration_seconds = self._io.read_u2le()
             self._dirty = False
 
 
@@ -257,14 +265,12 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
         def _write__seq(self, io=None):
             super(H6199CommandWrite.BlankScreenPayload, self)._write__seq(io)
             self._io.write_u1(self.is_on)
-            self._io.write_bytes(self._unnamed1)
+            self._io.write_u1(int(self.detection))
+            self._io.write_u2le(self.low_brightness_duration_seconds)
+            self._io.write_u2le(self.same_tone_duration_seconds)
 
 
         def _check(self):
-            if len(self._unnamed1) != 5:
-                raise kaitaistruct.ConsistencyError(u"_unnamed1", 5, len(self._unnamed1))
-            if not self._unnamed1 == b"\x02\x0A\x00\x78\x00":
-                raise kaitaistruct.ValidationNotEqualError(b"\x02\x0A\x00\x78\x00", self._unnamed1, None, u"/types/blank_screen_payload/seq/1")
             self._dirty = False
 
 
@@ -601,6 +607,9 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
 
 
     class RelativeBrightnessBody(ReadWriteKaitaiStruct):
+        """H6199 exposes four edge controls. The shared app controller always writes two additional
+        strip slots used by six-segment hardware, but its H6199 path leaves them at zero.
+        """
         def __init__(self, _io=None, _parent=None, _root=None):
             super(H6199CommandWrite.RelativeBrightnessBody, self).__init__(_io)
             self._parent = _parent
@@ -611,10 +620,18 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
             if not self.selector == b"\x01":
                 raise kaitaistruct.ValidationNotEqualError(b"\x01", self.selector, self._io, u"/types/relative_brightness_body/seq/0")
             self.edge_count = self._io.read_u1()
+            if not self.edge_count == 4:
+                raise kaitaistruct.ValidationNotEqualError(4, self.edge_count, self._io, u"/types/relative_brightness_body/seq/1")
             self.left_percent = self._io.read_u1()
             self.top_percent = self._io.read_u1()
             self.right_percent = self._io.read_u1()
             self.bottom_percent = self._io.read_u1()
+            self.strip_left_percent = self._io.read_u1()
+            if not self.strip_left_percent == 0:
+                raise kaitaistruct.ValidationNotEqualError(0, self.strip_left_percent, self._io, u"/types/relative_brightness_body/seq/6")
+            self.strip_right_percent = self._io.read_u1()
+            if not self.strip_right_percent == 0:
+                raise kaitaistruct.ValidationNotEqualError(0, self.strip_right_percent, self._io, u"/types/relative_brightness_body/seq/7")
             self._dirty = False
 
 
@@ -630,6 +647,8 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
             self._io.write_u1(self.top_percent)
             self._io.write_u1(self.right_percent)
             self._io.write_u1(self.bottom_percent)
+            self._io.write_u1(self.strip_left_percent)
+            self._io.write_u1(self.strip_right_percent)
 
 
         def _check(self):
@@ -637,6 +656,12 @@ class H6199CommandWrite(ReadWriteKaitaiStruct):
                 raise kaitaistruct.ConsistencyError(u"selector", 1, len(self.selector))
             if not self.selector == b"\x01":
                 raise kaitaistruct.ValidationNotEqualError(b"\x01", self.selector, None, u"/types/relative_brightness_body/seq/0")
+            if not self.edge_count == 4:
+                raise kaitaistruct.ValidationNotEqualError(4, self.edge_count, None, u"/types/relative_brightness_body/seq/1")
+            if not self.strip_left_percent == 0:
+                raise kaitaistruct.ValidationNotEqualError(0, self.strip_left_percent, None, u"/types/relative_brightness_body/seq/6")
+            if not self.strip_right_percent == 0:
+                raise kaitaistruct.ValidationNotEqualError(0, self.strip_right_percent, None, u"/types/relative_brightness_body/seq/7")
             self._dirty = False
 
 

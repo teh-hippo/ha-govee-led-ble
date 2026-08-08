@@ -532,14 +532,23 @@ def build_video_white_balance(red: int, blue: int) -> bytes:
     return _build_generated_white_balance(red, blue)
 
 
-def build_blank_screen(enabled: bool) -> bytes:
+def build_blank_screen(
+    enabled: bool,
+    detection: int = 2,
+    low_brightness_duration_seconds: int = 10,
+    same_tone_duration_seconds: int = 120,
+) -> bytes:
     """Build the H6199 blank-screen display setting (h6199_command_write::blank_screen_payload).
 
-    Only the flag is ours to set. The five bytes after it are replayed from capture: they never
-    moved across either write, and the vendor app's reading of them as a flag and two integers
-    names nothing this project can vary.
+    Home Assistant exposes only the enable switch, but callers can preserve the device's
+    independently stored detection policy and durations when toggling it.
     """
-    return _build_generated_blank_screen(enabled)
+    return _build_generated_blank_screen(
+        enabled,
+        detection,
+        low_brightness_duration_seconds,
+        same_tone_duration_seconds,
+    )
 
 
 def build_relative_brightness(percent: int) -> bytes:

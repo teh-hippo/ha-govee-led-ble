@@ -76,9 +76,14 @@ async def _apply_relative_brightness(coordinator: GoveeBLECoordinator) -> bool:
 
 async def _apply_blank_screen(coordinator: GoveeBLECoordinator) -> bool:
     expected = bool(coordinator.blank_screen)
+    detection = coordinator.blank_screen_detection
+    low_duration = coordinator.blank_screen_low_brightness_duration_seconds
+    same_duration = coordinator.blank_screen_same_tone_duration_seconds
+    if detection is None or low_duration is None or same_duration is None:
+        raise ValueError("Blank-screen policy state has not been read; refresh the device first")
     for _ in range(2):
         coordinator._arm_expected_values({"blank_screen": expected})
-        await coordinator.send_command(build_blank_screen(expected))
+        await coordinator.send_command(build_blank_screen(expected, detection, low_duration, same_duration))
         if await coordinator.refresh_state(expected_blank_screen=expected):
             return True
     raise RuntimeError("Blank-screen write was not confirmed by the device")

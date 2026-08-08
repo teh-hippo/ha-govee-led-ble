@@ -124,6 +124,7 @@ def test_the_two_display_settings_are_told_apart_by_their_selector():
     blank_off = dg.label(proto.build_blank_screen(False), "TX")
     assert blank_on.startswith("blank screen on")
     assert blank_off.startswith("blank screen off")
+    assert "detection=same_tone low=10s same=120s" in blank_on
     assert "white balance" not in blank_on
     assert "blank screen" not in dg.label(proto.build_video_white_balance(21, 5), "TX")
 

@@ -224,7 +224,13 @@ def _format_h6199_command(root: Any) -> str | None:
             payload = root.body.payload
             return f"white balance manual={int(payload.manual)} gains=({int(payload.red)},{int(payload.blue)})"
         if setting == "blank_screen":
-            return f"blank screen {'on' if root.body.payload.is_on else 'off'}"
+            payload = root.body.payload
+            return (
+                f"blank screen {'on' if payload.is_on else 'off'} "
+                f"detection={_named(payload.detection)} "
+                f"low={int(payload.low_brightness_duration_seconds)}s "
+                f"same={int(payload.same_tone_duration_seconds)}s"
+            )
         return None
     if operation == "relative_brightness":
         body = root.body
@@ -314,7 +320,13 @@ def _format_h6199_status(root: Any) -> str | None:
                 f"current=({int(payload.current_red)},{int(payload.current_blue)})"
             )
         if setting == "blank_screen":
-            return f"reply blank_screen={'on' if root.body.payload.is_enabled else 'off'}"
+            payload = root.body.payload
+            return (
+                f"reply blank_screen={'on' if payload.is_enabled else 'off'} "
+                f"detection={_named(payload.detection)} "
+                f"low={int(payload.low_brightness_duration_seconds)}s "
+                f"same={int(payload.same_tone_duration_seconds)}s"
+            )
         return None
     if domain == "relative_brightness":
         body = root.body

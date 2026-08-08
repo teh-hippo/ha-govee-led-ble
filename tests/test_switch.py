@@ -40,18 +40,33 @@ async def test_setup_switch_entry_h6199_controls_are_capability_gated(mock_h6199
 async def test_blank_screen_turn_on_and_off_send_the_register(mock_h6199_coordinator):
     c = mock_h6199_coordinator
     c.blank_screen = None
+    c.blank_screen_detection = 1
+    c.blank_screen_low_brightness_duration_seconds = 55
+    c.blank_screen_same_tone_duration_seconds = 600
     entity = H6199ControlSwitch(c, key="blank_screen")
     assert entity.is_on is None
     await entity.async_turn_on()
     assert c.blank_screen is True
-    c.send_command.assert_awaited_once_with(build_blank_screen(True))
+    c.send_command.assert_awaited_once_with(build_blank_screen(True, 1, 55, 600))
     c.refresh_state.assert_awaited_once_with(expected_blank_screen=True)
     c.send_command.reset_mock()
     c.refresh_state.reset_mock()
     await entity.async_turn_off()
     assert c.blank_screen is False
-    c.send_command.assert_awaited_once_with(build_blank_screen(False))
+    c.send_command.assert_awaited_once_with(build_blank_screen(False, 1, 55, 600))
     c.refresh_state.assert_awaited_once_with(expected_blank_screen=False)
+
+
+async def test_blank_screen_requires_policy_readback(mock_h6199_coordinator):
+    c = mock_h6199_coordinator
+    c.blank_screen = False
+    c.blank_screen_detection = None
+
+    with pytest.raises(ValueError, match="policy state has not been read"):
+        await H6199ControlSwitch(c, key="blank_screen").async_turn_on()
+
+    assert c.blank_screen is False
+    c.send_command.assert_not_awaited()
 
 
 async def test_blank_screen_rolls_back_when_the_write_fails(mock_h6199_coordinator):

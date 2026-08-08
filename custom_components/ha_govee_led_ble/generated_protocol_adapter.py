@@ -41,7 +41,8 @@ H6199StatusReply = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
 )
 
-_BLANK_SCREEN_PARAMETERS = b"\x02\x0a\x00\x78\x00"
+_BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS = 10
+_BLANK_SCREEN_SAME_TONE_SECONDS = 120
 
 
 def _check_tree(value: Any, seen: set[int] | None = None) -> None:
@@ -406,7 +407,12 @@ def build_h6199_white_balance(red: int, blue: int) -> bytes:
     return _serialize_xor(root)
 
 
-def build_h6199_blank_screen(enabled: bool) -> bytes:
+def build_h6199_blank_screen(
+    enabled: bool,
+    detection: int = 2,
+    low_brightness_duration_seconds: int = _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS,
+    same_tone_duration_seconds: int = _BLANK_SCREEN_SAME_TONE_SECONDS,
+) -> bytes:
     root = H6199CommandWrite()
     root.header = b"\x33"
     root.opcode = H6199CommandWrite.CommandOp.display_setting
@@ -415,7 +421,9 @@ def build_h6199_blank_screen(enabled: bool) -> bytes:
     body.len = 6
     payload = _child(H6199CommandWrite.BlankScreenPayload, body)
     payload.is_on = int(enabled)
-    payload._unnamed1 = _BLANK_SCREEN_PARAMETERS
+    payload.detection = H6199CommandWrite.BlankScreenDetection(detection)
+    payload.low_brightness_duration_seconds = max(0, min(0xFFFF, low_brightness_duration_seconds))
+    payload.same_tone_duration_seconds = max(0, min(0xFFFF, same_tone_duration_seconds))
     body.payload = payload
     root.body = body
     return _serialize_xor(root)
@@ -437,6 +445,8 @@ def build_h6199_relative_brightness(
     body.top_percent = max(0, min(100, top))
     body.right_percent = max(0, min(100, right))
     body.bottom_percent = max(0, min(100, bottom))
+    body.strip_left_percent = 0
+    body.strip_right_percent = 0
     root.body = body
     return _serialize_xor(root)
 

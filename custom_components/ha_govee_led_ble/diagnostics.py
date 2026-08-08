@@ -86,6 +86,11 @@ async def async_get_config_entry_diagnostics(
             edge: getattr(coordinator, f"relative_brightness_{edge}") for edge in ("left", "top", "right", "bottom")
         },
         "blank_screen": coordinator.blank_screen,
+        "blank_screen_policy": {
+            "detection": coordinator.blank_screen_detection,
+            "low_brightness_duration_seconds": coordinator.blank_screen_low_brightness_duration_seconds,
+            "same_tone_duration_seconds": coordinator.blank_screen_same_tone_duration_seconds,
+        },
         "expected_brightness_pct": expected_brightness[0] if expected_brightness is not None else None,
         "packet_log": packet_log,
         "last_rx_aa05_raw": last_rx_aa05_raw,

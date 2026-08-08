@@ -276,6 +276,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.relative_brightness_right: int | None = None
         self.relative_brightness_bottom: int | None = None
         self.blank_screen: bool | None = None
+        self.blank_screen_detection: int | None = None
+        self.blank_screen_low_brightness_duration_seconds: int | None = None
+        self.blank_screen_same_tone_duration_seconds: int | None = None
         self.packet_log: list[dict[str, Any]] = []
         self._expected_state: dict[str, tuple[Any, float]] = {}
         self._notify_started_monotonic: float | None = None
@@ -638,12 +641,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         observed = tuple(values)
                 else:
                     blank_screen = bool(generated.body.payload.is_enabled) if generated.body.setting == 10 else None
-                    if blank_screen is not None and self._accept_expected(
-                        "blank_screen",
-                        blank_screen,
-                    ):
-                        self.blank_screen = blank_screen
-                        observed = ("blank_screen",)
+                    if blank_screen is not None:
+                        payload = generated.body.payload
+                        self.blank_screen_detection = int(payload.detection)
+                        self.blank_screen_low_brightness_duration_seconds = int(payload.low_brightness_duration_seconds)
+                        self.blank_screen_same_tone_duration_seconds = int(payload.same_tone_duration_seconds)
+                        if self._accept_expected("blank_screen", blank_screen):
+                            self.blank_screen = blank_screen
+                            observed = ("blank_screen",)
             elif domain == RELATIVE_BRIGHTNESS_PACKET_TYPE:
                 edges = (
                     generated.body.left_percent,

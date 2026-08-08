@@ -453,7 +453,11 @@ def test_h6199_display_setting_and_edge_readbacks():
         proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0]),
         "H6199",
     )
-    assert blank is not None and blank.generated.body.payload.is_enabled == 0
+    assert blank is not None
+    assert blank.generated.body.payload.is_enabled == 0
+    assert int(blank.generated.body.payload.detection) == 2
+    assert blank.generated.body.payload.low_brightness_duration_seconds == 10
+    assert blank.generated.body.payload.same_tone_duration_seconds == 120
 
     edges = proto.decode_status_frame(
         proto.build_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41]),
@@ -467,14 +471,16 @@ def test_h6199_display_setting_and_edge_readbacks():
         31,
         41,
     )
-
-    assert (
-        proto.decode_status_frame(
-            proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 0, 0]),
-            "H6199",
-        )
-        is None
+    unexpected_strip_edges = proto.decode_status_frame(
+        proto.build_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41, 7, 8]),
+        "H6199",
     )
+    assert unexpected_strip_edges is not None
+    assert (
+        unexpected_strip_edges.generated.body.strip_left_percent,
+        unexpected_strip_edges.generated.body.strip_right_percent,
+    ) == (7, 8)
+
     assert proto.decode_status_frame(proto.build_packet(0xAA, 0xAE, [1, 3, 91, 91, 91]), "H6199") is None
 
 

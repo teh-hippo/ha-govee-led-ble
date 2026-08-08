@@ -131,6 +131,11 @@ async def test_surfaces_core_state(mock_h6199_coordinator):
     assert coord["is_on"] is True
     assert coord["effect"] == "video: movie"
     assert coord["expected_brightness_pct"] == 55
+    assert coord["blank_screen_policy"] == {
+        "detection": 2,
+        "low_brightness_duration_seconds": 10,
+        "same_tone_duration_seconds": 120,
+    }
 
 
 async def test_full_diagnostics_contains_no_ble_address(mock_h6199_coordinator):

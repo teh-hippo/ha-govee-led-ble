@@ -136,6 +136,9 @@ def test_notify_callback(h6199):
     assert (h6199.white_balance_red, h6199.white_balance_blue) == (21, 5)
     cb(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0])))
     assert h6199.blank_screen is False
+    assert h6199.blank_screen_detection == 2
+    assert h6199.blank_screen_low_brightness_duration_seconds == 10
+    assert h6199.blank_screen_same_tone_duration_seconds == 120
     cb(None, bytearray(proto.build_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41])))
     assert (
         h6199.relative_brightness,
