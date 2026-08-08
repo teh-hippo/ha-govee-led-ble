@@ -1,0 +1,25 @@
+[project]
+name = "h6199-bootstrap-relay"
+version = "0.0.0"
+requires-python = ">=3.14.2,<3.15"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider --tb=short"
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "S", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.14"
+explicit_package_bases = true
+check_untyped_defs = true
+warn_unused_ignores = true
