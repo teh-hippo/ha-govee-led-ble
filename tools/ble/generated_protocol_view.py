@@ -45,7 +45,11 @@ def _namespace(name: str, path: Path) -> None:
 
 def _prepare_generated_package() -> None:
     generated = _generated_dir()
-    _namespace("custom_components", generated.parents[2])
+    if generated.parent.name == "ha_govee_led_ble" and generated.parent.parent.name == "custom_components":
+        components_root = generated.parents[2]
+    else:
+        components_root = generated.parent
+    _namespace("custom_components", components_root)
     _namespace("custom_components.ha_govee_led_ble", generated.parent)
     _namespace(_PACKAGE, generated)
 

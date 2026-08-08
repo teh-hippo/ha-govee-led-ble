@@ -1,6 +1,10 @@
 """Unit tests for the Govee BLE protocol module."""
 
 import base64
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -9,6 +13,36 @@ from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from tools.ble.generated_protocol_view import describe_generated, query_frames
 
 H = bytes.fromhex
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_protocol_view_runs_from_flat_windows_tool_copy(tmp_path):
+    shutil.copytree(
+        ROOT / "custom_components/ha_govee_led_ble/generated_protocol",
+        tmp_path / "generated_protocol",
+    )
+    shutil.copy(ROOT / "tools/ble/generated_protocol_view.py", tmp_path)
+    shutil.copy(ROOT / "tools/ble/govee_send.py", tmp_path)
+
+    result = subprocess.run(  # noqa: S603 - fixed repository test script
+        [
+            sys.executable,
+            str(tmp_path / "govee_send.py"),
+            "build",
+            "aa060000000000000000000000000000000000ac",
+            "--checksum",
+            "raw",
+            "--model",
+            "H6199",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "query firmware" in result.stdout
+
 
 # diy_type04.ksy captured editor default palette.
 _DEFAULT_PALETTE = (
