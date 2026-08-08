@@ -35,12 +35,6 @@ remains available through the `paint_segments`, `set_segment_color` and `set_seg
 
 Copy `custom_components/ha_govee_led_ble/` into your HA `custom_components/` directory and restart.
 
-## Beta versions
-
-Preview builds are published from the `segments` branch as [GitHub pre-releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository/about-releases), tagged `vX.Y.Z-beta.N`. Stable installs never see them.
-
-To opt in, open the integration in HACS, choose **Redownload** from the three-dot menu, and enable **Show beta versions**. Turn it off and redownload to return to the stable channel.
-
 ## Configuration
 
 The integration auto-discovers nearby supported devices.
@@ -48,11 +42,6 @@ The integration auto-discovers nearby supported devices.
 To add manually in Home Assistant:
 
 **Settings → Devices & Services → Add Integration → Govee LED BLE**
-
-## Dashboards
-
-Example stock Lovelace dashboards live in [`docs/dashboards/`](docs/dashboards/). The integration uses standard Home
-Assistant light controls and effect selectors.
 
 ## Development
 

@@ -16,16 +16,16 @@
 - `config_flow.py` handles discovery/manual setup, infers model from BLE local name, and creates config entries keyed by device address.
 - `__init__.py` creates one `GoveeBLECoordinator` per config entry, performs first refresh, removes legacy entities, and forwards setup to the platforms listed in its `PLATFORMS` constant.
 - The coordinator is split across `coordinator*.py`: BLE connect/reconnect lifecycle, notification subscription, keep-alive/state queries, optimistic state fields, and bounded raw packet logging for diagnostics.
-- Kaitai schemas own wire structure. Committed modules in `generated_protocol/` are generated from them; handwritten protocol code is only a temporary migration layer.
+- Kaitai schemas own wire structure. Committed modules in `generated_protocol/` are generated from them; handwritten protocol code retains only semantic transforms, checksums and transport framing.
 - `light.py` is the primary control surface, with the custom services in `light_services.py`.
 - `h6199_controls.py` contains shared advanced control entities for Number/Select/Switch; `number.py`, `select.py`, and `switch.py` are thin entry-point wrappers.
-- `scenes.py` stores and decodes the H617A scene catalog used by light effect selection.
+- `scenes.py` loads the committed per-model scene snapshots used by light effect selection.
 
 Name a module here only when something else in this file depends on knowing it exists. A full inventory rots: the last one still listed four platforms after there were seven.
 
 ## Key repository conventions
 
-- Model capabilities are declared in `const.py` via `ModelProfile` fields (`supports_video_mode`, `supports_diy`, `static_readback_echoes_color`, etc.); new model behavior should be wired through a profile field first, then entity setup. Some capabilities are derived rather than declared (`supports_segments`, `supports_music_mode`, `custom_effect_kinds` are properties), so check before trying to set one.
+- Model capabilities are declared in `const.py` via `ModelProfile` fields such as `supports_scenes`, `supports_scene_speed`, `supports_video_mode`, `supports_white_balance`, `supports_blank_screen`, `static_readback_echoes_color`, and segment fields. New model behaviour should be wired through a profile field first, then entity setup. `supports_segments` and `supports_music_mode` are derived properties, so check before trying to set them.
 - Prefer root-cause refactoring over band-aid fixes; when behavior crosses layers, update shared paths instead of patching a single call site.
 - Treat changes holistically across capabilities, protocol encode/decode, coordinator state handling, entity/service wiring, diagnostics, and tests so behavior stays consistent.
 - Advanced entities are capability-gated at setup time (see `h6199_controls.py`), so unsupported controls are not created for a model.
