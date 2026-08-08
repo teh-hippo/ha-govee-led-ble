@@ -1,9 +1,10 @@
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
-from tools.ble.refresh_scene_catalogues import SNAPSHOT_DIR, build_snapshot
+from tools.ble.refresh_scene_catalogues import SNAPSHOT_DIR, _snapshot_speed, build_snapshot
 
 
 def _effect(effect_id: int, code: int, variant: str = "") -> dict[str, object]:
@@ -135,6 +136,70 @@ def test_snapshot_rejects_duplicate_vendor_identity():
         build_snapshot(raw, "H617A")
 
 
+def _speed_record(*, brightness_speed: int = 250):
+    return SimpleNamespace(
+        body=SimpleNamespace(
+            num_brightness_blocks=1,
+            selected_area_movement=SimpleNamespace(speed=250),
+            overall_movement=SimpleNamespace(speed=250),
+            colour_speed=250,
+            brightness_blocks=[SimpleNamespace(brightness_speed=brightness_speed)],
+        )
+    )
+
+
+def _speed_effect(config: list[dict[str, object]]) -> dict[str, object]:
+    return {
+        "sceneCode": 1,
+        "sceneType": 2,
+        "scenceParam": "unused",
+        "speedInfo": {
+            "supSpeed": True,
+            "config": json.dumps(config),
+        },
+    }
+
+
+def test_snapshot_omits_speed_with_an_out_of_range_page(monkeypatch):
+    monkeypatch.setattr(
+        "tools.ble.refresh_scene_catalogues._parse_scene_records",
+        lambda _param: [_speed_record()],
+    )
+    effect = _speed_effect([{"page": 1, "moveIn": [200, 225, 250], "defaultIndex": 2}])
+
+    with pytest.warns(UserWarning, match="outside 1 records; omitting Speed"):
+        assert _snapshot_speed(effect, "Broken page") is None
+
+
+def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
+    monkeypatch.setattr(
+        "tools.ble.refresh_scene_catalogues._parse_scene_records",
+        lambda _param: [_speed_record(brightness_speed=255)],
+    )
+    effect = _speed_effect(
+        [
+            {
+                "page": 0,
+                "bright": [{"brightPage": 0, "brightValue": [204, 229, 250]}],
+                "defaultIndex": 2,
+            }
+        ]
+    )
+
+    with pytest.warns(UserWarning, match="does not reproduce the stored scene body"):
+        assert _snapshot_speed(effect, "Stale default") is None
+
+    assert _snapshot_speed(effect, "Captured rewrite", allow_default_rewrite=True) == {
+        "default_index": 2,
+        "pages": [
+            {
+                "page": 0,
+                "brightness": [{"block": 0, "values": [204, 229, 250]}],
+            }
+        ],
+    }
+
+
 @pytest.mark.parametrize(
     ("sku", "categories", "effects", "digest"),
     [
@@ -142,7 +207,7 @@ def test_snapshot_rejects_duplicate_vendor_identity():
             "H617A",
             5,
             83,
-            "6625afeddb0d6495abf80bad9f3997909cb837acb6f590cc31c7ad8b8e33444b",
+            "4e76c0bc2057f293ffa73f3540110fb9e978829c0f0d4edde62207a1912c8a35",
         ),
         (
             "H6199",

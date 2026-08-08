@@ -103,7 +103,7 @@ def test_speed_default_position_reproduces_every_other_stored_param():
         if apply_scene_speed(stored, scene.speed, scene.speed.default_index) != stored:
             differing.add(name)
 
-    assert differing == {"glacier", "mysterious"}
+    assert differing == {"glacier"}
 
 
 @pytest.mark.parametrize("index,expected", [(-1, 237), (0, 237), (1, 244), (2, 250), (7, 250)])
@@ -159,6 +159,7 @@ def test_speed_metadata_includes_colour_and_brightness_only_scenes():
     assert scene.speed is not None
     assert scene.speed.pages[0].colour_speed
     assert scene.speed.pages[0].brightness_speeds
+    assert SCENES["mysterious"].speed is None
     assert SCENES["heartbeat"].speed is None
 
 

@@ -2087,25 +2087,7 @@
       "name": "Mysterious",
       "code": 2214,
       "scene_type": 2,
-      "param": "AikAAAABAAH/AAH/ZGQA/AMG/wAAAP8AAAD//38A//8AiwD/AAAAAAAAAikAAAAIAAH/AAP/ZGQCADIG/3D//38A//8AAP//AKD/AP8AEgD8AAAAAg==",
-      "speed": {
-        "default_index": 2,
-        "pages": [
-          {
-            "page": 1,
-            "brightness": [
-              {
-                "block": 0,
-                "values": [
-                  204,
-                  229,
-                  250
-                ]
-              }
-            ]
-          }
-        ]
-      }
+      "param": "AikAAAABAAH/AAH/ZGQA/AMG/wAAAP8AAAD//38A//8AiwD/AAAAAAAAAikAAAAIAAH/AAP/ZGQCADIG/3D//38A//8AAP//AKD/AP8AEgD8AAAAAg=="
     },
     {
       "category_id": 139,

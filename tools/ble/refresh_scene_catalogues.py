@@ -11,6 +11,7 @@ import math
 import sys
 import urllib.parse
 import urllib.request
+import warnings
 from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
@@ -28,6 +29,10 @@ API_URL = "https://app2.govee.com/appsku/v1/light-effect-libraries"
 APP_VERSION = "9999999"
 SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_ble" / "scene_catalogues"
 DEFAULT_SKUS = ("H617A", "H6199")
+
+# Glacier's current iOS application was captured rewriting the two stored 0xff movement
+# bytes to the catalogue's default value 250 when applying the scene.
+_CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})
 
 
 def fetch_library(sku: str) -> dict[str, Any]:
@@ -85,7 +90,12 @@ def _parse_scene_records(param: str) -> list[Any]:
     return cast(list[Any], parsed.records)
 
 
-def _snapshot_speed(effect: dict[str, Any], label: str) -> dict[str, Any] | None:
+def _snapshot_speed(
+    effect: dict[str, Any],
+    label: str,
+    *,
+    allow_default_rewrite: bool = False,
+) -> dict[str, Any] | None:
     if not effect.get("speedInfo", {}).get("supSpeed"):
         return None
     if int(effect.get("sceneType", 2)) != 2:
@@ -110,9 +120,11 @@ def _snapshot_speed(effect: dict[str, Any], label: str) -> dict[str, Any] | None
     for entry in entries:
         page = int(entry["page"])
         if not 0 <= page < len(records):
-            if int(effect["sceneCode"]) == 2219:
-                return None
-            raise ValueError(f"{label}: Speed page {page} outside {len(records)} records")
+            warnings.warn(
+                f"{label}: Speed page {page} outside {len(records)} records; omitting Speed",
+                stacklevel=2,
+            )
+            return None
 
         brightness = [
             {
@@ -152,6 +164,35 @@ def _snapshot_speed(effect: dict[str, Any], label: str) -> dict[str, Any] | None
 
     if len(option_counts) != 1:
         raise ValueError(f"{label}: inconsistent Speed option counts")
+
+    mismatches: list[str] = []
+    for page_spec in pages:
+        body = records[page_spec["page"]].body
+        for field, actual in (
+            ("move_in", body.selected_area_movement.speed),
+            ("move_all", body.overall_movement.speed),
+            ("colour_speed", body.colour_speed),
+        ):
+            if values := page_spec.get(field):
+                expected = values[default_index]
+                if actual != expected:
+                    mismatches.append(f"page {page_spec['page']} {field} stores {actual}, default is {expected}")
+        for brightness_spec in page_spec.get("brightness", []):
+            actual = body.brightness_blocks[brightness_spec["block"]].brightness_speed
+            expected = brightness_spec["values"][default_index]
+            if actual != expected:
+                mismatches.append(
+                    f"page {page_spec['page']} brightness block {brightness_spec['block']} "
+                    f"stores {actual}, default is {expected}"
+                )
+
+    if mismatches and not allow_default_rewrite:
+        warnings.warn(
+            f"{label}: default Speed metadata does not reproduce the stored scene body "
+            f"({'; '.join(mismatches)}); omitting Speed",
+            stacklevel=2,
+        )
+        return None
     return {"default_index": default_index, "pages": pages}
 
 
@@ -197,6 +238,7 @@ def build_snapshot(raw: dict[str, Any], sku: str) -> dict[str, Any]:
                     speed := _snapshot_speed(
                         effect,
                         f"{name}-{variant}" if variant else name,
+                        allow_default_rewrite=(sku, scene_id, effect_id) in _CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES,
                     )
                 ):
                     entry["speed"] = speed
