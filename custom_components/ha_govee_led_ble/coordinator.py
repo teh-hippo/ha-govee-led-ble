@@ -66,7 +66,7 @@ _CORE_STATE_FIELDS = (
     "rgb_color",
     "color_temp_kelvin",
     "effect",
-    "diy_slot",
+    "diy_code",
 )
 _COLOR_MODE_FIELDS = (
     "video_full_screen",
@@ -108,7 +108,7 @@ def _expected_color_mode_from_generated(
     mode = getattr(generated.body.sub, "name", None)
     detail = generated.body.sub_body
     if mode == "diy":
-        return ParsedMode.DIY, int(detail.slot)
+        return ParsedMode.DIY, int(detail.code)
     if mode == "music":
         return ParsedMode.MUSIC, None
     if mode == "scene":
@@ -254,7 +254,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.hw_version: str | None = None
         self.music_mode = "off"
         self.video_mode = "off"
-        self.diy_slot: int | None = None
+        self.diy_code: int | None = None
         self.color_mode: ParsedMode | None = None
         self._scene_code: int | None = None
         self.scene_speed_scene_code: int | None = None
@@ -520,7 +520,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     ) -> tuple[str, ...]:
         parsed = parse_generated_color_mode(generated, self.model)
         if parsed.mode is ParsedMode.DIY:
-            mode_detail = parsed.diy_slot
+            mode_detail = parsed.diy_code
         else:
             mode_detail = None
         observed_color_mode = parsed.mode, mode_detail
@@ -541,7 +541,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             if parsed.music_mode is not None and self._accept_expected("music_mode", parsed.music_mode):
                 self.music_mode = parsed.music_mode
                 self.video_mode, self.effect = "off", None
-                self.diy_slot = None
+                self.diy_code = None
                 observed.append("music_mode")
             else:
                 accept_parameters = False
@@ -549,7 +549,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             if parsed.video_mode is not None and self._accept_expected("video_mode", parsed.video_mode):
                 self.video_mode = parsed.video_mode
                 self.music_mode, self.effect = "off", None
-                self.diy_slot = None
+                self.diy_code = None
                 observed.append("video_mode")
             else:
                 accept_parameters = False
@@ -557,7 +557,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             if self._accept_expected("effect", None):
                 self.effect = None
                 self.music_mode = self.video_mode = "off"
-                self.diy_slot = parsed.diy_slot
+                self.diy_code = parsed.diy_code
                 observed.append("effect")
             else:
                 accept_parameters = False
@@ -565,17 +565,17 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             if self._accept_expected("effect", scene_effect):
                 self.effect = scene_effect
                 self.music_mode, self.video_mode = "off", "off"
-                self.diy_slot = None
+                self.diy_code = None
                 self._sync_scene_speed(scene_effect)
                 observed.append("effect")
         elif parsed.mode is ParsedMode.COLOUR:
             if self._accept_expected("effect", None):
                 self.effect, self.music_mode, self.video_mode = None, "off", "off"
-                self.diy_slot = None
+                self.diy_code = None
                 observed.append("effect")
         else:
             self.effect = None
-            self.diy_slot = None
+            self.diy_code = None
             self.music_mode = self.video_mode = "off"
             observed.append("effect")
         if accept_parameters:

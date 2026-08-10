@@ -636,7 +636,7 @@ def build_music_params_a3(
 
 
 class ParsedMode(Enum):
-    """Operating mode from a colour-mode reply; DIY carries a slot, music and video their own state."""
+    """Operating mode from a colour-mode reply; DIY carries a code, music and video their own state."""
 
     UNKNOWN = auto()
     COLOUR = auto()
@@ -651,7 +651,7 @@ class ParsedColorModeResponse:
     mode: ParsedMode = ParsedMode.UNKNOWN
     effect: str | None = None
     scene_code: int | None = None
-    diy_slot: int | None = None
+    diy_code: int | None = None
     music_mode: str | None = None
     video_mode: str | None = None
     video_full_screen: bool | None = None
@@ -720,7 +720,7 @@ def parse_generated_color_mode(
     if mode == COLOR_MODE_DIY:
         return ParsedColorModeResponse(
             mode=ParsedMode.DIY,
-            diy_slot=int(body.mode_body.slot),
+            diy_code=int(body.mode_body.code),
         )
     if mode == COLOR_MODE_MUSIC:
         detail = body.mode_body

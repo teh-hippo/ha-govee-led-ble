@@ -12,8 +12,6 @@ asserts:
   expected: 5
 - actual: body.mode
   expected: 10
-- actual: body.mode_body.slot
-  expected: 132
-- actual: body.mode_body.type_byte
-  expected: 3
+- actual: body.mode_body.code
+  expected: 900
 fixture_sha256: 4b80f383403c4e91ba473c843e8f0e916e7a4cb51dbfebbbbc7e577c4c4ae4c6

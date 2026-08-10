@@ -39,7 +39,7 @@ def _c(**kw):
 async def test_initial_state_and_update(coord, h6199):
     assert (coord.is_on, coord.brightness_pct, coord.rgb_color) == (False, 100, (255, 255, 255))
     assert coord.effect is None and coord.address == "AA:BB:CC:DD:EE:FF" and coord.model == "H617A"
-    assert (coord.music_mode, coord.video_mode, coord.diy_slot) == ("off", "off", None)
+    assert (coord.music_mode, coord.video_mode, coord.diy_code) == ("off", "off", None)
     assert coord.color_mode is None
     assert coord.profile == MODEL_PROFILES["H617A"] and coord.profile.state_readable
     assert coord.profile.supports_music_mode and not coord.profile.supports_video_mode
@@ -52,7 +52,7 @@ async def test_initial_state_and_update(coord, h6199):
         "rgb_color": (255, 0, 128),
         "color_temp_kelvin": None,
         "effect": None,
-        "diy_slot": None,
+        "diy_code": None,
     }
     with (
         patch.object(coord, "_ensure_connected", new_callable=AsyncMock),
@@ -467,6 +467,41 @@ def test_readback_mode_mutual_exclusion(h6199):
     )
 
 
+def test_diy_readback_retains_complete_code(coord):
+    coord.is_on = True
+    coord._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_DIY, 0x84, 0x03])),
+    )
+
+    assert coord.color_mode is proto.ParsedMode.DIY
+    assert coord.active_mode == "custom"
+    assert coord.diy_code == 900
+
+
+async def test_diy_command_expectation_rejects_truncated_readback(coord):
+    command = proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x03])
+    client = _c(write_gatt_char=AsyncMock())
+    with patch.object(coord, "_ensure_connected", return_value=client):
+        await coord.send_command(command)
+
+    assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.DIY, 800)
+
+    coord._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x00])),
+    )
+    assert coord.color_mode is None
+    assert coord.diy_code is None
+
+    coord._notify_callback(
+        None,
+        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x03])),
+    )
+    assert coord.color_mode is proto.ParsedMode.DIY
+    assert coord.diy_code == 800
+
+
 async def test_send_command_arms_expected_state(coord, h6199):
     c = _c(write_gatt_char=AsyncMock())
     with patch.object(coord, "_ensure_connected", return_value=c):
@@ -533,14 +568,14 @@ def test_scene_expectation_rejects_delayed_same_mode_reply(h6199):
 
 def test_unknown_mode_clears_restored_metadata(h6199):
     h6199.effect = "Flame"
-    h6199.diy_slot = 0xF0
+    h6199.diy_code = 0xF0
     h6199.music_mode, h6199.video_mode = "rhythm", "movie"
 
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x99, 0x01])))
 
     assert h6199.color_mode is proto.ParsedMode.UNKNOWN
     assert h6199.effect is None
-    assert h6199.diy_slot is None
+    assert h6199.diy_code is None
     assert (h6199.music_mode, h6199.video_mode) == ("off", "off")
 
 
@@ -1037,6 +1072,9 @@ def test_expectations_from_packet_covers_every_command_family():
     assert _expectations_from_packet(proto.build_white_brightness(80))["white_brightness"] == 80
 
     assert _expectations_from_packet(proto.build_scene(scene_code))["effect"] == proto.SCENE_EFFECT_BY_ID[scene_code]
+
+    diy = _expectations_from_packet(proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x03]))
+    assert diy["color_mode"] == (proto.ParsedMode.DIY, 800)
 
     rhythm = _expectations_from_packet(
         proto.build_music_mode_with_color(rhythm_id, sensitivity=50, color=(10, 20, 30), calm=True)

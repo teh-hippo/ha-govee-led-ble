@@ -59,7 +59,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     def active_mode(self) -> str:
         if not self.is_on:
             return "off"
-        if self.diy_slot is not None:
+        if self.diy_code is not None:
             return "custom"
         if self.effect in self.scene_name_set:
             return "scene"
@@ -146,7 +146,7 @@ class _ActiveModeMixin(_CoordinatorBase):
     def _enter_static_mode(self) -> None:
         """Clear every non-static mode so exactly one operating mode is active."""
         self.effect = None
-        self.diy_slot = None
+        self.diy_code = None
         self.music_mode = self.video_mode = "off"
 
     async def async_select_music_slug(self, slug: str) -> None:
@@ -176,7 +176,7 @@ class _ActiveModeMixin(_CoordinatorBase):
                 await self.send_command(packet)
         self.music_mode, self.video_mode = slug, "off"
         self.effect = None
-        self.diy_slot = None
+        self.diy_code = None
 
     async def async_restore_pre_mode(self) -> None:
         snap = self._pre_mode_snapshot

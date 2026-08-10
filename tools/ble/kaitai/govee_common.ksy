@@ -15,10 +15,8 @@ types:
           min: 2
   diy_selector:
     seq:
-      - id: slot
-        type: u1
-      - id: type_byte
-        type: u1
+      - id: code
+        type: u2le
   music_selector:
     seq:
       - id: mode_id

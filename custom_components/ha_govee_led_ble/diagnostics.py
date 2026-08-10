@@ -65,7 +65,7 @@ async def async_get_config_entry_diagnostics(
         "scene_speed_position": (
             coordinator.scene_speed_index + 1 if coordinator.scene_speed_index is not None else None
         ),
-        "diy_slot": coordinator.diy_slot,
+        "diy_code": coordinator.diy_code,
         "color_mode": coordinator.color_mode.name.lower() if coordinator.color_mode is not None else None,
         "video_saturation": coordinator.video_saturation,
         "video_sound_effects": coordinator.video_sound_effects,

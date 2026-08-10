@@ -134,13 +134,13 @@ async def test_turn_on_scene_applies_and_clears_sticky(light, mock_coordinator):
     co = mock_coordinator
     co.is_on = True
     co.music_mode, co.video_mode = "rhythm", "off"
-    co.diy_slot = 0xF0
+    co.diy_code = 0xF0
     await light.async_turn_on(effect="rainbow")
     sent = [call.args[0] for call in co.send_command.call_args_list]
     scene = SCENES["rainbow"]
     assert sent == proto.build_scene_multi(scene.param, scene.code, scene.scene_type)
     assert co.effect == "rainbow"
-    assert co.diy_slot is None
+    assert co.diy_code is None
     assert co.music_mode == "off" and co.video_mode == "off"
 
 

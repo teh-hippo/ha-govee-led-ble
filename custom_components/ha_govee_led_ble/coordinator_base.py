@@ -36,7 +36,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     music_sensitivity: int
     music_color: tuple[int, int, int] | None
     music_calm: bool
-    diy_slot: int | None
+    diy_code: int | None
     color_mode: ParsedMode | None
     scene_speed_scene_code: int | None
     scene_speed_index: int | None

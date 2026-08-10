@@ -33,7 +33,7 @@ async def test_surfaces_segment_fields(mock_h6199_coordinator):
     assert coord["supports_segments"] is True
     assert coord["segment_count"] == 15
     assert coord["segment_colors"] == colors
-    assert coord["diy_slot"] is None
+    assert coord["diy_code"] is None
     assert coord["color_mode"] is None
 
 

@@ -124,7 +124,7 @@ _STATE_FIELDS = (
     "is_on brightness_pct rgb_color color_temp_kelvin effect video_saturation "
     "segment_colors video_full_screen video_sound_effects video_sound_effects_softness "
     "white_brightness music_sensitivity "
-    "music_calm music_color diy_slot music_mode video_mode"
+    "music_calm music_color diy_code music_mode video_mode"
 ).split()
 
 
@@ -253,7 +253,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         if (
             coordinator.effect is not None
-            or coordinator.diy_slot is not None
+            or coordinator.diy_code is not None
             or coordinator.music_mode != "off"
             or coordinator.video_mode != "off"
         ):
@@ -307,7 +307,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         if coordinator.color_mode not in (None, ParsedMode.COLOUR):
             return
-        if coordinator.music_mode != "off" or coordinator.video_mode != "off" or coordinator.diy_slot is not None:
+        if coordinator.music_mode != "off" or coordinator.video_mode != "off" or coordinator.diy_code is not None:
             return
         if coordinator.effect is not None:
             return
@@ -391,7 +391,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             for packet in _scene_packets(coordinator.profile, scene, speed_index=speed_index):
                 await coordinator.send_command(packet)
             coordinator.effect = key
-            coordinator.diy_slot = None
+            coordinator.diy_code = None
             coordinator.music_mode = coordinator.video_mode = "off"
             coordinator._sync_scene_speed(key, speed_index=speed_index)
             return

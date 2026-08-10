@@ -193,7 +193,7 @@ def _format_h617a_command(root: Any) -> str | None:
     if sub == "scene":
         return f"scene id={int(detail.code)}"
     if sub == "diy":
-        return f"diy slot={int(detail.slot):#04x} type={int(detail.type_byte):#04x}"
+        return f"diy code={int(detail.code)} ({int(detail.code):#06x})"
     if sub == "music":
         colour = _rgb(detail.rgb) if detail.manual_color_count else "auto"
         return f"music {_named(detail.mode_id)} sensitivity={int(detail.sensitivity)} colour={colour}"
@@ -297,7 +297,7 @@ def _format_h617a_status(root: Any) -> str | None:
     if mode == "scene":
         return f"reply colour_mode=scene id={int(detail.scene_id)}"
     if mode == "diy":
-        return f"reply colour_mode=diy slot={int(detail.slot):#04x} type={int(detail.type_byte):#04x}"
+        return f"reply colour_mode=diy code={int(detail.code)} ({int(detail.code):#06x})"
     if mode == "music":
         colour = _rgb(detail.rgb) if detail.manual_color_count else "auto"
         return (

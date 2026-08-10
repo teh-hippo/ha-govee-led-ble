@@ -12,8 +12,6 @@ provenance:
 asserts:
 - actual: body.sub
   expected: 10
-- actual: body.sub_body.slot
-  expected: 32
-- actual: body.sub_body.type_byte
-  expected: 3
+- actual: body.sub_body.code
+  expected: 800
 fixture_sha256: d746f1faf539e2775896740100522a5f212125ee308ebc938e8eac817a33337e

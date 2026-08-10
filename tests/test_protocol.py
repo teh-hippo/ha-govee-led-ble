@@ -699,10 +699,22 @@ def test_static_readback_carries_no_colour():
         assert parsed.rgb_color is None and parsed.white_brightness is None
 
 
-def test_parse_direct_diy_slot_readback():
+def test_parse_direct_diy_code_readback():
     parsed = _parse_color(bytes([0x0A, 0xF0]))
     assert parsed.mode is proto.ParsedMode.DIY
-    assert parsed.diy_slot == 0xF0
+    assert parsed.diy_code == 0xF0
+
+    parsed = _parse_color(bytes([0x0A, 0x20, 0x03]))
+    assert parsed.mode is proto.ParsedMode.DIY
+    assert parsed.diy_code == 800
+
+
+def test_describe_diy_uses_complete_code():
+    command = (ROOT / "tools/ble/kaitai/src/command_write_diy_saved.bin").read_bytes()
+    status = (ROOT / "tools/ble/kaitai/src/status_reply_cm_diy_saved.bin").read_bytes()
+
+    assert describe_generated(command, "TX", "H617A") == "diy code=800 (0x0320)"
+    assert describe_generated(status, "RX", "H617A") == "reply colour_mode=diy code=900 (0x0384)"
 
 
 def test_parse_music_calm_only_for_rhythm():

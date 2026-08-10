@@ -88,8 +88,7 @@ class GoveeCommon(ReadWriteKaitaiStruct):
             self._root = _root
 
         def _read(self):
-            self.slot = self._io.read_u1()
-            self.type_byte = self._io.read_u1()
+            self.code = self._io.read_u2le()
             self._dirty = False
 
 
@@ -99,8 +98,7 @@ class GoveeCommon(ReadWriteKaitaiStruct):
 
         def _write__seq(self, io=None):
             super(GoveeCommon.DiySelector, self)._write__seq(io)
-            self._io.write_u1(self.slot)
-            self._io.write_u1(self.type_byte)
+            self._io.write_u2le(self.code)
 
 
         def _check(self):
