@@ -1,4 +1,19 @@
-"""Canonical, editor-neutral layered scene values."""
+"""Canonical, editor-neutral layered scene values.
+
+``effect_domain.py`` must import and re-export ``AppliedArea``, ``BrightnessOrder``,
+``BrightnessPattern``, ``CatalogueRef``, ``Distribution``, ``EffectLayer``,
+``LayeredEffect``, ``LayeredScene``, ``Movement``, ``Selection`` and
+``SelectionType`` rather than defining parallel layered types.  It must alias
+``LayeredSceneValidationError`` as its shared ``EffectValidationError`` and delegate
+the ``advanced`` and ``scene_layered`` JSON bodies to the value converters here.
+
+``Selection.type`` and ``BrightnessPattern.order`` remain raw integers so unknown
+wire values survive persistence.  Their enums provide names for known values only.
+Authoring limits belong in UX editor and capability validation, not this module.
+Decoders source split flag values from generated Kaitai properties.  The
+``raw_param`` field records source provenance; these converters do not encode edited
+DTOs back to wire bytes.
+"""
 
 from __future__ import annotations
 
@@ -37,8 +52,6 @@ __all__ = [
 ]
 
 _BYTE_COUNT = 0xFF
-_LAYER_GRADIENT_FLAG = 0x02
-_MOVEMENT_KNOWN_FLAGS = 0x17
 
 
 class LayeredSceneValidationError(ValueError):
@@ -125,8 +138,6 @@ class Movement:
         _validate_byte(self.distance, "movement distance")
         _validate_byte(self.speed, "movement speed")
         _validate_byte(self.unknown_flags, "movement unknown flags")
-        if self.unknown_flags & _MOVEMENT_KNOWN_FLAGS:
-            raise LayeredSceneValidationError("movement unknown flags overlap known flags")
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,8 +180,6 @@ class EffectLayer:
         _validate_instance(self.overall_movement, Movement, "overall movement")
         _validate_byte(self.priority, "layer priority")
         _validate_byte(self.unknown_flags, "layer unknown flags")
-        if self.unknown_flags & _LAYER_GRADIENT_FLAG:
-            raise LayeredSceneValidationError("layer unknown flags overlap the gradient flag")
         if not isinstance(self.excess, bytes):
             raise LayeredSceneValidationError("layer excess must be bytes")
 
@@ -260,7 +269,7 @@ def _layer_to_value(layer: EffectLayer) -> dict[str, JsonValue]:
             "width_tenths": layer.area.width_tenths,
         },
         "selection": {
-            "type": layer.selection.type,
+            "type": int(layer.selection.type),
             "param_1": layer.selection.param_1,
             "param_2": layer.selection.param_2,
         },
@@ -269,7 +278,7 @@ def _layer_to_value(layer: EffectLayer) -> dict[str, JsonValue]:
             {
                 "scope_high": pattern.scope_high,
                 "scope_low": pattern.scope_low,
-                "order": pattern.order,
+                "order": int(pattern.order),
                 "change_speed": pattern.change_speed,
                 "brightest_retention": pattern.brightest_retention,
                 "darkest_retention": pattern.darkest_retention,
