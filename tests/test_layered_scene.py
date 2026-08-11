@@ -251,6 +251,54 @@ def test_scene_round_trip_preserves_raw_parameter_provenance() -> None:
     assert layered_scene_from_value(document) == scene
 
 
+def test_scene_value_defaults_omitted_raw_parameter_to_empty_bytes() -> None:
+    document = layered_scene_to_value(
+        LayeredScene(
+            template=CatalogueRef("H617A", scene_id=1033, effect_id=1095),
+            effect=LayeredEffect((_layer(),)),
+        )
+    )
+    document.pop("raw_param")
+
+    assert layered_scene_from_value(document).raw_param == b""
+
+
+@pytest.mark.parametrize(
+    ("raw_param", "expected"),
+    [
+        pytest.param("", b"", id="empty"),
+        pytest.param("00ff1080", b"\x00\xff\x10\x80", id="valid"),
+    ],
+)
+def test_scene_value_accepts_supplied_hex_raw_parameter(raw_param: str, expected: bytes) -> None:
+    document = layered_scene_to_value(
+        LayeredScene(
+            template=CatalogueRef("H617A", scene_id=1033, effect_id=1095),
+            effect=LayeredEffect((_layer(),)),
+        )
+    )
+    document["raw_param"] = raw_param
+
+    assert layered_scene_from_value(document).raw_param == expected
+
+
+@pytest.mark.parametrize("raw_param", [None, 1, [], "0", "not-hex"])
+def test_scene_value_rejects_invalid_supplied_raw_parameter(raw_param: object) -> None:
+    document = cast(
+        dict[str, Any],
+        layered_scene_to_value(
+            LayeredScene(
+                template=CatalogueRef("H617A", scene_id=1033, effect_id=1095),
+                effect=LayeredEffect((_layer(),)),
+            )
+        ),
+    )
+    document["raw_param"] = raw_param
+
+    with pytest.raises(LayeredSceneValidationError, match="scene raw parameter must be a hexadecimal string"):
+        layered_scene_from_value(document)
+
+
 def test_unknown_enums_flags_and_excess_round_trip_without_normalisation() -> None:
     layer = replace(
         _layer(),

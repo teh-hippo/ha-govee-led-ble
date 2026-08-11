@@ -258,7 +258,7 @@ def layered_scene_from_value(raw: Mapping[str, Any]) -> LayeredScene:
         template=_catalogue_ref_from_value(_required_mapping(value, "template")),
         effect=layered_effect_from_value(_required_mapping(value, "effect")),
         speed_index=_optional_int(value, "speed_index"),
-        raw_param=_hex_bytes(value.get("raw_param"), "scene raw parameter"),
+        raw_param=_hex_bytes(value.get("raw_param", ""), "scene raw parameter"),
     )
 
 
