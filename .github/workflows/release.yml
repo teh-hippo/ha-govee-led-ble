@@ -50,7 +50,6 @@ jobs:
         with:
           tag_name: latest
           name: latest
-          target_commitish: ${{ steps.semantic_release.outputs.tag }}
           generate_release_notes: false
           prerelease: false
           overwrite_files: true
