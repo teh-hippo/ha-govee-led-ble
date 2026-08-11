@@ -34,13 +34,23 @@ jobs:
           github_token: ${{ secrets.RELEASE_TOKEN }}
           changelog: false
 
+      - name: Move latest tag to current release
+        if: ${{ steps.semantic_release.outputs.released == 'true' && steps.semantic_release.outputs.is_prerelease == 'false' }}
+        env:
+          RELEASE_TAG: ${{ steps.semantic_release.outputs.tag }}
+        run: |
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          release_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          git tag --force latest "$release_commit"
+          git push --force origin refs/tags/latest
+
       - name: Create/Update latest GitHub Release
         if: ${{ steps.semantic_release.outputs.released == 'true' && steps.semantic_release.outputs.is_prerelease == 'false' }}
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           tag_name: latest
           name: latest
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ steps.semantic_release.outputs.tag }}
           generate_release_notes: false
           prerelease: false
           overwrite_files: true
