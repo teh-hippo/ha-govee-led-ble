@@ -226,6 +226,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         address: str,
         model: str,
         *,
+        configuration_url: str,
         effect_families: frozenset[str] | None = None,
     ) -> None:
         profile = get_profile(model)
@@ -236,6 +237,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             update_interval=timedelta(seconds=30) if profile.state_readable else None,
         )
         self.address, self.model, self.profile = address, model, profile
+        self.configuration_url = configuration_url
         self.effect_families = default_effect_families(model) if effect_families is None else effect_families
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
@@ -298,6 +300,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             name=f"Govee {self.model}",
             manufacturer="Govee",
             model=self.model,
+            configuration_url=self.configuration_url,
             sw_version=self.fw_version,
             hw_version=self.hw_version,
         )

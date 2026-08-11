@@ -19,6 +19,7 @@ from .const import (
     resolve_model,
 )
 from .coordinator import GoveeBLECoordinator
+from .editor import async_register_editor_panel, editor_url
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
@@ -71,6 +72,7 @@ def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    await async_register_editor_panel(hass)
     return True
 
 
@@ -187,6 +189,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         hass,
         entry.unique_id,
         model,
+        configuration_url=editor_url(entry.entry_id),
         effect_families=effect_families_from_options(model, entry.options),
     )
     await coordinator.async_config_entry_first_refresh()

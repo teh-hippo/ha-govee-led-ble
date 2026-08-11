@@ -8,15 +8,27 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import PreModeSnapshot
 from custom_components.ha_govee_led_ble.light_services import apply_active_video_mode
 
+_CONFIGURATION_URL = "homeassistant://ha-govee-led-ble/editor/test-entry"
+
 
 @pytest.fixture
 def coord(hass):
-    return GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A")
+    return GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:FF",
+        "H617A",
+        configuration_url=_CONFIGURATION_URL,
+    )
 
 
 @pytest.fixture
 def h6199(hass):
-    return GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199")
+    return GoveeBLECoordinator(
+        hass,
+        "11:22:33:44:55:66",
+        "H6199",
+        configuration_url=_CONFIGURATION_URL,
+    )
 
 
 def _sent(sc):

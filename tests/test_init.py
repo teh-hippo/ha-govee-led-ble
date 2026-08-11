@@ -13,6 +13,13 @@ from custom_components.ha_govee_led_ble import (
     async_unload_entry,
 )
 from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, MODEL_PROFILES
+from custom_components.ha_govee_led_ble.editor import (
+    EDITOR_ELEMENT_NAME,
+    EDITOR_MODULE_URL,
+    EDITOR_PANEL_PATH,
+    EDITOR_ROUTE_SEGMENT,
+    editor_url,
+)
 
 
 def _entry(**kw):
@@ -24,6 +31,10 @@ async def test_setup_entry(hass: HomeAssistant):
     entry = _entry()
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch(
+            "custom_components.ha_govee_led_ble.editor_url",
+            return_value="homeassistant://ha-govee-led-ble/editor/test_entry_id",
+        ) as build_url,
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock) as cleanup,
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock) as fwd,
     ):
@@ -34,8 +45,10 @@ async def test_setup_entry(hass: HomeAssistant):
         hass,
         "AA:BB:CC:DD:EE:FF",
         "H617A",
+        configuration_url="homeassistant://ha-govee-led-ble/editor/test_entry_id",
         effect_families=frozenset({"scenes", "music"}),
     )
+    build_url.assert_called_once_with(entry.entry_id)
     assert entry.runtime_data is cls.return_value
     cleanup.assert_awaited_once_with(hass, entry)
     fwd.assert_awaited_once()
@@ -129,7 +142,40 @@ def test_white_balance_replacement_issue_names_old_and_new_entities(hass: HomeAs
     }
 
 
-async def test_async_setup_needs_no_frontend_registration():
+async def test_async_setup_registers_hidden_editor_fallback():
     hass = MagicMock()
     hass.data = {}
-    assert await async_setup(hass, {}) is True
+    hass.http.async_register_static_paths = AsyncMock()
+    with (
+        patch("custom_components.ha_govee_led_ble.editor.frontend.async_panel_exists", return_value=False),
+        patch("custom_components.ha_govee_led_ble.editor.frontend.async_register_built_in_panel") as register,
+    ):
+        assert await async_setup(hass, {}) is True
+
+    hass.http.async_register_static_paths.assert_awaited_once()
+    (static_path,) = hass.http.async_register_static_paths.await_args.args[0]
+    assert static_path.url_path == f"/{DOMAIN}_static"
+    assert static_path.path.endswith("custom_components/ha_govee_led_ble/frontend")
+    assert static_path.cache_headers is False
+    register.assert_called_once_with(
+        hass,
+        component_name="custom",
+        frontend_url_path=EDITOR_PANEL_PATH,
+        config={
+            "configuration_path": f"/config/integrations/integration/{DOMAIN}",
+            "_panel_custom": {
+                "name": EDITOR_ELEMENT_NAME,
+                "module_url": EDITOR_MODULE_URL,
+                "embed_iframe": False,
+                "trust_external": False,
+            },
+        },
+        require_admin=True,
+        show_in_sidebar=False,
+    )
+
+
+def test_editor_device_url_path_matches_registered_panel():
+    url = editor_url("test_entry_id")
+
+    assert url == f"homeassistant://{EDITOR_PANEL_PATH}/{EDITOR_ROUTE_SEGMENT}/test_entry_id"

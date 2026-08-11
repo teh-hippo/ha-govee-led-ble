@@ -96,7 +96,11 @@ def _make_coord(**ov) -> MagicMock:
     c._enter_static_mode = MagicMock(side_effect=_enter_static_mode)
     type(c).device_info = PropertyMock(
         return_value=DeviceInfo(
-            identifiers={(DOMAIN, d["address"])}, name=f"Govee {d['model']}", manufacturer="Govee", model=d["model"]
+            identifiers={(DOMAIN, d["address"])},
+            name=f"Govee {d['model']}",
+            manufacturer="Govee",
+            model=d["model"],
+            configuration_url="homeassistant://ha-govee-led-ble/editor/test-entry",
         )
     )
     return c

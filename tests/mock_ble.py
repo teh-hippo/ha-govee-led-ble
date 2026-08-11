@@ -22,6 +22,7 @@ from tools.ble.mock_ble.mock_device import RGB, FakeGoveeClient, GoveeDeviceSim
 
 _COORDINATOR = "custom_components.ha_govee_led_ble.coordinator"
 TEST_ADDRESS = "AA:BB:CC:DD:EE:FF"
+TEST_CONFIGURATION_URL = "homeassistant://ha-govee-led-ble/editor/test-entry"
 MODELS = ("H617A", "H6199")
 
 
@@ -72,7 +73,7 @@ class MockBle:
 async def mock_ble_fixture(request, hass) -> AsyncIterator[MockBle]:
     model = request.param
     sim = GoveeDeviceSim(model)
-    coordinator = GoveeBLECoordinator(hass, TEST_ADDRESS, model)
+    coordinator = GoveeBLECoordinator(hass, TEST_ADDRESS, model, configuration_url=TEST_CONFIGURATION_URL)
     with patch_transport(sim) as client:
         yield MockBle(sim=sim, coordinator=coordinator, client=client)
         await coordinator.disconnect()
@@ -82,7 +83,7 @@ async def mock_ble_fixture(request, hass) -> AsyncIterator[MockBle]:
 @pytest.fixture(name="mock_ble_h6199")
 async def mock_ble_h6199_fixture(hass) -> AsyncIterator[MockBle]:
     sim = GoveeDeviceSim("H6199")
-    coordinator = GoveeBLECoordinator(hass, TEST_ADDRESS, "H6199")
+    coordinator = GoveeBLECoordinator(hass, TEST_ADDRESS, "H6199", configuration_url=TEST_CONFIGURATION_URL)
     with patch_transport(sim) as client:
         yield MockBle(sim=sim, coordinator=coordinator, client=client)
         await coordinator.disconnect()

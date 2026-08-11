@@ -32,7 +32,8 @@
     ],
     "config_flow": true,
     "dependencies": [
-        "bluetooth_adapters"
+        "bluetooth_adapters",
+        "http"
     ],
     "documentation": "https://github.com/teh-hippo/ha-govee-led-ble",
     "integration_type": "device",

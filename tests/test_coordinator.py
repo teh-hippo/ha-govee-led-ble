@@ -6,7 +6,9 @@ import pytest
 from bleak import BleakError
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import protocol as proto
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
@@ -20,16 +22,27 @@ from custom_components.ha_govee_led_ble.coordinator import (
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+_CONFIGURATION_URL = "homeassistant://ha-govee-led-ble/editor/test-entry"
 
 
 @pytest.fixture
 def coord(hass):
-    return GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A")
+    return GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:FF",
+        "H617A",
+        configuration_url=_CONFIGURATION_URL,
+    )
 
 
 @pytest.fixture
 def h6199(hass):
-    return GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199")
+    return GoveeBLECoordinator(
+        hass,
+        "11:22:33:44:55:66",
+        "H6199",
+        configuration_url=_CONFIGURATION_URL,
+    )
 
 
 def _c(**kw):
@@ -775,7 +788,12 @@ def test_segment_colors_initial_state(coord, h6199):
 def test_segment_colors_empty_for_unsupported(hass):
     flat = replace(MODEL_PROFILES["H617A"], segment_count=0)
     with patch(f"{M}.get_profile", return_value=flat):
-        c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:00", "H617A")
+        c = GoveeBLECoordinator(
+            hass,
+            "AA:BB:CC:DD:EE:00",
+            "H617A",
+            configuration_url=_CONFIGURATION_URL,
+        )
     assert c.segment_colors == [] and c.profile.segment_count == 0
 
 
@@ -880,7 +898,24 @@ def test_device_info_carries_versions_and_omits_connections(coord):
     info = coord.device_info
     assert info["sw_version"] == "3.02.24" and info["hw_version"] == "3.01.01"
     assert info["identifiers"] == {(DOMAIN, coord.address)}
+    assert info["configuration_url"] == _CONFIGURATION_URL
+    assert coord.address not in info["configuration_url"]
     assert "connections" not in info
+
+
+def test_device_info_replaces_a_stale_configuration_url(hass, coord):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=coord.address)
+    entry.add_to_hass(hass)
+    registry = dr.async_get(hass)
+    registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, coord.address)},
+        configuration_url="homeassistant://retired-editor/test-entry",
+    )
+
+    device = registry.async_get_or_create(config_entry_id=entry.entry_id, **coord.device_info)
+
+    assert device.configuration_url == _CONFIGURATION_URL
 
 
 def test_notify_callback_sets_fw_hw_versions(coord):
@@ -1022,7 +1057,12 @@ async def test_first_refresh_reports_update_failed_then_degrades_silently(coord)
 async def test_first_refresh_non_readable_requires_presence(hass):
     flat = replace(MODEL_PROFILES["H617A"], state_readable=False)
     with patch(f"{M}.get_profile", return_value=flat):
-        c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:22", "H617A")
+        c = GoveeBLECoordinator(
+            hass,
+            "AA:BB:CC:DD:EE:22",
+            "H617A",
+            configuration_url=_CONFIGURATION_URL,
+        )
     c._present = False
     with pytest.raises(UpdateFailed):
         await c._async_update_data()
