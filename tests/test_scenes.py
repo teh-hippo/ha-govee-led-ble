@@ -1,7 +1,16 @@
 import base64
+from collections import Counter
+from typing import cast
 
 import pytest
+from kaitaistruct import KaitaiStructError
 
+from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    _check_tree,
+    _write,
+    parse_scene_body_param,
+)
 from custom_components.ha_govee_led_ble.protocol import (
     MOVE_ALL_OFFSET,
     MOVE_IN_OFFSET,
@@ -200,3 +209,43 @@ def test_apply_scene_speed_skips_a_page_with_no_matching_record():
     speed = SceneSpeed(0, (ScenePage(page=4, move_in=(99,)),))
 
     assert apply_scene_speed(payload, speed, 0) == payload
+
+
+def test_generated_scene_body_parser_round_trips_type_2_catalogues():
+    scene_counts: Counter[str] = Counter()
+    record_count = 0
+
+    for sku, entries in SCENE_ENTRIES.items():
+        for entry in entries:
+            if entry.scene_type != int(SceneBody.SceneType.scene_v2):
+                continue
+            raw_param = base64.b64decode(entry.param, validate=True)
+            parsed = parse_scene_body_param(raw_param)
+            envelope = cast(bytes, parsed._io.to_byte_array())
+            header_length = len(parsed.header.marker) + 1
+            parameter_start = header_length + 1
+
+            assert parsed.scene_type is SceneBody.SceneType.scene_v2
+            assert len(parsed.records) == int(parsed.num_records)
+            assert envelope[parameter_start : parameter_start + len(raw_param)] == raw_param
+            assert not any(envelope[parameter_start + len(raw_param) :])
+            _check_tree(parsed)
+            assert _write(parsed, len(envelope)) == envelope
+
+            scene_counts[sku] += 1
+            record_count += len(parsed.records)
+
+    assert scene_counts == {"H617A": 72, "H6199": 226}
+    assert record_count == 863
+
+
+@pytest.mark.parametrize("raw_param", [bytearray(b"\x00"), memoryview(b"\x00"), "\x00"])
+def test_generated_scene_body_parser_requires_bytes(raw_param):
+    with pytest.raises(TypeError, match="must be bytes"):
+        parse_scene_body_param(raw_param)
+
+
+@pytest.mark.parametrize("raw_param", [b"", b"\x01", b"\x01\x20"])
+def test_generated_scene_body_parser_rejects_truncated_parameters(raw_param):
+    with pytest.raises(KaitaiStructError):
+        parse_scene_body_param(raw_param)

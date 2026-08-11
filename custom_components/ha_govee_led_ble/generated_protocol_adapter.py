@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import math
 from importlib import import_module
 from typing import Any, cast
 
@@ -44,6 +45,12 @@ DiyType04 = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type04").DiyType04,
 )
+SceneBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_body").SceneBody,
+)
+
+_A3_CHUNK_SIZE = 17
 
 _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS = 10
 _BLANK_SCREEN_SAME_TONE_SECONDS = 120
@@ -199,6 +206,25 @@ def _a3_header(parent: Any) -> Any:
     header.marker = b"\x01"
     header.linecount = 2
     return header
+
+
+def parse_scene_body_param(raw_param: bytes) -> Any:
+    """Parse a catalogue type-2 parameter through the generated SceneBody root."""
+    if not isinstance(raw_param, bytes):
+        raise TypeError("scene parameter must be bytes")
+    synthetic = SceneBody()
+    header = _a3_header(synthetic)
+    header_length = len(header.marker) + 1
+    header.linecount = max(header.linecount, math.ceil((header_length + 1 + len(raw_param)) / _A3_CHUNK_SIZE))
+    _check_tree(header)
+    header_bytes = _write(header, header_length)
+    envelope = header_bytes + bytes((int(SceneBody.SceneType.scene_v2),)) + raw_param
+    unpadded = SceneBody(KaitaiStream(io.BytesIO(envelope)))
+    unpadded._read()
+    envelope = envelope.ljust(header.linecount * _A3_CHUNK_SIZE, b"\x00")
+    parsed = SceneBody(KaitaiStream(io.BytesIO(envelope)))
+    parsed._read()
+    return parsed
 
 
 def _diy_type04_palette(parent: Any, colours: list[tuple[int, int, int]]) -> Any:
