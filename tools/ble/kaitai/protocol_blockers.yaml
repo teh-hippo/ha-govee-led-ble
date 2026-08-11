@@ -1,0 +1,25 @@
+schema_version: 1
+blockers:
+  - issue: 155
+    status: resolved
+    summary: H617A type04 uploads have an evidenced activation-code binding.
+    resolution: GitHub PR #156
+    affected_capabilities:
+      - model: H617A
+        capability: diy_activation
+      - model: H617A
+        capability: diy_upload
+    evidence_aggregates:
+      - diy_type04_single_fade_upload_precedes_selector
+      - diy_type04_single_jumping_upload_precedes_selector
+      - diy_type04_multi_one_upload_precedes_selector
+      - diy_type04_multi_two_upload_precedes_selector
+      - diy_type04_saved_upload_precedes_selector
+      - diy_type04_code24_sequence_reaches_readback
+      - diy_type04_code240_sequence_reaches_readback
+      - diy_type04_code24_stable_across_body_edits
+      - diy_type04_code240_matches_readback
+    boundaries:
+      - Selector readback confirms the accepted selector code, not the exact uploaded body identity.
+      - Callers must supply an explicit DIY code; no automatic allocation rule is evidenced.
+      - Device-side overwrite and alias semantics remain unproven.

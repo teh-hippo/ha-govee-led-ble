@@ -44,7 +44,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]  # pyyaml ships no type stubs
 from kaitaistruct import KaitaiStream
 
 HERE = Path(__file__).resolve().parent
@@ -52,11 +52,14 @@ GENERATED_DIR = Path(os.environ["KAITAI_GENERATED_DIR"]) if "KAITAI_GENERATED_DI
 if GENERATED_DIR is not None:
     sys.path.insert(0, str(GENERATED_DIR))
 
+AGGREGATES_PATH = HERE / "spec" / "_aggregates.yaml"
+PROTOCOL_BLOCKERS_PATH = HERE / "protocol_blockers.yaml"
 FRAME_LENGTH = 20
 CHECKSUM_INDEX = 19
 MUSIC_STREAM_LENGTH = 7
 MUSIC_STREAM_CHECKSUM_INDEX = 6
 MUSIC_STREAM_PREFIX = b"\xa5\x02\x83"
+PROTOCOL_BLOCKER_STATUSES = frozenset({"open", "resolved"})
 
 
 class AssertUnevaluatableError(Exception):
@@ -388,6 +391,107 @@ def run_equal_values(entry: dict[str, Any], parsed_by_id: dict[str, Any]) -> tup
     return None, values[0]
 
 
+def load_aggregates(path: Path = AGGREGATES_PATH) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    doc = yaml.safe_load(path.read_text()) or []
+    if not isinstance(doc, list):
+        raise AssertUnevaluatableError(f"{path.name}: document root must be a list")
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(doc):
+        if not isinstance(entry, dict):
+            raise AssertUnevaluatableError(f"{path.name}[{index}]: must be a mapping")
+        aggregate_id = entry.get("id")
+        if not isinstance(aggregate_id, str) or not aggregate_id:
+            raise AssertUnevaluatableError(f"{path.name}[{index}]: needs a non-empty string id")
+        if aggregate_id in seen:
+            raise AssertUnevaluatableError(f"{path.name}[{index}]: duplicate id {aggregate_id!r}")
+        seen.add(aggregate_id)
+        entries.append(entry)
+    return entries
+
+
+def load_protocol_blockers(path: Path = PROTOCOL_BLOCKERS_PATH) -> dict[str, Any]:
+    doc = yaml.safe_load(path.read_text())
+    if not isinstance(doc, dict):
+        raise AssertUnevaluatableError(f"{path.name}: document root must be a mapping")
+    return doc
+
+
+def validate_protocol_blockers(
+    doc: dict[str, Any],
+    aggregates: list[dict[str, Any]],
+    path: Path = PROTOCOL_BLOCKERS_PATH,
+) -> None:
+    if doc.get("schema_version") != 1:
+        raise AssertUnevaluatableError(f"{path.name}: schema_version must be 1")
+    blockers = doc.get("blockers")
+    if not isinstance(blockers, list):
+        raise AssertUnevaluatableError(f"{path.name}: blockers must be a list")
+
+    aggregate_ids = {entry["id"] for entry in aggregates}
+    seen_issues: set[int] = set()
+    for index, blocker in enumerate(blockers):
+        label = f"{path.name}: blockers[{index}]"
+        if not isinstance(blocker, dict):
+            raise AssertUnevaluatableError(f"{label}: must be a mapping")
+        issue = blocker.get("issue")
+        if not isinstance(issue, int) or isinstance(issue, bool) or issue <= 0:
+            raise AssertUnevaluatableError(f"{label}: issue must be a positive integer")
+        if issue in seen_issues:
+            raise AssertUnevaluatableError(f"{label}: duplicate issue {issue}")
+        seen_issues.add(issue)
+
+        status = blocker.get("status")
+        if status not in PROTOCOL_BLOCKER_STATUSES:
+            raise AssertUnevaluatableError(
+                f"{label}: status {status!r} is not one of {sorted(PROTOCOL_BLOCKER_STATUSES)}"
+            )
+        summary = blocker.get("summary")
+        if not isinstance(summary, str) or not summary:
+            raise AssertUnevaluatableError(f"{label}: summary must be a non-empty string")
+        if status == "resolved" and (not isinstance(blocker.get("resolution"), str) or not blocker["resolution"]):
+            raise AssertUnevaluatableError(f"{label}: resolved blockers need a non-empty resolution")
+
+        affected = blocker.get("affected_capabilities")
+        if not isinstance(affected, list) or not affected:
+            raise AssertUnevaluatableError(f"{label}: affected_capabilities must be a non-empty list")
+        affected_keys: list[tuple[str, str]] = []
+        for affected_index, capability in enumerate(affected):
+            affected_label = f"{label}: affected_capabilities[{affected_index}]"
+            if not isinstance(capability, dict):
+                raise AssertUnevaluatableError(f"{affected_label}: must be a mapping")
+            model = capability.get("model")
+            capability_name = capability.get("capability")
+            if not isinstance(model, str) or not model or not isinstance(capability_name, str) or not capability_name:
+                raise AssertUnevaluatableError(f"{affected_label}: model and capability must be non-empty strings")
+            affected_keys.append((model, capability_name))
+        if len(affected_keys) != len(set(affected_keys)):
+            raise AssertUnevaluatableError(f"{label}: affected_capabilities must not contain duplicates")
+
+        evidence = blocker.get("evidence_aggregates")
+        if (
+            not isinstance(evidence, list)
+            or not evidence
+            or not all(isinstance(value, str) and value for value in evidence)
+        ):
+            raise AssertUnevaluatableError(f"{label}: evidence_aggregates must be a non-empty list of strings")
+        if len(evidence) != len(set(evidence)):
+            raise AssertUnevaluatableError(f"{label}: evidence_aggregates must not contain duplicates")
+        missing = sorted(set(evidence) - aggregate_ids)
+        if missing:
+            raise AssertUnevaluatableError(f"{label}: unknown evidence aggregate(s): {', '.join(missing)}")
+
+        boundaries = blocker.get("boundaries")
+        if (
+            not isinstance(boundaries, list)
+            or not boundaries
+            or not all(isinstance(value, str) and value for value in boundaries)
+        ):
+            raise AssertUnevaluatableError(f"{label}: boundaries must be a non-empty list of strings")
+
+
 def check_every_spec_is_exercised(cases: list[Case]) -> None:
     """Refuse a .ksy that no fixture reaches, directly or through an import.
 
@@ -439,7 +543,12 @@ def check_every_fixture_is_claimed(cases: list[Case]) -> None:
         raise AssertUnevaluatableError(f"{len(orphans)} fixture(s) in src/ that no .kst reads: {', '.join(orphans)}")
 
 
-def run_aggregates(cases: list[Case], parsed_by_id: dict[str, Any], data_by_id: dict[str, bytes]) -> int:
+def run_aggregates(
+    entries: list[dict[str, Any]],
+    cases: list[Case],
+    parsed_by_id: dict[str, Any],
+    data_by_id: dict[str, bytes],
+) -> int:
     """Check claims that span fixtures, which .kst asserts cannot express.
 
     A per-fixture assert cannot say "palette_count takes eight different values across the
@@ -450,12 +559,9 @@ def run_aggregates(cases: list[Case], parsed_by_id: dict[str, Any], data_by_id: 
     every row green while the claim quietly disappeared. The vocabulary is deliberately
     tiny and anything outside it is a hard error.
     """
-    path = HERE / "spec" / "_aggregates.yaml"
-    if not path.exists():
-        return 0
     failed = 0
     cases_by_id = {case.id: case for case in cases}
-    for entry in yaml.safe_load(path.read_text()) or []:
+    for entry in entries:
         if "capture_sequence" in entry:
             problem = run_capture_sequence(entry, cases_by_id)
             if problem:
@@ -526,6 +632,8 @@ def check_parsers_are_available() -> None:
 
 def main() -> int:
     check_parsers_are_available()
+    aggregates = load_aggregates()
+    validate_protocol_blockers(load_protocol_blockers(), aggregates)
     specs = sorted((HERE / "spec").glob("*.kst"))
     if not specs:
         print("no .kst fixtures found under spec/", file=sys.stderr)
@@ -547,7 +655,7 @@ def main() -> int:
         else:
             checks = len(case.asserts) + (1 if case.exception else 2)
             print(f"PASS {case.id:38s} {checks} check(s)")
-    failed += run_aggregates(cases, parsed_by_id, {case.id: case.data for case in cases})
+    failed += run_aggregates(aggregates, cases, parsed_by_id, {case.id: case.data for case in cases})
     print(f"\n{len(specs)} fixture(s), {failed} failed")
     return 1 if failed else 0
 
