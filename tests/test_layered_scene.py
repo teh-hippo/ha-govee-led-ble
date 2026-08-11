@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 from collections import Counter
 from dataclasses import replace
 from typing import Any, cast
 
 import pytest
+from kaitaistruct import KaitaiStructError
 
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -33,6 +35,10 @@ from custom_components.ha_govee_led_ble.layered_scene import (
     layered_effect_to_value,
     layered_scene_from_value,
     layered_scene_to_value,
+)
+from custom_components.ha_govee_led_ble.layered_scene_decoder import (
+    decode_catalogue_layered_scene,
+    decode_layered_scene,
 )
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 
@@ -64,53 +70,61 @@ def _layer() -> EffectLayer:
     )
 
 
-def _movement_from_parsed(movement: Any) -> Movement:
-    return Movement(
-        enabled=bool(movement.enabled),
-        enter_exit=bool(movement.enter_exit_effect),
-        direction=int(movement.direction),
-        distance=int(movement.interval),
-        speed=int(movement.speed),
-        unknown_flags=int(movement.unknown_flags),
-    )
+def _assert_movement_matches(decoded: Movement, parsed: Any) -> None:
+    assert decoded.enabled is bool(parsed.enabled)
+    assert decoded.enter_exit is bool(parsed.enter_exit_effect)
+    assert decoded.direction == int(parsed.direction)
+    assert decoded.distance == int(parsed.interval)
+    assert decoded.speed == int(parsed.speed)
+    assert decoded.unknown_flags == int(parsed.unknown_flags)
 
 
-def _layer_from_parsed(layer: Any) -> EffectLayer:
-    return EffectLayer(
-        area=AppliedArea(
-            start_tenths=int(layer.applied_area_start_tenths),
-            width_tenths=int(layer.applied_area_width_tenths),
-        ),
-        selection=Selection(
-            type=int(layer.select_type),
-            param_1=int(layer.select_param_1),
-            param_2=int(layer.select_param_2),
-        ),
-        brightness_gradient=bool(layer.brightness_is_gradient),
-        brightness_patterns=tuple(
-            BrightnessPattern(
-                scope_high=int(block.scope_high),
-                scope_low=int(block.scope_low),
-                order=int(block.order),
-                change_speed=int(block.change_speed),
-                brightest_retention=int(block.retention_brightest),
-                darkest_retention=int(block.retention_darkest),
-            )
-            for block in layer.brightness_blocks
-        ),
-        distribution=Distribution(
-            method=int(layer.distribution_method),
-            backwards=bool(layer.direction_is_backward),
-        ),
-        colour_speed=int(layer.colour_speed),
-        colour_retention=int(layer.colour_retention),
-        palette=tuple((int(colour.r), int(colour.g), int(colour.b)) for colour in layer.palette),
-        selected_movement=_movement_from_parsed(layer.selected_area_movement),
-        overall_movement=_movement_from_parsed(layer.overall_movement),
-        priority=int(layer.priority),
-        unknown_flags=int(layer.unknown_flags),
-        excess=bytes(layer.excess),
+def _assert_layer_matches(decoded: EffectLayer, parsed: Any) -> None:
+    assert (decoded.area.start_tenths, decoded.area.width_tenths) == (
+        int(parsed.applied_area_start_tenths),
+        int(parsed.applied_area_width_tenths),
     )
+    assert (decoded.selection.type, decoded.selection.param_1, decoded.selection.param_2) == (
+        int(parsed.select_type),
+        int(parsed.select_param_1),
+        int(parsed.select_param_2),
+    )
+    assert decoded.brightness_gradient is bool(parsed.brightness_is_gradient)
+    assert [
+        (
+            block.scope_high,
+            block.scope_low,
+            block.order,
+            block.change_speed,
+            block.brightest_retention,
+            block.darkest_retention,
+        )
+        for block in decoded.brightness_patterns
+    ] == [
+        (
+            int(block.scope_high),
+            int(block.scope_low),
+            int(block.order),
+            int(block.change_speed),
+            int(block.retention_brightest),
+            int(block.retention_darkest),
+        )
+        for block in parsed.brightness_blocks
+    ]
+    assert (decoded.distribution.method, decoded.distribution.backwards) == (
+        int(parsed.distribution_method),
+        bool(parsed.direction_is_backward),
+    )
+    assert (decoded.colour_speed, decoded.colour_retention) == (
+        int(parsed.colour_speed),
+        int(parsed.colour_retention),
+    )
+    assert decoded.palette == tuple((int(colour.r), int(colour.g), int(colour.b)) for colour in parsed.palette)
+    _assert_movement_matches(decoded.selected_movement, parsed.selected_area_movement)
+    _assert_movement_matches(decoded.overall_movement, parsed.overall_movement)
+    assert decoded.priority == int(parsed.priority)
+    assert decoded.unknown_flags == int(parsed.unknown_flags)
+    assert decoded.excess == bytes(parsed.excess)
 
 
 def test_effect_domain_compatibility_shape_uses_raw_integer_values() -> None:
@@ -258,17 +272,43 @@ def test_unknown_enums_flags_and_excess_round_trip_without_normalisation() -> No
     assert restored_layer.excess == b"\xaa\xbb"
 
 
-def test_generated_unknown_flag_properties_feed_the_canonical_split() -> None:
+def test_decoder_preserves_unknown_generated_values_and_record_excess() -> None:
     entry = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type == int(SceneBody.SceneType.scene_v2))
-    parsed = parse_scene_body_param(base64.b64decode(entry.param, validate=True))
-    layer = parsed.records[0].body
+    raw_param = base64.b64decode(entry.param, validate=True)
+    parsed = parse_scene_body_param(raw_param)
+    original_envelope = cast(bytes, parsed._io.to_byte_array())
+    prefix_length = len(original_envelope) - len(raw_param) - len(parsed.padding)
+    record = parsed.records[0]
+    layer = record.body
+    layer.applied_area = 0
+    layer.select_type = 0xFE
+    layer.brightness_blocks[0].brightness_order = 0xFD
     layer.layer_flags |= 0x80
     layer.selected_area_movement.packed |= 0x20
+    layer.overall_movement.packed |= 0x40
+    layer.priority = 0xFF
+    layer.excess = b"\xaa\xbb"
+    record.len_body += len(layer.excess)
+    parsed.padding = []
+    _check_tree(parsed)
+    synthetic_envelope = _write(parsed, prefix_length + len(raw_param) + len(layer.excess))
+    synthetic_param = synthetic_envelope[prefix_length:]
 
-    canonical = _layer_from_parsed(layer)
+    decoded = decode_layered_scene(
+        CatalogueRef("H617A", entry.scene_id, entry.effect_id),
+        synthetic_param,
+    )
+    canonical = decoded.effect.layers[0]
 
-    assert canonical.unknown_flags == 0x80
-    assert canonical.selected_movement.unknown_flags == 0x20
+    assert decoded.raw_param == synthetic_param
+    assert canonical.area == AppliedArea(0, 0)
+    assert canonical.selection.type == 0xFE
+    assert canonical.brightness_patterns[0].order == 0xFD
+    assert canonical.unknown_flags & 0x80
+    assert canonical.selected_movement.unknown_flags & 0x20
+    assert canonical.overall_movement.unknown_flags & 0x40
+    assert canonical.priority == 0xFF
+    assert canonical.excess == b"\xaa\xbb"
 
 
 def test_all_committed_layered_scenes_round_trip_canonical_values() -> None:
@@ -281,28 +321,46 @@ def test_all_committed_layered_scenes_round_trip_canonical_values() -> None:
                 continue
             raw_param = base64.b64decode(entry.param, validate=True)
             parsed = parse_scene_body_param(raw_param)
-            envelope = cast(bytes, parsed._io.to_byte_array())
-            canonical = LayeredScene(
-                template=CatalogueRef(sku, entry.scene_id, entry.effect_id),
-                effect=LayeredEffect(tuple(_layer_from_parsed(record.body) for record in parsed.records)),
-                speed_index=entry.speed.default_index if entry.speed is not None else None,
-                raw_param=raw_param,
-            )
+            canonical = decode_catalogue_layered_scene(sku, entry)
+            assert canonical is not None
             value = layered_scene_to_value(canonical)
             restored = layered_scene_from_value(json.loads(json.dumps(value)))
 
             assert restored == canonical
             assert layered_scene_to_value(restored) == value
             assert restored.raw_param == raw_param
+            assert restored.template == CatalogueRef(sku, entry.scene_id, entry.effect_id)
+            assert restored.speed_index == (entry.speed.default_index if entry.speed is not None else None)
             assert len(restored.effect.layers) == int(parsed.num_records)
-            _check_tree(parsed)
-            assert _write(parsed, len(envelope)) == envelope
+            for decoded_layer, record in zip(restored.effect.layers, parsed.records, strict=True):
+                _assert_layer_matches(decoded_layer, record.body)
 
             scene_counts[sku] += 1
             record_count += len(restored.effect.layers)
 
     assert scene_counts == {"H617A": 72, "H6199": 226}
     assert record_count == 863
+
+
+def test_catalogue_decoder_rejects_malformed_type_2_input() -> None:
+    entry = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type == int(SceneBody.SceneType.scene_v2))
+
+    with pytest.raises(binascii.Error):
+        decode_catalogue_layered_scene("H617A", replace(entry, param="not base64!"))
+    with pytest.raises(ValueError, match="has no parameter"):
+        decode_catalogue_layered_scene("H617A", replace(entry, param=""))
+    decoded = decode_catalogue_layered_scene("H617A", entry)
+    assert decoded is not None
+    with pytest.raises(TypeError, match="must be bytes"):
+        decode_layered_scene(decoded.template, bytearray(base64.b64decode(entry.param, validate=True)))
+    with pytest.raises(KaitaiStructError):
+        decode_layered_scene(decoded.template, b"\x01")
+
+
+def test_catalogue_decoder_leaves_non_type_2_entries_opaque() -> None:
+    entry = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type != int(SceneBody.SceneType.scene_v2))
+
+    assert decode_catalogue_layered_scene("H617A", replace(entry, param="not base64!")) is None
 
 
 def test_wire_sized_collections_do_not_apply_authoring_minimums() -> None:
