@@ -54,6 +54,15 @@ _DEFAULT_PALETTE = (
     (0, 0xFF, 0xFF),
     (0x8B, 0, 0xFF),
 )
+_MULTI_PALETTE = (
+    (0xFF, 0, 0),
+    (0xFF, 0x7F, 0),
+    (0xFF, 0xFF, 0),
+    (0, 0xFF, 0),
+    (0, 0, 0xFF),
+    (0, 0xFF, 0xFF),
+    (0x8B, 0, 0xFF),
+)
 
 
 def _valid(pkt):
@@ -324,6 +333,69 @@ def test_build_a3_multi():
     # build_scene_multi stays byte-identical: shared fragmenter + the 33 05 04 activate frame.
     b64 = base64.b64encode(bytes(range(40))).decode()
     assert proto.build_scene_multi(b64, 2205) == [*proto.build_a3_multi(2, bytes(range(40))), proto.build_scene(2205)]
+
+
+@pytest.mark.parametrize(
+    ("family", "fixture"),
+    [
+        (0, "diy_type04_binding_single_fade_code24.bin"),
+        (1, "diy_type04_binding_single_jumping_code24.bin"),
+    ],
+)
+def test_h617a_diy_single_encoder_matches_binding_captures(family, fixture):
+    frames = proto.build_h617a_diy_single(family, 0, 50, _DEFAULT_PALETTE)
+    assert b"".join(frame[2:19] for frame in frames) == (ROOT / "tools/ble/kaitai/src" / fixture).read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("effects", "fixture"),
+    [
+        ([(0, 0)], "diy_type04_binding_multi_one_code24.bin"),
+        ([(0, 0), (1, 0)], "diy_type04_binding_multi_two_code24.bin"),
+    ],
+)
+def test_h617a_diy_multi_encoder_matches_binding_captures(effects, fixture):
+    frames = proto.build_h617a_diy_multi(effects, 51, _MULTI_PALETTE)
+    assert b"".join(frame[2:19] for frame in frames) == (ROOT / "tools/ble/kaitai/src" / fixture).read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("code", "fixture"),
+    [
+        (24, "command_write_diy_type04_single_fade_code24.bin"),
+        (240, "command_write_diy_type04_single_saved_code240.bin"),
+    ],
+)
+def test_h617a_diy_activation_matches_binding_captures(code, fixture):
+    expected = (ROOT / "tools/ble/kaitai/src" / fixture).read_bytes()
+    packet = proto.build_h617a_diy_activation(code)
+
+    assert packet == expected
+    parsed = proto.decode_command_frame(packet)
+    assert parsed is not None
+    assert parsed.body.sub_body.code == code
+
+
+@pytest.mark.parametrize(
+    ("builder", "args", "match"),
+    [
+        (proto.build_h617a_diy_single, (0xFF, 0, 50, _DEFAULT_PALETTE), "reserved"),
+        (proto.build_h617a_diy_single, (-1, 0, 50, _DEFAULT_PALETTE), "family"),
+        (proto.build_h617a_diy_single, (0, 0x100, 50, _DEFAULT_PALETTE), "variant"),
+        (proto.build_h617a_diy_single, (0, 0, 101, _DEFAULT_PALETTE), "speed"),
+        (proto.build_h617a_diy_single, (0, 0, 50, ()), "palette"),
+        (proto.build_h617a_diy_single, (0, 0, 50, ((256, 0, 0),)), "palette"),
+        (proto.build_h617a_diy_multi, ((), 50, _MULTI_PALETTE), "1 to 4"),
+        (proto.build_h617a_diy_multi, (((0xFF, 0),), 50, _MULTI_PALETTE), "reserved"),
+        (proto.build_h617a_diy_multi, (((0, 0),), -1, _MULTI_PALETTE), "speed"),
+        (proto.build_h617a_diy_activation, (-1,), "DIY code"),
+        (proto.build_h617a_diy_activation, (0x10000,), "DIY code"),
+        (proto.build_h617a_diy_activation, (1.5,), "DIY code"),
+    ],
+)
+def test_h617a_diy_builders_reject_invalid_inputs(builder, args, match):
+    with pytest.raises(ValueError, match=match):
+        builder(*args)
 
 
 def test_a3_reassembly_rule():

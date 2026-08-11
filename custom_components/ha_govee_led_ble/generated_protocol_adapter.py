@@ -40,6 +40,10 @@ H6199StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
 )
+DiyType04 = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type04").DiyType04,
+)
 
 _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS = 10
 _BLANK_SCREEN_SAME_TONE_SECONDS = 120
@@ -188,6 +192,71 @@ def _rgb(parent: Any, red: int, green: int, blue: int) -> Any:
     colour.green = max(0, min(255, green))
     colour.blue = max(0, min(255, blue))
     return colour
+
+
+def _a3_header(parent: Any) -> Any:
+    header = _child(GoveeCommon.A3Header, parent)
+    header.marker = b"\x01"
+    header.linecount = 2
+    return header
+
+
+def _diy_type04_palette(parent: Any, colours: list[tuple[int, int, int]]) -> Any:
+    palette = _child(DiyType04.Palette, parent)
+    palette.colours = [_rgb(palette, *colour) for colour in colours]
+    return palette
+
+
+def build_h617a_diy_single_body(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: list[tuple[int, int, int]],
+) -> bytes:
+    """Serialize the diy_type04 Flat fields after the A3 type byte."""
+    root = DiyType04()
+    root.header = _a3_header(root)
+    root.a3_type = b"\x04"
+    root.family = family
+    body = _child(DiyType04.FlatBody, root)
+    body.variant = variant
+    body.speed = speed
+    body.len_palette = len(palette) * 3
+    body.palette = _diy_type04_palette(body, palette)
+    body.padding = []
+    root.body = body
+    length = 7 + body.len_palette
+    _check_tree(root)
+    return _write(root, length)[3:]
+
+
+def build_h617a_diy_multi_body(
+    effects: list[tuple[int, int]],
+    speed: int,
+    palette: list[tuple[int, int, int]],
+) -> bytes:
+    """Serialize the diy_type04 Combo fields after the A3 type byte."""
+    root = DiyType04()
+    root.header = _a3_header(root)
+    root.a3_type = b"\x04"
+    root.family = 0xFF
+    body = _child(DiyType04.ComboBody, root)
+    body.variant = 0
+    body.speed = speed
+    body.len_palette = len(palette) * 3
+    body.palette = _diy_type04_palette(body, palette)
+    body.seqlen = len(effects) * 2
+    body.pairs = []
+    for family, variant in effects:
+        pair = _child(DiyType04.FamilyVariant, body)
+        pair.family = family
+        pair.variant = variant
+        body.pairs.append(pair)
+    body.padding = []
+    root.body = body
+    length = 8 + body.len_palette + body.seqlen
+    _check_tree(root)
+    return _write(root, length)[3:]
 
 
 def build_power(on: bool, model: str = "H617A") -> bytes:
@@ -363,6 +432,19 @@ def build_h617a_scene(scene_code: int) -> bytes:
     detail.code = max(0, min(0xFFFF, scene_code))
     detail.scene_type = 0
     multi.sub_body = detail
+    root.body = multi
+    return _serialize_xor(root)
+
+
+def build_h617a_diy_activation(diy_code: int) -> bytes:
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.multi
+    multi = _child(CommandWrite.MultiCmd, root)
+    multi.sub = CommandWrite.MultiSub.diy
+    selector = _child(GoveeCommon.DiySelector, multi)
+    selector.code = diy_code
+    multi.sub_body = selector
     root.body = multi
     return _serialize_xor(root)
 

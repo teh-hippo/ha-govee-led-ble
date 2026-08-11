@@ -1,0 +1,24 @@
+id: status_reply_cm_diy_type04_code240
+data: status_reply_cm_diy_type04_code240.bin
+imports:
+- status_reply
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: session-cupboard-20260811-223946.pcapng
+  source_sha256: f85b34181da5e76613ec481c83984441706283e01cc5a0c3ce67020e9920a578
+  source_index: 1809
+  source_start_index: 1809
+  source_end_index: 1809
+  action: readback-reopen-code240
+  actions_sha256: 0d267df3f08734e9053431b0651bbc15ee0d70fab636257f4f6b23a08a3e675e
+  prediction_sha256: fcc0fbcf9950a04d623f956e1c9ca75dcdbd0d3bd969352b2ff963b2ce59adc7
+asserts:
+- actual: domain
+  expected: 5
+- actual: body.mode
+  expected: 10
+- actual: body.mode_body.code
+  expected: 240
+fixture_sha256: 981c58a75e5299e5c9b5074a44603a0d0d640097518110b636e4beedfa916a12

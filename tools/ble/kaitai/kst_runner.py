@@ -20,8 +20,8 @@ rather than restated per case:
     which no fixture separates the two schemes, since "this family is XOR" is untested
     until some frame disagrees with sum-8.
 
-Two further shapes live in spec/_aggregates.yaml because they span fixtures: value
-spread across a corpus, and pairwise differentials.
+Four further shapes live in spec/_aggregates.yaml because they span fixtures: value
+spread across a corpus, pairwise differentials, capture ordering and cross-case equality.
 
 The runner refuses anything it cannot evaluate. A misspelt attribute path or an assert
 syntax it does not implement is a hard error, never a silent pass, because a test suite
@@ -300,6 +300,94 @@ def run_differential(entry: dict[str, Any], requirement: str, data_by_id: dict[s
     return None
 
 
+def _capture_position(case: Case) -> tuple[int, int]:
+    start = case.provenance.get("source_start_index")
+    end = case.provenance.get("source_end_index")
+    if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end < start:
+        raise AssertUnevaluatableError(
+            f"{case.id}: capture sequence needs non-negative source_start_index/source_end_index"
+        )
+    return start, end
+
+
+def _capture_write_position(case: Case) -> tuple[int, int]:
+    start = case.provenance.get("source_write_start_index")
+    end = case.provenance.get("source_write_end_index")
+    if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end < start:
+        raise AssertUnevaluatableError(
+            f"{case.id}: adjacent writes need non-negative source_write_start_index/source_write_end_index"
+        )
+    return start, end
+
+
+def run_capture_sequence(entry: dict[str, Any], cases_by_id: dict[str, Case]) -> str | None:
+    sequence = entry.get("capture_sequence")
+    if not isinstance(sequence, list) or len(sequence) < 2 or not all(isinstance(case_id, str) for case_id in sequence):
+        raise AssertUnevaluatableError(f"capture sequence {entry.get('id')!r}: needs at least two case ids")
+    if len(set(sequence)) != len(sequence):
+        raise AssertUnevaluatableError(f"capture sequence {entry['id']!r}: case ids must be unique")
+    cases = []
+    for case_id in sequence:
+        if case_id not in cases_by_id:
+            raise AssertUnevaluatableError(f"capture sequence {entry['id']!r}: no case {case_id!r}")
+        cases.append(cases_by_id[case_id])
+
+    provenance_keys = ("source", "source_sha256", "actions_sha256", "prediction_sha256")
+    for case in cases:
+        for key in provenance_keys:
+            value = case.provenance.get(key)
+            if not isinstance(value, str) or not value:
+                raise AssertUnevaluatableError(f"{case.id}: capture sequence provenance is missing {key!r}")
+            if key.endswith("_sha256") and (len(value) != 64 or any(char not in "0123456789abcdef" for char in value)):
+                raise AssertUnevaluatableError(f"{case.id}: capture sequence provenance has invalid {key!r}")
+        if not isinstance(case.provenance.get("action"), str) or not case.provenance["action"]:
+            raise AssertUnevaluatableError(f"{case.id}: capture sequence provenance is missing 'action'")
+    for key in provenance_keys:
+        values = {case.provenance[key] for case in cases}
+        if len(values) != 1:
+            return f"{key} differs across {sequence}"
+    same_action = entry.get("same_action", False)
+    if not isinstance(same_action, bool):
+        raise AssertUnevaluatableError(f"capture sequence {entry['id']!r}: same_action must be a boolean")
+    if same_action and len({case.provenance["action"] for case in cases}) != 1:
+        return f"actions differ across {sequence}"
+
+    positions = [_capture_position(case) for case in cases]
+    for left, right in zip(positions, positions[1:], strict=False):
+        if left[1] >= right[0]:
+            return f"capture positions are not strictly ordered: {positions}"
+    adjacent_writes = entry.get("adjacent_writes", False)
+    if not isinstance(adjacent_writes, bool):
+        raise AssertUnevaluatableError(f"capture sequence {entry['id']!r}: adjacent_writes must be a boolean")
+    if adjacent_writes:
+        write_positions = [_capture_write_position(case) for case in cases]
+        for left, right in zip(write_positions, write_positions[1:], strict=False):
+            if left[1] + 1 != right[0]:
+                return f"capture writes are not adjacent: {write_positions}"
+    return None
+
+
+def run_equal_values(entry: dict[str, Any], parsed_by_id: dict[str, Any]) -> tuple[str | None, Any]:
+    selections = entry.get("equal_values")
+    if not isinstance(selections, list) or len(selections) < 2:
+        raise AssertUnevaluatableError(f"equal values {entry.get('id')!r}: needs at least two selections")
+    values = []
+    for selection in selections:
+        if (
+            not isinstance(selection, dict)
+            or not isinstance(selection.get("case"), str)
+            or not isinstance(selection.get("actual"), str)
+        ):
+            raise AssertUnevaluatableError(f"equal values {entry['id']!r}: each selection needs case and actual")
+        case_id = selection["case"]
+        if case_id not in parsed_by_id or parsed_by_id[case_id] is None:
+            raise AssertUnevaluatableError(f"equal values {entry['id']!r}: no parsed case {case_id!r}")
+        values.append(normalise(resolve(parsed_by_id[case_id], selection["actual"])))
+    if len(set(values)) != 1:
+        return f"values differ: {values}", values
+    return None, values[0]
+
+
 def check_every_spec_is_exercised(cases: list[Case]) -> None:
     """Refuse a .ksy that no fixture reaches, directly or through an import.
 
@@ -351,7 +439,7 @@ def check_every_fixture_is_claimed(cases: list[Case]) -> None:
         raise AssertUnevaluatableError(f"{len(orphans)} fixture(s) in src/ that no .kst reads: {', '.join(orphans)}")
 
 
-def run_aggregates(parsed_by_id: dict[str, Any], data_by_id: dict[str, bytes]) -> int:
+def run_aggregates(cases: list[Case], parsed_by_id: dict[str, Any], data_by_id: dict[str, bytes]) -> int:
     """Check claims that span fixtures, which .kst asserts cannot express.
 
     A per-fixture assert cannot say "palette_count takes eight different values across the
@@ -366,7 +454,26 @@ def run_aggregates(parsed_by_id: dict[str, Any], data_by_id: dict[str, bytes]) -
     if not path.exists():
         return 0
     failed = 0
+    cases_by_id = {case.id: case for case in cases}
     for entry in yaml.safe_load(path.read_text()) or []:
+        if "capture_sequence" in entry:
+            problem = run_capture_sequence(entry, cases_by_id)
+            if problem:
+                failed += 1
+                print(f"FAIL {entry['id']}")
+                print(f"       {problem}")
+            else:
+                print(f"PASS {entry['id']:38s} capture sequence")
+            continue
+        if "equal_values" in entry:
+            problem, value = run_equal_values(entry, parsed_by_id)
+            if problem:
+                failed += 1
+                print(f"FAIL {entry['id']}")
+                print(f"       {problem}")
+            else:
+                print(f"PASS {entry['id']:38s} equal value {value!r}")
+            continue
         differential = next((key for key in DIFFERENTIALS if key in entry), None)
         if differential:
             problem = run_differential(entry, differential, data_by_id)
@@ -440,7 +547,7 @@ def main() -> int:
         else:
             checks = len(case.asserts) + (1 if case.exception else 2)
             print(f"PASS {case.id:38s} {checks} check(s)")
-    failed += run_aggregates(parsed_by_id, {case.id: case.data for case in cases})
+    failed += run_aggregates(cases, parsed_by_id, {case.id: case.data for case in cases})
     print(f"\n{len(specs)} fixture(s), {failed} failed")
     return 1 if failed else 0
 

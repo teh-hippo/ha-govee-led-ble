@@ -10,6 +10,7 @@ case "$mode" in
     output="${2:-custom_components/ha_govee_led_ble/generated_protocol}"
     specs=(
       command_write
+      diy_type04
       h6199_command_write
       h6199_effect_upload
       h6199_status_query

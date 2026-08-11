@@ -1,6 +1,6 @@
 meta:
   id: diy_type04
-  title: Govee H617A reassembled DIY TYPE 0x04 body — Flat DIY + Combo DIY (decode-only)
+  title: Govee H617A reassembled DIY TYPE 0x04 body — Flat DIY + Combo DIY
   endian: le
   imports:
     - govee_shared

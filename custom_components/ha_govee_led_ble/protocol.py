@@ -2,7 +2,7 @@
 
 import base64
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
@@ -17,6 +17,15 @@ from .generated_protocol_adapter import (
     build_colour_temperature as _build_generated_colour_temperature,
 )
 from .generated_protocol_adapter import build_firmware_query as _build_generated_firmware_query
+from .generated_protocol_adapter import (
+    build_h617a_diy_activation as _build_generated_diy_activation,
+)
+from .generated_protocol_adapter import (
+    build_h617a_diy_multi_body as _build_generated_diy_multi_body,
+)
+from .generated_protocol_adapter import (
+    build_h617a_diy_single_body as _build_generated_diy_single_body,
+)
 from .generated_protocol_adapter import (
     build_h617a_scene as _build_generated_h617a_scene,
 )
@@ -363,6 +372,73 @@ def build_a3_multi(type_byte: int, body: bytes, *, terminator: bool = False) -> 
     if trailing_terminator:
         packets.append(_a3_frame(0xFF, b""))
     return packets
+
+
+def _validate_diy_byte(value: int, name: str) -> None:
+    if not isinstance(value, int) or not 0 <= value <= 0xFF:
+        raise ValueError(f"{name} must be an integer from 0 to 255")
+
+
+def _validate_diy_percent(value: int, name: str) -> None:
+    if not isinstance(value, int) or not 0 <= value <= 100:
+        raise ValueError(f"{name} must be an integer from 0 to 100")
+
+
+def _validate_diy_palette(palette: Sequence[tuple[int, int, int]]) -> None:
+    if not 1 <= len(palette) <= 8:
+        raise ValueError("palette must contain 1 to 8 colours")
+    for colour in palette:
+        if (
+            not isinstance(colour, tuple)
+            or len(colour) != 3
+            or any(not isinstance(channel, int) or not 0 <= channel <= 0xFF for channel in colour)
+        ):
+            raise ValueError("palette colours must be RGB tuples with channels from 0 to 255")
+
+
+def build_h617a_diy_single(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: Sequence[tuple[int, int, int]],
+) -> list[bytes]:
+    """Encode an H617A type04 Flat body without choosing its activation code."""
+    _validate_diy_byte(family, "family")
+    if family == 0xFF:
+        raise ValueError("family 255 is reserved for Multi")
+    _validate_diy_byte(variant, "variant")
+    _validate_diy_percent(speed, "speed")
+    _validate_diy_palette(palette)
+    body = _build_generated_diy_single_body(family, variant, speed, list(palette))
+    return build_a3_multi(0x04, body)
+
+
+def build_h617a_diy_multi(
+    effects: Sequence[tuple[int, int]],
+    speed: int,
+    palette: Sequence[tuple[int, int, int]],
+) -> list[bytes]:
+    """Encode an H617A type04 Combo body without choosing its activation code."""
+    if not 1 <= len(effects) <= 4:
+        raise ValueError("Multi must contain 1 to 4 effects")
+    encoded_effects: list[tuple[int, int]] = []
+    for family, variant in effects:
+        _validate_diy_byte(family, "effect family")
+        if family == 0xFF:
+            raise ValueError("effect family 255 is reserved for Multi")
+        _validate_diy_byte(variant, "effect variant")
+        encoded_effects.append((family, variant))
+    _validate_diy_percent(speed, "speed")
+    _validate_diy_palette(palette)
+    body = _build_generated_diy_multi_body(encoded_effects, speed, list(palette))
+    return build_a3_multi(0x04, body)
+
+
+def build_h617a_diy_activation(diy_code: int) -> bytes:
+    """Select an explicitly supplied H617A DIY code after its upload."""
+    if not isinstance(diy_code, int) or not 0 <= diy_code <= 0xFFFF:
+        raise ValueError("DIY code must be an integer from 0 to 65535")
+    return _build_generated_diy_activation(diy_code)
 
 
 def scene_record_spans(payload: bytes) -> list[tuple[int, int]]:

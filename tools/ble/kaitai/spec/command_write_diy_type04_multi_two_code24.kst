@@ -1,0 +1,24 @@
+id: command_write_diy_type04_multi_two_code24
+data: command_write_diy_type04_multi_two_code24.bin
+imports:
+- command_write
+provenance:
+  kind: capture_frame
+  schema_model: h617a
+  source_model: h617a
+  source: session-cupboard-20260811-223946.pcapng
+  source_sha256: f85b34181da5e76613ec481c83984441706283e01cc5a0c3ce67020e9920a578
+  source_index: 1349
+  source_start_index: 1349
+  source_end_index: 1349
+  source_write_start_index: 145
+  source_write_end_index: 145
+  action: multi-add-jumping1
+  actions_sha256: 0d267df3f08734e9053431b0651bbc15ee0d70fab636257f4f6b23a08a3e675e
+  prediction_sha256: fcc0fbcf9950a04d623f956e1c9ca75dcdbd0d3bd969352b2ff963b2ce59adc7
+asserts:
+- actual: body.sub
+  expected: 10
+- actual: body.sub_body.code
+  expected: 24
+fixture_sha256: 99209aa50b415368fbcd52ecd41cec1be31f7176440aeaaf54d86eebcb5ea9ed
