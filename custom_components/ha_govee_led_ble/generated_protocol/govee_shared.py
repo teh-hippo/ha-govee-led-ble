@@ -290,6 +290,26 @@ class GoveeShared(ReadWriteKaitaiStruct):
 
         def _invalidate_direction_is_backward(self):
             del self._m_direction_is_backward
+        @property
+        def distribution_method(self):
+            if hasattr(self, '_m_distribution_method'):
+                return self._m_distribution_method
+
+            self._m_distribution_method = self.direction_distribution & 127
+            return getattr(self, '_m_distribution_method', None)
+
+        def _invalidate_distribution_method(self):
+            del self._m_distribution_method
+        @property
+        def unknown_flags(self):
+            if hasattr(self, '_m_unknown_flags'):
+                return self._m_unknown_flags
+
+            self._m_unknown_flags = self.layer_flags & 253
+            return getattr(self, '_m_unknown_flags', None)
+
+        def _invalidate_unknown_flags(self):
+            del self._m_unknown_flags
 
     class Movement(ReadWriteKaitaiStruct):
         def __init__(self, _io=None, _parent=None, _root=None):
@@ -348,6 +368,16 @@ class GoveeShared(ReadWriteKaitaiStruct):
 
         def _invalidate_enter_exit_effect(self):
             del self._m_enter_exit_effect
+        @property
+        def unknown_flags(self):
+            if hasattr(self, '_m_unknown_flags'):
+                return self._m_unknown_flags
+
+            self._m_unknown_flags = self.packed & 232
+            return getattr(self, '_m_unknown_flags', None)
+
+        def _invalidate_unknown_flags(self):
+            del self._m_unknown_flags
 
     class Rgb(ReadWriteKaitaiStruct):
         def __init__(self, _io=None, _parent=None, _root=None):

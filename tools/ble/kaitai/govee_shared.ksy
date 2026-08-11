@@ -61,6 +61,8 @@ types:
         value: '(packed & 0x04) != 0'
       direction:
         value: 'packed & 0x03'
+      unknown_flags:
+        value: 'packed & 0xe8'
   effect_layer:
     seq:
       - id: applied_area
@@ -107,8 +109,12 @@ types:
         value: 'applied_area & 0x0f'
       direction_is_backward:
         value: '(direction_distribution & 0x80) != 0'
+      distribution_method:
+        value: 'direction_distribution & 0x7f'
       brightness_is_gradient:
         value: '(layer_flags & 0x02) != 0'
+      unknown_flags:
+        value: 'layer_flags & 0xfd'
   scene_type1_content:
     seq:
       - id: config
