@@ -86,16 +86,16 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.14"
+          enable-cache: false
 
       - uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
+          cache: false
 
       - name: Build deterministic package
         run: |
