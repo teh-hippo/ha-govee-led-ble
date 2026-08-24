@@ -44,7 +44,6 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.target_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -52,12 +51,13 @@ jobs:
         env:
           TARGET_SHA: ${{ inputs.target_sha }}
         run: |
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           git fetch --no-tags origin ux
           git merge-base --is-ancestor "$TARGET_SHA" origin/ux || {
             echo "target_sha is not reachable from the remote ux branch" >&2
             exit 1
           }
+          git checkout --detach "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
 
       - name: Verify source version
         env:
