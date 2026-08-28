@@ -411,6 +411,7 @@ export const studioEditorStyles = css`
     display: flex;
     flex: 1;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--studio-action-gap);
   }
 
