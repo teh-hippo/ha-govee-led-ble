@@ -42,6 +42,17 @@ jobs:
             --with gitpython==3.1.59 \
             semantic-release version --no-changelog
 
+      - name: Apply curated release notes
+        if: ${{ steps.semantic_release.outputs.released == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ steps.semantic_release.outputs.tag }}
+        run: |
+          notes_file=".github/release-notes/${RELEASE_TAG#v}.md"
+          if [[ -f "$notes_file" ]]; then
+            gh release edit "$RELEASE_TAG" --notes-file "$notes_file"
+          fi
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
         with:
