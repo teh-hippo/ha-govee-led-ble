@@ -116,13 +116,15 @@ export function createPreviewChannelId(
     typeof crypto.randomUUID === "function"
       ? crypto.randomUUID.bind(crypto)
       : undefined,
-  randomValues: (values: Uint8Array) => Uint8Array = (values) =>
+  randomValues: (
+    values: Uint8Array<ArrayBuffer>,
+  ) => Uint8Array<ArrayBuffer> = (values) =>
     crypto.getRandomValues(values),
 ): string {
   if (randomUuid) {
     return randomUuid();
   }
-  const bytes = randomValues(new Uint8Array(16));
+  const bytes = randomValues(new Uint8Array(new ArrayBuffer(16)));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0"));
