@@ -23,6 +23,8 @@ Govee Effect Studio is added to the Home Assistant sidebar when the integration 
 | H617A | Scenes, painted segments, single-layer effects, multi-layered effects, reactive music effects and advanced layered effects |
 | H6199 | Scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |
 
+H6199 video profiles keep saturation, capture area, sound effects, softness, white balance, relative brightness and blank-screen behaviour together as one reusable effect.
+
 Administrators can edit effects and manage the shared saved-effect library.  Other authenticated users can browse scenes and compatible saved effects in read-only mode.
 
 ### Using the editor
@@ -32,9 +34,11 @@ Administrators can edit effects and manage the shared saved-effect library.  Oth
 3. Leave **Live** enabled to preview changes on the light, or disable it and use **Apply** when the draft is ready.
 4. Use **Save** for a built-in default, **Save As** for a named library effect, and **Reset** to restore the catalogue version.
 
-**Auto Save** persists committed changes to the selected built-in default or saved effect.  Editable built-ins can retain a per-light default, including native scenes, music profiles and H6199 video profiles.
+**Auto Save** persists committed changes to the selected built-in default or saved effect.  Editable built-ins can retain a per-light default, including native scenes, music profiles and H6199 video profiles.  The current unsaved draft is retained per device.
 
-Saved effect names appear in the standard Home Assistant light effect selector, so dashboards, scenes, scripts and automations use the same control path as Effect Studio.  The `ha_govee_led_ble.apply_custom_effect` entity action accepts either the current saved name or its stable effect ID.
+Saved effect names appear in the standard Home Assistant light effect selector, so dashboards, scenes, scripts and automations use the same control path as Effect Studio.  The `ha_govee_led_ble.apply_custom_effect` entity action accepts either the current saved name or its stable effect ID and supports entity, device, area and label targets.
+
+Home Assistant light commands, scenes and automations take priority over Live previews.  Effect uploads and activation use one serialised operation, with verification and recovery on state-readable devices.
 
 Effect definitions are model-specific.  A strip cannot return the body uploaded by the Govee app, and the app provides no supported export format, so Effect Studio cannot import an arbitrary app-authored DIY effect directly.  The protocol boundary is documented in [#89](https://github.com/teh-hippo/ha-govee-led-ble/issues/89).
 
