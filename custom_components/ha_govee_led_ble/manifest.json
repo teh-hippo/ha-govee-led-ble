@@ -47,5 +47,5 @@
     "requirements": [
         "kaitaistruct==0.11"
     ],
-    "version": "7.0.0rc37"
+    "version": "7.0.0-rc.37"
 }

@@ -34,10 +34,13 @@ jobs:
 
       - name: Python Semantic Release
         id: semantic_release
-        uses: python-semantic-release/python-semantic-release@39dd2052f2ce8282a5d932c31d58a2ca06d2550e # v10
-        with:
-          github_token: ${{ secrets.RELEASE_TOKEN }}
-          changelog: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          uvx \
+            --from python-semantic-release==10.6.1 \
+            --with gitpython==3.1.59 \
+            semantic-release version --no-changelog
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
