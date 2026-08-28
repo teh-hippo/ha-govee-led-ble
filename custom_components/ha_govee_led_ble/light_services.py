@@ -1,52 +1,71 @@
-"""Apply helpers and retained segment-service methods for the Govee BLE light."""
+"""Control helpers for the Govee BLE light."""
 
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any
 
+import voluptuous as vol
 from homeassistant.components.light import ColorMode  # type: ignore[attr-defined]
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import service
+from homeassistant.helpers.typing import VolDictType
 
 from .const import DOMAIN
+from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
-from .coordinator_modes import MUSIC_STYLE_SLUGS
-from .protocol import (
-    SegmentColorGroup,
-    build_power,
-    build_segment_brightness,
-    build_video_mode,
-)
+from .generated_protocol_adapter import build_h6199_video, build_power
+from .light_commands import SegmentColorGroup
+from .native_profile_controls import apply_active_video_mode
+
+__all__ = ("apply_active_video_mode", "async_register_light_services")
+
+_PERCENTAGE = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
+_SEGMENT = vol.All(vol.Coerce(int), vol.Range(min=1, max=15))
+_SEGMENTS = vol.All([_SEGMENT], vol.Length(min=1))
+_RGB = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
+_PAINT_SEGMENTS_SCHEMA: VolDictType = {
+    vol.Required("groups"): vol.All(
+        [
+            {
+                vol.Required("segments"): _SEGMENTS,
+                vol.Required("rgb_color"): _RGB,
+            }
+        ],
+        vol.Length(min=1),
+    ),
+}
+_SET_SEGMENT_COLOR_SCHEMA: VolDictType = {
+    vol.Required("segments"): _SEGMENTS,
+    vol.Required("color"): _RGB,
+}
+_SET_SEGMENT_BRIGHTNESS_SCHEMA: VolDictType = {
+    vol.Required("segments"): _SEGMENTS,
+    vol.Required("brightness"): _PERCENTAGE,
+}
 
 
-# fmt: off
-async def apply_video_mode_from_state(coord: GoveeBLECoordinator, *, game_mode: bool) -> None:
-    sound_effects = coord.video_sound_effects and coord.profile.supports_video_sound_effects
-    await coord.send_command(build_video_mode(full_screen=coord.video_full_screen, game_mode=game_mode,
-        saturation=coord.video_saturation, sound_effects=sound_effects,
-        sound_effects_softness=coord.video_sound_effects_softness))
-    if not coord.profile.supports_video_sound_effects:
-        coord.video_sound_effects = False
-# fmt: on
-
-
-async def apply_active_video_mode(coord: GoveeBLECoordinator) -> bool:
-    if coord.video_mode not in ("movie", "game"):
-        return False
-    for _ in range(2):
-        if not coord.is_on:
-            await coord.send_command(build_power(True, coord.model))
-            coord.is_on = True
-        await apply_video_mode_from_state(coord, game_mode=coord.video_mode == "game")
-        if await coord.refresh_state(
-            expected_on=True,
-            expected_video_mode=coord.video_mode,
-            expected_video_full_screen=coord.video_full_screen,
-            expected_video_saturation=coord.video_saturation,
-            expected_video_sound_effects=coord.video_sound_effects,
-            expected_video_sound_effects_softness=coord.video_sound_effects_softness,
-        ):
-            return True
-    raise RuntimeError("Video-mode write was not confirmed by the device")
+def async_register_light_services(hass: HomeAssistant) -> None:
+    """Register light entity services before config entries are loaded."""
+    for name, schema, method in (
+        ("paint_segments", _PAINT_SEGMENTS_SCHEMA, "async_paint_segments"),
+        ("set_segment_color", _SET_SEGMENT_COLOR_SCHEMA, "async_set_segment_color"),
+        (
+            "set_segment_brightness",
+            _SET_SEGMENT_BRIGHTNESS_SCHEMA,
+            "async_set_segment_brightness",
+        ),
+    ):
+        service.async_register_platform_entity_service(
+            hass,
+            DOMAIN,
+            name,
+            entity_domain=Platform.LIGHT,
+            func=method,
+            schema=schema,
+        )
 
 
 class _GoveeLightOwner:
@@ -62,25 +81,19 @@ class _GoveeLightOwner:
         async def _refresh_with_retry(
             self,
             *,
-            expected_effect: str | None = None,
             expected_on: bool | None = None,
             expected_brightness: int | None = None,
-            expected_music_mode: str | None = None,
-            expected_music_sensitivity: int | None = None,
-            expected_music_calm: bool | None = None,
-            expected_music_color: tuple[int, int, int] | None = None,
-            expected_music_auto_color: bool = False,
             expected_video_mode: str | None = None,
             expected_video_full_screen: bool | None = None,
             expected_video_saturation: int | None = None,
             expected_video_sound_effects: bool | None = None,
             expected_video_sound_effects_softness: int | None = None,
-            expected_white_brightness: int | None = None,
             retry_command: Callable[[], Awaitable[None]] | None = None,
-            required: bool = True,
         ) -> None: ...
 
         def _notify_state_changed(self) -> None: ...
+
+        async def _async_supersede_preview(self) -> None: ...
 
         def _require_support(self, service: str, *, supported: bool) -> None: ...
 
@@ -108,8 +121,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
             # fmt: off
-            packet = build_video_mode(full_screen=resolved_fs, game_mode=mode == "game", saturation=saturation,
-                sound_effects=resolved_sound, sound_effects_softness=resolved_softness)
+            packet = build_h6199_video(resolved_fs, mode == "game", saturation, resolved_sound, resolved_softness)
             # fmt: on
             async def apply() -> None:
                 await self.coordinator.send_command(
@@ -137,53 +149,12 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 c.video_sound_effects_softness = resolved_softness
         self._notify_state_changed()
 
-    async def _async_set_music_mode(self, mode: str, sensitivity: int = 99,
-            color: tuple[int, int, int] | None = None, calm: bool | None = None) -> None:
-        slug = mode.replace(" ", "_")
-        self._require_support("set_music_mode", supported=slug in self.coordinator.profile.music_modes)
-        if color is not None:
-            self._require_support(
-                "set_music_mode",
-                supported=self.coordinator.profile.supports_music_color,
-            )
-        if calm is not None:
-            self._require_support(
-                "set_music_mode",
-                supported=slug in MUSIC_STYLE_SLUGS,
-            )
-        with self._rollback():
-            c = self.coordinator
-            resolved_sensitivity = max(
-                c.profile.music_sensitivity_min,
-                min(sensitivity, c.profile.music_sensitivity_max),
-            )
-            if slug in MUSIC_STYLE_SLUGS and calm is not None:
-                c.music_calm = calm
-            style_calm = c.music_calm if slug in MUSIC_STYLE_SLUGS else None
-            # Rhythm reflects STYLE in its status reply; Bloom/Shiny repurpose that byte, so their
-            # calm is written optimistically but not verified on read-back.
-            verify_calm = c.music_calm if slug == "rhythm" else None
-
-            async def apply() -> None:
-                c.music_sensitivity, c.music_color = resolved_sensitivity, color
-                if style_calm is not None:
-                    c.music_calm = style_calm
-                await c.async_select_music_slug(slug)
-
-            await apply()
-            await self._refresh_with_retry(
-                expected_on=True,
-                expected_music_mode=slug,
-                expected_music_sensitivity=resolved_sensitivity,
-                expected_music_calm=verify_calm,
-                expected_music_color=color,
-                expected_music_auto_color=color is None,
-                retry_command=apply,
-            )
-        self._notify_state_changed()
-
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
-        async with self.coordinator._control_lock:
+        await self._async_supersede_preview()
+        async with async_control_intent(
+            self.coordinator,
+            ControlIntent.USER,
+        ):
             self._require_support("paint_segments", supported=self.coordinator.profile.supports_segments)
             if not groups or any(not group.get("segments") for group in groups):
                 raise ServiceValidationError(
@@ -198,25 +169,42 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                     translation_domain=DOMAIN,
                     translation_key="invalid_segments",
                 ) from err
+            except HomeAssistantError:
+                raise
+            except Exception as err:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="device_command_failed",
+                ) from err
 
     async def async_set_segment_color(self, segments: list[int], color: tuple[int, int, int]) -> None:
         group: dict[str, Any] = {"segments": segments, "rgb_color": color}
         await self.async_paint_segments([group])
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
-        async with self.coordinator._control_lock:
+        await self._async_supersede_preview()
+        async with async_control_intent(
+            self.coordinator,
+            ControlIntent.USER,
+        ):
             self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
-            try:
-                packet = build_segment_brightness(
-                    segments,
-                    brightness,
-                    self.coordinator.model,
+            if not segments:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="invalid_segments",
                 )
+            try:
+                await self.coordinator.async_set_segment_brightness(segments, brightness)
             except (TypeError, ValueError) as err:
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
                     translation_key="invalid_segments",
                 ) from err
-            await self.coordinator.send_command(packet)
-            self.coordinator._enter_static_mode()
+            except HomeAssistantError:
+                raise
+            except Exception as err:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="device_command_failed",
+                ) from err
             self._notify_state_changed()

@@ -1,5 +1,0 @@
-__pycache__/
-
-# Parsers generated into this directory by older tooling are disposable.
-*.py
-!kst_runner.py

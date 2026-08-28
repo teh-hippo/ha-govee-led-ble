@@ -25,6 +25,7 @@ seq:
         'query_domain::subordinate_21': zero_body
         'query_domain::display_setting': display_setting_query_body
         'query_domain::relative_brightness': relative_brightness_query_body
+        'query_domain::segments': segment_query_body
   - id: checksum
     type: u1
 enums:
@@ -39,6 +40,7 @@ enums:
     0x21: subordinate_21
     0xa9: display_setting
     0xae: relative_brightness
+    0xa5: segments
   display_setting:
     0x00: white_balance
     0x0a: blank_screen
@@ -70,6 +72,18 @@ types:
     seq:
       - id: selector
         contents: [0x01]
+      - id: zeros
+        type: u1
+        valid: 0
+        repeat: eos
+  segment_query_body:
+    doc: Selects groups 1 through 3 with four segment records, or group 4 with three.
+    seq:
+      - id: group
+        type: u1
+        valid:
+          min: 1
+          max: 4
       - id: zeros
         type: u1
         valid: 0

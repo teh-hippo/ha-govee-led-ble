@@ -9,14 +9,14 @@ from custom_components.ha_govee_led_ble.generated_protocol.scene_body import Sce
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     _check_tree,
     _write,
+    build_h617a_scene,
     parse_scene_body_param,
 )
-from custom_components.ha_govee_led_ble.protocol import (
-    MOVE_ALL_OFFSET,
-    MOVE_IN_OFFSET,
+from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
+from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene
+from custom_components.ha_govee_led_ble.native_scenes import (
     apply_scene_speed,
-    build_scene_multi,
-    scene_record_spans,
+    build_native_scene_packets,
 )
 from custom_components.ha_govee_led_ble.scenes import (
     MODEL_SCENES,
@@ -25,17 +25,20 @@ from custom_components.ha_govee_led_ble.scenes import (
     SceneEntry,
     ScenePage,
     SceneSpeed,
-    get_model_scene_names,
-    get_scene_names,
 )
+from custom_components.ha_govee_led_ble.transport import fragment_a3
+
+
+def _decode_layered(payload: bytes):
+    return decode_layered_scene(CatalogueRef("H617A", 0, 0), payload)
 
 
 def test_catalogue_valid():
     assert len(SCENES) == 83
     assert all(isinstance(e, SceneEntry) and k == k.lower() for k, e in SCENES.items())
-    names = get_scene_names()
+    names = sorted(SCENES)
     assert names == sorted(names) and len(names) == len(SCENES)
-    codes = [e.code for e in SCENES.values() if e.is_simple]
+    codes = [e.code for e in SCENES.values() if not e.param]
     assert len(codes) == len(set(codes))
     assert {scene.speed.option_count for scene in SCENES.values() if scene.speed is not None} == {3, 4}
 
@@ -44,9 +47,9 @@ _SIMPLE = ["sunrise", "sunset", "rainbow", "candlelight", "romantic", "movie", "
 _COMPLEX = ["forest", "aurora", "fire", "christmas", "disco"]
 
 
-@pytest.mark.parametrize("name,simple", [*((n, True) for n in _SIMPLE), *((n, False) for n in _COMPLEX)])
-def test_scene_type(name, simple):
-    assert SCENES[name].is_simple is simple
+def test_scene_type_examples():
+    assert all(not SCENES[name].param for name in _SIMPLE)
+    assert all(SCENES[name].param for name in _COMPLEX)
 
 
 def test_known_codes():
@@ -67,14 +70,13 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert MODEL_SCENES["H6199"]["dracarys"].category == "House of the Dragon"
     assert MODEL_SCENES["H6199"]["green reign"].code == 16183
     assert MODEL_SCENES["H6199"]["fire & blood"].code == 16184
-    assert get_model_scene_names("H6199") == sorted(MODEL_SCENES["H6199"])
     assert {"flash [emotion]", "flash [zootopia 2]"} <= MODEL_SCENES["H6199"].keys()
 
 
 def test_aurora_b_matches_current_ios_capture():
     scene = SCENES["aurora b"]
 
-    assert [packet.hex() for packet in build_scene_multi(scene.param, scene.code, scene.scene_type)] == [
+    assert [packet.hex() for packet in build_native_scene_packets("H617A", scene)] == [
         "a3000109020423400000010201ff1903c20a03e2",
         "a30102e632040fff080b07ff07f8ffff06e9006b",
         "a30202f80100800023420000010001ff1803bbe4",
@@ -92,14 +94,15 @@ def test_glacier_speed_default_rewrites_the_stale_param_bytes():
     """Glacier 2175 ships 0xff where its own option list says 250, and the app rewrites it."""
     scene = SCENES["glacier"]
     stored = base64.b64decode(scene.param)
-    spans = scene_record_spans(stored)
     assert scene.speed is not None and scene.speed.default_index == 2
 
     uploaded = apply_scene_speed(stored, scene.speed, scene.speed.default_index)
+    stored_scene = _decode_layered(stored)
+    uploaded_scene = _decode_layered(uploaded)
 
     for page in scene.speed.pages:
-        position = spans[page.page][1] + MOVE_IN_OFFSET
-        assert stored[position] == 0xFF and uploaded[position] == 250
+        assert stored_scene.effect.layers[page.page].selected_movement.speed == 0xFF
+        assert uploaded_scene.effect.layers[page.page].selected_movement.speed == 250
     assert sum(before != after for before, after in zip(stored, uploaded, strict=True)) == 2
 
 
@@ -119,23 +122,25 @@ def test_speed_default_position_reproduces_every_other_stored_param():
 def test_speed_position_selects_the_option_list_value(index, expected):
     scene = SCENES["glacier"]
     stored = base64.b64decode(scene.param)
-    spans = scene_record_spans(stored)
-
     uploaded = apply_scene_speed(stored, scene.speed, index)
+    decoded = _decode_layered(uploaded)
 
-    assert [uploaded[spans[p.page][1] + MOVE_IN_OFFSET] for p in scene.speed.pages] == [expected, expected]
+    assert [decoded.effect.layers[page.page].selected_movement.speed for page in scene.speed.pages] == [
+        expected,
+        expected,
+    ]
 
 
 def test_speed_position_writes_the_overall_movement_byte():
     """Pages carrying moveAll write overall_movement.speed, two bytes from the record end."""
     scene = SCENES["lightning b"]
     stored = base64.b64decode(scene.param)
-    spans = scene_record_spans(stored)
-
     uploaded = apply_scene_speed(stored, scene.speed, 0)
+    original = _decode_layered(stored)
+    decoded = _decode_layered(uploaded)
 
-    assert [uploaded[spans[p.page][1] + MOVE_ALL_OFFSET] for p in scene.speed.pages] == [237, 242]
-    assert [stored[spans[p.page][1] + MOVE_ALL_OFFSET] for p in scene.speed.pages] == [243, 248]
+    assert [decoded.effect.layers[page.page].overall_movement.speed for page in scene.speed.pages] == [237, 242]
+    assert [original.effect.layers[page.page].overall_movement.speed for page in scene.speed.pages] == [243, 248]
 
 
 def test_speed_position_writes_colour_and_brightness_fields():
@@ -144,23 +149,26 @@ def test_speed_position_writes_colour_and_brightness_fields():
     assert scene.speed is not None
     stored = base64.b64decode(scene.param)
     uploaded = apply_scene_speed(stored, scene.speed, 0)
-    spans = scene_record_spans(stored)
-
-    changed = {offset for offset, (before, after) in enumerate(zip(stored, uploaded, strict=True)) if before != after}
-    expected: set[int] = set()
+    decoded = _decode_layered(uploaded)
+    changed = 0
     for page in scene.speed.pages:
-        start, stop = spans[page.page]
         if page.move_in:
-            expected.add(stop + MOVE_IN_OFFSET)
+            assert decoded.effect.layers[page.page].selected_movement.speed == page.move_in[0]
+            changed += 1
         if page.move_all:
-            expected.add(stop + MOVE_ALL_OFFSET)
-        brightness_count = stored[start + 5]
+            assert decoded.effect.layers[page.page].overall_movement.speed == page.move_all[0]
+            changed += 1
         if page.colour_speed:
-            expected.add(start + 7 + brightness_count * 6)
-        expected.update(start + 9 + brightness.block * 6 for brightness in page.brightness_speeds)
+            assert decoded.effect.layers[page.page].colour_speed == page.colour_speed[0]
+            changed += 1
+        for brightness in page.brightness_speeds:
+            assert (
+                decoded.effect.layers[page.page].brightness_patterns[brightness.block].change_speed
+                == brightness.values[0]
+            )
+            changed += 1
 
-    assert changed == expected
-    assert len(changed) == 8
+    assert changed == 8
 
 
 def test_speed_metadata_includes_colour_and_brightness_only_scenes():
@@ -172,43 +180,29 @@ def test_speed_metadata_includes_colour_and_brightness_only_scenes():
     assert SCENES["heartbeat"].speed is None
 
 
-def test_scene_record_spans_walks_every_type_2_body():
-    """Only type-2 params are record containers; Halloween/Sweet (type 1) use another grammar."""
-    walked = 0
-    for scene in SCENES.values():
-        if not scene.param or scene.scene_type != 2:
-            continue
-        payload = base64.b64decode(scene.param)
-        spans = scene_record_spans(payload)
-        assert len(spans) == payload[0]
-        assert spans[-1][1] == len(payload)
-        walked += 1
-
-    assert walked == 72
-    assert all(scene.scene_type == 2 for scene in SCENES.values() if scene.speed)
-
-
-def test_build_scene_multi_uploads_the_corrected_glacier_body():
+def test_native_scene_packets_upload_the_corrected_glacier_body():
     scene = SCENES["glacier"]
 
-    verbatim = build_scene_multi(scene.param, scene.code, scene.scene_type)
-    corrected = build_scene_multi(scene.param, scene.code, scene.scene_type, scene.speed)
+    verbatim = [*fragment_a3(scene.scene_type, base64.b64decode(scene.param)), build_h617a_scene(scene.code)]
+    corrected = build_native_scene_packets("H617A", scene)
 
     assert corrected != verbatim
     assert len(corrected) == len(verbatim)
     assert corrected[-1] == verbatim[-1]  # the 33 05 04 activation is untouched
 
 
-def test_scene_record_spans_stops_at_a_truncated_record():
-    """A body whose last record claims more bytes than remain yields only the whole records."""
-    assert scene_record_spans(bytes([2, 3, 0xAA, 0xBB, 0xCC, 9, 0x01])) == [(2, 5)]
-
-
 def test_apply_scene_speed_skips_a_page_with_no_matching_record():
-    payload = bytes([1, 8, *range(8)])
+    payload = base64.b64decode(SCENES["forest"].param)
     speed = SceneSpeed(0, (ScenePage(page=4, move_in=(99,)),))
 
     assert apply_scene_speed(payload, speed, 0) == payload
+
+
+def test_scene_speed_capability_matches_physical_model_behaviour():
+    glacier = SCENES["glacier"]
+    assert glacier.speed is not None
+    assert glacier.speed.pages[0].move_in == (237, 244, 250)
+    assert all(entry.speed is None for entry in SCENE_ENTRIES["H6199"])
 
 
 def test_generated_scene_body_parser_round_trips_type_2_catalogues():

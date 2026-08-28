@@ -67,6 +67,11 @@ types:
     seq:
       - id: applied_area
         type: u1
+        doc: >
+          Packed applied area. The low nibble is the zero-based area index and the high
+          nibble is the area width in tenths. Width 0 is the app's canonical encoding
+          for width 10; raw 0x00 and 0xa0 are therefore semantically full width at index
+          0 but remain byte-distinct and must round-trip unchanged.
       - id: select_type
         type: u1
         enum: select_type
@@ -107,6 +112,8 @@ types:
         value: '(applied_area & 0xf0) >> 4'
       applied_area_start_tenths:
         value: 'applied_area & 0x0f'
+      applied_area_effective_width_tenths:
+        value: 'applied_area_width_tenths == 0 ? 10 : applied_area_width_tenths'
       direction_is_backward:
         value: '(direction_distribution & 0x80) != 0'
       distribution_method:
@@ -119,6 +126,11 @@ types:
     seq:
       - id: config
         type: u1
+        doc: >
+          Packed colour stride, layout and brightness flag. Layout 1 is present in the
+          app parser and historical cross-SKU data, but a crafted H617A 0x93 body was
+          acknowledged without replacing the active layout-0 Halloween body. H617A
+          support is therefore rejected rather than inferred from parser structure.
         valid:
           expr: 'layout <= 1 and colour_stride == 3'
       - id: num_steps

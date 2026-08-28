@@ -2,26 +2,33 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 import voluptuous as vol
+from bleak import BleakError  # type: ignore[attr-defined]
+from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfo
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
-from homeassistant.helpers import config_validation as cv
 
+from .ble_connection import async_validate_ble_connection
 from .const import (
+    CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+    CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
+    CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
-    EFFECT_FAMILIES,
     MODEL_PROFILES,
-    default_effect_families,
+    default_effect_categories,
     resolve_model,
-    supported_effect_families,
+    supported_effect_categories,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
 _MANUAL_ADDRESS_PATTERN = re.compile(r"^[0-9A-F]{12}$")
@@ -43,7 +50,7 @@ def _normalize_manual_address(address: str) -> str:
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 5
+    VERSION = 8
 
     _discovered: dict[str, str]
 
@@ -76,11 +83,22 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 address = _normalize_manual_address(user_input[CONF_ADDRESS])
             except ValueError:
                 return self._show_user_form(errors={CONF_ADDRESS: "invalid_address"})
-            await self.async_set_unique_id(address)
+            await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title=f"Govee {user_input[CONF_MODEL]}", data={CONF_MODEL: user_input[CONF_MODEL]}
-            )
+            selected_model = user_input[CONF_MODEL]
+            service_info = bluetooth.async_last_service_info(self.hass, address, connectable=True)
+            advertised_model = _extract_model(service_info.name) if service_info is not None else None
+            if advertised_model is not None and advertised_model != selected_model:
+                return self._show_user_form(errors={"base": "model_mismatch"})
+            try:
+                await async_validate_ble_connection(self.hass, address)
+            except BleakError:
+                return self._show_user_form(errors={"base": "cannot_connect"})
+            except Exception:  # noqa: BLE001 - config flows must surface unexpected validation failures.
+                _LOGGER.exception("Unexpected error validating a Govee BLE device")
+                return self._show_user_form(errors={"base": "unknown"})
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(title=f"Govee {selected_model}", data={CONF_MODEL: selected_model})
         return self._show_user_form()
 
     def _show_user_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:
@@ -103,22 +121,34 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
         model = resolve_model(raw_model) if isinstance(raw_model, str) else None
         if model is None:
             return self.async_abort(reason="not_supported")
-        supported = supported_effect_families(model)
+        supported = supported_effect_categories(model)
         if user_input is not None:
-            selected = set(user_input[CONF_EFFECT_FAMILIES]) & supported
-            ordered = [family for family in EFFECT_FAMILIES if family in selected]
-            return self.async_create_entry(data={CONF_EFFECT_FAMILIES: ordered})
-        defaults = default_effect_families(model)
+            ordered = [category for category in supported if user_input[category]]
+            options = {key: value for key, value in self.config_entry.options.items() if key != CONF_EFFECT_FAMILIES}
+            options[CONF_EFFECT_CATEGORIES] = ordered
+            options[CONF_PREFIX_EFFECT_NAMES] = user_input[CONF_PREFIX_EFFECT_NAMES]
+            options[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS] = user_input[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS]
+            return self.async_create_entry(data=options)
+        defaults = default_effect_categories(model)
         current = self.config_entry.options.get(
-            CONF_EFFECT_FAMILIES,
-            [family for family in EFFECT_FAMILIES if family in defaults],
+            CONF_EFFECT_CATEGORIES,
+            list(defaults),
         )
-        choices = {family: family.title() for family in EFFECT_FAMILIES if family in supported}
+        prefix_effect_names = self.config_entry.options.get(
+            CONF_PREFIX_EFFECT_NAMES,
+            False,
+        )
+        always_include_custom_effects = self.config_entry.options.get(
+            CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+            False,
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_EFFECT_FAMILIES, default=current): cv.multi_select(choices),
+                    **{vol.Required(category, default=category in current): bool for category in supported},
+                    vol.Required(CONF_PREFIX_EFFECT_NAMES, default=prefix_effect_names): bool,
+                    vol.Required(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS, default=always_include_custom_effects): bool,
                 }
             ),
         )

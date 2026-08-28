@@ -31,8 +31,6 @@ seq:
     repeat: eos
 enums:
   effect:
-
-    # () and protocol.py _SKETCH_MOTION_CODES (custom_effects.py).
     0x02: cycle
     0x09: clockwise
     0x0a: counter_clockwise

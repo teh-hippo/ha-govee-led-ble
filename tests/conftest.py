@@ -1,28 +1,19 @@
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, default_effect_families
+from custom_components.ha_govee_led_ble.const import (
+    DOMAIN,
+    MODEL_PROFILES,
+    default_effect_categories,
+    default_effect_families,
+)
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.protocol import WHITE_BALANCE_RESET
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
-
-_IDENTITY_EXAMPLE = Path(__file__).parents[1] / "tools" / "harness" / "devices.local.env.example"
-
-
-@pytest.fixture(autouse=True)
-def harness_identity(monkeypatch):
-    """Point the harness at the committed example, so no test needs a real rig identity.
-
-    devices.env refuses to load without an identity file, so without this every test that
-    shells into the harness passes on a machine that happens to have a devices.local.env and
-    fails on a fresh clone and in CI. Using the shipped example rather than a fabricated temp
-    file also means the example cannot rot: if it stops being loadable, these tests say so.
-    """
-    monkeypatch.setenv("HARNESS_IDENTITY_FILE", str(_IDENTITY_EXAMPLE))
 
 
 @pytest.fixture(autouse=True)
@@ -50,6 +41,8 @@ def _make_coord(**ov) -> MagicMock:
         video_sound_effects_softness=100,
         white_balance_red=None,
         white_balance_blue=None,
+        subordinate_20_version=None,
+        subordinate_21_version=None,
         white_balance=WHITE_BALANCE_RESET,
         relative_brightness=None,
         relative_brightness_left=None,
@@ -64,10 +57,11 @@ def _make_coord(**ov) -> MagicMock:
         music_calm=False,
         music_color=None,
         segment_colors=[(255, 255, 255)] * 15,
+        segment_brightness=[100] * 15,
+        segment_state_source="initial",
+        segment_state_observed_at=None,
         diy_code=None,
         color_mode=None,
-        scene_speed_scene_code=None,
-        scene_speed_index=None,
         music_mode="off",
         video_mode="off",
         data={},
@@ -76,6 +70,9 @@ def _make_coord(**ov) -> MagicMock:
     model = d["model"]
     assert isinstance(model, str)
     d.setdefault("effect_families", default_effect_families(model))
+    d.setdefault("effect_categories", frozenset(default_effect_categories(model)))
+    d.setdefault("prefix_effect_names", False)
+    d.setdefault("always_include_custom_effects", False)
     effect_families = d["effect_families"]
     assert isinstance(effect_families, frozenset)
     d.setdefault(
@@ -84,11 +81,45 @@ def _make_coord(**ov) -> MagicMock:
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
     c.send_command = AsyncMock()
+    c.async_paint_segments = AsyncMock()
+    c.async_set_segment_brightness = AsyncMock()
+    c.async_refresh_segments = AsyncMock(return_value=True)
+
+    def mark_segment_state_optimistic(*, colours=None, brightness=None) -> None:
+        if colours is not None:
+            c.segment_colors = colours
+        if brightness is not None:
+            c.segment_brightness = brightness
+        c.segment_state_source = "optimistic"
+        c.segment_state_observed_at = None
+
+    def mark_segment_state_restored(colours, brightness) -> None:
+        c.segment_colors = colours
+        c.segment_brightness = brightness
+        c.segment_state_source = "restored"
+        c.segment_state_observed_at = None
+
+    c.mark_segment_state_optimistic = MagicMock(side_effect=mark_segment_state_optimistic)
+    c.mark_segment_state_restored = MagicMock(side_effect=mark_segment_state_restored)
     c._control_lock = asyncio.Lock()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None
 
+    async def write_effect_sequence(packets, **_kwargs) -> None:
+        for packet in packets:
+            await c.send_command(packet)
+
+    c.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)
+
+    async def _apply_native_scene_locked(*args, **kwargs) -> None:
+        await GoveeBLECoordinator._async_apply_native_scene_locked(c, *args, **kwargs)
+
+    c._async_apply_native_scene_locked = AsyncMock(side_effect=_apply_native_scene_locked)
+
     def _enter_static_mode() -> None:
+        c.color_mode = ParsedMode.COLOUR
+        c._scene_code = None
+        c.unknown_scene_code = None
         c.effect = None
         c.diy_code = None
         c.music_mode = c.video_mode = "off"

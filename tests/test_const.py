@@ -1,11 +1,15 @@
 from custom_components.ha_govee_led_ble.const import (
+    CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_FAMILIES,
+    CONF_PREFIX_EFFECT_NAMES,
     MODEL_PROFILES,
     UNSUPPORTED_PROFILE,
     ModelProfile,
+    always_include_custom_effects_from_options,
     default_effect_families,
     effect_families_from_options,
     get_profile,
+    prefix_effect_names_from_options,
     resolve_model,
 )
 
@@ -41,6 +45,12 @@ def test_effect_family_defaults_and_options():
         "H6199",
         {CONF_EFFECT_FAMILIES: ["scenes", "music", "unsupported"]},
     ) == {"scenes", "music"}
+    assert prefix_effect_names_from_options({}) is False
+    assert prefix_effect_names_from_options({CONF_PREFIX_EFFECT_NAMES: True}) is True
+    assert prefix_effect_names_from_options({CONF_PREFIX_EFFECT_NAMES: 1}) is False
+    assert always_include_custom_effects_from_options({}) is False
+    assert always_include_custom_effects_from_options({CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True}) is True
+    assert always_include_custom_effects_from_options({CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: 1}) is False
 
 
 def test_model_specific_music_capabilities():

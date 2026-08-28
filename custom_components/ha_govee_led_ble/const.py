@@ -6,11 +6,35 @@ from typing import Any
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
+CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
+CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
+CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS = "always_include_custom_effects"
 EFFECT_FAMILY_SCENES = "scenes"
 EFFECT_FAMILY_MUSIC = "music"
 EFFECT_FAMILY_VIDEO = "video"
-EFFECT_FAMILIES = (EFFECT_FAMILY_SCENES, EFFECT_FAMILY_MUSIC, EFFECT_FAMILY_VIDEO)
+EFFECT_CATEGORY_SCENES = "scenes"
+EFFECT_CATEGORY_VIDEO = "video"
+EFFECT_CATEGORY_EFFECTS = "effects"
+EFFECT_CATEGORY_MULTI_LAYERED = "multi_layered"
+EFFECT_CATEGORY_REACTIVE = "reactive"
+EFFECT_CATEGORY_ADVANCED = "advanced"
+EFFECT_CATEGORIES = (
+    EFFECT_CATEGORY_VIDEO,
+    EFFECT_CATEGORY_SCENES,
+    EFFECT_CATEGORY_EFFECTS,
+    EFFECT_CATEGORY_MULTI_LAYERED,
+    EFFECT_CATEGORY_REACTIVE,
+    EFFECT_CATEGORY_ADVANCED,
+)
+EFFECT_CATEGORY_CONTENT_KINDS = {
+    EFFECT_CATEGORY_SCENES: frozenset({"scene_builtin", "scene_palette", "scene_layered"}),
+    EFFECT_CATEGORY_VIDEO: frozenset({"video_profile"}),
+    EFFECT_CATEGORY_EFFECTS: frozenset({"h617a_painted", "h617a_single", "palette_diy"}),
+    EFFECT_CATEGORY_MULTI_LAYERED: frozenset({"h617a_multi"}),
+    EFFECT_CATEGORY_REACTIVE: frozenset({"music_profile"}),
+    EFFECT_CATEGORY_ADVANCED: frozenset({"advanced", "workshop"}),
+}
 
 
 @dataclass(frozen=True)
@@ -18,10 +42,10 @@ class ModelProfile:
     name: str
     state_readable: bool = False
     supports_scenes: bool = False
-    uses_h6199_scene_protocol: bool = False
-    supports_scene_speed: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
+    supports_advanced_effects: bool = False
+    supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
@@ -43,23 +67,6 @@ class ModelProfile:
         return bool(self.music_modes)
 
 
-MUSIC_MODES: dict[str, int] = {
-    "energetic": 0x05,
-    "rhythm": 0x03,
-    "spectrum": 0x04,
-    "rolling": 0x06,
-    "separation": 0x32,
-    "hopping": 0x33,
-    "piano keys": 0x34,
-    "fountain": 0x35,
-    "day and night": 0x37,
-    "bloom": 0x30,
-    "shiny": 0x31,
-}
-
-# Single source of truth for the ``select.music_mode`` options: HA slugs (underscored, no
-# "off") mapped to their live-confirmed mode codes. Distinct from ``MUSIC_MODES`` above, whose
-# spaced display names remain the parse/service vocabulary.
 MUSIC_MODE_SLUGS: dict[str, int] = {
     "energetic": 0x05,
     "rhythm": 0x03,
@@ -82,30 +89,26 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H617A LED Strip",
         state_readable=True,
         supports_scenes=True,
-        supports_scene_speed=True,
         music_modes=tuple(MUSIC_MODE_SLUGS),
         supports_music_color=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        # H617A exposes fifteen segments through five explicit aa a5 query groups of three.
+        # Segment writes ACK normally but do not publish updated groups without those queries.
         segment_count=15,
         supports_segment_writes=True,
-        # supports_white_brightness stays false, and NOT because the command does nothing. Driven
-        # directly on 2026-07-31 it dims the strip and compounds with the whole-strip opcode 0x04
-        # rather than duplicating it (command_write::static_brightness). Two things block exposing
-        # it through this service. It has no read-back, and async_set_white_brightness verifies
-        # through _refresh_with_retry, which raises when the field is never observed. And the
-        # service means "the level of the white mode" and forces ColorMode.COLOR_TEMP, which is not
-        # what the frame does here: on this model it is a relative brightness that multiplies the
-        # master. Exposing that axis needs its own control, which is a feature, not a correction.
+        # supports_white_brightness stays false because static subcommand 0x02 is segment-relative
+        # brightness, not the level of a white colour-temperature mode. It compounds with master
+        # brightness and is exposed through set_segment_brightness, including all-segment writes;
+        # the aa a5 groups provide its per-segment readback.
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         state_readable=True,
         supports_scenes=True,
-        uses_h6199_scene_protocol=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
-        # The three registers the app reaches from the same video sheet, each modelled from an
-        # H6199 capture and reproduced byte-exact by its builder: white balance and blank screen
-        # behind the 33 a9 selector, relative brightness on 33 ae of its own.
+        # These independently captured video registers have byte-exact builders.
         supports_white_balance=True,
         supports_relative_brightness=True,
         supports_blank_screen=True,
@@ -113,24 +116,12 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_min=1,
         music_sensitivity_max=100,
         supports_music_color=True,
-        # The attributable H6199 static reply carries mode 0x15 followed only by zeros
-        # (h6199_status_reply::colour_mode_body). It identifies static mode but echoes neither
-        # colour nor white brightness, so the verified white-brightness service cannot be offered.
-        # Fifteen segments, and this now carries a protocol claim rather than sizing a preview
-        # image. A whole-strip write from the app addresses fifteen bits (0x7fff) and the app draws
-        # fifteen tiles for this model, captured 2026-08-03; colouring one segment, then a second,
-        # then both gave 0x0001, 0x0004 and their OR, which is what makes it a mask rather than an
-        # index (h6199_command_write::static_colour_body::segment_mask).
-        #
-        # It is still NOT 38. The device answers 38 to aa 40, but that reply was positively excluded
-        # as an app segment count (an external H7015 reads 30 against 15 segments proven by an
-        # exhaustive per-bit sweep), so copying it in would re-assert the reading we disproved.
+        supports_advanced_effects=True,
+        # Static readback identifies the mode but exposes rendered colour only through segment
+        # queries. Kelvin remains last-known while its RGB companion matches.
+        # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
         segment_count=15,
-        # build_segment_color reproduces three captured H6199 app writes byte for byte, whole-strip
-        # and per-segment alike, so painting segments is the app's own behaviour on this model
-        # rather than an H617A habit carried across. Segment brightness was then driven through HA
-        # on 2026-08-05 for one segment, a disjoint pair and all fifteen; attributed aa a5 replies
-        # independently reported 17, 37 and 73 at exactly the addressed positions.
+        # Colour and brightness writes are observed through four explicit aa a5 query groups.
         supports_segment_writes=True,
     ),
 }
@@ -160,6 +151,61 @@ def supported_effect_families(model: str) -> frozenset[str]:
     return frozenset(families)
 
 
+def supported_effect_categories(model: str) -> tuple[str, ...]:
+    profile = get_profile(model)
+    categories: set[str] = {
+        EFFECT_CATEGORY_EFFECTS,
+    }
+    if profile.supports_scenes:
+        categories.add(EFFECT_CATEGORY_SCENES)
+    if profile.supports_video_mode:
+        categories.add(EFFECT_CATEGORY_VIDEO)
+    if profile.supports_music_mode:
+        categories.add(EFFECT_CATEGORY_REACTIVE)
+    if profile.supports_multi_layered_effects:
+        categories.add(EFFECT_CATEGORY_MULTI_LAYERED)
+    if profile.supports_advanced_effects:
+        categories.add(EFFECT_CATEGORY_ADVANCED)
+    return tuple(category for category in EFFECT_CATEGORIES if category in categories)
+
+
+def default_effect_categories(model: str) -> tuple[str, ...]:
+    return supported_effect_categories(model)
+
+
+def effect_categories_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:
+    selected = options.get(CONF_EFFECT_CATEGORIES)
+    if not isinstance(selected, list | tuple | set | frozenset):
+        return frozenset(default_effect_categories(model))
+    return frozenset(str(value) for value in selected) & frozenset(supported_effect_categories(model))
+
+
+def prefix_effect_names_from_options(options: Mapping[str, Any]) -> bool:
+    return options.get(CONF_PREFIX_EFFECT_NAMES) is True
+
+
+def always_include_custom_effects_from_options(options: Mapping[str, Any]) -> bool:
+    return options.get(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS) is True
+
+
+def effect_families_from_categories(categories: frozenset[str]) -> frozenset[str]:
+    families: set[str] = set()
+    if EFFECT_CATEGORY_SCENES in categories:
+        families.add(EFFECT_FAMILY_SCENES)
+    if EFFECT_CATEGORY_REACTIVE in categories:
+        families.add(EFFECT_FAMILY_MUSIC)
+    if EFFECT_CATEGORY_VIDEO in categories:
+        families.add(EFFECT_FAMILY_VIDEO)
+    return frozenset(families)
+
+
+def effect_category_for_content_kind(content_kind: str) -> str | None:
+    return next(
+        (category for category, kinds in EFFECT_CATEGORY_CONTENT_KINDS.items() if content_kind in kinds),
+        None,
+    )
+
+
 def default_effect_families(model: str) -> frozenset[str]:
     supported = supported_effect_families(model)
     if model == "H6199":
@@ -168,6 +214,8 @@ def default_effect_families(model: str) -> frozenset[str]:
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:
+    if CONF_EFFECT_CATEGORIES in options:
+        return effect_families_from_categories(effect_categories_from_options(model, options))
     selected = options.get(CONF_EFFECT_FAMILIES)
     if not isinstance(selected, list | tuple | set | frozenset):
         return default_effect_families(model)

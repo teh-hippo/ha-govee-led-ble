@@ -33,20 +33,19 @@
     "config_flow": true,
     "dependencies": [
         "bluetooth_adapters",
-        "http"
+        "http",
+        "websocket_api"
     ],
     "documentation": "https://github.com/teh-hippo/ha-govee-led-ble",
     "integration_type": "device",
-    "iot_class": "local_push",
+    "iot_class": "local_polling",
     "issue_tracker": "https://github.com/teh-hippo/ha-govee-led-ble/issues",
     "loggers": [
         "bleak",
         "bleak_retry_connector"
     ],
     "requirements": [
-        "bleak>=0.21.0",
-        "bleak-retry-connector>=3.0.0",
         "kaitaistruct==0.11"
     ],
-    "version": "6.4.6"
+    "version": "7.0.0rc33"
 }

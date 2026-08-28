@@ -48,8 +48,8 @@ class GoveeLedBleEditor extends HTMLElement {
       <ha-card>
         <h1>Govee LED BLE configuration</h1>
         <p>
-          Advanced effect editing is not available in this version. You can
-          continue managing the integration through Home Assistant.
+          Effect Studio storage is unavailable. Existing light controls are
+          unaffected; check the integration logs before retrying.
         </p>
         <a>Open integration configuration</a>
       </ha-card>

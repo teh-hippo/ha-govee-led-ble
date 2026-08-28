@@ -7,7 +7,9 @@ import math
 from importlib import import_module
 from typing import Any, cast
 
-from kaitaistruct import KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
+from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
+
+from .transport import A3_CHUNK_SIZE, xor_checksum
 
 CommandWrite = cast(
     Any,
@@ -16,6 +18,10 @@ CommandWrite = cast(
 H6199CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
+)
+H6199EffectUpload = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload").H6199EffectUpload,
 )
 StatusQuery = cast(
     Any,
@@ -41,6 +47,10 @@ H6199StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
 )
+DiyType03 = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type03").DiyType03,
+)
 DiyType04 = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type04").DiyType04,
@@ -49,8 +59,26 @@ SceneBody = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_body").SceneBody,
 )
+SceneType1Body = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_type1_body").SceneType1Body,
+)
+WorkshopBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.workshop_body").WorkshopBody,
+)
 
-_A3_CHUNK_SIZE = 17
+_U1_MAX = 0xFF
+_A3_MAX_CONTENT = _U1_MAX * A3_CHUNK_SIZE
+# The A3 line count is a u1, so a framed scene parameter spans at most 255 lines of 17 bytes.
+MAX_SCENE_PARAM_BYTES = _A3_MAX_CONTENT
+
+
+class SceneParameterTooLargeError(ValueError):
+    """A built scene exceeds the byte limits the generated A3 fields can encode."""
+
+
+DIY_PAINTED_EFFECTS = frozenset(DiyType03.Effect.__members__)
 
 _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS = 10
 _BLANK_SCREEN_SAME_TONE_SECONDS = 120
@@ -78,11 +106,39 @@ def _write(value: ReadWriteKaitaiStruct, length: int) -> bytes:
     return cast(bytes, stream.to_byte_array())
 
 
-def xor_checksum(data: bytes | bytearray) -> int:
-    checksum = 0
-    for part in data:
-        checksum ^= part
-    return checksum
+_SERIALIZE_MEASURE_BOUND = 1 << 16
+
+
+def _serialized_length(value: ReadWriteKaitaiStruct) -> int:
+    """Return the serialized length of a checked struct from the generated writer.
+
+    Kaitai's writer needs a pre-sized buffer, so an oversized write is measured by the
+    trailing ``size-eos`` consistency check, whose ``actual`` is the unused byte count.
+    """
+    try:
+        _write(value, _SERIALIZE_MEASURE_BOUND)
+    except ConsistencyError as error:
+        return _SERIALIZE_MEASURE_BOUND - int(error.actual)
+    return _SERIALIZE_MEASURE_BOUND
+
+
+def _serialize_a3_scene_param(root: Any, *, scene_type_size: int = 1) -> bytes:
+    """Frame a built A3 scene root and return its parameter bytes without envelope padding.
+
+    ``linecount`` only sits in the stripped header, so the parameter is independent of it;
+    it is still set to the value a reassembled capture would carry.
+    """
+    root.header = _a3_header(root)
+    _check_tree(root)
+    content_size = _serialized_length(root)
+    if content_size > _A3_MAX_CONTENT:
+        raise SceneParameterTooLargeError(
+            f"scene content is {content_size} bytes but the A3 line count only encodes {_A3_MAX_CONTENT}"
+        )
+    root.header.linecount = max(2, math.ceil(content_size / A3_CHUNK_SIZE))
+    _check_tree(root)
+    envelope = _write(root, content_size)
+    return envelope[len(root.header.marker) + 1 + scene_type_size :]
 
 
 def _serialize_xor(root: Any, length: int = 20) -> bytes:
@@ -118,6 +174,41 @@ def parse_command(frame: bytes, model: str = "H617A") -> Any | None:
     return parsed
 
 
+def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
+    """Parse one validated, padded A3 effect envelope through its generated root."""
+    if not isinstance(envelope, bytes):
+        raise TypeError("A3 effect envelope must be bytes")
+    if len(envelope) < A3_CHUNK_SIZE or len(envelope) % A3_CHUNK_SIZE:
+        raise ValueError("A3 effect envelope must contain complete 17-byte chunks")
+    if envelope[0] != 0x01:
+        raise ValueError("A3 effect envelope has an invalid marker")
+    if envelope[1] != len(envelope) // A3_CHUNK_SIZE:
+        raise ValueError("A3 effect envelope does not match its chunk count")
+
+    if model == "H617A":
+        root_type = {
+            0x01: SceneType1Body,
+            0x02: SceneBody,
+            0x03: DiyType03,
+            0x04: DiyType04,
+        }.get(envelope[2])
+        if root_type is None:
+            raise ValueError(f"H617A A3 body type 0x{envelope[2]:02x} is not supported")
+    elif model == "H6199":
+        root_type = H6199EffectUpload
+    else:
+        raise ValueError(f"{model} has no generated A3 effect grammar")
+
+    try:
+        parsed = root_type(KaitaiStream(io.BytesIO(envelope)))
+        parsed._read()
+    except KaitaiStructError as error:
+        raise ValueError(f"invalid {model} A3 effect envelope") from error
+    if not parsed._io.is_eof():
+        raise ValueError(f"{model} A3 effect grammar did not consume the envelope")
+    return parsed
+
+
 def _command_types(model: str) -> tuple[Any, Any, Any]:
     if model == "H6199":
         return (
@@ -128,8 +219,12 @@ def _command_types(model: str) -> tuple[Any, Any, Any]:
     return CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
 
 
-def _child(child_type: Any, parent: Any) -> Any:
-    return child_type(None, parent, parent._root)
+def new_child(struct_type: Any, parent: Any) -> Any:
+    """Construct a read-write child struct bound to ``parent`` and its root."""
+    return struct_type(None, parent, parent._root)
+
+
+_child = new_child
 
 
 def _build_status_query(
@@ -137,6 +232,7 @@ def _build_status_query(
     model: str = "H617A",
     *,
     display_setting: str | None = None,
+    segment_group: int | None = None,
 ) -> bytes:
     root_type = H6199StatusQuery if model == "H6199" else StatusQuery
     root = root_type()
@@ -145,6 +241,10 @@ def _build_status_query(
     if display_setting is not None:
         body = _child(root_type.DisplaySettingQueryBody, root)
         body.setting = getattr(root_type.DisplaySetting, display_setting)
+        body.zeros = [0] * 16
+    elif segment_group is not None:
+        body = _child(root_type.SegmentQueryBody, root)
+        body.group = segment_group
         body.zeros = [0] * 16
     elif domain == "hardware":
         body = _child(root_type.HardwareQueryBody, root)
@@ -193,12 +293,65 @@ def build_h6199_relative_brightness_query() -> bytes:
     return _build_status_query("relative_brightness", "H6199")
 
 
+def build_h6199_subordinate_query(domain: int) -> bytes:
+    if domain not in {0x20, 0x21}:
+        raise ValueError("H6199 subordinate query domain must be 0x20 or 0x21")
+    return _build_status_query(f"subordinate_{domain:02x}", "H6199")
+
+
+def build_segment_query(group: int, model: str = "H617A") -> bytes:
+    maximum = 4 if model == "H6199" else 5
+    if not 1 <= group <= maximum:
+        raise ValueError(f"segment query group must be from 1 to {maximum}")
+    return _build_status_query("segments", model, segment_group=group)
+
+
 def _rgb(parent: Any, red: int, green: int, blue: int) -> Any:
     colour = _child(GoveeShared.Rgb, parent)
     colour.red = max(0, min(255, red))
     colour.green = max(0, min(255, green))
     colour.blue = max(0, min(255, blue))
     return colour
+
+
+def new_rgb(parent: Any, rgb: tuple[int, int, int]) -> Any:
+    """Construct a shared RGB triple bound to ``parent`` from a colour tuple."""
+    return _rgb(parent, *rgb)
+
+
+def h6199_diy_padding_len(palette_size: int) -> int:
+    """Return the zero padding required by the captured two-chunk DIY envelope."""
+    if not isinstance(palette_size, int) or isinstance(palette_size, bool) or palette_size < 0:
+        raise ValueError("H6199 DIY palette size must be a non-negative integer")
+    root = H6199EffectUpload()
+    content = _child(H6199EffectUpload.DiyContent, root)
+    content.palette_len = palette_size * 3
+    padding_len = int(content.padding_len)
+    if padding_len < 0:
+        raise ValueError("H6199 DIY palette does not fit the fixed two-chunk envelope")
+    return padding_len
+
+
+def build_h6199_palette_diy_envelope(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: tuple[tuple[int, int, int], ...],
+) -> bytes:
+    root = H6199EffectUpload()
+    root.header = b"\x01"
+    root.chunk_count = root.diy_chunk_count
+    root.kind = H6199EffectUpload.BodyKind.diy
+    content = _child(H6199EffectUpload.DiyContent, root)
+    content.family = H6199EffectUpload.EffectFamily(family)
+    content.variant = variant
+    content.speed = speed
+    content.palette_len = len(palette) * 3
+    content.palette = [new_rgb(content, colour) for colour in palette]
+    root.content = content
+    content.padding = [0] * h6199_diy_padding_len(len(palette))
+    _check_tree(root)
+    return _write(root, root.diy_chunk_count * A3_CHUNK_SIZE)
 
 
 def _a3_header(parent: Any) -> Any:
@@ -208,23 +361,138 @@ def _a3_header(parent: Any) -> Any:
     return header
 
 
-def parse_scene_body_param(raw_param: bytes) -> Any:
-    """Parse a catalogue type-2 parameter through the generated SceneBody root."""
+def _parse_a3_scene(
+    root_type: Any,
+    scene_type_byte: int,
+    raw_param: bytes,
+    trailing_padding_of: Any,
+) -> tuple[Any, int]:
+    """Frame a stripped catalogue parameter and parse it through a generated A3 root.
+
+    The parameter carries the real bytes only, so an unpadded read first measures the
+    genuine trailing padding before the synthetic envelope padding a reassembled capture
+    would carry is appended for the returned tree.
+    """
     if not isinstance(raw_param, bytes):
         raise TypeError("scene parameter must be bytes")
-    synthetic = SceneBody()
+    synthetic = root_type()
     header = _a3_header(synthetic)
     header_length = len(header.marker) + 1
-    header.linecount = max(header.linecount, math.ceil((header_length + 1 + len(raw_param)) / _A3_CHUNK_SIZE))
+    header.linecount = max(header.linecount, math.ceil((header_length + 1 + len(raw_param)) / A3_CHUNK_SIZE))
     _check_tree(header)
     header_bytes = _write(header, header_length)
-    envelope = header_bytes + bytes((int(SceneBody.SceneType.scene_v2),)) + raw_param
-    unpadded = SceneBody(KaitaiStream(io.BytesIO(envelope)))
+    envelope = header_bytes + bytes((scene_type_byte,)) + raw_param
+    unpadded = root_type(KaitaiStream(io.BytesIO(envelope)))
     unpadded._read()
-    envelope = envelope.ljust(header.linecount * _A3_CHUNK_SIZE, b"\x00")
-    parsed = SceneBody(KaitaiStream(io.BytesIO(envelope)))
+    trailing_padding = len(trailing_padding_of(unpadded))
+    envelope = envelope.ljust(header.linecount * A3_CHUNK_SIZE, b"\x00")
+    parsed = root_type(KaitaiStream(io.BytesIO(envelope)))
     parsed._read()
-    return parsed
+    return parsed, trailing_padding
+
+
+def parse_scene_body(raw_param: bytes) -> tuple[Any, int]:
+    """Parse a catalogue type-2 parameter, returning its tree and real trailing padding."""
+    return _parse_a3_scene(SceneBody, int(SceneBody.SceneType.scene_v2), raw_param, lambda root: root.padding)
+
+
+def parse_scene_body_param(raw_param: bytes) -> Any:
+    """Parse a catalogue type-2 parameter through the generated SceneBody root."""
+    return parse_scene_body(raw_param)[0]
+
+
+def parse_workshop_body(raw_param: bytes) -> tuple[Any, int]:
+    """Parse an H617A Workshop parameter through the generated WorkshopBody root."""
+    return _parse_a3_scene(WorkshopBody, 2, raw_param, lambda root: root.padding)
+
+
+def parse_h6199_workshop_content(raw_param: bytes) -> tuple[Any, int]:
+    """Parse an H6199 Workshop parameter through the generated effect-upload content."""
+    if not isinstance(raw_param, bytes):
+        raise TypeError("Workshop parameter must be bytes")
+    root = H6199EffectUpload()
+    parsed = H6199EffectUpload.SceneContent(KaitaiStream(io.BytesIO(raw_param)), root, root)
+    parsed._read()
+    return parsed, len(parsed.padding)
+
+
+def parse_scene_type1_body(raw_param: bytes) -> tuple[Any, int]:
+    """Parse a catalogue type-1 parameter, returning its tree and real trailing padding."""
+    return _parse_a3_scene(SceneType1Body, 1, raw_param, lambda root: root.content.padding)
+
+
+def parse_scene_type1_body_param(raw_param: bytes) -> Any:
+    """Parse a catalogue type-1 parameter through the generated SceneType1Body root."""
+    return parse_scene_type1_body(raw_param)[0]
+
+
+def serialize_scene_body_param(root: Any) -> bytes:
+    """Serialize a built type-2 SceneBody root and return its catalogue parameter bytes."""
+    _set_effect_layer_lengths(root.records)
+    return _serialize_a3_scene_param(root)
+
+
+def serialize_workshop_body_param(root: Any) -> bytes:
+    """Serialize a built H617A WorkshopBody root and return its parameter bytes."""
+    _set_effect_layer_lengths(root.layers)
+    return _serialize_a3_scene_param(root)
+
+
+def serialize_h6199_workshop_content(content: Any) -> bytes:
+    """Serialize built H6199 Workshop content without its A3 envelope."""
+    _set_effect_layer_lengths(content.blocks)
+    _check_tree(content)
+    content_size = _serialized_length(content)
+    if content_size + 3 > _A3_MAX_CONTENT:
+        raise SceneParameterTooLargeError(
+            f"Workshop content is {content_size + 3} bytes but the A3 line count only encodes {_A3_MAX_CONTENT}"
+        )
+    return _write(content, content_size)
+
+
+def _set_effect_layer_lengths(records: list[Any]) -> None:
+    for record in records:
+        _check_tree(record.body)
+        body_length = _serialized_length(record.body)
+        if body_length > _U1_MAX:
+            raise SceneParameterTooLargeError(
+                f"layer body is {body_length} bytes but the record length field only encodes {_U1_MAX}"
+            )
+        record.len_body = body_length
+
+
+def serialize_scene_type1_body_param(root: Any) -> bytes:
+    """Serialize a built type-1 SceneType1Body root and return its catalogue parameter bytes."""
+    return _serialize_a3_scene_param(root)
+
+
+def build_h617a_diy_painted_body(
+    effect: str,
+    speed: int,
+    brightness: int,
+    background: tuple[int, int, int],
+    groups: list[tuple[tuple[int, int, int], list[int]]],
+) -> bytes:
+    """Serialize the diy_type03 fields after its A3 type byte."""
+    root = DiyType03()
+    root.header = _a3_header(root)
+    root.body_type = b"\x03"
+    root.effect = getattr(DiyType03.Effect, effect)
+    root.speed = speed
+    root.brightness = brightness
+    root.background = _rgb(root, *background)
+    root.num_groups = len(groups)
+    root.groups = []
+    for fill, segments in groups:
+        group = _child(DiyType03.PaintGroup, root)
+        group.num_segment_indices = len(segments)
+        group.fill = _rgb(group, *fill)
+        group.segment_indices = segments
+        root.groups.append(group)
+    root.padding = []
+    length = 10 + sum(4 + len(segments) for _, segments in groups)
+    _check_tree(root)
+    return _write(root, length)[3:]
 
 
 def _diy_type04_palette(parent: Any, colours: list[tuple[int, int, int]]) -> Any:
@@ -307,6 +575,33 @@ def build_brightness(percent: int, model: str = "H617A") -> bytes:
     return _serialize_xor(root)
 
 
+def _build_h617a_static_colour(
+    mask: int,
+    *,
+    direct: tuple[int, int, int],
+    kelvin: int,
+    preview: tuple[int, int, int],
+) -> bytes:
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.multi
+    multi = _child(CommandWrite.MultiCmd, root)
+    multi.sub = CommandWrite.MultiSub.static
+    static = _child(CommandWrite.StaticCmd, multi)
+    static.static_sub = 1
+    colour = _child(CommandWrite.StaticColor, static)
+    colour.rgb_direct = _rgb(colour, *direct)
+    colour.kelvin = kelvin
+    colour.rgb_preview = _rgb(colour, *preview)
+    segment_mask = _child(CommandWrite.SegmentMask, colour)
+    segment_mask.bits = mask
+    colour.mask = segment_mask
+    static.static_body = colour
+    multi.sub_body = static
+    root.body = multi
+    return _serialize_xor(root)
+
+
 def build_segment_colour(
     mask: int,
     red: int,
@@ -332,29 +627,18 @@ def build_segment_colour(
         root.body = mode
         return _serialize_xor(root)
 
-    root = CommandWrite()
-    root.header = b"\x33"
-    root.opcode = CommandWrite.CommandOp.multi
-    multi = _child(CommandWrite.MultiCmd, root)
-    multi.sub = CommandWrite.MultiSub.static
-    static = _child(CommandWrite.StaticCmd, multi)
-    static.static_sub = 1
-    colour = _child(CommandWrite.StaticColor, static)
-    colour.rgb_direct = _rgb(colour, red, green, blue)
-    colour.kelvin = 0
-    colour.rgb_preview = _rgb(colour, 0, 0, 0)
-    segment_mask = _child(CommandWrite.SegmentMask, colour)
-    segment_mask.bits = mask
-    colour.mask = segment_mask
-    static.static_body = colour
-    multi.sub_body = static
-    root.body = multi
-    return _serialize_xor(root)
+    return _build_h617a_static_colour(
+        mask,
+        direct=(red, green, blue),
+        kelvin=0,
+        preview=(0, 0, 0),
+    )
 
 
 def build_colour_temperature(
     kelvin: int,
     preview: tuple[int, int, int],
+    mask: int,
     model: str = "H617A",
 ) -> bytes:
     value = max(2000, min(9000, kelvin))
@@ -371,29 +655,17 @@ def build_colour_temperature(
         detail.blue = 0
         detail.kelvin = value
         detail.preview = _rgb(detail, *preview)
-        detail.segment_mask = 0x7FFF
+        detail.segment_mask = mask
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
 
-    root = CommandWrite()
-    root.header = b"\x33"
-    root.opcode = CommandWrite.CommandOp.multi
-    multi = _child(CommandWrite.MultiCmd, root)
-    multi.sub = CommandWrite.MultiSub.static
-    static = _child(CommandWrite.StaticCmd, multi)
-    static.static_sub = 1
-    colour = _child(CommandWrite.StaticColor, static)
-    colour.rgb_direct = _rgb(colour, 0, 0, 0)
-    colour.kelvin = value
-    colour.rgb_preview = _rgb(colour, *preview)
-    segment_mask = _child(CommandWrite.SegmentMask, colour)
-    segment_mask.bits = 0x7FFF
-    colour.mask = segment_mask
-    static.static_body = colour
-    multi.sub_body = static
-    root.body = multi
-    return _serialize_xor(root)
+    return _build_h617a_static_colour(
+        mask,
+        direct=(0, 0, 0),
+        kelvin=value,
+        preview=preview,
+    )
 
 
 def build_segment_brightness(
@@ -443,12 +715,13 @@ def build_h6199_scene(scene_code: int, music_code: int = 0) -> bytes:
     detail = _child(H6199CommandWrite.SceneBody, mode)
     detail.scene_id = max(0, min(0xFFFF, scene_code))
     detail.music_code = max(0, min(0xFFFF, music_code))
+    detail.reserved = bytes(12)
     mode.detail = detail
     root.body = mode
     return _serialize_xor(root)
 
 
-def build_h617a_scene(scene_code: int) -> bytes:
+def build_h617a_scene(scene_code: int, *, scene_type: int = 0) -> bytes:
     root = CommandWrite()
     root.header = b"\x33"
     root.opcode = CommandWrite.CommandOp.multi
@@ -456,7 +729,7 @@ def build_h617a_scene(scene_code: int) -> bytes:
     multi.sub = CommandWrite.MultiSub.scene
     detail = _child(CommandWrite.SceneActivate, multi)
     detail.code = max(0, min(0xFFFF, scene_code))
-    detail.scene_type = 0
+    detail.scene_type = max(0, min(0xFF, scene_type))
     multi.sub_body = detail
     root.body = multi
     return _serialize_xor(root)

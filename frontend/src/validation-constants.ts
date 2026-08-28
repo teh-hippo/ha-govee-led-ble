@@ -1,0 +1,21 @@
+import type { ModelSku } from "./types";
+
+export const CUSTOM_CATALOGUE_SCHEMA_VERSION = 8;
+export const MAX_EFFECT_NAME_LENGTH = 128;
+export const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
+export const MAX_EDITOR_DEVICES = 512;
+export const MAX_LIBRARY_ITEMS = 256;
+export const MAX_DEPLOYMENT_RECORDS = 128;
+export const MAX_SCENE_CATALOGUE_ENTRIES = 512;
+export const MAX_IDENTIFIER_LENGTH = 255;
+export const MAX_TIMESTAMP_LENGTH = 64;
+export const MAX_USER_STATE_NAVIGATION_BYTES = 16_384;
+export const MAX_CATALOGUE_BYTES = 262_144;
+export const MAX_CATALOGUE_JSON_NODES = 16_384;
+export const PALETTE_CONFIG_RESERVED_MASK = 0x08;
+export const SCENE_TRAILING_PADDING_MAX = 0xff * 17;
+export const MOVEMENT_UNKNOWN_FLAGS_MASK = 0xe8;
+export const LAYER_UNKNOWN_FLAGS_MASK = 0xfd;
+export const MODEL_SKUS = ["H617A", "H6199"] as const satisfies readonly ModelSku[];
+export const LEGACY_CUSTOM_CATALOGUE_SKU = "H617A" as const;
+export const VIDEO_MODE_IDS = ["movie", "game"] as const;

@@ -12,63 +12,22 @@
         "data": {
           "address": "BLE Address",
           "model": "Device Model"
+        },
+        "data_description": {
+          "address": "The 12-digit Bluetooth address printed by the device or shown by a BLE scanner.",
+          "model": "The model printed on the device. A conflicting supported model advertised at this address is rejected."
         }
       }
     },
     "error": {
-      "invalid_address": "Enter a valid 12-digit BLE MAC address."
+      "invalid_address": "Enter a valid 12-digit BLE MAC address.",
+      "cannot_connect": "Unable to connect to the device.",
+      "model_mismatch": "The device at this address advertises a different supported model.",
+      "unknown": "Unexpected error while validating the device."
     },
     "abort": {
       "already_configured": "Device is already configured",
       "not_supported": "This device is not a supported Govee model"
-    }
-  },
-  "entity": {
-    "number": {
-      "scene_speed": {
-        "name": "Scene speed"
-      },
-      "video_saturation": {
-        "name": "Video saturation"
-      },
-      "video_sound_effects_softness": {
-        "name": "Video softness"
-      },
-      "relative_brightness": {
-        "name": "Relative brightness (all edges)"
-      },
-      "relative_brightness_left": {
-        "name": "Relative brightness left"
-      },
-      "relative_brightness_top": {
-        "name": "Relative brightness top"
-      },
-      "relative_brightness_right": {
-        "name": "Relative brightness right"
-      },
-      "relative_brightness_bottom": {
-        "name": "Relative brightness bottom"
-      },
-      "white_balance": {
-        "name": "White balance"
-      }
-    },
-    "select": {
-      "video_capture_region": {
-        "name": "Video color mapping",
-        "state": {
-          "full": "All",
-          "part": "Part"
-        }
-      }
-    },
-    "switch": {
-      "video_sound_effects": {
-        "name": "Video sound effects"
-      },
-      "blank_screen": {
-        "name": "Blank screen"
-      }
     }
   },
   "exceptions": {
@@ -80,16 +39,33 @@
     },
     "invalid_segments": {
       "message": "Select at least one valid segment."
+    },
+    "device_command_failed": {
+      "message": "The device command failed."
+    },
+    "invalid_custom_effect": {
+      "message": "The saved effect is invalid or unavailable."
+    },
+    "effect_storage_unavailable": {
+      "message": "Saved effect storage is unavailable."
+    },
+    "invalid_effect_target": {
+      "message": "{entity_id} is not a Govee BLE light."
+    },
+    "effect_permission_denied": {
+      "message": "You are not allowed to control {entity_id}."
+    },
+    "effect_target_not_loaded": {
+      "message": "{entity_id} is not loaded."
+    },
+    "effect_apply_failed": {
+      "message": "The saved effect could not be applied."
     }
   },
   "issues": {
     "music_mode_replaced": {
       "title": "Music mode select replaced",
       "description": "The select {old} has been removed. Choose a music mode from the light's effect list instead, and update any automations or scripts that used the old select."
-    },
-    "white_balance_controls_replaced": {
-      "title": "White balance controls replaced",
-      "description": "The controls {old} have been replaced by {new}. Update any dashboards, automations or scripts to use the new 20-position white balance slider."
     },
     "unsupported_model": {
       "title": "Unsupported Govee model",
@@ -134,15 +110,36 @@
           "description": "Brightness level (0-100)."
         }
       }
+    },
+    "apply_custom_effect": {
+      "name": "Apply custom effect",
+      "description": "Apply a saved custom effect through a supported Govee light entity.",
+      "fields": {
+        "effect": {
+          "name": "Effect",
+          "description": "Name of the saved custom effect."
+        },
+        "effect_id": {
+          "name": "Effect ID",
+          "description": "Stable ID of the saved custom effect. Use either Effect or Effect ID."
+        }
+      }
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Effects",
-        "description": "Choose which effect families appear on the light entity.",
+        "description": "Choose which Effect Studio categories appear in the Studio and on the light entity.",
         "data": {
-          "effect_families": "Effect families"
+          "scenes": "Scenes",
+          "video": "Video",
+          "effects": "Effects",
+          "multi_layered": "Multi-Layered",
+          "reactive": "Reactive",
+          "advanced": "Advanced",
+          "prefix_effect_names": "Prefix effects with their category (e.g., \"Scene: Aurora\")",
+          "always_include_custom_effects": "Always include my custom effects"
         }
       }
     }

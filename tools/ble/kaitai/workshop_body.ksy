@@ -1,6 +1,6 @@
 meta:
   id: workshop_body
-  title: Govee H617A reassembled Workshop layer-container body (A3 TYPE 0x02, decode-only)
+  title: Govee H617A reassembled Workshop layer-container body (A3 TYPE 0x02)
   endian: le
   imports:
     - govee_shared

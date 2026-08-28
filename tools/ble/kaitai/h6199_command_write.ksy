@@ -1,6 +1,6 @@
 meta:
   id: h6199_command_write
-  title: Govee H6199 "33" command-write envelope (decode-only)
+  title: Govee H6199 "33" command-write envelope
   endian: le
   imports:
     - govee_shared
@@ -85,6 +85,8 @@ types:
         type: u2le
       - id: music_code
         type: u2le
+      - id: reserved
+        contents: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
   video_body:
     seq:
       - id: region

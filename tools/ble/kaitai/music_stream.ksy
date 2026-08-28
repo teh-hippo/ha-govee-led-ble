@@ -1,12 +1,11 @@
 meta:
   id: music_stream
-  title: Govee H617A phone-microphone music stream frame (a5 02 83, 7 bytes)
+  title: Govee phone-microphone music stream frame (a5 02 83, 7 bytes)
   endian: le
   imports:
     - govee_shared
-    - govee_common
 doc: |
-  H617A seven-byte microphone stream frame. The final byte is the low eight bits of the sum of bytes 0 through 5.
+  Seven-byte microphone stream frame used by H617A and H6199. The final byte is the low eight bits of the sum of bytes 0 through 5.
 seq:
   - id: opcode
     contents: [0xa5]

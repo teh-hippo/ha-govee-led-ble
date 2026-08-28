@@ -39,6 +39,18 @@ jobs:
           github_token: ${{ secrets.RELEASE_TOKEN }}
           changelog: false
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: ${{ steps.semantic_release.outputs.released == 'true' }}
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4
+        if: ${{ steps.semantic_release.outputs.released == 'true' }}
+        with:
+          install_args: github:kaitai-io/kaitai_struct_compiler
+
       - name: Attach deterministic package
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
         env:
@@ -47,10 +59,9 @@ jobs:
         run: |
           git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           git checkout --detach "$RELEASE_TAG"
-          python scripts/package.py \
-            --source custom_components/ha_govee_led_ble \
-            --output dist/ha_govee_led_ble.zip
-          python scripts/package.py \
+          uv sync --locked
+          make clean package
+          uv run --no-sync python scripts/package.py \
             --source custom_components/ha_govee_led_ble \
             --verify-archive dist/ha_govee_led_ble.zip
           (cd dist && sha256sum --check ha_govee_led_ble.zip.sha256)

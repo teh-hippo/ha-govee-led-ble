@@ -186,9 +186,13 @@ types:
       - id: colour
         type: govee_shared::rgb
   segment_group_body:
+    doc: Groups 1 through 3 carry four records; group 4 carries three records followed by four unparsed bytes.
     seq:
       - id: group
         type: u1
+        valid:
+          min: 1
+          max: 4
       - id: segments
         type: segment_record
         repeat: expr

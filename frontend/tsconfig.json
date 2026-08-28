@@ -1,0 +1,27 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "allowImportingTsExtensions": true,
+        "resolveJsonModule": true,
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "types": [
+            "node"
+        ]
+    },
+    "include": [
+        "src",
+        "tests",
+        "playwright.config.ts",
+        "vite.config.ts",
+        "vite.dev.config.ts",
+        "vitest.config.ts"
+    ]
+}

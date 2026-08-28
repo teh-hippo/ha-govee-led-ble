@@ -1,6 +1,6 @@
 meta:
   id: h6199_effect_upload
-  title: Govee H6199 reassembled 0xA3 effect body (decode-only)
+  title: Govee H6199 reassembled 0xA3 effect body
   endian: le
   imports:
     - govee_shared
@@ -19,6 +19,9 @@ seq:
         'body_kind::builtin_parameters': govee_shared::scene_type1_content
         'body_kind::scene': scene_content
         'body_kind::diy': diy_content
+instances:
+  diy_chunk_count:
+    value: 2
 enums:
   body_kind:
     0x01: builtin_parameters
@@ -67,6 +70,9 @@ types:
         type: u1
         valid: 0
         repeat: eos
+    instances:
+      padding_len:
+        value: _parent.diy_chunk_count * 17 - 7 - palette_len
   block:
     seq:
       - id: len_body

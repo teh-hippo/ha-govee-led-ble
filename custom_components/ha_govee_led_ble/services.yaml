@@ -15,3 +15,10 @@ set_segment_brightness:
   fields:
     segments: {required: true, selector: {select: {multiple: true, options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]}}}
     brightness: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+apply_custom_effect:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+  fields:
+    effect:
+      selector: {text:}
+    effect_id:
+      selector: {text:}

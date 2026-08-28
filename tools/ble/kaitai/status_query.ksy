@@ -20,6 +20,7 @@ seq:
         'query_domain::colour_mode': zero_body
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
+        'query_domain::segments': segment_query_body
   - id: checksum
     type: u1
 enums:
@@ -29,6 +30,7 @@ enums:
     0x05: colour_mode
     0x06: firmware
     0x07: hardware
+    0xa5: segments
 types:
   zero_body:
     seq:
@@ -40,6 +42,18 @@ types:
     seq:
       - id: selector
         contents: [0x03]
+      - id: zeros
+        type: u1
+        valid: 0
+        repeat: eos
+  segment_query_body:
+    doc: Selects one of five three-segment reply groups.
+    seq:
+      - id: group
+        type: u1
+        valid:
+          min: 1
+          max: 5
       - id: zeros
         type: u1
         valid: 0

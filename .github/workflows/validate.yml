@@ -2,7 +2,7 @@ name: Validate
 
 on:
   push:
-    branches: [master]
+    branches: [master, ux]
   pull_request:
     branches: [master]
   workflow_dispatch:
@@ -33,46 +33,37 @@ jobs:
           comment: false
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-  lint:
-    name: Lint
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.14"
-      - run: uv sync --locked
-      - run: uv run --no-sync ruff check .
-      - run: uv run --no-sync ruff format --check .
-
-  mypy:
-    name: Mypy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
         with:
-          python-version: "3.14"
-      - run: uv sync --locked
-      - run: uv run --no-sync mypy custom_components/ha_govee_led_ble tests
+          install_args: github:kaitai-io/kaitai_struct_compiler
+      - run: npm --prefix frontend ci --ignore-scripts
+      - run: npm --prefix frontend exec -- playwright install --with-deps webkit
+      - run: make check
 
-  test:
-    name: Test
+  package:
+    name: Package
+    if: ${{ github.ref == 'refs/heads/ux' || github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          python-version: "3.14"
-      - run: uv sync --locked
-      - run: uv run --no-sync coverage run -m pytest tests/ -v --tb=short
-      - run: uv run --no-sync coverage report --precision=2 --include="custom_components/ha_govee_led_ble/*"
-
-  kaitai:
-    name: Kaitai
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.14"
@@ -80,4 +71,24 @@ jobs:
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
       - run: uv sync --locked
-      - run: bash scripts/check-kaitai.sh
+      - name: Build reference package
+        run: |
+          make clean package
+          uv run --no-sync python scripts/package.py \
+            --source custom_components/ha_govee_led_ble \
+            --verify-archive dist/ha_govee_led_ble.zip
+          cp dist/ha_govee_led_ble.zip "$RUNNER_TEMP/ha_govee_led_ble-first.zip"
+          cp dist/ha_govee_led_ble.zip.sha256 "$RUNNER_TEMP/ha_govee_led_ble-first.zip.sha256"
+      - name: Rebuild package deterministically
+        run: |
+          make clean package
+          cmp "$RUNNER_TEMP/ha_govee_led_ble-first.zip" dist/ha_govee_led_ble.zip
+          cmp "$RUNNER_TEMP/ha_govee_led_ble-first.zip.sha256" dist/ha_govee_led_ble.zip.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: package-${{ github.sha }}
+          path: |
+            dist/ha_govee_led_ble.zip
+            dist/ha_govee_led_ble.zip.sha256
+          if-no-files-found: error
+          retention-days: 7

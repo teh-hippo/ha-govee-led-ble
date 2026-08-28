@@ -91,6 +91,11 @@ types:
         type: u1
       - id: speed
         type: u1
+        doc: >
+          Fountain animation speed. The app derives 0x50 for a 15-segment device. A
+          controlled 0x10/0x50/0x10/0x50 device comparison showed slower movement at
+          0x10 and the faster baseline returning at 0x50. An extreme 0xf0 value changed
+          the visible fill density and is not used to infer scaling beyond that pair.
   day_and_night_tail:
     seq:
       - id: segment_count

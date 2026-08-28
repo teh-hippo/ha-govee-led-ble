@@ -12,13 +12,22 @@ from typing import Any, cast
 import pytest
 from kaitaistruct import KaitaiStructError
 
+from custom_components.ha_govee_led_ble.effect_compiler import ActivationMode, compile_effect
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    _A3_MAX_CONTENT,
+    _U1_MAX,
+    MAX_SCENE_PARAM_BYTES,
     _check_tree,
     _write,
+    build_h617a_scene,
+    build_h6199_scene,
     parse_scene_body_param,
 )
 from custom_components.ha_govee_led_ble.layered_scene import (
+    _LAYER_UNKNOWN_FLAGS_MASK,
+    _MOVEMENT_UNKNOWN_FLAGS_MASK,
     AppliedArea,
     BrightnessOrder,
     BrightnessPattern,
@@ -39,8 +48,13 @@ from custom_components.ha_govee_led_ble.layered_scene import (
 from custom_components.ha_govee_led_ble.layered_scene_decoder import (
     decode_catalogue_layered_scene,
     decode_layered_scene,
+    encode_layered_scene,
 )
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.transport import fragment_a3
+
+# The parameter drops the marker, line-count and scene-type bytes the A3 header carries.
+_A3_STRIPPED_PREFIX = 3
 
 
 def _layer() -> EffectLayer:
@@ -127,6 +141,36 @@ def _assert_layer_matches(decoded: EffectLayer, parsed: Any) -> None:
     assert decoded.excess == bytes(parsed.excess)
 
 
+def test_advanced_layers_compile_with_byte_exact_model_framing() -> None:
+    carriers = {
+        "H617A": (1013, 11836),
+        "H6199": (29884, 41599),
+    }
+    effect = LayeredEffect((_layer(),))
+
+    for model, identity in carriers.items():
+        entry = next(scene for scene in SCENE_ENTRIES[model] if (scene.scene_id, scene.effect_id) == identity)
+        encoded = encode_layered_scene(
+            LayeredScene(
+                CatalogueRef(model, entry.scene_id, entry.effect_id),
+                effect,
+            )
+        )
+        activation = (
+            build_h6199_scene(entry.code, entry.music_code) if model == "H6199" else build_h617a_scene(entry.code)
+        )
+
+        compiled = compile_effect(LibraryItem.new("Advanced", effect), model)
+
+        assert compiled.activation_mode is ActivationMode.SCENE
+        assert compiled.packets == (*fragment_a3(2, encoded), activation)
+        assert compiled.evidence_codes == (
+            "scene_payload_readback_unavailable",
+            "layered_field_semantics_uncalibrated",
+            "layered_activation_carrier_uncalibrated",
+        )
+
+
 def test_effect_domain_compatibility_shape_uses_raw_integer_values() -> None:
     pattern = replace(_layer().brightness_patterns[0], order=0xFD)
     layer = replace(
@@ -204,6 +248,7 @@ def test_effect_domain_compatibility_shape_uses_raw_integer_values() -> None:
         "effect": expected_effect,
         "speed_index": 2,
         "raw_param": "00ff",
+        "trailing_padding": 0,
     }
 
 
@@ -320,6 +365,49 @@ def test_unknown_enums_flags_and_excess_round_trip_without_normalisation() -> No
     assert restored_layer.excess == b"\xaa\xbb"
 
 
+@pytest.mark.parametrize("unknown_flags", [0x17, 0x10, 0x04, 0x02, 0x01, 0x13])
+def test_movement_rejects_unknown_flags_overlapping_known_bits(unknown_flags: int) -> None:
+    with pytest.raises(LayeredSceneValidationError, match="movement unknown flags"):
+        Movement(True, False, 1, 0, 0, unknown_flags=unknown_flags)
+
+
+@pytest.mark.parametrize("unknown_flags", [0x00, 0x08, 0x20, 0x40, 0x80, 0xE8])
+def test_movement_accepts_every_reserved_unknown_flag_bit(unknown_flags: int) -> None:
+    assert Movement(True, False, 1, 0, 0, unknown_flags=unknown_flags).unknown_flags == unknown_flags
+
+
+@pytest.mark.parametrize("unknown_flags", [0x02, 0x03, 0x06, 0xFF])
+def test_layer_rejects_unknown_flags_overlapping_the_brightness_bit(unknown_flags: int) -> None:
+    with pytest.raises(LayeredSceneValidationError, match="layer unknown flags"):
+        replace(_layer(), unknown_flags=unknown_flags)
+
+
+@pytest.mark.parametrize("unknown_flags", [0x00, 0x01, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xFD])
+def test_layer_accepts_every_reserved_unknown_flag_bit(unknown_flags: int) -> None:
+    assert replace(_layer(), unknown_flags=unknown_flags).unknown_flags == unknown_flags
+
+
+def test_reserved_unknown_flags_survive_json_and_encode_round_trips() -> None:
+    template = CatalogueRef("SYNTHETIC", 1, 1)
+    layer = replace(
+        _layer(),
+        unknown_flags=_LAYER_UNKNOWN_FLAGS_MASK,
+        selected_movement=Movement(True, False, 1, 0, 0, unknown_flags=_MOVEMENT_UNKNOWN_FLAGS_MASK),
+        overall_movement=Movement(False, True, 0, 0, 0, unknown_flags=_MOVEMENT_UNKNOWN_FLAGS_MASK),
+    )
+    scene = LayeredScene(template, LayeredEffect((layer,)))
+
+    restored = layered_scene_from_value(json.loads(json.dumps(layered_scene_to_value(scene))))
+    assert restored == scene
+
+    decoded = decode_layered_scene(template, encode_layered_scene(scene))
+    decoded_layer = decoded.effect.layers[0]
+    assert decoded.effect == scene.effect
+    assert decoded_layer.unknown_flags == _LAYER_UNKNOWN_FLAGS_MASK
+    assert decoded_layer.selected_movement.unknown_flags == _MOVEMENT_UNKNOWN_FLAGS_MASK
+    assert decoded_layer.overall_movement.unknown_flags == _MOVEMENT_UNKNOWN_FLAGS_MASK
+
+
 def test_decoder_preserves_unknown_generated_values_and_record_excess() -> None:
     entry = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type == int(SceneBody.SceneType.scene_v2))
     raw_param = base64.b64decode(entry.param, validate=True)
@@ -390,6 +478,103 @@ def test_all_committed_layered_scenes_round_trip_canonical_values() -> None:
     assert record_count == 863
 
 
+@pytest.mark.parametrize(
+    "effect",
+    [
+        pytest.param(LayeredEffect((_layer(),)), id="representative"),
+        pytest.param(
+            LayeredEffect(
+                (
+                    _layer(),
+                    replace(
+                        _layer(),
+                        overall_movement=Movement(True, True, 2, 7, 9, unknown_flags=0xE8),
+                        excess=b"",
+                    ),
+                )
+            ),
+            id="multi-layer",
+        ),
+        pytest.param(
+            LayeredEffect((replace(_layer(), brightness_patterns=(), palette=(), excess=b""),)),
+            id="empty-collections",
+        ),
+        pytest.param(LayeredEffect(()), id="no-layers"),
+    ],
+)
+def test_encode_then_decode_round_trips_canonical_layered_values(effect: LayeredEffect) -> None:
+    template = CatalogueRef("SYNTHETIC", 1, 1)
+    scene = LayeredScene(template, effect)
+
+    decoded = decode_layered_scene(template, encode_layered_scene(scene))
+
+    assert decoded.effect == effect
+
+
+@pytest.mark.parametrize("padding", [1, 2, 4, 17, 34])
+def test_decode_preserves_real_trailing_zero_padding(padding: int) -> None:
+    template = CatalogueRef("SYNTHETIC", 1, 1)
+    base = encode_layered_scene(LayeredScene(template, LayeredEffect((_layer(),))))
+    raw_param = base + b"\x00" * padding
+
+    decoded = decode_layered_scene(template, raw_param)
+
+    assert decoded.trailing_padding == padding
+    assert decoded.raw_param == raw_param
+    assert encode_layered_scene(decoded) == raw_param
+    restored = layered_scene_from_value(json.loads(json.dumps(layered_scene_to_value(decoded))))
+    assert restored == decoded
+
+
+def test_construction_rejects_trailing_padding_beyond_the_framing_limit() -> None:
+    template = CatalogueRef("SYNTHETIC", 1, 1)
+    base = LayeredScene(template, LayeredEffect((_layer(),)))
+
+    replace(base, trailing_padding=MAX_SCENE_PARAM_BYTES)
+
+    with pytest.raises(LayeredSceneValidationError, match="trailing padding"):
+        replace(base, trailing_padding=MAX_SCENE_PARAM_BYTES + 1)
+
+
+def _fixed_layer_body_length() -> int:
+    template = CatalogueRef("SYNTHETIC", 1, 1)
+    empty = replace(_layer(), brightness_patterns=(), palette=(), excess=b"")
+    parameter = encode_layered_scene(LayeredScene(template, LayeredEffect((empty,))))
+    # Past the stripped prefix, a single-record parameter is the record count byte, the
+    # record length byte, then the body itself.
+    return len(parameter) - 2
+
+
+def test_encode_rejects_layer_body_beyond_the_record_length() -> None:
+    template = CatalogueRef("SYNTHETIC", 1, 1)
+    fixed_body = _fixed_layer_body_length()
+    largest = replace(_layer(), brightness_patterns=(), palette=(), excess=b"\xaa" * (_U1_MAX - fixed_body))
+
+    encode_layered_scene(LayeredScene(template, LayeredEffect((largest,))))
+
+    over = replace(largest, excess=b"\xaa" * (_U1_MAX - fixed_body + 1))
+    with pytest.raises(LayeredSceneValidationError, match="record length field"):
+        encode_layered_scene(LayeredScene(template, LayeredEffect((over,))))
+
+
+def test_encode_rejects_total_content_beyond_the_line_count() -> None:
+    template = CatalogueRef("SYNTHETIC", 1, 1)
+    fixed_body = _fixed_layer_body_length()
+    full = replace(_layer(), brightness_patterns=(), palette=(), excess=b"\xaa" * (_U1_MAX - fixed_body))
+    full_count = 16
+    # content = header (2) + scene type (1) + record count (1) + each record (1 + body).
+    tail_body = _A3_MAX_CONTENT - 4 - full_count * (1 + _U1_MAX) - 1
+    tail = replace(full, excess=b"\xaa" * (tail_body - fixed_body))
+    records = (full,) * full_count + (tail,)
+
+    encoded = encode_layered_scene(LayeredScene(template, LayeredEffect(records)))
+    assert len(encoded) + _A3_STRIPPED_PREFIX == _A3_MAX_CONTENT
+
+    over_records = (full,) * full_count + (replace(tail, excess=b"\xaa" * (tail_body - fixed_body + 1)),)
+    with pytest.raises(LayeredSceneValidationError, match="A3 line count"):
+        encode_layered_scene(LayeredScene(template, LayeredEffect(over_records)))
+
+
 def test_catalogue_decoder_rejects_malformed_type_2_input() -> None:
     entry = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.scene_type == int(SceneBody.SceneType.scene_v2))
 
@@ -446,6 +631,7 @@ def test_wire_sized_collections_accept_byte_count_maximums() -> None:
         lambda: replace(_layer(), brightness_patterns=_layer().brightness_patterns * 256),
         lambda: replace(_layer(), palette=((0, 0, 0),) * 256),
         lambda: LayeredEffect((_layer(),) * 256),
+        lambda: LayeredScene(CatalogueRef("H617A", 1, 1), LayeredEffect(()), speed_index=256),
     ],
 )
 def test_wire_model_rejects_unrepresentable_values(factory) -> None:

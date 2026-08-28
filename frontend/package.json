@@ -1,0 +1,23 @@
+{
+    "name": "ha-govee-led-ble-frontend",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "check": "npm run typecheck && npm run build",
+        "dev": "vite --config vite.dev.config.ts",
+        "test:browser": "playwright test --config playwright.config.ts",
+        "test:unit": "vitest run --config vitest.config.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "lit": "^3.3.1"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.62.1",
+        "@types/node": "^24.10.1",
+        "typescript": "^5.9.3",
+        "vite": "^8.2.1",
+        "vitest": "^4.1.10"
+    }
+}

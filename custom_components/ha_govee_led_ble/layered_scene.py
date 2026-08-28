@@ -11,8 +11,8 @@ the ``advanced`` and ``scene_layered`` JSON bodies to the value converters here.
 wire values survive persistence.  Their enums provide names for known values only.
 Authoring limits belong in UX editor and capability validation, not this module.
 Decoders source split flag values from generated Kaitai properties.  The
-``raw_param`` field records source provenance; these converters do not encode edited
-DTOs back to wire bytes.
+``raw_param`` field records immutable source provenance.  The shared encoder writes
+canonical fields, including unknown flags and excess bytes, rather than replaying it.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 from importlib import import_module
 from typing import Any, cast
+
+from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES
 
 type RGB = tuple[int, int, int]
 type JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
@@ -52,6 +54,11 @@ __all__ = [
 ]
 
 _BYTE_COUNT = 0xFF
+# The packed movement and layer-flag bytes assign these bits to explicit canonical fields,
+# so the Kaitai unknown_flags derivations mask them out (packed & 0xe8, layer_flags & 0xfd).
+# Canonical values must not carry the complementary known bits, which encoding would drop.
+_MOVEMENT_UNKNOWN_FLAGS_MASK = 0xE8
+_LAYER_UNKNOWN_FLAGS_MASK = 0xFD
 
 
 class LayeredSceneValidationError(ValueError):
@@ -137,7 +144,7 @@ class Movement:
             raise LayeredSceneValidationError("movement direction must be an integer from 0 to 3")
         _validate_byte(self.distance, "movement distance")
         _validate_byte(self.speed, "movement speed")
-        _validate_byte(self.unknown_flags, "movement unknown flags")
+        _validate_unknown_flags(self.unknown_flags, _MOVEMENT_UNKNOWN_FLAGS_MASK, "movement unknown flags")
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,7 +186,7 @@ class EffectLayer:
         _validate_instance(self.selected_movement, Movement, "selected-area movement")
         _validate_instance(self.overall_movement, Movement, "overall movement")
         _validate_byte(self.priority, "layer priority")
-        _validate_byte(self.unknown_flags, "layer unknown flags")
+        _validate_unknown_flags(self.unknown_flags, _LAYER_UNKNOWN_FLAGS_MASK, "layer unknown flags")
         if not isinstance(self.excess, bytes):
             raise LayeredSceneValidationError("layer excess must be bytes")
 
@@ -214,14 +221,19 @@ class LayeredScene:
     effect: LayeredEffect
     speed_index: int | None = None
     raw_param: bytes = b""
+    trailing_padding: int = 0
 
     def __post_init__(self) -> None:
         _validate_instance(self.template, CatalogueRef, "scene template")
         _validate_instance(self.effect, LayeredEffect, "scene effect")
         if self.speed_index is not None:
-            _validate_non_negative(self.speed_index, "scene speed index")
+            _validate_byte(self.speed_index, "scene speed index")
         if not isinstance(self.raw_param, bytes):
             raise LayeredSceneValidationError("scene raw parameter must be bytes")
+        if not _is_int(self.trailing_padding) or not 0 <= self.trailing_padding <= MAX_SCENE_PARAM_BYTES:
+            raise LayeredSceneValidationError(
+                f"scene trailing padding must be an integer from 0 to {MAX_SCENE_PARAM_BYTES}"
+            )
 
 
 def layered_effect_to_value(effect: LayeredEffect) -> dict[str, JsonValue]:
@@ -248,6 +260,7 @@ def layered_scene_to_value(scene: LayeredScene) -> dict[str, JsonValue]:
         "effect": layered_effect_to_value(scene.effect),
         "speed_index": scene.speed_index,
         "raw_param": scene.raw_param.hex(),
+        "trailing_padding": scene.trailing_padding,
     }
 
 
@@ -259,6 +272,7 @@ def layered_scene_from_value(raw: Mapping[str, Any]) -> LayeredScene:
         effect=layered_effect_from_value(_required_mapping(value, "effect")),
         speed_index=_optional_int(value, "speed_index"),
         raw_param=_hex_bytes(value.get("raw_param", ""), "scene raw parameter"),
+        trailing_padding=_optional_int(value, "trailing_padding") or 0,
     )
 
 
@@ -428,6 +442,12 @@ def _validate_nibble(value: int, name: str) -> None:
 def _validate_byte(value: int, name: str) -> None:
     if not _is_int(value) or not 0 <= value <= 0xFF:
         raise LayeredSceneValidationError(f"{name} must be an integer from 0 to 255")
+
+
+def _validate_unknown_flags(value: int, mask: int, name: str) -> None:
+    _validate_byte(value, name)
+    if value & ~mask:
+        raise LayeredSceneValidationError(f"{name} must only set reserved bits, not bits explicit fields carry")
 
 
 def _validate_bool(value: bool, name: str) -> None:

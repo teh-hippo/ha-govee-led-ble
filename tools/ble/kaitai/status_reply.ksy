@@ -43,6 +43,10 @@ enums:
     0x13: music
 types:
   multi_effect_body:
+    doc: >
+      Readback of the gradual-change boolean written by command_write opcode 0xa3. The
+      value is persistent device state. H617A explicitly exposes no gradual-change
+      capability, and paired physical comparisons found no visible behaviour for true.
     seq:
       - id: flag
         type: u1
@@ -117,6 +121,7 @@ types:
         valid: 0
         repeat: eos
   segments_body:
+    doc: Five query-backed groups of three segment brightness and colour records.
     seq:
       - id: group
         type: u1

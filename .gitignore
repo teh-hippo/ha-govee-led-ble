@@ -6,11 +6,16 @@ __pycache__/
 .venv
 .*_cache/
 .coverage
+.build/
+dist/
+frontend/node_modules/
+/custom_components/ha_govee_led_ble/generated_protocol/
+/custom_components/ha_govee_led_ble/frontend/effect-studio-bootstrap.js
+/custom_components/ha_govee_led_ble/frontend/effect-studio-*-*.js
+/custom_components/ha_govee_led_ble/frontend/manifest.json
+.playwright-cli/
 
 # Working breadcrumb for the in-flight protocol phase. Never source of truth:
 # the worklist lives in the session todo store and the verified structure lives
 # in tools/ble/kaitai/*.ksy. Archived to the session workspace when a phase ends.
 plan.md
-
-# Real rig identity: never tracked. See tools/harness/devices.local.env.example.
-tools/harness/devices.local.env

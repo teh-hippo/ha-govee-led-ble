@@ -1,0 +1,3690 @@
+{
+  "content_samples": {
+    "advanced": {
+      "kind": "advanced",
+      "layers": [
+        {
+          "area": {
+            "start_tenths": 0,
+            "width_tenths": 4
+          },
+          "brightness_gradient": true,
+          "brightness_patterns": [
+            {
+              "brightest_retention": 20,
+              "change_speed": 128,
+              "darkest_retention": 20,
+              "order": 0,
+              "scope_high": 255,
+              "scope_low": 0
+            }
+          ],
+          "colour_retention": 109,
+          "colour_speed": 178,
+          "distribution": {
+            "backwards": true,
+            "method": 1
+          },
+          "excess": "",
+          "overall_movement": {
+            "direction": 0,
+            "distance": 1,
+            "enabled": true,
+            "enter_exit": false,
+            "speed": 183,
+            "unknown_flags": 0
+          },
+          "palette": [
+            [
+              0,
+              255,
+              0
+            ],
+            [
+              255,
+              0,
+              0
+            ]
+          ],
+          "priority": 1,
+          "selected_movement": {
+            "direction": 0,
+            "distance": 1,
+            "enabled": true,
+            "enter_exit": true,
+            "speed": 239,
+            "unknown_flags": 0
+          },
+          "selection": {
+            "param_1": 0,
+            "param_2": 2,
+            "type": 0
+          },
+          "unknown_flags": 16
+        },
+        {
+          "area": {
+            "start_tenths": 0,
+            "width_tenths": 0
+          },
+          "brightness_gradient": false,
+          "brightness_patterns": [
+            {
+              "brightest_retention": 20,
+              "change_speed": 128,
+              "darkest_retention": 20,
+              "order": 0,
+              "scope_high": 255,
+              "scope_low": 0
+            }
+          ],
+          "colour_retention": 20,
+          "colour_speed": 128,
+          "distribution": {
+            "backwards": false,
+            "method": 1
+          },
+          "excess": "",
+          "overall_movement": {
+            "direction": 0,
+            "distance": 0,
+            "enabled": false,
+            "enter_exit": false,
+            "speed": 128,
+            "unknown_flags": 0
+          },
+          "palette": [
+            [
+              6,
+              255,
+              0
+            ]
+          ],
+          "priority": 0,
+          "selected_movement": {
+            "direction": 0,
+            "distance": 0,
+            "enabled": false,
+            "enter_exit": false,
+            "speed": 128,
+            "unknown_flags": 0
+          },
+          "selection": {
+            "param_1": 0,
+            "param_2": 15,
+            "type": 1
+          },
+          "unknown_flags": 16
+        }
+      ]
+    },
+    "future_wave": {
+      "enabled": false,
+      "kind": "future_wave",
+      "nested": {
+        "mode": "prism",
+        "values": [
+          1,
+          null,
+          "three"
+        ]
+      },
+      "schema": 7
+    },
+    "h617a_multi": {
+      "effects": [
+        {
+          "family": 0,
+          "variant": 0
+        },
+        {
+          "family": 3,
+          "variant": 3
+        }
+      ],
+      "kind": "h617a_multi",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          0
+        ]
+      ],
+      "speed": 60
+    },
+    "h617a_painted": {
+      "brightness": 80,
+      "effect": "clockwise",
+      "kind": "h617a_painted",
+      "segments": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          0
+        ],
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "speed": 50
+    },
+    "h617a_single": {
+      "family": 3,
+      "kind": "h617a_single",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "speed": 50,
+      "variant": 3
+    },
+    "music_profile": {
+      "calm": false,
+      "colour": [
+        1,
+        2,
+        3
+      ],
+      "kind": "music_profile",
+      "mode": "separation",
+      "model": "H617A",
+      "parameters": {
+        "gradient": true,
+        "point": 3
+      },
+      "sensitivity": 50
+    },
+    "palette_diy": {
+      "family": 2,
+      "kind": "palette_diy",
+      "model": "H6199",
+      "palette": [
+        [
+          255,
+          128,
+          0
+        ]
+      ],
+      "speed": 70,
+      "variant": 1
+    },
+    "scene_builtin": {
+      "kind": "scene_builtin",
+      "speed_index": null,
+      "template": {
+        "catalogue_schema_version": 1,
+        "effect_id": 1073,
+        "scene_id": 1011,
+        "sku": "H617A"
+      }
+    },
+    "scene_layered": {
+      "effect": {
+        "layers": [
+          {
+            "area": {
+              "start_tenths": 0,
+              "width_tenths": 0
+            },
+            "brightness_gradient": true,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 10,
+                "change_speed": 180,
+                "darkest_retention": 10,
+                "order": 1,
+                "scope_high": 255,
+                "scope_low": 25
+              }
+            ],
+            "colour_retention": 20,
+            "colour_speed": 200,
+            "distribution": {
+              "backwards": false,
+              "method": 2
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                255,
+                255,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                148,
+                255,
+                0
+              ]
+            ],
+            "priority": 0,
+            "selected_movement": {
+              "direction": 0,
+              "distance": 1,
+              "enabled": true,
+              "enter_exit": true,
+              "speed": 150,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 0,
+              "param_2": 10,
+              "type": 1
+            },
+            "unknown_flags": 0
+          },
+          {
+            "area": {
+              "start_tenths": 0,
+              "width_tenths": 0
+            },
+            "brightness_gradient": true,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 0,
+                "change_speed": 251,
+                "darkest_retention": 0,
+                "order": 1,
+                "scope_high": 255,
+                "scope_low": 20
+              }
+            ],
+            "colour_retention": 10,
+            "colour_speed": 250,
+            "distribution": {
+              "backwards": false,
+              "method": 1
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                4,
+                255,
+                0
+              ],
+              [
+                180,
+                255,
+                0
+              ],
+              [
+                71,
+                255,
+                255
+              ],
+              [
+                227,
+                255,
+                0
+              ]
+            ],
+            "priority": 0,
+            "selected_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 15,
+              "param_2": 5,
+              "type": 2
+            },
+            "unknown_flags": 0
+          },
+          {
+            "area": {
+              "start_tenths": 0,
+              "width_tenths": 0
+            },
+            "brightness_gradient": true,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 20,
+                "change_speed": 200,
+                "darkest_retention": 20,
+                "order": 1,
+                "scope_high": 255,
+                "scope_low": 5
+              }
+            ],
+            "colour_retention": 20,
+            "colour_speed": 238,
+            "distribution": {
+              "backwards": false,
+              "method": 2
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                0,
+                255,
+                0
+              ]
+            ],
+            "priority": 0,
+            "selected_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 0,
+              "param_2": 1,
+              "type": 0
+            },
+            "unknown_flags": 0
+          }
+        ]
+      },
+      "kind": "scene_layered",
+      "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff00140196000000002300020f050201ff1401fb000001fa0a0404ff00b4ff0047ffffe3ff00000000000000001a000000010201ff0501c8141402ee140100ff0000000000000000",
+      "speed_index": 3,
+      "template": {
+        "catalogue_schema_version": 1,
+        "effect_id": 11836,
+        "scene_id": 1013,
+        "sku": "H617A"
+      },
+      "trailing_padding": 0
+    },
+    "scene_palette": {
+      "brightness_flag": true,
+      "config_flags": 0,
+      "kind": "scene_palette",
+      "layout": 0,
+      "palette": [
+        [
+          255,
+          30,
+          0
+        ],
+        [
+          255,
+          90,
+          0
+        ],
+        [
+          255,
+          50,
+          0
+        ],
+        [
+          255,
+          120,
+          0
+        ]
+      ],
+      "speed_index": null,
+      "steps": [
+        {
+          "colour": [
+            255,
+            245,
+            0
+          ],
+          "inline_colour": null,
+          "value": 5
+        },
+        {
+          "colour": [
+            255,
+            255,
+            255
+          ],
+          "inline_colour": null,
+          "value": 5
+        },
+        {
+          "colour": [
+            255,
+            233,
+            255
+          ],
+          "inline_colour": null,
+          "value": 5
+        },
+        {
+          "colour": [
+            255,
+            255,
+            255
+          ],
+          "inline_colour": null,
+          "value": 5
+        },
+        {
+          "colour": [
+            255,
+            233,
+            217
+          ],
+          "inline_colour": null,
+          "value": 5
+        },
+        {
+          "colour": [
+            255,
+            248,
+            255
+          ],
+          "inline_colour": null,
+          "value": 6
+        }
+      ],
+      "template": {
+        "catalogue_schema_version": 1,
+        "effect_id": 1103,
+        "scene_id": 1041,
+        "sku": "H617A"
+      },
+      "trailing_padding": 0
+    },
+    "video_profile": {
+      "blank_screen": false,
+      "full_screen": true,
+      "kind": "video_profile",
+      "mode": "movie",
+      "model": "H6199",
+      "relative_brightness": {
+        "bottom": 70,
+        "left": 100,
+        "right": 80,
+        "top": 90
+      },
+      "saturation": 75,
+      "sound_effects": false,
+      "sound_effects_softness": 50,
+      "white_balance_position": 10
+    },
+    "workshop": {
+      "effect": {
+        "layers": [
+          {
+            "area": {
+              "start_tenths": 0,
+              "width_tenths": 4
+            },
+            "brightness_gradient": true,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 20,
+                "change_speed": 128,
+                "darkest_retention": 20,
+                "order": 0,
+                "scope_high": 255,
+                "scope_low": 0
+              }
+            ],
+            "colour_retention": 109,
+            "colour_speed": 178,
+            "distribution": {
+              "backwards": true,
+              "method": 1
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 0,
+              "distance": 1,
+              "enabled": true,
+              "enter_exit": false,
+              "speed": 183,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                255,
+                0,
+                0
+              ]
+            ],
+            "priority": 1,
+            "selected_movement": {
+              "direction": 0,
+              "distance": 1,
+              "enabled": true,
+              "enter_exit": true,
+              "speed": 239,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 0,
+              "param_2": 2,
+              "type": 0
+            },
+            "unknown_flags": 16
+          },
+          {
+            "area": {
+              "start_tenths": 0,
+              "width_tenths": 0
+            },
+            "brightness_gradient": false,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 20,
+                "change_speed": 128,
+                "darkest_retention": 20,
+                "order": 0,
+                "scope_high": 255,
+                "scope_low": 0
+              }
+            ],
+            "colour_retention": 20,
+            "colour_speed": 128,
+            "distribution": {
+              "backwards": false,
+              "method": 1
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 128,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                6,
+                255,
+                0
+              ]
+            ],
+            "priority": 0,
+            "selected_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 128,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 0,
+              "param_2": 15,
+              "type": 1
+            },
+            "unknown_flags": 16
+          }
+        ]
+      },
+      "kind": "workshop",
+      "model": "H617A",
+      "raw_param": "021d400000021201ff000080141481b26d0200ff00ff00001401ef1001b7011a0001000f1001ff00008014140180140106ff000000800000800000000000000000",
+      "template": "movement-baseline",
+      "trailing_padding": 7
+    }
+  },
+  "responses": {
+    "custom_catalogue": {
+      "apply": {
+        "multi": "supported",
+        "painted": "supported",
+        "palette_diy": "unsupported",
+        "single": "supported",
+        "workshop": "supported"
+      },
+      "effects": [
+        {
+          "category": "single_layer",
+          "family": 0,
+          "id": "fade",
+          "label": "Fade",
+          "rate": "speed",
+          "supports_multi": true,
+          "variations": [
+            {
+              "id": "whole",
+              "label": "Whole strip",
+              "variant": 0
+            },
+            {
+              "id": "sections",
+              "label": "Sections",
+              "variant": 1
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle",
+              "variant": 2
+            }
+          ]
+        }
+      ],
+      "limits": {
+        "multi_max": 4,
+        "music_sensitivity_max": 99,
+        "music_sensitivity_min": 0,
+        "palette_max": 8,
+        "palette_min": 1
+      },
+      "models": {
+        "H617A": {
+          "apply": {
+            "multi": "supported",
+            "painted": "supported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "supported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "rate": "speed",
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            }
+          ],
+          "painted_effects": [
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            }
+          ],
+          "sku": "H617A",
+          "supports": {
+            "advanced": "supported",
+            "multi": "supported",
+            "workshop": "supported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "brightness": 100,
+                "effect": "clockwise",
+                "kind": "h617a_painted",
+                "segments": [
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null
+                ],
+                "speed": 50
+              },
+              "id": "template:paint",
+              "label": "Paint"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "fountain",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:fountain",
+              "label": "Fountain"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "bloom",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:bloom",
+              "label": "Bloom"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "shiny",
+                "model": "H617A",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:shiny",
+              "label": "Shiny"
+            }
+          ],
+          "video_modes": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_palette",
+              "id": "edited_palette_scenes",
+              "label": "Edited palette scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_painted",
+              "id": "painted",
+              "label": "Painted"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Multi"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "advanced",
+              "id": "advanced",
+              "label": "Advanced"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "workshop",
+              "id": "workshop",
+              "label": "Workshop"
+            }
+          ],
+          "workshop_templates": []
+        },
+        "H6199": {
+          "apply": {
+            "multi": "unsupported",
+            "painted": "unsupported",
+            "palette_diy": "supported",
+            "single": "unsupported",
+            "workshop": "supported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "rate": "speed",
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "multi_max": 4,
+            "music_sensitivity_max": 100,
+            "music_sensitivity_min": 1,
+            "palette_max": 8,
+            "palette_min": 1
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            }
+          ],
+          "painted_effects": [],
+          "sku": "H6199",
+          "supports": {
+            "advanced": "supported",
+            "multi": "unsupported",
+            "workshop": "supported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "palette_diy",
+                "model": "H6199",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "palette_diy",
+                "model": "H6199",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "palette_diy",
+                "model": "H6199",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Twinkle"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "palette_diy",
+                "model": "H6199",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "palette_diy",
+                "model": "H6199",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "palette_diy",
+                "model": "H6199",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Chasing"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "palette_diy",
+                "model": "H6199",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Rainbow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "palette_diy",
+                "model": "H6199",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Crossing"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H6199",
+                "parameters": {},
+                "sensitivity": 100
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H6199",
+                "parameters": {},
+                "sensitivity": 100
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H6199",
+                "parameters": {},
+                "sensitivity": 100
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H6199",
+                "parameters": {},
+                "sensitivity": 100
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "video",
+              "content": {
+                "blank_screen": false,
+                "full_screen": true,
+                "kind": "video_profile",
+                "mode": "movie",
+                "model": "H6199",
+                "relative_brightness": {
+                  "bottom": 100,
+                  "left": 100,
+                  "right": 100,
+                  "top": 100
+                },
+                "saturation": 50,
+                "sound_effects": false,
+                "sound_effects_softness": 50,
+                "white_balance_position": 17
+              },
+              "id": "template:video:movie",
+              "label": "Movie"
+            },
+            {
+              "category": "video",
+              "content": {
+                "blank_screen": false,
+                "full_screen": true,
+                "kind": "video_profile",
+                "mode": "game",
+                "model": "H6199",
+                "relative_brightness": {
+                  "bottom": 100,
+                  "left": 100,
+                  "right": 100,
+                  "top": 100
+                },
+                "saturation": 50,
+                "sound_effects": false,
+                "sound_effects_softness": 50,
+                "white_balance_position": 17
+              },
+              "id": "template:video:game",
+              "label": "Game"
+            }
+          ],
+          "video_modes": [
+            {
+              "id": "movie",
+              "label": "Movie"
+            }
+          ],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_palette",
+              "id": "edited_palette_scenes",
+              "label": "Edited palette scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "palette_diy",
+              "id": "palette_diy",
+              "label": "Palette DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "video_profile",
+              "id": "video",
+              "label": "Video"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "advanced",
+              "id": "advanced",
+              "label": "Advanced"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "workshop",
+              "id": "workshop",
+              "label": "Workshop"
+            }
+          ],
+          "workshop_templates": []
+        }
+      },
+      "music_modes": [
+        {
+          "id": "energetic",
+          "label": "Energetic"
+        }
+      ],
+      "painted_effects": [
+        {
+          "id": "cycle",
+          "label": "Cycle"
+        }
+      ],
+      "schema_version": 8,
+      "sku": "H617A",
+      "supports": {
+        "advanced": "supported",
+        "multi": "supported",
+        "workshop": "supported"
+      },
+      "templates": [
+        {
+          "category": "single-layer",
+          "content": {
+            "brightness": 100,
+            "effect": "clockwise",
+            "kind": "h617a_painted",
+            "segments": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "speed": 50
+          },
+          "id": "template:paint",
+          "label": "Paint"
+        },
+        {
+          "category": "single-layer",
+          "content": {
+            "family": 0,
+            "kind": "h617a_single",
+            "palette": [
+              [
+                255,
+                0,
+                0
+              ],
+              [
+                255,
+                127,
+                0
+              ],
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                139,
+                0,
+                255
+              ]
+            ],
+            "speed": 50,
+            "variant": 0
+          },
+          "id": "template:single:0:0",
+          "label": "Fade"
+        },
+        {
+          "category": "single-layer",
+          "content": {
+            "family": 1,
+            "kind": "h617a_single",
+            "palette": [
+              [
+                255,
+                0,
+                0
+              ],
+              [
+                255,
+                127,
+                0
+              ],
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                139,
+                0,
+                255
+              ]
+            ],
+            "speed": 50,
+            "variant": 0
+          },
+          "id": "template:single:1:0",
+          "label": "Jumping"
+        },
+        {
+          "category": "single-layer",
+          "content": {
+            "family": 2,
+            "kind": "h617a_single",
+            "palette": [
+              [
+                255,
+                0,
+                0
+              ],
+              [
+                255,
+                127,
+                0
+              ],
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                139,
+                0,
+                255
+              ]
+            ],
+            "speed": 50,
+            "variant": 0
+          },
+          "id": "template:single:2:0",
+          "label": "Blinking"
+        },
+        {
+          "category": "single-layer",
+          "content": {
+            "family": 3,
+            "kind": "h617a_single",
+            "palette": [
+              [
+                255,
+                0,
+                0
+              ],
+              [
+                255,
+                127,
+                0
+              ],
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                139,
+                0,
+                255
+              ]
+            ],
+            "speed": 50,
+            "variant": 3
+          },
+          "id": "template:single:3:3",
+          "label": "Marquee"
+        },
+        {
+          "category": "single-layer",
+          "content": {
+            "family": 4,
+            "kind": "h617a_single",
+            "palette": [
+              [
+                255,
+                0,
+                0
+              ],
+              [
+                255,
+                127,
+                0
+              ],
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                139,
+                0,
+                255
+              ]
+            ],
+            "speed": 50,
+            "variant": 8
+          },
+          "id": "template:single:4:8",
+          "label": "Music"
+        },
+        {
+          "category": "single-layer",
+          "content": {
+            "family": 8,
+            "kind": "h617a_single",
+            "palette": [
+              [
+                255,
+                0,
+                0
+              ],
+              [
+                255,
+                127,
+                0
+              ],
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                139,
+                0,
+                255
+              ]
+            ],
+            "speed": 50,
+            "variant": 9
+          },
+          "id": "template:single:8:9",
+          "label": "Stream"
+        },
+        {
+          "category": "single-layer",
+          "content": {
+            "family": 9,
+            "kind": "h617a_single",
+            "palette": [
+              [
+                255,
+                0,
+                0
+              ],
+              [
+                255,
+                127,
+                0
+              ],
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                139,
+                0,
+                255
+              ]
+            ],
+            "speed": 50,
+            "variant": 9
+          },
+          "id": "template:single:9:9",
+          "label": "Flow"
+        },
+        {
+          "category": "single-layer",
+          "content": {
+            "family": 10,
+            "kind": "h617a_single",
+            "palette": [
+              [
+                255,
+                0,
+                0
+              ],
+              [
+                255,
+                127,
+                0
+              ],
+              [
+                255,
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                0
+              ],
+              [
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                139,
+                0,
+                255
+              ]
+            ],
+            "speed": 50,
+            "variant": 0
+          },
+          "id": "template:single:10:0",
+          "label": "Chase"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": null,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "energetic",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:energetic",
+          "label": "Energetic"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": false,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "rhythm",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:rhythm",
+          "label": "Rhythm"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": null,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "spectrum",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:spectrum",
+          "label": "Spectrum"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": null,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "rolling",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:rolling",
+          "label": "Rolling"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": null,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "separation",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:separation",
+          "label": "Separation"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": null,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "hopping",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:hopping",
+          "label": "Hopping"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": null,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "piano_keys",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:piano_keys",
+          "label": "Piano Keys"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": null,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "fountain",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:fountain",
+          "label": "Fountain"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": null,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "day_and_night",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:day_and_night",
+          "label": "Day And Night"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": false,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "bloom",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:bloom",
+          "label": "Bloom"
+        },
+        {
+          "category": "music",
+          "content": {
+            "calm": false,
+            "colour": null,
+            "kind": "music_profile",
+            "mode": "shiny",
+            "model": "H617A",
+            "parameters": {},
+            "sensitivity": 99
+          },
+          "id": "template:music:shiny",
+          "label": "Shiny"
+        }
+      ],
+      "video_modes": [],
+      "workflows": [
+        {
+          "application": "studio",
+          "content_kind": "scene_builtin",
+          "id": "native_scenes",
+          "label": "Scenes"
+        },
+        {
+          "application": "home_assistant",
+          "content_kind": "scene_palette",
+          "id": "edited_palette_scenes",
+          "label": "Edited palette scenes"
+        },
+        {
+          "application": "home_assistant",
+          "content_kind": "scene_layered",
+          "id": "layered_scenes",
+          "label": "Layered scenes"
+        },
+        {
+          "application": "home_assistant",
+          "content_kind": "h617a_painted",
+          "id": "painted",
+          "label": "Painted"
+        },
+        {
+          "application": "home_assistant",
+          "content_kind": "h617a_single",
+          "id": "single",
+          "label": "Single"
+        },
+        {
+          "application": "home_assistant",
+          "content_kind": "h617a_multi",
+          "id": "multi",
+          "label": "Multi"
+        },
+        {
+          "application": "home_assistant",
+          "content_kind": "music_profile",
+          "id": "native_music",
+          "label": "Music"
+        },
+        {
+          "application": "home_assistant",
+          "content_kind": "advanced",
+          "id": "advanced",
+          "label": "Advanced"
+        },
+        {
+          "application": "home_assistant",
+          "content_kind": "workshop",
+          "id": "workshop",
+          "label": "Workshop"
+        }
+      ],
+      "workshop_templates": []
+    },
+    "devices": [
+      {
+        "active_state": {
+          "active_effect": {
+            "confidence": "activation_match",
+            "content_hash": "0e36f8c2b65a812a76063516a7895c2704b5d966e3636d11a9e97338762ae201",
+            "item_id": "00000000-0000-4000-8000-000000000001",
+            "item_version": 1,
+            "observable_signature": "custom:800",
+            "origin": {
+              "kind": "authored",
+              "source_id": null
+            },
+            "selector_label": "Canonical painted effect",
+            "source_kind": "saved_effect"
+          },
+          "confidence": "activation_match",
+          "config_entry_id": "h617a-main",
+          "diy_code": 800,
+          "effect": null,
+          "matched_operation_id": "00000000-0000-4000-8000-000000000003",
+          "mode": "custom",
+          "native_mode": null,
+          "observed_at": "2026-08-17T00:00:00Z"
+        },
+        "config_entry_id": "h617a-main",
+        "custom_effects": {
+          "advanced": "supported",
+          "multi": "supported",
+          "painted": "supported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "supported"
+        },
+        "display_name": "H617A LED Strip",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive",
+          "advanced"
+        ],
+        "light_entity_id": "light.h617a_main",
+        "model": "H617A",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h617a-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "unsupported"
+        },
+        "readback": "diy_code_only",
+        "segment_count": 15
+      },
+      {
+        "active_state": null,
+        "config_entry_id": "h6199-main",
+        "custom_effects": {
+          "advanced": "supported",
+          "multi": "unsupported",
+          "painted": "unsupported",
+          "palette_diy": "supported",
+          "single": "unsupported",
+          "workshop": "supported"
+        },
+        "display_name": "H6199 DreamView T1",
+        "effect_categories": [
+          "video",
+          "scenes",
+          "effects",
+          "reactive",
+          "advanced"
+        ],
+        "light_entity_id": null,
+        "model": "H6199",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h6199-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "supported"
+        },
+        "readback": "scene_selector_for_user_effects",
+        "segment_count": 15
+      }
+    ],
+    "editor_info": {
+      "api_version": 14,
+      "compiler_version": 4,
+      "effect_schema_version": 2,
+      "limits": {
+        "deployment_records": 128,
+        "devices": 512,
+        "effect_document_bytes": 65536,
+        "effect_name": 128,
+        "library_items": 256,
+        "preview_sequence": 9007199254740991,
+        "scene_catalogue_entries": 512
+      }
+    },
+    "library_item": {
+      "content": {
+        "brightness": 80,
+        "effect": "clockwise",
+        "kind": "h617a_painted",
+        "segments": [
+          [
+            255,
+            0,
+            0
+          ],
+          [
+            255,
+            0,
+            0
+          ],
+          [
+            255,
+            0,
+            0
+          ],
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "speed": 50
+      },
+      "content_hash": "0e36f8c2b65a812a76063516a7895c2704b5d966e3636d11a9e97338762ae201",
+      "extensions": {},
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Canonical painted effect",
+      "origin": {
+        "kind": "authored",
+        "source_id": null
+      },
+      "schema_version": 2,
+      "target_hint": {
+        "model": "H617A",
+        "segment_count": 15
+      },
+      "updated_at": "2026-08-17T00:00:00Z",
+      "version": 1
+    },
+    "library_snapshot": {
+      "generation": 0,
+      "items": [
+        {
+          "content_hash": "0e36f8c2b65a812a76063516a7895c2704b5d966e3636d11a9e97338762ae201",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "kind": "h617a_painted",
+          "model": "H617A",
+          "name": "Canonical painted effect",
+          "origin": {
+            "kind": "authored",
+            "source_id": null
+          },
+          "updated_at": "2026-08-17T00:00:00Z",
+          "version": 1
+        },
+        {
+          "content_hash": "57dee8b1b77cd18bed6fb6acfc72fe6dd4171240d46eb88cedfcdef41be74bdb",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "kind": "scene_palette",
+          "model": "H617A",
+          "name": "Canonical palette scene",
+          "origin": {
+            "kind": "authored",
+            "source_id": null
+          },
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 1103,
+            "scene_id": 1041,
+            "sku": "H617A"
+          },
+          "updated_at": "2026-08-17T00:00:00Z",
+          "version": 1
+        }
+      ]
+    },
+    "preview_status": {
+      "confidence": "activation_match",
+      "config_entry_id": "h617a-main",
+      "content_kind": "h617a_painted",
+      "default_action": null,
+      "effect_id": null,
+      "error_code": null,
+      "error_message": null,
+      "persist_default": false,
+      "phase": "confirmed",
+      "scene_id": null,
+      "sequence": 4,
+      "session_id": "fixture-session",
+      "write_disposition": "unknown"
+    },
+    "scene_catalogues": {
+      "H617A": {
+        "categories": [
+          {
+            "id": 129,
+            "name": "Natural"
+          },
+          {
+            "id": 133,
+            "name": "Festival"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "Natural",
+            "category_id": 129,
+            "display_name": "Sunrise",
+            "effect_id": 1073,
+            "name": "Sunrise",
+            "parameter_kind": "none",
+            "scene_id": 1011,
+            "scene_type": 0,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 129,
+            "display_name": "Forest",
+            "effect_id": 11836,
+            "name": "Forest",
+            "parameter_kind": "layers",
+            "scene_id": 1013,
+            "scene_type": 2,
+            "speed": {
+              "default_index": 3,
+              "option_count": 4
+            },
+            "variant": ""
+          },
+          {
+            "category": "Festival",
+            "category_id": 133,
+            "display_name": "Halloween",
+            "effect_id": 1103,
+            "name": "Halloween",
+            "parameter_kind": "palette",
+            "scene_id": 1041,
+            "scene_type": 1,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H617A"
+      },
+      "H6199": {
+        "categories": [
+          {
+            "id": 2522,
+            "name": "House of the Dragon"
+          },
+          {
+            "id": 5,
+            "name": "Natural"
+          },
+          {
+            "id": 6,
+            "name": "Festival"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "House of the Dragon",
+            "category_id": 2522,
+            "display_name": "Dracarys",
+            "effect_id": 41599,
+            "name": "Dracarys",
+            "parameter_kind": "layers",
+            "scene_id": 29884,
+            "scene_type": 2,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 5,
+            "display_name": "Sunrise",
+            "effect_id": 110,
+            "name": "Sunrise",
+            "parameter_kind": "none",
+            "scene_id": 128,
+            "scene_type": 0,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Festival",
+            "category_id": 6,
+            "display_name": "Halloween-A",
+            "effect_id": 133,
+            "name": "Halloween",
+            "parameter_kind": "palette",
+            "scene_id": 151,
+            "scene_type": 1,
+            "speed": null,
+            "variant": "A"
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H6199"
+      }
+    },
+    "scene_details": {
+      "scene_builtin": {
+        "catalogue_content": {
+          "kind": "scene_builtin",
+          "speed_index": null,
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 1073,
+            "scene_id": 1011,
+            "sku": "H617A"
+          }
+        },
+        "content": {
+          "kind": "scene_builtin",
+          "speed_index": null,
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 1073,
+            "scene_id": 1011,
+            "sku": "H617A"
+          }
+        },
+        "has_default": false,
+        "scene": {
+          "category": "Natural",
+          "category_id": 129,
+          "display_name": "Sunrise",
+          "effect_id": 1073,
+          "name": "Sunrise",
+          "parameter_kind": "none",
+          "scene_id": 1011,
+          "scene_type": 0,
+          "speed": null,
+          "variant": ""
+        }
+      },
+      "scene_layered": {
+        "catalogue_content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 10,
+                    "change_speed": 180,
+                    "darkest_retention": 10,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 25
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 200,
+                "distribution": {
+                  "backwards": false,
+                  "method": 2
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    255,
+                    255,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    148,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 150,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 10,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 0,
+                    "change_speed": 251,
+                    "darkest_retention": 0,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 20
+                  }
+                ],
+                "colour_retention": 10,
+                "colour_speed": 250,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    4,
+                    255,
+                    0
+                  ],
+                  [
+                    180,
+                    255,
+                    0
+                  ],
+                  [
+                    71,
+                    255,
+                    255
+                  ],
+                  [
+                    227,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 15,
+                  "param_2": 5,
+                  "type": 2
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 200,
+                    "darkest_retention": 20,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 5
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 238,
+                "distribution": {
+                  "backwards": false,
+                  "method": 2
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 1,
+                  "type": 0
+                },
+                "unknown_flags": 0
+              }
+            ]
+          },
+          "kind": "scene_layered",
+          "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff00140196000000002300020f050201ff1401fb000001fa0a0404ff00b4ff0047ffffe3ff00000000000000001a000000010201ff0501c8141402ee140100ff0000000000000000",
+          "speed_index": 3,
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 11836,
+            "scene_id": 1013,
+            "sku": "H617A"
+          },
+          "trailing_padding": 0
+        },
+        "content": {
+          "effect": {
+            "layers": [
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 10,
+                    "change_speed": 180,
+                    "darkest_retention": 10,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 25
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 200,
+                "distribution": {
+                  "backwards": false,
+                  "method": 2
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    255,
+                    255,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    148,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 150,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 10,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 0,
+                    "change_speed": 251,
+                    "darkest_retention": 0,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 20
+                  }
+                ],
+                "colour_retention": 10,
+                "colour_speed": 250,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    4,
+                    255,
+                    0
+                  ],
+                  [
+                    180,
+                    255,
+                    0
+                  ],
+                  [
+                    71,
+                    255,
+                    255
+                  ],
+                  [
+                    227,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 15,
+                  "param_2": 5,
+                  "type": 2
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 0
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 200,
+                    "darkest_retention": 20,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 5
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 238,
+                "distribution": {
+                  "backwards": false,
+                  "method": 2
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    0,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 1,
+                  "type": 0
+                },
+                "unknown_flags": 0
+              }
+            ]
+          },
+          "kind": "scene_layered",
+          "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff00140196000000002300020f050201ff1401fb000001fa0a0404ff00b4ff0047ffffe3ff00000000000000001a000000010201ff0501c8141402ee140100ff0000000000000000",
+          "speed_index": 3,
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 11836,
+            "scene_id": 1013,
+            "sku": "H617A"
+          },
+          "trailing_padding": 0
+        },
+        "has_default": false,
+        "scene": {
+          "category": "Natural",
+          "category_id": 129,
+          "display_name": "Forest",
+          "effect_id": 11836,
+          "name": "Forest",
+          "parameter_kind": "layers",
+          "scene_id": 1013,
+          "scene_type": 2,
+          "speed": {
+            "default_index": 3,
+            "option_count": 4
+          },
+          "variant": ""
+        }
+      },
+      "scene_palette": {
+        "catalogue_content": {
+          "brightness_flag": true,
+          "config_flags": 0,
+          "kind": "scene_palette",
+          "layout": 0,
+          "palette": [
+            [
+              255,
+              30,
+              0
+            ],
+            [
+              255,
+              90,
+              0
+            ],
+            [
+              255,
+              50,
+              0
+            ],
+            [
+              255,
+              120,
+              0
+            ]
+          ],
+          "speed_index": null,
+          "steps": [
+            {
+              "colour": [
+                255,
+                245,
+                0
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                255,
+                255
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                233,
+                255
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                255,
+                255
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                233,
+                217
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                248,
+                255
+              ],
+              "inline_colour": null,
+              "value": 6
+            }
+          ],
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 1103,
+            "scene_id": 1041,
+            "sku": "H617A"
+          },
+          "trailing_padding": 0
+        },
+        "content": {
+          "brightness_flag": true,
+          "config_flags": 0,
+          "kind": "scene_palette",
+          "layout": 0,
+          "palette": [
+            [
+              255,
+              30,
+              0
+            ],
+            [
+              255,
+              90,
+              0
+            ],
+            [
+              255,
+              50,
+              0
+            ],
+            [
+              255,
+              120,
+              0
+            ]
+          ],
+          "speed_index": null,
+          "steps": [
+            {
+              "colour": [
+                255,
+                245,
+                0
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                255,
+                255
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                233,
+                255
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                255,
+                255
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                233,
+                217
+              ],
+              "inline_colour": null,
+              "value": 5
+            },
+            {
+              "colour": [
+                255,
+                248,
+                255
+              ],
+              "inline_colour": null,
+              "value": 6
+            }
+          ],
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 1103,
+            "scene_id": 1041,
+            "sku": "H617A"
+          },
+          "trailing_padding": 0
+        },
+        "has_default": false,
+        "scene": {
+          "category": "Festival",
+          "category_id": 133,
+          "display_name": "Halloween",
+          "effect_id": 1103,
+          "name": "Halloween",
+          "parameter_kind": "palette",
+          "scene_id": 1041,
+          "scene_type": 1,
+          "speed": null,
+          "variant": ""
+        }
+      }
+    }
+  },
+  "schema_version": 1
+}
