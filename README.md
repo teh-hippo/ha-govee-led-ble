@@ -5,7 +5,7 @@
 [![Validate][validate-badge]][validate-url]
 [![Home Assistant][ha-badge]][ha-url]
 
-Local BLE control of supported Govee LED strips from Home Assistant, with no cloud dependency.
+Local BLE control and effect authoring for supported Govee lights from Home Assistant, with no cloud dependency.
 
 ## Supported Devices
 
