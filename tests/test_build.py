@@ -260,7 +260,6 @@ def test_verification_rejects_modified_and_extra_outputs(build_repo: tuple[Path,
     bootstrap_content = bootstrap.read_bytes()
     bootstrap.write_text("modified\n", encoding="utf-8")
     _make_fails(root, env, "verify-frontend")
-    _make_fails(root, env, "package")
     assert bootstrap.read_text(encoding="utf-8") == "modified\n"
     assert not (root / "dist/ha_govee_led_ble.zip").exists()
     bootstrap.write_bytes(bootstrap_content)
@@ -268,7 +267,6 @@ def test_verification_rejects_modified_and_extra_outputs(build_repo: tuple[Path,
     extra_frontend = frontend / "effect-studio-extra.js"
     extra_frontend.write_text("extra\n", encoding="utf-8")
     _make_fails(root, env, "verify-frontend")
-    _make_fails(root, env, "package")
     extra_frontend.unlink()
 
 

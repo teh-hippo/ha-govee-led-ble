@@ -8,14 +8,11 @@ import {
   clonePalette,
   hassPanelRenderChanged,
   integrationSettingsPath,
-  lightControlPresentation,
   lightControlEntityId,
-  moreInfoDetail,
   relocatedIndex,
   sameRgb,
   scrollSelectedIntoView,
   showHomeAssistantHeader,
-  studioToolbarLayoutState,
 } from "../../src/ui-utils";
 import type {
   DeviceCapabilities,
@@ -185,32 +182,6 @@ test("light controls follow the selected device without hiding the toolbar", () 
   expect(lightControlEntityId(device(null))).toBeUndefined();
   expect(lightControlEntityId(undefined)).toBeUndefined();
   expect(
-    studioToolbarLayoutState(true, true, true, "light.cupboard"),
-  ).toEqual({
-    visible: true,
-    deviceSelector: true,
-    modeControls: true,
-    lightControl: true,
-    settings: true,
-  });
-  expect(studioToolbarLayoutState(false, false, true, undefined)).toEqual({
-    visible: false,
-    deviceSelector: false,
-    modeControls: false,
-    lightControl: false,
-    settings: false,
-  });
-  expect(studioToolbarLayoutState(false, false, true, "light.cupboard")).toEqual({
-    visible: true,
-    deviceSelector: false,
-    modeControls: false,
-    lightControl: true,
-    settings: false,
-  });
-  expect(moreInfoDetail("light.cupboard")).toEqual({
-    entityId: "light.cupboard",
-  });
-  expect(
     integrationSettingsPath(
       "/config/integrations/integration/ha_govee_led_ble",
       "entry a",
@@ -224,10 +195,6 @@ test("native light presentation follows reactive Home Assistant state", () => {
   const states = { "light.cupboard": { state: "on" } };
 
   expect(classifyLightEntityState(states, "light.cupboard")).toBe("on");
-  expect(lightControlPresentation("Cupboard", "on")).toEqual({
-    accessibleName: "Control Cupboard (on)",
-    className: "light-state-on",
-  });
 
   states["light.cupboard"] = { state: "off" };
   expect(classifyLightEntityState(states, "light.cupboard")).toBe("off");

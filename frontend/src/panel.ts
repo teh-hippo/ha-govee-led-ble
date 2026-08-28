@@ -55,11 +55,8 @@ import {
   hassPanelRenderChanged,
   integrationSettingsPath,
   lightControlEntityId,
-  lightControlPresentation,
-  moreInfoDetail,
   scrollSelectedIntoView,
   showHomeAssistantHeader,
-  studioToolbarLayoutState,
 } from "./ui-utils";
 
 const componentLoaders = {
@@ -460,27 +457,29 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderStudioToolbar() {
     const device = this.model.selectedDevice;
     const lightEntityId = lightControlEntityId(device);
-    const layout = studioToolbarLayoutState(
-      this.model.showDeviceSelector,
-      this.isAdmin,
-      device !== undefined,
-      lightEntityId,
-    );
-    if (!layout.visible) {
+    const showAdminControls = this.isAdmin && device !== undefined;
+    const showLightControl = device !== undefined && lightEntityId !== undefined;
+    if (
+      !this.model.showDeviceSelector &&
+      !showAdminControls &&
+      !showLightControl
+    ) {
       return nothing;
     }
     return html`
       <div class="studio-toolbar">
         <div class="studio-toolbar-device">
-          ${layout.deviceSelector ? this.renderDeviceSelector() : nothing}
+          ${this.model.showDeviceSelector
+            ? this.renderDeviceSelector()
+            : nothing}
         </div>
         <div class="studio-toolbar-controls">
-          ${layout.modeControls ? this.renderLiveApplyControl() : nothing}
-          ${layout.modeControls ? this.renderAutoSaveControl() : nothing}
-          ${layout.lightControl && device && lightEntityId
+          ${showAdminControls ? this.renderLiveApplyControl() : nothing}
+          ${showAdminControls ? this.renderAutoSaveControl() : nothing}
+          ${showLightControl && device && lightEntityId
             ? this.renderLightControl(device.display_name, lightEntityId)
             : nothing}
-          ${layout.settings && device
+          ${showAdminControls && device
             ? this.renderIntegrationSettings(
                 device.display_name,
                 device.config_entry_id,
@@ -494,20 +493,21 @@ export class GoveeLedEffectStudio extends LitElement {
   private renderLightControl(displayName: string, entityId: string) {
     const entity = this.hass?.states?.[entityId];
     const state = classifyLightEntityState(this.hass?.states, entityId);
-    const presentation = lightControlPresentation(
-      displayName,
-      state,
-      entity?.attributes?.brightness,
-    );
+    const brightness = entity?.attributes?.brightness;
     const fillPercentage = brightnessFillPercentage(
-      presentation.brightnessLevel ?? 0,
+      state === "on" &&
+        typeof brightness === "number" &&
+        Number.isFinite(brightness)
+        ? brightness
+        : 0,
     );
+    const accessibleName = `Control ${displayName} (${state})`;
     return html`
       <button
-        class="toolbar-control light-control-button native-light-control ${presentation.className}"
+        class="toolbar-control light-control-button native-light-control light-state-${state}"
         type="button"
-        aria-label=${presentation.accessibleName}
-        title=${presentation.accessibleName}
+        aria-label=${accessibleName}
+        title=${accessibleName}
         style=${`--native-light-fill: ${fillPercentage}%`}
         @click=${() => this.showLightControls(entityId)}
       >
@@ -527,7 +527,7 @@ export class GoveeLedEffectStudio extends LitElement {
       new CustomEvent("hass-more-info", {
         bubbles: true,
         composed: true,
-        detail: moreInfoDetail(entityId),
+        detail: { entityId },
       }),
     );
   }

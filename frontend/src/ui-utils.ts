@@ -7,14 +7,6 @@ import type {
 
 export type NativeLightState = "on" | "off" | "unavailable";
 
-export interface StudioToolbarLayoutState {
-  visible: boolean;
-  deviceSelector: boolean;
-  modeControls: boolean;
-  lightControl: boolean;
-  settings: boolean;
-}
-
 export function clamp(
   value: number,
   minimum: number,
@@ -106,25 +98,6 @@ export function lightControlEntityId(
   return device?.light_entity_id ?? undefined;
 }
 
-export function studioToolbarLayoutState(
-  showDeviceSelector: boolean,
-  isAdmin: boolean,
-  deviceAvailable: boolean,
-  lightEntityId: string | undefined,
-): StudioToolbarLayoutState {
-  const modeControls = isAdmin && deviceAvailable;
-  const lightControl = deviceAvailable && lightEntityId !== undefined;
-  const settings = isAdmin && deviceAvailable;
-  return {
-    visible:
-      showDeviceSelector || modeControls || lightControl || settings,
-    deviceSelector: showDeviceSelector,
-    modeControls,
-    lightControl,
-    settings,
-  };
-}
-
 export function classifyLightEntityState(
   states: Record<string, HomeAssistantEntityState> | undefined,
   entityId: string,
@@ -136,33 +109,10 @@ export function classifyLightEntityState(
   return "unavailable";
 }
 
-export function lightControlPresentation(
-  displayName: string,
-  state: NativeLightState,
-  brightness?: unknown,
-) {
-  const brightnessLevel =
-    state === "on" &&
-    typeof brightness === "number" &&
-    Number.isFinite(brightness)
-      ? clamp(brightness, 0, 255)
-      : undefined;
-  const accessibleName = `Control ${displayName} (${state})`;
-  return {
-    accessibleName,
-    className: `light-state-${state}`,
-    brightnessLevel,
-  };
-}
-
 export function brightnessFillPercentage(
   brightness: number,
 ): number {
   return (clamp(brightness, 0, 255) / 255) * 100;
-}
-
-export function moreInfoDetail(entityId: string): { entityId: string } {
-  return { entityId };
 }
 
 export function integrationSettingsPath(

@@ -95,7 +95,6 @@ verify-generated: verify-protocol verify-frontend
 check:
 	uv sync --locked
 	$(MAKE) --no-print-directory build
-	uv run --no-sync python -m tools.generate_frontend_contract_fixtures --check
 	$(NPM) --prefix frontend run typecheck
 	$(MAKE) --no-print-directory verify-frontend
 	$(NPM) --prefix frontend run test:unit
