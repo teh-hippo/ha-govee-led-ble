@@ -649,7 +649,7 @@ def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
 
 def test_editor_contract_reports_first_slice_boundaries() -> None:
     api = EditorApiInfo().to_dict()
-    h617a = device_effect_capabilities("entry-a", "H617A", "Cupboard", 15)
+    h617a = device_effect_capabilities("entry-a", "H617A", "Test Light", 15)
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
 
     assert api == {

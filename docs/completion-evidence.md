@@ -115,7 +115,7 @@ The public test harness covers ownership and restoration branches with subproces
 | Package paths | The only cleanup-baseline path removed is dead `effect_scene_codec.py`. |
 | H617A production-package UX | Sidebar/deep link, one-device selector rule, off-state root opening, active scene opening, dirty marker, scene-copy cancel, save/overwrite/stale conflict/delete, All scenes, native reset, standard Home Assistant replay, Advanced and Music surfaces, live-apply status, read-only presentation, desktop pane bounds, and mobile zero-overflow navigation passed. |
 | H6199 production-package UX | Video Movie/Game profiles, saturation, white balance, relative brightness, blank screen, sound effects, Advanced, and read-only presentation passed. |
-| Household restoration | Cupboard off.  Dream TV off with captured Video settings intact.  Zac's current state was not changed. |
+| Household restoration | Test devices were restored to their recorded baseline states after production-package qualification. |
 
 ## `7.0.0` validation addendum
 

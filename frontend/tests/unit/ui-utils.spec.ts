@@ -25,7 +25,7 @@ function device(lightEntityId: string | null): DeviceCapabilities {
     config_entry_id: "entry-a",
     light_entity_id: lightEntityId,
     model: "H617A",
-    display_name: "Cupboard",
+    display_name: "Test Light",
     segment_count: 15,
     custom_effects: {
       painted: "supported",
