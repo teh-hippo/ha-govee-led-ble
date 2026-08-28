@@ -6,14 +6,15 @@ This matrix reconciles the UX completion programme against the final remediation
 
 | Audit finding | Status | Durable evidence |
 | --- | --- | --- |
-| Original issue #165 | Complete | [Issue #165](https://github.com/teh-hippo/ha-govee-led-ble/issues/165) is closed.  Layered scenes decode into canonical, raw-preserving content and round-trip through Kaitai-owned structures. |
+| Original feature request #57 | Complete | [Issue #57](https://github.com/teh-hippo/ha-govee-led-ble/issues/57) requested a Home Assistant effect editor.  Effect Studio provides model-aware authoring, previews, saved effects and standard light-selector playback. |
+| Protocol prerequisite #165 | Complete | [Issue #165](https://github.com/teh-hippo/ha-govee-led-ble/issues/165) is closed.  Layered scenes decode into canonical, raw-preserving content and round-trip through Kaitai-owned structures. |
 | Open-issue triage | Corrected | Current open issues are classified below.  Current-model issues #112, #125, #130, #131 and #166 are closed with evidence. |
 | Explicit exclusions | Corrected | [README scope and non-goals](../README.md#scope-non-goals-and-expert-tools) records expert, future, unavailable, and intentional non-goal boundaries. |
 | One-off tooling | Corrected | Completed protocol probes were removed.  The public [`ios-ble-capture`](https://github.com/teh-hippo/ios-ble-capture) and [`ha-test-harness`](https://github.com/teh-hippo/ha-test-harness) repositories own capture and physical qualification workflows. |
 | Repository cleanup depth | Complete | Four behaviour-preserving passes and an independent residual audit removed dead APIs, duplicate validation, compatibility façades, stale constants, unused dependencies, completed probes, test-only production code, and historical narration. |
-| Frontend decomposition | Complete | `panel.ts` is 1,268 lines, `scene-browser.ts` is 587 lines, and `advanced-effect-editor.ts` is 830 lines.  Rendering and event translation remain in components; persistence, concurrency, transitions, preview scheduling, and mutation ownership moved to focused controllers/models. |
+| Frontend decomposition | Complete | Rendering and event translation remain in components; persistence, concurrency, transitions, preview scheduling and mutation ownership live in focused controllers and models. |
 | Test reduction | Corrected with range waiver | Capture and physical harness tests moved with their implementations.  Focused protocol tests retain direct framing, checksum, query and parser-boundary evidence. |
-| Release qualification | Complete | `v6.5.0-rc.16` was published from exact SHA `bd514109c9a1668046feaf3f3eebe71e3ff891c5`.  Its public ZIP SHA-256 is `286b3440e61a933de2a50a7333eff0d4d4cda2c83930d87bc1744bf1d6a08da7`; retained HACS and household upgrades passed. |
+| Release qualification | Complete | `v7.0.0-rc.37` was published from exact SHA `89de61605d630510ae6fa00dc23dab8285d8b344`.  Its public ZIP SHA-256 is `be05970029b2b9775376c0a2c416dbc4970884b9ca63c5248379d7871730870b`; the canonical gate and production desktop/mobile UI qualification passed. |
 
 ## Open issue matrix
 
@@ -110,9 +111,8 @@ The public test harness covers ownership and restoration branches with subproces
 | --- | --- |
 | Authoritative repository gate | Passed after remediation and again after UX corrections. |
 | Python suite | Retained protocol, BLE resolver, coordinator and repository-boundary tests cover the extracted seams. |
-| Frontend suite | 85 DOM-free Node cases after the scene-copy cancellation and live-administrator corrections. |
+| Frontend suite | 237 unit cases and 17 mobile WebKit interaction cases pass. |
 | Critical coverage | No line or branch regression in the listed modules. |
-| Deterministic package | The final `6.5.0rc16` source produces SHA-256 `286b3440e61a933de2a50a7333eff0d4d4cda2c83930d87bc1744bf1d6a08da7`; the post-commit gate repeats the clean-build comparison. |
 | Package paths | The only cleanup-baseline path removed is dead `effect_scene_codec.py`. |
 | H617A production-package UX | Sidebar/deep link, one-device selector rule, off-state root opening, active scene opening, dirty marker, scene-copy cancel, save/overwrite/stale conflict/delete, All scenes, native reset, standard Home Assistant replay, Advanced and Music surfaces, live-apply status, read-only presentation, desktop pane bounds, and mobile zero-overflow navigation passed. |
 | H6199 production-package UX | Video Movie/Game profiles, saturation, white balance, relative brightness, blank screen, sound effects, Advanced, and read-only presentation passed. |
