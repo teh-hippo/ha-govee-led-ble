@@ -29,7 +29,7 @@ def test_service_registration_uses_home_assistant_entity_targeting(
     with patch(
         "custom_components.ha_govee_led_ble.effect_services.service.async_register_platform_entity_service"
     ) as register:
-        async_register_effect_services(hass, MagicMock())
+        async_register_effect_services(hass)
 
     register.assert_called_once()
     assert register.call_args.args[:3] == (

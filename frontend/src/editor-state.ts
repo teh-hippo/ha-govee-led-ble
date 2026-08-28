@@ -175,12 +175,6 @@ export function editorActionDescriptors(
   );
 }
 
-export function editorTransitionSaveMode(
-  _source: EditorSource,
-): "Save" | "Save As" {
-  return "Save";
-}
-
 export function serialiseEditableContent(
   content: EditableEffectContent,
 ): string {

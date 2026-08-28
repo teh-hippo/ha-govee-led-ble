@@ -4,7 +4,6 @@ import {
   editorActionDescriptors,
   editorActionOrder,
   editorOwnerMatches,
-  editorTransitionSaveMode,
   newEditorSourceSelected,
   reactiveEffectSelectorVisible,
   type EditorActionContext,
@@ -112,17 +111,6 @@ test("busy and read-only state disable visible mutations", () => {
   expect(
     actions.filter(({ visible }) => visible).every(({ enabled }) => !enabled),
   ).toBe(true);
-});
-
-test("transition save mode follows source identity", () => {
-  expect(editorTransitionSaveMode(catalogue)).toBe("Save");
-  expect(
-    editorTransitionSaveMode({
-      kind: "new",
-      owner: { section: "custom", category: "advanced" },
-    }),
-  ).toBe("Save");
-  expect(editorTransitionSaveMode(saved)).toBe("Save");
 });
 
 test("editor ownership rejects content from another category or section", () => {

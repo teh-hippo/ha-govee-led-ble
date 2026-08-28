@@ -10,7 +10,6 @@ from homeassistant.helpers import service
 from homeassistant.helpers.typing import VolDictType
 
 from .const import DOMAIN
-from .effect_backend import EffectBackend
 
 SERVICE_APPLY_CUSTOM_EFFECT = "apply_custom_effect"
 ATTR_EFFECT = "effect"
@@ -22,10 +21,7 @@ APPLY_CUSTOM_EFFECT_SCHEMA: VolDictType = {
 }
 
 
-def async_register_effect_services(
-    hass: HomeAssistant,
-    _backend: EffectBackend,
-) -> None:
+def async_register_effect_services(hass: HomeAssistant) -> None:
     service.async_register_platform_entity_service(
         hass,
         DOMAIN,

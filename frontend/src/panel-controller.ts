@@ -7,7 +7,7 @@ import {
   libraryItemSyncResult, sameLibraryItemVersion, serialiseEditable, upsertSummary, type CustomEffectCategory,
   type EditableEffectContent,
 } from "./effect-editor-model";
-import { editorTransitionSaveMode, type EditorOwner } from "./editor-state";
+import type { EditorOwner } from "./editor-state";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import { PanelEditorController } from "./panel-editor-controller";
 import { PanelModalController } from "./panel-modal-controller";
@@ -906,15 +906,10 @@ export class PanelController {
       return true;
     }
     this.pendingTransition = owner;
-    const primaryLabel = saveWork
-      ? "Save"
-      : editorTransitionSaveMode(this.model.editorSource);
     this.modal.requestTransition(
-      primaryLabel,
+      "Save",
       this.model.name.trim(),
-      !saveWork &&
-        primaryLabel === "Save" &&
-        this.model.editorSource.kind === "new",
+      !saveWork && this.model.editorSource.kind === "new",
       returnFocus,
     );
     return false;

@@ -38,10 +38,6 @@ def _extract_model(name: str) -> str | None:
     return resolve_model(m.group(1)) if (m := MODEL_PATTERN.search(name)) else None
 
 
-def _normalize_address(address: str) -> str:
-    return address.strip().upper()
-
-
 def _normalize_manual_address(address: str) -> str:
     compact = address.strip().upper().replace(":", "").replace("-", "")
     if not _MANUAL_ADDRESS_PATTERN.fullmatch(compact):
@@ -63,7 +59,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         model = _extract_model(discovery_info.name)
         if model is None:
             return self.async_abort(reason="not_supported")
-        await self.async_set_unique_id(_normalize_address(discovery_info.address))
+        await self.async_set_unique_id(discovery_info.address.strip().upper())
         self._abort_if_unique_id_configured()
         self._discovered = {CONF_MODEL: model}
         # Model only, never the BLE name/MAC (no PII).

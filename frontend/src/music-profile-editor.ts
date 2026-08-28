@@ -12,7 +12,6 @@ import "./single-colour-field";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
 import {
-  cloneJsonObject,
   cloneMusicProfileContent,
   MUSIC_STYLE_HELP,
   musicStyleCalm,
@@ -427,7 +426,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     value: boolean | number | FountainDirection,
   ): void {
     this.updateContent((content) => {
-      const parameters = cloneJsonObject(content.parameters);
+      const parameters = structuredClone(content.parameters);
       parameters[key] = value;
       content.parameters = parameters;
       return content;

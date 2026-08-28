@@ -27,7 +27,7 @@ async def async_setup_effects(hass: HomeAssistant) -> EffectBackend | None:
         _LOGGER.exception("Advanced effect storage is unavailable; normal Govee entities remain active")
         return None
     async_register_effect_websocket(hass, backend)
-    async_register_effect_services(hass, backend)
+    async_register_effect_services(hass)
     hass.data.setdefault(DOMAIN, {})[EFFECT_BACKEND_DATA_KEY] = backend
     return backend
 
