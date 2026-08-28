@@ -8,7 +8,7 @@ This matrix reconciles the UX completion programme against the final remediation
 | --- | --- | --- |
 | Original feature request #57 | Complete | [Issue #57](https://github.com/teh-hippo/ha-govee-led-ble/issues/57) requested a Home Assistant effect editor.  Effect Studio provides model-aware authoring, previews, saved effects and standard light-selector playback. |
 | Protocol prerequisite #165 | Complete | [Issue #165](https://github.com/teh-hippo/ha-govee-led-ble/issues/165) is closed.  Layered scenes decode into canonical, raw-preserving content and round-trip through Kaitai-owned structures. |
-| Open-issue triage | Corrected | Current open issues are classified below.  Current-model issues #112, #125, #130, #131 and #166 are closed with evidence. |
+| Open-issue triage | Complete | Remaining open issues are separate model or cross-hardware evidence programmes. |
 | Explicit exclusions | Corrected | [README scope and non-goals](../README.md#scope-non-goals-and-expert-tools) records expert, future, unavailable, and intentional non-goal boundaries. |
 | One-off tooling | Corrected | Completed protocol probes were removed.  The public [`ios-ble-capture`](https://github.com/teh-hippo/ios-ble-capture) and [`ha-test-harness`](https://github.com/teh-hippo/ha-test-harness) repositories own capture and physical qualification workflows. |
 | Repository cleanup depth | Complete | Four behaviour-preserving passes and an independent residual audit removed dead APIs, duplicate validation, compatibility façades, stale constants, unused dependencies, completed probes, test-only production code, and historical narration. |
@@ -20,16 +20,15 @@ This matrix reconciles the UX completion programme against the final remediation
 
 | Issue | Disposition | Blocks H617A/H6199 completion |
 | --- | --- | --- |
-| [#129: Fountain body from a larger device](https://github.com/teh-hippo/ha-govee-led-ble/issues/129) | Cross-hardware evidence request. | No |
 | [#148: H7025 music cross-validation](https://github.com/teh-hippo/ha-govee-led-ble/issues/148) | Cross-SKU evidence and potential model contribution. | No |
 | [#115: H6102](https://github.com/teh-hippo/ha-govee-led-ble/issues/115), [#117: H6125](https://github.com/teh-hippo/ha-govee-led-ble/issues/117) | Additional-model future programme. | No |
-| [#96: quality-scale tracking](https://github.com/teh-hippo/ha-govee-led-ble/issues/96) | Quality-scale work is tracked separately and does not define current-model completion. | No |
-| [#210: Home Assistant Wi-Fi provisioning](https://github.com/teh-hippo/ha-govee-led-ble/issues/210) | No maintained provisioning workflow.  The decoded H6199 provision, body and result schemas remain as tested protocol findings. | No |
 
 ## Closed completion-audit issues
 
 | Issue | Result |
 | --- | --- |
+| [#96](https://github.com/teh-hippo/ha-govee-led-ble/issues/96) | The in-repository quality-scale audit is complete.  Home Assistant core brands and website documentation remain outside this HACS integration's release scope. |
+| [#129](https://github.com/teh-hippo/ha-govee-led-ble/issues/129), [#210](https://github.com/teh-hippo/ha-govee-led-ble/issues/210) | Cross-hardware Fountain evidence and a maintained Wi-Fi provisioning workflow are not planned.  The issues can be reopened if their scope changes. |
 | [#131](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) | APK analysis identifies `0xa3` as the gradual-colour-change switch and classifies H617A goods type 73 as unsupported.  Six paired false/true comparisons across native scenes, segment paint, and immediate static colour changes showed no visible difference; read-back and final restoration were verified. |
 | [#92](https://github.com/teh-hippo/ha-govee-led-ble/issues/92), [#93](https://github.com/teh-hippo/ha-govee-led-ble/issues/93), [#94](https://github.com/teh-hippo/ha-govee-led-ble/issues/94), [#95](https://github.com/teh-hippo/ha-govee-led-ble/issues/95) | Strict production typing, packaged `py.typed`, manual pre-configuration BLE validation, and core-submission disposition are complete. |
 | [#138](https://github.com/teh-hippo/ha-govee-led-ble/issues/138) | HACS integration updates require a Home Assistant restart; an integration-local Python hot loader is unsupported and was not added. |
