@@ -187,7 +187,7 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 (f"Workshop effect targets {content.model}, not {model}",),
             )
         profile = MODEL_PROFILES.get(model)
-        if profile is None or not profile.supports_workshop_effects:
+        if profile is None or not profile.supports_advanced_effects:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"{model} Workshop effects are not supported",),
@@ -244,12 +244,6 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             (f"multi-layer custom effects are not supported on {model}",),
         )
     if isinstance(content, PaletteScene | LayeredScene):
-        profile = MODEL_PROFILES.get(model)
-        if profile is None or not profile.supports_scene_editing:
-            return CompatibilityResult(
-                CompatibilityState.INCOMPATIBLE,
-                (f"edited native scenes are not supported on {model}",),
-            )
         if content.template.sku != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,

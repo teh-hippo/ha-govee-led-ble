@@ -294,14 +294,27 @@ def test_extract_model(name, expected):
 
 
 @pytest.mark.parametrize(
-    ("model", "expected"),
+    ("model", "expected", "enabled"),
     [
-        ("H6125", ["scenes"]),
-        ("H617A", ["scenes", "effects", "multi_layered", "reactive", "advanced"]),
-        ("H6199", ["video", "scenes", "effects", "reactive", "advanced"]),
+        ("H6125", [], []),
+        (
+            "H617A",
+            ["scenes", "effects", "multi_layered", "reactive", "advanced"],
+            ["scenes", "effects", "multi_layered", "reactive", "advanced"],
+        ),
+        (
+            "H6199",
+            ["video", "scenes", "effects", "reactive", "advanced"],
+            ["video", "scenes", "effects", "reactive", "advanced"],
+        ),
     ],
 )
-async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssistant, model: str, expected: list[str]):
+async def test_options_flow_shows_supported_category_checkboxes(
+    hass: HomeAssistant,
+    model: str,
+    expected: list[str],
+    enabled: list[str],
+):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: model}, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
@@ -314,7 +327,7 @@ async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssist
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     ]
     assert schema({}) == {
-        **dict.fromkeys(expected, True),
+        **{category: category in enabled for category in expected},
         CONF_PREFIX_EFFECT_NAMES: False,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,
     }

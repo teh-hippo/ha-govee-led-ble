@@ -213,12 +213,12 @@ def test_h6125_layered_scene_editing_stays_disabled_until_hardware_validation() 
     entry = next(scene for scene in SCENE_ENTRIES["H6125"] if scene.scene_type == _LAYERED_SCENE_TYPE)
     content = decode_layered_scene(_reference("H6125", entry), _raw_param(entry))
 
-    with pytest.raises(ValueError, match="edited native scenes are not supported"):
+    with pytest.raises(ValueError, match="scene identity .* was not found"):
         compile_effect(LibraryItem.new("Layered template", content), "H6125")
 
 
 def test_saved_builtin_scenes_compile_to_native_scene_packets() -> None:
-    for model in ("H6125", "H617A", "H6199"):
+    for model in ("H617A", "H6199"):
         entry = next(scene for scene in SCENE_ENTRIES[model] if scene.scene_type == 0)
         item = LibraryItem.new(
             "Scene copy",

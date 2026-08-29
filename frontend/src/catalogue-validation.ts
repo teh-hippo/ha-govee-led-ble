@@ -58,7 +58,7 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
   "planned",
 ] as const;
 const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = {
-  H6125: ["native_scenes"],
+  H6125: [],
   H617A: [
     "native_scenes",
     "edited_palette_scenes",

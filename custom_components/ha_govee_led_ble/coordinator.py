@@ -241,6 +241,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return 6, 254
         return 1, 100
 
+    @property
+    def supports_brightness(self) -> bool:
+        return self.model != "H6125" or (self.hw_version is not None and self.hw_version.split(".", 1)[0] == "1")
+
     def _brightness_value_from_percent(self, percent: int) -> int:
         minimum, maximum = self._brightness_raw_range()
         percent = max(1, min(100, percent))
@@ -260,6 +264,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if self.model == "H6125":
             if self.hw_version is None:
                 raise RuntimeError("H6125 hardware version is required before changing brightness")
+            if not self.supports_brightness:
+                raise RuntimeError(f"H6125 brightness is not enabled for hardware {self.hw_version}")
             return build_h6125_brightness_value(self._brightness_value_from_percent(percent))
         return build_brightness(percent, self.model)
 
@@ -535,9 +541,22 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     if not acquired:
                         return self._state_snapshot()
                     previous_client = self._client
-                    refreshed = await self.refresh_state(
-                        refresh_all=True,
-                    )
+                    if first_refresh and self.model == "H6125":
+                        refreshed = await self.refresh_state()
+                        client = self._client
+                        if refreshed and client is not None:
+                            async with self._lock:
+                                if self._client is client:
+                                    await self._send_state_queries(
+                                        query_power=False,
+                                        query_brightness=False,
+                                        query_color_mode=True,
+                                        query_segments=True,
+                                    )
+                    else:
+                        refreshed = await self.refresh_state(
+                            refresh_all=True,
+                        )
                     client = self._client
                     if not refreshed or client is None:
                         if client is not None:
@@ -662,7 +681,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
 
     @property
     def _segment_group_count(self) -> int:
-        if not self.profile.supports_segments:
+        if not self.profile.segment_count:
             return 0
         return 4 if self.model == "H6199" else 5
 
@@ -1013,7 +1032,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 query_relative_brightness if query_relative_brightness is not None else full_query
             ):
                 queries.append(build_h6199_relative_brightness_query())
-            if self.profile.supports_segments and (query_segments if query_segments is not None else full_query):
+            if self.profile.segment_count and (query_segments if query_segments is not None else full_query):
                 self._segment_groups_observed.clear()
                 self._segment_query_colors = list(self.segment_colors)
                 self._segment_query_brightness = list(self.segment_brightness)

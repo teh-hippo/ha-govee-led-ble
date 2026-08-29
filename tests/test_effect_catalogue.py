@@ -129,10 +129,7 @@ def test_h6125_catalogue_exposes_scenes_without_h617a_custom_workflows() -> None
         "palette_diy": "unsupported",
         "workshop": "unsupported",
     }
-    workflows = cast(list[dict[str, JsonValue]], catalogue["workflows"])
-    assert [workflow["id"] for workflow in workflows] == [
-        "native_scenes",
-    ]
+    assert catalogue["workflows"] == []
 
 
 def test_h617e_model_catalogue_reuses_h617a_effects_with_h617e_profiles() -> None:
@@ -264,7 +261,6 @@ def test_model_visible_capabilities_declare_application_and_evidence_strategies(
 
 
 def test_release_capability_contract_routes_saved_effects_through_home_assistant() -> None:
-    h6125_scenes = release_capability("H6125", CapabilityWorkflow.NATIVE_SCENES)
     h617a_painted = release_capability("H617A", CapabilityWorkflow.PAINTED)
     h617a_single = release_capability("H617A", CapabilityWorkflow.SINGLE)
     h617a_multi = release_capability("H617A", CapabilityWorkflow.MULTI)
@@ -283,10 +279,7 @@ def test_release_capability_contract_routes_saved_effects_through_home_assistant
     h6199_video = release_capability("H6199", CapabilityWorkflow.VIDEO)
     h6199_diy = release_capability("H6199", CapabilityWorkflow.PALETTE_DIY)
 
-    assert h6125_scenes is not None
-    assert h6125_scenes.application_route is ApplicationRoute.STUDIO_SCENE_APPLY
-    assert h6125_scenes.verification_confidence is VerificationConfidence.UNVERIFIED
-    assert h6125_scenes.physical_validation_state is PhysicalValidationState.NOT_VALIDATED
+    assert release_capability("H6125", CapabilityWorkflow.NATIVE_SCENES) is None
     assert all(
         capability is not None
         and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL

@@ -27,6 +27,7 @@ def _make_coord(**ov) -> MagicMock:
         address="11:22:33:44:55:66",
         model="H6199",
         profile=MODEL_PROFILES["H6199"],
+        supports_brightness=True,
         pact_type=None,
         pact_code=None,
         is_on=True,

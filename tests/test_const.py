@@ -8,14 +8,16 @@ from custom_components.ha_govee_led_ble.const import (
     UNSUPPORTED_PROFILE,
     ModelProfile,
     always_include_custom_effects_from_options,
+    default_effect_categories,
     default_effect_families,
     effect_families_from_options,
     get_profile,
+    h6125_hardware_family_supported,
     prefix_effect_names_from_options,
     protocol_model,
     resolve_model,
     supported_effect_categories,
-    version_at_least,
+    h6125_hardware_family_supported,
     wire_model,
 )
 
@@ -71,23 +73,22 @@ def test_h6125_uses_h617a_wire_format_without_h617a_feature_inheritance():
 
     assert profile.state_readable
     assert not profile.supports_color_mode_readback
-    assert profile.query_color_mode_for_diagnostics
-    assert profile.supports_scenes
-    assert not profile.supports_scene_editing
+    assert not profile.supports_rgb
+    assert not profile.supports_color_temperature
+    assert not profile.supports_scenes
     assert not profile.supports_custom_effects
     assert not profile.supports_h617a_custom_effects
     assert not profile.supports_music_mode
     assert not profile.supports_advanced_effects
     assert not profile.supports_multi_layered_effects
-    assert not profile.supports_workshop_effects
     assert profile.segment_count == 15
-    assert profile.supports_segments
+    assert not profile.supports_segments
     assert profile.connection_idle_timeout == 3.0
-    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2700, 6500)
-    assert (profile.minimum_firmware, profile.minimum_hardware) == ("1.06.00", "1.00.03")
     assert protocol_model("H6125") == "H6125"
     assert wire_model("H6125") == "H617A"
-    assert supported_effect_categories("H6125") == ("scenes",)
+    assert supported_effect_categories("H6125") == ()
+    assert default_effect_categories("H6125") == ()
+    assert default_effect_families("H6125") == frozenset()
 
 
 def test_unknown_models_fail_closed():
@@ -100,18 +101,19 @@ def test_unknown_models_fail_closed():
 
 
 @pytest.mark.parametrize(
-    ("current", "minimum", "expected"),
+    ("version", "expected"),
     [
-        ("1.06.00", "1.06.00", True),
-        ("1.6", "1.06.00", True),
-        ("1.06.01", "1.06.00", True),
-        ("1.05.99", "1.06.00", False),
-        ("1.00.03", "1.00.03", True),
-        ("unknown", "1.00.03", False),
+        ("1.00.03", True),
+        ("1.99.99", True),
+        ("2.01.00", True),
+        ("2.02.00", False),
+        ("3.00.00", True),
+        ("4.00.00", False),
+        ("unknown", False),
     ],
 )
-def test_version_at_least(current: str, minimum: str, expected: bool):
-    assert version_at_least(current, minimum) is expected
+def test_h6125_hardware_family_support(version: str, expected: bool):
+    assert h6125_hardware_family_supported(version) is expected
 
 
 def test_effect_family_defaults_and_options():

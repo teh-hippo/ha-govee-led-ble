@@ -685,7 +685,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
             "preview_sequence": MAX_PREVIEW_SEQUENCE,
         },
     }
-    assert h6125.to_dict()["readback"] == "write_completed"
+    assert h6125.to_dict()["readback"] == "none"
     assert h6125.painted is CapabilityState.UNSUPPORTED
     assert h6125.music is CapabilityState.UNSUPPORTED
     assert h617a.painted is CapabilityState.SUPPORTED

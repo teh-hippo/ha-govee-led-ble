@@ -499,16 +499,10 @@ class EffectPreviewManager:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
         resolved = resolve_scene(coordinator.model, scene_id, effect_id)
-        if persist_default and not coordinator.profile.supports_scene_editing:
-            raise PreviewError(f"edited native scenes are not supported on {coordinator.model}")
-        scene_default = (
-            self._scene_defaults.get(
-                config_entry_id,
-                scene_id,
-                effect_id,
-            )
-            if coordinator.profile.supports_scene_editing
-            else None
+        scene_default = self._scene_defaults.get(
+            config_entry_id,
+            scene_id,
+            effect_id,
         )
         try:
             canonical_body, resolved_speed = resolve_scene_application_body(
@@ -890,7 +884,7 @@ class EffectPreviewManager:
         if expectations is not None:
             self._health_targets[request.config_entry_id] = _HealthTarget(
                 expectations=dict(expectations),
-                confirmed_confidence=_confirmed_confidence(coordinator, request, compiled),
+                confirmed_confidence=_confirmed_confidence(request, compiled),
             )
         writer: _PreviewWriter | None = None
         try:
@@ -1093,7 +1087,7 @@ class EffectPreviewManager:
                         request,
                         coordinator,
                         expectations,
-                        _confirmed_confidence(coordinator, request, compiled),
+                        _confirmed_confidence(request, compiled),
                     ),
                     name=f"{DOMAIN} preview verify {request.config_entry_id}",
                 )
@@ -1679,14 +1673,10 @@ def _verification_expectations(
     if not coordinator.profile.state_readable:
         return None
     if request.scene is not None:
-        if coordinator.profile.supports_color_mode_readback:
-            return {"is_on": True, "effect": request.scene.key}
-        return {"is_on": True}
+        return {"is_on": True, "effect": request.scene.key}
     if isinstance(compiled, CompiledEffect):
         if compiled.activation_mode is ActivationMode.SCENE:
-            if coordinator.profile.supports_color_mode_readback:
-                return {"is_on": True, "effect": compiled.expected_effect}
-            return {"is_on": True}
+            return {"is_on": True, "effect": compiled.expected_effect}
         if compiled.content_kind == "workshop":
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}
         if protocol_model(compiled.model) == "H617A":
@@ -1732,14 +1722,9 @@ def _verification_expectations(
 
 
 def _confirmed_confidence(
-    coordinator: Any,
     request: _PreviewRequest,
     compiled: CompiledApplication | None,
 ) -> ObservationConfidence:
-    if not coordinator.profile.supports_color_mode_readback and (
-        request.scene is not None or isinstance(compiled, CompiledEffect)
-    ):
-        return ObservationConfidence.WRITE_COMPLETED
     if request.scene is not None or isinstance(compiled, CompiledEffect):
         return ObservationConfidence.ACTIVATION_MATCH
     if isinstance(compiled, CompiledMusicProfile) and protocol_model(compiled.model) == "H617A":

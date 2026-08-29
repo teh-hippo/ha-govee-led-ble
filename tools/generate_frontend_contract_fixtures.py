@@ -50,7 +50,7 @@ from custom_components.ha_govee_led_ble.effect_preview import (
 from custom_components.ha_govee_led_ble.effect_scenes import scene_catalogue_payload, scene_detail_payload
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import library_snapshot_payload
-from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = REPO_ROOT / "frontend" / "tests" / "fixtures" / "backend-contracts.json"
@@ -124,7 +124,7 @@ def _compact_scene_catalogue(model: str) -> dict[str, Any]:
 def _representative_scene_details() -> dict[str, dict[str, Any]]:
     details: dict[str, dict[str, Any]] = {}
     for model in MODELS:
-        for entry in SCENE_ENTRIES[model]:
+        for entry in MODEL_SCENES[model].values():
             detail = cast(dict[str, Any], scene_detail_payload(model, entry.scene_id, entry.effect_id))
             kind = cast(dict[str, Any], detail["content"])["kind"]
             if isinstance(kind, str):

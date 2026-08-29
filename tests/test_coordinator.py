@@ -170,18 +170,19 @@ def test_h617x_uses_short_idle_release_without_periodic_polling(coord):
 def test_h6125_telink_brightness_is_scaled_bidirectionally(h6125, percent: int, raw: int):
     h6125.hw_version = "1.00.04"
 
+    assert h6125.supports_brightness
     assert h6125._brightness_value_from_percent(percent) == raw
     assert h6125._brightness_percent_from_value(raw) == percent
     assert h6125.build_brightness_command(percent) == build_h6125_brightness_value(raw)
 
 
 @pytest.mark.parametrize("hardware", ["2.01.00", "3.00.01"])
-def test_h6125_later_hardware_uses_percentage_brightness(h6125, hardware: str):
+def test_h6125_later_hardware_disables_unproven_brightness(h6125, hardware: str):
     h6125.hw_version = hardware
 
-    assert h6125._brightness_value_from_percent(50) == 50
-    assert h6125._brightness_percent_from_value(50) == 50
-    assert h6125.build_brightness_command(50) == build_h6125_brightness_value(50)
+    assert not h6125.supports_brightness
+    with pytest.raises(RuntimeError, match="not enabled"):
+        h6125.build_brightness_command(50)
 
 
 def test_h6125_brightness_requires_hardware_identity(h6125):
@@ -772,6 +773,24 @@ async def test_background_refresh_keeps_background_intent_and_preview_admission(
     reset.assert_not_called()
 
 
+async def test_h6125_first_refresh_requires_power_and_sends_non_blocking_probes(h6125):
+    h6125._client = client = _c()
+    with (
+        patch.object(h6125, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+        patch.object(h6125, "_send_state_queries", new_callable=AsyncMock, return_value=True) as probe,
+    ):
+        await h6125._async_update_data()
+
+    refresh.assert_awaited_once_with()
+    probe.assert_awaited_once_with(
+        query_power=False,
+        query_brightness=False,
+        query_color_mode=True,
+        query_segments=True,
+    )
+    assert h6125._client is client
+
+
 async def test_background_refresh_disconnects_poll_only_connection_after_query(coord):
     client = _c(disconnect=AsyncMock())
 
@@ -1178,6 +1197,20 @@ async def test_send_state_queries_include_h617a_core_state(coord):
         build_brightness_query(),
         build_colour_mode_query(),
         *(build_segment_query(group) for group in range(1, 6)),
+    ]
+
+
+async def test_send_state_queries_include_h6125_segment_diagnostics(h6125):
+    client = _c(write_gatt_char=AsyncMock())
+    h6125._client = client
+
+    assert not h6125.profile.supports_segments
+    assert await h6125._send_state_queries() is True
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [
+        build_power_query("H6125"),
+        build_brightness_query("H6125"),
+        build_colour_mode_query("H6125"),
+        *(build_segment_query(group, "H6125") for group in range(1, 6)),
     ]
 
 
@@ -2597,7 +2630,7 @@ def test_generated_adapter_rejects_structurally_invalid_frames() -> None:
     assert parse_status(bytes.fromhex("aaa506731f646408646464fe6464640000000093")) is None
 
 
-@pytest.mark.parametrize(("model", "maximum"), [("H617A", 5), ("H6199", 4)])
+@pytest.mark.parametrize(("model", "maximum"), [("H6125", 5), ("H617A", 5), ("H6199", 4)])
 def test_segment_query_groups_are_model_bounded(model: str, maximum: int) -> None:
     assert build_segment_query(maximum, model)[2] == maximum
     with pytest.raises(ValueError, match=f"1 to {maximum}"):

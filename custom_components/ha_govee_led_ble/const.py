@@ -74,8 +74,6 @@ class ModelProfile:
     segment_count: int = 0
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
-    minimum_firmware: str | None = None
-    minimum_hardware: str | None = None
 
     @property
     def supports_segments(self) -> bool:
@@ -137,19 +135,10 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6125 LED Strip",
         wire_model="H617A",
         state_readable=True,
-        supports_rgb=True,
-        supports_color_temperature=True,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
         supports_color_mode_readback=False,
         query_color_mode_for_diagnostics=True,
-        supports_scenes=True,
-        whole_device_mask=0x7FFF,
         segment_count=15,
-        supports_segment_writes=True,
         connection_idle_timeout=3.0,
-        minimum_firmware="1.06.00",
-        minimum_hardware="1.00.03",
     ),
     "H617A": _H617X_PROFILE,
     "H617E": _H617X_PROFILE,
@@ -297,20 +286,18 @@ def default_effect_families(model: str) -> frozenset[str]:
     return supported
 
 
-def version_at_least(current: str, minimum: str) -> bool:
-    current_parts = _version_parts(current)
-    minimum_parts = _version_parts(minimum)
-    if current_parts is None or minimum_parts is None:
-        return False
-    width = max(len(current_parts), len(minimum_parts))
-    return current_parts + (0,) * (width - len(current_parts)) >= minimum_parts + (0,) * (width - len(minimum_parts))
-
-
 def _version_parts(value: str) -> tuple[int, ...] | None:
     parts = value.strip().split(".")
     if not parts or any(not part.isdigit() for part in parts):
         return None
     return tuple(int(part) for part in parts)
+
+
+def h6125_hardware_family_supported(version: str) -> bool:
+    parts = _version_parts(version)
+    if parts is None:
+        return False
+    return parts[0] in {1, 3} or len(parts) >= 2 and parts[:2] == (2, 1)
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:

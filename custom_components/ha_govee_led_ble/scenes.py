@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from .const import get_profile
+
 CATALOGUE_DIR = Path(__file__).with_name("scene_catalogues")
 
 
@@ -135,7 +137,8 @@ def _legacy_h617a_key(entry: SceneEntry) -> str:
 
 
 def _model_scene_catalogue(sku: str) -> tuple[dict[str, SceneEntry], dict[str, str]]:
-    entries = SCENE_ENTRIES[sku]
+    profile = get_profile(sku)
+    entries = SCENE_ENTRIES[sku] if profile.supports_scenes else ()
     keys = [" ".join(entry.display_name.split()).casefold() for entry in entries]
     duplicates = {key for key, count in Counter(keys).items() if count > 1}
     scenes: dict[str, SceneEntry] = {}

@@ -206,18 +206,22 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             supported_color_modes.add(ColorMode.RGB)
         if coordinator.profile.supports_color_temperature:
             supported_color_modes.add(ColorMode.COLOR_TEMP)
+        if not supported_color_modes and coordinator.supports_brightness:
+            supported_color_modes.add(ColorMode.BRIGHTNESS)
         if not supported_color_modes:
             supported_color_modes.add(ColorMode.ONOFF)
         self._attr_supported_color_modes = supported_color_modes
-        self._attr_min_color_temp_kelvin = coordinator.profile.min_color_temp_kelvin
-        self._attr_max_color_temp_kelvin = coordinator.profile.max_color_temp_kelvin
         self._attr_color_mode = (
             ColorMode.RGB
             if ColorMode.RGB in supported_color_modes
             else ColorMode.COLOR_TEMP
             if ColorMode.COLOR_TEMP in supported_color_modes
+            else ColorMode.BRIGHTNESS
+            if ColorMode.BRIGHTNESS in supported_color_modes
             else ColorMode.ONOFF
         )
+        self._attr_min_color_temp_kelvin = coordinator.profile.min_color_temp_kelvin
+        self._attr_max_color_temp_kelvin = coordinator.profile.max_color_temp_kelvin
         self._config_entry_id = config_entry_id
         self._effect_backend = effect_backend
         self._library_snapshot = (
@@ -419,6 +423,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     async def _async_restore_static_color(self) -> None:
         coordinator = self.coordinator
+        if not coordinator.profile.supports_rgb and not coordinator.profile.supports_color_temperature:
+            return
         if coordinator.color_mode not in (None, ParsedMode.COLOUR):
             return
         if (
@@ -561,6 +567,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
         if key == EFFECT_OFF:
+            self._require_support(
+                "effect off",
+                supported=coordinator.profile.supports_rgb or coordinator.profile.supports_color_temperature,
+            )
             if coordinator.color_temp_kelvin is not None:
                 await coordinator.send_command(
                     build_color_temp(
@@ -604,11 +614,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     scene.scene_id,
                     scene.effect_id,
                 )
-                if (
-                    coordinator.profile.supports_scene_editing
-                    and self._effect_backend is not None
-                    and self._config_entry_id is not None
-                )
+                if self._effect_backend is not None and self._config_entry_id is not None
                 else None
             )
             await coordinator._async_apply_native_scene_locked(
@@ -828,6 +834,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 self.coordinator.is_on = True
                 await self._refresh_with_retry(expected_on=True, retry_command=power_on)
             if ATTR_BRIGHTNESS in kwargs:
+                self._require_support("brightness", supported=self.coordinator.supports_brightness)
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
 
                 async def apply_brightness() -> None:

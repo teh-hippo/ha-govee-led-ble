@@ -30,8 +30,6 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
-    BuiltinScene,
-    CatalogueRef,
     LibraryItem,
     MusicProfile,
     Origin,
@@ -381,35 +379,6 @@ async def test_layered_scene_uses_shared_transaction_and_identity_verification(
     assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
     assert cache.get("entry-a").effect == compiled.expected_effect
     assert cache.get("entry-a").matched_operation_id == result.operation_id
-
-
-async def test_h6125_saved_native_scene_completes_as_write_only(
-    hass: HomeAssistant,
-) -> None:
-    repository, cache = await _repositories(hass)
-    coordinator = _coordinator()
-    coordinator.model = "H6125"
-    coordinator.profile = SimpleNamespace(state_readable=True, supports_color_mode_readback=False)
-    entry = next(scene for scene in SCENE_ENTRIES["H6125"] if scene.scene_type == 0)
-    item = LibraryItem.new(
-        "H6125 scene",
-        BuiltinScene(CatalogueRef("H6125", entry.scene_id, entry.effect_id)),
-    )
-    compiled = compile_effect(item, "H6125")
-
-    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
-        coordinator,
-        item,
-        config_entry_id="entry-a",
-        updated_at="2026-08-11T00:00:00Z",
-    )
-
-    assert result.phase is DeploymentPhase.CONFIRMED
-    assert result.verification_confidence is ObservationConfidence.WRITE_COMPLETED
-    assert coordinator.effect == compiled.expected_effect
-    assert coordinator.refresh_state.await_count == 1
-    assert coordinator.send_command.await_args_list == [call(packet) for packet in compiled.packets]
-    assert cache.get("entry-a").confidence is ObservationConfidence.WRITE_COMPLETED
 
 
 async def test_h6199_layered_scene_uses_model_framing_and_identity_verification(

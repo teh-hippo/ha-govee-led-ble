@@ -31,7 +31,7 @@ def _assert_valid(frame: bytes) -> None:
     assert xor_checksum(frame[:19]) == frame[19]
 
 
-@pytest.mark.parametrize("model", ["H6125", "H617A", "H6199"])
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
 def test_power_and_brightness_remain_byte_identical(model: str) -> None:
     assert build_power(True, model) == H("3301010000000000000000000000000000000033")
     assert build_power(False, model) == H("3301000000000000000000000000000000000032")
@@ -51,11 +51,6 @@ def test_whole_strip_colour_temperature_and_brightness() -> None:
     assert tuple(temperature[9:12]) == kelvin_to_rgb(4000)
     assert build_color_temp(1000)[7:9] == (2000).to_bytes(2, "big")
     assert build_color_temp(12000)[7:9] == (9000).to_bytes(2, "big")
-    assert build_color_temp(1000, "H6125")[7:9] == (2700).to_bytes(2, "big")
-    assert build_color_temp(12000, "H6125")[7:9] == (6500).to_bytes(2, "big")
-    assert kelvin_to_rgb(2700, "H6125") == (255, 174, 84)
-    assert kelvin_to_rgb(6500, "H6125") == (255, 249, 253)
-    assert build_color_temp(2700, "H6125") == H("330515010000000a8cffae54ff7f000000000021")
 
 
 def test_h6076_uses_its_whole_device_mask_and_kelvin_range() -> None:
@@ -91,7 +86,7 @@ def test_segment_commands_and_paint_order() -> None:
     _assert_valid(brightness)
 
 
-@pytest.mark.parametrize("model", ["H6125", "H617A", "H6199"])
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
 def test_static_write_semantics_round_trip(model: str) -> None:
     rgb = parse_static_write(build_segment_color([3], 10, 20, 30, model), model)
     assert rgb is not None and rgb.rgb == (10, 20, 30) and rgb.segment_mask == 0x0004

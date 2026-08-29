@@ -126,7 +126,7 @@ def test_h6125_palette_scene_editing_stays_disabled_until_hardware_validation() 
     decoded = decode_catalogue_palette_scene("H6125", entry)
 
     assert decoded is not None
-    with pytest.raises(ValueError, match="edited native scenes are not supported"):
+    with pytest.raises(ValueError, match="scene identity .* was not found"):
         compile_effect(LibraryItem.new("Palette scene", decoded), "H6125")
 
 

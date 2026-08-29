@@ -88,14 +88,26 @@ def h6199_light(mock_h6199_coordinator):
     return e
 
 
-def test_h6125_uses_model_specific_colour_temperature_limits(mock_coordinator):
+def test_h6125_telink_is_brightness_only(mock_coordinator):
     mock_coordinator.model = "H6125"
     mock_coordinator.profile = MODEL_PROFILES["H6125"]
+    mock_coordinator.supports_brightness = True
 
     light = GoveeBLELight(mock_coordinator)
 
-    assert light.min_color_temp_kelvin == 2700
-    assert light.max_color_temp_kelvin == 6500
+    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
+    assert light.color_mode is ColorMode.BRIGHTNESS
+
+
+def test_h6125_non_telink_is_on_off_only(mock_coordinator):
+    mock_coordinator.model = "H6125"
+    mock_coordinator.profile = MODEL_PROFILES["H6125"]
+    mock_coordinator.supports_brightness = False
+
+    light = GoveeBLELight(mock_coordinator)
+
+    assert light.supported_color_modes == {ColorMode.ONOFF}
+    assert light.color_mode is ColorMode.ONOFF
 
 
 def test_basic_and_color_props(light, mock_coordinator):
@@ -1080,46 +1092,42 @@ async def test_turn_on_scene_uses_the_device_stored_default(mock_coordinator):
     )
 
 
-async def test_h6125_turn_on_scene_ignores_an_existing_edited_default(mock_coordinator):
-    scene = MODEL_SCENES["H6125"]["universe-a"]
-    scene_default = NativeSceneDefault(
-        config_entry_id="entry-a",
-        scene_id=scene.scene_id,
-        effect_id=scene.effect_id,
-        updated_at="2026-08-17T00:00:00Z",
-        canonical_body=b"\x00",
-    )
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            scene_defaults=SimpleNamespace(
-                get=MagicMock(return_value=scene_default),
-            ),
-        ),
-    )
+def test_h6125_has_no_effect_surface_by_default(mock_coordinator):
     mock_coordinator.model = "H6125"
     mock_coordinator.profile = MODEL_PROFILES["H6125"]
-    mock_coordinator.effect_families = frozenset({"scenes"})
-    mock_coordinator.effect_categories = frozenset({"scenes"})
-    mock_coordinator.scene_name_set = frozenset(MODEL_SCENES["H6125"])
+    mock_coordinator.effect_families = frozenset()
+    mock_coordinator.effect_categories = frozenset()
+    mock_coordinator.scene_name_set = frozenset()
+
+    assert GoveeBLELight(mock_coordinator).effect_list == []
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"rgb_color": (1, 2, 3)},
+        {"color_temp_kelvin": 4000},
+    ],
+)
+async def test_h6125_rejects_unvalidated_static_colour_controls(mock_coordinator, kwargs):
+    mock_coordinator.model = "H6125"
+    mock_coordinator.profile = MODEL_PROFILES["H6125"]
     mock_coordinator.is_on = True
-    entity = GoveeBLELight(
-        mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
-    entity.async_write_ha_state = MagicMock()
+    entity = GoveeBLELight(mock_coordinator)
 
-    await entity.async_turn_on(effect="universe-a")
+    with pytest.raises(ServiceValidationError, match="unsupported_model"):
+        await entity.async_turn_on(**kwargs)
 
-    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == build_native_scene_packets(
-        "H6125",
-        scene,
-    )
-    backend.scene_defaults.get.assert_not_called()
+
+async def test_h6125_non_telink_rejects_brightness(mock_coordinator):
+    mock_coordinator.model = "H6125"
+    mock_coordinator.profile = MODEL_PROFILES["H6125"]
+    mock_coordinator.supports_brightness = False
+    mock_coordinator.is_on = True
+    entity = GoveeBLELight(mock_coordinator)
+
+    with pytest.raises(ServiceValidationError, match="unsupported_model"):
+        await entity.async_turn_on(brightness=128)
 
 
 async def test_h6199_scene_disables_linked_music(h6199_light, mock_h6199_coordinator):

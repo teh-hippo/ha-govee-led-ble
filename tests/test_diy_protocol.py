@@ -267,7 +267,7 @@ def test_h6125_scene_grammar_alias_rejects_h617a_diy_bodies() -> None:
         ).upload_packets
     )
 
-    with pytest.raises(ValueError, match="H6125 A3 body type 0x04 is not supported"):
+    with pytest.raises(ValueError, match="H6125 has no generated A3 effect grammar"):
         parse_a3_effect_envelope(envelope, "H6125")
 
 

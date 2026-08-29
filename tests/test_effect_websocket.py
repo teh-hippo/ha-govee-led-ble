@@ -12,7 +12,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.effect_application import EffectStudioApplication
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
@@ -149,17 +149,13 @@ async def test_non_admin_cannot_mutate_library(
     assert response["error"]["code"] == "unauthorized"
 
 
-async def test_h6125_scene_apply_reports_write_completion_without_readback(
+async def test_h6125_scene_apply_is_not_exposed(
     hass: HomeAssistant,
     hass_ws_client,
     monkeypatch,
 ) -> None:
     backend = await _setup_backend(hass)
-    coordinator = SimpleNamespace(
-        model="H6125",
-        profile=MODEL_PROFILES["H6125"],
-        async_apply_native_scene=AsyncMock(),
-    )
+    coordinator = SimpleNamespace(model="H6125")
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,
@@ -174,10 +170,7 @@ async def test_h6125_scene_apply_reports_write_completion_without_readback(
     client = await hass_ws_client(hass)
     scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == 0)
 
-    with (
-        patch.object(backend.engine, "reconcile_current") as reconcile,
-        patch.object(backend.preview, "async_supersede_device", new_callable=AsyncMock),
-    ):
+    with patch.object(backend.engine, "reconcile_current") as reconcile:
         await client.send_json_auto_id(
             {
                 "type": WS_SCENE_APPLY,
@@ -188,10 +181,9 @@ async def test_h6125_scene_apply_reports_write_completion_without_readback(
         )
         response = await client.receive_json()
 
-    assert response["success"] is True
-    assert response["result"]["readback"] == "write_completed"
-    assert reconcile.call_args.kwargs["refreshed"] is False
-    coordinator.async_apply_native_scene.assert_awaited_once()
+    assert response["success"] is False
+    assert response["error"]["code"] == "invalid_format"
+    reconcile.assert_not_called()
 
 
 async def test_template_default_websocket_lifecycle_has_no_ble_writes(
