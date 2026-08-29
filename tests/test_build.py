@@ -86,11 +86,12 @@ def build_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     _write(root / "tools/generate_frontend_contract_fixtures.py", "\n")
 
     bin_dir = root / "test-bin"
+    node_version = (root / ".node-version").read_text(encoding="utf-8").strip()
     _executable(
         bin_dir / "node",
-        """#!/usr/bin/env bash
+        f"""#!/usr/bin/env bash
 set -euo pipefail
-printf 'v24.19.0\\n'
+printf 'v{node_version}\\n'
 """,
     )
     _executable(
