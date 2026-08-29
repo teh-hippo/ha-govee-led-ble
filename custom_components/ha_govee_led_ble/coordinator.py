@@ -18,7 +18,14 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection
 from .ble_device_resolver import BLEDeviceResolver
-from .const import DOMAIN, MUSIC_MODE_SLUGS, default_effect_categories, default_effect_families, get_profile
+from .const import (
+    DOMAIN,
+    MUSIC_MODE_SLUGS,
+    default_effect_categories,
+    default_effect_families,
+    get_profile,
+    protocol_model,
+)
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_expectations import expectations_from_packet
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin, music_params_for_mode
@@ -126,7 +133,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             hass,
             _LOGGER,
             name=f"Govee {model} ({address})",
-            update_interval=timedelta(seconds=30) if profile.state_readable else None,
+            update_interval=(
+                timedelta(seconds=30) if profile.state_readable and profile.connection_idle_timeout is None else None
+            ),
         )
         self.address, self.model, self.profile = address, model, profile
         self.configuration_url = configuration_url
@@ -142,6 +151,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._control_arbiter = BLEControlArbiter()
         self._control_lock = self._control_arbiter
         self._cancel_disconnect: CALLBACK_TYPE | None = None
+        self._disconnect_generation = 0
         self._intentional_disconnect_client: BleakClient | None = None
         self._keep_alive_task: asyncio.Task[None] | None = None
         self._keep_alive_ticks = 0
@@ -300,7 +310,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             if (
                 state.diy_code is None
                 or (overwritten_diy_code is not None and state.diy_code == overwritten_diy_code)
-                or self.model != "H617A"
+                or protocol_model(self.model) != "H617A"
             ):
                 return False
             await self.send_command(build_h617a_diy_activation(state.diy_code))
@@ -548,17 +558,29 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     def _reset_disconnect_timer(self) -> None:
         if self._cancel_disconnect:
             self._cancel_disconnect()
+        self._disconnect_generation += 1
+        generation = self._disconnect_generation
 
         @callback
         def _on_timeout(_now: datetime) -> None:
-            self.hass.async_create_task(self._async_disconnect_on_timeout())
+            self.hass.async_create_task(self._async_disconnect_on_timeout(generation))
 
-        self._cancel_disconnect = async_call_later(self.hass, DISCONNECT_DELAY, _on_timeout)
+        delay = self.profile.connection_idle_timeout
+        self._cancel_disconnect = async_call_later(
+            self.hass,
+            DISCONNECT_DELAY if delay is None else delay,
+            _on_timeout,
+        )
 
-    async def _async_disconnect_on_timeout(self) -> None:
+    async def _async_disconnect_on_timeout(self, generation: int) -> None:
+        if generation != self._disconnect_generation:
+            return
         async with async_control_intent(self, ControlIntent.BACKGROUND, wait=False) as acquired:
             if not acquired:
-                self._reset_disconnect_timer()
+                if generation == self._disconnect_generation:
+                    self._reset_disconnect_timer()
+                return
+            if generation != self._disconnect_generation:
                 return
             await self._disconnect_locked()
 
@@ -578,6 +600,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._last_rx_monotonic = None
         self._expected_state.clear()
         self._stop_keep_alive()
+        self._disconnect_generation += 1
         if self._cancel_disconnect:
             self._cancel_disconnect()
             self._cancel_disconnect = None
@@ -1253,6 +1276,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 self._record_packet("tx", packet)
                 self._arm_expected(packet)
                 await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                self._renew_foreground_lease()
 
     async def async_write_effect_sequence(
         self,
@@ -1286,6 +1310,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                                 packet,
                                 response=False,
                             )
+                            self._renew_foreground_lease()
                             if progress is not None:
                                 await progress(index)
                         return
@@ -1440,6 +1465,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         self._record_packet("tx", packet)
                         self._arm_expected(packet)
                         await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                        self._renew_foreground_lease()
                         return
                     except BleakError as err:
                         await self._disconnect_locked()

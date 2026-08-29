@@ -6,7 +6,7 @@ export interface JsonObject {
 }
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
-export type ModelSku = "H617A" | "H6199";
+export type ModelSku = "H617A" | "H617E" | "H6199";
 export type ObservationConfidence =
   | "exact_session"
   | "activation_match"

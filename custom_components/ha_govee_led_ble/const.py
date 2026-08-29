@@ -57,6 +57,7 @@ class ModelProfile:
     static_readback_echoes_color: bool = False
     segment_count: int = 0
     supports_segment_writes: bool = False
+    connection_idle_timeout: float | None = None
 
     @property
     def supports_segments(self) -> bool:
@@ -96,6 +97,7 @@ _H617X_PROFILE = ModelProfile(
     # Segment writes ACK normally but do not publish updated groups without those queries.
     segment_count=15,
     supports_segment_writes=True,
+    connection_idle_timeout=3.0,
     # supports_white_brightness stays false because static subcommand 0x02 is segment-relative
     # brightness, not the level of a white colour-temperature mode. It compounds with master
     # brightness and is exposed through set_segment_brightness, including all-segment writes;
@@ -136,6 +138,11 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 def resolve_model(model: str) -> str | None:
     candidate = model.strip().upper()
     return next((known for known in MODEL_PROFILES if candidate.startswith(known)), None)
+
+
+def protocol_model(model: str) -> str | None:
+    resolved = resolve_model(model)
+    return "H617A" if resolved in {"H617A", "H617E"} else resolved
 
 
 def get_profile(model: str) -> ModelProfile:

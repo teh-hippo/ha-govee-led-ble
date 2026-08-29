@@ -28,6 +28,7 @@ import type {
   HomeAssistant,
   LibraryItem,
   ModelEffectCatalogue,
+  ModelSku,
   MusicProfileContent,
   PaintedContent,
   PaletteDiyEffectContent,
@@ -35,7 +36,7 @@ import type {
 
 function device(
   id: string,
-  model: "H617A" | "H6199",
+  model: ModelSku,
 ): DeviceCapabilities {
   return {
     config_entry_id: id,
@@ -93,7 +94,7 @@ function painted(): PaintedContent {
 
 function templateDefaultDetail(
   templateId: string,
-  model: "H617A" | "H6199" = "H6199",
+  model: ModelSku = "H6199",
 ): CatalogueTemplateDefaultDetail {
   const content =
     templateId.startsWith("template:video:")
@@ -181,6 +182,7 @@ function installH6199Catalogue(model: PanelModel): void {
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },
+      H617E: { ...catalogue, sku: "H617E" },
       H6199: catalogue,
     },
   } as CustomEffectCatalogue;

@@ -91,7 +91,9 @@ def test_all_committed_h617a_type_1_scenes_decode_losslessly() -> None:
 def test_encode_round_trips_every_committed_type_1_scene() -> None:
     fixtures = 0
 
-    for sku, entries in SCENE_ENTRIES.items():
+    assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
+    for sku in ("H617A", "H6199"):
+        entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != 1:
                 continue

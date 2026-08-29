@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from dataclasses import replace
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -120,6 +121,20 @@ def h6199(hass):
         "H6199",
         configuration_url=_CONFIGURATION_URL,
     )
+
+
+def test_h617x_uses_short_idle_release_without_periodic_polling(coord):
+    assert coord.update_interval is None
+    with patch(f"{M}.async_call_later") as call_later:
+        coord._reset_disconnect_timer()
+    assert call_later.call_args.args[1] == 3.0
+
+
+def test_h6199_retains_default_idle_release_and_polling(h6199):
+    assert h6199.update_interval == timedelta(seconds=30)
+    with patch(f"{M}.async_call_later") as call_later:
+        h6199._reset_disconnect_timer()
+    assert call_later.call_args.args[1] == 15
 
 
 def _c(**kw):
@@ -593,6 +608,28 @@ async def test_background_connection_use_does_not_renew_foreground_lease(coord):
         async with coord._control_arbiter.hold(ControlIntent.USER):
             await coord._ensure_connected()
         reset.assert_called_once_with()
+
+
+async def test_successful_command_renews_foreground_lease(coord):
+    client = _c(write_gatt_char=AsyncMock())
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_reset_disconnect_timer") as reset,
+    ):
+        await coord.send_command(proto.build_power(True))
+
+    reset.assert_called_once_with()
+
+
+async def test_superseded_disconnect_callback_does_not_disconnect(coord):
+    with patch(f"{M}.async_call_later", return_value=MagicMock()):
+        coord._reset_disconnect_timer()
+        generation = coord._disconnect_generation
+        coord._reset_disconnect_timer()
+        with patch.object(coord, "_disconnect_locked", new_callable=AsyncMock) as disconnect:
+            await coord._async_disconnect_on_timeout(generation)
+
+    disconnect.assert_not_awaited()
 
 
 async def test_background_refresh_keeps_background_intent_and_preview_admission(

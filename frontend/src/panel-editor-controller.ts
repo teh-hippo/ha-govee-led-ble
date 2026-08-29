@@ -41,6 +41,7 @@ import type {
   RGB,
   VideoProfileContent,
 } from "./types";
+import { isH617xModel } from "./validation-constants";
 
 interface PanelEditorOptions {
   apiReady(): boolean;
@@ -113,7 +114,7 @@ export class PanelEditorController {
     } else {
       const catalogue = this.model.modelCatalogue;
       if (!catalogue) return;
-      if (this.model.selectedModel === "H617A") {
+      if (isH617xModel(this.model.selectedModel)) {
         const content = blankCustomEffect("h617a_single", catalogue);
         this.openEditableTemplate(
           entry.label,
@@ -785,10 +786,7 @@ export class PanelEditorController {
 
   private musicTemplateContent(mode: string): MusicProfileContent | undefined {
     const selectedModel = this.model.selectedModel;
-    if (
-      (selectedModel !== "H617A" && selectedModel !== "H6199") ||
-      !mode
-    ) {
+    if (!selectedModel || !mode) {
       return undefined;
     }
     return {
@@ -826,7 +824,7 @@ export class PanelEditorController {
     }
     if (
       content.kind === "h617a_painted" &&
-      selectedModel === "H617A" &&
+      isH617xModel(selectedModel) &&
       this.model.customEffectKindAvailable(content.kind)
     ) {
       return {
@@ -836,7 +834,7 @@ export class PanelEditorController {
       };
     }
     if (
-      (content.kind === "h617a_single" && selectedModel === "H617A") ||
+      (content.kind === "h617a_single" && isH617xModel(selectedModel)) ||
       (content.kind === "palette_diy" && content.model === selectedModel)
     ) {
       const matches = catalogue.effects.flatMap((family) =>

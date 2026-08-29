@@ -6,7 +6,7 @@ import base64
 from dataclasses import dataclass
 from typing import Final
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS
+from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, protocol_model
 from .effect_contracts import (
     CapabilityState,
     CapabilityWorkflow,
@@ -484,7 +484,7 @@ H6199_VIDEO_MODES: Final = (
 def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
     variation = family.variations[0]
     content: EffectContent
-    if model == "H617A":
+    if protocol_model(model) == "H617A":
         content = SingleEffect(
             family=family.family,
             variant=variation.variant,
@@ -556,6 +556,24 @@ H617A_CATALOGUE_TEMPLATES: Final = (
     ),
     *(_single_template("H617A", family) for family in H617A_TYPE04_FAMILIES),
     *(_music_template("H617A", mode) for mode in H617A_NATIVE_MUSIC_MODES),
+)
+
+H617E_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617E")
+
+H617E_CATALOGUE_TEMPLATES: Final = (
+    CatalogueTemplate(
+        id="template:paint",
+        label="Paint",
+        category="single-layer",
+        content=PaintedEffect(
+            effect="clockwise",
+            speed=50,
+            brightness=100,
+            segments=(None,) * H617A_SEGMENT_COUNT,
+        ),
+    ),
+    *(_single_template("H617E", family) for family in H617A_TYPE04_FAMILIES),
+    *(_music_template("H617E", mode) for mode in H617E_NATIVE_MUSIC_MODES),
 )
 
 H6199_CATALOGUE_TEMPLATES: Final = (
@@ -637,6 +655,27 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H617A", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H617A", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H617A", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H617E": ModelEffectCatalogue(
+        sku="H617E",
+        painted_effects=H617A_PAINTED_EFFECTS,
+        effects=H617A_TYPE04_FAMILIES,
+        music_modes=H617E_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=H617E_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H617E", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H617E", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H617E", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H617E", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H617E", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H617E", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H617E", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H617E", CapabilityWorkflow.WORKSHOP),
         ),
     ),
     "H6199": ModelEffectCatalogue(

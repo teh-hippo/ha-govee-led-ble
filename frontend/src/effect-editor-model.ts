@@ -28,6 +28,7 @@ import type {
   WorkshopContent,
 } from "./types";
 import { clonePalette, cloneRgb, sameRgb } from "./ui-utils";
+import { isModelSku } from "./validation-constants";
 
 type AdvancedEditableContent =
   | AdvancedContent
@@ -185,7 +186,7 @@ export function blankPaletteDiy(
   family?: number,
   variant?: number,
 ): PaletteDiyEffectContent {
-  if (model !== "H617A" && model !== "H6199") {
+  if (!isModelSku(model)) {
     throw new Error(`Unsupported custom-effect model ${model}.`);
   }
   const selected =
@@ -630,7 +631,7 @@ function libraryItemModel(item: LibraryItem): ModelSku | undefined {
     content.kind === "h617a_single" ||
     content.kind === "h617a_multi"
   ) {
-    return "H617A";
+    return knownModel(item.target_hint?.model) ?? "H617A";
   }
   if (
     content.kind === "scene_builtin" ||
@@ -645,5 +646,6 @@ function libraryItemModel(item: LibraryItem): ModelSku | undefined {
 function knownModel(
   model: string | null | undefined,
 ): ModelSku | undefined {
-  return model === "H617A" || model === "H6199" ? model : undefined;
+  const candidate = model ?? undefined;
+  return isModelSku(candidate) ? candidate : undefined;
 }

@@ -49,7 +49,11 @@ test("canonical backend responses decode through the production validators", () 
   const info = decodeEditorApiInfo(responses.editor_info);
   expect(isCompatibleEditorInfo(info)).toBe(true);
   const devices = decodeDevices(responses.devices);
-  expect(devices).toHaveLength(2);
+  expect(devices.map((device) => device.model)).toEqual([
+    "H617A",
+    "H617E",
+    "H6199",
+  ]);
   expect(devices[0].light_entity_id).toBe("light.h617a_main");
   expect(devices[1].light_entity_id).toBeNull();
   expect(devices[0].active_state?.active_effect?.observable_signature).toBe(

@@ -35,6 +35,7 @@ import {
   MAX_EFFECT_NAME_LENGTH,
   MAX_IDENTIFIER_LENGTH,
   MODEL_SKUS,
+  isH617xModel,
   VIDEO_MODE_IDS,
 } from "./validation-constants";
 
@@ -58,6 +59,17 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
 ] as const;
 const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = {
   H617A: [
+    "native_scenes",
+    "edited_palette_scenes",
+    "layered_scenes",
+    "painted",
+    "single",
+    "multi",
+    "native_music",
+    "advanced",
+    "workshop",
+  ],
+  H617E: [
     "native_scenes",
     "edited_palette_scenes",
     "layered_scenes",
@@ -145,6 +157,12 @@ function decodeModelCatalogues(
       models.H617A,
       "catalogue model H617A",
       "H617A",
+      decodeContent,
+    ),
+    H617E: decodeModelEffectCatalogue(
+      models.H617E,
+      "catalogue model H617E",
+      "H617E",
       decodeContent,
     ),
     H6199: decodeModelEffectCatalogue(
@@ -302,8 +320,8 @@ function decodeCatalogueTemplates(
       }
       if (
         ("model" in content && content.model !== model) ||
-        (content.kind === "h617a_painted" && model !== "H617A") ||
-        (content.kind === "h617a_single" && model !== "H617A")
+        (content.kind === "h617a_painted" && !isH617xModel(model)) ||
+        (content.kind === "h617a_single" && !isH617xModel(model))
       ) {
         invalid(`${name}[${index}] content does not target ${model}`);
       }

@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   buildCustomEffectEntries,
+  libraryItemAvailable,
   type CustomEffectListContext,
 } from "../../src/custom-effect-list";
 import {
@@ -94,6 +95,22 @@ test("saved effects remain available in their content category", () => {
     "My Jump",
     "Paint",
   ]);
+});
+
+test("H617E devices retain H617x effects summarised with the legacy model", () => {
+  const h617eContext: CustomEffectListContext = {
+    model: "H617E",
+    catalogue: { ...catalogue, sku: "H617E" },
+    libraryItems: [saved],
+  };
+
+  expect(libraryItemAvailable(h617eContext, saved)).toBe(true);
+  expect(
+    libraryItemAvailable(h617eContext, {
+      ...saved,
+      kind: "music_profile",
+    }),
+  ).toBe(false);
 });
 
 test("saved Workshop content remains available without starter templates", () => {

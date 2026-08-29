@@ -16,6 +16,14 @@ export const PALETTE_CONFIG_RESERVED_MASK = 0x08;
 export const SCENE_TRAILING_PADDING_MAX = 0xff * 17;
 export const MOVEMENT_UNKNOWN_FLAGS_MASK = 0xe8;
 export const LAYER_UNKNOWN_FLAGS_MASK = 0xfd;
-export const MODEL_SKUS = ["H617A", "H6199"] as const satisfies readonly ModelSku[];
+export const MODEL_SKUS = ["H617A", "H617E", "H6199"] as const satisfies readonly ModelSku[];
 export const LEGACY_CUSTOM_CATALOGUE_SKU = "H617A" as const;
 export const VIDEO_MODE_IDS = ["movie", "game"] as const;
+
+export function isModelSku(model: string | undefined): model is ModelSku {
+  return MODEL_SKUS.includes(model as ModelSku);
+}
+
+export function isH617xModel(model: string | undefined): model is "H617A" | "H617E" {
+  return model === "H617A" || model === "H617E";
+}

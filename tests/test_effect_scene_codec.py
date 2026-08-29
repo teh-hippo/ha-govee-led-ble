@@ -109,7 +109,9 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
     catalogue_excess = 0
     multi_line_bodies = 0
 
-    for sku, entries in SCENE_ENTRIES.items():
+    assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
+    for sku in ("H617A", "H6199"):
+        entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != _LAYERED_SCENE_TYPE:
                 continue

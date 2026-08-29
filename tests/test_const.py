@@ -10,6 +10,7 @@ from custom_components.ha_govee_led_ble.const import (
     effect_families_from_options,
     get_profile,
     prefix_effect_names_from_options,
+    protocol_model,
     resolve_model,
 )
 
@@ -39,7 +40,9 @@ def test_h617a_and_h617e_share_complete_feature_profile():
     assert profile.supports_segments
     assert profile.supports_advanced_effects
     assert profile.supports_multi_layered_effects
+    assert profile.connection_idle_timeout == 3.0
     assert resolve_model("H617E-extra") == "H617E"
+    assert protocol_model("H617E-extra") == "H617A"
 
 
 def test_unknown_models_fail_closed():

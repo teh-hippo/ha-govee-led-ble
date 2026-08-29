@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 from uuid import UUID, uuid4
 
-from .const import MUSIC_MODE_SLUGS
+from .const import MUSIC_MODE_SLUGS, protocol_model
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .effect_active_workspace import (
@@ -1033,7 +1033,7 @@ async def _async_refresh_profile(
     compiled: CompiledMusicProfile | CompiledVideoProfile,
 ) -> bool:
     if isinstance(compiled, CompiledMusicProfile):
-        if compiled.model == "H617A":
+        if protocol_model(compiled.model) == "H617A":
             return await coordinator.refresh_state(
                 expected_on=True,
                 expected_music_mode=compiled.mode,
@@ -1063,7 +1063,7 @@ async def _async_refresh_profile(
 def _profile_verification_confidence(
     compiled: CompiledMusicProfile | CompiledVideoProfile,
 ) -> ObservationConfidence:
-    if isinstance(compiled, CompiledMusicProfile) and compiled.model == "H617A":
+    if isinstance(compiled, CompiledMusicProfile) and protocol_model(compiled.model) == "H617A":
         return ObservationConfidence.MODE_MATCH
     return ObservationConfidence.SETTINGS_MATCH
 

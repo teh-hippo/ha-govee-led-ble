@@ -9,7 +9,7 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import Any, Final, assert_never
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS
+from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, protocol_model
 from .coordinator_modes import (
     MUSIC_STYLE_SLUGS,
     music_mode_has_parameter_write,
@@ -222,7 +222,7 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
-        if model == "H617A":
+        if protocol_model(model) == "H617A":
             return CompatibilityResult(CompatibilityState.COMPATIBLE)
         return CompatibilityResult(
             CompatibilityState.INCOMPATIBLE,
@@ -246,7 +246,7 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, LayeredEffect):
-        if model in _ADVANCED_CARRIER_IDENTITIES:
+        if protocol_model(model) in _ADVANCED_CARRIER_IDENTITIES:
             return CompatibilityResult(CompatibilityState.COMPATIBLE)
         return CompatibilityResult(
             CompatibilityState.INCOMPATIBLE,
@@ -262,7 +262,7 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
         if diy_code is None:
             raise ValueError("H617A custom-effect compilation requires a DIY code")
-        return compile_h617a(item, diy_code)
+        return compile_h617a(item, diy_code, model=model)
     if isinstance(item.content, PaletteDiyEffect):
         return compile_h6199(
             item,
@@ -399,8 +399,8 @@ def compile_scene_effect(item: LibraryItem, model: str) -> CompiledEffect:
     )
 
 
-def compile_h617a(item: LibraryItem, diy_code: int) -> CompiledEffect:
-    result = compatibility(item, "H617A")
+def compile_h617a(item: LibraryItem, diy_code: int, *, model: str = "H617A") -> CompiledEffect:
+    result = compatibility(item, model)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
 
@@ -437,7 +437,7 @@ def compile_h617a(item: LibraryItem, diy_code: int) -> CompiledEffect:
     return CompiledEffect(
         item_id=str(item.id),
         item_version=item.version,
-        model="H617A",
+        model=model,
         content_kind=content_kind,
         diy_code=diy_code,
         activation_mode=ActivationMode.CUSTOM,
@@ -522,7 +522,7 @@ def _resolve_scene(
 
 def _advanced_carrier(model: str) -> tuple[str, SceneEntry]:
     try:
-        scene_id, effect_id = _ADVANCED_CARRIER_IDENTITIES[model]
+        scene_id, effect_id = _ADVANCED_CARRIER_IDENTITIES[protocol_model(model) or model]
     except KeyError as error:
         raise ValueError(f"{model} layered-scene framing is not supported") from error
     return _resolve_scene(
@@ -555,7 +555,7 @@ def compile_application(item: LibraryItem, model: str, *, diy_code: int | None =
     if isinstance(item.content, VideoProfile):
         return compile_video_profile(item, model)
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
-        if model != "H617A":
+        if protocol_model(model) != "H617A":
             raise ValueError(f"{model} custom-effect upload is not supported")
         if diy_code is None:
             raise ValueError("custom-effect application requires a DIY code")

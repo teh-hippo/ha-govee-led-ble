@@ -1,6 +1,6 @@
 """Model-aware Effect Studio catalogue contracts."""
 
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -42,7 +42,7 @@ from custom_components.ha_govee_led_ble.effect_domain import JsonValue, MusicPro
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 
 
-def test_model_aware_catalogue_includes_both_models_and_legacy_h617a_view() -> None:
+def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view() -> None:
     catalogue = custom_effect_catalogue_payload()
 
     assert catalogue["schema_version"] == EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION
@@ -103,6 +103,22 @@ def test_h617a_model_catalogue_preserves_type04_and_painted_contracts() -> None:
         (10, 0),
     }
     assert [effect["id"] for effect in H617A_PAINTED_EFFECTS] == [effect.name for effect in DiyType03.Effect]
+
+
+def test_h617e_model_catalogue_reuses_h617a_effects_with_h617e_profiles() -> None:
+    models = cast(
+        dict[str, dict[str, JsonValue]],
+        custom_effect_catalogue_payload()["models"],
+    )
+    catalogue = models["H617E"]
+    templates = cast(list[dict[str, Any]], catalogue["templates"])
+
+    assert catalogue["sku"] == "H617E"
+    assert catalogue["painted_effects"] == list(H617A_PAINTED_EFFECTS)
+    assert catalogue["effects"] == [family.to_dict() for family in H617A_TYPE04_FAMILIES]
+    assert {
+        template["content"]["model"] for template in templates if template["content"]["kind"] == "music_profile"
+    } == {"H617E"}
 
 
 def test_native_music_modes_are_derived_from_profiles_and_slug_catalogue() -> None:

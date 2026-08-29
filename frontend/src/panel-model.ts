@@ -28,6 +28,7 @@ import type {
   CustomEffectCatalogue, DeviceCapabilities, DiyEffectFamily, EffectContent, EffectUserState, LibraryItem, LibrarySnapshot,
   LibrarySummary, HomeAssistant, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
 } from "./types";
+import { isModelSku } from "./validation-constants";
 
 export type DeleteCandidate = Pick<LibrarySummary, "id" | "version" | "updated_at" | "name"> & {
   discardsOpenEdits?: boolean;
@@ -233,7 +234,7 @@ export class PanelModel {
 
   public get selectedModel(): ModelSku | undefined {
     const model = this.selectedDevice?.model;
-    return model === "H617A" || model === "H6199" ? model : undefined;
+    return isModelSku(model) ? model : undefined;
   }
 
   public get showDeviceSelector(): boolean {

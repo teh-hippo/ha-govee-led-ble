@@ -14,7 +14,7 @@ test("canonical backend catalogue decodes through the production catalogue valid
     backendContracts.responses.custom_catalogue,
   );
   expect(decoded.sku).toBe("H617A");
-  expect(Object.keys(decoded.models)).toEqual(["H617A", "H6199"]);
+  expect(Object.keys(decoded.models)).toEqual(["H617A", "H617E", "H6199"]);
 });
 
 test("catalogue families require variations and the single-layer category", () => {

@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 
-from .const import DOMAIN
+from .const import DOMAIN, protocol_model
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
 from .effect_catalogue import (
@@ -1679,7 +1679,7 @@ def _verification_expectations(
             return {"is_on": True, "effect": compiled.expected_effect}
         if compiled.content_kind == "workshop":
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}
-        if compiled.model == "H617A":
+        if protocol_model(compiled.model) == "H617A":
             return {"is_on": True, "diy_code": compiled.diy_code}
         if compiled.diy_code in {H6199_PALETTE_DIY_APPLY_CODE, H6199_WORKSHOP_APPLY_CODE}:
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}
@@ -1727,6 +1727,6 @@ def _confirmed_confidence(
 ) -> ObservationConfidence:
     if request.scene is not None or isinstance(compiled, CompiledEffect):
         return ObservationConfidence.ACTIVATION_MATCH
-    if isinstance(compiled, CompiledMusicProfile) and compiled.model == "H617A":
+    if isinstance(compiled, CompiledMusicProfile) and protocol_model(compiled.model) == "H617A":
         return ObservationConfidence.MODE_MATCH
     return ObservationConfidence.SETTINGS_MATCH

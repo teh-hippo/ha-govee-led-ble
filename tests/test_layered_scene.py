@@ -451,7 +451,9 @@ def test_all_committed_layered_scenes_round_trip_canonical_values() -> None:
     scene_counts: Counter[str] = Counter()
     record_count = 0
 
-    for sku, entries in SCENE_ENTRIES.items():
+    assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
+    for sku in ("H617A", "H6199"):
+        entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != int(SceneBody.SceneType.scene_v2):
                 continue

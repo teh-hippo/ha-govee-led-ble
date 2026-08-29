@@ -6,6 +6,7 @@ import base64
 from collections.abc import Callable
 from typing import Any
 
+from .const import protocol_model
 from .generated_protocol_adapter import (
     GoveeShared,
     H6199EffectUpload,
@@ -103,6 +104,7 @@ def decode_workshop_effect(
     raw_param: bytes,
 ) -> tuple[LayeredEffect, int]:
     """Decode a Workshop parameter through its model-specific generated structure."""
+    model = protocol_model(model) or model
     if model == "H617A":
         parsed, trailing_padding = parse_workshop_body(raw_param)
         records = parsed.layers
@@ -121,6 +123,7 @@ def encode_workshop_effect(
     trailing_padding: int = 0,
 ) -> bytes:
     """Serialize Workshop layers through the model-specific generated structure."""
+    model = protocol_model(model) or model
     serializer: Callable[[Any], bytes]
     if model == "H617A":
         root = WorkshopBody()

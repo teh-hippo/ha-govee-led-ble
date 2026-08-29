@@ -209,7 +209,9 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
     scene_counts: Counter[str] = Counter()
     record_count = 0
 
-    for sku, entries in SCENE_ENTRIES.items():
+    assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
+    for sku in ("H617A", "H6199"):
+        entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != int(SceneBody.SceneType.scene_v2):
                 continue

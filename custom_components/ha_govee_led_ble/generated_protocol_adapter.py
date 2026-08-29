@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
+from .const import protocol_model
 from .transport import A3_CHUNK_SIZE, xor_checksum
 
 CommandWrite = cast(
@@ -185,6 +186,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
     if envelope[1] != len(envelope) // A3_CHUNK_SIZE:
         raise ValueError("A3 effect envelope does not match its chunk count")
 
+    model = protocol_model(model) or model
     if model == "H617A":
         root_type = {
             0x01: SceneType1Body,

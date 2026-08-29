@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .const import protocol_model
 from .effect_catalogue import (
     H617A_PAINTED_EFFECTS,
     H617A_TYPE04_FAMILIES,
@@ -51,6 +52,7 @@ def decode_a3_effect_frames(
 
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
+    model = protocol_model(model) or model
     if model == "H617A":
         if isinstance(tree, DiyType03):
             return _decode_h617a_painted(tree)
