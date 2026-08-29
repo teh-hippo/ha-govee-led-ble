@@ -114,8 +114,8 @@ def test_h617e_scene_readback_uses_its_exact_catalogue() -> None:
     assert parsed.effect == name
 
 
-def test_h6125_scene_readback_uses_its_own_catalogue() -> None:
-    frame = bytearray([0xAA, 0x05, 0x04, 0xC8, *([0] * 15)])
+def test_h6125_scene_readback_does_not_claim_an_unvalidated_scene() -> None:
+    frame = bytearray([0xAA, 0x05, 0x04, 0x00, *([0] * 15)])
     frame.append(xor_checksum(frame))
     decoded = decode_status_frame(bytes(frame), "H6125")
     assert decoded is not None
@@ -123,8 +123,8 @@ def test_h6125_scene_readback_uses_its_own_catalogue() -> None:
     scene = parse_color_mode(decoded.generated, "H6125")
 
     assert scene.mode is ParsedMode.SCENE
-    assert scene.effect == "universe-a"
-    assert scene.scene_code == 200
+    assert scene.effect is None
+    assert scene.scene_code == 0
 
 
 def test_h6199_video_and_music_fields_decode() -> None:

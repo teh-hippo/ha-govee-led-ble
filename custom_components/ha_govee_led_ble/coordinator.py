@@ -256,6 +256,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return 6, 254
         return 1, 100
 
+    @property
+    def supports_brightness(self) -> bool:
+        return self.model != "H6125" or (self.hw_version is not None and self.hw_version.split(".", 1)[0] == "1")
+
     def _brightness_value_from_percent(self, percent: int) -> int:
         minimum, maximum = self._brightness_raw_range()
         percent = max(1, min(100, percent))
@@ -275,6 +279,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if self.model == "H6125":
             if self.hw_version is None:
                 raise RuntimeError("H6125 hardware version is required before changing brightness")
+            if not self.supports_brightness:
+                raise RuntimeError(f"H6125 brightness is not enabled for hardware {self.hw_version}")
             return build_h6125_brightness_value(self._brightness_value_from_percent(percent))
         return build_brightness(percent, self.model)
 
@@ -635,10 +641,23 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     if not acquired:
                         return self._state_snapshot()
                     previous_client = self._client
-                    refreshed = await self.refresh_state(
-                        refresh_all=True,
-                        required_domains=self.profile.setup_required_read_domains,
-                    )
+                    if first_refresh and self.model == "H6125":
+                        refreshed = await self.refresh_state()
+                        client = self._client
+                        if refreshed and client is not None:
+                            async with self._lock:
+                                if self._client is client:
+                                    await self._send_state_queries(
+                                        query_power=False,
+                                        query_brightness=False,
+                                        query_color_mode=True,
+                                        query_segments=True,
+                                    )
+                    else:
+                        refreshed = await self.refresh_state(
+                            refresh_all=True,
+                            required_domains=self.profile.setup_required_read_domains,
+                        )
                     client = self._client
                     if not refreshed or client is None:
                         if client is not None:
@@ -1025,8 +1044,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
-        self._last_rx_monotonic = time.monotonic()
         if frame[:1] == b"\x33":
+            self._last_rx_monotonic = time.monotonic()
             command = parse_command_ack_result(frame, self.model)
             reason = "command_ack_parsed"
             if command.parsed is None:
@@ -1083,6 +1102,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.model, decoded.raw_domain, payload.hex())
         if domain is StatusDomain.COLOUR_MODE and not self.profile.supports_color_mode_readback:
             return
+        self._last_rx_monotonic = time.monotonic()
         try:
             observed: tuple[str, ...] = ()
             if domain is StatusDomain.POWER:
@@ -1228,7 +1248,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 queries.append(build_power_query(self.model))
             if query_brightness and self.profile.can_read(ReadDomain.BRIGHTNESS):
                 queries.append(build_brightness_query(self.model))
-            if query_color_mode and self.profile.supports_color_mode_readback:
+            if query_color_mode and (
+                self.profile.supports_color_mode_readback or self.profile.query_color_mode_for_diagnostics
+            ):
                 queries.append(build_colour_mode_query(self.model))
             full_query = query_power and query_brightness and query_color_mode
             if (
@@ -1249,17 +1271,19 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 and (query_relative_brightness if query_relative_brightness is not None else full_query)
             ):
                 queries.append(build_relative_brightness_query(self.model))
-            if (
-                self.profile.can_read(ReadDomain.SEGMENTS)
-                and self.profile.supports_segments
-                and (query_segments if query_segments is not None else full_query)
+            if self.profile.can_read(ReadDomain.SEGMENTS) and (
+                query_segments if query_segments is not None else full_query
             ):
-                self._segment_groups_observed.clear()
-                self._segment_query_colors = list(self.segment_colors)
-                self._segment_query_brightness = list(self.segment_brightness)
-                queries.extend(
-                    build_segment_query(group, self.model) for group in range(1, self._segment_group_count + 1)
-                )
+                if self.profile.supports_segments:
+                    self._segment_groups_observed.clear()
+                    self._segment_query_colors = list(self.segment_colors)
+                    self._segment_query_brightness = list(self.segment_brightness)
+                    group_count = self._segment_group_count
+                elif self.model == "H6125" and self.profile.segment_group_size > 0:
+                    group_count = math.ceil(self.profile.segment_count / self.profile.segment_group_size)
+                else:
+                    group_count = 0
+                queries.extend(build_segment_query(group, self.model) for group in range(1, group_count + 1))
             for query in queries:
                 await self._async_write_packet(client, query)
             return True

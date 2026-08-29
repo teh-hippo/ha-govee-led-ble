@@ -6,7 +6,7 @@ import binascii
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -46,6 +46,9 @@ def test_catalogue_and_identity_errors() -> None:
 
     assert scene_catalogue_payload("H6199")["enabled"] is True
     assert scene_catalogue_payload("H6076")["enabled"] is False
+    h6125 = scene_catalogue_payload("H6125")
+    assert h6125["enabled"] is False
+    assert cast(list[Any], h6125["scenes"]) == []
 
 
 def test_h617e_legacy_scene_identity_preserves_its_original_metadata() -> None:
@@ -334,7 +337,6 @@ async def test_scene_without_speed_uses_coordinator_primitive(
         scene_entry=resolved.entry,
         speed_index=None,
         canonical_body=base64.b64decode(scene.param, validate=True) if scene.param else None,
-        verify=True,
     )
 
 
@@ -379,97 +381,15 @@ async def test_scene_application_uses_the_stored_device_default(
         scene_entry=resolved.entry,
         speed_index=0,
         canonical_body=body,
-        verify=True,
     )
 
 
-async def test_h6125_scene_application_uses_write_completion_without_mode_verification(
-    hass: HomeAssistant,
-) -> None:
-    scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == 0)
-    coordinator = SimpleNamespace(
-        model="H6125",
-        profile=MODEL_PROFILES["H6125"],
-        async_apply_native_scene=AsyncMock(),
-    )
-    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
+@pytest.mark.parametrize("scene_type", [0, 1, 2])
+def test_h6125_scenes_are_not_exposed(scene_type: int) -> None:
+    scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == scene_type)
 
-    resolved, speed_index = await async_apply_scene(
-        hass,
-        entry,
-        scene_id=scene.scene_id,
-        effect_id=scene.effect_id,
-        speed_index=None,
-        user_id="admin",
-    )
-
-    assert speed_index is None
-    coordinator.async_apply_native_scene.assert_awaited_once_with(
-        resolved.key,
-        speed_index=None,
-        canonical_body=None,
-        verify=False,
-    )
-
-
-async def test_h6125_scene_application_ignores_an_existing_edited_default(
-    hass: HomeAssistant,
-) -> None:
-    scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == 2)
-    repository = SimpleNamespace(
-        get=MagicMock(
-            return_value=NativeSceneDefault(
-                config_entry_id="entry-a",
-                scene_id=scene.scene_id,
-                effect_id=scene.effect_id,
-                updated_at=TIMESTAMP,
-                canonical_body=b"\xff",
-                speed_index=None,
-            )
-        )
-    )
-    coordinator = SimpleNamespace(
-        model="H6125",
-        profile=MODEL_PROFILES["H6125"],
-        async_apply_native_scene=AsyncMock(),
-    )
-    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
-
-    resolved, _speed_index = await async_apply_scene(
-        hass,
-        entry,
-        scene_id=scene.scene_id,
-        effect_id=scene.effect_id,
-        speed_index=None,
-        user_id="admin",
-        scene_defaults=repository,
-    )
-
-    coordinator.async_apply_native_scene.assert_awaited_once_with(
-        resolved.key,
-        speed_index=None,
-        canonical_body=base64.b64decode(scene.param, validate=True),
-        verify=False,
-    )
-
-
-async def test_h6125_rejects_an_edited_scene_default() -> None:
-    scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == 1)
-    content = cast(dict[str, Any], scene_detail_payload("H6125", scene.scene_id, scene.effect_id)["content"])
-    coordinator = SimpleNamespace(model="H6125", profile=MODEL_PROFILES["H6125"])
-    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
-    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
-    await repository.async_load()
-
-    with pytest.raises(ValueError, match="edited native scenes are not supported"):
-        await async_set_scene_default(
-            entry,
-            scene_id=scene.scene_id,
-            effect_id=scene.effect_id,
-            content=content,
-            updated_at=TIMESTAMP,
-            scene_defaults=repository,
-        )
+    with pytest.raises(ValueError, match="was not found"):
+        resolve_scene("H6125", scene.scene_id, scene.effect_id)
 
 
 async def test_reset_deletes_default_without_applying_to_the_device() -> None:

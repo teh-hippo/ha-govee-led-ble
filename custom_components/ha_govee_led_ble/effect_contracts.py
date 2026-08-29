@@ -166,17 +166,6 @@ def _capability(
 
 _RELEASE_CAPABILITY_BASE: Final = (
     _capability(
-        "H6125",
-        CapabilityWorkflow.NATIVE_SCENES,
-        "Scenes",
-        "scene_builtin",
-        ApplicationRoute.STUDIO_SCENE_APPLY,
-        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
-        VerificationConfidence.UNVERIFIED,
-        PhysicalValidationState.NOT_VALIDATED,
-        EvidenceClassification.STRUCTURAL,
-    ),
-    _capability(
         "H617A",
         CapabilityWorkflow.NATIVE_SCENES,
         "Scenes",

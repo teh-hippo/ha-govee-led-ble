@@ -36,7 +36,6 @@ from .scenes import (
     MODEL_SCENE_LABELS,
     MODEL_SCENES,
     OFFICIAL_MODEL_SCENES,
-    SCENE_ENTRIES,
     SceneEntry,
     canonical_scene_key,
     legacy_scene_entries,
@@ -140,9 +139,10 @@ async def async_store_scene_default(
 
 
 def scene_catalogue_payload(model: str) -> dict[str, JsonValue]:
-    entries = SCENE_ENTRIES.get(model)
-    if entries is None:
+    scenes = MODEL_SCENES.get(model)
+    if scenes is None:
         raise ValueError(f"{model} has no native scene catalogue")
+    entries = tuple(scenes.values())
     categories: list[JsonValue] = []
     seen_categories: set[int] = set()
     for entry in entries:
@@ -250,7 +250,6 @@ async def async_apply_scene(
         scene_entry=resolved.entry,
         speed_index=resolved_speed,
         canonical_body=canonical_body or None,
-        verify=get_profile(coordinator.model).supports_color_mode_readback,
     )
     return resolved, resolved_speed
 

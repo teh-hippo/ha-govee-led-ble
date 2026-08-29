@@ -153,8 +153,6 @@ class ModelProfile:
     segment_group_size: int = 0
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
-    minimum_firmware: str | None = None
-    minimum_hardware: str | None = None
     scene_catalogue_sku: str | None = None
     legacy_scene_catalogue_sku: str | None = None
     advanced_scene_carrier: tuple[int, int] | None = None
@@ -364,7 +362,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6125 LED Strip",
         command_grammar="H617A",
         status_grammar="H617A",
-        effect_grammar="H617A",
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -375,21 +372,11 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             }
         ),
         setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
-        supports_rgb=True,
-        supports_color_temperature=True,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
         query_color_mode_for_diagnostics=True,
-        supports_scenes=True,
-        whole_device_mask=0x7FFF,
         segment_count=15,
         segment_group_size=3,
-        supports_segment_writes=True,
         connection_idle_timeout=3.0,
-        minimum_firmware="1.06.00",
-        minimum_hardware="1.00.03",
         scene_catalogue_sku="H6125",
-        effect_readback="write_completed",
     ),
     "H6076": ModelProfile(
         "H6076 Lyra Floor Lamp",
@@ -578,20 +565,18 @@ def default_effect_families(model: str) -> frozenset[str]:
     return supported if requested is None else requested & supported
 
 
-def version_at_least(current: str, minimum: str) -> bool:
-    current_parts = _version_parts(current)
-    minimum_parts = _version_parts(minimum)
-    if current_parts is None or minimum_parts is None:
-        return False
-    width = max(len(current_parts), len(minimum_parts))
-    return current_parts + (0,) * (width - len(current_parts)) >= minimum_parts + (0,) * (width - len(minimum_parts))
-
-
 def _version_parts(value: str) -> tuple[int, ...] | None:
     parts = value.strip().split(".")
     if not parts or any(not part.isdigit() for part in parts):
         return None
     return tuple(int(part) for part in parts)
+
+
+def h6125_hardware_family_supported(version: str) -> bool:
+    parts = _version_parts(version)
+    if parts is None:
+        return False
+    return parts[0] in {1, 3} or len(parts) >= 2 and parts[:2] == (2, 1)
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:

@@ -425,7 +425,7 @@ async def ws_scene_apply(
         entry.runtime_data,
         config_entry_id=entry.entry_id,
         observed_at=dt_util.utcnow().isoformat(),
-        refreshed=entry.runtime_data.profile.supports_color_mode_readback,
+        refreshed=True,
     )
     connection.send_result(
         msg["id"],
@@ -443,9 +443,7 @@ async def ws_scene_apply(
                 ),
             )["scene"],
             "speed_index": speed_index,
-            "readback": (
-                "scene_identity_only" if entry.runtime_data.profile.supports_color_mode_readback else "write_completed"
-            ),
+            "readback": "scene_identity_only",
         },
     )
 

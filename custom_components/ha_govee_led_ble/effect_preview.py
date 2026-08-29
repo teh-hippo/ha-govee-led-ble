@@ -1706,8 +1706,6 @@ def _verification_expectations(
     if not coordinator.profile.can_read(ReadDomain.POWER):
         return None
     if request.scene is not None:
-        if not coordinator.profile.supports_color_mode_readback:
-            return {"is_on": True}
         scene_expectations: dict[str, Any] = {
             "is_on": True,
             "scene_code": request.scene.entry.code,
@@ -1723,10 +1721,6 @@ def _confirmed_confidence(
     compiled: CompiledApplication | None,
     coordinator: Any,
 ) -> ObservationConfidence:
-    if not coordinator.profile.supports_color_mode_readback and (
-        request.scene is not None or isinstance(compiled, CompiledEffect)
-    ):
-        return ObservationConfidence.WRITE_COMPLETED
     if request.scene is not None or isinstance(compiled, CompiledEffect):
         return ObservationConfidence.ACTIVATION_MATCH
     return (

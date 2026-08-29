@@ -84,10 +84,14 @@ test("canonical backend responses decode through the production validators", () 
     navigation: { section: "scenes" },
   });
 
-  for (const catalogue of Object.values(responses.scene_catalogues)) {
+  for (const [model, catalogue] of Object.entries(responses.scene_catalogues)) {
     const decoded = decodeSceneCatalogue(catalogue);
-    expect(decoded.scenes.length).toBeGreaterThan(0);
-    expect(decodeSceneSummary(decoded.scenes[0])).toEqual(decoded.scenes[0]);
+    if (model === "H6125") {
+      expect(decoded.scenes).toEqual([]);
+    } else {
+      expect(decoded.scenes.length).toBeGreaterThan(0);
+      expect(decodeSceneSummary(decoded.scenes[0])).toEqual(decoded.scenes[0]);
+    }
   }
   for (const detail of Object.values(responses.scene_details)) {
     const decoded = decodeSceneDetail(detail);

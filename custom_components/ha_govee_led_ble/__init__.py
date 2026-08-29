@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
+from bleak import BleakError  # type: ignore[attr-defined]
 from homeassistant.components import bluetooth, frontend
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -30,11 +31,11 @@ from .const import (
     default_effect_categories,
     effect_categories_from_options,
     effect_families_from_options,
+    h6125_hardware_family_supported,
     model_from_ble_name,
     prefix_effect_names_from_options,
     resolve_model,
     supported_effect_categories,
-    version_at_least,
 )
 from .coordinator import GoveeBLECoordinator, clear_availability_log_state
 from .editor import EDITOR_PANEL_PATH, async_register_editor_panel, editor_url
@@ -227,25 +228,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     )
     await coordinator.async_config_entry_first_refresh()
     version_issue_id = _unsupported_version_issue_id(entry)
-    profile = coordinator.profile
-    if profile.minimum_firmware is not None or profile.minimum_hardware is not None:
-        if not await coordinator.async_refresh_identity():
+    if model == "H6125":
+        try:
+            identity_refreshed = await coordinator.async_refresh_identity()
+        except (BleakError, TimeoutError) as err:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady(f"{model} identity query could not connect") from err
+        if not identity_refreshed:
             await coordinator.disconnect()
             raise ConfigEntryNotReady(f"{model} did not report firmware and hardware versions")
-        if model == "H6125" and not await coordinator.refresh_state(refresh_brightness=True):
-            await coordinator.disconnect()
-            raise ConfigEntryNotReady("H6125 did not report its brightness register")
-        firmware_supported = (
-            profile.minimum_firmware is None
-            or coordinator.fw_version is not None
-            and version_at_least(coordinator.fw_version, profile.minimum_firmware)
-        )
-        hardware_supported = (
-            profile.minimum_hardware is None
-            or coordinator.hw_version is not None
-            and version_at_least(coordinator.hw_version, profile.minimum_hardware)
-        )
-        if not firmware_supported or not hardware_supported:
+        if coordinator.hw_version is None or not h6125_hardware_family_supported(coordinator.hw_version):
             ir.async_create_issue(
                 hass,
                 DOMAIN,
@@ -256,13 +248,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
                 translation_placeholders={
                     "model": model,
                     "firmware": coordinator.fw_version or "unknown",
-                    "minimum_firmware": profile.minimum_firmware or "any",
                     "hardware": coordinator.hw_version or "unknown",
-                    "minimum_hardware": profile.minimum_hardware or "any",
                 },
             )
             await coordinator.disconnect()
             return False
+        if coordinator.supports_brightness:
+            try:
+                brightness_refreshed = await coordinator.refresh_state(refresh_brightness=True)
+            except (BleakError, TimeoutError) as err:
+                await coordinator.disconnect()
+                raise ConfigEntryNotReady("H6125 brightness query could not connect") from err
+            if not brightness_refreshed:
+                await coordinator.disconnect()
+                raise ConfigEntryNotReady("H6125 did not report its brightness register")
     ir.async_delete_issue(hass, DOMAIN, version_issue_id)
     entry.runtime_data = coordinator
     if effect_backend := get_effect_backend(hass):
