@@ -13,6 +13,8 @@ from .effect_domain import (
 )
 from .effect_storage import LibrarySnapshot
 
+_H617X_MODELS = frozenset({"H617A", "H617E"})
+
 
 def item_summary(item: LibraryItem) -> dict[str, Any]:
     content = effect_content_to_dict(item.content)
@@ -42,6 +44,9 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
     )
     if isinstance(model, str) and resolve_model(model) is not None:
         summary["model"] = model
+    elif kind in {"h617a_painted", "h617a_single", "h617a_multi"}:
+        hinted_model = item.target_hint.model if item.target_hint is not None else None
+        summary["model"] = hinted_model if hinted_model in _H617X_MODELS else "H617A"
     elif kind in {"scene_builtin", "scene_palette", "scene_layered"}:
         template = content.get("template")
         sku = template.get("sku") if isinstance(template, dict) else None

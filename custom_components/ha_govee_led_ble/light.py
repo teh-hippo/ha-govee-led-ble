@@ -47,7 +47,7 @@ from .coordinator import GoveeBLECoordinator
 from .coordinator_status import ParsedMode
 from .effect_backend import EffectBackend
 from .effect_compiler import CompiledMusicProfile, CompiledVideoProfile, compile_application
-from .effect_contracts import CapabilityWorkflow, require_effect_route
+from .effect_contracts import CapabilityWorkflow, require_effect_route, supports_scene_editing
 from .effect_deployments import DeploymentRecord
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
 from .effect_domain import EffectValidationError, LibraryItem, VideoProfile, effect_content_to_dict
@@ -70,7 +70,7 @@ from .effect_storage import (
     LibrarySnapshot,
 )
 from .entity import GoveeBLEEntity
-from .generated_protocol_adapter import build_brightness, build_power
+from .generated_protocol_adapter import build_power
 from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
 from .light_services import (
     _GoveeLightServicesMixin,
@@ -512,7 +512,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 restored_kelvin is not None
                 and coordinator.segment_colors
                 and len(set(coordinator.segment_colors)) == 1
-                and coordinator.segment_colors[0] == kelvin_to_rgb(restored_kelvin)
+                and coordinator.segment_colors[0] == kelvin_to_rgb(restored_kelvin, coordinator.model)
             ):
                 coordinator.color_temp_kelvin = restored_kelvin
                 coordinator.color_temp_kelvin_source = "restored"
@@ -654,7 +654,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     selected.value,
                     scene,
                 )
-                if self._effect_backend is not None and self._config_entry_id is not None
+                if (
+                    supports_scene_editing(coordinator.model)
+                    and self._effect_backend is not None
+                    and self._config_entry_id is not None
+                )
                 else None
             )
             build_native_scene_packets(
@@ -732,7 +736,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             if coordinator.color_temp_kelvin is not None:
                 packet = build_color_temp(coordinator.color_temp_kelvin, coordinator.model)
                 self._attr_color_mode = ColorMode.COLOR_TEMP
-                colour = kelvin_to_rgb(coordinator.color_temp_kelvin)
+                colour = kelvin_to_rgb(coordinator.color_temp_kelvin, coordinator.model)
             else:
                 packet = build_color_rgb(*coordinator.rgb_color, coordinator.model)
                 self._attr_color_mode = ColorMode.RGB
@@ -955,7 +959,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
 
                 async def apply_brightness() -> None:
-                    await send(build_brightness(pct, self.coordinator.model))
+                    await send(self.coordinator.build_brightness_command(pct))
 
                 await apply_brightness()
                 self.coordinator.brightness_pct = pct
@@ -994,7 +998,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 with self._rollback():
                     self.coordinator.install_static_color(kelvin=kelvin)
                     self.coordinator.mark_segment_state_optimistic(
-                        colours=[kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors),
+                        colours=[kelvin_to_rgb(kelvin, self.coordinator.model)]
+                        * len(self.coordinator.segment_colors),
                     )
                     self._attr_color_mode = ColorMode.COLOR_TEMP
                     self.coordinator._enter_static_mode()

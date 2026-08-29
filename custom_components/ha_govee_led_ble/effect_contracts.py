@@ -166,6 +166,17 @@ def _capability(
 
 _RELEASE_CAPABILITY_BASE: Final = (
     _capability(
+        "H6125",
+        CapabilityWorkflow.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        ApplicationRoute.STUDIO_SCENE_APPLY,
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
         "H617A",
         CapabilityWorkflow.NATIVE_SCENES,
         "Scenes",
@@ -356,6 +367,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6125"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
@@ -436,6 +448,13 @@ def studio_apply_capability_state(model: str, workflow: CapabilityWorkflow) -> C
     }:
         return CapabilityState.UNSUPPORTED
     return CapabilityState.SUPPORTED
+
+
+def supports_scene_editing(model: str) -> bool:
+    return any(
+        studio_apply_capability_state(model, workflow) is CapabilityState.SUPPORTED
+        for workflow in (CapabilityWorkflow.EDITED_PALETTE_SCENES, CapabilityWorkflow.LAYERED_SCENES)
+    )
 
 
 @dataclass(frozen=True, slots=True)

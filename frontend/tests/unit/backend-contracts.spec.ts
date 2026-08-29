@@ -50,13 +50,14 @@ test("canonical backend responses decode through the production validators", () 
   expect(isCompatibleEditorInfo(info)).toBe(true);
   const devices = decodeDevices(responses.devices);
   expect(devices.map((device) => device.model)).toEqual([
+    "H6125",
     "H617A",
     "H617E",
     "H6199",
   ]);
-  expect(devices[0].light_entity_id).toBe("light.h617a_main");
-  expect(devices[1].light_entity_id).toBeNull();
-  expect(devices[0].active_state?.active_effect?.observable_signature).toBe(
+  expect(devices[0].light_entity_id).toBeNull();
+  expect(devices[1].light_entity_id).toBe("light.h617a_main");
+  expect(devices[1].active_state?.active_effect?.observable_signature).toBe(
     "custom:800",
   );
   expect(decodeCustomCatalogue(responses.custom_catalogue).models).toHaveProperty(

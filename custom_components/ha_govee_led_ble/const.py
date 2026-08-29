@@ -11,6 +11,8 @@ from .music_semantics import H617A_MUSIC_VARIANTS, MusicVariant
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
+CONF_PACT_TYPE = "pact_type"
+CONF_PACT_CODE = "pact_code"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
@@ -114,8 +116,11 @@ class ModelProfile:
     supports_color_temperature: bool = False
     min_color_temp_kelvin: int = 2000
     max_color_temp_kelvin: int = 9000
-    supports_custom_effects: bool = False
+    query_color_mode_for_diagnostics: bool = False
     supports_scenes: bool = False
+    supports_scene_editing: bool = False
+    supports_custom_effects: bool = False
+    supports_h617a_custom_effects: bool = False
     supports_video_mode: bool = False
     video_modes: tuple[str, ...] = ()
     supports_video_capture_region: bool = False
@@ -123,6 +128,7 @@ class ModelProfile:
     supports_video_sound_effects: bool = False
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
+    supports_workshop_effects: bool = False
     supports_white_balance: bool = False
     video_white_balance_default: int = 17
     video_white_balance_representation: str = "position"
@@ -147,6 +153,8 @@ class ModelProfile:
     segment_group_size: int = 0
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
+    minimum_firmware: str | None = None
+    minimum_hardware: str | None = None
     scene_catalogue_sku: str | None = None
     legacy_scene_catalogue_sku: str | None = None
     advanced_scene_carrier: tuple[int, int] | None = None
@@ -306,6 +314,7 @@ _H617A_PROFILE = ModelProfile(
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
+    supports_workshop_effects=True,
     whole_device_mask=0x7FFF,
     # H617A and H617E expose fifteen segments through five explicit aa a5 query groups of three.
     # Segment writes ACK normally but do not publish updated groups without those queries.
@@ -350,6 +359,37 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H617E",
         legacy_scene_catalogue_sku="H617A",
         advanced_scene_carrier=(29884, 41599),
+    ),
+    "H6125": ModelProfile(
+        "H6125 LED Strip",
+        command_grammar="H617A",
+        status_grammar="H617A",
+        effect_grammar="H617A",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        query_color_mode_for_diagnostics=True,
+        supports_scenes=True,
+        whole_device_mask=0x7FFF,
+        segment_count=15,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        connection_idle_timeout=3.0,
+        minimum_firmware="1.06.00",
+        minimum_hardware="1.00.03",
+        scene_catalogue_sku="H6125",
+        effect_readback="write_completed",
     ),
     "H6076": ModelProfile(
         "H6076 Lyra Floor Lamp",
@@ -404,8 +444,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         supports_rgb=True,
         supports_color_temperature=True,
-        supports_custom_effects=True,
         supports_scenes=True,
+        supports_scene_editing=True,
+        supports_custom_effects=True,
         supports_video_mode=True,
         video_modes=("movie", "game"),
         supports_video_capture_region=True,
@@ -423,6 +464,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_max=100,
         supports_music_color=True,
         supports_advanced_effects=True,
+        supports_workshop_effects=True,
         whole_device_mask=0x7FFF,
         # Static readback identifies the mode but exposes rendered colour only through segment
         # queries. Kelvin remains last-known while its RGB companion matches.
@@ -534,6 +576,22 @@ def default_effect_families(model: str) -> frozenset[str]:
     supported = supported_effect_families(model)
     requested = profile.default_effect_families_override
     return supported if requested is None else requested & supported
+
+
+def version_at_least(current: str, minimum: str) -> bool:
+    current_parts = _version_parts(current)
+    minimum_parts = _version_parts(minimum)
+    if current_parts is None or minimum_parts is None:
+        return False
+    width = max(len(current_parts), len(minimum_parts))
+    return current_parts + (0,) * (width - len(current_parts)) >= minimum_parts + (0,) * (width - len(minimum_parts))
+
+
+def _version_parts(value: str) -> tuple[int, ...] | None:
+    parts = value.strip().split(".")
+    if not parts or any(not part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:

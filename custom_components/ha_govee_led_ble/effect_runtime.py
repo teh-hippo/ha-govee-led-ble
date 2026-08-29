@@ -661,6 +661,11 @@ class EffectDeploymentEngine:
             return await self._async_verify_profile(coordinator, compiled, record)
         if compiled.activation_packet is None:
             raise RuntimeError("compiled activation verification has no activation packet")
+        if compiled.activation_mode is ActivationMode.SCENE and not coordinator.profile.supports_color_mode_readback:
+            coordinator.effect = compiled.expected_effect
+            coordinator.diy_code = None
+            coordinator.music_mode = coordinator.video_mode = "off"
+            return True, ObservationConfidence.WRITE_COMPLETED, record
         current = record
         for attempt in range(VERIFICATION_ATTEMPTS):
             # Suppressed or missing readback does not spend an activation retry.
@@ -1050,7 +1055,7 @@ class EffectDeploymentEngine:
             confidence = matched_record.verification_confidence if verified_now else ObservationConfidence.MODE_MATCH
         elif diy_code is not None or effect is not None or scene_code is not None:
             confidence = (
-                ObservationConfidence.ACTIVATION_MATCH if matched_record is not None else ObservationConfidence.UNKNOWN
+                matched_record.verification_confidence if matched_record is not None else ObservationConfidence.UNKNOWN
             )
         elif mode in {"music", "video"}:
             confidence = ObservationConfidence.UNKNOWN

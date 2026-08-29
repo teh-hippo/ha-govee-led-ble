@@ -98,6 +98,9 @@ export class GoveeSceneBrowser extends LitElement {
   @property({ type: Boolean })
   public stateUpdatesAvailable = true;
 
+  @property({ type: Boolean })
+  public sceneEditingEnabled = true;
+
   @property({ attribute: false })
   public requestTransition?: (
     transition: () => void | Promise<void>,
@@ -454,19 +457,21 @@ export class GoveeSceneBrowser extends LitElement {
               `
             : nothing}
           ${nativeSelection
-            ? nativeSceneActions(
-                this.workflow.sceneCatalogueDirty,
-                this.workflow.sceneDefaultDirty,
-                this.autoSaveEnabled,
-                this.autoSaveFailed || state.defaultSaveFailed,
-                this.liveApplyEnabled,
-                this.workflow.defaultWritePending,
-              )
-                .filter(
-                  (action) =>
-                    action.id !== "edit" || scene.scene_type === 2,
+            ? this.sceneEditingEnabled
+              ? nativeSceneActions(
+                  this.workflow.sceneCatalogueDirty,
+                  this.workflow.sceneDefaultDirty,
+                  this.autoSaveEnabled,
+                  this.autoSaveFailed || state.defaultSaveFailed,
+                  this.liveApplyEnabled,
+                  this.workflow.defaultWritePending,
                 )
-                .map((action) => this.renderNativeAction(action))
+                  .filter(
+                    (action) =>
+                      action.id !== "edit" || scene.scene_type === 2,
+                  )
+                  .map((action) => this.renderNativeAction(action))
+              : nothing
             : html`
                 ${state.selectedItem
                   ? html`

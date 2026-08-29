@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
@@ -13,7 +14,7 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES, get_profile
+from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_SCENES, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
@@ -51,9 +52,14 @@ from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewShutdownError,
     PreviewStatus,
     PreviewWriteDisposition,
+    _confirmed_confidence,
+    _verification_expectations,
 )
 from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
-from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
+from custom_components.ha_govee_led_ble.effect_scene_defaults import (
+    NativeSceneDefault,
+    NativeSceneDefaultRepository,
+)
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
@@ -72,12 +78,27 @@ def _item(name: str, speed: int = 50) -> LibraryItem:
     return LibraryItem.new(name, SingleEffect(0, 0, speed, ((255, 0, 0),)))
 
 
-def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNamespace:
+def _coordinator(
+    *,
+    model: str = "H617A",
+    readable: bool = False,
+    mode_readback: bool | None = None,
+) -> SimpleNamespace:
+    profile = (
+        get_profile(model)
+        if readable
+        else replace(get_profile(model), read_domains=frozenset(), setup_required_read_domains=frozenset())
+    )
+    if mode_readback is not None and profile.supports_color_mode_readback != mode_readback:
+        read_domains = (
+            profile.read_domains | {ReadDomain.COLOUR_MODE}
+            if mode_readback
+            else profile.read_domains - {ReadDomain.COLOUR_MODE, ReadDomain.MODE}
+        )
+        profile = replace(profile, read_domains=frozenset(read_domains))
     coordinator = SimpleNamespace(
         model=model,
-        profile=get_profile(model)
-        if readable
-        else replace(get_profile(model), read_domains=frozenset(), setup_required_read_domains=frozenset()),
+        profile=profile,
         effect_families={EFFECT_FAMILY_SCENES},
         _control_lock=asyncio.Lock(),
         is_on=False,
@@ -174,6 +195,14 @@ def _open(manager: EffectPreviewManager, owner: object, events: list[PreviewStat
         listener=events.append,
     )
     return session_id
+
+
+def test_h6125_scene_preview_verifies_power_without_claiming_scene_readback() -> None:
+    coordinator = _coordinator(model="H6125", readable=True, mode_readback=False)
+    request = SimpleNamespace(scene=SimpleNamespace(key="sunrise"))
+
+    assert _verification_expectations(coordinator, request, None) == {"is_on": True}
+    assert _confirmed_confidence(request, None, coordinator) is ObservationConfidence.WRITE_COMPLETED
 
 
 async def test_worker_preflights_all_but_writes_only_newest_pending_request(
@@ -545,6 +574,75 @@ async def test_ambiguous_h617e_legacy_scene_preview_requires_code_and_canonical_
         "scene_code": legacy.code,
         "effect": "aurora-a",
     }
+    await manager.async_shutdown()
+
+
+async def test_h6125_scene_preview_ignores_existing_edited_default(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(model="H6125")
+    applied: list[bytes | None] = []
+
+    async def apply_scene(
+        _scene_name,
+        *,
+        scene_entry,
+        speed_index,
+        canonical_body,
+        before_write,
+        verify,
+        intent,
+    ):
+        assert scene_entry is scene
+        assert speed_index is None
+        assert verify is False
+        assert intent is ControlIntent.PREVIEW
+        applied.append(canonical_body)
+        await before_write()
+        await coordinator.async_preview_write(b"scene")
+
+    coordinator.async_apply_native_scene = AsyncMock(side_effect=apply_scene)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    scene = next(entry for entry in SCENE_ENTRIES["H6125"] if entry.scene_type == 2)
+    await manager._scene_defaults.async_set(
+        NativeSceneDefault(
+            config_entry_id="entry-a",
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            updated_at="2026-08-17T00:00:00Z",
+            canonical_body=b"\xff",
+            speed_index=None,
+        )
+    )
+
+    await manager.async_queue_scene(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:01Z",
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        speed_index=None,
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert applied == [base64.b64decode(scene.param, validate=True)]
+    with pytest.raises(PreviewError, match="edited native scenes are not supported"):
+        await manager.async_queue_scene(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=2,
+            updated_at="2026-08-17T00:00:02Z",
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            speed_index=None,
+            persist_default=True,
+        )
     await manager.async_shutdown()
 
 

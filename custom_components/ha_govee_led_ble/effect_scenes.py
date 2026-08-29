@@ -11,7 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import get_profile
-from .effect_contracts import CapabilityWorkflow, require_effect_route
+from .effect_contracts import CapabilityWorkflow, require_effect_route, supports_scene_editing
 from .effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -230,7 +230,7 @@ async def async_apply_scene(
             resolved.key,
             resolved.entry,
         )
-        if scene_defaults
+        if scene_defaults and supports_scene_editing(coordinator.model)
         else None
     )
     canonical_body, resolved_speed = resolve_scene_application_body(
@@ -250,6 +250,7 @@ async def async_apply_scene(
         scene_entry=resolved.entry,
         speed_index=resolved_speed,
         canonical_body=canonical_body or None,
+        verify=get_profile(coordinator.model).supports_color_mode_readback,
     )
     return resolved, resolved_speed
 
@@ -281,6 +282,8 @@ async def async_set_scene_default(
     parsed = effect_content_from_dict(content)
     _validate_scene_content_identity(coordinator.model, resolved.entry, parsed)
     if isinstance(parsed, PaletteScene | LayeredScene):
+        if not supports_scene_editing(coordinator.model):
+            raise ValueError(f"edited native scenes are not supported on {coordinator.model}")
         canonical_body, resolved_speed = encode_authored_scene_body(parsed, resolved.entry)
     else:
         assert isinstance(parsed, BuiltinScene)

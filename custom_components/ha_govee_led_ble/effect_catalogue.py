@@ -88,7 +88,7 @@ class DiyEffectFamily:
     variations: tuple[DiyEffectVariation, ...]
     supports_multi: bool
     rate: str = "speed"
-    source_reference: str = "GoveeHome V7.5.30 dreamcolorlightv1.adjust.Diy"
+    source_reference: str = "tools/ble/kaitai/diy_type04.ksy"
     category: str = "single_layer"
     rate_min: int = 0
     rate_max: int = 100
@@ -271,10 +271,7 @@ class ModelEffectCatalogue:
         }
 
 
-# GoveeHome V7.5.30 exposes these basic Type04 families through
-# dreamcolorlightv1.adjust.Diy.e(), with the same base roster retained by later
-# revisions.  The family and variation bytes use the structure defined by
-# diy_type04.ksy.
+# These family and variation bytes use the capture-backed structure in diy_type04.ksy.
 H617A_TYPE04_FAMILIES: Final = (
     DiyEffectFamily(
         "fade",
@@ -712,6 +709,27 @@ WORKSHOP_PROTOCOL_FIXTURES: Final = (
 )
 
 MODEL_EFFECT_CATALOGUES: Final = {
+    "H6125": ModelEffectCatalogue(
+        sku="H6125",
+        painted_effects=(),
+        effects=(),
+        music_modes=(),
+        video_modes=(),
+        templates=(),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6125", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6125", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6125", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H6125", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6125", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6125", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6125", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6125", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
     "H617A": ModelEffectCatalogue(
         sku="H617A",
         painted_effects=H617A_PAINTED_EFFECTS,

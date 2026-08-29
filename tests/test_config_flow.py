@@ -14,6 +14,8 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_CATEGORIES,
     CONF_MODEL,
+    CONF_PACT_CODE,
+    CONF_PACT_TYPE,
     CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
     model_from_ble_name,
@@ -21,6 +23,15 @@ from custom_components.ha_govee_led_ble.const import (
 
 M = "custom_components.ha_govee_led_ble.config_flow"
 SVC = BluetoothServiceInfo("ihoment_H617A_ABCD", "AA:BB:CC:DD:EE:FF", -60, {}, {}, [], "local")
+SVC_H6125 = BluetoothServiceInfo(
+    "ihoment_H6125_ABCD",
+    "22:33:44:55:66:77",
+    -60,
+    {0x8801: b"\xec\x00\x0a\x01"},
+    {},
+    [],
+    "local",
+)
 SVC_LOWER = BluetoothServiceInfo("ihoment_H617A_ABCD", "aa:bb:cc:dd:ee:ff", -60, {}, {}, [], "local")
 SVC_H617E = BluetoothServiceInfo("Govee_H617E_ABCD", "22:33:44:55:66:77", -60, {}, {}, [], "local")
 SVC_H6076 = BluetoothServiceInfo("Govee_H6076_ABCD", "33:44:55:66:77:88", -60, {}, {}, [], "local")
@@ -66,6 +77,18 @@ async def test_bluetooth_discovery_h6076(hass: HomeAssistant, mock_manual_valida
     assert created["type"] is FlowResultType.CREATE_ENTRY
     assert created["data"] == {CONF_MODEL: "H6076"}
     mock_manual_validation.assert_not_awaited()
+
+
+async def test_h6125_bluetooth_discovery_retains_only_numeric_pact_metadata(hass: HomeAssistant):
+    result = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_H6125)
+    result = await _confirm(hass, result)
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_MODEL: "H6125",
+        CONF_PACT_TYPE: 10,
+        CONF_PACT_CODE: 1,
+    }
 
 
 async def test_bluetooth_discovery_unsupported_aborts(hass: HomeAssistant):
@@ -244,6 +267,10 @@ async def test_user_step_requires_explicit_model(hass: HomeAssistant):
 
 
 _EM = [("SomeOtherDevice", None), ("Govee_H9999_ABCD", None), ("", None), ("ihoment_H617A_ABCD", "H617A")]
+_EM += [
+    ("ihoment_H6125_ABCD", "H6125"),
+    ("GBK_H6125_ABCD", "H6125"),
+]
 _EM += [("Govee_H617A_ABCD", "H617A"), ("GBK_H617A_ABCD", "H617A"), ("GVH_H617A_ABCD", "H617A")]
 _EM += [
     ("ihoment_H617E_ABCD", "H617E"),
@@ -269,6 +296,7 @@ def test_extract_model(name, expected):
 @pytest.mark.parametrize(
     ("model", "expected"),
     [
+        ("H6125", ["scenes"]),
         ("H617A", ["scenes", "effects", "multi_layered", "reactive", "advanced"]),
         ("H6199", ["video", "scenes", "effects", "reactive", "advanced"]),
     ],

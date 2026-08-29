@@ -260,6 +260,16 @@ function installH6199Catalogue(model: PanelModel): void {
     schema_version: 10,
     sku: "H617A",
     models: {
+      H6125: {
+        ...catalogue,
+        sku: "H6125",
+        painted_effects: [],
+        effects: [],
+        music_modes: [],
+        video_modes: [],
+        templates: [],
+        workshop_templates: [],
+      },
       H617A: { ...catalogue, sku: "H617A" },
       H617E: { ...catalogue, sku: "H617E" },
       H6199: catalogue,
