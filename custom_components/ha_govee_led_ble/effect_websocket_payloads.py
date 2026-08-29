@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .const import protocol_model
+from .const import MODEL_PROFILES
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
     BuiltinScene,
@@ -12,6 +12,9 @@ from .effect_domain import (
     effect_content_to_dict,
 )
 from .effect_storage import LibrarySnapshot
+
+_KNOWN_MODELS = frozenset(MODEL_PROFILES)
+_H617X_MODELS = frozenset({"H617A", "H617E"})
 
 
 def item_summary(item: LibraryItem) -> dict[str, Any]:
@@ -40,16 +43,16 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         }
         else None
     )
-    if model in {"H617A", "H617E", "H6199"}:
+    if model in _KNOWN_MODELS:
         summary["model"] = model
     elif kind in {"h617a_painted", "h617a_single", "h617a_multi"}:
         hinted_model = item.target_hint.model if item.target_hint is not None else None
-        summary["model"] = hinted_model if protocol_model(hinted_model or "") == "H617A" else "H617A"
+        summary["model"] = hinted_model if hinted_model in _H617X_MODELS else "H617A"
     elif kind in {"scene_builtin", "scene_palette", "scene_layered"}:
         template = content.get("template")
-        if isinstance(template, dict) and template.get("sku") in {"H617A", "H617E", "H6199"}:
+        if isinstance(template, dict) and template.get("sku") in _KNOWN_MODELS:
             summary["model"] = template["sku"]
-    elif item.target_hint is not None and item.target_hint.model in {"H617A", "H617E", "H6199"}:
+    elif item.target_hint is not None and item.target_hint.model in _KNOWN_MODELS:
         summary["model"] = item.target_hint.model
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene):
         summary["template"] = content["template"]

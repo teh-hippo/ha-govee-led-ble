@@ -61,7 +61,7 @@ from .effect_storage import (
     LibrarySnapshot,
 )
 from .entity import GoveeBLEEntity
-from .generated_protocol_adapter import build_brightness, build_power
+from .generated_protocol_adapter import build_power
 from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
 from .light_services import (
     _GoveeLightServicesMixin,
@@ -445,7 +445,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 restored_kelvin is not None
                 and coordinator.segment_colors
                 and len(set(coordinator.segment_colors)) == 1
-                and coordinator.segment_colors[0] == kelvin_to_rgb(restored_kelvin)
+                and coordinator.segment_colors[0] == kelvin_to_rgb(restored_kelvin, coordinator.model)
             ):
                 coordinator.color_temp_kelvin = restored_kelvin
                 self._attr_color_mode = restored_mode
@@ -570,7 +570,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
                 self._attr_color_mode = ColorMode.COLOR_TEMP
                 coordinator.mark_segment_state_optimistic(
-                    colours=[kelvin_to_rgb(coordinator.color_temp_kelvin)] * len(coordinator.segment_colors),
+                    colours=[kelvin_to_rgb(coordinator.color_temp_kelvin, coordinator.model)]
+                    * len(coordinator.segment_colors),
                 )
             else:
                 await coordinator.send_command(
@@ -603,7 +604,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     scene.scene_id,
                     scene.effect_id,
                 )
-                if self._effect_backend is not None and self._config_entry_id is not None
+                if (
+                    coordinator.profile.supports_scene_editing
+                    and self._effect_backend is not None
+                    and self._config_entry_id is not None
+                )
                 else None
             )
             await coordinator._async_apply_native_scene_locked(
@@ -826,7 +831,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
 
                 async def apply_brightness() -> None:
-                    await self.coordinator.send_command(build_brightness(pct, self.coordinator.model))
+                    await self.coordinator.send_command(self.coordinator.build_brightness_command(pct))
 
                 await apply_brightness()
                 self.coordinator.brightness_pct = pct
@@ -856,7 +861,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 await self.coordinator.send_command(build_color_temp(kelvin, self.coordinator.model))
                 self.coordinator.color_temp_kelvin = kelvin
                 self.coordinator.mark_segment_state_optimistic(
-                    colours=[kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors),
+                    colours=[kelvin_to_rgb(kelvin, self.coordinator.model)] * len(self.coordinator.segment_colors),
                 )
                 self._attr_color_mode = ColorMode.COLOR_TEMP
                 self.coordinator._enter_static_mode()

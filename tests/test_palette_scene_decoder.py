@@ -92,7 +92,7 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
     fixtures = 0
 
     assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
-    for sku in ("H617A", "H6199"):
+    for sku in ("H6125", "H617A", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != 1:
@@ -103,11 +103,12 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
             assert encode_palette_scene(decoded) == raw_param
             fixtures += 1
 
-    assert fixtures == 4
+    assert fixtures == 6
 
 
 def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
-    for model, entries in SCENE_ENTRIES.items():
+    for model in ("H617A", "H617E", "H6199"):
+        entries = SCENE_ENTRIES[model]
         entry = next(scene for scene in entries if scene.scene_type == 1)
         decoded = decode_catalogue_palette_scene(model, entry)
         assert decoded is not None
@@ -118,6 +119,15 @@ def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
         assert compiled.activation_mode is ActivationMode.SCENE
         assert compiled.packets == tuple(expected)
         assert compiled.evidence_codes == ("scene_payload_readback_unavailable",)
+
+
+def test_h6125_palette_scene_editing_stays_disabled_until_hardware_validation() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H6125"] if scene.scene_type == 1)
+    decoded = decode_catalogue_palette_scene("H6125", entry)
+
+    assert decoded is not None
+    with pytest.raises(ValueError, match="edited native scenes are not supported"):
+        compile_effect(LibraryItem.new("Palette scene", decoded), "H6125")
 
 
 def test_edited_palette_scene_compiles_authored_definition_not_catalogue_bytes() -> None:

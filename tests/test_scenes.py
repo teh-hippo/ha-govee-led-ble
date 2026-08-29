@@ -64,9 +64,13 @@ def test_scene_type_prefix():
 
 
 def test_per_model_snapshots_preserve_vendor_identity():
+    assert len(SCENE_ENTRIES["H6125"]) == 240
     assert len(SCENE_ENTRIES["H617A"]) == 83
     assert len(SCENE_ENTRIES["H6199"]) == 240
+    assert len({(scene.scene_id, scene.effect_id) for scene in SCENE_ENTRIES["H6125"]}) == 240
     assert len({(scene.scene_id, scene.effect_id) for scene in SCENE_ENTRIES["H6199"]}) == 240
+    assert MODEL_SCENES["H6125"]["universe-a"].effect_id == 6355
+    assert MODEL_SCENES["H6125"]["universe-a"].param != MODEL_SCENES["H6199"]["universe-a"].param
     assert MODEL_SCENES["H6199"]["dracarys"].category == "House of the Dragon"
     assert MODEL_SCENES["H6199"]["green reign"].code == 16183
     assert MODEL_SCENES["H6199"]["fire & blood"].code == 16184
@@ -202,6 +206,7 @@ def test_scene_speed_capability_matches_physical_model_behaviour():
     glacier = SCENES["glacier"]
     assert glacier.speed is not None
     assert glacier.speed.pages[0].move_in == (237, 244, 250)
+    assert all(entry.speed is None for entry in SCENE_ENTRIES["H6125"])
     assert all(entry.speed is None for entry in SCENE_ENTRIES["H6199"])
 
 
@@ -210,7 +215,7 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
     record_count = 0
 
     assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
-    for sku in ("H617A", "H6199"):
+    for sku in ("H6125", "H617A", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != int(SceneBody.SceneType.scene_v2):
@@ -231,8 +236,8 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
             scene_counts[sku] += 1
             record_count += len(parsed.records)
 
-    assert scene_counts == {"H617A": 72, "H6199": 226}
-    assert record_count == 863
+    assert scene_counts == {"H6125": 226, "H617A": 72, "H6199": 226}
+    assert record_count == 1535
 
 
 @pytest.mark.parametrize("raw_param", [bytearray(b"\x00"), memoryview(b"\x00"), "\x00"])

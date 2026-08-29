@@ -6,7 +6,7 @@ export interface JsonObject {
 }
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
-export type ModelSku = "H617A" | "H617E" | "H6199";
+export type ModelSku = "H6125" | "H617A" | "H617E" | "H6199";
 export type ObservationConfidence =
   | "exact_session"
   | "activation_match"
@@ -349,7 +349,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 8;
+  schema_version: 9;
   sku: "H617A";
   models: Record<ModelSku, ModelEffectCatalogue>;
 }

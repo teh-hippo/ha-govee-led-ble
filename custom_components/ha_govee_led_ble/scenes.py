@@ -123,7 +123,7 @@ def _load_catalogue(sku: str) -> tuple[SceneEntry, ...]:
     return entries
 
 
-SCENE_ENTRIES: dict[str, tuple[SceneEntry, ...]] = {sku: _load_catalogue(sku) for sku in ("H617A", "H6199")}
+SCENE_ENTRIES: dict[str, tuple[SceneEntry, ...]] = {sku: _load_catalogue(sku) for sku in ("H6125", "H617A", "H6199")}
 SCENE_ENTRIES["H617E"] = SCENE_ENTRIES["H617A"]
 
 

@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.const import (
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 
@@ -26,6 +27,8 @@ def _make_coord(**ov) -> MagicMock:
         address="11:22:33:44:55:66",
         model="H6199",
         profile=MODEL_PROFILES["H6199"],
+        pact_type=None,
+        pact_code=None,
         is_on=True,
         effect="video: movie",
         fw_version=None,
@@ -81,6 +84,7 @@ def _make_coord(**ov) -> MagicMock:
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
     c.send_command = AsyncMock()
+    c.build_brightness_command = MagicMock(side_effect=lambda percent: build_brightness(percent, model))
     c.async_paint_segments = AsyncMock()
     c.async_set_segment_brightness = AsyncMock()
     c.async_refresh_segments = AsyncMock(return_value=True)

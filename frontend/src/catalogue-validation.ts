@@ -58,6 +58,7 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
   "planned",
 ] as const;
 const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = {
+  H6125: ["native_scenes"],
   H617A: [
     "native_scenes",
     "edited_palette_scenes",
@@ -153,6 +154,12 @@ function decodeModelCatalogues(
     }
   }
   return {
+    H6125: decodeModelEffectCatalogue(
+      models.H6125,
+      "catalogue model H6125",
+      "H6125",
+      decodeContent,
+    ),
     H617A: decodeModelEffectCatalogue(
       models.H617A,
       "catalogue model H617A",

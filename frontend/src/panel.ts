@@ -367,6 +367,11 @@ export class GoveeLedEffectStudio extends LitElement {
           .library=${this.model.library}
           .previewStatus=${this.model.previewStatus}
           .stateUpdatesAvailable=${!this.model.stateUpdatesUnavailable}
+          .sceneEditingEnabled=${this.model.modelCatalogue?.workflows.some(
+            (workflow) =>
+              workflow.id === "edited_palette_scenes" ||
+              workflow.id === "layered_scenes",
+          ) ?? false}
           .isAdmin=${this.canMutate}
           .autoSaveEnabled=${this.model.autoSaveEnabled}
           .autoSaveFailed=${this.model.autoSaveFailed}

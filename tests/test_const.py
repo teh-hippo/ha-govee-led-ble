@@ -1,3 +1,5 @@
+import pytest
+
 from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_FAMILIES,
@@ -12,6 +14,8 @@ from custom_components.ha_govee_led_ble.const import (
     prefix_effect_names_from_options,
     protocol_model,
     resolve_model,
+    supported_effect_categories,
+    version_at_least,
     wire_model,
 )
 
@@ -62,6 +66,30 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert protocol_model("H6076") == "H6076"
 
 
+def test_h6125_uses_h617a_wire_format_without_h617a_feature_inheritance():
+    profile = MODEL_PROFILES["H6125"]
+
+    assert profile.state_readable
+    assert not profile.supports_color_mode_readback
+    assert profile.query_color_mode_for_diagnostics
+    assert profile.supports_scenes
+    assert not profile.supports_scene_editing
+    assert not profile.supports_custom_effects
+    assert not profile.supports_h617a_custom_effects
+    assert not profile.supports_music_mode
+    assert not profile.supports_advanced_effects
+    assert not profile.supports_multi_layered_effects
+    assert not profile.supports_workshop_effects
+    assert profile.segment_count == 15
+    assert profile.supports_segments
+    assert profile.connection_idle_timeout == 3.0
+    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2700, 6500)
+    assert (profile.minimum_firmware, profile.minimum_hardware) == ("1.06.00", "1.00.03")
+    assert protocol_model("H6125") == "H6125"
+    assert wire_model("H6125") == "H617A"
+    assert supported_effect_categories("H6125") == ("scenes",)
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments
@@ -69,6 +97,21 @@ def test_unknown_models_fail_closed():
     assert resolve_model("H617A-extra") is None
     assert resolve_model("H9999") is None
     assert wire_model("H9999") is None
+
+
+@pytest.mark.parametrize(
+    ("current", "minimum", "expected"),
+    [
+        ("1.06.00", "1.06.00", True),
+        ("1.6", "1.06.00", True),
+        ("1.06.01", "1.06.00", True),
+        ("1.05.99", "1.06.00", False),
+        ("1.00.03", "1.00.03", True),
+        ("unknown", "1.00.03", False),
+    ],
+)
+def test_version_at_least(current: str, minimum: str, expected: bool):
+    assert version_at_least(current, minimum) is expected
 
 
 def test_effect_family_defaults_and_options():

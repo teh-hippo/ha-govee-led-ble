@@ -147,7 +147,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
         scene_code = int(body.mode_body.scene_id)
         return ParsedColorModeResponse(
             mode=ParsedMode.SCENE,
-            effect=_SCENE_EFFECT_BY_MODEL_ID["H617A"].get(scene_code),
+            effect=_SCENE_EFFECT_BY_MODEL_ID.get(model, {}).get(scene_code),
             scene_code=scene_code,
         )
     if mode_name == "diy":

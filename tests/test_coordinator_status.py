@@ -56,6 +56,19 @@ def test_h617a_colour_modes_preserve_scene_diy_and_music_semantics() -> None:
     assert static.mode is ParsedMode.COLOUR and static.multi_effect_flag == 1
 
 
+def test_h6125_scene_readback_uses_its_own_catalogue() -> None:
+    frame = bytearray([0xAA, 0x05, 0x04, 0xC8, *([0] * 15)])
+    frame.append(xor_checksum(frame))
+    decoded = decode_status_frame(bytes(frame), "H6125")
+    assert decoded is not None
+
+    scene = parse_color_mode(decoded.generated, "H6125")
+
+    assert scene.mode is ParsedMode.SCENE
+    assert scene.effect == "universe-a"
+    assert scene.scene_code == 200
+
+
 def test_h6199_video_and_music_fields_decode() -> None:
     video = _parse_colour("aa050000012a01370000000000000000000000b2", "H6199")
     assert video.mode is ParsedMode.VIDEO and video.video_mode == "game"

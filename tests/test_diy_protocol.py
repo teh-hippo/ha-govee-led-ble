@@ -259,6 +259,18 @@ def test_basic_effect_decoder_rejects_uncatalogued_and_reserved_values() -> None
         decode_a3_effect(h6199, "H6199")
 
 
+def test_h6125_scene_grammar_alias_rejects_h617a_diy_bodies() -> None:
+    envelope = reassemble_a3(
+        compile_h617a(
+            LibraryItem.new("Single", SINGLE_CONTENT),
+            H617A_TYPE04_APPLY_CODE,
+        ).upload_packets
+    )
+
+    with pytest.raises(ValueError, match="H6125 A3 body type 0x04 is not supported"):
+        parse_a3_effect_envelope(envelope, "H6125")
+
+
 @pytest.mark.parametrize("model", ["H617A", "H6199"])
 def test_workshop_upload_tree_reuses_lossless_layered_decoder(model: str) -> None:
     workshop = WORKSHOP_PROTOCOL_FIXTURES[0].content(model)

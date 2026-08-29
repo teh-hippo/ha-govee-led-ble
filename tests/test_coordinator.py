@@ -37,6 +37,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_colour_mode_query,
     build_firmware_query,
     build_h617a_scene,
+    build_h6125_brightness_value,
     build_h6199_blank_screen,
     build_h6199_blank_screen_query,
     build_h6199_relative_brightness_query,
@@ -140,11 +141,73 @@ def limited_readback_coord(hass):
         )
 
 
+@pytest.fixture
+def h6125(hass):
+    return GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:77",
+        "H6125",
+        configuration_url=_CONFIGURATION_URL,
+    )
+
+
 def test_h617x_uses_short_idle_release_without_periodic_polling(coord):
     assert coord.update_interval is None
     with patch(f"{M}.async_call_later") as call_later:
         coord._reset_disconnect_timer()
     assert call_later.call_args.args[1] == 3.0
+
+
+@pytest.mark.parametrize(
+    ("percent", "raw"),
+    [
+        (1, 6),
+        (10, 28),
+        (50, 128),
+        (100, 254),
+    ],
+)
+def test_h6125_telink_brightness_is_scaled_bidirectionally(h6125, percent: int, raw: int):
+    h6125.hw_version = "1.00.04"
+
+    assert h6125._brightness_value_from_percent(percent) == raw
+    assert h6125._brightness_percent_from_value(raw) == percent
+    assert h6125.build_brightness_command(percent) == build_h6125_brightness_value(raw)
+
+
+@pytest.mark.parametrize("hardware", ["2.01.00", "3.00.01"])
+def test_h6125_later_hardware_uses_percentage_brightness(h6125, hardware: str):
+    h6125.hw_version = hardware
+
+    assert h6125._brightness_value_from_percent(50) == 50
+    assert h6125._brightness_percent_from_value(50) == 50
+    assert h6125.build_brightness_command(50) == build_h6125_brightness_value(50)
+
+
+def test_h6125_brightness_requires_hardware_identity(h6125):
+    with pytest.raises(RuntimeError, match="hardware version"):
+        h6125.build_brightness_command(50)
+
+
+async def test_h6125_identity_refresh_waits_for_firmware_and_hardware(h6125):
+    client = MagicMock(is_connected=True)
+
+    async def receive_identity(*_args, **_kwargs):
+        h6125.fw_version = "1.06.00"
+        h6125.hw_version = "1.00.03"
+        return True
+
+    with (
+        patch.object(h6125, "_ensure_connected", new_callable=AsyncMock, return_value=client),
+        patch.object(h6125, "_send_identity_queries", new_callable=AsyncMock) as send,
+        patch.object(h6125, "_wait_for_revisions", side_effect=receive_identity) as wait,
+    ):
+        h6125._client = client
+
+        assert await h6125.async_refresh_identity() is True
+
+    send.assert_awaited_once_with()
+    wait.assert_awaited_once()
 
 
 def test_h6199_retains_default_idle_release_and_polling(h6199):
@@ -364,6 +427,25 @@ async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coor
     send.assert_awaited_once_with(proto.build_h617a_diy_activation(700))
     refresh.assert_awaited_once_with()
     assert coord.diy_code == 700
+
+
+async def test_h6125_does_not_reactivate_an_unvalidated_diy_slot(h6125):
+    state = PriorControlState(
+        mode="custom",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        diy_code=700,
+    )
+
+    with patch.object(h6125, "send_command", new_callable=AsyncMock) as send:
+        recovered = await h6125.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=800,
+        )
+
+    assert recovered is False
+    send.assert_not_awaited()
 
 
 async def test_restore_effect_control_state_reapplies_complete_music_profile(coord):
@@ -1426,6 +1508,49 @@ async def test_h6076_refresh_all_uses_limited_readback_profile(hass):
         patch.object(coordinator, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
     ):
         assert await coordinator.refresh_state(refresh_all=True, timeout=0.02)
+
+
+async def test_h6125_refresh_probes_mode_without_claiming_mode_readback(h6125):
+    h6125.hw_version = "1.00.04"
+    h6125._client = client = _c()
+
+    async def reply(
+        *,
+        query_power: bool,
+        query_brightness: bool,
+        query_color_mode: bool,
+    ) -> bool:
+        if query_power:
+            h6125._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+        if query_brightness:
+            h6125._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [128])))
+        return True
+
+    with (
+        patch.object(h6125, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(h6125, "_send_state_queries", new=AsyncMock(side_effect=reply)) as queries,
+    ):
+        assert await h6125.refresh_state(refresh_all=True) is True
+        queries.assert_awaited_with(query_power=True, query_brightness=True, query_color_mode=True)
+        assert h6125.brightness_pct == 50
+
+        queries.reset_mock()
+        assert await h6125.refresh_state(expected_effect="universe-a") is False
+        queries.assert_not_awaited()
+
+        assert await h6125.refresh_state() is True
+        queries.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False)
+
+
+def test_h6125_unknown_mode_reply_is_retained_for_diagnostics(h6125):
+    frame = proto.build_packet(0xAA, 0x05, [0x0B, 0x01])
+    h6125._last_rx_monotonic = 123.0
+
+    h6125._notify_callback(None, bytearray(frame))
+
+    assert h6125.packet_log[-1]["raw"] == frame.hex()
+    assert h6125.color_mode is None
+    assert h6125._last_rx_monotonic == 123.0
 
 
 async def test_refresh_reply_timeout_starts_after_connection(coord):

@@ -478,6 +478,22 @@ def test_h6199_is_explicitly_incompatible() -> None:
     assert "not supported" in result.reasons[0]
 
 
+def test_h6125_does_not_inherit_h617a_custom_effect_compatibility() -> None:
+    item = LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+    result = compatibility(item, "H6125")
+
+    assert result.state is CompatibilityState.INCOMPATIBLE
+    assert "not supported" in result.reasons[0]
+
+
+def test_h6125_custom_effect_application_fails_before_requesting_a_diy_slot() -> None:
+    item = LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+
+    with pytest.raises(ValueError, match="not supported"):
+        compile_application(item, "H6125")
+
+
 @pytest.mark.parametrize(
     ("item", "model", "reason"),
     [
@@ -649,6 +665,7 @@ def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
 
 def test_editor_contract_reports_first_slice_boundaries() -> None:
     api = EditorApiInfo().to_dict()
+    h6125 = device_effect_capabilities("entry-c", "H6125", "Strip", 15)
     h617a = device_effect_capabilities("entry-a", "H617A", "Test Light", 15)
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
     unknown = device_effect_capabilities("entry-c", "H9999", "Unknown", 0)
@@ -668,6 +685,9 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
             "preview_sequence": MAX_PREVIEW_SEQUENCE,
         },
     }
+    assert h6125.to_dict()["readback"] == "write_completed"
+    assert h6125.painted is CapabilityState.UNSUPPORTED
+    assert h6125.music is CapabilityState.UNSUPPORTED
     assert h617a.painted is CapabilityState.SUPPORTED
     assert h617a.light_entity_id is None
     assert h617a.single is CapabilityState.SUPPORTED

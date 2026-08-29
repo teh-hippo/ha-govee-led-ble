@@ -15,6 +15,7 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | **H617E** | Supported | H617A-compatible controls, scenes, effects and music modes | H617A-compatible profile and physical owner feedback |
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
 | **H6076** | Partial | Confirmed power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) |
+| **H6125** | Experimental | Power, raw-register brightness, RGB, 2700–6500 K colour temperature, state readback, 15 segments and 240 native scenes; scene editing, speed controls, music and custom effects remain unavailable; requires firmware 1.06.00 and hardware 1.00.03 or newer | [#117](https://github.com/teh-hippo/ha-govee-led-ble/issues/117) |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, prerelease and promotion process.
 
@@ -25,6 +26,7 @@ reorder the panel through Home Assistant's sidebar settings.  It provides local,
 
 | Model | Studio surfaces |
 | --- | --- |
+| H6125 | Native scenes |
 | H617A | Scenes, painted segments, single-layer effects, multi-layered effects, reactive music effects and advanced layered effects |
 | H617E | H617A-compatible scenes, effects and reactive music effects |
 | H6199 | Scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |

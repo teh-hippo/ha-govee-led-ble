@@ -245,14 +245,127 @@
       "speed_index": null,
       "template": {
         "catalogue_schema_version": 1,
-        "effect_id": 1073,
-        "scene_id": 1011,
-        "sku": "H617A"
+        "effect_id": 110,
+        "scene_id": 128,
+        "sku": "H6125"
       }
     },
     "scene_layered": {
       "effect": {
         "layers": [
+          {
+            "area": {
+              "start_tenths": 4,
+              "width_tenths": 2
+            },
+            "brightness_gradient": true,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 20,
+                "change_speed": 128,
+                "darkest_retention": 20,
+                "order": 3,
+                "scope_high": 235,
+                "scope_low": 148
+              }
+            ],
+            "colour_retention": 10,
+            "colour_speed": 227,
+            "distribution": {
+              "backwards": false,
+              "method": 2
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 3,
+              "distance": 0,
+              "enabled": true,
+              "enter_exit": false,
+              "speed": 249,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                255,
+                57,
+                7
+              ],
+              [
+                255,
+                75,
+                7
+              ]
+            ],
+            "priority": 0,
+            "selected_movement": {
+              "direction": 3,
+              "distance": 0,
+              "enabled": true,
+              "enter_exit": true,
+              "speed": 247,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 0,
+              "param_2": 1,
+              "type": 0
+            },
+            "unknown_flags": 0
+          },
+          {
+            "area": {
+              "start_tenths": 2,
+              "width_tenths": 2
+            },
+            "brightness_gradient": true,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 20,
+                "change_speed": 128,
+                "darkest_retention": 20,
+                "order": 3,
+                "scope_high": 228,
+                "scope_low": 133
+              }
+            ],
+            "colour_retention": 20,
+            "colour_speed": 128,
+            "distribution": {
+              "backwards": false,
+              "method": 2
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 128,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                255,
+                71,
+                7
+              ]
+            ],
+            "priority": 0,
+            "selected_movement": {
+              "direction": 3,
+              "distance": 0,
+              "enabled": true,
+              "enter_exit": true,
+              "speed": 242,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 0,
+              "param_2": 1,
+              "type": 0
+            },
+            "unknown_flags": 0
+          },
           {
             "area": {
               "start_tenths": 0,
@@ -262,18 +375,18 @@
             "brightness_patterns": [
               {
                 "brightest_retention": 10,
-                "change_speed": 180,
+                "change_speed": 218,
                 "darkest_retention": 10,
-                "order": 1,
-                "scope_high": 255,
-                "scope_low": 25
+                "order": 2,
+                "scope_high": 177,
+                "scope_low": 88
               }
             ],
             "colour_retention": 20,
-            "colour_speed": 200,
+            "colour_speed": 244,
             "distribution": {
               "backwards": false,
-              "method": 2
+              "method": 0
             },
             "excess": "",
             "overall_movement": {
@@ -281,139 +394,55 @@
               "distance": 0,
               "enabled": false,
               "enter_exit": false,
-              "speed": 0,
+              "speed": 128,
               "unknown_flags": 0
             },
             "palette": [
               [
                 255,
-                255,
-                0
-              ],
-              [
-                0,
-                255,
-                255
+                64,
+                7
               ],
               [
                 255,
-                255,
-                255
-              ],
-              [
-                0,
-                255,
-                255
-              ],
-              [
-                148,
-                255,
-                0
+                74,
+                28
               ]
             ],
             "priority": 0,
             "selected_movement": {
               "direction": 0,
-              "distance": 1,
-              "enabled": true,
-              "enter_exit": true,
-              "speed": 150,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 128,
               "unknown_flags": 0
             },
             "selection": {
               "param_1": 0,
-              "param_2": 10,
-              "type": 1
+              "param_2": 1,
+              "type": 0
             },
             "unknown_flags": 0
           },
           {
             "area": {
-              "start_tenths": 0,
-              "width_tenths": 0
-            },
-            "brightness_gradient": true,
-            "brightness_patterns": [
-              {
-                "brightest_retention": 0,
-                "change_speed": 251,
-                "darkest_retention": 0,
-                "order": 1,
-                "scope_high": 255,
-                "scope_low": 20
-              }
-            ],
-            "colour_retention": 10,
-            "colour_speed": 250,
-            "distribution": {
-              "backwards": false,
-              "method": 1
-            },
-            "excess": "",
-            "overall_movement": {
-              "direction": 0,
-              "distance": 0,
-              "enabled": false,
-              "enter_exit": false,
-              "speed": 0,
-              "unknown_flags": 0
-            },
-            "palette": [
-              [
-                4,
-                255,
-                0
-              ],
-              [
-                180,
-                255,
-                0
-              ],
-              [
-                71,
-                255,
-                255
-              ],
-              [
-                227,
-                255,
-                0
-              ]
-            ],
-            "priority": 0,
-            "selected_movement": {
-              "direction": 0,
-              "distance": 0,
-              "enabled": false,
-              "enter_exit": false,
-              "speed": 0,
-              "unknown_flags": 0
-            },
-            "selection": {
-              "param_1": 15,
-              "param_2": 5,
-              "type": 2
-            },
-            "unknown_flags": 0
-          },
-          {
-            "area": {
-              "start_tenths": 0,
-              "width_tenths": 0
+              "start_tenths": 6,
+              "width_tenths": 2
             },
             "brightness_gradient": true,
             "brightness_patterns": [
               {
                 "brightest_retention": 20,
-                "change_speed": 200,
+                "change_speed": 128,
                 "darkest_retention": 20,
-                "order": 1,
-                "scope_high": 255,
-                "scope_low": 5
+                "order": 3,
+                "scope_high": 231,
+                "scope_low": 128
               }
             ],
             "colour_retention": 20,
-            "colour_speed": 238,
+            "colour_speed": 128,
             "distribution": {
               "backwards": false,
               "method": 2
@@ -424,23 +453,23 @@
               "distance": 0,
               "enabled": false,
               "enter_exit": false,
-              "speed": 0,
+              "speed": 128,
               "unknown_flags": 0
             },
             "palette": [
               [
-                0,
                 255,
-                0
+                23,
+                7
               ]
             ],
             "priority": 0,
             "selected_movement": {
-              "direction": 0,
-              "distance": 0,
-              "enabled": false,
-              "enter_exit": false,
-              "speed": 0,
+              "direction": 3,
+              "distance": 1,
+              "enabled": true,
+              "enter_exit": true,
+              "speed": 247,
               "unknown_flags": 0
             },
             "selection": {
@@ -453,13 +482,13 @@
         ]
       },
       "kind": "scene_layered",
-      "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff00140196000000002300020f050201ff1401fb000001fa0a0404ff00b4ff0047ffffe3ff00000000000000001a000000010201ff0501c8141402ee140100ff0000000000000000",
-      "speed_index": 3,
+      "raw_param": "041d240000010201eb940380141402e30a02ff3907ff4b071700f71300f9001a220000010201e4850380141402801401ff47071700f2000080001d000000010201b15802da0a0a00f41402ff4007ff4a1c000080000080001a260000010201e7800380141402801401ff17071701f700008000",
+      "speed_index": null,
       "template": {
         "catalogue_schema_version": 1,
-        "effect_id": 11836,
-        "scene_id": 1013,
-        "sku": "H617A"
+        "effect_id": 41599,
+        "scene_id": 29884,
+        "sku": "H6125"
       },
       "trailing_padding": 0
     },
@@ -549,9 +578,9 @@
       ],
       "template": {
         "catalogue_schema_version": 1,
-        "effect_id": 1103,
-        "scene_id": 1041,
-        "sku": "H617A"
+        "effect_id": 133,
+        "scene_id": 151,
+        "sku": "H6125"
       },
       "trailing_padding": 0
     },
@@ -741,6 +770,42 @@
         "palette_min": 1
       },
       "models": {
+        "H6125": {
+          "apply": {
+            "multi": "unsupported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "unsupported",
+            "workshop": "unsupported"
+          },
+          "effects": [],
+          "limits": {
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1
+          },
+          "music_modes": [],
+          "painted_effects": [],
+          "sku": "H6125",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "unsupported",
+            "workshop": "unsupported"
+          },
+          "templates": [],
+          "video_modes": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            }
+          ],
+          "workshop_templates": []
+        },
         "H617A": {
           "apply": {
             "multi": "supported",
@@ -2725,7 +2790,7 @@
           "label": "Cycle"
         }
       ],
-      "schema_version": 8,
+      "schema_version": 9,
       "sku": "H617A",
       "supports": {
         "advanced": "supported",
@@ -3361,6 +3426,40 @@
     },
     "devices": [
       {
+        "active_state": null,
+        "config_entry_id": "h6125-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "unsupported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "unsupported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H6125 LED Strip",
+        "effect_categories": [
+          "scenes"
+        ],
+        "light_entity_id": null,
+        "model": "H6125",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h6125-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "unsupported",
+          "video": "unsupported"
+        },
+        "readback": "write_completed",
+        "segment_count": 15
+      },
+      {
         "active_state": {
           "active_effect": {
             "confidence": "activation_match",
@@ -3580,10 +3679,10 @@
           "version": 1
         },
         {
-          "content_hash": "57dee8b1b77cd18bed6fb6acfc72fe6dd4171240d46eb88cedfcdef41be74bdb",
+          "content_hash": "3941edfd6eedb5c70daaae0eb785117ff8a4cfe126aaf20b26ecd60390019cf3",
           "id": "00000000-0000-4000-8000-000000000004",
           "kind": "scene_palette",
-          "model": "H617A",
+          "model": "H6125",
           "name": "Canonical palette scene",
           "origin": {
             "kind": "authored",
@@ -3591,9 +3690,9 @@
           },
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 1103,
-            "scene_id": 1041,
-            "sku": "H617A"
+            "effect_id": 133,
+            "scene_id": 151,
+            "sku": "H6125"
           },
           "updated_at": "2026-08-17T00:00:00Z",
           "version": 1
@@ -3616,6 +3715,63 @@
       "write_disposition": "unknown"
     },
     "scene_catalogues": {
+      "H6125": {
+        "categories": [
+          {
+            "id": 2522,
+            "name": "House of the Dragon"
+          },
+          {
+            "id": 5,
+            "name": "Natural"
+          },
+          {
+            "id": 6,
+            "name": "Festival"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "House of the Dragon",
+            "category_id": 2522,
+            "display_name": "Dracarys",
+            "effect_id": 41599,
+            "name": "Dracarys",
+            "parameter_kind": "layers",
+            "scene_id": 29884,
+            "scene_type": 2,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 5,
+            "display_name": "Sunrise",
+            "effect_id": 110,
+            "name": "Sunrise",
+            "parameter_kind": "none",
+            "scene_id": 128,
+            "scene_type": 0,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Festival",
+            "category_id": 6,
+            "display_name": "Halloween-A",
+            "effect_id": 133,
+            "name": "Halloween",
+            "parameter_kind": "palette",
+            "scene_id": 151,
+            "scene_type": 1,
+            "speed": null,
+            "variant": "A"
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H6125"
+      },
       "H617A": {
         "categories": [
           {
@@ -3793,9 +3949,9 @@
           "speed_index": null,
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 1073,
-            "scene_id": 1011,
-            "sku": "H617A"
+            "effect_id": 110,
+            "scene_id": 128,
+            "sku": "H6125"
           }
         },
         "content": {
@@ -3803,20 +3959,20 @@
           "speed_index": null,
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 1073,
-            "scene_id": 1011,
-            "sku": "H617A"
+            "effect_id": 110,
+            "scene_id": 128,
+            "sku": "H6125"
           }
         },
         "has_default": false,
         "scene": {
           "category": "Natural",
-          "category_id": 129,
+          "category_id": 5,
           "display_name": "Sunrise",
-          "effect_id": 1073,
+          "effect_id": 110,
           "name": "Sunrise",
           "parameter_kind": "none",
-          "scene_id": 1011,
+          "scene_id": 128,
           "scene_type": 0,
           "speed": null,
           "variant": ""
@@ -3828,6 +3984,119 @@
             "layers": [
               {
                 "area": {
+                  "start_tenths": 4,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 3,
+                    "scope_high": 235,
+                    "scope_low": 148
+                  }
+                ],
+                "colour_retention": 10,
+                "colour_speed": 227,
+                "distribution": {
+                  "backwards": false,
+                  "method": 2
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 3,
+                  "distance": 0,
+                  "enabled": true,
+                  "enter_exit": false,
+                  "speed": 249,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    57,
+                    7
+                  ],
+                  [
+                    255,
+                    75,
+                    7
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 3,
+                  "distance": 0,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 247,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 1,
+                  "type": 0
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 2,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 3,
+                    "scope_high": 228,
+                    "scope_low": 133
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 2
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    71,
+                    7
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 3,
+                  "distance": 0,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 242,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 1,
+                  "type": 0
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
                   "start_tenths": 0,
                   "width_tenths": 0
                 },
@@ -3835,18 +4104,18 @@
                 "brightness_patterns": [
                   {
                     "brightest_retention": 10,
-                    "change_speed": 180,
+                    "change_speed": 218,
                     "darkest_retention": 10,
-                    "order": 1,
-                    "scope_high": 255,
-                    "scope_low": 25
+                    "order": 2,
+                    "scope_high": 177,
+                    "scope_low": 88
                   }
                 ],
                 "colour_retention": 20,
-                "colour_speed": 200,
+                "colour_speed": 244,
                 "distribution": {
                   "backwards": false,
-                  "method": 2
+                  "method": 0
                 },
                 "excess": "",
                 "overall_movement": {
@@ -3854,139 +4123,55 @@
                   "distance": 0,
                   "enabled": false,
                   "enter_exit": false,
-                  "speed": 0,
+                  "speed": 128,
                   "unknown_flags": 0
                 },
                 "palette": [
                   [
                     255,
-                    255,
-                    0
-                  ],
-                  [
-                    0,
-                    255,
-                    255
+                    64,
+                    7
                   ],
                   [
                     255,
-                    255,
-                    255
-                  ],
-                  [
-                    0,
-                    255,
-                    255
-                  ],
-                  [
-                    148,
-                    255,
-                    0
+                    74,
+                    28
                   ]
                 ],
                 "priority": 0,
                 "selected_movement": {
                   "direction": 0,
-                  "distance": 1,
-                  "enabled": true,
-                  "enter_exit": true,
-                  "speed": 150,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
                   "unknown_flags": 0
                 },
                 "selection": {
                   "param_1": 0,
-                  "param_2": 10,
-                  "type": 1
+                  "param_2": 1,
+                  "type": 0
                 },
                 "unknown_flags": 0
               },
               {
                 "area": {
-                  "start_tenths": 0,
-                  "width_tenths": 0
-                },
-                "brightness_gradient": true,
-                "brightness_patterns": [
-                  {
-                    "brightest_retention": 0,
-                    "change_speed": 251,
-                    "darkest_retention": 0,
-                    "order": 1,
-                    "scope_high": 255,
-                    "scope_low": 20
-                  }
-                ],
-                "colour_retention": 10,
-                "colour_speed": 250,
-                "distribution": {
-                  "backwards": false,
-                  "method": 1
-                },
-                "excess": "",
-                "overall_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 0,
-                  "unknown_flags": 0
-                },
-                "palette": [
-                  [
-                    4,
-                    255,
-                    0
-                  ],
-                  [
-                    180,
-                    255,
-                    0
-                  ],
-                  [
-                    71,
-                    255,
-                    255
-                  ],
-                  [
-                    227,
-                    255,
-                    0
-                  ]
-                ],
-                "priority": 0,
-                "selected_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 0,
-                  "unknown_flags": 0
-                },
-                "selection": {
-                  "param_1": 15,
-                  "param_2": 5,
-                  "type": 2
-                },
-                "unknown_flags": 0
-              },
-              {
-                "area": {
-                  "start_tenths": 0,
-                  "width_tenths": 0
+                  "start_tenths": 6,
+                  "width_tenths": 2
                 },
                 "brightness_gradient": true,
                 "brightness_patterns": [
                   {
                     "brightest_retention": 20,
-                    "change_speed": 200,
+                    "change_speed": 128,
                     "darkest_retention": 20,
-                    "order": 1,
-                    "scope_high": 255,
-                    "scope_low": 5
+                    "order": 3,
+                    "scope_high": 231,
+                    "scope_low": 128
                   }
                 ],
                 "colour_retention": 20,
-                "colour_speed": 238,
+                "colour_speed": 128,
                 "distribution": {
                   "backwards": false,
                   "method": 2
@@ -3997,23 +4182,23 @@
                   "distance": 0,
                   "enabled": false,
                   "enter_exit": false,
-                  "speed": 0,
+                  "speed": 128,
                   "unknown_flags": 0
                 },
                 "palette": [
                   [
-                    0,
                     255,
-                    0
+                    23,
+                    7
                   ]
                 ],
                 "priority": 0,
                 "selected_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 0,
+                  "direction": 3,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 247,
                   "unknown_flags": 0
                 },
                 "selection": {
@@ -4026,13 +4211,13 @@
             ]
           },
           "kind": "scene_layered",
-          "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff00140196000000002300020f050201ff1401fb000001fa0a0404ff00b4ff0047ffffe3ff00000000000000001a000000010201ff0501c8141402ee140100ff0000000000000000",
-          "speed_index": 3,
+          "raw_param": "041d240000010201eb940380141402e30a02ff3907ff4b071700f71300f9001a220000010201e4850380141402801401ff47071700f2000080001d000000010201b15802da0a0a00f41402ff4007ff4a1c000080000080001a260000010201e7800380141402801401ff17071701f700008000",
+          "speed_index": null,
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 11836,
-            "scene_id": 1013,
-            "sku": "H617A"
+            "effect_id": 41599,
+            "scene_id": 29884,
+            "sku": "H6125"
           },
           "trailing_padding": 0
         },
@@ -4041,6 +4226,119 @@
             "layers": [
               {
                 "area": {
+                  "start_tenths": 4,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 3,
+                    "scope_high": 235,
+                    "scope_low": 148
+                  }
+                ],
+                "colour_retention": 10,
+                "colour_speed": 227,
+                "distribution": {
+                  "backwards": false,
+                  "method": 2
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 3,
+                  "distance": 0,
+                  "enabled": true,
+                  "enter_exit": false,
+                  "speed": 249,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    57,
+                    7
+                  ],
+                  [
+                    255,
+                    75,
+                    7
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 3,
+                  "distance": 0,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 247,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 1,
+                  "type": 0
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 2,
+                  "width_tenths": 2
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 20,
+                    "change_speed": 128,
+                    "darkest_retention": 20,
+                    "order": 3,
+                    "scope_high": 228,
+                    "scope_low": 133
+                  }
+                ],
+                "colour_retention": 20,
+                "colour_speed": 128,
+                "distribution": {
+                  "backwards": false,
+                  "method": 2
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    255,
+                    71,
+                    7
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 3,
+                  "distance": 0,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 242,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 0,
+                  "param_2": 1,
+                  "type": 0
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
                   "start_tenths": 0,
                   "width_tenths": 0
                 },
@@ -4048,18 +4346,18 @@
                 "brightness_patterns": [
                   {
                     "brightest_retention": 10,
-                    "change_speed": 180,
+                    "change_speed": 218,
                     "darkest_retention": 10,
-                    "order": 1,
-                    "scope_high": 255,
-                    "scope_low": 25
+                    "order": 2,
+                    "scope_high": 177,
+                    "scope_low": 88
                   }
                 ],
                 "colour_retention": 20,
-                "colour_speed": 200,
+                "colour_speed": 244,
                 "distribution": {
                   "backwards": false,
-                  "method": 2
+                  "method": 0
                 },
                 "excess": "",
                 "overall_movement": {
@@ -4067,139 +4365,55 @@
                   "distance": 0,
                   "enabled": false,
                   "enter_exit": false,
-                  "speed": 0,
+                  "speed": 128,
                   "unknown_flags": 0
                 },
                 "palette": [
                   [
                     255,
-                    255,
-                    0
-                  ],
-                  [
-                    0,
-                    255,
-                    255
+                    64,
+                    7
                   ],
                   [
                     255,
-                    255,
-                    255
-                  ],
-                  [
-                    0,
-                    255,
-                    255
-                  ],
-                  [
-                    148,
-                    255,
-                    0
+                    74,
+                    28
                   ]
                 ],
                 "priority": 0,
                 "selected_movement": {
                   "direction": 0,
-                  "distance": 1,
-                  "enabled": true,
-                  "enter_exit": true,
-                  "speed": 150,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 128,
                   "unknown_flags": 0
                 },
                 "selection": {
                   "param_1": 0,
-                  "param_2": 10,
-                  "type": 1
+                  "param_2": 1,
+                  "type": 0
                 },
                 "unknown_flags": 0
               },
               {
                 "area": {
-                  "start_tenths": 0,
-                  "width_tenths": 0
-                },
-                "brightness_gradient": true,
-                "brightness_patterns": [
-                  {
-                    "brightest_retention": 0,
-                    "change_speed": 251,
-                    "darkest_retention": 0,
-                    "order": 1,
-                    "scope_high": 255,
-                    "scope_low": 20
-                  }
-                ],
-                "colour_retention": 10,
-                "colour_speed": 250,
-                "distribution": {
-                  "backwards": false,
-                  "method": 1
-                },
-                "excess": "",
-                "overall_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 0,
-                  "unknown_flags": 0
-                },
-                "palette": [
-                  [
-                    4,
-                    255,
-                    0
-                  ],
-                  [
-                    180,
-                    255,
-                    0
-                  ],
-                  [
-                    71,
-                    255,
-                    255
-                  ],
-                  [
-                    227,
-                    255,
-                    0
-                  ]
-                ],
-                "priority": 0,
-                "selected_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 0,
-                  "unknown_flags": 0
-                },
-                "selection": {
-                  "param_1": 15,
-                  "param_2": 5,
-                  "type": 2
-                },
-                "unknown_flags": 0
-              },
-              {
-                "area": {
-                  "start_tenths": 0,
-                  "width_tenths": 0
+                  "start_tenths": 6,
+                  "width_tenths": 2
                 },
                 "brightness_gradient": true,
                 "brightness_patterns": [
                   {
                     "brightest_retention": 20,
-                    "change_speed": 200,
+                    "change_speed": 128,
                     "darkest_retention": 20,
-                    "order": 1,
-                    "scope_high": 255,
-                    "scope_low": 5
+                    "order": 3,
+                    "scope_high": 231,
+                    "scope_low": 128
                   }
                 ],
                 "colour_retention": 20,
-                "colour_speed": 238,
+                "colour_speed": 128,
                 "distribution": {
                   "backwards": false,
                   "method": 2
@@ -4210,23 +4424,23 @@
                   "distance": 0,
                   "enabled": false,
                   "enter_exit": false,
-                  "speed": 0,
+                  "speed": 128,
                   "unknown_flags": 0
                 },
                 "palette": [
                   [
-                    0,
                     255,
-                    0
+                    23,
+                    7
                   ]
                 ],
                 "priority": 0,
                 "selected_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 0,
+                  "direction": 3,
+                  "distance": 1,
+                  "enabled": true,
+                  "enter_exit": true,
+                  "speed": 247,
                   "unknown_flags": 0
                 },
                 "selection": {
@@ -4239,30 +4453,27 @@
             ]
           },
           "kind": "scene_layered",
-          "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff00140196000000002300020f050201ff1401fb000001fa0a0404ff00b4ff0047ffffe3ff00000000000000001a000000010201ff0501c8141402ee140100ff0000000000000000",
-          "speed_index": 3,
+          "raw_param": "041d240000010201eb940380141402e30a02ff3907ff4b071700f71300f9001a220000010201e4850380141402801401ff47071700f2000080001d000000010201b15802da0a0a00f41402ff4007ff4a1c000080000080001a260000010201e7800380141402801401ff17071701f700008000",
+          "speed_index": null,
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 11836,
-            "scene_id": 1013,
-            "sku": "H617A"
+            "effect_id": 41599,
+            "scene_id": 29884,
+            "sku": "H6125"
           },
           "trailing_padding": 0
         },
         "has_default": false,
         "scene": {
-          "category": "Natural",
-          "category_id": 129,
-          "display_name": "Forest",
-          "effect_id": 11836,
-          "name": "Forest",
+          "category": "House of the Dragon",
+          "category_id": 2522,
+          "display_name": "Dracarys",
+          "effect_id": 41599,
+          "name": "Dracarys",
           "parameter_kind": "layers",
-          "scene_id": 1013,
+          "scene_id": 29884,
           "scene_type": 2,
-          "speed": {
-            "default_index": 3,
-            "option_count": 4
-          },
+          "speed": null,
           "variant": ""
         }
       },
@@ -4353,9 +4564,9 @@
           ],
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 1103,
-            "scene_id": 1041,
-            "sku": "H617A"
+            "effect_id": 133,
+            "scene_id": 151,
+            "sku": "H6125"
           },
           "trailing_padding": 0
         },
@@ -4445,24 +4656,24 @@
           ],
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 1103,
-            "scene_id": 1041,
-            "sku": "H617A"
+            "effect_id": 133,
+            "scene_id": 151,
+            "sku": "H6125"
           },
           "trailing_padding": 0
         },
         "has_default": false,
         "scene": {
           "category": "Festival",
-          "category_id": 133,
-          "display_name": "Halloween",
-          "effect_id": 1103,
+          "category_id": 6,
+          "display_name": "Halloween-A",
+          "effect_id": 133,
           "name": "Halloween",
           "parameter_kind": "palette",
-          "scene_id": 1041,
+          "scene_id": 151,
           "scene_type": 1,
           "speed": null,
-          "variant": ""
+          "variant": "A"
         }
       }
     }

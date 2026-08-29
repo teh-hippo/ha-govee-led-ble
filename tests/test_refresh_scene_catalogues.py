@@ -4,7 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from tools.ble.refresh_scene_catalogues import SNAPSHOT_DIR, _snapshot_speed, build_snapshot
+from tools.ble.refresh_scene_catalogues import (
+    DEFAULT_SKUS,
+    SNAPSHOT_DIR,
+    _resolved_effect,
+    _snapshot_speed,
+    build_snapshot,
+)
 
 
 def _effect(effect_id: int, code: int, variant: str = "") -> dict[str, object]:
@@ -70,6 +76,10 @@ def test_snapshot_preserves_scene_effect_and_category_identity():
 
 def test_snapshot_resolves_the_requested_sku_override():
     effect = _effect(30, 1)
+    speed_info = {
+        "supSpeed": True,
+        "config": '[{"page":0,"moveIn":[200,225,250],"defaultIndex":2}]',
+    }
     effect["specialEffect"] = [
         {
             "supportSku": ["H6199"],
@@ -77,6 +87,7 @@ def test_snapshot_resolves_the_requested_sku_override():
             "sceneCode": 123,
             "sceneType": 2,
             "scenceParam": "payload",
+            "speedInfo": speed_info,
         }
     ]
     raw = {
@@ -108,6 +119,7 @@ def test_snapshot_resolves_the_requested_sku_override():
         "payload",
     )
     assert entry["music_code"] == 0
+    assert _resolved_effect(effect, "H6199")["speedInfo"] == speed_info
 
 
 def test_snapshot_rejects_duplicate_vendor_identity():
@@ -204,6 +216,12 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
     ("sku", "categories", "effects", "digest"),
     [
         (
+            "H6125",
+            12,
+            240,
+            "bbc6ea0e5b7a8b68b66bf703fa21f0ec73816123b0f294bf994baacc57d7186d",
+        ),
+        (
             "H617A",
             5,
             83,
@@ -229,3 +247,7 @@ def test_committed_snapshot_scope(
     assert len(data["categories"]) == categories
     assert len(data["effects"]) == effects
     assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+
+
+def test_default_refresh_scope_includes_each_committed_product_catalogue():
+    assert DEFAULT_SKUS == ("H6125", "H617A", "H6199")

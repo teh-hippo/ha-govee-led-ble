@@ -4,6 +4,8 @@ diy_type03.py
 diy_type04.py
 govee_common.py
 govee_shared.py
+h6125_brightness_write.py
+h6125_colour_mode_query.py
 h6199_command_write.py
 h6199_effect_upload.py
 h6199_status_query.py

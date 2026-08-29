@@ -25,6 +25,8 @@ def _generated(module: str, class_name: str) -> type[Any]:
 CommandWrite = _generated("command_write", "CommandWrite")
 StatusReply = _generated("status_reply", "StatusReply")
 StatusQuery = _generated("status_query", "StatusQuery")
+H6125BrightnessWrite = _generated("h6125_brightness_write", "H6125BrightnessWrite")
+H6125ColourModeQuery = _generated("h6125_colour_mode_query", "H6125ColourModeQuery")
 H6199StatusQuery = _generated("h6199_status_query", "H6199StatusQuery")
 H6199StatusReply = _generated("h6199_status_reply", "H6199StatusReply")
 DiyType03 = _generated("diy_type03", "DiyType03")
@@ -42,6 +44,8 @@ H6199WifiResult = _generated("h6199_wifi_result", "H6199WifiResult")
 COMMAND_STATIC = bytes.fromhex("330515010000000e10ffcb8dff7f000000000005")
 STATUS_SEGMENTS = bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010")
 H617A_SEGMENT_QUERY = bytes.fromhex("aaa505000000000000000000000000000000000a")
+H6125_BRIGHTNESS = bytes.fromhex("3304fe00000000000000000000000000000000c9")
+H6125_COLOUR_MODE_QUERY = bytes.fromhex("aa050100000000000000000000000000000000ae")
 H6199_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
 TYPE03_PAINTED = bytes.fromhex(
     "0105030900640101010f01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff000701eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
@@ -80,6 +84,8 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(CommandWrite, COMMAND_STATIC, id="H617A command"),
     pytest.param(StatusReply, STATUS_SEGMENTS, id="H617A status"),
     pytest.param(StatusQuery, H617A_SEGMENT_QUERY, id="H617A segment query"),
+    pytest.param(H6125BrightnessWrite, H6125_BRIGHTNESS, id="H6125 brightness"),
+    pytest.param(H6125ColourModeQuery, H6125_COLOUR_MODE_QUERY, id="H6125 colour-mode query"),
     pytest.param(H6199StatusQuery, H6199_SEGMENT_QUERY, id="H6199 segment query"),
     pytest.param(DiyType03, TYPE03_PAINTED, id="Type03 painted"),
     pytest.param(DiyType04, TYPE04_FLAT, id="Type04 flat"),
@@ -129,8 +135,12 @@ def test_command_and_status_fields_are_meaningful() -> None:
     ] == [(100, 255, 136, 13)] * 3
 
     h617a_query = _parse(StatusQuery, H617A_SEGMENT_QUERY)
+    h6125_brightness = _parse(H6125BrightnessWrite, H6125_BRIGHTNESS)
+    h6125_colour_mode = _parse(H6125ColourModeQuery, H6125_COLOUR_MODE_QUERY)
     h6199_query = _parse(H6199StatusQuery, H6199_SEGMENT_QUERY)
     assert (h617a_query.domain.name, h617a_query.body.group) == ("segments", 5)
+    assert h6125_brightness.value == 0xFE
+    assert h6125_colour_mode.header == b"\xaa\x05\x01"
     assert (h6199_query.domain.name, h6199_query.body.group) == ("segments", 4)
 
 

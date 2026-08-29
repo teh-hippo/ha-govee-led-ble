@@ -78,6 +78,10 @@
     "unsupported_model": {
       "title": "Unsupported Govee model",
       "description": "This config entry identifies model \"{model}\", which this integration cannot safely control. Reconfigure the device with a supported model."
+    },
+    "unsupported_version": {
+      "title": "Unsupported Govee firmware",
+      "description": "Govee {model} reported firmware {firmware} and hardware {hardware}. This integration requires at least firmware {minimum_firmware} and hardware {minimum_hardware} for safe local control."
     }
   },
   "services": {

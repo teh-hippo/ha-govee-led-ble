@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime, timedelta
@@ -18,13 +19,13 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection
 from .ble_device_resolver import BLEDeviceResolver
+from .ble_protocol_identity import h6125_pact_from_manufacturer_data
 from .const import (
     DOMAIN,
     MUSIC_MODE_SLUGS,
     default_effect_categories,
     default_effect_families,
     get_profile,
-    protocol_model,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_expectations import expectations_from_packet
@@ -37,6 +38,7 @@ from .generated_protocol_adapter import (
     build_brightness_query,
     build_colour_mode_query,
     build_firmware_query,
+    build_h6125_brightness_value,
     build_h6199_blank_screen_query,
     build_h6199_relative_brightness_query,
     build_h6199_subordinate_query,
@@ -126,6 +128,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         effect_categories: frozenset[str] | None = None,
         prefix_effect_names: bool = False,
         always_include_custom_effects: bool = False,
+        pact_type: int | None = None,
+        pact_code: int | None = None,
         device_resolver: BLEDeviceResolver | None = None,
     ) -> None:
         profile = get_profile(model)
@@ -145,6 +149,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         )
         self.prefix_effect_names = prefix_effect_names
         self.always_include_custom_effects = always_include_custom_effects
+        self.pact_type = pact_type
+        self.pact_code = pact_code
         self._device_resolver = BLEDeviceResolver() if device_resolver is None else device_resolver
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
@@ -230,6 +236,33 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             hw_version=self.hw_version,
         )
 
+    def _brightness_raw_range(self) -> tuple[int, int]:
+        if self.model == "H6125" and self.hw_version is not None and self.hw_version.split(".", 1)[0] == "1":
+            return 6, 254
+        return 1, 100
+
+    def _brightness_value_from_percent(self, percent: int) -> int:
+        minimum, maximum = self._brightness_raw_range()
+        percent = max(1, min(100, percent))
+        if maximum == 100:
+            return percent
+        step = (maximum - minimum + 3) / 100.0
+        return int(minimum + (percent - 1) * step)
+
+    def _brightness_percent_from_value(self, value: int) -> int:
+        minimum, maximum = self._brightness_raw_range()
+        if maximum == 100:
+            return max(0, min(100, value))
+        step = (maximum - minimum + 3) / 100.0
+        return max(1, min(100, math.ceil((value - minimum) / step) + 1))
+
+    def build_brightness_command(self, percent: int) -> bytes:
+        if self.model == "H6125":
+            if self.hw_version is None:
+                raise RuntimeError("H6125 hardware version is required before changing brightness")
+            return build_h6125_brightness_value(self._brightness_value_from_percent(percent))
+        return build_brightness(percent, self.model)
+
     def capture_effect_control_state(self) -> PriorControlState:
         return PriorControlState(
             mode=self.active_mode,
@@ -310,7 +343,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             if (
                 state.diy_code is None
                 or (overwritten_diy_code is not None and state.diy_code == overwritten_diy_code)
-                or protocol_model(self.model) != "H617A"
+                or not self.profile.supports_h617a_custom_effects
             ):
                 return False
             await self.send_command(build_h617a_diy_activation(state.diy_code))
@@ -374,7 +407,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if state.mode != "colour":
             return False
         await self.send_command(build_power(True, self.model))
-        await self.send_command(build_brightness(state.brightness_pct, self.model))
+        await self.send_command(self.build_brightness_command(state.brightness_pct))
         if state.color_temp_kelvin is not None:
             await self.send_command(build_color_temp(state.color_temp_kelvin, self.model))
         else:
@@ -452,8 +485,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
 
     @callback
     def _async_on_advertisement(
-        self, _service_info: bluetooth.BluetoothServiceInfoBleak, _change: bluetooth.BluetoothChange
+        self, service_info: bluetooth.BluetoothServiceInfoBleak, _change: bluetooth.BluetoothChange
     ) -> None:
+        if self.model == "H6125" and (pact := h6125_pact_from_manufacturer_data(service_info.manufacturer_data)):
+            self.pact_type, self.pact_code = pact
         self._set_present(True)
 
     @callback
@@ -694,7 +729,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         observed = ["segment_colors", "segment_brightness"]
         if self.color_mode is ParsedMode.COLOUR and len(set(self.segment_colors)) == 1:
             rendered = self.segment_colors[0]
-            if self.color_temp_kelvin is not None and rendered == kelvin_to_rgb(self.color_temp_kelvin):
+            if self.color_temp_kelvin is not None and rendered == kelvin_to_rgb(self.color_temp_kelvin, self.model):
                 if self._accept_expected("color_temp_kelvin", self.color_temp_kelvin):
                     observed.append("color_temp_kelvin")
             else:
@@ -714,6 +749,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.model,
             static_echoes_color=self.profile.static_readback_echoes_color,
         )
+        if self.model == "H6125" and "brightness_pct" in expectations:
+            expectations["brightness_pct"] = self._brightness_percent_from_value(expectations["brightness_pct"])
         if "color_mode" in expectations:
             for field in _COLOR_EXPECTATION_FIELDS:
                 self._expected_state.pop(field, None)
@@ -834,7 +871,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if parsed.rgb_color is not None:
             # A colour-temp state reads back as its white-point RGB with no kelvin field; recognising it
             # keeps the light in CT mode instead of clobbering kelvin and dropping to a near-white RGB.
-            if self.color_temp_kelvin is not None and parsed.rgb_color == kelvin_to_rgb(self.color_temp_kelvin):
+            if self.color_temp_kelvin is not None and parsed.rgb_color == kelvin_to_rgb(
+                self.color_temp_kelvin, self.model
+            ):
                 return tuple(observed)
             accept_rgb = self._accept_expected("rgb_color", parsed.rgb_color)
             accept_kelvin = self._accept_expected("color_temp_kelvin", None)
@@ -844,12 +883,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
+        self._record_packet("rx", frame)
         decoded = decode_status_frame(frame, self.model)
         if decoded is None:
             return
         domain, payload = decoded.domain, decoded.payload
         generated = decoded.generated
-        self._record_packet("rx", frame)
+        if domain is StatusDomain.COLOUR_MODE and not self.profile.supports_color_mode_readback:
+            return
         self._last_rx_monotonic = time.monotonic()
         _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.address, decoded.raw_domain, payload.hex())
         try:
@@ -860,8 +901,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     self.is_on = value
                     observed = ("is_on",)
             elif domain is StatusDomain.BRIGHTNESS:
-                brightness_value = (
+                raw_brightness = (
                     int(generated.body.percent) if self.model == "H6199" else int(generated.body.brightness_pct)
+                )
+                brightness_value = (
+                    self._brightness_percent_from_value(raw_brightness) if self.model == "H6125" else raw_brightness
                 )
                 if self._accept_expected("brightness_pct", brightness_value):
                     self.brightness_pct = brightness_value
@@ -1017,6 +1061,40 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             or (self.model == "H6199" and (self.subordinate_20_version is None or self.subordinate_21_version is None))
         )
 
+    async def async_refresh_identity(self, *, timeout: float = 2.0) -> bool:
+        required = {
+            StatusDomain.FIRMWARE: "fw_version",
+            StatusDomain.HARDWARE: "hw_version",
+        }
+        if all(getattr(self, field) is not None for field in required.values()):
+            return True
+        current_intent = self._control_arbiter.current_task_intent
+        intent = ControlIntent.BACKGROUND if current_intent is None else current_intent
+        async with async_control_intent(self, intent):
+            async with self._lock:
+                client = await self._ensure_connected()
+            deadline = time.monotonic() + timeout
+            for attempt in range(2):
+                missing = {domain: field for domain, field in required.items() if getattr(self, field) is None}
+                if not missing:
+                    return True
+                baselines = {domain: self._domain_revisions.get(domain, 0) for domain in missing}
+                async with self._lock:
+                    if self._client is not client:
+                        return False
+                    await self._send_identity_queries()
+                attempt_deadline = (
+                    deadline if attempt else time.monotonic() + max(0.0, (deadline - time.monotonic()) / 2)
+                )
+                if await self._wait_for_revisions({}, baselines, attempt_deadline) and all(
+                    getattr(self, field) is not None for field in required.values()
+                ):
+                    return True
+                if time.monotonic() >= deadline:
+                    break
+            await self._disconnect_if_current_locked(client)
+            return False
+
     async def _wait_for_revisions(
         self,
         field_baselines: Mapping[str, int],
@@ -1067,6 +1145,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         expected_relative_brightness: tuple[int, int, int, int] | None = None,
         refresh_display_settings: bool = False,
         refresh_relative_brightness: bool = False,
+        refresh_brightness: bool = False,
         refresh_all: bool = False,
         timeout: float = 2.0,
     ) -> bool:
@@ -1126,10 +1205,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         ):
             return False
         query_power = expected_on is not None
-        query_brightness = expected_brightness is not None
+        query_brightness = expected_brightness is not None or refresh_brightness
         query_color = self.profile.supports_color_mode_readback and (
             expected_music_auto_color or any(value is not None for value in color_expectations)
         )
+        probe_color = self.profile.query_color_mode_for_diagnostics and refresh_all
         query_white_balance = expected_white_balance is not None or refresh_display_settings
         query_blank_screen = expected_blank_screen is not None or refresh_display_settings
         query_relative_brightness = expected_relative_brightness is not None or refresh_relative_brightness
@@ -1176,7 +1256,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         ok = await self._send_state_queries(
                             query_power=query_power,
                             query_brightness=query_brightness,
-                            query_color_mode=query_color,
+                            query_color_mode=query_color or probe_color,
                             query_white_balance=query_white_balance,
                             query_blank_screen=query_blank_screen,
                             query_relative_brightness=query_relative_brightness,
@@ -1185,7 +1265,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         ok = await self._send_state_queries(
                             query_power=query_power,
                             query_brightness=query_brightness,
-                            query_color_mode=query_color,
+                            query_color_mode=query_color or probe_color,
                         )
                 if not ok:
                     await self._disconnect_if_current_locked(client)

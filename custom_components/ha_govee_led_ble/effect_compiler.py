@@ -186,6 +186,12 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 CompatibilityState.INCOMPATIBLE,
                 (f"Workshop effect targets {content.model}, not {model}",),
             )
+        profile = MODEL_PROFILES.get(model)
+        if profile is None or not profile.supports_workshop_effects:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} Workshop effects are not supported",),
+            )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
         if content.template.sku != model:
@@ -221,14 +227,29 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 (f"H6199 palette DIY family {content.family} variation {content.variant} is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
-    if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
-        if protocol_model(model) == "H617A":
+    if isinstance(content, PaintedEffect | SingleEffect):
+        profile = MODEL_PROFILES.get(model)
+        if profile is not None and profile.supports_h617a_custom_effects:
             return CompatibilityResult(CompatibilityState.COMPATIBLE)
         return CompatibilityResult(
             CompatibilityState.INCOMPATIBLE,
             (f"this H617A custom-effect definition is not supported on {model}",),
         )
+    if isinstance(content, MultiEffect):
+        profile = MODEL_PROFILES.get(model)
+        if profile is not None and profile.supports_multi_layered_effects:
+            return CompatibilityResult(CompatibilityState.COMPATIBLE)
+        return CompatibilityResult(
+            CompatibilityState.INCOMPATIBLE,
+            (f"multi-layer custom effects are not supported on {model}",),
+        )
     if isinstance(content, PaletteScene | LayeredScene):
+        profile = MODEL_PROFILES.get(model)
+        if profile is None or not profile.supports_scene_editing:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"edited native scenes are not supported on {model}",),
+            )
         if content.template.sku != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
@@ -246,7 +267,12 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, LayeredEffect):
-        if protocol_model(model) in _ADVANCED_CARRIER_IDENTITIES:
+        profile = MODEL_PROFILES.get(model)
+        if (
+            profile is not None
+            and profile.supports_advanced_effects
+            and protocol_model(model) in _ADVANCED_CARRIER_IDENTITIES
+        ):
             return CompatibilityResult(CompatibilityState.COMPATIBLE)
         return CompatibilityResult(
             CompatibilityState.INCOMPATIBLE,
@@ -555,6 +581,16 @@ def compile_application(item: LibraryItem, model: str, *, diy_code: int | None =
     if isinstance(item.content, VideoProfile):
         return compile_video_profile(item, model)
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
+        profile = MODEL_PROFILES.get(model)
+        supported = (
+            profile.supports_multi_layered_effects
+            if isinstance(item.content, MultiEffect) and profile is not None
+            else profile.supports_h617a_custom_effects
+            if profile is not None
+            else False
+        )
+        if not supported:
+            raise ValueError(f"{model} custom-effect upload is not supported")
         if protocol_model(model) != "H617A":
             raise ValueError(f"{model} custom-effect upload is not supported")
         if diy_code is None:

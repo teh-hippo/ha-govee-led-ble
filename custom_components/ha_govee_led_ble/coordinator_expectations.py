@@ -4,7 +4,7 @@ from typing import Any
 
 from .const import MUSIC_MODE_SLUGS
 from .coordinator_status import ParsedMode
-from .generated_protocol_adapter import parse_command
+from .generated_protocol_adapter import parse_command, parse_h6125_brightness_write
 from .light_commands import parse_static_write
 from .scenes import MODEL_SCENES
 
@@ -21,6 +21,8 @@ def expectations_from_packet(
     static_echoes_color: bool = False,
 ) -> dict[str, Any]:
     """Map an outgoing command to the optimistic fields its replies should confirm."""
+    if model == "H6125" and (brightness := parse_h6125_brightness_write(packet)) is not None:
+        return {"brightness_pct": int(brightness.value)}
     generated = parse_command(packet, model)
     if generated is None:
         return {}
