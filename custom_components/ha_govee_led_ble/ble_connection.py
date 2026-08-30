@@ -24,6 +24,47 @@ type Sleep = Callable[[float], Awaitable[None]]
 _ESTABLISH_CONNECTION = cast(EstablishConnection, establish_connection)
 _SLEEP = cast(Sleep, asyncio.sleep)
 
+_GATT_CONTEXT_MARKERS = (
+    "attribute",
+    "characteristic",
+    "gatt",
+    "handle",
+    "service",
+)
+_STALE_GATT_MARKERS = (
+    "attribute not found",
+    "does not exist",
+    "invalid handle",
+    "not available",
+    "not found",
+    "unknown object",
+)
+_STALE_GATT_ERROR_CODES = (
+    "org.bluez.error.doesnotexist",
+    "org.freedesktop.dbus.error.unknownobject",
+)
+
+
+def is_stale_gatt_error(err: BaseException) -> bool:
+    """Return whether an error indicates stale service or characteristic data."""
+    current: BaseException | None = err
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        error_name = type(current).__name__.lower()
+        message = str(current).lower()
+        dbus_error = str(getattr(current, "dbus_error", "")).lower()
+        if "characteristicnotfound" in error_name:
+            return True
+        if any(code in message or code in dbus_error for code in _STALE_GATT_ERROR_CODES):
+            return True
+        if any(context in message for context in _GATT_CONTEXT_MARKERS) and any(
+            marker in message for marker in _STALE_GATT_MARKERS
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
 
 async def async_establish_ble_connection(
     hass: HomeAssistant,
@@ -33,6 +74,7 @@ async def async_establish_ble_connection(
     establish: EstablishConnection = _ESTABLISH_CONNECTION,
     sleep: Sleep = _SLEEP,
     disconnected_callback: DisconnectedCallback | None = None,
+    use_services_cache: bool = True,
 ) -> BleakClient:
     """Resolve and establish a BLE connection using production retry semantics."""
     active_resolver = BLEDeviceResolver() if resolver is None else resolver
@@ -45,14 +87,10 @@ async def async_establish_ble_connection(
             await sleep(RETRY_BACKOFF_SECONDS)
     if resolution is None:
         raise BleakError(f"Device {address} not found")
-    if disconnected_callback is None:
-        return await establish(resolution.client_class, resolution.device, address)
-    return await establish(
-        resolution.client_class,
-        resolution.device,
-        address,
-        disconnected_callback=disconnected_callback,
-    )
+    kwargs: dict[str, object] = {"use_services_cache": use_services_cache}
+    if disconnected_callback is not None:
+        kwargs["disconnected_callback"] = disconnected_callback
+    return await establish(resolution.client_class, resolution.device, address, **kwargs)
 
 
 async def async_validate_ble_connection(hass: HomeAssistant, address: str) -> None:
