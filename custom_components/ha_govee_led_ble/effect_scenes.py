@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from .const import get_profile
 from .effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -69,7 +70,7 @@ def scene_detail_payload(
     scene_default: NativeSceneDefault | None = None,
 ) -> dict[str, JsonValue]:
     resolved = resolve_scene(model, scene_id, effect_id)
-    if scene_default is not None and resolved.entry.scene_type == 0:
+    if scene_default is not None and (resolved.entry.scene_type == 0 or not get_profile(model).supports_scene_editing):
         scene_default = None
     speed_index = (
         scene_default.speed_index
@@ -124,7 +125,11 @@ async def async_apply_scene(
     del hass, user_id
     coordinator = config_entry.runtime_data
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
-    scene_default = scene_defaults.get(config_entry.entry_id, scene_id, effect_id) if scene_defaults else None
+    scene_default = (
+        scene_defaults.get(config_entry.entry_id, scene_id, effect_id)
+        if scene_defaults and get_profile(coordinator.model).supports_scene_editing
+        else None
+    )
     canonical_body, resolved_speed = resolve_scene_application_body(
         resolved.entry,
         scene_default=scene_default,
@@ -162,6 +167,8 @@ async def async_set_scene_default(
     scene_defaults: NativeSceneDefaultRepository,
 ) -> ResolvedScene:
     coordinator = config_entry.runtime_data
+    if not get_profile(coordinator.model).supports_scene_editing:
+        raise ValueError(f"{coordinator.model} scene editing is not supported")
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
     parsed = effect_content_from_dict(content)
     _validate_scene_content_identity(coordinator.model, resolved.entry, parsed)

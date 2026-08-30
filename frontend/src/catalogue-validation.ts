@@ -36,6 +36,7 @@ import {
   MAX_IDENTIFIER_LENGTH,
   MODEL_SKUS,
   isH617xModel,
+  supportsType04Model,
   VIDEO_MODE_IDS,
 } from "./validation-constants";
 
@@ -58,7 +59,7 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
   "planned",
 ] as const;
 const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = {
-  H6125: [],
+  H6125: ["native_scenes", "single", "multi", "native_music"],
   H617A: [
     "native_scenes",
     "edited_palette_scenes",
@@ -328,7 +329,7 @@ function decodeCatalogueTemplates(
       if (
         ("model" in content && content.model !== model) ||
         (content.kind === "h617a_painted" && !isH617xModel(model)) ||
-        (content.kind === "h617a_single" && !isH617xModel(model))
+        (content.kind === "h617a_single" && !supportsType04Model(model))
       ) {
         invalid(`${name}[${index}] content does not target ${model}`);
       }

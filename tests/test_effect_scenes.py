@@ -42,8 +42,8 @@ def test_catalogue_and_identity_errors() -> None:
 
     assert scene_catalogue_payload("H6199")["enabled"] is True
     h6125 = scene_catalogue_payload("H6125")
-    assert h6125["enabled"] is False
-    assert cast(list[Any], h6125["scenes"]) == []
+    assert h6125["enabled"] is True
+    assert len(cast(list[Any], h6125["scenes"])) == 240
 
 
 def test_layered_scene_detail_decodes_strict_base64_template(monkeypatch) -> None:
@@ -239,11 +239,73 @@ async def test_scene_application_uses_the_stored_device_default(
 
 
 @pytest.mark.parametrize("scene_type", [0, 1, 2])
-def test_h6125_scenes_are_not_exposed(scene_type: int) -> None:
+def test_h6125_scenes_are_exposed(scene_type: int) -> None:
     scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == scene_type)
 
-    with pytest.raises(ValueError, match="was not found"):
-        resolve_scene("H6125", scene.scene_id, scene.effect_id)
+    assert resolve_scene("H6125", scene.scene_id, scene.effect_id).entry == scene
+
+
+async def test_h6125_scene_defaults_cannot_replace_catalogue_bodies() -> None:
+    scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == 2)
+    coordinator = SimpleNamespace(
+        model="H6125",
+        profile=MODEL_PROFILES["H6125"],
+    )
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
+    content = cast(dict[str, Any], scene_detail_payload("H6125", scene.scene_id, scene.effect_id)["content"])
+
+    with pytest.raises(ValueError, match="scene editing is not supported"):
+        await async_set_scene_default(
+            entry,
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            content=content,
+            updated_at=TIMESTAMP,
+            scene_defaults=repository,
+        )
+
+    assert repository.get("entry-a", scene.scene_id, scene.effect_id) is None
+
+
+async def test_h6125_scene_application_ignores_a_stored_edited_default(hass: HomeAssistant) -> None:
+    scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == 2)
+    coordinator = SimpleNamespace(
+        model="H6125",
+        profile=MODEL_PROFILES["H6125"],
+        async_apply_native_scene=AsyncMock(),
+    )
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await repository.async_set(
+        NativeSceneDefault(
+            config_entry_id="entry-a",
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            updated_at=TIMESTAMP,
+            canonical_body=b"edited",
+            speed_index=None,
+        )
+    )
+    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
+
+    await async_apply_scene(
+        hass,
+        entry,
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        speed_index=None,
+        user_id="admin",
+        scene_defaults=repository,
+    )
+
+    body, _speed = resolve_native_scene_body(scene)
+    coordinator.async_apply_native_scene.assert_awaited_once_with(
+        resolve_scene("H6125", scene.scene_id, scene.effect_id).key,
+        speed_index=None,
+        canonical_body=body,
+    )
 
 
 async def test_reset_deletes_default_without_applying_to_the_device() -> None:

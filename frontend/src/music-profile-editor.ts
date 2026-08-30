@@ -88,7 +88,11 @@ export class GoveeMusicProfileEditor extends LitElement {
       sensitivityMinimum,
       sensitivityMaximum,
     );
-    const colourMode = this.content.colour === null ? "automatic" : "fixed";
+    const fixedColourSupported =
+      this.catalogue?.sku !== "H6125" ||
+      ["rhythm", "spectrum", "rolling"].includes(this.content.mode);
+    const colourMode =
+      fixedColourSupported && this.content.colour !== null ? "fixed" : "automatic";
     const fixedColour = this.content.colour ?? this.lastFixedColour ?? recentColour(0);
 
     return html`
@@ -124,7 +128,11 @@ export class GoveeMusicProfileEditor extends LitElement {
               >
                 Automatic
               </option>
-              <option value="fixed" .selected=${colourMode === "fixed"}>
+              <option
+                value="fixed"
+                .selected=${colourMode === "fixed"}
+                ?disabled=${!fixedColourSupported}
+              >
                 Fixed
               </option>
             </select>
@@ -276,8 +284,9 @@ export class GoveeMusicProfileEditor extends LitElement {
   }
 
   private renderSeparationParameters(parameters: JsonObject) {
-    const point = numberParameter(parameters, "point", 1, 1, 5);
-    const gradient = booleanParameter(parameters, "gradient", true);
+    const h6125 = this.catalogue?.sku === "H6125";
+    const point = numberParameter(parameters, "point", h6125 ? 3 : 1, 1, 5);
+    const gradient = booleanParameter(parameters, "gradient", !h6125);
 
     return html`
       ${this.renderRangeField("Point", point, 1, 5, "point", (value) =>
@@ -291,7 +300,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     const relativeBrightness = numberParameter(
       parameters,
       "relative_brightness",
-      50,
+      this.catalogue?.sku === "H6125" ? 25 : 50,
       0,
       50,
     );
@@ -319,6 +328,10 @@ export class GoveeMusicProfileEditor extends LitElement {
 
   private renderFountainParameters(parameters: JsonObject) {
     const direction = directionParameter(parameters, "direction", "clockwise");
+    const directions =
+      this.catalogue?.sku === "H6125"
+        ? FOUNTAIN_DIRECTIONS.filter((option) => option.id !== "two_way")
+        : FOUNTAIN_DIRECTIONS;
 
     return html`
       <label class="field">
@@ -333,7 +346,7 @@ export class GoveeMusicProfileEditor extends LitElement {
               (event.target as HTMLSelectElement).value as FountainDirection,
             )}
         >
-          ${FOUNTAIN_DIRECTIONS.map(
+          ${directions.map(
             (option) => html`
               <option
                 value=${option.id}
@@ -349,8 +362,9 @@ export class GoveeMusicProfileEditor extends LitElement {
   }
 
   private renderDayAndNightParameters(parameters: JsonObject) {
-    const segmentCount = numberParameter(parameters, "segment_count", 1, 1, 7);
-    const speed = numberParameter(parameters, "speed", 10, 1, 50);
+    const h6125 = this.catalogue?.sku === "H6125";
+    const segmentCount = numberParameter(parameters, "segment_count", h6125 ? 7 : 1, 1, 7);
+    const speed = numberParameter(parameters, "speed", h6125 ? 20 : 10, 1, 50);
     const gradient = booleanParameter(parameters, "gradient", false);
 
     return html`

@@ -478,20 +478,25 @@ def test_h6199_is_explicitly_incompatible() -> None:
     assert "not supported" in result.reasons[0]
 
 
-def test_h6125_does_not_inherit_h617a_custom_effect_compatibility() -> None:
+def test_h6125_supports_type04_without_inheriting_painted_effects() -> None:
     item = LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
 
     result = compatibility(item, "H6125")
 
-    assert result.state is CompatibilityState.INCOMPATIBLE
-    assert "not supported" in result.reasons[0]
+    assert result.state is CompatibilityState.COMPATIBLE
+    painted = LibraryItem.new("Paint", PaintedEffect("clockwise", 50, 100, (None,) * 15))
+    assert compatibility(painted, "H6125").state is CompatibilityState.INCOMPATIBLE
 
 
-def test_h6125_custom_effect_application_fails_before_requesting_a_diy_slot() -> None:
+def test_h6125_custom_effect_application_uses_a1_and_latest_upload_selector() -> None:
     item = LibraryItem.new("Test", SingleEffect(0, 0, 50, ((255, 0, 0),)))
 
-    with pytest.raises(ValueError, match="not supported"):
-        compile_application(item, "H6125")
+    compiled = compile_application(item, "H6125", diy_code=0x00FE)
+
+    assert compiled.diy_code == 0x00FE
+    assert compiled.upload_packets[0][:4] == bytes([0xA1, 0x02, 0x00, len(compiled.upload_packets) - 2])
+    assert compiled.upload_packets[-1][:3] == b"\xa1\x02\xff"
+    assert compiled.activation_packet == effect_commands.build_h617a_diy_activation(0x00FE)
 
 
 @pytest.mark.parametrize(
@@ -685,7 +690,9 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     }
     assert h6125.to_dict()["readback"] == "none"
     assert h6125.painted is CapabilityState.UNSUPPORTED
-    assert h6125.music is CapabilityState.UNSUPPORTED
+    assert h6125.single is CapabilityState.SUPPORTED
+    assert h6125.multi is CapabilityState.SUPPORTED
+    assert h6125.music is CapabilityState.SUPPORTED
     assert h617a.painted is CapabilityState.SUPPORTED
     assert h617a.light_entity_id is None
     assert h617a.single is CapabilityState.SUPPORTED

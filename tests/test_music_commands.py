@@ -2,7 +2,8 @@
 
 import pytest
 
-from custom_components.ha_govee_led_ble.music_commands import build_music_params
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_music_mode
+from custom_components.ha_govee_led_ble.music_commands import build_h6125_music_params, build_music_params
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 H = bytes.fromhex
@@ -44,3 +45,41 @@ def test_music_palette_count_guards_downstream_offsets() -> None:
     assembled = _assemble(build_music_params(0x32, {}, palette=[(1, 2, 3)] * 5))
     assert assembled[5:20] == bytes([1, 2, 3] * 5)
     assert assembled[20] == 1
+
+
+def test_h6125_basic_music_selectors_use_the_pact_one_layout() -> None:
+    assert {mode: build_music_mode(mode, 99, None, False, "H6125") for mode in range(0x10, 0x14)} == {
+        0x10: H("3305111063000000000000000000000000000054"),
+        0x11: H("3305111163000000000000000000000000000055"),
+        0x12: H("3305111263000000000000000000000000000056"),
+        0x13: H("3305111363000000000000000000000000000057"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("mode", "body"),
+    [
+        (0x30, "3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50"),
+        (0x31, "3107ff0000ff7f00ffff0000ff000000ff00ffff8b00ff05640a"),
+        (0x32, "3207ff0000ff7f00ffff0000ff000000ff00ffff8b00ff030063"),
+        (0x33, "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010101196201030614"),
+        (0x34, "3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f230107"),
+        (0x35, "3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff01020555"),
+        (0x37, "3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff071400"),
+    ],
+)
+def test_h6125_expanded_music_bodies_use_the_50_ic_formulas(mode: int, body: str) -> None:
+    frames = build_h6125_music_params(
+        mode,
+        calm=False,
+        separation_point=3,
+        separation_gradient=False,
+        hopping_brightness=25,
+        piano_key_count=15,
+        fountain_direction="clockwise",
+        daynight_segments=7,
+        daynight_speed=20,
+        daynight_gradient=False,
+    )
+    expected = b"\x01" + bytes([len(frames)]) + b"\x41" + H(body)
+    assert _assemble(frames) == expected + bytes(len(frames) * 17 - len(expected))

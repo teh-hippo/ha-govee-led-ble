@@ -60,7 +60,7 @@ from .effect_storage import (
 )
 from .entity import GoveeBLEEntity
 from .generated_protocol_adapter import build_power
-from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
+from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb, normalise_kelvin
 from .light_services import (
     _GoveeLightServicesMixin,
 )
@@ -209,11 +209,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
-        return self.coordinator.rgb_color if self._attr_color_mode == ColorMode.RGB else None
+        return self.coordinator.rgb_color if self.color_mode == ColorMode.RGB else None
 
     @property
     def color_temp_kelvin(self) -> int | None:
-        return self.coordinator.color_temp_kelvin if self._attr_color_mode == ColorMode.COLOR_TEMP else None
+        return self.coordinator.color_temp_kelvin if self.color_mode == ColorMode.COLOR_TEMP else None
+
+    @property
+    def color_mode(self) -> ColorMode:
+        if self.coordinator.color_mode is ParsedMode.COLOUR:
+            if self.coordinator.color_temp_kelvin is not None:
+                return ColorMode.COLOR_TEMP
+            if self.coordinator.profile.supports_rgb:
+                return ColorMode.RGB
+        assert self._attr_color_mode is not None
+        return self._attr_color_mode
 
     @property
     def effect(self) -> str | None:
@@ -411,7 +421,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 restored_kelvin is not None
                 and coordinator.segment_colors
                 and len(set(coordinator.segment_colors)) == 1
-                and coordinator.segment_colors[0] == kelvin_to_rgb(restored_kelvin)
+                and coordinator.segment_colors[0] == kelvin_to_rgb(restored_kelvin, coordinator.model)
             ):
                 coordinator.color_temp_kelvin = restored_kelvin
                 self._attr_color_mode = restored_mode
@@ -540,7 +550,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
                 self._attr_color_mode = ColorMode.COLOR_TEMP
                 coordinator.mark_segment_state_optimistic(
-                    colours=[kelvin_to_rgb(coordinator.color_temp_kelvin)] * len(coordinator.segment_colors),
+                    colours=[kelvin_to_rgb(coordinator.color_temp_kelvin, coordinator.model)]
+                    * len(coordinator.segment_colors),
                 )
             else:
                 await coordinator.send_command(
@@ -573,7 +584,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     scene.scene_id,
                     scene.effect_id,
                 )
-                if self._effect_backend is not None and self._config_entry_id is not None
+                if self._effect_backend is not None
+                and self._config_entry_id is not None
+                and coordinator.profile.supports_scene_editing
                 else None
             )
             await coordinator._async_apply_native_scene_locked(
@@ -820,11 +833,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     "colour temperature",
                     supported=self.coordinator.profile.supports_color_temperature,
                 )
-                kelvin = kwargs[ATTR_COLOR_TEMP_KELVIN]
+                kelvin = normalise_kelvin(kwargs[ATTR_COLOR_TEMP_KELVIN], self.coordinator.model)
                 await self.coordinator.send_command(build_color_temp(kelvin, self.coordinator.model))
                 self.coordinator.color_temp_kelvin = kelvin
                 self.coordinator.mark_segment_state_optimistic(
-                    colours=[kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors),
+                    colours=[kelvin_to_rgb(kelvin, self.coordinator.model)] * len(self.coordinator.segment_colors),
                 )
                 self._attr_color_mode = ColorMode.COLOR_TEMP
                 self.coordinator._enter_static_mode()

@@ -79,6 +79,30 @@ class ObservationConfidence(StrEnum):
     UNKNOWN = "unknown"
 
 
+def _optional_segment_colors(
+    raw: Mapping[str, Any],
+    key: str,
+) -> tuple[tuple[int, int, int], ...] | None:
+    value = raw.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list | tuple):
+        raise EffectStorageError(f"{key} must be a sequence of RGB colours")
+    return tuple(_required_rgb({key: colour}, key) for colour in value)
+
+
+def _optional_segment_brightness(
+    raw: Mapping[str, Any],
+    key: str,
+) -> tuple[int, ...] | None:
+    value = raw.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list | tuple):
+        raise EffectStorageError(f"{key} must be a sequence of brightness values")
+    return cast(tuple[int, ...], tuple(value))
+
+
 @dataclass(frozen=True, slots=True)
 class PriorControlState:
     mode: str
@@ -86,6 +110,8 @@ class PriorControlState:
     brightness_pct: int
     rgb_color: tuple[int, int, int]
     color_temp_kelvin: int | None = None
+    segment_colors: tuple[tuple[int, int, int], ...] | None = None
+    segment_brightness: tuple[int, ...] | None = None
     effect: str | None = None
     diy_code: int | None = None
     music_mode: str = "off"
@@ -139,6 +165,19 @@ class PriorControlState:
             or not 1000 <= self.color_temp_kelvin <= 10000
         ):
             raise EffectStorageError("prior colour temperature must be from 1000 to 10000")
+        if (self.segment_colors is None) != (self.segment_brightness is None):
+            raise EffectStorageError("prior segment colours and brightness must be stored together")
+        if self.segment_colors is not None:
+            assert self.segment_brightness is not None
+            if not self.segment_colors or len(self.segment_colors) != len(self.segment_brightness):
+                raise EffectStorageError("prior segment colours and brightness must have the same non-zero length")
+            for colour in self.segment_colors:
+                _validate_rgb(colour, "prior segment colour")
+            if any(
+                not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 100
+                for value in self.segment_brightness
+            ):
+                raise EffectStorageError("prior segment brightness must be from 0 to 100")
         for value, name in (
             (self.effect, "prior effect"),
             (self.music_mode, "prior music mode"),
@@ -231,6 +270,10 @@ class PriorControlState:
             "brightness_pct": self.brightness_pct,
             "rgb_color": list(self.rgb_color),
             "color_temp_kelvin": self.color_temp_kelvin,
+            "segment_colors": (
+                [list(colour) for colour in self.segment_colors] if self.segment_colors is not None else None
+            ),
+            "segment_brightness": list(self.segment_brightness) if self.segment_brightness is not None else None,
             "effect": self.effect,
             "diy_code": self.diy_code,
             "music_mode": self.music_mode,
@@ -271,6 +314,8 @@ class PriorControlState:
             brightness_pct=_required_int(raw, "brightness_pct"),
             rgb_color=_required_rgb(raw, "rgb_color"),
             color_temp_kelvin=_optional_int(raw, "color_temp_kelvin"),
+            segment_colors=_optional_segment_colors(raw, "segment_colors"),
+            segment_brightness=_optional_segment_brightness(raw, "segment_brightness"),
             effect=_optional_str(raw, "effect"),
             diy_code=_optional_int(raw, "diy_code"),
             music_mode=_optional_str(raw, "music_mode") or "off",

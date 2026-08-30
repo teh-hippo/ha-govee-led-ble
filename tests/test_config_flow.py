@@ -259,6 +259,10 @@ _EM = [("SomeOtherDevice", None), ("Govee_H9999_ABCD", None), ("", None), ("ihom
 _EM += [
     ("ihoment_H6125_ABCD", "H6125"),
     ("GBK_H6125_ABCD", "H6125"),
+    ("Govee_H6125_ABCD", "H6125"),
+    ("Minger_H6125_ABCD", "H6125"),
+    ("GVH6125_ABCD", "H6125"),
+    ("GV6125ABCD", "H6125"),
 ]
 _EM += [("Govee_H617A_ABCD", "H617A"), ("GBK_H617A_ABCD", "H617A"), ("GVH_H617A_ABCD", "H617A")]
 _EM += [
@@ -277,7 +281,11 @@ def test_extract_model(name, expected):
 @pytest.mark.parametrize(
     ("model", "expected", "enabled"),
     [
-        ("H6125", [], []),
+        (
+            "H6125",
+            ["scenes", "effects", "multi_layered", "reactive"],
+            ["scenes", "effects", "multi_layered", "reactive"],
+        ),
         (
             "H617A",
             ["scenes", "effects", "multi_layered", "reactive", "advanced"],

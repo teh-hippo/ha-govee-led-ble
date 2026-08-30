@@ -33,7 +33,7 @@ from .effect_domain import (
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 from .layered_scene_decoder import decode_workshop_effect
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 9
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 10
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # H617A Type04 uploads are selected with DIY code 24.
@@ -481,7 +481,7 @@ H6199_VIDEO_MODES: Final = (
 def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
     variation = family.variations[0]
     content: EffectContent
-    if protocol_model(model) == "H617A":
+    if protocol_model(model) == "H617A" or model == "H6125":
         content = SingleEffect(
             family=family.family,
             variant=variation.variant,
@@ -553,6 +553,13 @@ H617A_CATALOGUE_TEMPLATES: Final = (
     ),
     *(_single_template("H617A", family) for family in H617A_TYPE04_FAMILIES),
     *(_music_template("H617A", mode) for mode in H617A_NATIVE_MUSIC_MODES),
+)
+
+H6125_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6125")
+
+H6125_CATALOGUE_TEMPLATES: Final = (
+    *(_single_template("H6125", family) for family in H617A_TYPE04_FAMILIES),
+    *(_music_template("H6125", mode) for mode in H6125_NATIVE_MUSIC_MODES),
 )
 
 H617E_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617E")
@@ -636,10 +643,10 @@ MODEL_EFFECT_CATALOGUES: Final = {
     "H6125": ModelEffectCatalogue(
         sku="H6125",
         painted_effects=(),
-        effects=(),
-        music_modes=(),
+        effects=H617A_TYPE04_FAMILIES,
+        music_modes=H6125_NATIVE_MUSIC_MODES,
         video_modes=(),
-        templates=(),
+        templates=H6125_CATALOGUE_TEMPLATES,
         workshop_templates=(),
         supports=CatalogueSupport(
             multi=workflow_capability_state("H6125", CapabilityWorkflow.MULTI),

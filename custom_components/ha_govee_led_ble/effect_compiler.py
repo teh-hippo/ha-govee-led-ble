@@ -9,7 +9,7 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import Any, Final, assert_never
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, protocol_model
+from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, music_mode_code, protocol_model
 from .coordinator_modes import (
     MUSIC_STYLE_SLUGS,
     music_mode_has_parameter_write,
@@ -30,6 +30,8 @@ from .effect_commands import (
     build_h617a_diy_multi,
     build_h617a_diy_painted,
     build_h617a_diy_single,
+    build_h6125_diy_multi,
+    build_h6125_diy_single,
     build_h6199_palette_diy,
     build_h6199_palette_diy_activation,
 )
@@ -227,7 +229,7 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 (f"H6199 palette DIY family {content.family} variation {content.variant} is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
-    if isinstance(content, PaintedEffect | SingleEffect):
+    if isinstance(content, PaintedEffect):
         profile = MODEL_PROFILES.get(model)
         if profile is not None and profile.supports_h617a_custom_effects:
             return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -235,15 +237,29 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             CompatibilityState.INCOMPATIBLE,
             (f"this H617A custom-effect definition is not supported on {model}",),
         )
+    if isinstance(content, SingleEffect):
+        profile = MODEL_PROFILES.get(model)
+        if profile is not None and profile.supports_type04_effects:
+            return CompatibilityResult(CompatibilityState.COMPATIBLE)
+        return CompatibilityResult(
+            CompatibilityState.INCOMPATIBLE,
+            (f"single custom effects are not supported on {model}",),
+        )
     if isinstance(content, MultiEffect):
         profile = MODEL_PROFILES.get(model)
-        if profile is not None and profile.supports_multi_layered_effects:
+        if profile is not None and profile.supports_multi_layered_effects and profile.supports_type04_effects:
             return CompatibilityResult(CompatibilityState.COMPATIBLE)
         return CompatibilityResult(
             CompatibilityState.INCOMPATIBLE,
             (f"multi-layer custom effects are not supported on {model}",),
         )
     if isinstance(content, PaletteScene | LayeredScene):
+        profile = MODEL_PROFILES.get(model)
+        if profile is None or not profile.supports_scene_editing:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} scene editing is not supported",),
+            )
         if content.template.sku != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
@@ -282,6 +298,8 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
         if diy_code is None:
             raise ValueError("H617A custom-effect compilation requires a DIY code")
+        if model == "H6125":
+            return compile_h6125_type04(item, diy_code)
         return compile_h617a(item, diy_code, model=model)
     if isinstance(item.content, PaletteDiyEffect):
         return compile_h6199(
@@ -468,6 +486,46 @@ def compile_h617a(item: LibraryItem, diy_code: int, *, model: str = "H617A") -> 
     )
 
 
+def compile_h6125_type04(item: LibraryItem, diy_code: int) -> CompiledEffect:
+    if diy_code != 0x00FE:
+        raise ValueError("H6125 Type04 effects use the latest-upload selector 0x00fe")
+
+    content = item.content
+    if isinstance(content, SingleEffect):
+        content_kind = "h617a_single"
+        upload = build_h6125_diy_single(
+            content.family,
+            content.variant,
+            content.speed,
+            content.palette,
+        )
+    elif isinstance(content, MultiEffect):
+        content_kind = "h617a_multi"
+        upload = build_h6125_diy_multi(
+            tuple((effect.family, effect.variant) for effect in content.effects),
+            content.speed,
+            content.palette,
+        )
+    else:
+        raise ValueError("unsupported H6125 Type04 effect content")
+
+    activation = build_h617a_diy_activation(diy_code)
+    packets = (*upload, activation)
+    return CompiledEffect(
+        item_id=str(item.id),
+        item_version=item.version,
+        model="H6125",
+        content_kind=content_kind,
+        diy_code=diy_code,
+        activation_mode=ActivationMode.CUSTOM,
+        expected_effect=None,
+        upload_packets=tuple(upload),
+        activation_packet=activation,
+        artifact_sha256=sha256(b"".join(packets)).hexdigest(),
+        evidence_codes=("effect_content_readback_unavailable",),
+    )
+
+
 def _paint_groups(segments: tuple[tuple[int, int, int] | None, ...]) -> tuple[DiyPaintGroup, ...]:
     grouped: dict[tuple[int, int, int], list[int]] = {}
     for index, colour in enumerate(segments):
@@ -577,15 +635,17 @@ def compile_application(item: LibraryItem, model: str, *, diy_code: int | None =
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
         profile = MODEL_PROFILES.get(model)
         supported = (
-            profile.supports_multi_layered_effects
+            profile.supports_multi_layered_effects and profile.supports_type04_effects
             if isinstance(item.content, MultiEffect) and profile is not None
+            else profile.supports_type04_effects
+            if isinstance(item.content, SingleEffect) and profile is not None
             else profile.supports_h617a_custom_effects
-            if profile is not None
+            if isinstance(item.content, PaintedEffect) and profile is not None
             else False
         )
         if not supported:
             raise ValueError(f"{model} custom-effect upload is not supported")
-        if protocol_model(model) != "H617A":
+        if protocol_model(model) != "H617A" and model != "H6125":
             raise ValueError(f"{model} custom-effect upload is not supported")
         if diy_code is None:
             raise ValueError("custom-effect application requires a DIY code")
@@ -602,11 +662,13 @@ def compile_music_profile(item: LibraryItem, model: str) -> CompiledMusicProfile
     profile = MODEL_PROFILES[model]
     if content.colour is not None and not profile.supports_music_color:
         raise ValueError(f"{model} does not support a fixed music colour")
+    if content.colour is not None and model == "H6125" and content.mode not in {"rhythm", "spectrum", "rolling"}:
+        raise ValueError(f"H6125 music mode {content.mode} does not support a fixed colour")
     if content.calm is not None and content.mode not in MUSIC_STYLE_SLUGS:
         raise ValueError(f"music mode {content.mode} does not support a style setting")
 
-    mode_code = MUSIC_MODE_SLUGS[content.mode]
-    parameters = _compile_music_parameters(content.parameters, mode_code)
+    mode_code = music_mode_code(model, content.mode)
+    parameters = _compile_music_parameters(content.parameters, mode_code, model)
     payload = {
         "kind": "music_profile",
         "model": model,
@@ -669,21 +731,38 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
 def _compile_music_parameters(
     raw: Mapping[str, Any],
     mode_code: int,
+    model: str,
 ) -> dict[str, int | bool | str]:
     relevant = music_params_for_mode(mode_code)
     unsupported = sorted(set(raw).difference(spec.profile_key for spec in relevant))
     if unsupported:
         raise ValueError(f"music mode does not support parameter {unsupported[0]}")
     compiled: dict[str, int | bool | str] = {}
+    h6125_defaults: dict[str, int | bool | str] = {
+        "point": 3,
+        "gradient": False,
+        "relative_brightness": 25,
+        "segment_count": 7,
+        "speed": 20,
+    }
     for spec in relevant:
-        value = raw.get(spec.profile_key, spec.default)
+        value = raw.get(
+            spec.profile_key,
+            h6125_defaults.get(spec.profile_key, spec.default) if model == "H6125" else spec.default,
+        )
         if spec.kind == "number":
             if not isinstance(value, int) or isinstance(value, bool) or not spec.min_value <= value <= spec.max_value:
                 raise ValueError(f"{spec.profile_key} must be an integer from {spec.min_value} to {spec.max_value}")
         elif spec.kind == "switch":
             if not isinstance(value, bool):
                 raise ValueError(f"{spec.profile_key} must be a boolean")
-        elif not isinstance(value, str) or value not in spec.options:
+        elif (
+            not isinstance(value, str)
+            or value not in spec.options
+            or model == "H6125"
+            and spec.profile_key == "direction"
+            and value == "two_way"
+        ):
             raise ValueError(f"{spec.profile_key} must be one of {', '.join(spec.options)}")
         compiled[spec.profile_key] = value
     return compiled

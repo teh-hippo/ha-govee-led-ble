@@ -19,6 +19,80 @@ ALL_SEGMENTS_MASK = 0x7FFF
 
 type SegmentColorGroup = tuple[Iterable[int], tuple[int, int, int]]
 
+_H6125_CCT_COMPANION_RGB = (
+    (255, 141, 11),
+    (255, 146, 29),
+    (255, 152, 41),
+    (255, 157, 51),
+    (255, 162, 60),
+    (255, 166, 69),
+    (255, 170, 77),
+    (255, 174, 84),
+    (255, 178, 91),
+    (255, 182, 98),
+    (255, 185, 105),
+    (255, 189, 111),
+    (255, 192, 118),
+    (255, 195, 124),
+    (255, 198, 130),
+    (255, 201, 135),
+    (255, 203, 141),
+    (255, 206, 146),
+    (255, 208, 151),
+    (255, 211, 156),
+    (255, 213, 161),
+    (255, 215, 166),
+    (255, 217, 171),
+    (255, 219, 175),
+    (255, 221, 180),
+    (255, 223, 184),
+    (255, 225, 188),
+    (255, 226, 192),
+    (255, 228, 196),
+    (255, 229, 200),
+    (255, 231, 204),
+    (255, 232, 208),
+    (255, 234, 211),
+    (255, 235, 215),
+    (255, 237, 218),
+    (255, 238, 222),
+    (255, 239, 225),
+    (255, 240, 228),
+    (255, 241, 231),
+    (255, 243, 234),
+    (255, 244, 237),
+    (255, 245, 240),
+    (255, 246, 243),
+    (255, 247, 247),
+    (255, 248, 248),
+    (255, 249, 251),
+    (255, 249, 253),
+    (254, 250, 255),
+    (252, 248, 255),
+    (250, 247, 255),
+    (247, 245, 255),
+    (245, 244, 255),
+    (243, 243, 255),
+    (241, 241, 255),
+    (239, 240, 255),
+    (238, 239, 255),
+    (236, 238, 255),
+    (234, 237, 255),
+    (233, 236, 255),
+    (231, 234, 255),
+    (229, 233, 255),
+    (228, 233, 255),
+    (227, 232, 255),
+    (225, 231, 255),
+    (224, 230, 255),
+    (223, 229, 255),
+    (221, 228, 255),
+    (220, 227, 255),
+    (219, 226, 255),
+    (218, 226, 255),
+    (217, 225, 255),
+)
+
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
@@ -67,7 +141,15 @@ def build_color_rgb(red: int, green: int, blue: int, model: str = "H617A") -> by
     return build_segment_color(ALL_SEGMENTS, red, green, blue, model)
 
 
-def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
+def normalise_kelvin(kelvin: int, model: str = "H617A") -> int:
+    value = _clamp(kelvin, 2000, 9000)
+    return value if model != "H6125" or value == 9000 else value // 100 * 100
+
+
+def kelvin_to_rgb(kelvin: int, model: str = "H617A") -> tuple[int, int, int]:
+    if model == "H6125":
+        value = normalise_kelvin(kelvin, model)
+        return _H6125_CCT_COMPANION_RGB[(value - 2000) // 100]
     temp = _clamp(kelvin, 1000, 10000) / 100.0
     red = 255.0 if temp <= 66 else _clamp(int(329.698727446 * ((temp - 60) ** -0.1332047592)), 0, 255)
     green = (
@@ -80,8 +162,8 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
 
 
 def build_color_temp(kelvin: int, model: str = "H617A") -> bytes:
-    value = _clamp(kelvin, 2000, 9000)
-    return build_colour_temperature(value, kelvin_to_rgb(value), ALL_SEGMENTS_MASK, model)
+    value = normalise_kelvin(kelvin, model)
+    return build_colour_temperature(value, kelvin_to_rgb(value, model), ALL_SEGMENTS_MASK, model)
 
 
 def build_white_brightness(percent: int, model: str = "H617A") -> bytes:
@@ -117,7 +199,7 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
         if detail.operation.name == "colour":
             rgb = (int(detail.red), int(detail.green), int(detail.blue))
             kelvin = int(detail.kelvin)
-            if rgb == (0, 0, 0) and kelvin:
+            if kelvin and rgb == (0, 0, 0):
                 preview = detail.preview
                 return ParsedStaticWrite(
                     operation=operation,
@@ -142,7 +224,7 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
         rgb = (int(body.rgb_direct.red), int(body.rgb_direct.green), int(body.rgb_direct.blue))
         kelvin = int(body.kelvin)
         mask = int(body.mask.bits)
-        if rgb == (0, 0, 0) and kelvin:
+        if kelvin and (rgb == (0, 0, 0) or model == "H6125"):
             return ParsedStaticWrite(
                 operation=operation,
                 segment_mask=mask,

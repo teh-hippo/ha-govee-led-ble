@@ -178,18 +178,28 @@ function installH6199Catalogue(model: PanelModel): void {
   const catalogue = h6199Catalogue();
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 9,
+    schema_version: 10,
     sku: "H617A",
     models: {
       H6125: {
         ...catalogue,
         sku: "H6125",
         painted_effects: [],
-        effects: [],
-        music_modes: [],
+        music_modes: [
+          { id: "energetic", label: "Energetic" },
+          { id: "rhythm", label: "Rhythm" },
+          { id: "bloom", label: "Bloom" },
+        ],
         video_modes: [],
         templates: [],
         workshop_templates: [],
+        supports: { ...catalogue.supports, multi: "supported" },
+        apply: {
+          ...catalogue.apply,
+          single: "supported",
+          multi: "supported",
+          palette_diy: "unsupported",
+        },
       },
       H617A: { ...catalogue, sku: "H617A" },
       H617E: { ...catalogue, sku: "H617E" },
@@ -1364,6 +1374,47 @@ test("Reactive mode changes preserve common fields, identity, and generated name
     sensitivity: 72,
     colour: null,
     parameters: {},
+  });
+});
+
+test("H6125 mode changes clear fixed colours unsupported by the target mode", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.customEffectCategory = "music";
+  const selected = device("entry-a", "H6125");
+  selected.profiles.music = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  installH6199Catalogue(model);
+  const preview = new PanelPreviewController(model);
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined,
+    root: () => null,
+    canMutate: () => true,
+  });
+  const controller = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true,
+    selectItem: () => undefined,
+    editorTransitionStarted: () => undefined,
+    contentCommitted: () => undefined,
+  });
+
+  controller.newCustomEffect("music");
+  controller.musicModeChanged("rhythm");
+  controller.musicContentChanged({
+    kind: "music_profile",
+    model: "H6125",
+    mode: "rhythm",
+    sensitivity: 50,
+    colour: [1, 2, 3],
+    calm: false,
+    parameters: {},
+  });
+  controller.musicModeChanged("bloom");
+
+  expect(model.content).toMatchObject({
+    mode: "bloom",
+    colour: null,
   });
 });
 

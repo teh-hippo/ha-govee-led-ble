@@ -87,26 +87,39 @@ def h6199_light(mock_h6199_coordinator):
     return e
 
 
-def test_h6125_telink_is_brightness_only(mock_coordinator):
+def test_h6125_rc3_exposes_rgb_and_colour_temperature(mock_coordinator):
     mock_coordinator.model = "H6125"
     mock_coordinator.profile = MODEL_PROFILES["H6125"]
     mock_coordinator.supports_brightness = True
 
     light = GoveeBLELight(mock_coordinator)
 
-    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
-    assert light.color_mode is ColorMode.BRIGHTNESS
+    assert light.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    assert light.color_mode is ColorMode.RGB
 
 
-def test_h6125_non_telink_is_on_off_only(mock_coordinator):
+def test_h6125_reports_observed_colour_temperature_mode(mock_coordinator):
+    mock_coordinator.model = "H6125"
+    mock_coordinator.profile = MODEL_PROFILES["H6125"]
+    mock_coordinator.color_mode = ParsedMode.COLOUR
+    mock_coordinator.color_temp_kelvin = 2700
+
+    light = GoveeBLELight(mock_coordinator)
+
+    assert light.color_mode is ColorMode.COLOR_TEMP
+    assert light.color_temp_kelvin == 2700
+    assert light.rgb_color is None
+
+
+def test_h6125_profile_does_not_change_after_admission(mock_coordinator):
     mock_coordinator.model = "H6125"
     mock_coordinator.profile = MODEL_PROFILES["H6125"]
     mock_coordinator.supports_brightness = False
 
     light = GoveeBLELight(mock_coordinator)
 
-    assert light.supported_color_modes == {ColorMode.ONOFF}
-    assert light.color_mode is ColorMode.ONOFF
+    assert light.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    assert light.color_mode is ColorMode.RGB
 
 
 def test_basic_and_color_props(light, mock_coordinator):
@@ -1094,14 +1107,16 @@ def test_h6125_has_no_effect_surface_by_default(mock_coordinator):
         {"color_temp_kelvin": 4000},
     ],
 )
-async def test_h6125_rejects_unvalidated_static_colour_controls(mock_coordinator, kwargs):
+async def test_h6125_applies_candidate_static_colour_controls(mock_coordinator, kwargs):
     mock_coordinator.model = "H6125"
     mock_coordinator.profile = MODEL_PROFILES["H6125"]
     mock_coordinator.is_on = True
     entity = GoveeBLELight(mock_coordinator)
+    entity.async_write_ha_state = MagicMock()
 
-    with pytest.raises(ServiceValidationError, match="unsupported_model"):
-        await entity.async_turn_on(**kwargs)
+    await entity.async_turn_on(**kwargs)
+
+    mock_coordinator.send_command.assert_awaited()
 
 
 async def test_h6125_non_telink_rejects_brightness(mock_coordinator):

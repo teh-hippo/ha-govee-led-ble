@@ -73,7 +73,7 @@ def test_per_model_snapshots_preserve_vendor_identity():
     h6199_universe = next(scene for scene in SCENE_ENTRIES["H6199"] if scene.display_name.casefold() == "universe-a")
     assert h6125_universe.effect_id == 6355
     assert h6125_universe.param != h6199_universe.param
-    assert MODEL_SCENES["H6125"] == {}
+    assert len(MODEL_SCENES["H6125"]) == 240
     assert MODEL_SCENES["H6199"]["dracarys"].category == "House of the Dragon"
     assert MODEL_SCENES["H6199"]["green reign"].code == 16183
     assert MODEL_SCENES["H6199"]["fire & blood"].code == 16184

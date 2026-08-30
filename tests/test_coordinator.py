@@ -328,6 +328,52 @@ async def test_restore_effect_control_state_reapplies_static_state(coord):
     assert coord.active_mode == "colour"
 
 
+async def test_h6125_restore_effect_control_state_reapplies_segment_state(h6125):
+    h6125.hw_version = "1.00.03"
+    colours = ((1, 2, 3),) * 7 + ((4, 5, 6),) * 8
+    brightness = (25,) * 5 + (75,) * 10
+    state = PriorControlState(
+        mode="colour",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        color_temp_kelvin=2700,
+        segment_colors=colours,
+        segment_brightness=brightness,
+    )
+
+    with (
+        patch.object(h6125, "send_command", new_callable=AsyncMock) as send,
+        patch.object(h6125, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+        patch.object(h6125, "async_refresh_segments", new_callable=AsyncMock, return_value=True) as segments,
+    ):
+        recovered = await h6125.async_restore_effect_control_state(
+            state,
+            overwritten_diy_code=0x00FE,
+        )
+
+    expected = [
+        build_power(True, "H6125"),
+        h6125.build_brightness_command(72),
+        *build_segment_paint(
+            [
+                (range(1, 8), (1, 2, 3)),
+                (range(8, 16), (4, 5, 6)),
+            ],
+            "H6125",
+        ),
+        build_segment_brightness(range(1, 6), 25, "H6125"),
+        build_segment_brightness(range(6, 16), 75, "H6125"),
+    ]
+    assert recovered is True
+    assert send.await_args_list == [call(packet) for packet in expected]
+    refresh.assert_awaited_once_with(refresh_all=True)
+    segments.assert_awaited_once_with()
+    assert tuple(h6125.segment_colors) == colours
+    assert tuple(h6125.segment_brightness) == brightness
+    assert h6125.color_temp_kelvin is None
+
+
 async def test_restore_effect_control_state_cannot_recover_overwritten_diy_slot(coord):
     state = PriorControlState(
         mode="custom",
@@ -420,7 +466,7 @@ async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coor
     assert coord.diy_code == 700
 
 
-async def test_h6125_does_not_reactivate_an_unvalidated_diy_slot(h6125):
+async def test_h6125_does_not_reactivate_a_non_scratch_diy_slot(h6125):
     state = PriorControlState(
         mode="custom",
         is_on=True,
@@ -1194,7 +1240,7 @@ async def test_send_state_queries_include_h6125_segment_diagnostics(h6125):
     client = _c(write_gatt_char=AsyncMock())
     h6125._client = client
 
-    assert not h6125.profile.supports_segments
+    assert h6125.profile.supports_segments
     assert await h6125._send_state_queries() is True
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [
         build_power_query("H6125"),
@@ -1467,7 +1513,7 @@ async def test_refresh_state_query_selection(coord):
         sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
 
 
-async def test_h6125_refresh_probes_mode_without_claiming_mode_readback(h6125):
+async def test_h6125_refresh_uses_operational_mode_readback(h6125):
     h6125.hw_version = "1.00.04"
     h6125._client = client = _c()
 
@@ -1481,6 +1527,8 @@ async def test_h6125_refresh_probes_mode_without_claiming_mode_readback(h6125):
             h6125._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
         if query_brightness:
             h6125._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [128])))
+        if query_color_mode:
+            h6125._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0, 0, 0])))
         return True
 
     with (
@@ -1490,24 +1538,22 @@ async def test_h6125_refresh_probes_mode_without_claiming_mode_readback(h6125):
         assert await h6125.refresh_state(refresh_all=True) is True
         queries.assert_awaited_with(query_power=True, query_brightness=True, query_color_mode=True)
         assert h6125.brightness_pct == 50
+        assert h6125.color_mode is ParsedMode.COLOUR
 
         queries.reset_mock()
-        assert await h6125.refresh_state(expected_effect="universe-a") is False
-        queries.assert_not_awaited()
-
         assert await h6125.refresh_state() is True
-        queries.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False)
+        queries.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
 
 
-def test_h6125_unknown_mode_reply_is_retained_for_diagnostics(h6125):
+def test_h6125_unknown_mode_reply_is_retained_and_counts_as_liveness(h6125):
     frame = proto.build_packet(0xAA, 0x05, [0x0B, 0x01])
     h6125._last_rx_monotonic = 123.0
 
     h6125._notify_callback(None, bytearray(frame))
 
     assert h6125.packet_log[-1]["raw"] == frame.hex()
-    assert h6125.color_mode is None
-    assert h6125._last_rx_monotonic == 123.0
+    assert h6125.color_mode is ParsedMode.UNKNOWN
+    assert h6125._last_rx_monotonic != 123.0
 
 
 async def test_refresh_reply_timeout_starts_after_connection(coord):
@@ -1783,6 +1829,8 @@ def test_segment_query_replies_replace_restored_state(
     coordinator = request.getfixturevalue(model_fixture)
     coordinator.segment_colors = [(1, 2, 3)] * 15
     coordinator.segment_brightness = [1] * 15
+    coordinator.color_mode = ParsedMode.COLOUR
+    coordinator.color_temp_kelvin = 2700
 
     for group in range(1, group_count + 1):
         count = min(group_size, 15 - (group - 1) * group_size)
@@ -1796,10 +1844,12 @@ def test_segment_query_replies_replace_restored_state(
     assert coordinator.segment_state_observed_at is not None
     assert coordinator.segment_brightness == list(range(20, 35))
     assert coordinator.segment_colors == [(value, value + 1, value + 2) for value in range(15)]
+    assert coordinator.color_temp_kelvin is None
 
 
 async def test_async_paint_segments_updates_slots_and_sends(coord):
     groups = [([1, 2], (255, 0, 0)), ([3], (0, 0, 255))]
+    coord.color_temp_kelvin = 2700
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
         patch.object(coord, "async_refresh_segments", new_callable=AsyncMock, return_value=True) as refresh,
@@ -1809,6 +1859,7 @@ async def test_async_paint_segments_updates_slots_and_sends(coord):
     assert [call.args[0] for call in sc.await_args_list] == proto.build_segment_paint(groups)
     assert sc.await_count == 2
     assert coord.segment_colors[:4] == [(255, 0, 0), (255, 0, 0), (0, 0, 255), (255, 255, 255)]
+    assert coord.color_temp_kelvin is None
     assert coord.segment_state_source == "optimistic"
     refresh.assert_awaited_once_with()
     pushed.assert_called_once()
@@ -1816,12 +1867,14 @@ async def test_async_paint_segments_updates_slots_and_sends(coord):
 
 async def test_async_paint_segments_rolls_back_on_failure(coord):
     before = list(coord.segment_colors)
+    coord.color_temp_kelvin = 2700
     with (
         patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
         pytest.raises(BleakError),
     ):
         await coord.async_paint_segments([([1, 2], (255, 0, 0))])
     assert coord.segment_colors == before
+    assert coord.color_temp_kelvin == 2700
     assert coord.segment_state_source == "initial"
 
 

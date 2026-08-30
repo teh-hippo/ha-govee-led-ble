@@ -11,12 +11,12 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 
 The stable models support on/off, brightness, RGB colour, colour temperature, and state readback.  H6125 support remains a prerelease validation target until its protocol branch completes the linked hardware matrix.
 
-- **H6125 (device-specific prerelease)**: LED Strip · power · experimental brightness on hardware family 1
+- **H6125 (device-specific prerelease)**: LED Strip · experimental light, segment, scene, music and Type04 effect controls
 - **H617A**: LED Strip · 83 scenes · 11 music modes
 - **H617E**: LED Strip · H617A-compatible scenes, effects and music modes
 - **H6199**: DreamView T1 · 240 scenes · video and music modes · advanced controls
 
-H6125 exposes power on recognised hardware families and experimental raw-register brightness on hardware family 1.  Its full model catalogue remains packaged as inert protocol data.  RGB, colour temperature, segment controls, scenes, music and custom effects remain disabled until exact identified hardware evidence exists.
+The H6125 RC3 profile targets pact `(1,2)`, firmware `1.07.00` or newer, and hardware family `1.*` at `1.00.03` or newer.  It exposes the fully mapped candidates as experimental probes: raw-register brightness, RGB, 2000–9000 K colour temperature, 15 segment colours and brightness levels, all 240 native scenes, 11 music modes, and Type04 single and multi effects.  Painted Type03 effects and scene editing remain disabled because their safe device projection is not completely mapped.
 
 ## Effect Studio
 
@@ -24,7 +24,7 @@ Govee Effect Studio is added to the Home Assistant sidebar when the integration 
 
 | Model | Studio surfaces |
 | --- | --- |
-| H6125 | No Effect Studio controls during device validation |
+| H6125 | Native scenes, Type04 single and multi effects, and reactive music effects during device validation |
 | H617A | Scenes, painted segments, single-layer effects, multi-layered effects, reactive music effects and advanced layered effects |
 | H617E | H617A-compatible scenes, effects and reactive music effects |
 | H6199 | Scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |

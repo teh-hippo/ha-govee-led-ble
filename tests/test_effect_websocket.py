@@ -149,13 +149,13 @@ async def test_non_admin_cannot_mutate_library(
     assert response["error"]["code"] == "unauthorized"
 
 
-async def test_h6125_scene_apply_is_not_exposed(
+async def test_h6125_scene_apply_is_exposed(
     hass: HomeAssistant,
     hass_ws_client,
     monkeypatch,
 ) -> None:
     backend = await _setup_backend(hass)
-    coordinator = SimpleNamespace(model="H6125")
+    coordinator = SimpleNamespace(model="H6125", async_apply_native_scene=AsyncMock())
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,
@@ -181,9 +181,9 @@ async def test_h6125_scene_apply_is_not_exposed(
         )
         response = await client.receive_json()
 
-    assert response["success"] is False
-    assert response["error"]["code"] == "invalid_format"
-    reconcile.assert_not_called()
+    assert response["success"] is True
+    coordinator.async_apply_native_scene.assert_awaited_once()
+    reconcile.assert_called_once()
 
 
 async def test_template_default_websocket_lifecycle_has_no_ble_writes(

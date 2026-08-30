@@ -1,6 +1,6 @@
 import type { ModelSku } from "./types";
 
-export const CUSTOM_CATALOGUE_SCHEMA_VERSION = 9;
+export const CUSTOM_CATALOGUE_SCHEMA_VERSION = 10;
 export const MAX_EFFECT_NAME_LENGTH = 128;
 export const MAX_EFFECT_DOCUMENT_BYTES = 65_536;
 export const MAX_EDITOR_DEVICES = 512;
@@ -26,4 +26,10 @@ export function isModelSku(model: string | undefined): model is ModelSku {
 
 export function isH617xModel(model: string | undefined): model is "H617A" | "H617E" {
   return model === "H617A" || model === "H617E";
+}
+
+export function supportsType04Model(
+  model: string | undefined,
+): model is "H6125" | "H617A" | "H617E" {
+  return model === "H6125" || isH617xModel(model);
 }

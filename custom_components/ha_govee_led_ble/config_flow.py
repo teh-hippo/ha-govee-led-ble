@@ -34,12 +34,15 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
+MODEL_PATTERN = re.compile(r"(?:(?:ihoment|Govee|Minger|GBK|GVH)_(H\w+)|GV(H?6125))")
 _MANUAL_ADDRESS_PATTERN = re.compile(r"^[0-9A-F]{12}$")
 
 
 def _extract_model(name: str) -> str | None:
-    return resolve_model(match.group(1)) if (match := MODEL_PATTERN.search(name)) else None
+    if (match := MODEL_PATTERN.search(name)) is None:
+        return None
+    candidate = match.group(1) or match.group(2)
+    return resolve_model(candidate if candidate.startswith("H") else f"H{candidate}")
 
 
 def _model_data(model: str, manufacturer_data: Mapping[int, bytes]) -> dict[str, Any]:
@@ -57,7 +60,7 @@ def _normalize_manual_address(address: str) -> str:
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 8
+    VERSION = 9
 
     _discovered: dict[str, str]
 

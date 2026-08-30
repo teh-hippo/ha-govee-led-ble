@@ -29,7 +29,7 @@ from .const import (
     default_effect_categories,
     effect_categories_from_options,
     effect_families_from_options,
-    h6125_hardware_family_supported,
+    h6125_rc3_variant_supported,
     prefix_effect_names_from_options,
     resolve_model,
 )
@@ -123,10 +123,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
     if model is not None:
         data[CONF_MODEL] = model
         options.pop(CONF_EFFECT_FAMILIES, None)
-        options.setdefault(CONF_EFFECT_CATEGORIES, list(default_effect_categories(model)))
+        if entry.version < 9 and model == "H6125" and not options.get(CONF_EFFECT_CATEGORIES):
+            options[CONF_EFFECT_CATEGORIES] = list(default_effect_categories(model))
+        else:
+            options.setdefault(CONF_EFFECT_CATEGORIES, list(default_effect_categories(model)))
         options.setdefault(CONF_PREFIX_EFFECT_NAMES, False)
         options.setdefault(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS, False)
-    hass.config_entries.async_update_entry(entry, data=data, options=options, version=8)
+    hass.config_entries.async_update_entry(entry, data=data, options=options, version=9)
     return True
 
 
@@ -192,7 +195,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         if not identity_refreshed:
             await coordinator.disconnect()
             raise ConfigEntryNotReady(f"{model} did not report firmware and hardware versions")
-        if coordinator.hw_version is None or not h6125_hardware_family_supported(coordinator.hw_version):
+        if (
+            coordinator.fw_version is None
+            or coordinator.hw_version is None
+            or not h6125_rc3_variant_supported(
+                pact_type=coordinator.pact_type,
+                pact_code=coordinator.pact_code,
+                firmware=coordinator.fw_version,
+                hardware=coordinator.hw_version,
+            )
+        ):
             ir.async_create_issue(
                 hass,
                 DOMAIN,
@@ -208,15 +220,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
             )
             await coordinator.disconnect()
             return False
-        if coordinator.supports_brightness:
-            try:
-                brightness_refreshed = await coordinator.refresh_state(refresh_brightness=True)
-            except (BleakError, TimeoutError) as err:
-                await coordinator.disconnect()
-                raise ConfigEntryNotReady("H6125 brightness query could not connect") from err
-            if not brightness_refreshed:
-                await coordinator.disconnect()
-                raise ConfigEntryNotReady("H6125 did not report its brightness register")
+        try:
+            state_refreshed = await coordinator.refresh_state(refresh_all=True)
+        except (BleakError, TimeoutError) as err:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady("H6125 state queries could not connect") from err
+        if not state_refreshed:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady("H6125 did not report power, brightness, and active mode")
+        try:
+            segments_refreshed = await coordinator.async_refresh_segments()
+        except (BleakError, TimeoutError) as err:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady("H6125 segment query could not connect") from err
+        if not segments_refreshed:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady("H6125 did not report all five segment groups")
     ir.async_delete_issue(hass, DOMAIN, version_issue_id)
     entry.runtime_data = coordinator
     if effect_backend := get_effect_backend(hass):

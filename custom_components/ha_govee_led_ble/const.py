@@ -47,8 +47,10 @@ class ModelProfile:
     supports_rgb: bool = False
     supports_color_temperature: bool = False
     supports_scenes: bool = False
+    supports_scene_editing: bool = False
     supports_custom_effects: bool = False
     supports_h617a_custom_effects: bool = False
+    supports_h617a_type04_effects: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
     supports_advanced_effects: bool = False
@@ -74,6 +76,10 @@ class ModelProfile:
     def supports_music_mode(self) -> bool:
         return bool(self.music_modes)
 
+    @property
+    def supports_type04_effects(self) -> bool:
+        return self.supports_h617a_custom_effects or self.supports_h617a_type04_effects
+
 
 MUSIC_MODE_SLUGS: dict[str, int] = {
     "energetic": 0x05,
@@ -89,6 +95,20 @@ MUSIC_MODE_SLUGS: dict[str, int] = {
     "shiny": 0x31,
 }
 
+H6125_MUSIC_MODE_SLUGS: dict[str, int] = {
+    "energetic": 0x10,
+    "rhythm": 0x11,
+    "spectrum": 0x12,
+    "rolling": 0x13,
+    "bloom": 0x30,
+    "shiny": 0x31,
+    "separation": 0x32,
+    "hopping": 0x33,
+    "piano_keys": 0x34,
+    "fountain": 0x35,
+    "day_and_night": 0x37,
+}
+
 _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 
 
@@ -98,6 +118,7 @@ _H617X_PROFILE = ModelProfile(
     supports_rgb=True,
     supports_color_temperature=True,
     supports_scenes=True,
+    supports_scene_editing=True,
     supports_custom_effects=True,
     supports_h617a_custom_effects=True,
     music_modes=tuple(MUSIC_MODE_SLUGS),
@@ -120,8 +141,16 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6125": ModelProfile(
         "H6125 LED Strip",
         state_readable=True,
-        supports_color_mode_readback=False,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_scenes=True,
+        supports_custom_effects=True,
+        supports_h617a_type04_effects=True,
+        supports_multi_layered_effects=True,
+        music_modes=tuple(H6125_MUSIC_MODE_SLUGS),
+        supports_music_color=True,
         segment_count=15,
+        supports_segment_writes=True,
         connection_idle_timeout=3.0,
     ),
     "H617A": _H617X_PROFILE,
@@ -132,6 +161,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_rgb=True,
         supports_color_temperature=True,
         supports_scenes=True,
+        supports_scene_editing=True,
         supports_custom_effects=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
@@ -169,6 +199,15 @@ def protocol_model(model: str) -> str | None:
 def get_profile(model: str) -> ModelProfile:
     resolved = resolve_model(model)
     return MODEL_PROFILES[resolved] if resolved is not None else UNSUPPORTED_PROFILE
+
+
+def music_mode_code(model: str, slug: str) -> int:
+    return (H6125_MUSIC_MODE_SLUGS if resolve_model(model) == "H6125" else MUSIC_MODE_SLUGS)[slug]
+
+
+def music_mode_slug(model: str, code: int) -> str | None:
+    codes = H6125_MUSIC_MODE_SLUGS if resolve_model(model) == "H6125" else MUSIC_MODE_SLUGS
+    return next((slug for slug, candidate in codes.items() if candidate == code), None)
 
 
 def supported_effect_families(model: str) -> frozenset[str]:
@@ -252,11 +291,33 @@ def _version_parts(value: str) -> tuple[int, ...] | None:
     return tuple(int(part) for part in parts)
 
 
-def h6125_hardware_family_supported(version: str) -> bool:
-    parts = _version_parts(version)
+def version_at_least(value: str, minimum: tuple[int, ...]) -> bool:
+    parts = _version_parts(value)
     if parts is None:
         return False
-    return parts[0] in {1, 3} or len(parts) >= 2 and parts[:2] == (2, 1)
+    width = max(len(parts), len(minimum))
+    return (*parts, *(0 for _ in range(width - len(parts)))) >= (*minimum, *(0 for _ in range(width - len(minimum))))
+
+
+def h6125_rc3_variant_supported(
+    *,
+    pact_type: int | None,
+    pact_code: int | None,
+    firmware: str,
+    hardware: str,
+) -> bool:
+    hardware_parts = _version_parts(hardware)
+    return (
+        pact_type == 1
+        and not isinstance(pact_type, bool)
+        and pact_code == 2
+        and not isinstance(pact_code, bool)
+        and version_at_least(firmware, (1, 7))
+        and hardware_parts is not None
+        and len(hardware_parts) == 3
+        and hardware_parts[0] == 1
+        and hardware_parts >= (1, 0, 3)
+    )
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:
