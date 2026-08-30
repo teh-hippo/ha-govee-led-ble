@@ -1622,7 +1622,7 @@ def _active_workspace_content(
     source: EffectContent,
     compiled: CompiledApplication | None,
 ) -> EffectContent:
-    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
+    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets or compiled.model == "H6125":
         return source
     try:
         decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)

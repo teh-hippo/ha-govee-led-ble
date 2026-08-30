@@ -140,7 +140,7 @@ def _legacy_h617a_key(entry: SceneEntry) -> str:
 
 
 def _model_scene_catalogue(sku: str) -> tuple[dict[str, SceneEntry], dict[str, str]]:
-    entries = () if sku == "H6125" else SCENE_ENTRIES[sku]
+    entries = SCENE_ENTRIES[sku]
     keys = [" ".join(entry.display_name.split()).casefold() for entry in entries]
     duplicates = {key for key, count in Counter(keys).items() if count > 1}
     scenes: dict[str, SceneEntry] = {}

@@ -381,16 +381,26 @@ def test_basic_effect_decoder_preserves_uncatalogued_pairs_but_rejects_reserved_
     assert compatibility(LibraryItem.new("Unknown", decoded), "H6199").state is CompatibilityState.INCOMPATIBLE
 
 
-def test_h6125_scene_grammar_alias_rejects_h617a_diy_bodies() -> None:
-    envelope = reassemble_a3(
+def test_h6125_effect_grammar_accepts_type04_and_rejects_type03() -> None:
+    type04 = reassemble_a3(
         compile_h617a(
             LibraryItem.new("Single", SINGLE_CONTENT),
             H617A_TYPE04_APPLY_CODE,
         ).upload_packets
     )
+    assert isinstance(parse_a3_effect_envelope(type04, "H6125"), DiyType04)
 
-    with pytest.raises(ValueError, match="H6125 has no generated A3 effect grammar"):
-        parse_a3_effect_envelope(envelope, "H6125")
+    type03 = reassemble_a3(
+        proto.build_h617a_diy_painted(
+            "clockwise",
+            45,
+            80,
+            (1, 2, 3),
+            [proto.DiyPaintGroup((10, 20, 30), (0, 2, 4))],
+        )
+    )
+    with pytest.raises(ValueError, match="H6125 A3 body type 0x03 is not supported"):
+        parse_a3_effect_envelope(type03, "H6125")
 
 
 @pytest.mark.parametrize("model", ["H617A", "H617E", "H6199"])

@@ -5,10 +5,51 @@ from typing import Any
 
 from kaitaistruct import KaitaiStructError
 
-from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile
+from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile, music_mode_code
 from .generated_protocol_adapter import build_music_mode, build_power, encode_music_parameters
-from .music_semantics import compile_music_parameters, music_parameters_available, music_params_for_mode, music_variant
+from .music_semantics import (
+    MusicVariant,
+    compile_music_parameters,
+    music_parameters_available,
+    music_params_for_mode,
+    music_variant,
+)
 from .transport import fragment_a3
+
+
+def _encode_h6125_music_parameters(
+    variant: MusicVariant,
+    parameters: Mapping[str, int | bool | str],
+    *,
+    calm: bool,
+) -> bytes:
+    body = bytearray(variant.template)
+    mode = variant.mode_code
+    if mode == 0x30:
+        body[-1] = 20 if calm else 80
+    elif mode == 0x31:
+        body[-3:-1] = (0x1446 if calm else 0x0564).to_bytes(2, "big")
+    elif mode == 0x32:
+        gradient = bool(parameters["gradient"])
+        body[-3:] = bytes((int(parameters["point"]), int(gradient), 98 if gradient else 99))
+    elif mode == 0x33:
+        body[-6] = int(parameters["relative_brightness"])
+    elif mode == 0x34:
+        key_count = int(parameters["key_count"])
+        body[-4] = key_count
+        body[-1] = max(1, key_count // 2)
+    elif mode == 0x35:
+        direction = {"clockwise": 1, "counterclockwise": 0}[str(parameters["direction"])]
+        body[-4:-1] = bytes((direction, 2 if direction else 3, 5 if direction else 8))
+    elif mode == 0x37:
+        body[-3:] = bytes(
+            (
+                int(parameters["segment_count"]),
+                int(parameters["speed"]),
+                int(bool(parameters["gradient"])),
+            )
+        )
+    return bytes(body)
 
 
 def build_music_params(
@@ -19,7 +60,12 @@ def build_music_params(
     profile: ModelProfile,
     calm: bool = False,
 ) -> list[bytes]:
-    if type(mode) is not int or mode not in (MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes):
+    valid_codes = (
+        {code for _slug, code in profile.music_mode_codes}
+        if profile.music_mode_codes
+        else {MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes}
+    )
+    if type(mode) is not int or mode not in valid_codes:
         raise ValueError("unsupported music mode")
     if not isinstance(calm, bool):
         raise ValueError("music style must be a boolean")
@@ -33,6 +79,10 @@ def build_music_params(
         if palette is not None:
             raise ValueError("music parameters require known physical IC count")
         return []
+    if variant.layout == "h6125_music_body":
+        if palette is not None:
+            raise ValueError("H6125 music companions do not support palette overrides")
+        return fragment_a3(0x41, _encode_h6125_music_parameters(variant, compiled, calm=calm))
     try:
         body = encode_music_parameters(variant, compiled, palette=palette, calm=calm)
     except (KaitaiStructError, EOFError) as error:
@@ -53,7 +103,7 @@ def prepare_music_request(
     profile = get_profile(model)
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
-    mode_code = MUSIC_MODE_SLUGS[mode]
+    mode_code = music_mode_code(model, mode)
     companion = build_music_params(mode_code, parameters, profile=profile, calm=calm) if include_parameters else []
     return (build_power(True, model), build_music_mode(mode_code, sensitivity, colour, calm, model), *companion)
 
@@ -70,13 +120,16 @@ def resolve_music_profile(
     profile = get_profile(model)
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
-    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
+    mode_code = music_mode_code(model, mode)
+    variant = music_variant(profile, mode_code)
     if calm is not None and (variant is None or not variant.supports_style):
         raise ValueError(f"music mode {mode} does not support a style setting")
     if colour is not None and not profile.supports_music_color:
         raise ValueError(f"{model} does not support a fixed music colour")
+    if colour is not None and model == "H6125" and mode not in {"rhythm", "spectrum", "rolling"}:
+        raise ValueError(f"H6125 music mode {mode} does not support a fixed colour")
     resolved_calm = calm if calm is not None else variant.calm_default if variant and variant.supports_style else False
-    compiled = compile_music_parameters(parameters, MUSIC_MODE_SLUGS[mode], profile)
+    compiled = compile_music_parameters(parameters, mode_code, profile)
     packets = prepare_music_request(model, mode, sensitivity, colour, resolved_calm, compiled)
     return resolved_calm, compiled, packets
 
@@ -106,7 +159,7 @@ def prepare_music_profile_writes(
         # Earlier fragments cannot complete the companion; a final attempt may.
         states[-1] = {
             spec.key: parameters.get(spec.profile_key, spec.default)
-            for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], get_profile(model))
+            for spec in music_params_for_mode(music_mode_code(model, mode), get_profile(model))
         }
     return tuple(zip(packets, states, strict=True))
 

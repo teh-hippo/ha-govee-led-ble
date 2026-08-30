@@ -22,11 +22,11 @@ from .ble_device_resolver import BLEDeviceResolver
 from .ble_protocol_identity import h6125_pact_from_manufacturer_data
 from .const import (
     DOMAIN,
-    MUSIC_MODE_SLUGS,
     ReadDomain,
     default_effect_categories,
     default_effect_families,
     get_profile,
+    music_mode_code,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_expectations import expectations_from_packet
@@ -98,6 +98,7 @@ _CORE_STATE_FIELDS = (
     "diy_code",
 )
 _COLOR_MODE_FIELDS = (
+    "color_temp_kelvin",
     "video_full_screen",
     "video_saturation",
     "video_sound_effects",
@@ -215,13 +216,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.blank_screen_detection: int | None = None
         self.blank_screen_low_brightness_duration_seconds: int | None = None
         self.blank_screen_same_tone_duration_seconds: int | None = None
-        self.music_separation_point = 1
-        self.music_separation_gradient = True
-        self.music_hopping_brightness = 50
+        self.music_separation_point = 3 if model == "H6125" else 1
+        self.music_separation_gradient = model != "H6125"
+        self.music_hopping_brightness = 25 if model == "H6125" else 50
         self.music_piano_key_count = 15
         self.music_fountain_direction = "clockwise"
-        self.music_daynight_segments = 1
-        self.music_daynight_speed = 10
+        self.music_daynight_segments = 7 if model == "H6125" else 1
+        self.music_daynight_speed = 20 if model == "H6125" else 10
         self.music_daynight_gradient = False
         for variant in self.profile.music_variants:
             for spec in music_params_for_mode(variant.mode_code, self.profile):
@@ -291,12 +292,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             brightness_pct=self.brightness_pct,
             rgb_color=self.rgb_color,
             color_temp_kelvin=self.color_temp_kelvin,
+            segment_colors=tuple(self.segment_colors) if self.model == "H6125" else None,
+            segment_brightness=tuple(self.segment_brightness) if self.model == "H6125" else None,
             effect=self.effect,
             scene_code=self.scene_code,
             diy_code=self.diy_code,
             music_mode=self.music_mode,
             music_model=self.model,
-            music_parameters=capture_music_parameters(self, self.profile, self.music_mode),
+            music_parameters=capture_music_parameters(self, self.profile, self.music_mode, self.model),
             video_mode=self.video_mode,
             music_sensitivity=self.music_sensitivity,
             music_calm=self.music_calm,
@@ -341,14 +344,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 raise ValueError("music recovery model does not match device")
             if state.music_mode not in self.profile.music_modes:
                 return False
-            variant = music_variant(self.profile, MUSIC_MODE_SLUGS[state.music_mode])
+            variant = music_variant(self.profile, music_mode_code(self.model, state.music_mode))
             # Legacy snapshots retain style across modes even when the active selector
             # has no style byte semantics. Do not reinterpret that retained value.
             music_calm = state.music_calm if variant and variant.supports_style else False
             music_parameters = (
                 dict(state.music_parameters)
                 if state.music_parameters is not None
-                else capture_music_parameters(state, self.profile, state.music_mode) or {}
+                else capture_music_parameters(state, self.profile, state.music_mode, self.model) or {}
             )
             music_writes = prepare_music_profile_writes(
                 self.model,
@@ -423,6 +426,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 or not self.profile.supports_custom_effects
                 or self.profile.effect_grammar != "H617A"
                 or self.profile.command_grammar != "H617A"
+                or self.model == "H6125"
+                and state.diy_code != 0x00FE
             ):
                 return False
             await self.send_command(build_h617a_diy_activation(state.diy_code))
@@ -497,8 +502,51 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             )
         if state.mode != "colour":
             return False
+        if state.segment_colors is not None and (
+            len(state.segment_colors) != self.profile.segment_count
+            or state.segment_brightness is None
+            or len(state.segment_brightness) != self.profile.segment_count
+        ):
+            return False
         await self.send_command(build_power(True, self.model))
         await self.send_command(self.build_brightness_command(state.brightness_pct))
+        if state.segment_colors is not None:
+            assert state.segment_brightness is not None
+            restored_kelvin = state.color_temp_kelvin
+            if restored_kelvin is not None and (
+                len(set(state.segment_colors)) != 1
+                or state.segment_colors[0] != kelvin_to_rgb(restored_kelvin, self.model)
+            ):
+                restored_kelvin = None
+            colour_groups: dict[tuple[int, int, int], list[int]] = {}
+            brightness_groups: dict[int, list[int]] = {}
+            for segment, (colour, brightness) in enumerate(
+                zip(state.segment_colors, state.segment_brightness, strict=True),
+                start=1,
+            ):
+                colour_groups.setdefault(colour, []).append(segment)
+                brightness_groups.setdefault(brightness, []).append(segment)
+            for packet in build_segment_paint(
+                [(segments, colour) for colour, segments in colour_groups.items()],
+                self.model,
+            ):
+                await self.send_command(packet)
+            for brightness, segments in brightness_groups.items():
+                await self.send_command(build_segment_brightness(segments, brightness, self.model))
+            if restored_kelvin is not None:
+                await self.send_command(build_color_temp(restored_kelvin, self.model))
+            self.is_on = True
+            self.brightness_pct = state.brightness_pct
+            self.install_static_color(rgb=state.rgb_color, kelvin=restored_kelvin)
+            self.mark_segment_state_restored(list(state.segment_colors), list(state.segment_brightness))
+            self._enter_static_mode()
+            return (
+                await self.refresh_state(refresh_all=True)
+                and await self.async_refresh_segments()
+                and self.active_mode == "colour"
+                and tuple(self.segment_colors) == state.segment_colors
+                and tuple(self.segment_brightness) == state.segment_brightness
+            )
         # Durable recovery stores values, not their original observation provenance.
         self.install_static_color(rgb=state.rgb_color, kelvin=state.color_temp_kelvin)
         if state.color_temp_kelvin is not None:
@@ -878,6 +926,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     self.color_temp_kelvin = None
                     self.color_temp_kelvin_source = "initial"
                 observed.append("rgb_color")
+        elif self.color_mode is ParsedMode.COLOUR and self.color_temp_kelvin is not None:
+            if self._accept_expected("color_temp_kelvin", None):
+                self.color_temp_kelvin = None
+                self.color_temp_kelvin_source = "initial"
+                observed.append("color_temp_kelvin")
         return tuple(observed)
 
     def _arm_expected(self, packet: bytes) -> None:
@@ -1013,6 +1066,23 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 if self._accept_expected("music_color", None):
                     self.music_color = None
                     observed.append("music_color")
+            if (
+                self.model == "H6125"
+                and parsed.mode is ParsedMode.COLOUR
+                and parsed.color_temp_kelvin is None
+                and self._accept_expected("color_temp_kelvin", None)
+            ):
+                self.color_temp_kelvin = None
+                self.color_temp_kelvin_source = "initial"
+                observed.append("color_temp_kelvin")
+            if (
+                self.model == "H6125"
+                and parsed.mode is ParsedMode.COLOUR
+                and parsed.color_temp_kelvin is None
+                and self._accept_expected("color_temp_kelvin", None)
+            ):
+                self.color_temp_kelvin = None
+                observed.append("color_temp_kelvin")
             for attr in _COLOR_MODE_FIELDS:
                 if (value := getattr(parsed, attr)) is not None:
                     if self._accept_expected(attr, value):
@@ -1248,9 +1318,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 queries.append(build_power_query(self.model))
             if query_brightness and self.profile.can_read(ReadDomain.BRIGHTNESS):
                 queries.append(build_brightness_query(self.model))
-            if query_color_mode and (
-                self.profile.supports_color_mode_readback or self.profile.query_color_mode_for_diagnostics
-            ):
+            if query_color_mode and self.profile.supports_color_mode_readback:
                 queries.append(build_colour_mode_query(self.model))
             full_query = query_power and query_brightness and query_color_mode
             if (
@@ -1515,7 +1583,6 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         query_color = self.profile.supports_color_mode_readback and (
             expected_music_auto_color or any(value is not None for value in color_expectations)
         )
-        probe_color = self.profile.query_color_mode_for_diagnostics and refresh_all
         display_settings = (
             frozenset({"white_balance", "blank_screen"})
             if refresh_display_settings is True
@@ -1598,7 +1665,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         ok = await self._send_state_queries(
                             query_power=query_power,
                             query_brightness=query_brightness,
-                            query_color_mode=query_color or probe_color,
+                            query_color_mode=query_color,
                             query_white_balance=query_white_balance,
                             query_blank_screen=query_blank_screen,
                             query_relative_brightness=query_relative_brightness,
@@ -1607,7 +1674,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         ok = await self._send_state_queries(
                             query_power=query_power,
                             query_brightness=query_brightness,
-                            query_color_mode=query_color or probe_color,
+                            query_color_mode=query_color,
                         )
                 if not ok:
                     await self._disconnect_if_current_locked(client)
@@ -1996,16 +2063,25 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         previous_groups = set(self._segment_groups_observed)
         previous_query_colors = self._segment_query_colors
         previous_query_brightness = self._segment_query_brightness
+        previous_rgb = self.rgb_color
+        previous_kelvin = self.color_temp_kelvin
         updated = list(previous)
         try:
             for segments, rgb in resolved:
                 for segment in segments:
                     updated[segment - 1] = rgb
             self.mark_segment_state_optimistic(colours=updated)
+            self.color_temp_kelvin = None
+            self.color_temp_kelvin_source = "initial"
+            if len(set(updated)) == 1:
+                self.rgb_color = updated[0]
+                self.rgb_color_source = "optimistic"
             for packet in packets:
                 await self.send_command(packet)
         except Exception:
             self.segment_colors = previous
+            self.rgb_color = previous_rgb
+            self.color_temp_kelvin = previous_kelvin
             self.segment_state_source = previous_source
             if all(
                 self._field_revisions.get(field, 0) == revision for field, revision in previous_static_revisions.items()

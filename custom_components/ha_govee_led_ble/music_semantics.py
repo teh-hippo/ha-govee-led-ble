@@ -116,6 +116,79 @@ H617A_MUSIC_VARIANTS = (
     ),
 )
 
+H6125_MUSIC_VARIANTS = (
+    MusicVariant(0x10, "H6125 captured Energetic selector"),
+    MusicVariant(0x11, "H6125 captured Rhythm selector", supports_style=True),
+    MusicVariant(0x12, "H6125 captured Spectrum selector"),
+    MusicVariant(0x13, "H6125 captured Rolling selector"),
+    MusicVariant(
+        0x30,
+        "H6125 captured Bloom companion",
+        "h6125_music_body",
+        bytes.fromhex("3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50"),
+        supports_style=True,
+    ),
+    MusicVariant(
+        0x31,
+        "H6125 captured Shiny companion",
+        "h6125_music_body",
+        bytes.fromhex("3107ff0000ff7f00ffff0000ff000000ff00ffff8b00ff05640a"),
+        supports_style=True,
+    ),
+    MusicVariant(
+        0x32,
+        "H6125 captured Separation companion",
+        "h6125_music_body",
+        bytes.fromhex("3207ff0000ff7f00ffff0000ff000000ff00ffff8b00ff030063"),
+        (
+            MusicParamSpec("music_separation_point", "point", "point", "number", 3, 1, 5),
+            MusicParamSpec("music_separation_gradient", "gradient", "gradient", "switch", False),
+        ),
+    ),
+    MusicVariant(
+        0x33,
+        "H6125 captured Hopping companion",
+        "h6125_music_body",
+        bytes.fromhex("3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010101196201030614"),
+        (MusicParamSpec("music_hopping_brightness", "relative_brightness", "rel_brightness", "number", 25, 0, 50),),
+    ),
+    MusicVariant(
+        0x34,
+        "H6125 captured Piano Keys companion",
+        "h6125_music_body",
+        bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f230107"),
+        (MusicParamSpec("music_piano_key_count", "key_count", "key_count", "number", 15, 8, 15),),
+        piano_derived_half=True,
+    ),
+    MusicVariant(
+        0x35,
+        "H6125 captured Fountain companion",
+        "h6125_music_body",
+        bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff01020555"),
+        (
+            MusicParamSpec(
+                "music_fountain_direction",
+                "direction",
+                "piece_num",
+                "select",
+                "clockwise",
+                options=("clockwise", "counterclockwise"),
+            ),
+        ),
+    ),
+    MusicVariant(
+        0x37,
+        "H6125 captured Day and Night companion",
+        "h6125_music_body",
+        bytes.fromhex("3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff071400"),
+        (
+            MusicParamSpec("music_daynight_segments", "segment_count", "segment_count", "number", 7, 1, 7),
+            MusicParamSpec("music_daynight_speed", "speed", "speed", "number", 20, 1, 50),
+            MusicParamSpec("music_daynight_gradient", "gradient", "gradient", "switch", False),
+        ),
+    ),
+)
+
 
 def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
     return next((variant for variant in profile.music_variants if variant.mode_code == mode_code), None)
@@ -129,7 +202,9 @@ def music_params_for_mode(mode_code: int, profile: ModelProfile) -> tuple[MusicP
     variant = music_variant(profile, mode_code)
     return (
         variant.parameters
-        if variant is not None and variant.layout == "music_body" and music_parameters_available(profile, variant)
+        if variant is not None
+        and variant.layout in {"music_body", "h6125_music_body"}
+        and music_parameters_available(profile, variant)
         else ()
     )
 
@@ -156,13 +231,18 @@ def compile_music_parameters(
     return compiled
 
 
-def capture_music_parameters(source: object, profile: ModelProfile, mode: str) -> dict[str, int | bool | str]:
+def capture_music_parameters(
+    source: object,
+    profile: ModelProfile,
+    mode: str,
+    model: str,
+) -> dict[str, int | bool | str]:
     """New snapshots always carry a mapping; only legacy persisted snapshots omit it."""
-    from .const import MUSIC_MODE_SLUGS
+    from .const import music_mode_code
 
     if mode not in profile.music_modes:
         return {}
     return {
         spec.profile_key: getattr(source, spec.key, spec.default)
-        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], profile)
+        for spec in music_params_for_mode(music_mode_code(model, mode), profile)
     }

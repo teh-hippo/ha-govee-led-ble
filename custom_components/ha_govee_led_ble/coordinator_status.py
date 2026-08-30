@@ -4,11 +4,10 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, cast
 
-from .const import MUSIC_MODE_SLUGS, ReadDomain, get_profile
+from .const import MUSIC_MODE_SLUGS, ReadDomain, get_profile, music_mode_slug
 from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
 from .scenes import MODEL_SCENES
 
-_MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
 _SCENE_EFFECT_BY_MODEL_ID = {
     model: {scene.code: name for name, scene in scenes.items()} for model, scenes in MODEL_SCENES.items()
 }
@@ -100,17 +99,49 @@ class ParsedColorModeResponse:
 def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
+    if get_profile(model).status_grammar == "H6125":
+        if mode_name == "scene":
+            scene_code = int(body.mode_body.code)
+            return ParsedColorModeResponse(
+                mode=ParsedMode.SCENE,
+                effect=_SCENE_EFFECT_BY_MODEL_ID.get(model, {}).get(scene_code),
+                scene_code=scene_code,
+            )
+        if mode_name == "diy":
+            return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(body.mode_body.code))
+        if mode_name in {"music_v1", "music_v3"}:
+            detail = body.mode_body
+            mode_id = int(detail.mode_id)
+            settings = detail.settings
+            manual_colour = int(getattr(settings, "manual_colour", 0))
+            rgb = getattr(settings, "rgb", None)
+            music_color = (
+                (int(rgb.red), int(rgb.green), int(rgb.blue))
+                if manual_colour and rgb is not None
+                else None
+            )
+            return ParsedColorModeResponse(
+                mode=ParsedMode.MUSIC,
+                music_mode=music_mode_slug(model, mode_id),
+                music_sensitivity=int(detail.sensitivity),
+                music_calm=bool(settings.style) if mode_id == 0x11 else None,
+                music_color=music_color,
+            )
     if mode_name in {"static", "static_colour"}:
         detail = getattr(body, "mode_body", getattr(body, "detail", None))
         rgb = getattr(detail, "rgb", None)
         kelvin = getattr(detail, "kelvin", None)
+        kelvin_value = int(kelvin) if kelvin not in {None, 0} else None
         profile = get_profile(model)
-        if kelvin is not None and not profile.min_color_temp_kelvin <= int(kelvin) <= profile.max_color_temp_kelvin:
+        if (
+            kelvin_value is not None
+            and not profile.min_color_temp_kelvin <= kelvin_value <= profile.max_color_temp_kelvin
+        ):
             raise ValueError("static Kelvin outside profile range")
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,
             rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue)) if rgb is not None else None,
-            color_temp_kelvin=int(kelvin) if kelvin is not None else None,
+            color_temp_kelvin=kelvin_value,
             multi_effect_flag=getattr(detail, "sub", None),
         )
     if get_profile(model).status_grammar == "H6199" or (
@@ -144,7 +175,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
                 )
             return ParsedColorModeResponse(
                 mode=ParsedMode.MUSIC,
-                music_mode=_MUSIC_SLUG_BY_ID.get(int(detail.mode)),
+                music_mode=music_mode_slug(model, int(detail.mode)),
                 music_sensitivity=int(detail.sensitivity),
                 music_calm=bool(detail.is_calm),
                 music_color=fixed_colour,
@@ -174,7 +205,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             music_color = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,
-            music_mode=_MUSIC_SLUG_BY_ID.get(int(detail.mode_id)),
+            music_mode=music_mode_slug(model, int(detail.mode_id)),
             music_sensitivity=int(detail.sensitivity),
             music_calm=bool(detail.style) if int(detail.mode_id) == _RHYTHM_MODE_ID else None,
             music_color=music_color,

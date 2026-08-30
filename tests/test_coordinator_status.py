@@ -114,7 +114,7 @@ def test_h617e_scene_readback_uses_its_exact_catalogue() -> None:
     assert parsed.effect == name
 
 
-def test_h6125_scene_readback_does_not_claim_an_unvalidated_scene() -> None:
+def test_h6125_scene_readback_resolves_the_model_catalogue() -> None:
     frame = bytearray([0xAA, 0x05, 0x04, 0x00, *([0] * 15)])
     frame.append(xor_checksum(frame))
     decoded = decode_status_frame(bytes(frame), "H6125")
@@ -123,8 +123,25 @@ def test_h6125_scene_readback_does_not_claim_an_unvalidated_scene() -> None:
     scene = parse_color_mode(decoded.generated, "H6125")
 
     assert scene.mode is ParsedMode.SCENE
-    assert scene.effect is None
+    assert scene.effect == "sunrise"
     assert scene.scene_code == 0
+
+
+def test_h6125_static_and_pact_one_music_readback_decode_operationally() -> None:
+    cct_frame = bytearray([0xAA, 0x05, 0x15, 0x01, 0x0A, 0x8C, *([0] * 13)])
+    cct_frame.append(xor_checksum(cct_frame))
+    cct = _parse_colour(bytes(cct_frame).hex(), "H6125")
+    assert cct.mode is ParsedMode.COLOUR
+    assert cct.color_temp_kelvin == 2700
+
+    music_frame = bytearray([0xAA, 0x05, 0x11, 0x11, 99, 1, 1, 255, 0, 0, *([0] * 9)])
+    music_frame.append(xor_checksum(music_frame))
+    music = _parse_colour(bytes(music_frame).hex(), "H6125")
+    assert music.mode is ParsedMode.MUSIC
+    assert music.music_mode == "rhythm"
+    assert music.music_sensitivity == 99
+    assert music.music_calm is True
+    assert music.music_color == (255, 0, 0)
 
 
 def test_h6199_video_and_music_fields_decode() -> None:

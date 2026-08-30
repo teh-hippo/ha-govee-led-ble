@@ -270,6 +270,12 @@ _EM = [("SomeOtherDevice", None), ("Govee_H9999_ABCD", None), ("", None), ("ihom
 _EM += [
     ("ihoment_H6125_ABCD", "H6125"),
     ("GBK_H6125_ABCD", "H6125"),
+    ("Govee_H6125_ABCD", "H6125"),
+    ("Minger_H6125_ABCD", "H6125"),
+    ("GVH6125_ABCD", "H6125"),
+    ("GV6125ABCD", "H6125"),
+    ("govee_h6125_abcd", "H6125"),
+    ("gvh6125_abcd", "H6125"),
 ]
 _EM += [("Govee_H617A_ABCD", "H617A"), ("GBK_H617A_ABCD", "H617A"), ("GVH_H617A_ABCD", "H617A")]
 _EM += [
@@ -283,36 +289,29 @@ _EM += [
     ("Govee_H6076_ABCD", "H6076"),
     ("GBK_H6076_ABCD", "H6076"),
     ("GVH_H6076_ABCD", "H6076"),
+    ("govee_h6076_abcd", "H6076"),
     ("Govee_H60760_ABCD", None),
     ("Govee_H6076X_ABCD", None),
 ]
 
 
 @pytest.mark.parametrize("name,expected", _EM)
-def test_extract_model(name, expected):
+def test_model_from_ble_name(name, expected):
     assert model_from_ble_name(name) == expected
 
 
 @pytest.mark.parametrize(
-    ("model", "expected", "enabled"),
+    ("model", "expected"),
     [
-        (
-            "H617A",
-            ["scenes", "effects", "multi_layered", "reactive", "advanced"],
-            ["scenes", "effects", "multi_layered", "reactive", "advanced"],
-        ),
-        (
-            "H6199",
-            ["video", "scenes", "effects", "reactive", "advanced"],
-            ["video", "scenes", "effects", "reactive", "advanced"],
-        ),
+        ("H6125", ["scenes", "effects", "multi_layered", "reactive"]),
+        ("H617A", ["scenes", "effects", "multi_layered", "reactive", "advanced"]),
+        ("H6199", ["video", "scenes", "effects", "reactive", "advanced"]),
     ],
 )
 async def test_options_flow_shows_supported_category_checkboxes(
     hass: HomeAssistant,
     model: str,
     expected: list[str],
-    enabled: list[str],
 ):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: model}, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
@@ -326,20 +325,10 @@ async def test_options_flow_shows_supported_category_checkboxes(
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     ]
     assert schema({}) == {
-        **{category: category in enabled for category in expected},
+        **dict.fromkeys(expected, True),
         CONF_PREFIX_EFFECT_NAMES: False,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,
     }
-
-
-async def test_options_flow_aborts_without_supported_categories(hass: HomeAssistant):
-    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6125"}, unique_id="AA:BB:CC:DD:EE:FF")
-    entry.add_to_hass(hass)
-
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_options"
 
 
 async def test_options_flow_uses_stored_category_list_for_checkbox_defaults(hass: HomeAssistant):

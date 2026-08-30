@@ -43,6 +43,14 @@ H6125ColourModeQuery = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_colour_mode_query").H6125ColourModeQuery,
 )
+H6125StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_status_reply").H6125StatusReply,
+)
+H6125MusicWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_music_write").H6125MusicWrite,
+)
 H6199StatusQuery = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_query").H6199StatusQuery,
@@ -182,6 +190,7 @@ def _serialize_xor(root: Any, length: int = 20) -> bytes:
 
 
 _STATUS_ROOTS = {
+    "H6125": ("h6125_status_reply", H6125StatusReply),
     "H617A": ("status_reply", StatusReply),
     "H6199": ("h6199_status_reply", H6199StatusReply),
 }
@@ -251,6 +260,17 @@ def parse_h6125_brightness_write(frame: bytes) -> Any | None:
     return parsed
 
 
+def parse_h6125_music_write(frame: bytes) -> Any | None:
+    if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
+        return None
+    try:
+        parsed = H6125MusicWrite(KaitaiStream(io.BytesIO(frame)))
+        parsed._read()
+    except KaitaiStructError:
+        return None
+    return parsed
+
+
 def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
     """Parse one validated, padded A3 effect envelope through its generated root."""
     if not isinstance(envelope, bytes):
@@ -264,7 +284,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
 
     grammar = get_profile(model).effect_grammar
     if grammar == "H617A":
-        if model == "H6125" and envelope[2] not in {0x01, 0x02}:
+        if model == "H6125" and envelope[2] not in {0x01, 0x02, 0x04}:
             raise ValueError(f"H6125 A3 body type 0x{envelope[2]:02x} is not supported")
         root_type = {
             0x01: SceneType1Body,
@@ -792,7 +812,7 @@ def build_colour_temperature(
         raise ValueError(f"{model} has no generated colour-temperature grammar")
     return _build_h617a_static_colour(
         mask,
-        direct=(0, 0, 0),
+        direct=(255, 255, 255) if model == "H6125" else (0, 0, 0),
         kelvin=value,
         preview=preview,
     )
@@ -1037,10 +1057,10 @@ def build_music_mode(
     calm: bool,
     model: str = "H617A",
 ) -> bytes:
-    from .const import MUSIC_MODE_SLUGS
+    from .const import music_mode_code
 
     profile = get_profile(model)
-    if type(mode_id) is not int or mode_id not in (MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes):
+    if type(mode_id) is not int or mode_id not in (music_mode_code(model, slug) for slug in profile.music_modes):
         raise ValueError(f"{model} does not support music mode {mode_id}")
     if (
         type(sensitivity) is not int
@@ -1052,11 +1072,36 @@ def build_music_mode(
         raise ValueError("music style is unsupported or invalid")
     if colour is not None and (
         not profile.supports_music_color
+        or model == "H6125"
+        and mode_id not in {0x11, 0x12, 0x13}
         or len(colour) != 3
         or any(type(channel) is not int or not 0 <= channel <= 255 for channel in colour)
     ):
         raise ValueError("fixed music colour is unsupported or invalid")
     resolved = profile.command_grammar
+    if model == "H6125":
+        root = H6125MusicWrite()
+        root.header = b"\x33\x05\x11"
+        root.mode = H6125MusicWrite.MusicMode(mode_id)
+        root.sensitivity = max(0, min(99, sensitivity))
+        if mode_id == 0x11:
+            settings = _child(H6125MusicWrite.RhythmSettings, root)
+            settings.style = int(calm)
+            settings.manual_colour = int(colour is not None)
+            if colour is not None:
+                settings.rgb = _rgb(settings, *colour)
+            settings.padding = bytes(9 if colour is not None else 12)
+        elif mode_id in {0x12, 0x13}:
+            settings = _child(H6125MusicWrite.ColourSettings, root)
+            settings.manual_colour = int(colour is not None)
+            if colour is not None:
+                settings.rgb = _rgb(settings, *colour)
+            settings.padding = bytes(10 if colour is not None else 13)
+        else:
+            settings = _child(H6125MusicWrite.EmptySettings, root)
+            settings.padding = bytes(14)
+        root.settings = settings
+        return _serialize_xor(root)
     if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"

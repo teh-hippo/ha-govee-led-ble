@@ -166,7 +166,7 @@ def scene_detail_payload(
     scene_default: NativeSceneDefault | None = None,
 ) -> dict[str, JsonValue]:
     resolved = resolve_scene(model, scene_id, effect_id)
-    if scene_default is not None and resolved.entry.scene_type == 0:
+    if scene_default is not None and (resolved.entry.scene_type == 0 or not supports_scene_editing(model)):
         scene_default = None
     speed_index = (
         scene_default.speed_index
@@ -277,6 +277,8 @@ async def async_set_scene_default(
     scene_defaults: NativeSceneDefaultRepository,
 ) -> ResolvedScene:
     coordinator = config_entry.runtime_data
+    if not supports_scene_editing(coordinator.model):
+        raise ValueError(f"{coordinator.model} scene editing is not supported")
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
     parsed = effect_content_from_dict(content)
     _validate_scene_content_identity(coordinator.model, resolved.entry, parsed)

@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from .const import MUSIC_MODE_SLUGS
+from .const import music_mode_code
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_status import ParsedMode
@@ -53,7 +53,8 @@ class _ActiveModeMixin(_CoordinatorBase):
     def music_calm(self) -> bool:
         if self._music_calm is not None:
             return self._music_calm
-        variant = music_variant(self.profile, MUSIC_MODE_SLUGS.get(self.music_mode, -1))
+        mode_code = music_mode_code(self.model, self.music_mode) if self.music_mode in self.profile.music_modes else -1
+        variant = music_variant(self.profile, mode_code)
         return variant.calm_default if variant and variant.supports_style else False
 
     @music_calm.setter
@@ -202,14 +203,19 @@ class _ActiveModeMixin(_CoordinatorBase):
             return
         if slug not in self.profile.music_modes:
             raise ValueError(f"{self.model} does not support music mode {slug}")
-        mode_id = MUSIC_MODE_SLUGS[slug]
+        mode_id = music_mode_code(self.model, slug)
         variant = music_variant(self.profile, mode_id)
         calm = (
             (self._music_calm if self._music_calm is not None else variant.calm_default)
             if variant is not None and variant.supports_style
             else False
         )
-        color = self.music_color if self.profile.supports_music_color else None
+        color = (
+            self.music_color
+            if self.profile.supports_music_color
+            and (self.model != "H6125" or slug in {"rhythm", "spectrum", "rolling"})
+            else None
+        )
         # Native selection historically sends only style companions; authored profiles
         # and recovery explicitly request all parameter packets.
         packets = prepare_music_request(
