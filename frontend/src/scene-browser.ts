@@ -156,7 +156,7 @@ export class GoveeSceneBrowser extends LitElement {
   public currentPreviewRequest(): ScenePreviewRequest | undefined {
     return this.workflow.previewRequest(
       this.isAdmin,
-      this.autoSaveEnabled,
+      this.autoSaveEnabled && this.sceneEditingEnabled,
     );
   }
 
@@ -165,7 +165,7 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   public invokeSaveShortcut(): boolean {
-    if (!this.isAdmin) {
+    if (!this.isAdmin || !this.sceneEditingEnabled) {
       return false;
     }
     if (this.workflow.sceneDefaultDirty) {
@@ -453,7 +453,7 @@ export class GoveeSceneBrowser extends LitElement {
                 </button>
               `
             : nothing}
-          ${nativeSelection
+          ${nativeSelection && this.sceneEditingEnabled
             ? nativeSceneActions(
                 this.workflow.sceneCatalogueDirty,
                 this.workflow.sceneDefaultDirty,
@@ -540,7 +540,7 @@ export class GoveeSceneBrowser extends LitElement {
             .disabled=${!this.isAdmin || this.viewState.saving}
             @value-changed=${(event: CustomEvent<SegmentedControlChange<number>>) => {
               this.workflow.setSpeedIndex(event.detail.value);
-              if (this.autoSaveEnabled) {
+              if (this.autoSaveEnabled && this.sceneEditingEnabled) {
                 if (this.liveApplyEnabled) {
                   this.dispatchPreview();
                 } else {
@@ -569,6 +569,9 @@ export class GoveeSceneBrowser extends LitElement {
   }
 
   private edit(): void {
+    if (!this.sceneEditingEnabled) {
+      return;
+    }
     const detail = this.workflow.edit(this.isAdmin);
     if (detail) {
       this.emit<SceneEditSelection>("scene-edit-selected", detail);
@@ -604,6 +607,10 @@ export class GoveeSceneBrowser extends LitElement {
     if (this.externalEditActive) {
       this.emit("scene-external-edit-cancelled");
     }
+  }
+
+  private get sceneEditingEnabled(): boolean {
+    return this.device?.model !== "H6125";
   }
 
   private requestDelete(event: Event): void {

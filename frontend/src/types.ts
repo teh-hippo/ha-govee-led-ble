@@ -349,7 +349,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 9;
+  schema_version: 10;
   sku: "H617A";
   models: Record<ModelSku, ModelEffectCatalogue>;
 }

@@ -496,27 +496,46 @@ async def test_native_scene_preview_uses_scene_speed_primitive_for_repeated_sele
     await manager.async_shutdown()
 
 
-async def test_h6125_a3_scene_preview_is_not_exposed(
+async def test_h6125_a3_scene_preview_is_exposed(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     coordinator = _coordinator(model="H6125")
+
+    async def apply_scene(
+        _scene_name,
+        *,
+        speed_index,
+        canonical_body,
+        before_write,
+        verify,
+        intent,
+    ):
+        assert speed_index is None
+        assert canonical_body is None
+        assert verify is False
+        await before_write()
+        await coordinator.async_preview_write(b"scene")
+
+    coordinator.async_apply_native_scene = AsyncMock(side_effect=apply_scene)
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
     session_id = _open(manager, owner, [])
     scene = next(entry for entry in SCENE_ENTRIES["H6125"] if entry.scene_type == 2)
 
-    with pytest.raises(ValueError, match="was not found"):
-        await manager.async_queue_scene(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-08-17T00:00:01Z",
-            scene_id=scene.scene_id,
-            effect_id=scene.effect_id,
-            speed_index=None,
-        )
+    acceptance = await manager.async_queue_scene(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:01Z",
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        speed_index=None,
+    )
+    assert acceptance.accepted is True
+    await manager.async_wait_idle("entry-a")
+    coordinator.async_apply_native_scene.assert_awaited_once()
     await manager.async_shutdown()
 
 
@@ -1164,6 +1183,34 @@ async def test_successful_unsaved_preview_invalidates_persistent_observed_match(
     assert workspace.observable_signature == f"custom:{coordinator.diy_code}"
     assert workspace.confidence is ObservationConfidence.WRITE_COMPLETED
     coordinator.async_update_listeners.assert_called_once()
+    await manager.async_shutdown()
+
+
+async def test_h6125_type04_preview_preserves_source_workspace(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(model="H6125")
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    item = _item("H6125 Type04")
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:00Z",
+        item=item,
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert any(packet[0] == 0xA1 for packet in coordinator.writes)
+    assert manager._active_workspaces is not None  # noqa: SLF001
+    workspace = manager._active_workspaces.get("entry-a")  # noqa: SLF001
+    assert workspace is not None
+    assert workspace.content == item.content
     await manager.async_shutdown()
 
 

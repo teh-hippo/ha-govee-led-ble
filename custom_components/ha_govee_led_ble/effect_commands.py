@@ -15,7 +15,7 @@ from .generated_protocol_adapter import (
     build_h617a_diy_activation as build_diy_activation,
 )
 from .light_commands import SEGMENT_COUNT
-from .transport import fragment_a3, fragment_a3_envelope
+from .transport import fragment_a1, fragment_a3, fragment_a3_envelope
 
 type RGB = tuple[int, int, int]
 
@@ -116,13 +116,22 @@ def build_h617a_diy_single(
     speed: int,
     palette: Sequence[RGB],
 ) -> list[bytes]:
+    return fragment_a3(0x04, _diy_single_body(family, variant, speed, palette))
+
+
+def _diy_single_body(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: Sequence[RGB],
+) -> bytes:
     _validate_byte(family, "family")
     if family == 0xFF:
         raise ValueError("family 255 is reserved for Multi")
     _validate_byte(variant, "variant")
     _validate_percent(speed, "speed")
     _validate_palette(palette)
-    return fragment_a3(0x04, build_h617a_diy_single_body(family, variant, speed, list(palette)))
+    return build_h617a_diy_single_body(family, variant, speed, list(palette))
 
 
 def build_h617a_diy_multi(
@@ -130,6 +139,14 @@ def build_h617a_diy_multi(
     speed: int,
     palette: Sequence[RGB],
 ) -> list[bytes]:
+    return fragment_a3(0x04, _diy_multi_body(effects, speed, palette))
+
+
+def _diy_multi_body(
+    effects: Sequence[tuple[int, int]],
+    speed: int,
+    palette: Sequence[RGB],
+) -> bytes:
     if not 1 <= len(effects) <= 4:
         raise ValueError("Multi must contain 1 to 4 effects")
     encoded_effects: list[tuple[int, int]] = []
@@ -141,4 +158,21 @@ def build_h617a_diy_multi(
         encoded_effects.append((family, variant))
     _validate_percent(speed, "speed")
     _validate_palette(palette)
-    return fragment_a3(0x04, build_h617a_diy_multi_body(encoded_effects, speed, list(palette)))
+    return build_h617a_diy_multi_body(encoded_effects, speed, list(palette))
+
+
+def build_h6125_diy_single(
+    family: int,
+    variant: int,
+    speed: int,
+    palette: Sequence[RGB],
+) -> list[bytes]:
+    return fragment_a1(0x02, b"\xfe" + _diy_single_body(family, variant, speed, palette))
+
+
+def build_h6125_diy_multi(
+    effects: Sequence[tuple[int, int]],
+    speed: int,
+    palette: Sequence[RGB],
+) -> list[bytes]:
+    return fragment_a1(0x02, b"\xfe" + _diy_multi_body(effects, speed, palette))

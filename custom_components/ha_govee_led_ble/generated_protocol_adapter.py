@@ -36,6 +36,14 @@ H6125ColourModeQuery = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_colour_mode_query").H6125ColourModeQuery,
 )
+H6125StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_status_reply").H6125StatusReply,
+)
+H6125MusicWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_music_write").H6125MusicWrite,
+)
 H6199StatusQuery = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_query").H6199StatusQuery,
@@ -165,7 +173,7 @@ def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
     resolved = wire_model(model)
     if resolved is None:
         return None
-    root_type = H6199StatusReply if resolved == "H6199" else StatusReply
+    root_type = H6125StatusReply if model == "H6125" else H6199StatusReply if resolved == "H6199" else StatusReply
     try:
         parsed = root_type(KaitaiStream(io.BytesIO(frame)))
         parsed._read()
@@ -722,7 +730,7 @@ def build_colour_temperature(
         raise ValueError(f"{model} has no generated colour-temperature grammar")
     return _build_h617a_static_colour(
         mask,
-        direct=(0, 0, 0),
+        direct=(255, 255, 255) if model == "H6125" else (0, 0, 0),
         kelvin=value,
         preview=preview,
     )
@@ -903,6 +911,29 @@ def build_music_mode(
     model: str = "H617A",
 ) -> bytes:
     resolved = wire_model(model)
+    if model == "H6125":
+        root = H6125MusicWrite()
+        root.header = b"\x33\x05\x11"
+        root.mode = H6125MusicWrite.MusicMode(mode_id)
+        root.sensitivity = max(0, min(99, sensitivity))
+        if mode_id == 0x11:
+            settings = _child(H6125MusicWrite.RhythmSettings, root)
+            settings.style = int(calm)
+            settings.manual_colour = int(colour is not None)
+            if colour is not None:
+                settings.rgb = _rgb(settings, *colour)
+            settings.padding = bytes(9 if colour is not None else 12)
+        elif mode_id in {0x12, 0x13}:
+            settings = _child(H6125MusicWrite.ColourSettings, root)
+            settings.manual_colour = int(colour is not None)
+            if colour is not None:
+                settings.rgb = _rgb(settings, *colour)
+            settings.padding = bytes(10 if colour is not None else 13)
+        else:
+            settings = _child(H6125MusicWrite.EmptySettings, root)
+            settings.padding = bytes(14)
+        root.settings = settings
+        return _serialize_xor(root)
     if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"

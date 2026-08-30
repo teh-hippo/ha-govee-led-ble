@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from .const import MUSIC_MODE_SLUGS
+from .const import MUSIC_MODE_SLUGS, music_mode_code
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_status import ParsedMode
@@ -14,7 +14,7 @@ from .light_commands import (
     build_color_temp,
     build_white_brightness,
 )
-from .music_commands import build_music_params
+from .music_commands import build_h6125_music_params, build_music_params
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
 
@@ -276,9 +276,15 @@ class _ActiveModeMixin(_CoordinatorBase):
             raise ValueError(f"{self.model} does not support music mode {slug}")
         if self.active_mode == "colour":
             self._pre_mode_snapshot = self._capture_static_state()
-        mode_id = MUSIC_MODE_SLUGS[slug]
-        calm = self.music_calm if mode_id in MUSIC_STYLE_MODE_IDS else False
-        color = self.music_color if self.profile.supports_music_color else None
+        mode_id = music_mode_code(self.model, slug)
+        style_mode = slug in {"rhythm", "bloom", "shiny"} if self.model == "H6125" else mode_id in MUSIC_STYLE_MODE_IDS
+        calm = self.music_calm if style_mode else False
+        color = (
+            self.music_color
+            if self.profile.supports_music_color
+            and (self.model != "H6125" or slug in {"rhythm", "spectrum", "rolling"})
+            else None
+        )
         send = self.send_command if writer is None else writer
         await send(build_power(True, self.model))
         self.is_on = True
@@ -309,7 +315,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.music_sensitivity = sensitivity
         self.music_color = colour
         self.music_calm = calm
-        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode]):
+        for spec in music_params_for_mode(music_mode_code(self.model, mode)):
             if spec.profile_key in parameters:
                 setattr(self, spec.key, parameters[spec.profile_key])
 
@@ -327,6 +333,22 @@ class _ActiveModeMixin(_CoordinatorBase):
         *,
         writer: Callable[[bytes], Awaitable[None]] | None = None,
     ) -> None:
+        send = self.send_command if writer is None else writer
+        if self.model == "H6125":
+            for packet in build_h6125_music_params(
+                mode_code,
+                calm=self.music_calm,
+                separation_point=self.music_separation_point,
+                separation_gradient=self.music_separation_gradient,
+                hopping_brightness=self.music_hopping_brightness,
+                piano_key_count=self.music_piano_key_count,
+                fountain_direction=self.music_fountain_direction,
+                daynight_segments=self.music_daynight_segments,
+                daynight_speed=self.music_daynight_speed,
+                daynight_gradient=self.music_daynight_gradient,
+            ):
+                await send(packet)
+            return
         overrides = {spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code)}
         if mode_code == 0x35:
             start_point, piece_num = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
@@ -338,7 +360,6 @@ class _ActiveModeMixin(_CoordinatorBase):
         companion = _MUSIC_STYLE_COMPANION.get(mode_code)
         if companion is not None:
             overrides.update(companion[self.music_calm])
-        send = self.send_command if writer is None else writer
         for packet in build_music_params(mode_code, overrides):
             await send(packet)
 

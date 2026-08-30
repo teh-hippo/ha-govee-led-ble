@@ -183,7 +183,7 @@ class EffectDeploymentEngine:
         operation_id: UUID | None,
         source_kind: str,
     ) -> tuple[CompiledApplication, DeploymentRecord]:
-        resolved_diy_code = resolve_diy_code(item, diy_code)
+        resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model)
         compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
         record = self._new_record(
             compiled,
@@ -749,6 +749,14 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
     ) -> bool:
+        if (
+            coordinator.model == "H6125"
+            and isinstance(compiled, CompiledEffect)
+            and compiled.content_kind in {"h617a_single", "h617a_multi"}
+        ):
+            if not await coordinator.refresh_state(refresh_all=True) or not await coordinator.async_refresh_segments():
+                raise RuntimeError("Could not read complete H6125 state before applying the effect")
+            return True
         refreshed = await self._async_refresh_for_reconciliation(coordinator)
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed
@@ -789,6 +797,14 @@ class EffectDeploymentEngine:
             brightness_pct=getattr(coordinator, "brightness_pct", 100),
             rgb_color=getattr(coordinator, "rgb_color", (255, 255, 255)),
             color_temp_kelvin=getattr(coordinator, "color_temp_kelvin", None),
+            segment_colors=(
+                tuple(coordinator.segment_colors) if getattr(coordinator, "segment_colors", None) is not None else None
+            ),
+            segment_brightness=(
+                tuple(coordinator.segment_brightness)
+                if getattr(coordinator, "segment_brightness", None) is not None
+                else None
+            ),
             effect=getattr(coordinator, "effect", None),
             diy_code=coordinator.diy_code,
             music_mode=getattr(coordinator, "music_mode", "off"),
@@ -986,7 +1002,7 @@ def _active_workspace_content(
     source: EffectContent,
     compiled: CompiledApplication,
 ) -> EffectContent:
-    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
+    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets or compiled.model == "H6125":
         return source
     try:
         decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
@@ -1063,7 +1079,9 @@ async def _async_refresh_profile(
 def _profile_verification_confidence(
     compiled: CompiledMusicProfile | CompiledVideoProfile,
 ) -> ObservationConfidence:
-    if isinstance(compiled, CompiledMusicProfile) and protocol_model(compiled.model) == "H617A":
+    if isinstance(compiled, CompiledMusicProfile) and (
+        protocol_model(compiled.model) == "H617A" or compiled.model == "H6125"
+    ):
         return ObservationConfidence.MODE_MATCH
     return ObservationConfidence.SETTINGS_MATCH
 
@@ -1071,6 +1089,8 @@ def _profile_verification_confidence(
 def resolve_diy_code(
     item: LibraryItem,
     requested: int | None = None,
+    *,
+    model: str | None = None,
 ) -> int | None:
     content = item.content
     if isinstance(content, MusicProfile | VideoProfile):
@@ -1086,6 +1106,10 @@ def resolve_diy_code(
     if isinstance(content, PaintedEffect):
         return 800 if requested is None else requested
     if isinstance(content, SingleEffect | MultiEffect):
+        if model == "H6125":
+            if requested is not None and requested != 0x00FE:
+                raise ValueError("H6125 Type04 effects use the latest-upload selector 0x00fe")
+            return 0x00FE
         return H617A_TYPE04_APPLY_CODE if requested is None else requested
     if isinstance(content, PaletteDiyEffect):
         return H6199_PALETTE_DIY_APPLY_CODE if requested is None else requested

@@ -98,7 +98,7 @@ async def test_setup_entry_omits_editor_link_for_h6076(hass: HomeAssistant):
 
 
 async def test_setup_entry_accepts_supported_h6125_identity(hass: HomeAssistant):
-    entry = _entry(data={CONF_MODEL: "H6125", CONF_PACT_TYPE: 10, CONF_PACT_CODE: 1})
+    entry = _entry(data={CONF_MODEL: "H6125", CONF_PACT_TYPE: 1, CONF_PACT_CODE: 2})
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
@@ -108,33 +108,37 @@ async def test_setup_entry_accepts_supported_h6125_identity(hass: HomeAssistant)
         coordinator.async_config_entry_first_refresh = AsyncMock()
         coordinator.async_refresh_identity = AsyncMock(return_value=True)
         coordinator.refresh_state = AsyncMock(return_value=True)
+        coordinator.async_refresh_segments = AsyncMock(return_value=True)
         coordinator.profile = MODEL_PROFILES["H6125"]
         coordinator.supports_brightness = True
-        coordinator.fw_version = "1.06.00"
+        coordinator.pact_type = 1
+        coordinator.pact_code = 2
+        coordinator.fw_version = "1.07.00"
         coordinator.hw_version = "1.00.03"
 
         assert await async_setup_entry(hass, entry) is True
 
     coordinator.async_refresh_identity.assert_awaited_once_with()
-    coordinator.refresh_state.assert_awaited_once_with(refresh_brightness=True)
+    coordinator.refresh_state.assert_awaited_once_with(refresh_all=True)
+    coordinator.async_refresh_segments.assert_awaited_once_with()
     cls.assert_called_once_with(
         hass,
         "AA:BB:CC:DD:EE:FF",
         "H6125",
-        configuration_url=None,
-        effect_families=frozenset(),
-        effect_categories=frozenset(),
+        configuration_url="homeassistant://ha-govee-led-ble/editor/test_entry_id",
+        effect_families=frozenset({"scenes", "music"}),
+        effect_categories=frozenset({"scenes", "effects", "multi_layered", "reactive"}),
         prefix_effect_names=False,
         always_include_custom_effects=False,
-        pact_type=10,
-        pact_code=1,
+        pact_type=1,
+        pact_code=2,
     )
     assert entry.runtime_data is coordinator
     assert ir.async_get(hass).async_get_issue(DOMAIN, f"unsupported_version_{entry.entry_id}") is None
     fwd.assert_awaited_once()
 
 
-async def test_setup_entry_accepts_captured_older_h6125_firmware(hass: HomeAssistant):
+async def test_setup_entry_rejects_h6125_outside_the_rc3_variant(hass: HomeAssistant):
     entry = _entry(data={CONF_MODEL: "H6125"})
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
@@ -148,13 +152,16 @@ async def test_setup_entry_accepts_captured_older_h6125_firmware(hass: HomeAssis
         coordinator.disconnect = AsyncMock()
         coordinator.profile = MODEL_PROFILES["H6125"]
         coordinator.supports_brightness = True
+        coordinator.pact_type = None
+        coordinator.pact_code = None
         coordinator.fw_version = "1.00.11"
         coordinator.hw_version = "1.00.01"
 
-        assert await async_setup_entry(hass, entry) is True
+        assert await async_setup_entry(hass, entry) is False
 
-    assert ir.async_get(hass).async_get_issue(DOMAIN, f"unsupported_version_{entry.entry_id}") is None
-    coordinator.refresh_state.assert_awaited_once_with(refresh_brightness=True)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"unsupported_version_{entry.entry_id}") is not None
+    coordinator.refresh_state.assert_not_awaited()
+    coordinator.disconnect.assert_awaited_once_with()
 
 
 async def test_setup_entry_rejects_unrecognised_h6125_hardware_family(hass: HomeAssistant):
@@ -166,6 +173,8 @@ async def test_setup_entry_rejects_unrecognised_h6125_hardware_family(hass: Home
         coordinator.refresh_state = AsyncMock(return_value=True)
         coordinator.disconnect = AsyncMock()
         coordinator.profile = MODEL_PROFILES["H6125"]
+        coordinator.pact_type = 1
+        coordinator.pact_code = 2
         coordinator.fw_version = "1.06.00"
         coordinator.hw_version = "4.00.00"
 
@@ -207,8 +216,8 @@ async def test_setup_entry_retries_when_h6125_identity_connection_fails(hass: Ho
     coordinator.disconnect.assert_awaited_once_with()
 
 
-async def test_setup_entry_retries_when_h6125_brightness_connection_fails(hass: HomeAssistant):
-    entry = _entry(data={CONF_MODEL: "H6125"})
+async def test_setup_entry_retries_when_h6125_state_connection_fails(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6125", CONF_PACT_TYPE: 1, CONF_PACT_CODE: 2})
     with patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls:
         coordinator = cls.return_value
         coordinator.async_config_entry_first_refresh = AsyncMock()
@@ -217,17 +226,19 @@ async def test_setup_entry_retries_when_h6125_brightness_connection_fails(hass: 
         coordinator.disconnect = AsyncMock()
         coordinator.profile = MODEL_PROFILES["H6125"]
         coordinator.supports_brightness = True
-        coordinator.fw_version = "1.06.00"
+        coordinator.pact_type = 1
+        coordinator.pact_code = 2
+        coordinator.fw_version = "1.07.00"
         coordinator.hw_version = "1.00.03"
 
-        with pytest.raises(ConfigEntryNotReady, match="brightness query could not connect"):
+        with pytest.raises(ConfigEntryNotReady, match="state queries could not connect"):
             await async_setup_entry(hass, entry)
 
     coordinator.disconnect.assert_awaited_once_with()
 
 
-async def test_setup_entry_skips_brightness_for_non_telink_h6125(hass: HomeAssistant):
-    entry = _entry(data={CONF_MODEL: "H6125"})
+async def test_setup_entry_rejects_non_target_h6125_hardware(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6125", CONF_PACT_TYPE: 1, CONF_PACT_CODE: 2})
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
@@ -237,14 +248,18 @@ async def test_setup_entry_skips_brightness_for_non_telink_h6125(hass: HomeAssis
         coordinator.async_config_entry_first_refresh = AsyncMock()
         coordinator.async_refresh_identity = AsyncMock(return_value=True)
         coordinator.refresh_state = AsyncMock()
+        coordinator.disconnect = AsyncMock()
         coordinator.profile = MODEL_PROFILES["H6125"]
         coordinator.supports_brightness = False
+        coordinator.pact_type = 1
+        coordinator.pact_code = 2
         coordinator.fw_version = "2.06.15"
         coordinator.hw_version = "2.01.00"
 
-        assert await async_setup_entry(hass, entry) is True
+        assert await async_setup_entry(hass, entry) is False
 
     coordinator.refresh_state.assert_not_awaited()
+    coordinator.disconnect.assert_awaited_once_with()
 
 
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):

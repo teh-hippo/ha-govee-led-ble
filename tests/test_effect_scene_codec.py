@@ -213,7 +213,7 @@ def test_h6125_layered_scene_editing_stays_disabled_until_hardware_validation() 
     entry = next(scene for scene in SCENE_ENTRIES["H6125"] if scene.scene_type == _LAYERED_SCENE_TYPE)
     content = decode_layered_scene(_reference("H6125", entry), _raw_param(entry))
 
-    with pytest.raises(ValueError, match="scene identity .* was not found"):
+    with pytest.raises(ValueError, match="scene editing is not supported"):
         compile_effect(LibraryItem.new("Layered template", content), "H6125")
 
 
