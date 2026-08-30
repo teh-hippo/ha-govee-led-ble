@@ -8,6 +8,7 @@ from bleak.backends.device import BLEDevice
 from custom_components.ha_govee_led_ble.ble_connection import (
     async_establish_ble_connection,
     async_validate_ble_connection,
+    is_stale_gatt_error,
 )
 from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
@@ -70,7 +71,12 @@ async def test_connection_establishment_reuses_resolution_retry_contract(hass):
 
     assert resolver.async_resolve.await_count == 2
     sleep.assert_awaited_once_with(2)
-    establish.assert_awaited_once_with(resolution.client_class, resolution.device, ADDRESS)
+    establish.assert_awaited_once_with(
+        resolution.client_class,
+        resolution.device,
+        ADDRESS,
+        use_services_cache=True,
+    )
 
 
 async def test_connection_establishment_passes_disconnected_callback(hass):
@@ -93,7 +99,55 @@ async def test_connection_establishment_passes_disconnected_callback(hass):
         resolution.device,
         ADDRESS,
         disconnected_callback=disconnected_callback,
+        use_services_cache=True,
     )
+
+
+async def test_connection_establishment_can_bypass_service_cache(hass):
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolution = _resolution()
+    resolver.async_resolve = AsyncMock(return_value=resolution)
+    establish = AsyncMock(return_value=MagicMock())
+
+    await async_establish_ble_connection(
+        hass,
+        ADDRESS,
+        resolver=resolver,
+        establish=establish,
+        use_services_cache=False,
+    )
+
+    establish.assert_awaited_once_with(
+        resolution.client_class,
+        resolution.device,
+        ADDRESS,
+        use_services_cache=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        BleakError("Characteristic 0000 not found"),
+        BleakError("GATT service is not available"),
+        BleakError("invalid handle for attribute write"),
+        BleakError("org.freedesktop.DBus.Error.UnknownObject"),
+    ],
+)
+def test_stale_gatt_error_detection(error):
+    assert is_stale_gatt_error(error)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        BleakError("Device AA:BB:CC:DD:EE:FF not found"),
+        BleakError("connection timed out"),
+        BleakError("already shutdown"),
+    ],
+)
+def test_stale_gatt_error_detection_rejects_connection_failures(error):
+    assert not is_stale_gatt_error(error)
 
 
 async def test_connection_establishment_fails_after_bounded_cache_resolution(hass):

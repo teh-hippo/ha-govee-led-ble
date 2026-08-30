@@ -16,7 +16,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection
+from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection, is_stale_gatt_error
 from .ble_device_resolver import BLEDeviceResolver
 from .const import (
     DOMAIN,
@@ -153,6 +153,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._cancel_disconnect: CALLBACK_TYPE | None = None
         self._disconnect_generation = 0
         self._intentional_disconnect_client: BleakClient | None = None
+        self._fresh_services_required = False
+        self.fresh_service_discovery_forced = False
+        self.last_connected_at: str | None = None
+        self.last_disconnected_at: str | None = None
+        self.last_failure_type: str | None = None
         self._keep_alive_task: asyncio.Task[None] | None = None
         self._keep_alive_ticks = 0
         self._identity_retries = 0
@@ -532,24 +537,45 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
             await self._disconnect_locked()
-        self._client = await async_establish_ble_connection(
-            self.hass,
-            self.address,
-            resolver=self._device_resolver,
-            establish=establish_connection,
-            sleep=asyncio.sleep,
-            disconnected_callback=self._disconnected_callback,
-        )
-        self._reset_disconnect_timer()
-        if self.profile.state_readable:
-            try:
+        elif self._client is not None:
+            self._clear_client_state(self._client)
+        force_fresh_services = self._fresh_services_required
+        try:
+            self._client = await async_establish_ble_connection(
+                self.hass,
+                self.address,
+                resolver=self._device_resolver,
+                establish=establish_connection,
+                sleep=asyncio.sleep,
+                disconnected_callback=self._disconnected_callback,
+                use_services_cache=not force_fresh_services,
+            )
+            self._reset_disconnect_timer()
+            if self.profile.state_readable:
                 await self._start_notify()
-                await self._send_identity_queries()
-            except BleakError:
-                await self._disconnect_locked()
-                raise
+                await self._send_identity_queries(require_success=force_fresh_services)
+        except (BleakError, TimeoutError) as err:
+            self._record_ble_failure(err)
+            await self._disconnect_locked()
+            raise
+        self._fresh_services_required = False
+        self.fresh_service_discovery_forced = force_fresh_services
+        self.last_connected_at = datetime.now().astimezone().isoformat(timespec="seconds")
         self._log_availability_transition()
         return self._client
+
+    @property
+    def fresh_services_required(self) -> bool:
+        """Return whether the next connection must bypass cached GATT services."""
+        return self._fresh_services_required
+
+    def _record_ble_failure(self, err: BaseException) -> bool:
+        """Record a BLE failure and retain fresh-discovery state when appropriate."""
+        self.last_failure_type = type(err).__name__
+        stale_gatt = is_stale_gatt_error(err)
+        if stale_gatt:
+            self._fresh_services_required = True
+        return stale_gatt
 
     def _renew_foreground_lease(self) -> None:
         if self._control_arbiter.current_task_intent is not ControlIntent.BACKGROUND:
@@ -596,6 +622,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if self._client is not client:
             return
         self._client = None
+        if client is not None:
+            self.last_disconnected_at = datetime.now().astimezone().isoformat(timespec="seconds")
         self._notify_started_monotonic = None
         self._last_rx_monotonic = None
         self._expected_state.clear()
@@ -976,10 +1004,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
             return True
-        except BleakError:
+        except BleakError as err:
+            if self._record_ble_failure(err):
+                await self._disconnect_locked()
             return False
 
-    async def _send_identity_queries(self) -> None:
+    async def _send_identity_queries(self, *, require_success: bool = False) -> None:
         """Query firmware and hardware for DeviceInfo, sending only unknowns.
 
         Replies can be missed right after connect while notifications are starting, so the
@@ -1003,7 +1033,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             for query in queries:
                 self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
-        except BleakError:
+        except BleakError as err:
+            stale_gatt = self._record_ble_failure(err)
+            if require_success or stale_gatt:
+                raise
             _LOGGER.debug("Identity query failed for %s", self.address)
 
     def _identity_incomplete(self) -> bool:
@@ -1275,7 +1308,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     raise BleakError(f"Device {self.address} disconnected during preview")
                 self._record_packet("tx", packet)
                 self._arm_expected(packet)
-                await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                try:
+                    await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                except BleakError as err:
+                    self._record_ble_failure(err)
+                    await self._disconnect_locked()
+                    raise
                 self._renew_foreground_lease()
 
     async def async_write_effect_sequence(
@@ -1315,6 +1353,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                                 await progress(index)
                         return
                     except (BleakError, TimeoutError) as err:
+                        if isinstance(err, BleakError):
+                            self._record_ble_failure(err)
                         await self._disconnect_locked()
                         if self.hass.is_stopping:
                             raise RuntimeError("Home Assistant is stopping") from err
@@ -1422,7 +1462,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     if self._identity_incomplete() and self._identity_retries < IDENTITY_RETRY_TICKS:
                         self._identity_retries += 1
                         async with self._lock:
-                            await self._send_identity_queries()
+                            try:
+                                await self._send_identity_queries()
+                            except BleakError:
+                                client = self._client
+                                if client is not None:
+                                    await self._disconnect_if_current_locked(client)
+                                break
                     full = self._keep_alive_ticks % STATE_QUERY_EVERY_N_KEEP_ALIVES == 0
                     async with self._lock:
                         client = self._client
@@ -1468,6 +1514,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         self._renew_foreground_lease()
                         return
                     except BleakError as err:
+                        self._record_ble_failure(err)
                         await self._disconnect_locked()
                         if attempt == 2:
                             _LOGGER.error("Failed to send to %s after 3 attempts", self.address)

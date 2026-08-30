@@ -15,6 +15,10 @@ All models support on/off, brightness, RGB colour, colour temperature, and state
 - **H617E**: LED Strip · H617A-compatible scenes, effects and music modes
 - **H6199**: DreamView T1 · 240 scenes · video and music modes · advanced controls
 
+H617A and H617E release their BLE connection about three seconds after the last Home Assistant
+command. This allows sequential control from Home Assistant and the Govee app; the device still
+accepts only one BLE connection at a time, so the two controllers cannot operate it simultaneously.
+
 ## Effect Studio
 
 Govee Effect Studio is added to the Home Assistant sidebar when the integration loads.  It provides local, model-aware effect editing without a Govee cloud account.

@@ -155,6 +155,23 @@ async def test_surfaces_firmware_hardware_and_availability(mock_h6199_coordinato
     assert diag["coordinator"]["available"] is True
 
 
+async def test_surfaces_privacy_safe_connection_recovery_state(mock_h6199_coordinator):
+    coord = _prep(mock_h6199_coordinator)
+    coord.fresh_services_required = True
+    coord.fresh_service_discovery_forced = True
+    coord.last_connected_at = "2026-08-29T12:00:00-07:00"
+    coord.last_disconnected_at = "2026-08-29T12:00:03-07:00"
+    coord.last_failure_type = "BleakError"
+
+    diag = (await _run(coord))["coordinator"]
+
+    assert diag["fresh_services_required"] is True
+    assert diag["fresh_service_discovery_forced"] is True
+    assert diag["last_connected_at"] == "2026-08-29T12:00:00-07:00"
+    assert diag["last_disconnected_at"] == "2026-08-29T12:00:03-07:00"
+    assert diag["last_failure_type"] == "BleakError"
+
+
 async def test_lock_locked_surfaced(mock_h6199_coordinator):
     coord = _prep(mock_h6199_coordinator)
     coord._lock.locked.return_value = True
