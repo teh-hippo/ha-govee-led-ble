@@ -107,6 +107,20 @@ def test_basic_and_color_props(light, mock_coordinator):
     assert light.rgb_color is None and light.color_temp_kelvin == 4000
 
 
+async def test_h6076_exposes_only_basic_colour_controls(mock_h6076_coordinator):
+    light = GoveeBLELight(mock_h6076_coordinator)
+    light.async_write_ha_state = MagicMock()
+
+    assert light.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
+    assert light.min_color_temp_kelvin == 2700
+    assert light.max_color_temp_kelvin == 6500
+    assert light.effect_list == []
+
+    mock_h6076_coordinator.is_on = True
+    await light.async_turn_on(color_temp_kelvin=2000)
+    mock_h6076_coordinator.send_command.assert_awaited_once_with(build_color_temp(2700, "H6076"))
+
+
 def test_hidden_scene_family_does_not_project_internal_scene_state(
     light,
     mock_coordinator,

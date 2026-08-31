@@ -81,6 +81,24 @@ async def test_surfaces_release_capability_evidence_without_hiding_planned_workf
     assert capabilities["workshop"]["verification_confidence"] == "selection_only"
 
 
+async def test_h6076_diagnostics_expose_basic_capability_boundary(mock_h6076_coordinator):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="22:33:44:55:66:77",
+        data={CONF_MODEL: "H6076"},
+    )
+    diag = await _run(_prep(mock_h6076_coordinator), entry)
+    coord = diag["coordinator"]
+
+    assert coord["supports_rgb"] is True
+    assert coord["supports_color_temperature"] is True
+    assert coord["color_temperature_range"] == {"minimum_kelvin": 2700, "maximum_kelvin": 6500}
+    assert coord["supports_color_mode_readback"] is False
+    assert coord["supports_custom_effects"] is False
+    assert coord["supports_segments"] is False
+    assert coord["release_capabilities"]["capabilities"] == []
+
+
 async def test_stale_experimental_option_ignored(mock_h6199_coordinator):
     """A leftover experimental option loads without error and drives no computed block."""
     entry = _entry(options={"experimental": {"timers": True, "diy": False}})

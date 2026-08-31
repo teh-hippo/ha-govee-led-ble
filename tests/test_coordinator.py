@@ -1406,6 +1406,28 @@ async def test_profile_without_colour_readback_rejects_colour_expectations(limit
     ensure.assert_not_awaited()
 
 
+async def test_h6076_refresh_all_uses_limited_readback_profile(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "33:44:55:66:77:88",
+        "H6076",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    coordinator._client = client = _c()
+
+    async def _reply(**kwargs) -> bool:
+        assert kwargs["query_color_mode"] is False
+        coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [0])))
+        coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [40])))
+        return True
+
+    with (
+        patch.object(coordinator, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coordinator, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
+    ):
+        assert await coordinator.refresh_state(refresh_all=True, timeout=0.02)
+
+
 async def test_refresh_reply_timeout_starts_after_connection(coord):
     client = _c(disconnect=AsyncMock())
 

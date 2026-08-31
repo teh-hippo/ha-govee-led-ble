@@ -47,6 +47,21 @@ def test_h617a_and_h617e_share_complete_feature_profile():
     assert wire_model("H617E") == "H617A"
 
 
+def test_h6076_profile_is_basic_and_fail_closed():
+    profile = MODEL_PROFILES["H6076"]
+    assert profile.state_readable
+    assert profile.supports_rgb and profile.supports_color_temperature
+    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2700, 6500)
+    assert not profile.supports_color_mode_readback
+    assert not profile.supports_custom_effects
+    assert not profile.supports_scenes
+    assert not profile.supports_music_mode
+    assert not profile.supports_segments
+    assert profile.whole_device_mask == 0x007F
+    assert wire_model("H6076") == "H617A"
+    assert protocol_model("H6076") == "H6076"
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments

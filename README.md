@@ -14,6 +14,7 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio | Repository Kaitai schemas and physical qualification |
 | **H617E** | Supported | H617A-compatible controls, scenes, effects and music modes | H617A-compatible profile and physical owner feedback |
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
+| **H6076** | Experimental | Candidate power, brightness, RGB and 2700–6500 K colour temperature; no colour-mode readback, segments, scenes, music or Effect Studio | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, prerelease and promotion process.
 
@@ -48,6 +49,7 @@ Effect definitions are model-specific.  A strip cannot return the body uploaded 
 
 ## Upgrade notes
 
+- An H6076 previously configured as H617A must be explicitly changed to H6076 through the integration's **Reconfigure** action.  The config entry and entity identity are preserved.
 - Version 7 adds Effect Studio while retaining the standard Home Assistant light effect selector introduced in version 6.
 - The standalone H617A scene-speed entity remains removed.  Edit scene speed in Effect Studio or select the native scene through the light effect selector.
 - Renaming a saved effect immediately changes its selector name.  Name-based automations must use the new name; the stable effect ID does not change.
