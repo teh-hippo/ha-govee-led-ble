@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
 import subprocess
+import tomllib
 from hashlib import sha256
 from pathlib import Path
 from zipfile import ZipFile
@@ -42,6 +44,13 @@ _CONTRACT_FILES = (
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def test_project_and_manifest_versions_match() -> None:
+    project = tomllib.loads((_REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    manifest = json.loads((_REPO / "custom_components/ha_govee_led_ble/manifest.json").read_text(encoding="utf-8"))
+
+    assert manifest["version"] == project["project"]["version"]
 
 
 def _executable(path: Path, content: str) -> None:
