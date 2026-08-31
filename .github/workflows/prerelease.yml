@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: Exact commit SHA from the ux branch
+        description: Exact commit SHA from the selected branch
         required: true
         type: string
       version:
-        description: Prerelease version, for example 6.5.0-rc.13
+        description: Prerelease version, for example 7.2.1-rc.1.h6076
         required: true
         type: string
       publish:
@@ -37,8 +37,8 @@ jobs:
             echo "target_sha must be a lowercase 40-character commit SHA" >&2
             exit 1
           }
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || {
-            echo "version must use the form 6.5.0-rc.13" >&2
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+(\.[0-9A-Za-z-]+)*$ ]] || {
+            echo "version must use the form 7.2.1-rc.1 or 7.2.1-rc.1.h6076" >&2
             exit 1
           }
 
@@ -47,13 +47,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify immutable ux commit
+      - name: Verify immutable selected-branch commit
         env:
+          TARGET_REF: ${{ github.ref_name }}
           TARGET_SHA: ${{ inputs.target_sha }}
         run: |
-          git fetch --no-tags origin ux
-          git merge-base --is-ancestor "$TARGET_SHA" origin/ux || {
-            echo "target_sha is not reachable from the remote ux branch" >&2
+          git fetch --no-tags origin "$TARGET_REF"
+          git merge-base --is-ancestor "$TARGET_SHA" "origin/$TARGET_REF" || {
+            echo "target_sha is not reachable from origin/$TARGET_REF" >&2
             exit 1
           }
           git checkout --detach "$TARGET_SHA"
@@ -66,10 +67,11 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           import tomllib
           from pathlib import Path
 
-          expected = os.environ["VERSION"].replace("-rc.", "rc")
+          expected = re.sub(r"-rc\.(\d+)(?:\..*)?$", r"rc\1", os.environ["VERSION"])
           project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
           manifest = json.loads(
               Path("custom_components/ha_govee_led_ble/manifest.json").read_text(encoding="utf-8")

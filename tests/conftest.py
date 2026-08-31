@@ -147,3 +147,16 @@ def mock_coordinator():
     return _make_coord(
         address="AA:BB:CC:DD:EE:FF", model="H617A", profile=MODEL_PROFILES["H617A"], is_on=False, effect=None
     )
+
+
+@pytest.fixture
+def mock_h6076_coordinator():
+    return _make_coord(
+        address="22:33:44:55:66:77",
+        model="H6076",
+        profile=MODEL_PROFILES["H6076"],
+        is_on=False,
+        effect=None,
+        segment_colors=[],
+        segment_brightness=[],
+    )

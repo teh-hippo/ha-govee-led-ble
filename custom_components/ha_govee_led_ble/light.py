@@ -73,9 +73,6 @@ PARALLEL_UPDATES = 0
 
 _LOGGER = logging.getLogger(__name__)
 
-MIN_COLOR_TEMP_KELVIN = 2000
-MAX_COLOR_TEMP_KELVIN = 9000
-
 
 def _coerce_rgb(raw: Any) -> tuple[int, int, int] | None:
     if not isinstance(raw, list | tuple) or len(raw) != 3:
@@ -144,9 +141,6 @@ async def async_setup_entry(
 
 class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, LightEntity):
     _attr_name = None
-    _attr_supported_color_modes = {ColorMode.RGB, ColorMode.COLOR_TEMP}
-    _attr_min_color_temp_kelvin = MIN_COLOR_TEMP_KELVIN
-    _attr_max_color_temp_kelvin = MAX_COLOR_TEMP_KELVIN
 
     def __init__(
         self,
@@ -158,7 +152,23 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         super().__init__(coordinator)
         self._attr_unique_id = coordinator.address.replace(":", "").lower()
         self._attr_device_info = coordinator.device_info
-        self._attr_color_mode = ColorMode.RGB
+        supported_color_modes: set[ColorMode] = set()
+        if coordinator.profile.supports_rgb:
+            supported_color_modes.add(ColorMode.RGB)
+        if coordinator.profile.supports_color_temperature:
+            supported_color_modes.add(ColorMode.COLOR_TEMP)
+        if not supported_color_modes:
+            supported_color_modes.add(ColorMode.ONOFF)
+        self._attr_supported_color_modes = supported_color_modes
+        self._attr_min_color_temp_kelvin = coordinator.profile.min_color_temp_kelvin
+        self._attr_max_color_temp_kelvin = coordinator.profile.max_color_temp_kelvin
+        self._attr_color_mode = (
+            ColorMode.RGB
+            if ColorMode.RGB in supported_color_modes
+            else ColorMode.COLOR_TEMP
+            if ColorMode.COLOR_TEMP in supported_color_modes
+            else ColorMode.ONOFF
+        )
         self._config_entry_id = config_entry_id
         self._effect_backend = effect_backend
         self._library_snapshot = (
@@ -360,7 +370,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         if (last_state := await self.async_get_last_state()) is None:
             return
-        if last_state.attributes.get(ATTR_EFFECT):
+        if last_state.attributes.get(ATTR_EFFECT) not in (None, EFFECT_OFF):
             return
         raw_mode = last_state.attributes.get(ATTR_COLOR_MODE)
         if isinstance(raw_mode, ColorMode):
@@ -375,16 +385,22 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         restored_rgb: tuple[int, int, int] | None = None
         restored_kelvin: int | None = None
         if restored_mode is ColorMode.RGB:
+            if not coordinator.profile.supports_rgb:
+                return
             restored_rgb = _coerce_rgb(last_state.attributes.get(ATTR_RGB_COLOR))
             if restored_rgb is None:
                 return
         elif restored_mode is ColorMode.COLOR_TEMP:
+            if not coordinator.profile.supports_color_temperature:
+                return
             try:
                 restored_kelvin = int(last_state.attributes[ATTR_COLOR_TEMP_KELVIN])
             except KeyError, TypeError, ValueError:
                 return
-            if not MIN_COLOR_TEMP_KELVIN <= restored_kelvin <= MAX_COLOR_TEMP_KELVIN:
-                return
+            restored_kelvin = max(
+                coordinator.profile.min_color_temp_kelvin,
+                min(coordinator.profile.max_color_temp_kelvin, restored_kelvin),
+            )
         else:
             return
         if coordinator.segment_state_source == "observed":
@@ -782,6 +798,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     retry_command=apply_brightness,
                 )
             if ATTR_RGB_COLOR in kwargs:
+                self._require_support("RGB colour", supported=self.coordinator.profile.supports_rgb)
                 r, g, b = kwargs[ATTR_RGB_COLOR]
                 await self.coordinator.send_command(build_color_rgb(r, g, b, self.coordinator.model))
                 self.coordinator.rgb_color = (r, g, b)
@@ -791,7 +808,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 self._attr_color_mode, self.coordinator.color_temp_kelvin = ColorMode.RGB, None
                 self.coordinator._enter_static_mode()
             if ATTR_COLOR_TEMP_KELVIN in kwargs:
-                kelvin = kwargs[ATTR_COLOR_TEMP_KELVIN]
+                self._require_support(
+                    "colour temperature",
+                    supported=self.coordinator.profile.supports_color_temperature,
+                )
+                kelvin = max(
+                    self.coordinator.profile.min_color_temp_kelvin,
+                    min(self.coordinator.profile.max_color_temp_kelvin, kwargs[ATTR_COLOR_TEMP_KELVIN]),
+                )
                 await self.coordinator.send_command(build_color_temp(kelvin, self.coordinator.model))
                 self.coordinator.color_temp_kelvin = kelvin
                 self.coordinator.mark_segment_state_optimistic(

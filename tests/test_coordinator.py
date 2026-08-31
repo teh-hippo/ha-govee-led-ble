@@ -123,6 +123,16 @@ def h6199(hass):
     )
 
 
+@pytest.fixture
+def h6076(hass):
+    return GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:77",
+        "H6076",
+        configuration_url=_CONFIGURATION_URL,
+    )
+
+
 def test_h617x_uses_short_idle_release_without_periodic_polling(coord):
     assert coord.update_interval is None
     with patch(f"{M}.async_call_later") as call_later:
@@ -1343,6 +1353,50 @@ async def test_refresh_state_query_selection(coord):
 
         assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
         sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
+
+
+async def test_h6076_refresh_requires_power_and_brightness_only(h6076):
+    h6076._client = client = _c()
+    h6076.rgb_color = (12, 34, 56)
+
+    async def _reply(**kwargs) -> bool:
+        assert kwargs == {
+            "query_power": True,
+            "query_brightness": True,
+            "query_color_mode": False,
+        }
+        h6076._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [0])))
+        h6076._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [40])))
+        h6076._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01])))
+        h6076._notify_callback(
+            None,
+            bytearray(
+                proto.build_packet(
+                    0xAA,
+                    0xA5,
+                    [2, 100, 255, 146, 39, 100, 255, 146, 39, 100, 255, 146, 39],
+                )
+            ),
+        )
+        return True
+
+    with (
+        patch.object(h6076, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(h6076, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
+    ):
+        assert await h6076.refresh_state(refresh_all=True, timeout=0.02)
+
+    assert h6076.is_on is False
+    assert h6076.brightness_pct == 40
+    assert h6076.rgb_color == (12, 34, 56)
+    assert h6076.color_mode is None
+    assert h6076.segment_colors == []
+
+
+async def test_h6076_rejects_colour_mode_expectations(h6076):
+    with patch.object(h6076, "_ensure_connected", new_callable=AsyncMock) as ensure:
+        assert await h6076.refresh_state(expected_effect="candy") is False
+    ensure.assert_not_awaited()
 
 
 async def test_refresh_reply_timeout_starts_after_connection(coord):

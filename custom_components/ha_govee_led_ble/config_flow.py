@@ -24,18 +24,14 @@ from .const import (
     DOMAIN,
     MODEL_PROFILES,
     default_effect_categories,
+    model_from_ble_name,
     resolve_model,
     supported_effect_categories,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H\w+)")
 _MANUAL_ADDRESS_PATTERN = re.compile(r"^[0-9A-F]{12}$")
-
-
-def _extract_model(name: str) -> str | None:
-    return resolve_model(m.group(1)) if (m := MODEL_PATTERN.search(name)) else None
 
 
 def _normalize_manual_address(address: str) -> str:
@@ -56,7 +52,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         return GoveeOptionsFlow()
 
     async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfo) -> ConfigFlowResult:
-        model = _extract_model(discovery_info.name)
+        model = model_from_ble_name(discovery_info.name)
         if model is None:
             return self.async_abort(reason="not_supported")
         await self.async_set_unique_id(discovery_info.address.strip().upper())
@@ -83,7 +79,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             selected_model = user_input[CONF_MODEL]
             service_info = bluetooth.async_last_service_info(self.hass, address, connectable=True)
-            advertised_model = _extract_model(service_info.name) if service_info is not None else None
+            advertised_model = model_from_ble_name(service_info.name) if service_info is not None else None
             if advertised_model is not None and advertised_model != selected_model:
                 return self._show_user_form(errors={"base": "model_mismatch"})
             try:
@@ -96,6 +92,34 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             return self.async_create_entry(title=f"Govee {selected_model}", data={CONF_MODEL: selected_model})
         return self._show_user_form()
+
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            selected_model = user_input[CONF_MODEL]
+            assert entry.unique_id is not None
+            service_info = bluetooth.async_last_service_info(self.hass, entry.unique_id, connectable=True)
+            advertised_model = model_from_ble_name(service_info.name) if service_info is not None else None
+            if advertised_model is not None and advertised_model != selected_model:
+                return self._show_reconfigure_form(entry, errors={"base": "model_mismatch"})
+            options = {
+                key: value
+                for key, value in entry.options.items()
+                if key
+                not in {
+                    CONF_EFFECT_CATEGORIES,
+                    CONF_EFFECT_FAMILIES,
+                    CONF_PREFIX_EFFECT_NAMES,
+                    CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+                }
+            }
+            return self.async_update_reload_and_abort(
+                entry,
+                title=f"Govee {selected_model}",
+                data_updates={CONF_MODEL: selected_model},
+                options=options,
+            )
+        return self._show_reconfigure_form(entry)
 
     def _show_user_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:
         models = list(MODEL_PROFILES.keys())
@@ -110,6 +134,20 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    def _show_reconfigure_form(
+        self,
+        entry: ConfigEntry,
+        *,
+        errors: dict[str, str] | None = None,
+    ) -> ConfigFlowResult:
+        current = entry.data.get(CONF_MODEL)
+        default = current if isinstance(current, str) and current in MODEL_PROFILES else next(iter(MODEL_PROFILES))
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema({vol.Required(CONF_MODEL, default=default): vol.In(list(MODEL_PROFILES))}),
+            errors=errors,
+        )
+
 
 class GoveeOptionsFlow(OptionsFlowWithReload):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -118,6 +156,8 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
         if model is None:
             return self.async_abort(reason="not_supported")
         supported = supported_effect_categories(model)
+        if not supported:
+            return self.async_abort(reason="no_options")
         if user_input is not None:
             ordered = [category for category in supported if user_input[category]]
             options = {key: value for key, value in self.config_entry.options.items() if key != CONF_EFFECT_FAMILIES}

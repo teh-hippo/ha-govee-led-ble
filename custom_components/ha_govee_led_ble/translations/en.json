@@ -17,6 +17,13 @@
           "address": "The 12-digit Bluetooth address printed by the device or shown by a BLE scanner.",
           "model": "The model printed on the device. A conflicting supported model advertised at this address is rejected."
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Govee model",
+        "description": "Select the exact model advertised by this device. The config entry and entity identity are preserved.",
+        "data": {
+          "model": "Device Model"
+        }
       }
     },
     "error": {
@@ -27,6 +34,7 @@
     },
     "abort": {
       "already_configured": "Device is already configured",
+      "no_options": "This model has no configurable Effect Studio options",
       "not_supported": "This device is not a supported Govee model"
     }
   },

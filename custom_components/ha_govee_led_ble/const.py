@@ -1,5 +1,6 @@
 """Constants for HA Govee LED BLE."""
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -35,12 +36,20 @@ EFFECT_CATEGORY_CONTENT_KINDS = {
     EFFECT_CATEGORY_REACTIVE: frozenset({"music_profile"}),
     EFFECT_CATEGORY_ADVANCED: frozenset({"advanced", "workshop"}),
 }
+_BLE_MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H[0-9A-Z]{4})(?:_|$)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
 class ModelProfile:
     name: str
+    wire_model: str | None = None
     state_readable: bool = False
+    supports_rgb: bool = False
+    supports_color_temperature: bool = False
+    min_color_temp_kelvin: int = 2000
+    max_color_temp_kelvin: int = 9000
+    supports_color_mode_readback: bool = False
+    supports_custom_effects: bool = False
     supports_scenes: bool = False
     supports_video_mode: bool = False
     supports_video_sound_effects: bool = False
@@ -55,6 +64,7 @@ class ModelProfile:
     supports_music_color: bool = False
     supports_white_brightness: bool = False
     static_readback_echoes_color: bool = False
+    whole_device_mask: int = 0
     segment_count: int = 0
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
@@ -87,12 +97,18 @@ _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 
 _H617X_PROFILE = ModelProfile(
     "H617A/H617E LED Strip",
+    wire_model="H617A",
     state_readable=True,
+    supports_rgb=True,
+    supports_color_temperature=True,
+    supports_color_mode_readback=True,
+    supports_custom_effects=True,
     supports_scenes=True,
     music_modes=tuple(MUSIC_MODE_SLUGS),
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
+    whole_device_mask=0x7FFF,
     # H617A and H617E expose fifteen segments through five explicit aa a5 query groups of three.
     # Segment writes ACK normally but do not publish updated groups without those queries.
     segment_count=15,
@@ -108,9 +124,24 @@ _H617X_PROFILE = ModelProfile(
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617A": _H617X_PROFILE,
     "H617E": _H617X_PROFILE,
+    "H6076": ModelProfile(
+        "H6076 Lyra Floor Lamp",
+        wire_model="H617A",
+        state_readable=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        whole_device_mask=0x007F,
+    ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
+        wire_model="H6199",
         state_readable=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_color_mode_readback=True,
+        supports_custom_effects=True,
         supports_scenes=True,
         supports_video_mode=True,
         supports_video_sound_effects=True,
@@ -123,6 +154,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_sensitivity_max=100,
         supports_music_color=True,
         supports_advanced_effects=True,
+        whole_device_mask=0x7FFF,
         # Static readback identifies the mode but exposes rendered colour only through segment
         # queries. Kelvin remains last-known while its RGB companion matches.
         # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
@@ -137,12 +169,22 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
 def resolve_model(model: str) -> str | None:
     candidate = model.strip().upper()
-    return next((known for known in MODEL_PROFILES if candidate.startswith(known)), None)
+    return candidate if candidate in MODEL_PROFILES else None
+
+
+def model_from_ble_name(name: str) -> str | None:
+    match = _BLE_MODEL_PATTERN.search(name)
+    return resolve_model(match.group(1)) if match else None
 
 
 def protocol_model(model: str) -> str | None:
     resolved = resolve_model(model)
     return "H617A" if resolved in {"H617A", "H617E"} else resolved
+
+
+def wire_model(model: str) -> str | None:
+    resolved = resolve_model(model)
+    return MODEL_PROFILES[resolved].wire_model if resolved is not None else None
 
 
 def get_profile(model: str) -> ModelProfile:
@@ -164,9 +206,9 @@ def supported_effect_families(model: str) -> frozenset[str]:
 
 def supported_effect_categories(model: str) -> tuple[str, ...]:
     profile = get_profile(model)
-    categories: set[str] = {
-        EFFECT_CATEGORY_EFFECTS,
-    }
+    categories: set[str] = set()
+    if profile.supports_custom_effects:
+        categories.add(EFFECT_CATEGORY_EFFECTS)
     if profile.supports_scenes:
         categories.add(EFFECT_CATEGORY_SCENES)
     if profile.supports_video_mode:

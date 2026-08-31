@@ -1,8 +1,10 @@
 """HA Govee LED BLE integration."""
 
 import asyncio
+import logging
 from typing import Any
 
+from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -25,6 +27,7 @@ from .const import (
     default_effect_categories,
     effect_categories_from_options,
     effect_families_from_options,
+    model_from_ble_name,
     prefix_effect_names_from_options,
     resolve_model,
 )
@@ -77,6 +80,7 @@ _LEGACY_ENTITY_SUFFIXES = {
 }
 # Config entry versions below 2 can contain this unsupported option.
 _LEGACY_EXPERIMENTAL_OPTION = "experimental"
+_LOGGER = logging.getLogger(__name__)
 
 
 def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
@@ -151,6 +155,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
             severity=ir.IssueSeverity.ERROR,
             translation_key="unsupported_model",
             translation_placeholders={"model": str(raw_model or "missing")},
+        )
+        return False
+    service_info = bluetooth.async_last_service_info(hass, entry.unique_id, connectable=True)
+    advertised_model = model_from_ble_name(service_info.name) if service_info is not None else None
+    if advertised_model is not None and advertised_model != model:
+        _LOGGER.error(
+            "Configured model %s does not match advertised model %s for config entry %s; reconfigure the entry",
+            model,
+            advertised_model,
+            entry.entry_id,
         )
         return False
     ir.async_delete_issue(hass, DOMAIN, issue_id)

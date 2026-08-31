@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.const import (
     prefix_effect_names_from_options,
     protocol_model,
     resolve_model,
+    wire_model,
 )
 
 
@@ -41,16 +42,33 @@ def test_h617a_and_h617e_share_complete_feature_profile():
     assert profile.supports_advanced_effects
     assert profile.supports_multi_layered_effects
     assert profile.connection_idle_timeout == 3.0
-    assert resolve_model("H617E-extra") == "H617E"
-    assert protocol_model("H617E-extra") == "H617A"
+    assert resolve_model("H617E") == "H617E"
+    assert protocol_model("H617E") == "H617A"
+    assert wire_model("H617E") == "H617A"
+
+
+def test_h6076_profile_is_basic_and_fail_closed():
+    profile = MODEL_PROFILES["H6076"]
+    assert profile.state_readable
+    assert profile.supports_rgb and profile.supports_color_temperature
+    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2700, 6500)
+    assert not profile.supports_color_mode_readback
+    assert not profile.supports_custom_effects
+    assert not profile.supports_scenes
+    assert not profile.supports_music_mode
+    assert not profile.supports_segments
+    assert profile.whole_device_mask == 0x007F
+    assert wire_model("H6076") == "H617A"
+    assert protocol_model("H6076") == "H6076"
 
 
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments
     assert not UNSUPPORTED_PROFILE.supports_music_mode
-    assert resolve_model("H617A-extra") == "H617A"
+    assert resolve_model("H617A-extra") is None
     assert resolve_model("H9999") is None
+    assert wire_model("H9999") is None
 
 
 def test_effect_family_defaults_and_options():

@@ -28,6 +28,12 @@ from custom_components.ha_govee_led_ble.editor import (
 )
 
 
+@pytest.fixture(autouse=True)
+def mock_last_service_info():
+    with patch("custom_components.ha_govee_led_ble.bluetooth.async_last_service_info", return_value=None):
+        yield
+
+
 def _entry(**kw):
     d = dict(entry_id="test_entry_id", unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H617A"}, options={})
     return MagicMock(**({**d, "domain": DOMAIN, "state": ConfigEntryState.LOADED, "runtime_data": None} | kw))
@@ -98,6 +104,18 @@ async def test_setup_entry_rejects_unknown_model(hass: HomeAssistant, data):
     issue = ir.async_get(hass).async_get_issue(DOMAIN, f"unsupported_model_{entry.entry_id}")
     assert issue is not None
     assert issue.severity is ir.IssueSeverity.ERROR
+
+
+async def test_setup_entry_rejects_known_advertised_model_mismatch(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H617A"})
+    service_info = MagicMock()
+    service_info.name = "Govee_H6076_ABCD"
+    with (
+        patch("custom_components.ha_govee_led_ble.bluetooth.async_last_service_info", return_value=service_info),
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+    ):
+        assert await async_setup_entry(hass, entry) is False
+    cls.assert_not_called()
 
 
 @pytest.mark.parametrize("unload_ok,disc", [(True, "assert_awaited_once"), (False, "assert_not_awaited")])

@@ -9,7 +9,7 @@ from typing import Any, cast
 
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
-from .const import protocol_model
+from .const import protocol_model, wire_model
 from .transport import A3_CHUNK_SIZE, xor_checksum
 
 CommandWrite = cast(
@@ -154,7 +154,10 @@ def _serialize_xor(root: Any, length: int = 20) -> bytes:
 def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
     if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
         return None
-    root_type = H6199StatusReply if model == "H6199" else StatusReply
+    resolved = wire_model(model)
+    if resolved is None:
+        return None
+    root_type = H6199StatusReply if resolved == "H6199" else StatusReply
     try:
         parsed = root_type(KaitaiStream(io.BytesIO(frame)))
         parsed._read()
@@ -166,7 +169,10 @@ def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
 def parse_command(frame: bytes, model: str = "H617A") -> Any | None:
     if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
         return None
-    root_type = H6199CommandWrite if model == "H6199" else CommandWrite
+    resolved = wire_model(model)
+    if resolved is None:
+        return None
+    root_type = H6199CommandWrite if resolved == "H6199" else CommandWrite
     try:
         parsed = root_type(KaitaiStream(io.BytesIO(frame)))
         parsed._read()
@@ -212,12 +218,15 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
 
 
 def _command_types(model: str) -> tuple[Any, Any, Any]:
-    if model == "H6199":
+    resolved = wire_model(model)
+    if resolved == "H6199":
         return (
             H6199CommandWrite,
             H6199CommandWrite.PowerBody,
             H6199CommandWrite.BrightnessBody,
         )
+    if resolved != "H617A":
+        raise ValueError(f"{model} has no generated command grammar")
     return CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
 
 
@@ -236,7 +245,10 @@ def _build_status_query(
     display_setting: str | None = None,
     segment_group: int | None = None,
 ) -> bytes:
-    root_type = H6199StatusQuery if model == "H6199" else StatusQuery
+    resolved = wire_model(model)
+    if resolved is None:
+        raise ValueError(f"{model} has no generated status-query grammar")
+    root_type = H6199StatusQuery if resolved == "H6199" else StatusQuery
     root = root_type()
     root.header = b"\xaa"
     root.domain = getattr(root_type.QueryDomain, domain)
@@ -302,7 +314,10 @@ def build_h6199_subordinate_query(domain: int) -> bytes:
 
 
 def build_segment_query(group: int, model: str = "H617A") -> bytes:
-    maximum = 4 if model == "H6199" else 5
+    resolved = wire_model(model)
+    if resolved is None:
+        raise ValueError(f"{model} has no generated segment-query grammar")
+    maximum = 4 if resolved == "H6199" else 5
     if not 1 <= group <= maximum:
         raise ValueError(f"segment query group must be from 1 to {maximum}")
     return _build_status_query("segments", model, segment_group=group)
@@ -611,7 +626,8 @@ def build_segment_colour(
     blue: int,
     model: str = "H617A",
 ) -> bytes:
-    if model == "H6199":
+    resolved = wire_model(model)
+    if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"
         root.opcode = H6199CommandWrite.CommandOp.mode
@@ -629,6 +645,8 @@ def build_segment_colour(
         root.body = mode
         return _serialize_xor(root)
 
+    if resolved != "H617A":
+        raise ValueError(f"{model} has no generated static-colour grammar")
     return _build_h617a_static_colour(
         mask,
         direct=(red, green, blue),
@@ -644,7 +662,8 @@ def build_colour_temperature(
     model: str = "H617A",
 ) -> bytes:
     value = max(2000, min(9000, kelvin))
-    if model == "H6199":
+    resolved = wire_model(model)
+    if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"
         root.opcode = H6199CommandWrite.CommandOp.mode
@@ -662,6 +681,8 @@ def build_colour_temperature(
         root.body = mode
         return _serialize_xor(root)
 
+    if resolved != "H617A":
+        raise ValueError(f"{model} has no generated colour-temperature grammar")
     return _build_h617a_static_colour(
         mask,
         direct=(0, 0, 0),
@@ -676,7 +697,8 @@ def build_segment_brightness(
     model: str = "H617A",
 ) -> bytes:
     value = max(0, min(100, percent))
-    if model == "H6199":
+    resolved = wire_model(model)
+    if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"
         root.opcode = H6199CommandWrite.CommandOp.mode
@@ -690,6 +712,8 @@ def build_segment_brightness(
         root.body = mode
         return _serialize_xor(root)
 
+    if resolved != "H617A":
+        raise ValueError(f"{model} has no generated segment-brightness grammar")
     root = CommandWrite()
     root.header = b"\x33"
     root.opcode = CommandWrite.CommandOp.multi

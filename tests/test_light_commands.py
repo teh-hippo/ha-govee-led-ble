@@ -43,6 +43,15 @@ def test_whole_strip_colour_temperature_and_brightness() -> None:
     assert build_color_temp(12000)[7:9] == (9000).to_bytes(2, "big")
 
 
+def test_h6076_uses_its_whole_device_mask_and_kelvin_range() -> None:
+    colour = build_color_rgb(10, 20, 30, "H6076")
+    assert colour[12:14] == b"\x7f\x00"
+    parsed = parse_static_write(colour, "H6076")
+    assert parsed is not None and parsed.whole_strip
+    assert build_color_temp(2000, "H6076")[7:9] == (2700).to_bytes(2, "big")
+    assert build_color_temp(9000, "H6076")[7:9] == (6500).to_bytes(2, "big")
+
+
 def test_segment_numbering_and_masks() -> None:
     assert segments_to_mask([1]) == 0x0001
     assert segments_to_mask([3]) == 0x0004

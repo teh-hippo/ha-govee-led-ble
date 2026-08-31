@@ -7,13 +7,16 @@
 
 Local BLE control and effect authoring for supported Govee lights from Home Assistant, with no cloud dependency.
 
-## Supported Devices
+## Device support
 
-All models support on/off, brightness, RGB colour, colour temperature, and state readback.
+| Model | Status | Controls and limitations | Evidence |
+| --- | --- | --- | --- |
+| **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio | Repository Kaitai schemas and physical qualification |
+| **H617E** | Supported | H617A-compatible controls, scenes, effects and music modes | H617A-compatible profile and physical owner feedback |
+| **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
+| **H6076** | Experimental | Candidate power, brightness, RGB and 2700–6500 K colour temperature; no colour-mode readback, segments, scenes, music or Effect Studio | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) |
 
-- **H617A**: LED Strip · 83 scenes · 11 music modes
-- **H617E**: LED Strip · H617A-compatible scenes, effects and music modes
-- **H6199**: DreamView T1 · 240 scenes · video and music modes · advanced controls
+**Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, prerelease and promotion process.
 
 ## Effect Studio
 
@@ -46,6 +49,7 @@ Effect definitions are model-specific.  A strip cannot return the body uploaded 
 
 ## Upgrade notes
 
+- An H6076 previously configured as H617A must be explicitly changed to H6076 through the integration's **Reconfigure** action.  The config entry and entity identity are preserved.
 - Version 7 adds Effect Studio while retaining the standard Home Assistant light effect selector introduced in version 6.
 - The standalone H617A scene-speed entity remains removed.  Edit scene speed in Effect Studio or select the native scene through the light effect selector.
 - Renaming a saved effect immediately changes its selector name.  Name-based automations must use the new name; the stable effect ID does not change.
@@ -71,7 +75,7 @@ Restart Home Assistant after updating this integration through HACS or replacing
 
 ## Configuration
 
-The integration auto-discovers nearby supported devices.
+The integration auto-discovers exact listed models.  Experimental models are available only in their model-specific prerelease.
 
 To add manually in Home Assistant:
 
@@ -79,9 +83,11 @@ To add manually in Home Assistant:
 
 Use the integration's **Configure** action to choose which Effect Studio categories and light effect names are exposed for each device.
 
+Use **Reconfigure** to correct the selected model while preserving the existing config entry and entity identity.
+
 ## Scope, non-goals, and expert tools
 
-The supported product scope is local BLE control of H617A, H617E and H6199 through Home Assistant.  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
+The maintained product scope and per-model limitations are defined by the [device support table](#device-support).  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
 
 Wi-Fi provisioning is not a maintained integration or contributor workflow.  The decoded H6199 [`a1 11` frame](tools/ble/kaitai/h6199_wifi_provision.ksy), [reassembled body](tools/ble/kaitai/h6199_wifi_body.ksy) and [`ee 11` result](tools/ble/kaitai/h6199_wifi_result.ksy) remain as tested protocol findings.
 
@@ -96,9 +102,9 @@ The retained music-stream schema is decode-only evidence support.  It does not p
 
 Native H6199 camera calibration is unavailable from the current local interfaces.  The completed [camera-calibration investigation](https://github.com/teh-hippo/ha-govee-led-ble/issues/136) found that the required geometry exchange remains behind the manufacturer's trusted network service.
 
-Cross-SKU evidence, additional device models, Home Assistant quality-scale work, and restart-free integration updates are separate future programmes.  They do not define H617A/H6199 completion.
+Additional models follow the request and qualification process in [CONTRIBUTING.md](CONTRIBUTING.md).  Cross-SKU evidence, Home Assistant quality-scale work, and restart-free integration updates remain separate programmes.
 
-The final [UX completion evidence matrix](docs/completion-evidence.md) records issue dispositions, cleanup metrics, retained tests and tooling, public-contract parity, and release qualification.
+The historical [7.0 UX completion evidence matrix](docs/completion-evidence.md) records that programme's issue dispositions, cleanup metrics, retained tests and release qualification.
 
 ## Development
 
