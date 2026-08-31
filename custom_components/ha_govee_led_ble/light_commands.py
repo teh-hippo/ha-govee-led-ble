@@ -4,6 +4,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from .const import get_profile
 from .generated_protocol_adapter import (
     build_colour_temperature,
     build_segment_colour,
@@ -64,7 +65,7 @@ def build_segment_paint(
 
 
 def build_color_rgb(red: int, green: int, blue: int, model: str = "H617A") -> bytes:
-    return build_segment_color(ALL_SEGMENTS, red, green, blue, model)
+    return build_segment_colour(get_profile(model).whole_device_mask, red, green, blue, model)
 
 
 def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
@@ -80,8 +81,9 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
 
 
 def build_color_temp(kelvin: int, model: str = "H617A") -> bytes:
-    value = _clamp(kelvin, 2000, 9000)
-    return build_colour_temperature(value, kelvin_to_rgb(value), ALL_SEGMENTS_MASK, model)
+    profile = get_profile(model)
+    value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
+    return build_colour_temperature(value, kelvin_to_rgb(value), profile.whole_device_mask, model)
 
 
 def build_white_brightness(percent: int, model: str = "H617A") -> bytes:
@@ -94,6 +96,7 @@ class ParsedStaticWrite:
 
     operation: int
     segment_mask: int
+    whole_device_mask: int = ALL_SEGMENTS_MASK
     rgb: tuple[int, int, int] | None = None
     kelvin: int | None = None
     kelvin_companion_rgb: tuple[int, int, int] | None = None
@@ -101,7 +104,7 @@ class ParsedStaticWrite:
 
     @property
     def whole_strip(self) -> bool:
-        return self.segment_mask == ALL_SEGMENTS_MASK
+        return self.segment_mask == self.whole_device_mask
 
 
 def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite | None:
@@ -109,6 +112,7 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
     generated = parse_command(packet, model)
     if generated is None:
         return None
+    whole_device_mask = get_profile(model).whole_device_mask
     if model == "H6199":
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
             return None
@@ -122,14 +126,21 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
                 return ParsedStaticWrite(
                     operation=operation,
                     segment_mask=int(detail.segment_mask),
+                    whole_device_mask=whole_device_mask,
                     kelvin=kelvin,
                     kelvin_companion_rgb=(int(preview.red), int(preview.green), int(preview.blue)),
                 )
-            return ParsedStaticWrite(operation=operation, segment_mask=int(detail.segment_mask), rgb=rgb)
+            return ParsedStaticWrite(
+                operation=operation,
+                segment_mask=int(detail.segment_mask),
+                whole_device_mask=whole_device_mask,
+                rgb=rgb,
+            )
         if detail.operation.name == "brightness":
             return ParsedStaticWrite(
                 operation=operation,
                 segment_mask=int(detail.brightness_segment_mask),
+                whole_device_mask=whole_device_mask,
                 brightness_pct=int(detail.brightness_percent),
             )
         return None
@@ -146,6 +157,7 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
             return ParsedStaticWrite(
                 operation=operation,
                 segment_mask=mask,
+                whole_device_mask=whole_device_mask,
                 kelvin=kelvin,
                 kelvin_companion_rgb=(
                     int(body.rgb_preview.red),
@@ -153,11 +165,17 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
                     int(body.rgb_preview.blue),
                 ),
             )
-        return ParsedStaticWrite(operation=operation, segment_mask=mask, rgb=rgb)
+        return ParsedStaticWrite(
+            operation=operation,
+            segment_mask=mask,
+            whole_device_mask=whole_device_mask,
+            rgb=rgb,
+        )
     if hasattr(body, "percent"):
         return ParsedStaticWrite(
             operation=operation,
             segment_mask=int(body.mask.bits),
+            whole_device_mask=whole_device_mask,
             brightness_pct=int(body.percent),
         )
     return None

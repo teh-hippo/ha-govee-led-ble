@@ -867,6 +867,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     self.brightness_pct = brightness_value
                     observed = ("brightness_pct",)
             elif domain is StatusDomain.COLOUR_MODE:
+                if not self.profile.supports_color_mode_readback:
+                    return
                 observed = self._apply_color_mode_payload(generated)
             elif domain is StatusDomain.DISPLAY_SETTING:
                 current_white_balance: tuple[int, int] | None
@@ -917,6 +919,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     ) = edges
                     observed = tuple(edge_values)
             elif domain is StatusDomain.SEGMENTS:
+                if not self.profile.supports_segments:
+                    return
                 observed = self._apply_segment_group(generated)
             elif domain is StatusDomain.FIRMWARE:
                 self._note_identity(fw_version=generated.body.text or None)
@@ -1117,14 +1121,21 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             expected_video_sound_effects_softness,
             expected_white_brightness,
         )
+        if not self.profile.supports_color_mode_readback and (
+            expected_music_auto_color or any(value is not None for value in color_expectations)
+        ):
+            return False
         query_power = expected_on is not None
         query_brightness = expected_brightness is not None
-        query_color = expected_music_auto_color or any(value is not None for value in color_expectations)
+        query_color = self.profile.supports_color_mode_readback and (
+            expected_music_auto_color or any(value is not None for value in color_expectations)
+        )
         query_white_balance = expected_white_balance is not None or refresh_display_settings
         query_blank_screen = expected_blank_screen is not None or refresh_display_settings
         query_relative_brightness = expected_relative_brightness is not None or refresh_relative_brightness
         if refresh_all:
-            query_power = query_brightness = query_color = True
+            query_power = query_brightness = True
+            query_color = self.profile.supports_color_mode_readback
         if not any(
             (
                 query_power,
@@ -1135,7 +1146,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 query_relative_brightness,
             )
         ):
-            query_power = query_color = True
+            query_power = True
+            query_color = self.profile.supports_color_mode_readback
         queried_domains = {
             domain
             for domain, enabled in (
@@ -1429,7 +1441,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         ok = await self._send_state_queries(
                             query_power=True,
                             query_brightness=full,
-                            query_color_mode=full,
+                            query_color_mode=full and self.profile.supports_color_mode_readback,
                         )
                     if not ok:
                         if client is not None:

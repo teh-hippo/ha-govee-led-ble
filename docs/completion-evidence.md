@@ -1,5 +1,7 @@
 # UX completion evidence
 
+This is a historical snapshot of the 7.0 UX completion programme, not the live device-support index.  Current model status and contribution requirements are maintained in the [README](../README.md#device-support) and [CONTRIBUTING.md](../CONTRIBUTING.md).
+
 This matrix reconciles the UX completion programme against the final remediation work.  A row is complete only when the repository, GitHub issue, automated evidence, physical evidence, or an explicit non-goal records its disposition.
 
 ## Programme findings
