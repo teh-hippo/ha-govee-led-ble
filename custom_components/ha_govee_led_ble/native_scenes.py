@@ -3,6 +3,7 @@
 import base64
 from dataclasses import replace
 
+from .const import protocol_model
 from .effect_domain import LayeredScene, PaletteScene
 from .generated_protocol_adapter import build_h617a_scene, build_h6199_scene
 from .layered_scene import CatalogueRef, LayeredEffect
@@ -63,7 +64,13 @@ def build_native_scene_packets(
         canonical_body=canonical_body,
     )
     upload = fragment_a3(scene.scene_type, payload) if payload else []
-    activation = build_h6199_scene(scene.code, scene.music_code) if model == "H6199" else build_h617a_scene(scene.code)
+    resolved = protocol_model(model)
+    if resolved == "H6199":
+        activation = build_h6199_scene(scene.code, scene.music_code)
+    elif resolved == "H617A":
+        activation = build_h617a_scene(scene.code)
+    else:
+        raise ValueError(f"{model} has no native-scene grammar")
     return [*upload, activation]
 
 

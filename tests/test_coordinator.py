@@ -2436,6 +2436,13 @@ def test_segment_query_groups_are_model_bounded(model: str, maximum: int) -> Non
         build_segment_query(maximum + 1, model)
 
 
+def test_unknown_model_encoders_fail_closed() -> None:
+    with pytest.raises(ValueError, match="music grammar"):
+        build_music_mode(0x03, 50, None, False, "H9999")
+    with pytest.raises(ValueError, match="native-scene grammar"):
+        build_native_scene_packets("H9999", SCENES["rainbow"])
+
+
 def test_h6199_subordinate_queries_exclude_identity_domain() -> None:
     with pytest.raises(ValueError, match="0x20 or 0x21"):
         build_h6199_subordinate_query(0x14)

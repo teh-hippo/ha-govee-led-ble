@@ -865,7 +865,8 @@ def build_music_mode(
     calm: bool,
     model: str = "H617A",
 ) -> bytes:
-    if model == "H6199":
+    resolved = wire_model(model)
+    if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"
         root.opcode = H6199CommandWrite.CommandOp.mode
@@ -881,6 +882,8 @@ def build_music_mode(
         root.body = mode
         return _serialize_xor(root)
 
+    if resolved != "H617A":
+        raise ValueError(f"{model} has no generated music grammar")
     root = CommandWrite()
     root.header = b"\x33"
     root.opcode = CommandWrite.CommandOp.multi
