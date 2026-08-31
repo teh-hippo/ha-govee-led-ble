@@ -124,6 +124,16 @@ _H617X_PROFILE = ModelProfile(
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617A": _H617X_PROFILE,
     "H617E": _H617X_PROFILE,
+    "H6076": ModelProfile(
+        "H6076 Lyra Floor Lamp",
+        wire_model="H617A",
+        state_readable=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        whole_device_mask=0x007F,
+    ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         wire_model="H6199",

@@ -652,6 +652,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     h617a = device_effect_capabilities("entry-a", "H617A", "Test Light", 15)
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
     unknown = device_effect_capabilities("entry-c", "H9999", "Unknown", 0)
+    h6076 = device_effect_capabilities("entry-d", "H6076", "Floor Lamp", 0)
 
     assert api == {
         "api_version": EDITOR_API_VERSION,
@@ -678,6 +679,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h6199.advanced is CapabilityState.SUPPORTED
     assert h6199.to_dict()["readback"] == "scene_selector_for_user_effects"
     assert unknown.to_dict()["readback"] == "none"
+    assert h6076.to_dict()["readback"] == "none"
     assert all(
         capability is CapabilityState.UNSUPPORTED
         for capability in (
