@@ -1487,6 +1487,7 @@ async def test_restore_static_rgb_as_last_known_presentation(light, mock_coordin
     light.async_get_last_state = AsyncMock(
         return_value=SimpleNamespace(
             attributes={
+                "effect": "off",
                 "color_mode": ColorMode.RGB,
                 "rgb_color": [12, 34, 56],
                 "segment_colors": [[12, 34, 56]] * 15,

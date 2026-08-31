@@ -651,6 +651,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     api = EditorApiInfo().to_dict()
     h617a = device_effect_capabilities("entry-a", "H617A", "Test Light", 15)
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
+    unknown = device_effect_capabilities("entry-c", "H9999", "Unknown", 0)
 
     assert api == {
         "api_version": EDITOR_API_VERSION,
@@ -676,6 +677,20 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h6199.palette_diy is CapabilityState.SUPPORTED
     assert h6199.advanced is CapabilityState.SUPPORTED
     assert h6199.to_dict()["readback"] == "scene_selector_for_user_effects"
+    assert unknown.to_dict()["readback"] == "none"
+    assert all(
+        capability is CapabilityState.UNSUPPORTED
+        for capability in (
+            unknown.painted,
+            unknown.single,
+            unknown.multi,
+            unknown.palette_diy,
+            unknown.advanced,
+            unknown.music,
+            unknown.video,
+            unknown.workshop,
+        )
+    )
 
 
 @pytest.mark.parametrize(
