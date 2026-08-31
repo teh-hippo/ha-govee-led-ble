@@ -33,6 +33,7 @@ The progression is:
 7. Supported is a later promotion after the model's features and explicit exclusions are completely documented.
 
 An Experimental profile that receives no owner confirmation is not merged as stable support.
+Prerelease versions are stamped only in the packaged artifact; feature branches retain the current stable source version so release-candidate metadata cannot leak into master.
 
 ## Useful device-owner validation
 

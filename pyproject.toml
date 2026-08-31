@@ -67,7 +67,8 @@ override-dependencies = [
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
-build_command = "python scripts/sync_manifest_version.py && pip install uv && uv lock"
+version_variables = ["custom_components/ha_govee_led_ble/manifest.json:version"]
+build_command = "pip install uv && uv lock"
 commit_message = "chore(release): {version}"
 tag_format = "v{version}"
 assets = ["uv.lock"]

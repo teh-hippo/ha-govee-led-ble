@@ -60,7 +60,7 @@ jobs:
           git checkout --detach "$TARGET_SHA"
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
 
-      - name: Verify source version
+      - name: Stamp package version
         env:
           VERSION: ${{ inputs.version }}
         run: |
@@ -68,21 +68,13 @@ jobs:
           import json
           import os
           import re
-          import tomllib
           from pathlib import Path
 
           expected = re.sub(r"-rc\.(\d+)(?:\..*)?$", r"rc\1", os.environ["VERSION"])
-          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-          manifest = json.loads(
-              Path("custom_components/ha_govee_led_ble/manifest.json").read_text(encoding="utf-8")
-          )
-          versions = {
-              "pyproject.toml": project["project"]["version"],
-              "manifest.json": manifest["version"],
-          }
-          mismatched = {path: value for path, value in versions.items() if value != expected}
-          if mismatched:
-              raise SystemExit(f"source version does not match {expected}: {mismatched}")
+          path = Path("custom_components/ha_govee_led_ble/manifest.json")
+          manifest = json.loads(path.read_text(encoding="utf-8"))
+          manifest["version"] = expected
+          path.write_text(f"{json.dumps(manifest, indent=4)}\n", encoding="utf-8")
           PY
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
