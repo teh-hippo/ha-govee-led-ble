@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
-from homeassistant.components import bluetooth
+from homeassistant.components import bluetooth, frontend
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -30,9 +30,10 @@ from .const import (
     model_from_ble_name,
     prefix_effect_names_from_options,
     resolve_model,
+    supported_effect_categories,
 )
 from .coordinator import GoveeBLECoordinator, clear_availability_log_state
-from .editor import async_register_editor_panel, editor_url
+from .editor import EDITOR_PANEL_PATH, async_register_editor_panel, editor_url
 from .effect_setup import async_setup_effects, get_effect_backend
 from .light_services import async_register_light_services
 
@@ -90,8 +91,46 @@ def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_light_services(hass)
     effects = await async_setup_effects(hass)
-    await async_register_editor_panel(hass, advanced_available=effects is not None)
+    await async_register_editor_panel(
+        hass,
+        advanced_available=effects is not None,
+        show_in_sidebar=_effect_studio_sidebar_visible(hass),
+    )
     return True
+
+
+def _entry_supports_effect_studio(entry: ConfigEntry[Any]) -> bool:
+    raw_model = entry.data.get(CONF_MODEL)
+    model = resolve_model(raw_model) if isinstance(raw_model, str) else None
+    return model is not None and bool(supported_effect_categories(model))
+
+
+def _effect_studio_sidebar_visible(
+    hass: HomeAssistant,
+    *,
+    excluding_entry_id: str | None = None,
+) -> bool:
+    return any(
+        entry.entry_id != excluding_entry_id and entry.disabled_by is None and _entry_supports_effect_studio(entry)
+        for entry in hass.config_entries.async_entries(DOMAIN)
+    )
+
+
+async def _async_update_editor_panel(
+    hass: HomeAssistant,
+    *,
+    excluding_entry_id: str | None = None,
+) -> None:
+    if hass.is_stopping or not frontend.async_panel_exists(hass, EDITOR_PANEL_PATH):
+        return
+    await async_register_editor_panel(
+        hass,
+        advanced_available=get_effect_backend(hass) is not None,
+        show_in_sidebar=_effect_studio_sidebar_visible(
+            hass,
+            excluding_entry_id=excluding_entry_id,
+        ),
+    )
 
 
 async def _async_cleanup_legacy_entities(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
@@ -172,7 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         hass,
         entry.unique_id,
         model,
-        configuration_url=editor_url(entry.entry_id),
+        configuration_url=editor_url(entry.entry_id) if supported_effect_categories(model) else None,
         effect_families=effect_families_from_options(model, entry.options),
         effect_categories=effect_categories_from_options(model, entry.options),
         prefix_effect_names=prefix_effect_names_from_options(entry.options),
@@ -232,6 +271,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     _maybe_flag_music_mode_replaced(hass, entry)
     await _async_cleanup_legacy_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await _async_update_editor_panel(hass)
     return True
 
 
@@ -241,6 +281,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
         await effect_backend.preview.async_unload_device(entry.entry_id)
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.disconnect()
+        await _async_update_editor_panel(hass)
     elif effect_backend is not None:
         await effect_backend.preview.async_load_device(entry.entry_id)
     return unload_ok
@@ -260,3 +301,4 @@ async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
     ir.async_delete_issue(hass, DOMAIN, _unsupported_model_issue_id(entry))
     if entry.unique_id is not None:
         clear_availability_log_state(hass, entry.unique_id)
+    await _async_update_editor_panel(hass, excluding_entry_id=entry.entry_id)

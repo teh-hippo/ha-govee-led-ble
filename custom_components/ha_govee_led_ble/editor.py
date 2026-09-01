@@ -69,6 +69,7 @@ async def async_register_editor_panel(
     hass: HomeAssistant,
     *,
     advanced_available: bool = False,
+    show_in_sidebar: bool = True,
 ) -> None:
     """Register the stable Effect Studio sidebar panel."""
     domain_data = hass.data.setdefault(DOMAIN, {})
@@ -95,7 +96,7 @@ async def async_register_editor_panel(
             },
         },
         require_admin=False,
-        show_in_sidebar=True,
+        show_in_sidebar=show_in_sidebar,
         update=True,
     )
 

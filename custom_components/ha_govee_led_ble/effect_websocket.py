@@ -21,7 +21,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import DOMAIN, supported_effect_categories
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
     custom_effect_catalogue_payload,
@@ -130,6 +130,11 @@ PREVIEW_TARGET_UNAVAILABLE_CODE = "preview_target_unavailable"
 _LOGGER = logging.getLogger(__name__)
 
 
+def _entry_supports_effect_studio(entry: ConfigEntry[Any]) -> bool:
+    model = getattr(entry.runtime_data, "model", None)
+    return isinstance(model, str) and bool(supported_effect_categories(model))
+
+
 @websocket_command({vol.Required("type"): WS_INFO})
 @callback
 def ws_editor_info(
@@ -147,7 +152,11 @@ async def ws_editor_devices(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entries = [entry for entry in hass.config_entries.async_entries(DOMAIN) if entry.state is ConfigEntryState.LOADED]
+    entries = [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.state is ConfigEntryState.LOADED and _entry_supports_effect_studio(entry)
+    ]
     if len(entries) > MAX_EDITOR_DEVICES:
         connection.send_error(
             msg["id"],
@@ -173,7 +182,12 @@ async def ws_editor_device(
     msg: dict[str, Any],
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
+    if (
+        entry is None
+        or entry.domain != DOMAIN
+        or entry.state is not ConfigEntryState.LOADED
+        or not _entry_supports_effect_studio(entry)
+    ):
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
     connection.send_result(

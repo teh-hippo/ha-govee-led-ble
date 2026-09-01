@@ -20,7 +20,8 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 
 ## Effect Studio
 
-Govee Effect Studio is added to the Home Assistant sidebar when the integration loads.  It provides local, model-aware effect editing without a Govee cloud account.
+Govee Effect Studio is added to the Home Assistant sidebar when at least one enabled configured light supports it.  Users can hide or
+reorder the panel through Home Assistant's sidebar settings.  It provides local, model-aware effect editing without a Govee cloud account.
 
 | Model | Studio surfaces |
 | --- | --- |
