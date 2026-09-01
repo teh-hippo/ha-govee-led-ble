@@ -12,6 +12,7 @@ from bleak import BleakError
 from homeassistant.components.light import ColorMode
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers.restore_state import RestoredExtraData
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -1535,6 +1536,72 @@ async def test_restore_static_colour_temperature_as_last_known_presentation(ligh
     assert mock_coordinator.color_temp_kelvin == 4200
     assert light._attr_color_mode is ColorMode.COLOR_TEMP
     mock_coordinator.send_command.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("color_mode", "rgb_color", "color_temp_kelvin"),
+    [
+        (ColorMode.RGB, (12, 34, 56), None),
+        (ColorMode.COLOR_TEMP, (255, 255, 255), 4200),
+    ],
+)
+async def test_h6076_restores_static_colour_after_off_state_restart(
+    mock_h6076_coordinator,
+    color_mode,
+    rgb_color,
+    color_temp_kelvin,
+):
+    previous = GoveeBLELight(mock_h6076_coordinator)
+    previous._attr_color_mode = color_mode
+    mock_h6076_coordinator.rgb_color = rgb_color
+    mock_h6076_coordinator.color_temp_kelvin = color_temp_kelvin
+    stored = previous.extra_restore_state_data
+
+    assert stored is not None
+    stored_dict = stored.as_dict()
+    assert stored_dict["color_mode"] == color_mode.value
+    assert stored_dict["rgb_color"] == (list(rgb_color) if color_mode is ColorMode.RGB else None)
+    assert stored_dict["color_temp_kelvin"] == color_temp_kelvin
+
+    mock_h6076_coordinator.rgb_color = (255, 255, 255)
+    mock_h6076_coordinator.color_temp_kelvin = None
+    restored = GoveeBLELight(mock_h6076_coordinator)
+    restored.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            attributes={
+                "color_mode": None,
+                "rgb_color": None,
+                "color_temp_kelvin": None,
+            }
+        )
+    )
+    restored.async_get_last_extra_data = AsyncMock(return_value=RestoredExtraData(stored_dict))
+
+    await restored._async_restore_static_color()
+
+    assert restored._attr_color_mode is color_mode
+    assert mock_h6076_coordinator.rgb_color == rgb_color
+    assert mock_h6076_coordinator.color_temp_kelvin == color_temp_kelvin
+    mock_h6076_coordinator.send_command.assert_not_awaited()
+    mock_h6076_coordinator.async_set_updated_data.assert_called_once_with(mock_h6076_coordinator.data)
+
+
+async def test_restore_static_colour_ignores_malformed_extra_data(light, mock_coordinator):
+    light.async_get_last_state = AsyncMock(return_value=SimpleNamespace(attributes={"color_mode": None}))
+    light.async_get_last_extra_data = AsyncMock(
+        return_value=RestoredExtraData(
+            {
+                "color_mode": ColorMode.COLOR_TEMP.value,
+                "color_temp_kelvin": "invalid",
+            }
+        )
+    )
+
+    await light._async_restore_static_color()
+
+    assert light._attr_color_mode is ColorMode.RGB
+    assert mock_coordinator.color_temp_kelvin is None
+    mock_coordinator.async_set_updated_data.assert_not_called()
 
 
 async def test_restore_static_state_never_replaces_observed_segments(light, mock_coordinator):
