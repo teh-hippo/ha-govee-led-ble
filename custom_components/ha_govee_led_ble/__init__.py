@@ -90,19 +90,9 @@ def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_light_services(hass)
-    effects = await async_setup_effects(hass)
-    await async_register_editor_panel(
-        hass,
-        advanced_available=effects is not None,
-        show_in_sidebar=_effect_studio_sidebar_visible(hass),
-    )
+    await async_setup_effects(hass)
+    await _async_update_editor_panel(hass)
     return True
-
-
-def _entry_supports_effect_studio(entry: ConfigEntry[Any]) -> bool:
-    raw_model = entry.data.get(CONF_MODEL)
-    model = resolve_model(raw_model) if isinstance(raw_model, str) else None
-    return model is not None and bool(supported_effect_categories(model))
 
 
 def _effect_studio_sidebar_visible(
@@ -111,7 +101,10 @@ def _effect_studio_sidebar_visible(
     excluding_entry_id: str | None = None,
 ) -> bool:
     return any(
-        entry.entry_id != excluding_entry_id and entry.disabled_by is None and _entry_supports_effect_studio(entry)
+        entry.entry_id != excluding_entry_id
+        and entry.disabled_by is None
+        and isinstance(model := entry.data.get(CONF_MODEL), str)
+        and bool(supported_effect_categories(model))
         for entry in hass.config_entries.async_entries(DOMAIN)
     )
 
@@ -121,15 +114,14 @@ async def _async_update_editor_panel(
     *,
     excluding_entry_id: str | None = None,
 ) -> None:
-    if hass.is_stopping or not frontend.async_panel_exists(hass, EDITOR_PANEL_PATH):
+    if hass.is_stopping:
+        return
+    if not _effect_studio_sidebar_visible(hass, excluding_entry_id=excluding_entry_id):
+        frontend.async_remove_panel(hass, EDITOR_PANEL_PATH, warn_if_unknown=False)
         return
     await async_register_editor_panel(
         hass,
         advanced_available=get_effect_backend(hass) is not None,
-        show_in_sidebar=_effect_studio_sidebar_visible(
-            hass,
-            excluding_entry_id=excluding_entry_id,
-        ),
     )
 
 

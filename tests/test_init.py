@@ -21,10 +21,8 @@ from custom_components.ha_govee_led_ble.const import (
 )
 from custom_components.ha_govee_led_ble.coordinator import AVAILABILITY_UNAVAILABLE_DATA_KEY
 from custom_components.ha_govee_led_ble.editor import (
-    EDITOR_ELEMENT_NAME,
     EDITOR_PANEL_PATH,
     EDITOR_ROUTE_SEGMENT,
-    _editor_module_url,
     editor_url,
 )
 
@@ -84,9 +82,7 @@ async def test_setup_entry_omits_editor_link_for_h6076(hass: HomeAssistant):
     entry = _entry(data={CONF_MODEL: "H6076"})
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
-        patch("custom_components.ha_govee_led_ble.editor_url") as build_url,
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
-        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock),
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
@@ -95,7 +91,6 @@ async def test_setup_entry_omits_editor_link_for_h6076(hass: HomeAssistant):
         assert await async_setup_entry(hass, entry) is True
 
     assert cls.call_args.kwargs["configuration_url"] is None
-    build_url.assert_not_called()
 
 
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
@@ -177,15 +172,11 @@ async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: 
             "custom_components.ha_govee_led_ble.get_effect_backend",
             return_value=MagicMock(preview=preview),
         ),
-        patch(
-            "custom_components.ha_govee_led_ble._async_update_editor_panel",
-            new=AsyncMock(side_effect=lambda _hass: order.append("panel")),
-        ),
         patch.object(hass.config_entries, "async_unload_platforms", side_effect=unload_platforms),
     ):
         assert await async_unload_entry(hass, entry) is True
 
-    assert order == ["preview", "platforms", "disconnect", "panel"]
+    assert order == ["preview", "platforms", "disconnect"]
 
 
 async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssistant):
@@ -308,7 +299,7 @@ async def test_cleanup_legacy_entities(hass: HomeAssistant):
     assert registry.async_remove.call_count == 4 + len(removed_surface)
 
 
-async def test_async_setup_registers_effect_studio_sidebar_panel():
+async def test_async_setup_skips_effect_studio_without_capable_device():
     hass = MagicMock()
     hass.data = {}
     hass.async_add_executor_job = AsyncMock()
@@ -325,31 +316,8 @@ async def test_async_setup_registers_effect_studio_sidebar_panel():
 
     register_services.assert_called_once_with(hass)
     setup_effects.assert_awaited_once_with(hass)
-    hass.http.async_register_static_paths.assert_awaited_once()
-    (static_path,) = hass.http.async_register_static_paths.await_args.args[0]
-    assert static_path.url_path == f"/{DOMAIN}_static"
-    assert static_path.path.endswith("custom_components/ha_govee_led_ble/frontend")
-    assert static_path.cache_headers is False
-    register.assert_called_once_with(
-        hass,
-        component_name="custom",
-        sidebar_title="Govee Effect Studio",
-        sidebar_icon="mdi:palette",
-        sidebar_default_visible=True,
-        frontend_url_path=EDITOR_PANEL_PATH,
-        config={
-            "configuration_path": f"/config/integrations/integration/{DOMAIN}",
-            "_panel_custom": {
-                "name": EDITOR_ELEMENT_NAME,
-                "module_url": _editor_module_url(),
-                "embed_iframe": False,
-                "trust_external": False,
-            },
-        },
-        require_admin=False,
-        show_in_sidebar=False,
-        update=True,
-    )
+    hass.http.async_register_static_paths.assert_not_awaited()
+    register.assert_not_called()
 
 
 def test_editor_device_url_path_matches_registered_panel():
