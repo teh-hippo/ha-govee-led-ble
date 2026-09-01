@@ -1566,6 +1566,7 @@ async def test_h6076_restores_static_colour_after_off_state_restart(
     mock_h6076_coordinator.rgb_color = (255, 255, 255)
     mock_h6076_coordinator.color_temp_kelvin = None
     restored = GoveeBLELight(mock_h6076_coordinator)
+    restored.async_write_ha_state = MagicMock()
     restored.async_get_last_state = AsyncMock(
         return_value=SimpleNamespace(
             attributes={
@@ -1584,6 +1585,16 @@ async def test_h6076_restores_static_colour_after_off_state_restart(
     assert mock_h6076_coordinator.color_temp_kelvin == color_temp_kelvin
     mock_h6076_coordinator.send_command.assert_not_awaited()
     mock_h6076_coordinator.async_set_updated_data.assert_called_once_with(mock_h6076_coordinator.data)
+
+    await restored.async_turn_on()
+
+    mock_h6076_coordinator.send_command.assert_awaited_once_with(build_power(True, "H6076"))
+    state_attributes = restored.state_attributes
+    assert state_attributes is not None
+    assert state_attributes["color_mode"] is color_mode
+    if color_mode is ColorMode.RGB:
+        assert state_attributes["rgb_color"] == rgb_color
+    assert state_attributes["color_temp_kelvin"] == color_temp_kelvin
 
 
 async def test_restore_static_colour_ignores_malformed_extra_data(light, mock_coordinator):
