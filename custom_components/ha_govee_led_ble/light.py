@@ -2,8 +2,9 @@
 
 # fmt: off
 import logging
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import Awaitable, Callable, Generator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
@@ -23,7 +24,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -35,6 +36,7 @@ from .const import (
     EFFECT_FAMILY_MUSIC,
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
+    ModelProfile,
     effect_category_for_content_kind,
 )
 from .control_arbiter import ControlIntent, async_control_intent
@@ -74,6 +76,20 @@ PARALLEL_UPDATES = 0
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class _StaticColorRestoreData(ExtraStoredData):
+    color_mode: ColorMode
+    rgb_color: tuple[int, int, int] | None = None
+    color_temp_kelvin: int | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            ATTR_COLOR_MODE: self.color_mode.value,
+            ATTR_RGB_COLOR: list(self.rgb_color) if self.rgb_color is not None else None,
+            ATTR_COLOR_TEMP_KELVIN: self.color_temp_kelvin,
+        }
+
+
 def _coerce_rgb(raw: Any) -> tuple[int, int, int] | None:
     if not isinstance(raw, list | tuple) or len(raw) != 3:
         return None
@@ -85,6 +101,39 @@ def _coerce_rgb(raw: Any) -> tuple[int, int, int] | None:
         max(0, min(255, red)),
         max(0, min(255, green)),
         max(0, min(255, blue)),
+    )
+
+
+def _coerce_static_color(
+    attributes: Mapping[str, Any],
+    profile: ModelProfile,
+) -> _StaticColorRestoreData | None:
+    raw_mode = attributes.get(ATTR_COLOR_MODE)
+    if isinstance(raw_mode, ColorMode):
+        restored_mode = raw_mode
+    elif isinstance(raw_mode, str):
+        try:
+            restored_mode = ColorMode(raw_mode)
+        except ValueError:
+            return None
+    else:
+        return None
+    if restored_mode is ColorMode.RGB:
+        if not profile.supports_rgb or (restored_rgb := _coerce_rgb(attributes.get(ATTR_RGB_COLOR))) is None:
+            return None
+        return _StaticColorRestoreData(restored_mode, rgb_color=restored_rgb)
+    if restored_mode is not ColorMode.COLOR_TEMP or not profile.supports_color_temperature:
+        return None
+    try:
+        restored_kelvin = int(attributes[ATTR_COLOR_TEMP_KELVIN])
+    except KeyError, TypeError, ValueError:
+        return None
+    return _StaticColorRestoreData(
+        restored_mode,
+        color_temp_kelvin=max(
+            profile.min_color_temp_kelvin,
+            min(profile.max_color_temp_kelvin, restored_kelvin),
+        ),
     )
 
 
@@ -265,6 +314,17 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             attrs["segment_state_source"] = self.coordinator.segment_state_source
         return attrs
 
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData | None:
+        if self._attr_color_mode is ColorMode.COLOR_TEMP and self.coordinator.color_temp_kelvin is not None:
+            return _StaticColorRestoreData(
+                ColorMode.COLOR_TEMP,
+                color_temp_kelvin=self.coordinator.color_temp_kelvin,
+            )
+        if self._attr_color_mode is ColorMode.RGB:
+            return _StaticColorRestoreData(ColorMode.RGB, rgb_color=self.coordinator.rgb_color)
+        return None
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         if self._effect_backend is not None:
@@ -372,37 +432,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         if last_state.attributes.get(ATTR_EFFECT) not in (None, EFFECT_OFF):
             return
-        raw_mode = last_state.attributes.get(ATTR_COLOR_MODE)
-        if isinstance(raw_mode, ColorMode):
-            restored_mode = raw_mode
-        elif isinstance(raw_mode, str):
-            try:
-                restored_mode = ColorMode(raw_mode)
-            except ValueError:
-                return
-        else:
+        restored = _coerce_static_color(last_state.attributes, coordinator.profile)
+        if restored is None and (extra_data := await self.async_get_last_extra_data()) is not None:
+            restored = _coerce_static_color(extra_data.as_dict(), coordinator.profile)
+        if restored is None:
             return
-        restored_rgb: tuple[int, int, int] | None = None
-        restored_kelvin: int | None = None
-        if restored_mode is ColorMode.RGB:
-            if not coordinator.profile.supports_rgb:
-                return
-            restored_rgb = _coerce_rgb(last_state.attributes.get(ATTR_RGB_COLOR))
-            if restored_rgb is None:
-                return
-        elif restored_mode is ColorMode.COLOR_TEMP:
-            if not coordinator.profile.supports_color_temperature:
-                return
-            try:
-                restored_kelvin = int(last_state.attributes[ATTR_COLOR_TEMP_KELVIN])
-            except KeyError, TypeError, ValueError:
-                return
-            restored_kelvin = max(
-                coordinator.profile.min_color_temp_kelvin,
-                min(coordinator.profile.max_color_temp_kelvin, restored_kelvin),
-            )
-        else:
-            return
+        restored_mode = restored.color_mode
+        restored_rgb = restored.rgb_color
+        restored_kelvin = restored.color_temp_kelvin
         if coordinator.segment_state_source == "observed":
             if (
                 restored_kelvin is not None
