@@ -130,11 +130,6 @@ PREVIEW_TARGET_UNAVAILABLE_CODE = "preview_target_unavailable"
 _LOGGER = logging.getLogger(__name__)
 
 
-def _entry_supports_effect_studio(entry: ConfigEntry[Any]) -> bool:
-    model = getattr(entry.runtime_data, "model", None)
-    return isinstance(model, str) and bool(supported_effect_categories(model))
-
-
 @websocket_command({vol.Required("type"): WS_INFO})
 @callback
 def ws_editor_info(
@@ -155,7 +150,7 @@ async def ws_editor_devices(
     entries = [
         entry
         for entry in hass.config_entries.async_entries(DOMAIN)
-        if entry.state is ConfigEntryState.LOADED and _entry_supports_effect_studio(entry)
+        if entry.state is ConfigEntryState.LOADED and supported_effect_categories(entry.runtime_data.model)
     ]
     if len(entries) > MAX_EDITOR_DEVICES:
         connection.send_error(
@@ -182,12 +177,7 @@ async def ws_editor_device(
     msg: dict[str, Any],
 ) -> None:
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if (
-        entry is None
-        or entry.domain != DOMAIN
-        or entry.state is not ConfigEntryState.LOADED
-        or not _entry_supports_effect_studio(entry)
-    ):
+    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
     connection.send_result(
