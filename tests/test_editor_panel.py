@@ -19,7 +19,7 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import async_setup
-from custom_components.ha_govee_led_ble.const import DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.editor import (
     _EDITOR_MANIFEST,
@@ -63,6 +63,7 @@ def _clear_editor_development_module(monkeypatch) -> None:
 async def test_process_setup_registers_visible_advanced_stable_route(
     hass: HomeAssistant,
 ) -> None:
+    MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H617A"}).add_to_hass(hass)
     assert await async_setup_component(hass, "http", {})
 
     assert await async_setup(hass, {})
@@ -81,6 +82,20 @@ async def test_process_setup_registers_visible_advanced_stable_route(
     assert get_effect_backend(hass) is not None
 
 
+@pytest.mark.parametrize("model", [None, "H6076"])
+async def test_process_setup_hides_panel_without_capable_device(
+    hass: HomeAssistant,
+    model: str | None,
+) -> None:
+    if model is not None:
+        MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: model}).add_to_hass(hass)
+    assert await async_setup_component(hass, "http", {})
+
+    assert await async_setup(hass, {})
+
+    assert hass.data[frontend.DATA_PANELS][EDITOR_PANEL_PATH].show_in_sidebar is False
+
+
 async def test_panel_registration_is_idempotent_and_updates_configuration(
     hass: HomeAssistant,
 ) -> None:
@@ -92,6 +107,22 @@ async def test_panel_registration_is_idempotent_and_updates_configuration(
     panel = hass.data[frontend.DATA_PANELS][EDITOR_PANEL_PATH]
     assert panel.config is not None
     assert panel.config["_panel_custom"]["module_url"] == EDITOR_LOADER_MODULE_URL
+
+
+async def test_panel_registration_preserves_home_assistant_visibility_override(
+    hass: HomeAssistant,
+) -> None:
+    assert await async_setup_component(hass, "http", {})
+    overrides = hass.data.setdefault(frontend.DATA_PANELS_CONFIG, {})
+    overrides[EDITOR_PANEL_PATH] = {"show_in_sidebar": False}
+
+    await async_register_editor_panel(hass, show_in_sidebar=False)
+    await async_register_editor_panel(hass, show_in_sidebar=True)
+
+    panel = hass.data[frontend.DATA_PANELS][EDITOR_PANEL_PATH]
+    assert panel.show_in_sidebar is True
+    assert overrides == {EDITOR_PANEL_PATH: {"show_in_sidebar": False}}
+    assert panel.to_response(overrides[EDITOR_PANEL_PATH])["show_in_sidebar"] is False
 
 
 async def test_backend_storage_failure_keeps_stable_fallback_panel(
@@ -206,6 +237,13 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         runtime_data=coordinator,
         title="Govee H617A",
     )
+    unsupported_entry = SimpleNamespace(
+        entry_id="h6076-entry",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=SimpleNamespace(model="H6076"),
+        title="Govee H6076",
+    )
     registry_entry = MockConfigEntry(domain=DOMAIN, entry_id=entry.entry_id)
     registry_entry.add_to_hass(hass)
     light = er.async_get(hass).async_get_or_create(
@@ -218,12 +256,15 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         context.setattr(
             hass.config_entries,
             "async_entries",
-            lambda domain=None: [entry] if domain in (None, DOMAIN) else [],
+            lambda domain=None: [entry, unsupported_entry] if domain in (None, DOMAIN) else [],
         )
         context.setattr(
             hass.config_entries,
             "async_get_entry",
-            lambda entry_id: entry if entry_id == entry.entry_id else None,
+            lambda entry_id: next(
+                (candidate for candidate in (entry, unsupported_entry) if candidate.entry_id == entry_id),
+                None,
+            ),
         )
         client = await hass_ws_client(hass)
         await client.send_json_auto_id({"type": WS_INFO})
@@ -239,6 +280,13 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
             }
         )
         selected_device = await client.receive_json()
+        await client.send_json_auto_id(
+            {
+                "type": WS_DEVICE,
+                "config_entry_id": unsupported_entry.entry_id,
+            }
+        )
+        unsupported_device = await client.receive_json()
         await client.send_json_auto_id(
             {
                 "type": WS_DEVICE_SUBSCRIBE,
@@ -264,8 +312,11 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
     assert info["success"] is True
     assert info["result"]["api_version"] == EDITOR_API_VERSION
     assert library["result"] == {"generation": 0, "items": []}
+    assert len(devices["result"]["devices"]) == 1
     device = devices["result"]["devices"][0]
     refreshed_device = selected_device["result"]["device"]
+    assert unsupported_device["success"] is False
+    assert unsupported_device["error"]["code"] == "not_found"
     assert subscribed["success"] is True
     assert device_event["event"]["device"]["config_entry_id"] == entry.entry_id
     assert pushed_device_event["event"]["device"]["active_state"]["mode"] == "scene"

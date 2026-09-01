@@ -121,7 +121,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         address: str,
         model: str,
         *,
-        configuration_url: str,
+        configuration_url: str | None,
         effect_families: frozenset[str] | None = None,
         effect_categories: frozenset[str] | None = None,
         prefix_effect_names: bool = False,

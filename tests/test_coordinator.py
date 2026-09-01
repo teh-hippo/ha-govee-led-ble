@@ -2090,6 +2090,27 @@ def test_device_info_carries_versions_and_omits_connections(coord):
     assert "connections" not in info
 
 
+def test_device_info_clears_stale_configuration_url(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "33:44:55:66:77:88",
+        "H6076",
+        configuration_url=None,
+    )
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=coordinator.address)
+    entry.add_to_hass(hass)
+    registry = dr.async_get(hass)
+    registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, coordinator.address)},
+        configuration_url="homeassistant://ha-govee-led-ble/editor/stale",
+    )
+
+    device = registry.async_get_or_create(config_entry_id=entry.entry_id, **coordinator.device_info)
+
+    assert device.configuration_url is None
+
+
 def test_device_info_replaces_a_stale_configuration_url(hass, coord):
     entry = MockConfigEntry(domain=DOMAIN, unique_id=coord.address)
     entry.add_to_hass(hass)

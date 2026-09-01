@@ -1,12 +1,13 @@
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 from custom_components.ha_govee_led_ble import (
     _async_cleanup_legacy_entities,
+    _effect_studio_sidebar_visible,
     async_remove_entry,
     async_setup,
     async_setup_entry,
@@ -35,7 +36,13 @@ def mock_last_service_info():
 
 
 def _entry(**kw):
-    d = dict(entry_id="test_entry_id", unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H617A"}, options={})
+    d = dict(
+        entry_id="test_entry_id",
+        unique_id="AA:BB:CC:DD:EE:FF",
+        data={CONF_MODEL: "H617A"},
+        options={},
+        disabled_by=None,
+    )
     return MagicMock(**({**d, "domain": DOMAIN, "state": ConfigEntryState.LOADED, "runtime_data": None} | kw))
 
 
@@ -48,6 +55,7 @@ async def test_setup_entry(hass: HomeAssistant):
             return_value="homeassistant://ha-govee-led-ble/editor/test_entry_id",
         ) as build_url,
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock) as cleanup,
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock) as update_panel,
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock) as fwd,
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
@@ -69,6 +77,25 @@ async def test_setup_entry(hass: HomeAssistant):
     assert entry.runtime_data is cls.return_value
     cleanup.assert_awaited_once_with(hass, entry)
     fwd.assert_awaited_once()
+    update_panel.assert_awaited_once_with(hass)
+
+
+async def test_setup_entry_omits_editor_link_for_h6076(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6076"})
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble.editor_url") as build_url,
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.profile = MODEL_PROFILES["H6076"]
+
+        assert await async_setup_entry(hass, entry) is True
+
+    assert cls.call_args.kwargs["configuration_url"] is None
+    build_url.assert_not_called()
 
 
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
@@ -121,9 +148,16 @@ async def test_setup_entry_rejects_known_advertised_model_mismatch(hass: HomeAss
 @pytest.mark.parametrize("unload_ok,disc", [(True, "assert_awaited_once"), (False, "assert_not_awaited")])
 async def test_unload_entry(hass: HomeAssistant, unload_ok, disc):
     entry = _entry(runtime_data=MagicMock(disconnect=AsyncMock()))
-    with patch.object(hass.config_entries, "async_unload_platforms", new_callable=AsyncMock, return_value=unload_ok):
+    with (
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock) as update_panel,
+        patch.object(hass.config_entries, "async_unload_platforms", new_callable=AsyncMock, return_value=unload_ok),
+    ):
         assert await async_unload_entry(hass, entry) is unload_ok
     getattr(entry.runtime_data.disconnect, disc)()
+    if unload_ok:
+        update_panel.assert_awaited_once_with(hass)
+    else:
+        update_panel.assert_not_awaited()
 
 
 async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: HomeAssistant):
@@ -143,11 +177,15 @@ async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: 
             "custom_components.ha_govee_led_ble.get_effect_backend",
             return_value=MagicMock(preview=preview),
         ),
+        patch(
+            "custom_components.ha_govee_led_ble._async_update_editor_panel",
+            new=AsyncMock(side_effect=lambda _hass: order.append("panel")),
+        ),
         patch.object(hass.config_entries, "async_unload_platforms", side_effect=unload_platforms),
     ):
         assert await async_unload_entry(hass, entry) is True
 
-    assert order == ["preview", "platforms", "disconnect"]
+    assert order == ["preview", "platforms", "disconnect", "panel"]
 
 
 async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssistant):
@@ -161,9 +199,12 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
     backend.deployments.async_delete_device = AsyncMock()
     backend.user_state.async_clear_config_entry = AsyncMock()
 
-    with patch(
-        "custom_components.ha_govee_led_ble.get_effect_backend",
-        return_value=backend,
+    with (
+        patch(
+            "custom_components.ha_govee_led_ble.get_effect_backend",
+            return_value=backend,
+        ),
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock) as update_panel,
     ):
         await async_remove_entry(hass, entry)
 
@@ -174,6 +215,36 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
     backend.deployments.async_delete_device.assert_awaited_once_with(entry.entry_id)
     backend.user_state.async_clear_config_entry.assert_awaited_once_with(entry.entry_id)
     assert hass.data[DOMAIN][AVAILABILITY_UNAVAILABLE_DATA_KEY] == set()
+    update_panel.assert_awaited_once_with(hass, excluding_entry_id=entry.entry_id)
+
+
+@pytest.mark.parametrize(
+    ("models", "disabled", "visible"),
+    [
+        ([], set(), False),
+        (["H6076"], set(), False),
+        (["H617A"], set(), True),
+        (["H6076", "H6199"], set(), True),
+        (["H617A"], {0}, False),
+    ],
+)
+def test_effect_studio_sidebar_visibility_uses_enabled_configured_capabilities(
+    models,
+    disabled,
+    visible,
+):
+    hass = MagicMock()
+    entries = [
+        _entry(
+            entry_id=f"entry-{index}",
+            data={CONF_MODEL: model},
+            disabled_by=ConfigEntryDisabler.USER if index in disabled else None,
+        )
+        for index, model in enumerate(models)
+    ]
+    hass.config_entries.async_entries.return_value = entries
+
+    assert _effect_studio_sidebar_visible(hass) is visible
 
 
 async def test_cleanup_legacy_entities(hass: HomeAssistant):
@@ -276,7 +347,7 @@ async def test_async_setup_registers_effect_studio_sidebar_panel():
             },
         },
         require_admin=False,
-        show_in_sidebar=True,
+        show_in_sidebar=False,
         update=True,
     )
 
