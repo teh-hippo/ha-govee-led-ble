@@ -14,7 +14,7 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio | Repository Kaitai schemas and physical qualification |
 | **H617E** | Supported | H617A-compatible controls, scenes, effects and music modes | H617A-compatible profile and physical owner feedback |
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
-| **H6076** | Experimental | Candidate power, brightness, RGB and 2700–6500 K colour temperature; no colour-mode readback, segments, scenes, music or Effect Studio | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) |
+| **H6076** | Partial | Confirmed power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, prerelease and promotion process.
 
