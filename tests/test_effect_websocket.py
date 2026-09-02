@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -40,6 +40,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_LIBRARY_OVERWRITE,
     WS_LIBRARY_SUBSCRIBE,
     WS_LIBRARY_UPDATE,
+    WS_SCENE_APPLY,
     WS_SCENE_DEFAULT_SET,
     WS_SCENE_RESET,
     WS_TEMPLATE_DEFAULT_GET,
@@ -124,7 +125,7 @@ async def test_authenticated_users_can_read_contracts(
     assert info["result"]["api_version"] == EDITOR_API_VERSION
     assert "drafts_per_owner" not in info["result"]["limits"]
     assert library["result"] == {"generation": 0, "items": []}
-    assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H617E", "H6199"]
+    assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H6125", "H617A", "H617E", "H6199"]
 
 
 async def test_non_admin_cannot_mutate_library(
@@ -146,6 +147,43 @@ async def test_non_admin_cannot_mutate_library(
 
     assert response["success"] is False
     assert response["error"]["code"] == "unauthorized"
+
+
+async def test_h6125_scene_apply_is_exposed(
+    hass: HomeAssistant,
+    hass_ws_client,
+    monkeypatch,
+) -> None:
+    backend = await _setup_backend(hass)
+    coordinator = SimpleNamespace(model="H6125", async_apply_native_scene=AsyncMock())
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=coordinator,
+    )
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == entry.entry_id else None,
+    )
+    client = await hass_ws_client(hass)
+    scene = next(item for item in SCENE_ENTRIES["H6125"] if item.scene_type == 0)
+
+    with patch.object(backend.engine, "reconcile_current") as reconcile:
+        await client.send_json_auto_id(
+            {
+                "type": WS_SCENE_APPLY,
+                "config_entry_id": entry.entry_id,
+                "scene_id": scene.scene_id,
+                "effect_id": scene.effect_id,
+            }
+        )
+        response = await client.receive_json()
+
+    assert response["success"] is True
+    coordinator.async_apply_native_scene.assert_awaited_once()
+    reconcile.assert_called_once()
 
 
 async def test_template_default_websocket_lifecycle_has_no_ble_writes(

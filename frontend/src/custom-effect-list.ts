@@ -10,7 +10,10 @@ import type {
   ModelSku,
 } from "./types";
 import { compareLabels } from "./ui-utils";
-import { isH617xModel } from "./validation-constants";
+import {
+  isH617xModel,
+  supportsType04Model,
+} from "./validation-constants";
 
 export interface CustomEffectListContext {
   model?: ModelSku;
@@ -114,11 +117,19 @@ export function libraryItemAvailable(
   context: CustomEffectListContext,
   item: LibrarySummary,
 ): boolean {
-  const h617xContent = ["h617a_painted", "h617a_single", "h617a_multi"].includes(item.kind);
+  const h617xContent = item.kind === "h617a_painted";
+  const type04Content = ["h617a_single", "h617a_multi"].includes(item.kind);
   if (
     item.model !== undefined &&
     item.model !== context.model &&
-    !(h617xContent && isH617xModel(item.model) && isH617xModel(context.model))
+    !(
+      (h617xContent &&
+        isH617xModel(item.model) &&
+        isH617xModel(context.model)) ||
+      (type04Content &&
+        supportsType04Model(item.model) &&
+        supportsType04Model(context.model))
+    )
   ) {
     return false;
   }
@@ -127,8 +138,8 @@ export function libraryItemAvailable(
   }
   if (
     item.model === undefined &&
-    h617xContent &&
-    !isH617xModel(context.model)
+    ((h617xContent && !isH617xModel(context.model)) ||
+      (type04Content && !supportsType04Model(context.model)))
   ) {
     return false;
   }
@@ -173,14 +184,15 @@ export function customEffectKindAvailable(
     );
   }
   if (kind === "h617a_single") {
-    return isH617xModel(context.model) && Boolean(catalogue?.effects.length);
+    return supportsType04Model(context.model) && Boolean(catalogue?.effects.length);
   }
   if (kind === "palette_diy") {
     return context.model === "H6199" && Boolean(catalogue?.effects.length);
   }
   if (kind === "h617a_multi") {
     return (
-      isH617xModel(context.model) && catalogue?.supports.multi !== "unsupported"
+      supportsType04Model(context.model) &&
+      catalogue?.supports.multi !== "unsupported"
     );
   }
   if (kind === "music_profile") {
@@ -233,7 +245,7 @@ function customEffectEntryAvailable(
     case "single":
       return customEffectKindAvailable(
         context,
-        isH617xModel(context.model) ? "h617a_single" : "palette_diy",
+        supportsType04Model(context.model) ? "h617a_single" : "palette_diy",
       );
     case "music":
       return customEffectKindAvailable(context, "music_profile");

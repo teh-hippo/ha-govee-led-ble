@@ -65,6 +65,8 @@ async def async_get_config_entry_diagnostics(
         "supports_white_brightness": coordinator.profile.supports_white_brightness,
         "supports_segments": coordinator.profile.supports_segments,
         "segment_count": coordinator.profile.segment_count,
+        "pact_type": coordinator.pact_type,
+        "pact_code": coordinator.pact_code,
         "connected": bool(client and client.is_connected),
         "available": coordinator.available,
         "fw_version": coordinator.fw_version,

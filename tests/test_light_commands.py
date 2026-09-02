@@ -2,7 +2,12 @@
 
 import pytest
 
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, build_power
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    build_colour_mode_query,
+    build_h6125_brightness_value,
+    build_power,
+)
 from custom_components.ha_govee_led_ble.light_commands import (
     ALL_SEGMENTS,
     ALL_SEGMENTS_MASK,
@@ -31,6 +36,33 @@ def test_power_and_brightness_remain_byte_identical(model: str) -> None:
     assert build_power(True, model) == H("3301010000000000000000000000000000000033")
     assert build_power(False, model) == H("3301000000000000000000000000000000000032")
     assert build_brightness(200, model)[2] == 100
+
+
+def test_h6125_captured_query_and_raw_brightness_builders() -> None:
+    assert build_colour_mode_query("H6125") == H("aa050100000000000000000000000000000000ae")
+    assert build_h6125_brightness_value(254) == H("3304fe00000000000000000000000000000000c9")
+
+
+@pytest.mark.parametrize(
+    ("kelvin", "expected"),
+    [
+        (2000, "33051501ffffff07d0ff8d0bff7f0000000000f3"),
+        (2700, "33051501ffffff0a8cffae54ff7f0000000000de"),
+        (5000, "33051501ffffff1388ffe7ccff7f000000000012"),
+        (6500, "33051501ffffff1964fff9fbff7f0000000000dd"),
+        (9000, "33051501ffffff2328d9e1ffff7f000000000091"),
+    ],
+)
+def test_h6125_colour_temperature_uses_the_ordered_companion_table(kelvin: int, expected: str) -> None:
+    assert build_color_temp(kelvin, "H6125") == H(expected)
+
+
+def test_h6125_colour_temperature_floors_to_the_lower_hundred_kelvin() -> None:
+    assert build_color_temp(2799, "H6125") == build_color_temp(2700, "H6125")
+    parsed = parse_static_write(build_color_temp(2799, "H6125"), "H6125")
+    assert parsed is not None
+    assert parsed.kelvin == 2700
+    assert parsed.kelvin_companion_rgb == (255, 174, 84)
 
 
 def test_whole_strip_colour_temperature_and_brightness() -> None:
@@ -76,7 +108,7 @@ def test_segment_commands_and_paint_order() -> None:
     _assert_valid(brightness)
 
 
-@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("model", ["H6125", "H617A", "H6199"])
 def test_static_write_semantics_round_trip(model: str) -> None:
     rgb = parse_static_write(build_segment_color([3], 10, 20, 30, model), model)
     assert rgb is not None and rgb.rgb == (10, 20, 30) and rgb.segment_mask == 0x0004
@@ -84,6 +116,6 @@ def test_static_write_semantics_round_trip(model: str) -> None:
     assert black is not None and black.rgb == (0, 0, 0) and black.kelvin is None
     temperature = parse_static_write(build_color_temp(3600, model), model)
     assert temperature is not None and temperature.kelvin == 3600
-    assert temperature.kelvin_companion_rgb == kelvin_to_rgb(3600)
+    assert temperature.kelvin_companion_rgb == kelvin_to_rgb(3600, model)
     level = parse_static_write(build_white_brightness(80, model), model)
     assert level is not None and level.brightness_pct == 80 and level.whole_strip

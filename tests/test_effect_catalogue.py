@@ -105,6 +105,38 @@ def test_h617a_model_catalogue_preserves_type04_and_painted_contracts() -> None:
     assert [effect["id"] for effect in H617A_PAINTED_EFFECTS] == [effect.name for effect in DiyType03.Effect]
 
 
+def test_h6125_catalogue_exposes_type04_and_music_without_painted_or_advanced_workflows() -> None:
+    catalogue = cast(
+        dict[str, dict[str, JsonValue]],
+        custom_effect_catalogue_payload()["models"],
+    )["H6125"]
+
+    assert catalogue["painted_effects"] == []
+    assert len(cast(list[JsonValue], catalogue["effects"])) == 8
+    assert len(cast(list[JsonValue], catalogue["music_modes"])) == 11
+    assert catalogue["video_modes"] == []
+    assert len(cast(list[JsonValue], catalogue["templates"])) == 19
+    assert catalogue["workshop_templates"] == []
+    assert catalogue["supports"] == {
+        "multi": "supported",
+        "advanced": "unsupported",
+        "workshop": "unsupported",
+    }
+    assert catalogue["apply"] == {
+        "painted": "unsupported",
+        "single": "supported",
+        "multi": "supported",
+        "palette_diy": "unsupported",
+        "workshop": "unsupported",
+    }
+    assert [workflow["id"] for workflow in cast(list[dict[str, JsonValue]], catalogue["workflows"])] == [
+        "native_scenes",
+        "single",
+        "multi",
+        "native_music",
+    ]
+
+
 def test_h617e_model_catalogue_reuses_h617a_effects_with_h617e_profiles() -> None:
     models = cast(
         dict[str, dict[str, JsonValue]],
@@ -251,7 +283,18 @@ def test_release_capability_contract_routes_saved_effects_through_home_assistant
     h6199_music = release_capability("H6199", CapabilityWorkflow.NATIVE_MUSIC)
     h6199_video = release_capability("H6199", CapabilityWorkflow.VIDEO)
     h6199_diy = release_capability("H6199", CapabilityWorkflow.PALETTE_DIY)
+    h6125_scenes = release_capability("H6125", CapabilityWorkflow.NATIVE_SCENES)
+    h6125_single = release_capability("H6125", CapabilityWorkflow.SINGLE)
+    h6125_multi = release_capability("H6125", CapabilityWorkflow.MULTI)
 
+    assert h6125_scenes is not None
+    assert h6125_scenes.compiler_deployer_strategy is CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION
+    assert all(
+        capability is not None
+        and capability.compiler_deployer_strategy is CompilerDeployerStrategy.H6125_CUSTOM_ENGINE
+        and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
+        for capability in (h6125_single, h6125_multi)
+    )
     assert all(
         capability is not None
         and capability.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL

@@ -18,9 +18,9 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 14
-EDITOR_ASSET_VERSION: Final = 19
-EFFECT_COMPILER_VERSION: Final = 4
+EDITOR_API_VERSION: Final = 15
+EDITOR_ASSET_VERSION: Final = 20
+EFFECT_COMPILER_VERSION: Final = 5
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
 
@@ -59,6 +59,7 @@ class ApplicationRoute(StrEnum):
 class CompilerDeployerStrategy(StrEnum):
     NATIVE_EFFECT_SELECTION = "native_effect_selection"
     H617A_CUSTOM_ENGINE = "h617a_custom_engine"
+    H6125_CUSTOM_ENGINE = "h6125_custom_engine"
     H6199_CUSTOM_ENGINE = "h6199_custom_engine"
     MODEL_SCENE_ENGINE = "model_scene_engine"
     COORDINATOR_WRITER = "coordinator_writer"
@@ -165,6 +166,50 @@ def _capability(
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    _capability(
+        "H6125",
+        CapabilityWorkflow.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        ApplicationRoute.STUDIO_SCENE_APPLY,
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6125",
+        CapabilityWorkflow.SINGLE,
+        "Single",
+        "h617a_single",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6125_CUSTOM_ENGINE,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6125",
+        CapabilityWorkflow.MULTI,
+        "Multi",
+        "h617a_multi",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6125_CUSTOM_ENGINE,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6125",
+        CapabilityWorkflow.NATIVE_MUSIC,
+        "Music",
+        "music_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
     _capability(
         "H617A",
         CapabilityWorkflow.NATIVE_SCENES,
@@ -354,7 +399,6 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     ),
 )
 
-
 _CAPABILITY_MODEL_ALIASES: Final = {"H617E": "H617A"}
 
 
@@ -504,6 +548,8 @@ def device_effect_capabilities(
         readback=(
             "diy_code_only"
             if model in {"H617A", "H617E"}
+            else "none"
+            if model == "H6125"
             else "scene_selector_for_user_effects"
             if release_capabilities_for_model(model)
             else "none"

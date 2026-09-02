@@ -3,6 +3,7 @@
 import pytest
 
 from custom_components.ha_govee_led_ble.transport import (
+    fragment_a1,
     fragment_a3,
     reassemble_a3,
     xor_checksum,
@@ -34,6 +35,18 @@ def test_a3_fragmentation_preserves_captured_forms() -> None:
         H("a3ff00000000000000000000000000000000005c"),
     ]
     for frame in (*frames, *single):
+        _assert_valid(frame)
+
+
+def test_a1_fragmentation_uses_start_data_and_terminal_frames() -> None:
+    frames = fragment_a1(0x02, bytes(range(17)))
+
+    assert [frame[2] for frame in frames] == [0, 1, 2, 0xFF]
+    assert frames[0][3] == 2
+    assert frames[1][3:19] == bytes(range(16))
+    assert frames[2][3] == 16
+    assert frames[3][3:19] == bytes(16)
+    for frame in frames:
         _assert_valid(frame)
 
 

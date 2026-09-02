@@ -46,6 +46,8 @@ async def test_surfaces_segment_fields(mock_h6199_coordinator):
     coord = diag["coordinator"]
     assert coord["supports_segments"] is True
     assert coord["segment_count"] == 15
+    assert coord["pact_type"] is None
+    assert coord["pact_code"] is None
     assert coord["segment_colors"] == colors
     assert coord["segment_brightness"] == [100] * 15
     assert coord["segment_state_source"] == "initial"

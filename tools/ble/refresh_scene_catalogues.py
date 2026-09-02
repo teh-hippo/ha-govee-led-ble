@@ -28,7 +28,7 @@ SceneBody = cast(
 API_URL = "https://app2.govee.com/appsku/v1/light-effect-libraries"
 APP_VERSION = "9999999"
 SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_ble" / "scene_catalogues"
-DEFAULT_SKUS = ("H617A", "H6199")
+DEFAULT_SKUS = ("H6125", "H617A", "H6199")
 
 # Glacier's current iOS application was captured rewriting the two stored 0xff movement
 # bytes to the catalogue's default value 250 when applying the scene.
@@ -64,6 +64,8 @@ def _resolved_effect(effect: dict[str, Any], sku: str) -> dict[str, Any]:
         resolved["scenceParam"] = special["scenceParam"]
     if special.get("scenceParamId", 0) != 0:
         resolved["scenceParamId"] = special["scenceParamId"]
+    if "speedInfo" in special:
+        resolved["speedInfo"] = special["speedInfo"]
     if special.get("sceneCode", 0) > 0 or (special.get("sceneType", 0) > 0 and special.get("scenceParam")):
         resolved["sceneType"] = special.get("sceneType", 0)
     return resolved

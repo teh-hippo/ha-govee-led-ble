@@ -33,7 +33,7 @@ from .effect_domain import (
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 from .layered_scene_decoder import decode_workshop_effect
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 8
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 10
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # H617A Type04 uploads are selected with DIY code 24.
@@ -87,7 +87,7 @@ class DiyEffectFamily:
     variations: tuple[DiyEffectVariation, ...]
     supports_multi: bool
     rate: str = "speed"
-    source_reference: str = "GoveeHome V7.5.30 dreamcolorlightv1.adjust.Diy"
+    source_reference: str = "tools/ble/kaitai/diy_type04.ksy"
     category: str = "single_layer"
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -222,10 +222,7 @@ class ModelEffectCatalogue:
         }
 
 
-# GoveeHome V7.5.30 exposes these basic Type04 families through
-# dreamcolorlightv1.adjust.Diy.e(), with the same base roster retained by later
-# revisions.  The family and variation bytes use the structure defined by
-# diy_type04.ksy.
+# These family and variation bytes use the capture-backed structure in diy_type04.ksy.
 H617A_TYPE04_FAMILIES: Final = (
     DiyEffectFamily(
         "fade",
@@ -484,7 +481,7 @@ H6199_VIDEO_MODES: Final = (
 def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
     variation = family.variations[0]
     content: EffectContent
-    if protocol_model(model) == "H617A":
+    if protocol_model(model) == "H617A" or model == "H6125":
         content = SingleEffect(
             family=family.family,
             variant=variation.variant,
@@ -556,6 +553,13 @@ H617A_CATALOGUE_TEMPLATES: Final = (
     ),
     *(_single_template("H617A", family) for family in H617A_TYPE04_FAMILIES),
     *(_music_template("H617A", mode) for mode in H617A_NATIVE_MUSIC_MODES),
+)
+
+H6125_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6125")
+
+H6125_CATALOGUE_TEMPLATES: Final = (
+    *(_single_template("H6125", family) for family in H617A_TYPE04_FAMILIES),
+    *(_music_template("H6125", mode) for mode in H6125_NATIVE_MUSIC_MODES),
 )
 
 H617E_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617E")
@@ -636,6 +640,27 @@ WORKSHOP_PROTOCOL_FIXTURES: Final = (
 )
 
 MODEL_EFFECT_CATALOGUES: Final = {
+    "H6125": ModelEffectCatalogue(
+        sku="H6125",
+        painted_effects=(),
+        effects=H617A_TYPE04_FAMILIES,
+        music_modes=H6125_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=H6125_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6125", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6125", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6125", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H6125", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6125", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6125", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6125", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6125", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
     "H617A": ModelEffectCatalogue(
         sku="H617A",
         painted_effects=H617A_PAINTED_EFFECTS,

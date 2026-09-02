@@ -173,7 +173,7 @@ def _coordinator(*, readable: bool = True):
         _control_lock=asyncio.Lock(),
         address="AA:BB:CC:DD:EE:FF",
         model="H617A",
-        profile=SimpleNamespace(state_readable=readable),
+        profile=SimpleNamespace(state_readable=readable, supports_color_mode_readback=True),
         is_on=True,
         brightness_pct=72,
         rgb_color=(1, 2, 3),
@@ -216,6 +216,7 @@ def _profile_coordinator(model: str):
     coordinator.model = model
     coordinator.profile = SimpleNamespace(
         state_readable=True,
+        supports_color_mode_readback=True,
         supports_video_mode=model == "H6199",
         supports_video_sound_effects=model == "H6199",
         supports_white_balance=model == "H6199",
@@ -1295,6 +1296,86 @@ async def test_type04_uses_evidenced_code_and_confirms_readback(
     assert result.diy_code == 24
 
 
+async def test_h6125_type04_captures_complete_state_before_upload(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6125"
+    coordinator.async_refresh_segments = AsyncMock(return_value=True)
+
+    async def refresh(**kwargs) -> bool:
+        if not kwargs and coordinator.refresh_state.await_count >= 2:
+            coordinator.diy_code = 0x00FE
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        _type04_item(),
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert coordinator.refresh_state.await_args_list[0] == call(refresh_all=True)
+    coordinator.async_refresh_segments.assert_awaited_once_with()
+
+
+async def test_h6125_type04_snapshot_preserves_source_workspace(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6125"
+    coordinator.profile.segment_count = 15
+    coordinator.segment_colors = [(1, 2, 3)] * 15
+    coordinator.segment_brightness = [100] * 15
+    coordinator.async_refresh_segments = AsyncMock(return_value=True)
+
+    async def refresh(**kwargs) -> bool:
+        if not kwargs and coordinator.refresh_state.await_count >= 2:
+            coordinator.diy_code = 0x00FE
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
+    item = _type04_item()
+
+    result = await EffectDeploymentEngine(repository, cache, active_workspaces).async_apply_snapshot(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    workspace = active_workspaces.get("entry-a")
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert workspace is not None
+    assert workspace.content == item.content
+
+
+async def test_h6125_type04_aborts_before_upload_when_segment_state_is_incomplete(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = "H6125"
+    coordinator.async_refresh_segments = AsyncMock(return_value=False)
+
+    with pytest.raises(RuntimeError, match="complete H6125 state"):
+        await EffectDeploymentEngine(repository, cache).async_apply_saved(
+            coordinator,
+            _type04_item(),
+            config_entry_id="entry-a",
+            updated_at="2026-08-11T00:00:00Z",
+        )
+
+    coordinator.send_command.assert_not_awaited()
+
+
 async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confidence(
     hass: HomeAssistant,
 ) -> None:
@@ -1336,6 +1417,34 @@ async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confid
         expected_on=True,
         expected_music_mode="separation",
     )
+
+
+async def test_h6125_music_profile_reports_mode_only_confidence(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H6125")
+    coordinator.install_music_profile_state = MagicMock()
+    coordinator.async_select_music_slug = AsyncMock()
+    coordinator.async_apply_music_params = AsyncMock()
+    coordinator.async_refresh_segments = AsyncMock(return_value=True)
+    coordinator.music_mode = "off"
+    item = LibraryItem.new(
+        "Separation",
+        MusicProfile("H6125", "separation", 50, None, None, {"point": 3, "gradient": False}),
+    )
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.verification_confidence is ObservationConfidence.MODE_MATCH
+    assert coordinator.refresh_state.await_args_list[0] == call(refresh_all=True)
+    coordinator.async_refresh_segments.assert_awaited_once_with()
 
 
 async def test_h617a_music_profile_applies_style_companion_parameters(

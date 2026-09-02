@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 
-from .const import DOMAIN, protocol_model
+from .const import DOMAIN, get_profile, protocol_model
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
 from .effect_catalogue import (
@@ -465,7 +465,7 @@ class EffectPreviewManager:
                 item.origin.source_id,
                 item.content,
             )
-        diy_code = resolve_diy_code(item)
+        diy_code = resolve_diy_code(item, model=coordinator.model)
         fingerprint = _snapshot_fingerprint(coordinator.model, item)
         request = _PreviewRequest(
             session_id=session_id,
@@ -499,10 +499,14 @@ class EffectPreviewManager:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
         resolved = resolve_scene(coordinator.model, scene_id, effect_id)
-        scene_default = self._scene_defaults.get(
-            config_entry_id,
-            scene_id,
-            effect_id,
+        scene_default = (
+            self._scene_defaults.get(
+                config_entry_id,
+                scene_id,
+                effect_id,
+            )
+            if get_profile(coordinator.model).supports_scene_editing
+            else None
         )
         try:
             canonical_body, resolved_speed = resolve_scene_application_body(
@@ -1577,7 +1581,7 @@ def _active_workspace_content(
     source: EffectContent,
     compiled: CompiledApplication | None,
 ) -> EffectContent:
-    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
+    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets or compiled.model == "H6125":
         return source
     try:
         decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
@@ -1679,7 +1683,7 @@ def _verification_expectations(
             return {"is_on": True, "effect": compiled.expected_effect}
         if compiled.content_kind == "workshop":
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}
-        if protocol_model(compiled.model) == "H617A":
+        if protocol_model(compiled.model) == "H617A" or compiled.model == "H6125":
             return {"is_on": True, "diy_code": compiled.diy_code}
         if compiled.diy_code in {H6199_PALETTE_DIY_APPLY_CODE, H6199_WORKSHOP_APPLY_CODE}:
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}
@@ -1727,6 +1731,8 @@ def _confirmed_confidence(
 ) -> ObservationConfidence:
     if request.scene is not None or isinstance(compiled, CompiledEffect):
         return ObservationConfidence.ACTIVATION_MATCH
-    if isinstance(compiled, CompiledMusicProfile) and protocol_model(compiled.model) == "H617A":
+    if isinstance(compiled, CompiledMusicProfile) and (
+        protocol_model(compiled.model) == "H617A" or compiled.model == "H6125"
+    ):
         return ObservationConfidence.MODE_MATCH
     return ObservationConfidence.SETTINGS_MATCH

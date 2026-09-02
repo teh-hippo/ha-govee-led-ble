@@ -75,6 +75,7 @@ def build_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     _write(integration / "__init__.py", 'DOMAIN = "ha_govee_led_ble"\n')
     _write(integration / "manifest.json", '{"domain":"ha_govee_led_ble","version":"1.0.0"}\n')
     _write(integration / "py.typed", "")
+    _write(integration / "scene_catalogues/H6125.json", '{"scenes":[]}\n')
     _write(integration / "scene_catalogues/H617A.json", '{"scenes":[]}\n')
     _write(integration / "frontend/editor-loader.js", "export const loader = true;\n")
     _write(integration / "frontend/editor.js", "export const fallback = true;\n")
@@ -301,6 +302,7 @@ def test_package_has_stable_runtime_layout_and_metadata(build_repo: tuple[Path, 
         assert "manifest.json" in names
         assert "py.typed" in names
         assert "generated_protocol/sample.py" in names
+        assert "scene_catalogues/H6125.json" in names
         assert "scene_catalogues/H617A.json" in names
         assert "frontend/editor-loader.js" in names
         assert "frontend/editor.js" in names
