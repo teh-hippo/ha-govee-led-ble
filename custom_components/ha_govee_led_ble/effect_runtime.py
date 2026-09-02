@@ -749,12 +749,10 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
     ) -> bool:
-        if (
-            coordinator.model == "H6125"
-            and isinstance(compiled, CompiledEffect)
-            and compiled.content_kind in {"h617a_single", "h617a_multi"}
-        ):
-            if not await coordinator.refresh_state(refresh_all=True) or not await coordinator.async_refresh_segments():
+        if coordinator.model == "H6125":
+            if not await coordinator.refresh_state(refresh_all=True):
+                raise RuntimeError("Could not read complete H6125 state before applying the effect")
+            if _coordinator_mode(coordinator) == "colour" and not await coordinator.async_refresh_segments():
                 raise RuntimeError("Could not read complete H6125 state before applying the effect")
             return True
         refreshed = await self._async_refresh_for_reconciliation(coordinator)

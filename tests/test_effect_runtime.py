@@ -1427,7 +1427,8 @@ async def test_h6125_music_profile_reports_mode_only_confidence(
     coordinator.install_music_profile_state = MagicMock()
     coordinator.async_select_music_slug = AsyncMock()
     coordinator.async_apply_music_params = AsyncMock()
-    coordinator.music_mode = "separation"
+    coordinator.async_refresh_segments = AsyncMock(return_value=True)
+    coordinator.music_mode = "off"
     item = LibraryItem.new(
         "Separation",
         MusicProfile("H6125", "separation", 50, None, None, {"point": 3, "gradient": False}),
@@ -1442,6 +1443,8 @@ async def test_h6125_music_profile_reports_mode_only_confidence(
 
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.verification_confidence is ObservationConfidence.MODE_MATCH
+    assert coordinator.refresh_state.await_args_list[0] == call(refresh_all=True)
+    coordinator.async_refresh_segments.assert_awaited_once_with()
 
 
 async def test_h617a_music_profile_applies_style_companion_parameters(

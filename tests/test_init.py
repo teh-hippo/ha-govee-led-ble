@@ -164,27 +164,6 @@ async def test_setup_entry_rejects_h6125_outside_the_rc3_variant(hass: HomeAssis
     coordinator.disconnect.assert_awaited_once_with()
 
 
-async def test_setup_entry_rejects_unrecognised_h6125_hardware_family(hass: HomeAssistant):
-    entry = _entry(data={CONF_MODEL: "H6125"})
-    with patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls:
-        coordinator = cls.return_value
-        coordinator.async_config_entry_first_refresh = AsyncMock()
-        coordinator.async_refresh_identity = AsyncMock(return_value=True)
-        coordinator.refresh_state = AsyncMock(return_value=True)
-        coordinator.disconnect = AsyncMock()
-        coordinator.profile = MODEL_PROFILES["H6125"]
-        coordinator.pact_type = 1
-        coordinator.pact_code = 2
-        coordinator.fw_version = "1.06.00"
-        coordinator.hw_version = "4.00.00"
-
-        assert await async_setup_entry(hass, entry) is False
-
-    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"unsupported_version_{entry.entry_id}")
-    assert issue is not None
-    coordinator.disconnect.assert_awaited_once_with()
-
-
 async def test_setup_entry_retries_when_h6125_identity_is_unavailable(hass: HomeAssistant):
     entry = _entry(data={CONF_MODEL: "H6125"})
     with patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls:

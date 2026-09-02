@@ -110,6 +110,12 @@ def test_h6125_reports_observed_colour_temperature_mode(mock_coordinator):
     assert light.color_mode is ColorMode.COLOR_TEMP
     assert light.color_temp_kelvin == 2700
     assert light.rgb_color is None
+    assert light.extra_restore_state_data is not None
+    assert light.extra_restore_state_data.as_dict() == {
+        "color_mode": "color_temp",
+        "rgb_color": None,
+        "color_temp_kelvin": 2700,
+    }
 
 
 def test_h6125_profile_does_not_change_after_admission(mock_coordinator):

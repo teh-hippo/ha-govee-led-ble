@@ -2,9 +2,13 @@
 
 from typing import Any
 
-from .const import MUSIC_MODE_SLUGS
+from .const import MUSIC_MODE_SLUGS, music_mode_slug
 from .coordinator_status import ParsedMode
-from .generated_protocol_adapter import parse_command, parse_h6125_brightness_write
+from .generated_protocol_adapter import (
+    parse_command,
+    parse_h6125_brightness_write,
+    parse_h6125_music_write,
+)
 from .light_commands import parse_static_write
 from .scenes import MODEL_SCENES
 
@@ -23,6 +27,22 @@ def expectations_from_packet(
     """Map an outgoing command to the optimistic fields its replies should confirm."""
     if model == "H6125" and (brightness := parse_h6125_brightness_write(packet)) is not None:
         return {"brightness_pct": int(brightness.value)}
+    if model == "H6125" and (music := parse_h6125_music_write(packet)) is not None:
+        settings = music.settings
+        manual_colour = bool(getattr(settings, "manual_colour", 0))
+        rgb = getattr(settings, "rgb", None)
+        music_mode = music_mode_slug(model, int(music.mode))
+        music_expectations: dict[str, Any] = {
+            "color_mode": (ParsedMode.MUSIC, None),
+            "music_mode": music_mode,
+            "music_sensitivity": int(music.sensitivity),
+            "music_color": (
+                (int(rgb.red), int(rgb.green), int(rgb.blue)) if manual_colour and rgb is not None else None
+            ),
+        }
+        if music_mode == "rhythm":
+            music_expectations["music_calm"] = bool(settings.style)
+        return music_expectations
     generated = parse_command(packet, model)
     if generated is None:
         return {}
@@ -96,6 +116,8 @@ def expectations_from_packet(
     if (static := parse_static_write(packet, model)) and static.whole_strip:
         if static.rgb is not None:
             expectations["rgb_color"] = static.rgb
+            if model == "H6125":
+                expectations["color_temp_kelvin"] = None
         elif static.kelvin is not None:
             expectations["color_temp_kelvin"] = static.kelvin
         elif static.brightness_pct is not None:

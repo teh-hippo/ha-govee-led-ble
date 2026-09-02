@@ -1324,6 +1324,19 @@ def test_notify_callback_effect_window(h6199):
     assert "effect" in h6199._expected_state
 
 
+def test_h6125_music_expectations_reject_reordered_scene_reply(h6125):
+    packet = build_music_mode(0x11, 50, (10, 20, 30), True, "H6125")
+    h6125._arm_expected(packet)
+    h6125.color_mode = ParsedMode.MUSIC
+    h6125.music_mode = "rhythm"
+
+    h6125._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 1, 0])))
+
+    assert h6125.color_mode is ParsedMode.MUSIC
+    assert h6125.music_mode == "rhythm"
+    assert h6125._expected_state["color_mode"][0] == (ParsedMode.MUSIC, None)
+
+
 def test_notify_callback_music_auto_color_clears_manual_color(h6199):
     h6199.music_color = (1, 2, 3)
     revision = h6199._field_revisions.get("music_color", 0)
@@ -1630,6 +1643,27 @@ def test_h6125_unknown_mode_reply_is_retained_and_counts_as_liveness(h6125):
     assert h6125.packet_log[-1]["raw"] == frame.hex()
     assert h6125.color_mode is ParsedMode.UNKNOWN
     assert h6125._last_rx_monotonic != 123.0
+
+
+def test_h6125_rgb_readback_clears_stale_colour_temperature(h6125):
+    h6125.color_mode = ParsedMode.COLOUR
+    h6125.color_temp_kelvin = 2700
+
+    h6125._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0, 0, 0])))
+
+    assert h6125.color_temp_kelvin is None
+
+
+def test_h6125_rgb_expectation_rejects_reordered_colour_temperature(h6125):
+    h6125._arm_expected(build_color_rgb(1, 2, 3, "H6125"))
+    h6125.color_mode = ParsedMode.COLOUR
+    h6125.rgb_color = (1, 2, 3)
+    h6125.color_temp_kelvin = None
+
+    h6125._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0, 0x0A, 0x8C])))
+
+    assert h6125.color_temp_kelvin is None
+    assert h6125.rgb_color == (1, 2, 3)
 
 
 async def test_refresh_reply_timeout_starts_after_connection(coord):
@@ -2582,6 +2616,18 @@ def test_expectations_from_packet_covers_every_command_family():
     assert auto["music_mode"] == "spectrum"
     assert auto["music_color"] is None
     assert "music_calm" not in auto
+
+    h6125_rhythm = expectations_from_packet(
+        build_music_mode(0x11, 50, (10, 20, 30), True, "H6125"),
+        "H6125",
+    )
+    assert h6125_rhythm == {
+        "color_mode": (ParsedMode.MUSIC, None),
+        "music_mode": "rhythm",
+        "music_sensitivity": 50,
+        "music_color": (10, 20, 30),
+        "music_calm": True,
+    }
 
     video = expectations_from_packet(
         build_h6199_video(False, True, 42, True, 55),

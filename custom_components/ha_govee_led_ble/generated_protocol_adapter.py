@@ -208,6 +208,17 @@ def parse_h6125_brightness_write(frame: bytes) -> Any | None:
     return parsed
 
 
+def parse_h6125_music_write(frame: bytes) -> Any | None:
+    if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
+        return None
+    try:
+        parsed = H6125MusicWrite(KaitaiStream(io.BytesIO(frame)))
+        parsed._read()
+    except KaitaiStructError:
+        return None
+    return parsed
+
+
 def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
     """Parse one validated, padded A3 effect envelope through its generated root."""
     if not isinstance(envelope, bytes):
@@ -224,7 +235,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
         raise ValueError(f"{requested_model} has no generated A3 effect grammar")
     resolved_model = wire_model(requested_model) or requested_model
     if resolved_model == "H617A":
-        if requested_model == "H6125" and envelope[2] not in {0x01, 0x02}:
+        if requested_model == "H6125" and envelope[2] not in {0x01, 0x02, 0x04}:
             raise ValueError(f"H6125 A3 body type 0x{envelope[2]:02x} is not supported")
         root_type = {
             0x01: SceneType1Body,

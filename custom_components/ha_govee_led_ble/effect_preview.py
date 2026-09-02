@@ -1683,7 +1683,7 @@ def _verification_expectations(
             return {"is_on": True, "effect": compiled.expected_effect}
         if compiled.content_kind == "workshop":
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}
-        if protocol_model(compiled.model) == "H617A":
+        if protocol_model(compiled.model) == "H617A" or compiled.model == "H6125":
             return {"is_on": True, "diy_code": compiled.diy_code}
         if compiled.diy_code in {H6199_PALETTE_DIY_APPLY_CODE, H6199_WORKSHOP_APPLY_CODE}:
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}

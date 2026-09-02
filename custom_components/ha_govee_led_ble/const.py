@@ -54,7 +54,6 @@ class ModelProfile:
     min_color_temp_kelvin: int = 2000
     max_color_temp_kelvin: int = 9000
     supports_color_mode_readback: bool = False
-    query_color_mode_for_diagnostics: bool = False
     supports_scenes: bool = False
     supports_scene_editing: bool = False
     supports_custom_effects: bool = False
@@ -227,7 +226,7 @@ def model_from_ble_name(name: str) -> str | None:
     match = _BLE_MODEL_PATTERN.search(name)
     if match is None:
         return None
-    candidate = match.group(1) or match.group(2)
+    candidate = (match.group(1) or match.group(2)).upper()
     return resolve_model(candidate if candidate.startswith("H") else f"H{candidate}")
 
 

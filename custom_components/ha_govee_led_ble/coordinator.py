@@ -934,6 +934,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 if self._accept_expected("music_color", None):
                     self.music_color = None
                     observed.append("music_color")
+            if (
+                self.model == "H6125"
+                and parsed.mode is ParsedMode.COLOUR
+                and parsed.color_temp_kelvin is None
+                and self._accept_expected("color_temp_kelvin", None)
+            ):
+                self.color_temp_kelvin = None
+                observed.append("color_temp_kelvin")
             for attr in _COLOR_MODE_FIELDS:
                 if (value := getattr(parsed, attr)) is not None:
                     if self._accept_expected(attr, value):
@@ -1281,7 +1289,6 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         query_color = self.profile.supports_color_mode_readback and (
             expected_music_auto_color or any(value is not None for value in color_expectations)
         )
-        probe_color = self.profile.query_color_mode_for_diagnostics and refresh_all
         query_white_balance = expected_white_balance is not None or refresh_display_settings
         query_blank_screen = expected_blank_screen is not None or refresh_display_settings
         query_relative_brightness = expected_relative_brightness is not None or refresh_relative_brightness
@@ -1328,7 +1335,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         ok = await self._send_state_queries(
                             query_power=query_power,
                             query_brightness=query_brightness,
-                            query_color_mode=query_color or probe_color,
+                            query_color_mode=query_color,
                             query_white_balance=query_white_balance,
                             query_blank_screen=query_blank_screen,
                             query_relative_brightness=query_relative_brightness,
@@ -1337,7 +1344,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         ok = await self._send_state_queries(
                             query_power=query_power,
                             query_brightness=query_brightness,
-                            query_color_mode=query_color or probe_color,
+                            query_color_mode=query_color,
                         )
                 if not ok:
                     await self._disconnect_if_current_locked(client)

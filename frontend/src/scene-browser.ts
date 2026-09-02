@@ -453,20 +453,22 @@ export class GoveeSceneBrowser extends LitElement {
                 </button>
               `
             : nothing}
-          ${nativeSelection && this.sceneEditingEnabled
-            ? nativeSceneActions(
-                this.workflow.sceneCatalogueDirty,
-                this.workflow.sceneDefaultDirty,
-                this.autoSaveEnabled,
-                this.autoSaveFailed || state.defaultSaveFailed,
-                this.liveApplyEnabled,
-                this.workflow.defaultWritePending,
-              )
-                .filter(
-                  (action) =>
-                    action.id !== "edit" || scene.scene_type === 2,
+          ${nativeSelection
+            ? this.sceneEditingEnabled
+              ? nativeSceneActions(
+                  this.workflow.sceneCatalogueDirty,
+                  this.workflow.sceneDefaultDirty,
+                  this.autoSaveEnabled,
+                  this.autoSaveFailed || state.defaultSaveFailed,
+                  this.liveApplyEnabled,
+                  this.workflow.defaultWritePending,
                 )
-                .map((action) => this.renderNativeAction(action))
+                  .filter(
+                    (action) =>
+                      action.id !== "edit" || scene.scene_type === 2,
+                  )
+                  .map((action) => this.renderNativeAction(action))
+              : nothing
             : html`
                 ${state.selectedItem
                   ? html`

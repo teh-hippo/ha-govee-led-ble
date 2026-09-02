@@ -4,6 +4,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from .const import get_profile
 from .generated_protocol_adapter import (
     build_colour_temperature,
     build_segment_colour,

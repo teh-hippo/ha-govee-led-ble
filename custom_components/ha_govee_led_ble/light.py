@@ -330,12 +330,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData | None:
-        if self._attr_color_mode is ColorMode.COLOR_TEMP and self.coordinator.color_temp_kelvin is not None:
+        color_mode = self.color_mode
+        if color_mode is ColorMode.COLOR_TEMP and self.coordinator.color_temp_kelvin is not None:
             return _StaticColorRestoreData(
                 ColorMode.COLOR_TEMP,
                 color_temp_kelvin=self.coordinator.color_temp_kelvin,
             )
-        if self._attr_color_mode is ColorMode.RGB:
+        if color_mode is ColorMode.RGB:
             return _StaticColorRestoreData(ColorMode.RGB, rgb_color=self.coordinator.rgb_color)
         return None
 

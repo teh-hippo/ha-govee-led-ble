@@ -1190,7 +1190,7 @@ async def test_h6125_type04_preview_preserves_source_workspace(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    coordinator = _coordinator(model="H6125")
+    coordinator = _coordinator(model="H6125", readable=True)
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
     session_id = _open(manager, owner, [])
@@ -1211,6 +1211,10 @@ async def test_h6125_type04_preview_preserves_source_workspace(
     workspace = manager._active_workspaces.get("entry-a")  # noqa: SLF001
     assert workspace is not None
     assert workspace.content == item.content
+    assert coordinator.async_preview_observe.await_args.args[0] == {
+        "is_on": True,
+        "diy_code": 0x00FE,
+    }
     await manager.async_shutdown()
 
 
