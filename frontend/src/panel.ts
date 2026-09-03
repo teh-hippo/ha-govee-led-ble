@@ -67,7 +67,11 @@ const componentLoaders = {
     ]),
   scenes: () => import("./scene-browser"),
   video: () => import("./video-profile-editor"),
-  music: () => import("./music-profile-editor"),
+  music: () =>
+    Promise.all([
+      import("./music-profile-editor"),
+      import("./reactive-rgb-control"),
+    ]),
   advanced: () => import("./advanced-effect-editor"),
   painted: () =>
     Promise.all([
@@ -234,6 +238,8 @@ export class GoveeLedEffectStudio extends LitElement {
         break;
       case "h617a_single":
       case "h617a_multi":
+      case "h6179_single_diy":
+      case "h6179_mixed_diy":
       case "palette_diy":
         this.requestComponentGroup("custom");
         break;
@@ -283,6 +289,14 @@ export class GoveeLedEffectStudio extends LitElement {
         <h1 class="visually-hidden">Effect Studio</h1>
 
         ${this.renderStudioToolbar()}
+        ${this.model.h6179ExperimentalSupport
+          ? html`
+              <p class="support-notice" role="note">
+                H6179 Effect Studio support is Experimental and speculative.
+                It has not been physically validated.
+              </p>
+            `
+          : nothing}
 
         ${this.model.selectedDevice
           ? this.model.selectedDevice.effect_categories.length
@@ -614,6 +628,9 @@ export class GoveeLedEffectStudio extends LitElement {
       this.model.previewProgressVisible &&
       (phase === "queued" || phase === "writing");
     const status = pending ? "Applying changes" : undefined;
+    const missingDiyCode =
+      this.model.h6179DiyCodeRequired &&
+      this.model.h6179DiyCode === undefined;
     return html`
       <div class="live-apply-control">
         <span
@@ -627,8 +644,11 @@ export class GoveeLedEffectStudio extends LitElement {
           class="toolbar-control toolbar-mode-button"
           type="button"
           aria-pressed=${this.model.liveApplyEnabled}
-          ?disabled=${this.model.stateUpdatesUnavailable}
-          title="Apply committed changes automatically"
+          ?disabled=${this.model.stateUpdatesUnavailable ||
+          (!this.model.liveApplyEnabled && missingDiyCode)}
+          title=${missingDiyCode
+            ? this.model.h6179DiyApprovalMessage
+            : "Apply committed changes automatically"}
           @click=${() =>
             void this.controller.toggleLive(this.currentScenePreviewRequest())}
         >
@@ -906,6 +926,14 @@ export class GoveeLedEffectStudio extends LitElement {
           );
         }}
       ></govee-music-profile-editor>
+      ${this.model.selectedModel === "H6179"
+        ? html`
+            <govee-reactive-rgb-control
+              .hass=${this.hass}
+              .configEntryId=${this.model.selectedDevice?.config_entry_id ?? ""}
+            ></govee-reactive-rgb-control>
+          `
+        : nothing}
     `;
   }
 
@@ -1310,6 +1338,8 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       this.content.kind !== "h617a_single" &&
       this.content.kind !== "h617a_multi" &&
+      this.content.kind !== "h6179_single_diy" &&
+      this.content.kind !== "h6179_mixed_diy" &&
       this.content.kind !== "palette_diy"
     ) {
       return nothing;
@@ -1318,7 +1348,7 @@ export class GoveeLedEffectStudio extends LitElement {
     return html`
       ${this.renderEditorHeading()}
 
-
+      ${this.renderH6179DiyApproval()}
 
       ${this.renderSingleEffectSelector()}
 
@@ -1349,6 +1379,7 @@ export class GoveeLedEffectStudio extends LitElement {
       !this.model.showSingleEffectSelector ||
       (this.content.kind !== "h617a_painted" &&
         this.content.kind !== "h617a_single" &&
+        this.content.kind !== "h6179_single_diy" &&
         this.content.kind !== "palette_diy")
     ) {
       return nothing;
@@ -1386,6 +1417,7 @@ export class GoveeLedEffectStudio extends LitElement {
               )}
           >
             ${(this.content.kind === "h617a_single" ||
+              this.content.kind === "h6179_single_diy" ||
               this.content.kind === "palette_diy") && !familyAvailable
               ? html`
                   <option value=${selectedEffect}>
@@ -1415,6 +1447,50 @@ export class GoveeLedEffectStudio extends LitElement {
             )}
           </select>
         </label>
+      </section>
+    `;
+  }
+
+  private renderH6179DiyApproval() {
+    if (!this.model.h6179DiyCodeRequired) {
+      return nothing;
+    }
+    const observed = this.model.h6179ObservedDiyCode;
+    const approved = this.model.h6179DiyCode === observed;
+    return html`
+      <section class="card h6179-diy-approval" role="note">
+        <h3 class="section-title">Disposable DIY item required</h3>
+        <p>
+          Apply and Live preview overwrite the explicitly approved H6179 DIY
+          item. The approved code is sent only with the action and is not saved
+          with the effect.
+        </p>
+        ${observed === undefined
+          ? html`
+              <p class="approval-status">
+                No DIY item is currently observed. Select a disposable DIY item
+                in the Govee app, then refresh or return to Effect Studio before
+                Apply or Live can be enabled.
+              </p>
+            `
+          : html`
+              <div class="observed-diy-code">
+                <p class="approval-status">
+                  Currently observed DIY code: <code>${observed}</code>
+                </p>
+                <button
+                  class="secondary"
+                  type="button"
+                  ?disabled=${this.editorDisabled || approved}
+                  @click=${() =>
+                    void this.controller.useObservedH6179DiyCode()}
+                >
+                  ${approved
+                    ? "Disposable item approved"
+                    : "Use observed disposable item"}
+                </button>
+              </div>
+            `}
       </section>
     `;
   }
@@ -1684,6 +1760,7 @@ export class GoveeLedEffectStudio extends LitElement {
     if (
       this.content.kind !== "h617a_painted" &&
       this.content.kind !== "h617a_single" &&
+      this.content.kind !== "h6179_single_diy" &&
       this.content.kind !== "palette_diy"
     ) {
       return;

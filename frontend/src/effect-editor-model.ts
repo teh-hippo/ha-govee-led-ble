@@ -126,6 +126,14 @@ export function blankCustomEffect(
   catalogue: ModelEffectCatalogue,
 ): Extract<CustomEffectContent, { kind: "h617a_multi" }>;
 export function blankCustomEffect(
+  kind: "h6179_single_diy",
+  catalogue: ModelEffectCatalogue,
+): Extract<CustomEffectContent, { kind: "h6179_single_diy" }>;
+export function blankCustomEffect(
+  kind: "h6179_mixed_diy",
+  catalogue: ModelEffectCatalogue,
+): Extract<CustomEffectContent, { kind: "h6179_mixed_diy" }>;
+export function blankCustomEffect(
   kind: CustomEffectContent["kind"],
   catalogue: ModelEffectCatalogue,
 ): CustomEffectContent;
@@ -136,6 +144,8 @@ export function blankCustomEffect(
   if (kind === "h617a_painted") {
     return blankPainted();
   }
+  const mixed =
+    kind === "h617a_multi" || kind === "h6179_mixed_diy";
   const preferred =
     kind === "h617a_multi"
       ? catalogue.effects.find(
@@ -147,7 +157,7 @@ export function blankCustomEffect(
       : undefined;
   const first =
     preferred ??
-    (kind === "h617a_multi"
+    (mixed
       ? catalogue.effects.find(
           (effect) =>
             effect.supports_multi && effect.variations.length > 0,
@@ -168,6 +178,24 @@ export function blankCustomEffect(
     return {
       kind,
       ...pair,
+      speed: 50,
+      palette: defaultPalette(),
+    };
+  }
+  if (kind === "h6179_single_diy") {
+    return {
+      kind,
+      model: "H6179",
+      ...pair,
+      speed: 50,
+      palette: defaultPalette(),
+    };
+  }
+  if (kind === "h6179_mixed_diy") {
+    return {
+      kind,
+      model: "H6179",
+      components: [pair],
       speed: 50,
       palette: defaultPalette(),
     };
@@ -240,9 +268,19 @@ export function cloneCustomEffect(
   if (content.kind === "h617a_painted") {
     return clonePainted(content);
   }
-  if (content.kind === "h617a_single") {
+  if (
+    content.kind === "h617a_single" ||
+    content.kind === "h6179_single_diy"
+  ) {
     return {
       ...content,
+      palette: clonePalette(content.palette),
+    };
+  }
+  if (content.kind === "h6179_mixed_diy") {
+    return {
+      ...content,
+      components: content.components.map((component) => ({ ...component })),
       palette: clonePalette(content.palette),
     };
   }
@@ -426,7 +464,9 @@ function isCustomEffectKind(
   return (
     kind === "h617a_painted" ||
     kind === "h617a_single" ||
-    kind === "h617a_multi"
+    kind === "h617a_multi" ||
+    kind === "h6179_single_diy" ||
+    kind === "h6179_mixed_diy"
   );
 }
 
@@ -492,6 +532,10 @@ export function customKindLabel(kind: unknown): string {
       return "Single";
     case "h617a_multi":
       return "Multi";
+    case "h6179_single_diy":
+      return "Single DIY";
+    case "h6179_mixed_diy":
+      return "Mixed DIY";
     case "advanced":
       return "Advanced";
     case "palette_diy":
@@ -518,7 +562,13 @@ export function libraryKindPriority(
   model: ModelSku | undefined,
 ): number {
   const order =
-    model === "H6199"
+    model === "H6179"
+      ? [
+          "h6179_single_diy",
+          "h6179_mixed_diy",
+          "music_profile",
+        ]
+      : model === "H6199"
       ? [
           "palette_diy",
           "workshop",
@@ -542,7 +592,7 @@ export function libraryKindPriority(
 export function customEffectCategoryForKind(
   kind: string,
 ): Exclude<CustomEffectCategory, "all" | "my-effects"> {
-  if (kind === "h617a_multi") {
+  if (kind === "h617a_multi" || kind === "h6179_mixed_diy") {
     return "multi-layer";
   }
   if (kind === "music_profile") {
@@ -551,6 +601,7 @@ export function customEffectCategoryForKind(
   if (
     kind === "h617a_painted" ||
     kind === "h617a_single" ||
+    kind === "h6179_single_diy" ||
     kind === "palette_diy"
   ) {
     return "single-layer";
@@ -619,6 +670,8 @@ export function upsertSummary(
 function libraryItemModel(item: LibraryItem): ModelSku | undefined {
   const content = item.content;
   if (
+    content.kind === "h6179_single_diy" ||
+    content.kind === "h6179_mixed_diy" ||
     content.kind === "palette_diy" ||
     content.kind === "workshop" ||
     content.kind === "music_profile" ||

@@ -14,7 +14,25 @@ test("canonical backend catalogue decodes through the production catalogue valid
     backendContracts.responses.custom_catalogue,
   );
   expect(decoded.sku).toBe("H617A");
-  expect(Object.keys(decoded.models)).toEqual(["H617A", "H617E", "H6199"]);
+  expect(Object.keys(decoded.models)).toEqual([
+    "H617A",
+    "H617E",
+    "H6179",
+    "H6199",
+  ]);
+  expect(decoded.models.H6179).toMatchObject({
+    limits: {
+      palette_min: 1,
+      palette_max: 8,
+      multi_max: 4,
+      music_sensitivity_min: 0,
+      music_sensitivity_max: 99,
+    },
+    music_modes: [
+      { id: "mode_0", label: "Mode 1" },
+      { id: "mode_1", label: "Mode 2" },
+    ],
+  });
 });
 
 test("catalogue families require variations and the single-layer category", () => {
@@ -46,6 +64,24 @@ test("model catalogues require every release workflow", () => {
   );
   expect(() => decodeCatalogue(payload)).toThrow(
     "release workflows does not match H6199",
+  );
+});
+
+test("H6179 catalogue rejects unsupported controls and family pairs", () => {
+  const wrongPair = structuredClone(
+    backendContracts.responses.custom_catalogue,
+  );
+  wrongPair.models.H6179.effects[0].variations[0].variant = 1;
+  expect(() => decodeCatalogue(wrongPair)).toThrow(
+    "H6179 DIY families are incompatible",
+  );
+
+  const advanced = structuredClone(
+    backendContracts.responses.custom_catalogue,
+  );
+  advanced.models.H6179.supports.advanced = "supported";
+  expect(() => decodeCatalogue(advanced)).toThrow(
+    "H6179 capability projection is incompatible",
   );
 });
 

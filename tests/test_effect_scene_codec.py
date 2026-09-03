@@ -25,8 +25,8 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 )
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _check_tree,
     _write,
+    check_generated_tree,
     parse_scene_body_param,
 )
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene, encode_layered_scene
@@ -119,7 +119,7 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
             parsed = parse_scene_body_param(raw_param)
             synthetic_envelope = cast(bytes, parsed._io.to_byte_array())
             assert len(synthetic_envelope) == int(parsed.header.linecount) * 17
-            _check_tree(parsed)
+            check_generated_tree(parsed)
             assert _write(parsed, len(synthetic_envelope)) == synthetic_envelope
 
             decoded = decode_layered_scene(
@@ -168,7 +168,7 @@ def test_unknown_flags_and_excess_survive_decode_and_json() -> None:
     record.body.excess = b"\xaa\xbb"
     record.len_body += len(record.body.excess)
     parsed.padding = []
-    _check_tree(parsed)
+    check_generated_tree(parsed)
     synthetic_envelope = _write(parsed, prefix_length + len(raw_param) + len(record.body.excess))
     synthetic_param = synthetic_envelope[prefix_length:]
 

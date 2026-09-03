@@ -461,6 +461,7 @@ export class GoveeSceneBrowser extends LitElement {
                 this.autoSaveFailed || state.defaultSaveFailed,
                 this.liveApplyEnabled,
                 this.workflow.defaultWritePending,
+                state.catalogue?.sku === "H6179",
               )
                 .filter(
                   (action) =>

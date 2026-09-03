@@ -13,6 +13,7 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | --- | --- | --- | --- |
 | **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio | Repository Kaitai schemas and physical qualification |
 | **H617E** | Compatible | Owner-confirmed H617A-compatible controls, scenes, effects and music modes; exact-model protocol documentation remains incomplete | Physical owner feedback and a speculative H617A compatibility alias |
+| **H6179** | Experimental | Prerelease candidate for power, brightness, RGB, colour temperature, readback, 83 scenes, two music modes, schedules, sleep/wake, limit control, Effect Studio DIY and browser-derived reactive RGB | [#227](https://github.com/teh-hippo/ha-govee-led-ble/issues/227), an exact-SKU catalogue and speculative H6179 schemas; physical qualification is still required |
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
 | **H6076** | Partial | Confirmed power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) and a speculative H617A compatibility alias |
 
@@ -27,9 +28,13 @@ reorder the panel through Home Assistant's sidebar settings.  It provides local,
 | --- | --- |
 | H617A | Scenes, painted segments, single-layer effects, multi-layered effects, reactive music effects and advanced layered effects |
 | H617E | H617A-compatible scenes, effects and reactive music effects |
+| H6179 | Read-only built-in scenes, two music modes, single and mixed DIY effects, and browser-derived reactive RGB |
 | H6199 | Scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |
 
 H6199 video profiles keep saturation, capture area, sound effects, softness, white balance, relative brightness and blank-screen behaviour together as one reusable effect.
+
+H6179 DIY Apply requires a recently observed disposable DIY code and explicit approval because the selected app DIY item may be overwritten.  Its
+browser reactive control requests microphone permission explicitly, derives RGB locally, and sends no audio or PCM to Home Assistant.
 
 Administrators can edit effects and manage the shared saved-effect library.  Other authenticated users can browse scenes and compatible saved effects in read-only mode.
 
@@ -51,6 +56,7 @@ Effect definitions are model-specific.  A strip cannot return the body uploaded 
 ## Upgrade notes
 
 - An H6076 previously configured as H617A must be explicitly changed to H6076 through the integration's **Reconfigure** action.  The config entry and entity identity are preserved.
+- An H6179 previously configured as H617A must be explicitly changed to H6179 through **Reconfigure** before testing the model-specific prerelease.  The config entry and entity identity are preserved.
 - Version 7 adds Effect Studio while retaining the standard Home Assistant light effect selector introduced in version 6.
 - The standalone H617A scene-speed entity remains removed.  Edit scene speed in Effect Studio or select the native scene through the light effect selector.
 - Renaming a saved effect immediately changes its selector name.  Name-based automations must use the new name; the stable effect ID does not change.
@@ -94,12 +100,11 @@ Wi-Fi provisioning is not a maintained integration or contributor workflow.  The
 
 The following are intentional non-goals for this integration:
 
-- on-device timers;
 - manufacturer-style animated scene previews;
-- phone-microphone music-stream injection;
+- raw microphone audio or PCM transport;
 - firmware or OTA updates.
 
-The retained music-stream schema is decode-only evidence support.  It does not provide injection or playback control.
+H6179 browser reactive RGB derives colour locally and sends bounded colour updates only.  It does not transmit, retain, or replay microphone audio.
 
 Native H6199 camera calibration is unavailable from the current local interfaces.  The completed [camera-calibration investigation](https://github.com/teh-hippo/ha-govee-led-ble/issues/136) found that the required geometry exchange remains behind the manufacturer's trusted network service.
 

@@ -4,6 +4,11 @@ diy_type03.py
 diy_type04.py
 govee_common.py
 govee_shared.py
+h6179_command_write.py
+h6179_diy_body.py
+h6179_schedule_write.py
+h6179_status_query.py
+h6179_status_reply.py
 h6199_command_write.py
 h6199_effect_upload.py
 h6199_status_query.py

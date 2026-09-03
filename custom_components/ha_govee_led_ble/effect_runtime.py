@@ -24,10 +24,13 @@ from .effect_catalogue import (
 )
 from .effect_compiler import (
     ActivationMode,
+    ActivationObservation,
+    ActivationPolicy,
     CompiledApplication,
     CompiledEffect,
     CompiledMusicProfile,
     CompiledVideoProfile,
+    UploadTransport,
     compile_application,
 )
 from .effect_deployments import (
@@ -39,6 +42,8 @@ from .effect_deployments import (
 )
 from .effect_domain import (
     EffectContent,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
     LibraryItem,
     MultiEffect,
     MusicProfile,
@@ -51,7 +56,7 @@ from .effect_domain import (
 from .effect_identity import ActiveEffectHint, EffectDeviceCache, ObservedDeviceState
 from .effect_protocol_decoder import (
     UnsupportedA3EffectError,
-    decode_a3_effect_frames,
+    decode_effect_frames,
 )
 from .generated_protocol_adapter import build_power
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
@@ -66,6 +71,10 @@ ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class H6179ActivationEvidenceError(ValueError):
+    """H6179 DIY application lacks observed disposable-slot approval."""
 
 
 async def async_apply_compiled_profile(
@@ -183,7 +192,11 @@ class EffectDeploymentEngine:
         operation_id: UUID | None,
         source_kind: str,
     ) -> tuple[CompiledApplication, DeploymentRecord]:
-        resolved_diy_code = resolve_diy_code(item, diy_code)
+        resolved_diy_code = resolve_diy_code(
+            item,
+            diy_code,
+            require_observed=False,
+        )
         compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
         record = self._new_record(
             compiled,
@@ -328,6 +341,21 @@ class EffectDeploymentEngine:
             updated_at=updated_at,
             target_mode=target_mode,
             target_effect=target_effect,
+            upload_transport=(
+                compiled.upload_transport.value if isinstance(compiled, CompiledEffect) else UploadTransport.NONE.value
+            ),
+            activation_observation=(
+                compiled.activation_observation.value
+                if isinstance(compiled, CompiledEffect)
+                else ActivationObservation.NONE.value
+            ),
+            activation_policy=(
+                compiled.activation_policy.value
+                if isinstance(compiled, CompiledEffect)
+                else ActivationPolicy.EVIDENCED_FIXED.value
+            ),
+            overwrite_risk=compiled.overwrite_risk if isinstance(compiled, CompiledEffect) else False,
+            activation_evidence=compiled.activation_evidence if isinstance(compiled, CompiledEffect) else (),
             evidence_codes=evidence_codes,
             source_kind=source_kind,
             selector_label=source_item.name,
@@ -414,7 +442,13 @@ class EffectDeploymentEngine:
 
                         async def record_sequence_progress(index: int) -> None:
                             nonlocal current
-                            phase = DeploymentPhase.ACTIVATING if index >= upload_count else DeploymentPhase.UPLOADING
+                            phase = (
+                                DeploymentPhase.UPLOADING
+                                if compiled.upload_transport is UploadTransport.H6179_A1_02
+                                else DeploymentPhase.ACTIVATING
+                                if index >= upload_count
+                                else DeploymentPhase.UPLOADING
+                            )
                             current = replace(
                                 current,
                                 phase=phase,
@@ -426,15 +460,52 @@ class EffectDeploymentEngine:
                                 durable=False,
                             )
 
+                        async def validate_h6179_upload() -> None:
+                            if not await self._async_refresh_activation(coordinator, compiled):
+                                raise H6179ActivationEvidenceError(
+                                    "H6179 DIY Apply is blocked because power and mode readback could not "
+                                    "confirm the disposable DIY code"
+                                )
+                            if not coordinator.is_on:
+                                raise H6179ActivationEvidenceError(
+                                    "H6179 DIY Apply is blocked because the light did not power on"
+                                )
+                            _validate_activation_approval(coordinator, compiled)
+
                         if upload_count == 0:
                             current = replace(current, phase=DeploymentPhase.ACTIVATING)
                             await self._deployments.async_put(current, expected_version=None)
-                        await coordinator.async_write_effect_sequence(
-                            compiled.packets,
-                            intent=ControlIntent.APPLY,
-                            attempt_started=attempt_started,
-                            progress=record_sequence_progress,
-                        )
+                        if compiled.upload_transport is UploadTransport.H6179_A1_02:
+                            if not upload_count:
+                                raise RuntimeError("H6179 A1 02 application has no upload frames")
+                            await coordinator.async_write_effect_sequence(
+                                compiled.upload_packets,
+                                intent=ControlIntent.APPLY,
+                                before_write=validate_h6179_upload,
+                                attempt_started=attempt_started,
+                                progress=record_sequence_progress,
+                                operation_id=str(record.operation_id),
+                            )
+                            current = replace(
+                                current,
+                                phase=DeploymentPhase.ACTIVATING,
+                                progress_current=upload_count,
+                            )
+                            await self._deployments.async_put(current, expected_version=None)
+                            await self._async_write_activation_once(coordinator, compiled.activation_packet)
+                            current = replace(current, progress_current=compiled.progress_total)
+                            await self._deployments.async_put(
+                                current,
+                                expected_version=None,
+                                durable=False,
+                            )
+                        else:
+                            await coordinator.async_write_effect_sequence(
+                                compiled.packets,
+                                intent=ControlIntent.APPLY,
+                                attempt_started=attempt_started,
+                                progress=record_sequence_progress,
+                            )
                     else:
                         current = await self._async_apply_profile(coordinator, compiled, current)
 
@@ -530,6 +601,17 @@ class EffectDeploymentEngine:
                 if attempt + 1 == ACTIVATION_ATTEMPTS:
                     raise
 
+    @staticmethod
+    async def _async_write_activation_once(
+        coordinator: GoveeBLECoordinator,
+        activation_packet: bytes,
+    ) -> None:
+        writer = getattr(coordinator, "async_preview_write", None)
+        if writer is not None:
+            await writer(activation_packet)
+            return
+        await coordinator.send_command(activation_packet)
+
     async def _async_apply_profile(
         self,
         coordinator: GoveeBLECoordinator,
@@ -568,29 +650,59 @@ class EffectDeploymentEngine:
         compiled: CompiledApplication,
         record: DeploymentRecord,
     ) -> tuple[bool, ObservationConfidence, DeploymentRecord]:
-        if not coordinator.profile.state_readable:
-            return False, ObservationConfidence.UNKNOWN, record
         if not isinstance(compiled, CompiledEffect):
+            h6179_music_readback = (
+                isinstance(compiled, CompiledMusicProfile)
+                and protocol_model(compiled.model) == "H6179"
+                and coordinator.profile.supports_color_mode_readback
+            )
+            if not coordinator.profile.state_readable and not h6179_music_readback:
+                return False, ObservationConfidence.UNKNOWN, record
             return await self._async_verify_profile(coordinator, compiled, record)
+        if not coordinator.profile.state_readable and compiled.upload_transport is not UploadTransport.H6179_A1_02:
+            return False, ObservationConfidence.UNKNOWN, record
         if compiled.activation_packet is None:
             raise RuntimeError("compiled activation verification has no activation packet")
         current = record
         for attempt in range(VERIFICATION_ATTEMPTS):
             try:
-                refreshed = await coordinator.refresh_state()
+                refreshed = await self._async_refresh_activation(coordinator, compiled)
             except Exception:
                 if attempt + 1 == VERIFICATION_ATTEMPTS:
                     raise
                 continue
-            if refreshed and _activation_matches(coordinator, record):
+            if refreshed and _activation_matches(coordinator, compiled, record):
                 return True, ObservationConfidence.ACTIVATION_MATCH, current
-            if refreshed and attempt + 1 < VERIFICATION_ATTEMPTS:
+            if (
+                refreshed
+                and attempt + 1 < VERIFICATION_ATTEMPTS
+                and compiled.activation_policy is not ActivationPolicy.OBSERVED_DISPOSABLE_APPROVAL
+            ):
                 current = replace(current, phase=DeploymentPhase.ACTIVATING)
                 await self._deployments.async_put(current, expected_version=None)
                 await self._async_activate(coordinator, compiled.activation_packet)
                 current = replace(current, phase=DeploymentPhase.VERIFYING)
                 await self._deployments.async_put(current, expected_version=None)
         return False, ObservationConfidence.UNKNOWN, current
+
+    @staticmethod
+    async def _async_refresh_activation(
+        coordinator: GoveeBLECoordinator,
+        compiled: CompiledEffect,
+    ) -> bool:
+        if compiled.upload_transport is not UploadTransport.H6179_A1_02:
+            return await coordinator.refresh_state()
+        refresh = getattr(coordinator, "async_refresh_status_domains", None)
+        if refresh is None:
+            return False
+        domains = frozenset({"power", "mode"})
+        return bool(
+            await refresh(
+                domains,
+                required_domains=domains,
+                timeout=2.0,
+            )
+        )
 
     async def _async_verify_profile(
         self,
@@ -648,24 +760,49 @@ class EffectDeploymentEngine:
         await self._deployments.async_put(recovering, expected_version=None)
         recovered = False
         if recovering.prior_state is not None:
-            restore = getattr(coordinator, "async_restore_effect_control_state", None)
-            if restore is not None:
+            prior_state = recovering.prior_state
+            if (
+                recovering.upload_transport == UploadTransport.H6179_A1_02.value
+                and prior_state.mode == "custom"
+                and prior_state.diy_code == recovering.diy_code
+            ):
                 try:
-                    recovered = await restore(
-                        recovering.prior_state,
-                        overwritten_diy_code=(
-                            recovering.diy_code
-                            if recovering.target_mode == ActivationMode.CUSTOM.value
-                            else -1
-                            if recovering.target_mode == ActivationMode.SCENE.value
-                            else None
-                        ),
+                    refresh = getattr(coordinator, "async_refresh_status_domains", None)
+                    domains = frozenset({"power", "mode"})
+                    recovered = bool(
+                        refresh is not None
+                        and await refresh(
+                            domains,
+                            required_domains=domains,
+                            timeout=2.0,
+                        )
+                        and coordinator.is_on is prior_state.is_on
+                        and coordinator.diy_code == prior_state.diy_code
                     )
                 except Exception:
                     _LOGGER.exception(
                         "Failed to recover the prior state after Effect Studio deployment %s",
                         recovering.operation_id,
                     )
+            if not recovered:
+                restore = getattr(coordinator, "async_restore_effect_control_state", None)
+                if restore is not None:
+                    try:
+                        recovered = await restore(
+                            prior_state,
+                            overwritten_diy_code=(
+                                recovering.diy_code
+                                if recovering.target_mode == ActivationMode.CUSTOM.value
+                                else -1
+                                if recovering.target_mode == ActivationMode.SCENE.value
+                                else None
+                            ),
+                        )
+                    except Exception:
+                        _LOGGER.exception(
+                            "Failed to recover the prior state after Effect Studio deployment %s",
+                            recovering.operation_id,
+                        )
         final = replace(
             recovering,
             phase=DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN,
@@ -749,6 +886,13 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
     ) -> bool:
+        if isinstance(compiled, CompiledEffect) and compiled.upload_transport is UploadTransport.H6179_A1_02:
+            if not await self._async_refresh_activation(coordinator, compiled):
+                raise H6179ActivationEvidenceError(
+                    "H6179 DIY Apply is blocked because mode readback could not confirm the disposable DIY code"
+                )
+            _validate_activation_approval(coordinator, compiled)
+            return True
         refreshed = await self._async_refresh_for_reconciliation(coordinator)
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed
@@ -989,8 +1133,12 @@ def _active_workspace_content(
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
         return source
     try:
-        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
-    except UnsupportedA3EffectError:
+        decoded = decode_effect_frames(
+            compiled.upload_packets,
+            compiled.model,
+            compiled.upload_transport.value,
+        )
+    except UnsupportedA3EffectError, ValueError:
         return source
     return decoded if type(decoded) is type(source) else source
 
@@ -1071,6 +1219,9 @@ def _profile_verification_confidence(
 def resolve_diy_code(
     item: LibraryItem,
     requested: int | None = None,
+    *,
+    observed_diy_code: int | None = None,
+    require_observed: bool = True,
 ) -> int | None:
     content = item.content
     if isinstance(content, MusicProfile | VideoProfile):
@@ -1089,15 +1240,65 @@ def resolve_diy_code(
         return H617A_TYPE04_APPLY_CODE if requested is None else requested
     if isinstance(content, PaletteDiyEffect):
         return H6199_PALETTE_DIY_APPLY_CODE if requested is None else requested
+    if isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        if requested is None:
+            raise H6179ActivationEvidenceError(
+                "H6179 DIY Apply requires an explicitly approved disposable DIY code from mode readback"
+            )
+        if not require_observed:
+            return requested
+        if observed_diy_code is None:
+            raise H6179ActivationEvidenceError(
+                "H6179 DIY Apply is blocked because no disposable DIY code is currently observed from mode readback"
+            )
+        if requested != observed_diy_code:
+            raise H6179ActivationEvidenceError(
+                f"H6179 DIY code {requested} is not the currently observed disposable code {observed_diy_code}"
+            )
+        return requested
     return None
+
+
+def observed_diy_code_for_apply(
+    coordinator: GoveeBLECoordinator,
+) -> int | None:
+    if protocol_model(coordinator.model) != "H6179":
+        return coordinator.diy_code
+    code = coordinator.diy_code
+    return code if isinstance(code, int) and not isinstance(code, bool) and 0 <= code <= 0xFFFF else None
+
+
+def _validate_activation_approval(
+    coordinator: GoveeBLECoordinator,
+    compiled: CompiledApplication,
+) -> None:
+    if (
+        not isinstance(compiled, CompiledEffect)
+        or compiled.activation_policy is not ActivationPolicy.OBSERVED_DISPOSABLE_APPROVAL
+    ):
+        return
+    observed = observed_diy_code_for_apply(coordinator)
+    if observed is None:
+        raise H6179ActivationEvidenceError(
+            "H6179 DIY Apply is blocked because no disposable DIY code is currently observed from mode readback"
+        )
+    if observed != compiled.diy_code:
+        raise H6179ActivationEvidenceError(
+            f"H6179 DIY code {compiled.diy_code} is not the currently observed disposable code {observed}"
+        )
 
 
 def _activation_matches(
     coordinator: GoveeBLECoordinator,
+    compiled: CompiledEffect,
     record: DeploymentRecord,
 ) -> bool:
     if not coordinator.is_on:
         return False
-    if record.target_mode == ActivationMode.SCENE.value:
+    if compiled.activation_observation is ActivationObservation.EFFECT:
         return record.target_effect is not None and coordinator.effect == record.target_effect
-    return coordinator.diy_code == record.diy_code or coordinator.unknown_scene_code == record.diy_code
+    if compiled.activation_observation is ActivationObservation.DIY_CODE:
+        return coordinator.diy_code == record.diy_code
+    if compiled.activation_observation is ActivationObservation.UNKNOWN_SCENE_CODE:
+        return coordinator.unknown_scene_code == record.diy_code
+    return compiled.activation_observation is ActivationObservation.NONE

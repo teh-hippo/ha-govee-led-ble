@@ -33,6 +33,8 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         content.get("model")
         if kind
         in {
+            "h6179_single_diy",
+            "h6179_mixed_diy",
             "palette_diy",
             "music_profile",
             "video_profile",
@@ -40,16 +42,16 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         }
         else None
     )
-    if model in {"H617A", "H617E", "H6199"}:
+    if model in {"H617A", "H617E", "H6179", "H6199"}:
         summary["model"] = model
     elif kind in {"h617a_painted", "h617a_single", "h617a_multi"}:
         hinted_model = item.target_hint.model if item.target_hint is not None else None
         summary["model"] = hinted_model if protocol_model(hinted_model or "") == "H617A" else "H617A"
     elif kind in {"scene_builtin", "scene_palette", "scene_layered"}:
         template = content.get("template")
-        if isinstance(template, dict) and template.get("sku") in {"H617A", "H617E", "H6199"}:
+        if isinstance(template, dict) and template.get("sku") in {"H617A", "H617E", "H6179", "H6199"}:
             summary["model"] = template["sku"]
-    elif item.target_hint is not None and item.target_hint.model in {"H617A", "H617E", "H6199"}:
+    elif item.target_hint is not None and item.target_hint.model in {"H617A", "H617E", "H6179", "H6199"}:
         summary["model"] = item.target_hint.model
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene):
         summary["template"] = content["template"]

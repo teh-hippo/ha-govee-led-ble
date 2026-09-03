@@ -1,18 +1,23 @@
 """Coordinator status DTOs and semantic parsing."""
 
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
+from types import MappingProxyType
 from typing import Any, cast
 
-from .const import MUSIC_MODE_SLUGS
-from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
-from .scenes import MODEL_SCENES
+from .const import wire_model
+from .generated_protocol_adapter import (
+    ParsedH6179Status,
+    ProtocolParseResult,
+    parse_h6179_status_result,
+    parse_status_result,
+)
+from .music_protocol import music_slug_for
+from .scenes import scene_key_for_code
 
-_MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
-_SCENE_EFFECT_BY_MODEL_ID = {
-    model: {scene.code: name for name, scene in scenes.items()} for model, scenes in MODEL_SCENES.items()
-}
-_RHYTHM_MODE_ID = MUSIC_MODE_SLUGS["rhythm"]
+
+def _music_slug(model: str, mode_id: int) -> str | None:
+    return music_slug_for(wire_model(model) or model, mode_id)
 
 
 class StatusDomain(Enum):
@@ -34,6 +39,7 @@ _STATUS_DOMAIN_NAMES = {
     "brightness": StatusDomain.BRIGHTNESS,
     "colormode": StatusDomain.COLOUR_MODE,
     "colour_mode": StatusDomain.COLOUR_MODE,
+    "mode": StatusDomain.COLOUR_MODE,
     "fw_version": StatusDomain.FIRMWARE,
     "firmware": StatusDomain.FIRMWARE,
     "hw_version": StatusDomain.HARDWARE,
@@ -55,14 +61,16 @@ class ParsedStatusEnvelope:
 
 
 def decode_status_frame_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
-    result = parse_status_result(frame, model)
+    result = parse_h6179_status_result(frame) if wire_model(model) == "H6179" else parse_status_result(frame, model)
     if result.parsed is None:
         return result
     generated = result.parsed
+    domain = generated.domain
+    domain_name = domain if isinstance(domain, str) else getattr(domain, "name", "")
     return ProtocolParseResult(
         ParsedStatusEnvelope(
-            domain=_STATUS_DOMAIN_NAMES.get(getattr(generated.domain, "name", ""), StatusDomain.OTHER),
-            raw_domain=int(generated.domain),
+            domain=_STATUS_DOMAIN_NAMES.get(domain_name, StatusDomain.OTHER),
+            raw_domain=frame[1],
             payload=bytes(frame[2:-1]),
             generated=generated,
         ),
@@ -87,6 +95,43 @@ class ParsedMode(Enum):
     VIDEO = auto()
 
 
+class FieldAuthority(StrEnum):
+    """Authority of a coordinator field value."""
+
+    AUTHORITATIVE = "authoritative"
+    OPTIMISTIC = "optimistic"
+    PROVISIONAL = "provisional"
+
+
+H6179_STATUS_FIELD_AUTHORITY = MappingProxyType(
+    {
+        "is_on": FieldAuthority.AUTHORITATIVE,
+        "brightness_pct": FieldAuthority.AUTHORITATIVE,
+        "fw_version": FieldAuthority.AUTHORITATIVE,
+        "hw_version": FieldAuthority.AUTHORITATIVE,
+        "color_mode": FieldAuthority.PROVISIONAL,
+        "rgb_color": FieldAuthority.PROVISIONAL,
+        "color_temp_kelvin": FieldAuthority.PROVISIONAL,
+        "effect": FieldAuthority.PROVISIONAL,
+        "unknown_scene_code": FieldAuthority.PROVISIONAL,
+        "diy_code": FieldAuthority.PROVISIONAL,
+        "music_mode": FieldAuthority.PROVISIONAL,
+        "music_mode_id": FieldAuthority.PROVISIONAL,
+        "music_sensitivity": FieldAuthority.PROVISIONAL,
+        "music_color": FieldAuthority.PROVISIONAL,
+    }
+)
+H6179_WRITE_FIELD_AUTHORITY = MappingProxyType(
+    {
+        "is_on": FieldAuthority.OPTIMISTIC,
+        "brightness_pct": FieldAuthority.OPTIMISTIC,
+        "color_mode": FieldAuthority.OPTIMISTIC,
+        "rgb_color": FieldAuthority.OPTIMISTIC,
+        "color_temp_kelvin": FieldAuthority.OPTIMISTIC,
+    }
+)
+
+
 @dataclass(frozen=True)
 class ParsedColorModeResponse:
     mode: ParsedMode = ParsedMode.UNKNOWN
@@ -94,6 +139,7 @@ class ParsedColorModeResponse:
     scene_code: int | None = None
     diy_code: int | None = None
     music_mode: str | None = None
+    music_mode_id: int | None = None
     video_mode: str | None = None
     video_full_screen: bool | None = None
     video_saturation: int | None = None
@@ -103,11 +149,67 @@ class ParsedColorModeResponse:
     music_calm: bool | None = None
     music_color: tuple[int, int, int] | None = None
     rgb_color: tuple[int, int, int] | None = None
+    color_temp_kelvin: int | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
+    raw_mode: int | None = None
+    opaque: bytes | None = None
+
+
+def _parse_h6179_color_mode(status: ParsedH6179Status) -> ParsedColorModeResponse:
+    if status.domain != "mode":
+        return ParsedColorModeResponse()
+    values = status.values
+    mode_name = values.get("mode")
+    if mode_name == "static":
+        kelvin = int(values["kelvin"])
+        if kelvin:
+            return ParsedColorModeResponse(
+                mode=ParsedMode.COLOUR,
+                color_temp_kelvin=kelvin,
+            )
+        red, green, blue = values["rgb"]
+        return ParsedColorModeResponse(
+            mode=ParsedMode.COLOUR,
+            rgb_color=(int(red), int(green), int(blue)),
+        )
+    if mode_name == "scene":
+        scene_code = int(values["scene_code"])
+        return ParsedColorModeResponse(
+            mode=ParsedMode.SCENE,
+            effect=scene_key_for_code("H6179", scene_code),
+            scene_code=scene_code,
+        )
+    if mode_name == "diy":
+        return ParsedColorModeResponse(
+            mode=ParsedMode.DIY,
+            diy_code=int(values["diy_code"]),
+        )
+    if mode_name == "music":
+        mode_id = int(values["music_mode_id"])
+        colour = values["colour"]
+        music_color = None
+        if colour is not None:
+            red, green, blue = colour
+            music_color = (int(red), int(green), int(blue))
+        return ParsedColorModeResponse(
+            mode=ParsedMode.MUSIC,
+            music_mode=_music_slug("H6179", mode_id),
+            music_mode_id=mode_id,
+            music_sensitivity=int(values["sensitivity"]),
+            music_color=music_color,
+        )
+    return ParsedColorModeResponse(
+        raw_mode=int(values["raw_mode"]),
+        opaque=bytes(values["opaque"]),
+    )
 
 
 def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
+    if model == "H6179":
+        if not isinstance(generated, ParsedH6179Status):
+            return ParsedColorModeResponse()
+        return _parse_h6179_color_mode(generated)
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
     if model == "H6199":
@@ -127,6 +229,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             )
         if mode_name == "music":
             detail = body.detail
+            mode_id = int(detail.mode)
             fixed_colour = None
             if detail.has_fixed_colour:
                 fixed_colour = (
@@ -136,7 +239,8 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
                 )
             return ParsedColorModeResponse(
                 mode=ParsedMode.MUSIC,
-                music_mode=_MUSIC_SLUG_BY_ID.get(int(detail.mode)),
+                music_mode=_music_slug(model, mode_id),
+                music_mode_id=mode_id,
                 music_sensitivity=int(detail.sensitivity),
                 music_calm=bool(detail.is_calm),
                 music_color=fixed_colour,
@@ -145,7 +249,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             scene_code = int(body.detail.scene_id)
             return ParsedColorModeResponse(
                 mode=ParsedMode.SCENE,
-                effect=_SCENE_EFFECT_BY_MODEL_ID["H6199"].get(scene_code),
+                effect=scene_key_for_code("H6199", scene_code),
                 scene_code=scene_code,
             )
         if mode_name == "static_colour":
@@ -156,21 +260,24 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
         scene_code = int(body.mode_body.scene_id)
         return ParsedColorModeResponse(
             mode=ParsedMode.SCENE,
-            effect=_SCENE_EFFECT_BY_MODEL_ID["H617A"].get(scene_code),
+            effect=scene_key_for_code("H617A", scene_code),
             scene_code=scene_code,
         )
     if mode_name == "diy":
         return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(body.mode_body.code))
     if mode_name == "music":
         detail = body.mode_body
+        mode_id = int(detail.mode_id)
+        music_mode = _music_slug(model, mode_id)
         music_color = None
         if detail.manual_color_count >= 1:
             music_color = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,
-            music_mode=_MUSIC_SLUG_BY_ID.get(int(detail.mode_id)),
+            music_mode=music_mode,
+            music_mode_id=mode_id,
             music_sensitivity=int(detail.sensitivity),
-            music_calm=bool(detail.style) if int(detail.mode_id) == _RHYTHM_MODE_ID else None,
+            music_calm=bool(detail.style) if music_mode == "rhythm" else None,
             music_color=music_color,
         )
     if mode_name == "static":

@@ -8,6 +8,7 @@ from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
 from custom_components.ha_govee_led_ble.coordinator import (
     PACKET_LOG_LIMIT,
     PACKET_LOG_RAW_BYTES_LIMIT,
+    GoveeBLECoordinator,
 )
 from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.ha_govee_led_ble.effect_diagnostics import (
@@ -16,6 +17,9 @@ from custom_components.ha_govee_led_ble.effect_diagnostics import (
     EffectDiagnosticHistory,
 )
 from custom_components.ha_govee_led_ble.effect_setup import EFFECT_BACKEND_DATA_KEY
+from custom_components.ha_govee_led_ble.h6179_reactive_backend import H6179ReactiveBackend
+from custom_components.ha_govee_led_ble.h6179_reactive_service import REACTIVE_BACKEND_DATA_KEY
+from custom_components.ha_govee_led_ble.h6179_schedule import ScheduleAction
 
 REDACTED = "**REDACTED**"
 
@@ -66,7 +70,7 @@ async def test_surfaces_release_capability_evidence_without_hiding_planned_workf
     contract = diag["coordinator"]["release_capabilities"]
     capabilities = {capability["workflow"]: capability for capability in contract["capabilities"]}
 
-    assert contract["schema_version"] == 1
+    assert contract["schema_version"] == 2
     assert contract["model"] == "H6199"
     assert capabilities["palette_diy"] == {
         "workflow": "palette_diy",
@@ -97,6 +101,43 @@ async def test_h6076_diagnostics_expose_basic_capability_boundary(mock_h6076_coo
     assert coord["supports_custom_effects"] is False
     assert coord["supports_segments"] is False
     assert coord["release_capabilities"]["capabilities"] == []
+
+
+async def test_h6179_diagnostics_include_schedule_reactive_and_packet_state_without_pii(
+    hass,
+) -> None:
+    coordinator = _prep(
+        GoveeBLECoordinator(
+            hass,
+            "11:22:33:44:55:79",
+            "H6179",
+            configuration_url="homeassistant://ha-govee-led-ble/editor/entry-79",
+        )
+    )
+    coordinator.h6179_schedule_state = coordinator.h6179_schedule_state.updated_slot(
+        0,
+        enabled=True,
+        action=ScheduleAction.ON,
+    )
+    coordinator.h6179_schedule_slot_one_time = (True, False, False, False)
+    coordinator.h6179_wake_one_time = True
+    backend = H6179ReactiveBackend()
+    hass.data.setdefault(DOMAIN, {})[REACTIVE_BACKEND_DATA_KEY] = backend
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry-79",
+        unique_id="11:22:33:44:55:79",
+        data={CONF_MODEL: "H6179"},
+    )
+
+    diag = await _run(coordinator, entry, hass)
+
+    assert diag["coordinator"]["h6179_schedule"]["schedule_slots"][0]["enabled"] is True
+    assert diag["coordinator"]["h6179_schedule"]["slot_one_time"] == [True, False, False, False]
+    assert diag["coordinator"]["h6179_schedule"]["wake_one_time"] is True
+    assert diag["reactive_state"]["state"] == "idle"
+    assert "11:22:33:44:55:79" not in str(diag)
+    await backend.async_shutdown()
 
 
 async def test_stale_experimental_option_ignored(mock_h6199_coordinator):

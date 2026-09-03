@@ -30,6 +30,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 )
 from custom_components.ha_govee_led_ble.effect_diagnostics import EffectDiagnosticHistory
 from custom_components.ha_govee_led_ble.effect_domain import (
+    H6179SingleDiyEffect,
     LibraryItem,
     MusicProfile,
     Origin,
@@ -66,6 +67,13 @@ def _item(name: str, speed: int = 50) -> LibraryItem:
     return LibraryItem.new(name, SingleEffect(0, 0, speed, ((255, 0, 0),)))
 
 
+def _h6179_item(name: str = "H6179 DIY") -> LibraryItem:
+    return LibraryItem.new(
+        name,
+        H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
+    )
+
+
 def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNamespace:
     coordinator = SimpleNamespace(
         model=model,
@@ -92,10 +100,17 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         packets,
         *,
         intent,
+        prepare=None,
         before_write=None,
         attempt_started=None,
         progress=None,
+        final_packet=None,
+        before_final=None,
+        operation_id=None,
     ) -> None:
+        del operation_id
+        if prepare is not None:
+            await prepare()
         if attempt_started is not None:
             await attempt_started(1)
         if before_write is not None:
@@ -104,6 +119,12 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
             await coordinator.async_preview_write(packet)
             if progress is not None:
                 await progress(index)
+        if final_packet is not None:
+            if before_final is not None:
+                await before_final()
+            await coordinator.async_preview_write(final_packet)
+            if progress is not None:
+                await progress(len(packets) + 1)
 
     coordinator.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)
     coordinator.async_preview_observe = AsyncMock(return_value=True)
@@ -1662,6 +1683,173 @@ async def test_external_supersession_clears_pending_health_and_publishes_reason(
     assert manager._devices["entry-a"].pending is None
     assert "entry-a" not in manager._health_targets
     assert any(event.phase is PreviewPhase.CANCELLED and event.error_code == "user_command" for event in events)
+    await manager.async_shutdown()
+
+
+async def test_h6179_preview_requires_observed_disposable_approval_before_preflight(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(model="H6179")
+    coordinator.diy_code = 0x1234
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+
+    with pytest.raises(PreviewError, match="explicitly approved disposable DIY code"):
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-09-03T00:00:00Z",
+            item=_h6179_item(),
+        )
+
+    coordinator.async_preview_preflight.assert_not_awaited()
+    coordinator.async_preview_write.assert_not_awaited()
+    await manager.async_shutdown()
+
+
+async def test_h6179_preview_decodes_workspace_and_selects_only_after_upload(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(model="H6179")
+    coordinator.is_on = True
+    coordinator.diy_code = 0x1234
+    coordinator.async_refresh_status_domains = AsyncMock(return_value=True)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+    item = _h6179_item()
+    compiled = compile_application(item, "H6179", diy_code=0x1234)
+    assert isinstance(compiled, CompiledEffect)
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-09-03T00:00:00Z",
+        item=item,
+        diy_code=0x1234,
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert coordinator.writes == [*compiled.upload_packets, compiled.activation_packet]
+    coordinator.async_write_effect_sequence.assert_awaited_once()
+    assert coordinator.async_write_effect_sequence.await_args.args[0] == list(compiled.upload_packets)
+    assert coordinator.async_refresh_status_domains.await_count == 2
+    assert coordinator.async_write_effect_sequence.await_args.kwargs["final_packet"] == compiled.activation_packet
+    assert events[-1].phase is PreviewPhase.CONFIRMED
+    assert manager._active_workspaces is not None
+    workspace = manager._active_workspaces.get("entry-a")
+    assert workspace is not None
+    assert workspace.content == item.content
+    await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("failure", ["refresh", "changed_code"])
+async def test_h6179_preview_revalidates_fresh_mode_before_zero_effect_writes(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    coordinator = _coordinator(model="H6179")
+    coordinator.is_on = True
+    coordinator.diy_code = 0x1234
+    if failure == "refresh":
+        coordinator.async_refresh_status_domains = AsyncMock(return_value=False)
+    else:
+
+        async def changed_code(*_args, **_kwargs) -> bool:
+            coordinator.diy_code = 0x5678
+            return True
+
+        coordinator.async_refresh_status_domains = AsyncMock(side_effect=changed_code)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-09-03T00:00:00Z",
+        item=_h6179_item(),
+        diy_code=0x1234,
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert coordinator.writes == []
+    coordinator.async_preview_write.assert_not_awaited()
+    assert events[-1].phase is PreviewPhase.FAILED
+    assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+    await manager.async_shutdown()
+
+
+async def test_h6179_preview_holds_previews_through_admission_check_before_selector(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "AA:BB:CC:DD:EE:79",
+        "H6179",
+        configuration_url="homeassistant://ha-govee-led-ble/editor/entry-a",
+    )
+    coordinator.is_on = True
+    coordinator.diy_code = 0x1234
+    coordinator.async_preview_preflight = AsyncMock()  # type: ignore[method-assign]
+    coordinator.async_refresh_status_domains = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    item = _h6179_item()
+    compiled = compile_application(item, "H6179", diy_code=0x1234)
+    assert isinstance(compiled, CompiledEffect)
+    writes: list[bytes] = []
+    user_entered = asyncio.Event()
+    foreground: asyncio.Task[None] | None = None
+
+    async def user_command() -> None:
+        async with coordinator._control_arbiter.hold(ControlIntent.USER):
+            user_entered.set()
+
+    async def write_gatt_char(_uuid: str, packet: bytes, *, response: bool) -> None:
+        nonlocal foreground
+        assert response is False
+        writes.append(packet)
+        if len(writes) == len(compiled.upload_packets):
+            foreground = asyncio.create_task(user_command())
+            await asyncio.sleep(0)
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write_gatt_char))
+    coordinator._client = client
+    coordinator._ensure_connected = AsyncMock(return_value=client)  # type: ignore[method-assign]
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
+
+    await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-09-03T00:00:00Z",
+        item=item,
+        diy_code=0x1234,
+    )
+    await manager.async_wait_idle("entry-a")
+    assert foreground is not None
+    await foreground
+
+    assert writes == list(compiled.upload_packets)
+    assert compiled.activation_packet not in writes
+    assert user_entered.is_set()
+    assert any(event.phase is PreviewPhase.CANCELLED and event.error_code == "superseded" for event in events)
     await manager.async_shutdown()
 
 

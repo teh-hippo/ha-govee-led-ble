@@ -322,6 +322,11 @@ class DeploymentRecord:
     content_kind: str = "custom_effect"
     target_mode: str = "custom"
     target_effect: str | None = None
+    upload_transport: str = "a3"
+    activation_observation: str = "diy_code"
+    activation_policy: str = "requested_code"
+    overwrite_risk: bool = False
+    activation_evidence: tuple[str, ...] = ()
     evidence_codes: tuple[str, ...] = ()
     source_kind: str = "saved_effect"
     selector_label: str = ""
@@ -364,6 +369,30 @@ class DeploymentRecord:
             )
         if self.target_mode == "scene" and self.target_effect is None:
             raise EffectStorageError("scene deployment must include a target effect")
+        if self.upload_transport not in {"none", "a3", "h6179_a1_02"}:
+            raise EffectStorageError("deployment upload transport is invalid")
+        if self.activation_observation not in {"none", "diy_code", "unknown_scene_code", "effect"}:
+            raise EffectStorageError("deployment activation observation is invalid")
+        if self.activation_policy not in {
+            "evidenced_fixed",
+            "requested_code",
+            "observed_disposable_approval",
+            "scene_selector",
+        }:
+            raise EffectStorageError("deployment activation policy is invalid")
+        if not isinstance(self.overwrite_risk, bool):
+            raise EffectStorageError("deployment overwrite risk must be a boolean")
+        if len(self.activation_evidence) > MAX_DEPLOYMENT_EVIDENCE_CODES:
+            raise EffectStorageError(
+                f"deployment must not exceed {MAX_DEPLOYMENT_EVIDENCE_CODES} activation evidence codes"
+            )
+        for code in self.activation_evidence:
+            validate_bounded_string(
+                code,
+                "deployment activation evidence code",
+                maximum=MAX_IDENTIFIER_LENGTH,
+                error_type=EffectStorageError,
+            )
         if len(self.evidence_codes) > MAX_DEPLOYMENT_EVIDENCE_CODES:
             raise EffectStorageError(f"deployment must not exceed {MAX_DEPLOYMENT_EVIDENCE_CODES} evidence codes")
         for code in self.evidence_codes:
@@ -447,6 +476,11 @@ class DeploymentRecord:
             "updated_at": self.updated_at,
             "target_mode": self.target_mode,
             "target_effect": self.target_effect,
+            "upload_transport": self.upload_transport,
+            "activation_observation": self.activation_observation,
+            "activation_policy": self.activation_policy,
+            "overwrite_risk": self.overwrite_risk,
+            "activation_evidence": list(self.activation_evidence),
             "evidence_codes": list(self.evidence_codes),
             "source_kind": self.source_kind,
             "selector_label": self.selector_label,
@@ -470,6 +504,11 @@ class DeploymentRecord:
             "content_kind": self.content_kind,
             "target_mode": self.target_mode,
             "target_effect": self.target_effect,
+            "upload_transport": self.upload_transport,
+            "activation_observation": self.activation_observation,
+            "activation_policy": self.activation_policy,
+            "overwrite_risk": self.overwrite_risk,
+            "activation_evidence": list(self.activation_evidence),
             "phase": self.phase.value,
             "updated_at": self.updated_at,
             "item_id": str(self.item_id) if self.item_id is not None else None,
@@ -502,17 +541,33 @@ class DeploymentRecord:
         except ValueError as exc:
             raise EffectStorageError("deployment phase is invalid") from exc
         prior_state_raw = raw.get("prior_state")
+        content_kind = _optional_str(raw, "content_kind") or "custom_effect"
+        target_mode = _optional_str(raw, "target_mode") or "custom"
+        progress_total = _optional_int(raw, "progress_total", default=0)
+        legacy_transport, legacy_observation, legacy_policy = _legacy_deployment_metadata(
+            content_kind,
+            target_mode,
+            progress_total,
+        )
         return cls(
             operation_id=operation_id,
             config_entry_id=_required_str(raw, "config_entry_id"),
             diy_code=_optional_int(raw, "diy_code"),
-            content_kind=_optional_str(raw, "content_kind") or "custom_effect",
+            content_kind=content_kind,
             phase=phase,
             compiler_version=_required_int(raw, "compiler_version"),
             artifact_sha256=_required_str(raw, "artifact_sha256"),
             updated_at=_required_str(raw, "updated_at"),
-            target_mode=_optional_str(raw, "target_mode") or "custom",
+            target_mode=target_mode,
             target_effect=_optional_str(raw, "target_effect"),
+            upload_transport=_optional_str(raw, "upload_transport") or legacy_transport,
+            activation_observation=_optional_str(raw, "activation_observation") or legacy_observation,
+            activation_policy=_optional_str(raw, "activation_policy") or legacy_policy,
+            overwrite_risk=_optional_bool(raw, "overwrite_risk", default=False),
+            activation_evidence=_string_tuple(
+                raw.get("activation_evidence", ()),
+                "deployment activation evidence",
+            ),
             evidence_codes=_string_tuple(raw.get("evidence_codes", ()), "deployment evidence codes"),
             source_kind=_optional_str(raw, "source_kind") or "saved_effect",
             selector_label=_required_str(raw, "selector_label"),
@@ -525,7 +580,7 @@ class DeploymentRecord:
             ),
             error_code=_optional_str(raw, "error_code"),
             progress_current=_optional_int(raw, "progress_current", default=0),
-            progress_total=_optional_int(raw, "progress_total", default=0),
+            progress_total=progress_total,
             verification_confidence=confidence,
             prior_state=(
                 None
@@ -533,6 +588,21 @@ class DeploymentRecord:
                 else PriorControlState.from_dict(_as_mapping(prior_state_raw, "prior control state"))
             ),
         )
+
+
+def _legacy_deployment_metadata(
+    content_kind: str,
+    target_mode: str,
+    progress_total: int,
+) -> tuple[str, str, str]:
+    if target_mode in {"music", "video"}:
+        return "none", "none", "evidenced_fixed"
+    if target_mode == "scene":
+        transport = "a3" if progress_total > 1 else "none"
+        return transport, "effect", "scene_selector"
+    if content_kind in {"palette_diy", "workshop"}:
+        return "a3", "unknown_scene_code", "evidenced_fixed"
+    return "a3", "diy_code", "requested_code"
 
 
 @dataclass(frozen=True, slots=True)

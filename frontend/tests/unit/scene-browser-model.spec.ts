@@ -98,6 +98,7 @@ test("native default actions use the shared Save, Reset, and Save As model", () 
     { id: "edit", label: "Edit", style: "secondary" },
   ]);
   expect(nativeSceneActions(true, true, false).some((action) => action.label.includes("Saving"))).toBe(false);
+  expect(nativeSceneActions(false, false, false, false, false, false, true)).toEqual([]);
 });
 
 test("palette inspection data does not create a parameter surface", () => {

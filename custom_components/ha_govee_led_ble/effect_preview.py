@@ -21,17 +21,17 @@ from .const import DOMAIN, protocol_model
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
 from .effect_catalogue import (
-    H6199_PALETTE_DIY_APPLY_CODE,
-    H6199_WORKSHOP_APPLY_CODE,
     validate_catalogue_template_identity,
 )
 from .effect_compiler import (
     ActivationMode,
+    ActivationObservation,
     CompatibilityState,
     CompiledApplication,
     CompiledEffect,
     CompiledMusicProfile,
     CompiledVideoProfile,
+    UploadTransport,
     compatibility,
     compile_application,
 )
@@ -51,11 +51,13 @@ from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
 from .effect_protocol_decoder import (
     UnsupportedA3EffectError,
-    decode_a3_effect_frames,
+    decode_effect_frames,
 )
 from .effect_runtime import (
+    H6179ActivationEvidenceError,
     async_apply_compiled_profile,
     observable_signature_for_state,
+    observed_diy_code_for_apply,
     resolve_diy_code,
 )
 from .effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
@@ -447,6 +449,7 @@ class EffectPreviewManager:
         updated_at: str,
         item: LibraryItem,
         persist_default: bool = False,
+        diy_code: int | None = None,
     ) -> PreviewAcceptance:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
@@ -465,8 +468,15 @@ class EffectPreviewManager:
                 item.origin.source_id,
                 item.content,
             )
-        diy_code = resolve_diy_code(item)
-        fingerprint = _snapshot_fingerprint(coordinator.model, item)
+        try:
+            diy_code = resolve_diy_code(
+                item,
+                diy_code,
+                require_observed=False,
+            )
+        except H6179ActivationEvidenceError as error:
+            raise PreviewError(str(error)) from error
+        fingerprint = _snapshot_fingerprint(coordinator.model, item, diy_code=diy_code)
         request = _PreviewRequest(
             session_id=session_id,
             config_entry_id=config_entry_id,
@@ -842,7 +852,11 @@ class EffectPreviewManager:
                 else compile_application(
                     _required_item(request),
                     coordinator.model,
-                    diy_code=request.diy_code,
+                    diy_code=resolve_diy_code(
+                        _required_item(request),
+                        request.diy_code,
+                        require_observed=False,
+                    ),
                 )
             )
         except Exception as exc:
@@ -902,15 +916,62 @@ class EffectPreviewManager:
             else:
                 assert compiled is not None
                 if isinstance(compiled, CompiledEffect):
-                    packets = list(compiled.packets)
                     power_required = not coordinator.is_on
-                    if power_required:
-                        packets.insert(0, build_power(True, coordinator.model))
-                    await coordinator.async_write_effect_sequence(
-                        packets,
-                        intent=ControlIntent.PREVIEW,
-                        before_write=writer.begin,
-                    )
+                    if compiled.upload_transport is UploadTransport.H6179_A1_02:
+                        packets = list(compiled.upload_packets)
+
+                        async def prepare_upload() -> None:
+                            await writer.begin()
+                            await coordinator.send_command(build_power(True, coordinator.model))
+                            coordinator.is_on = True
+
+                        async def validate_upload() -> None:
+                            refresh = getattr(coordinator, "async_refresh_status_domains", None)
+                            domains = frozenset({"power", "mode"})
+                            if refresh is None or not await refresh(
+                                domains,
+                                required_domains=domains,
+                                timeout=self._verify_timeout,
+                            ):
+                                raise PreviewError(
+                                    "H6179 DIY preview is blocked because mode readback could not confirm "
+                                    "the disposable DIY code"
+                                )
+                            if not coordinator.is_on:
+                                raise PreviewError("H6179 DIY preview is blocked because the light did not power on")
+                            resolve_diy_code(
+                                _required_item(request),
+                                request.diy_code,
+                                observed_diy_code=observed_diy_code_for_apply(coordinator),
+                            )
+                            if not await self._async_request_is_current(request):
+                                raise _PreviewSupersededError
+                            await writer.begin()
+
+                        async def before_selector() -> None:
+                            if not await self._async_request_is_current(request):
+                                raise _PreviewSupersededError
+
+                        if compiled.activation_packet is None:
+                            raise RuntimeError("H6179 preview has no activation selector")
+                        await coordinator.async_write_effect_sequence(
+                            packets,
+                            intent=ControlIntent.PREVIEW,
+                            prepare=prepare_upload if power_required else None,
+                            before_write=validate_upload,
+                            final_packet=compiled.activation_packet,
+                            before_final=before_selector,
+                            operation_id=request.correlation_id,
+                        )
+                    else:
+                        packets = list(compiled.packets)
+                        if power_required:
+                            packets.insert(0, build_power(True, coordinator.model))
+                        await coordinator.async_write_effect_sequence(
+                            packets,
+                            intent=ControlIntent.PREVIEW,
+                            before_write=writer.begin,
+                        )
                     if power_required:
                         coordinator.is_on = True
                     _install_effect_state(coordinator, compiled)
@@ -1519,6 +1580,37 @@ class EffectPreviewManager:
         coordinator: Any,
         expectations: Mapping[str, Any],
     ) -> bool | None:
+        if protocol_model(coordinator.model) == "H6179":
+            refresh = getattr(coordinator, "async_refresh_status_domains", None)
+            if refresh is None:
+                return None
+            domains = frozenset(
+                domain
+                for domain, fields in (
+                    ("power", {"is_on"}),
+                    ("brightness", {"brightness_pct"}),
+                    (
+                        "mode",
+                        {
+                            "diy_code",
+                            "effect",
+                            "music_mode",
+                            "music_sensitivity",
+                            "music_color",
+                        },
+                    ),
+                )
+                if fields & expectations.keys()
+            )
+            if not domains:
+                return None
+            if not await refresh(
+                domains,
+                required_domains=domains,
+                timeout=self._verify_timeout,
+            ):
+                return None
+            return all(getattr(coordinator, field) == expected for field, expected in expectations.items())
         result = await coordinator.async_preview_observe(
             expectations,
             timeout=self._verify_timeout,
@@ -1553,11 +1645,17 @@ def _preview_request_key(request: _PreviewRequest) -> tuple[str, str, bool]:
     )
 
 
-def _snapshot_fingerprint(model: str, item: LibraryItem) -> str:
+def _snapshot_fingerprint(
+    model: str,
+    item: LibraryItem,
+    *,
+    diy_code: int | None,
+) -> str:
     encoded = json.dumps(
         {
             "model": model,
             "content": effect_content_to_dict(item.content),
+            "diy_code": diy_code,
         },
         allow_nan=False,
         ensure_ascii=False,
@@ -1580,8 +1678,12 @@ def _active_workspace_content(
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
         return source
     try:
-        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
-    except UnsupportedA3EffectError:
+        decoded = decode_effect_frames(
+            compiled.upload_packets,
+            compiled.model,
+            compiled.upload_transport.value,
+        )
+    except UnsupportedA3EffectError, ValueError:
         return source
     return decoded if type(decoded) is type(source) else source
 
@@ -1670,26 +1772,29 @@ def _verification_expectations(
     request: _PreviewRequest,
     compiled: CompiledApplication | None,
 ) -> dict[str, Any] | None:
-    if not coordinator.profile.state_readable:
+    h6179_music_readback = isinstance(compiled, CompiledMusicProfile) and protocol_model(compiled.model) == "H6179"
+    if (
+        not coordinator.profile.state_readable
+        and not (isinstance(compiled, CompiledEffect) and compiled.upload_transport is UploadTransport.H6179_A1_02)
+        and not h6179_music_readback
+    ):
         return None
     if request.scene is not None:
         return {"is_on": True, "effect": request.scene.key}
     if isinstance(compiled, CompiledEffect):
-        if compiled.activation_mode is ActivationMode.SCENE:
+        if compiled.activation_observation is ActivationObservation.EFFECT:
             return {"is_on": True, "effect": compiled.expected_effect}
-        if compiled.content_kind == "workshop":
+        if compiled.activation_observation is ActivationObservation.UNKNOWN_SCENE_CODE:
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}
-        if protocol_model(compiled.model) == "H617A":
+        if compiled.activation_observation is ActivationObservation.DIY_CODE:
             return {"is_on": True, "diy_code": compiled.diy_code}
-        if compiled.diy_code in {H6199_PALETTE_DIY_APPLY_CODE, H6199_WORKSHOP_APPLY_CODE}:
-            return {"is_on": True, "unknown_scene_code": compiled.diy_code}
         return None
     if isinstance(compiled, CompiledMusicProfile):
         expectations: dict[str, Any] = {
             "is_on": True,
             "music_mode": compiled.mode,
         }
-        if compiled.model == "H6199":
+        if compiled.model in {"H6179", "H6199"}:
             expectations.update(
                 {
                     "music_sensitivity": compiled.sensitivity,

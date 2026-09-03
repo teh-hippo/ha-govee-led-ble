@@ -6,7 +6,7 @@ export interface JsonObject {
 }
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
-export type ModelSku = "H617A" | "H617E" | "H6199";
+export type ModelSku = "H617A" | "H617E" | "H6179" | "H6199";
 export type ObservationConfidence =
   | "exact_session"
   | "activation_match"
@@ -150,6 +150,23 @@ export interface MultiContent {
   palette: RGB[];
 }
 
+export interface H6179SingleDiyContent {
+  kind: "h6179_single_diy";
+  model: "H6179";
+  family: number;
+  variant: number;
+  speed: number;
+  palette: RGB[];
+}
+
+export interface H6179MixedDiyContent {
+  kind: "h6179_mixed_diy";
+  model: "H6179";
+  components: EffectPair[];
+  speed: number;
+  palette: RGB[];
+}
+
 export interface PaletteDiyEffectContent {
   kind: "palette_diy";
   model: ModelSku;
@@ -262,7 +279,9 @@ export interface WorkshopContent {
 export type CustomEffectContent =
   | PaintedContent
   | SingleContent
-  | MultiContent;
+  | MultiContent
+  | H6179SingleDiyContent
+  | H6179MixedDiyContent;
 
 export interface PaintedEffectTemplate {
   id: PaintedContent["effect"];
@@ -349,7 +368,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 8;
+  schema_version: 9;
   sku: "H617A";
   models: Record<ModelSku, ModelEffectCatalogue>;
 }

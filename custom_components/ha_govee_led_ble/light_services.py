@@ -2,7 +2,8 @@
 
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING, Any
+from datetime import time as dt_time
+from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
 from homeassistant.components.light import ColorMode  # type: ignore[attr-defined]
@@ -12,11 +13,24 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import service
 from homeassistant.helpers.typing import VolDictType
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .generated_protocol_adapter import build_h6199_video, build_power
+from .h6179_schedule import ScheduleValidationError
+from .h6179_services import (
+    H6179ServiceCoordinator,
+    async_configure_schedule_slot,
+    async_configure_sleep,
+    async_configure_wake,
+    async_disable_schedule_slot,
+    async_disable_sleep,
+    async_disable_wake,
+    async_resync_clock,
+    async_set_limit_control,
+)
 from .light_commands import SegmentColorGroup
 from .native_profile_controls import apply_active_video_mode
 
@@ -100,6 +114,138 @@ class _GoveeLightOwner:
 
 class _GoveeLightServicesMixin(_GoveeLightOwner):
     """Entity-service methods for the Govee BLE light."""
+
+    def _h6179_service_coordinator(self) -> H6179ServiceCoordinator:
+        return cast(H6179ServiceCoordinator, self.coordinator)
+
+    async def _async_h6179_service(
+        self,
+        service_name: str,
+        *,
+        supported: bool,
+        action: Callable[[], Awaitable[None]],
+    ) -> None:
+        self._require_support(
+            service_name,
+            supported=self.coordinator.model == "H6179" and supported,
+        )
+        await self._async_supersede_preview()
+        try:
+            await action()
+        except ScheduleValidationError as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_h6179_schedule",
+            ) from err
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="device_command_failed",
+            ) from err
+        self._notify_state_changed()
+
+    async def async_resync_clock(self) -> None:
+        await self._async_h6179_service(
+            "resync_clock",
+            supported=self.coordinator.profile.supports_clock_sync,
+            action=lambda: async_resync_clock(
+                self._h6179_service_coordinator(),
+                dt_util.now().replace(microsecond=0),
+            ),
+        )
+
+    async def async_configure_schedule_slot(
+        self,
+        slot: int,
+        action: str | None = None,
+        time: dt_time | None = None,
+        repeat: str | None = None,
+        weekdays: list[str] | None = None,
+    ) -> None:
+        await self._async_h6179_service(
+            "configure_schedule_slot",
+            supported=self.coordinator.profile.supports_schedules,
+            action=lambda: async_configure_schedule_slot(
+                self._h6179_service_coordinator(),
+                slot=slot,
+                action=action,
+                schedule_time=time,
+                repeat=repeat,
+                weekdays=weekdays,
+            ),
+        )
+
+    async def async_disable_schedule_slot(self, slot: int) -> None:
+        await self._async_h6179_service(
+            "disable_schedule_slot",
+            supported=self.coordinator.profile.supports_schedules,
+            action=lambda: async_disable_schedule_slot(
+                self._h6179_service_coordinator(),
+                slot=slot,
+            ),
+        )
+
+    async def async_configure_sleep(
+        self,
+        start_brightness: int | None = None,
+        duration_minutes: int | None = None,
+    ) -> None:
+        await self._async_h6179_service(
+            "configure_sleep",
+            supported=self.coordinator.profile.supports_sleep,
+            action=lambda: async_configure_sleep(
+                self._h6179_service_coordinator(),
+                start_brightness=start_brightness,
+                duration_minutes=duration_minutes,
+            ),
+        )
+
+    async def async_disable_sleep(self) -> None:
+        await self._async_h6179_service(
+            "disable_sleep",
+            supported=self.coordinator.profile.supports_sleep,
+            action=lambda: async_disable_sleep(self._h6179_service_coordinator()),
+        )
+
+    async def async_configure_wake(
+        self,
+        time: dt_time | None = None,
+        repeat: str | None = None,
+        weekdays: list[str] | None = None,
+        duration_minutes: int | None = None,
+        target_brightness: int | None = None,
+    ) -> None:
+        await self._async_h6179_service(
+            "configure_wake",
+            supported=self.coordinator.profile.supports_wake,
+            action=lambda: async_configure_wake(
+                self._h6179_service_coordinator(),
+                wake_time=time,
+                repeat=repeat,
+                weekdays=weekdays,
+                duration_minutes=duration_minutes,
+                target_brightness=target_brightness,
+            ),
+        )
+
+    async def async_disable_wake(self) -> None:
+        await self._async_h6179_service(
+            "disable_wake",
+            supported=self.coordinator.profile.supports_wake,
+            action=lambda: async_disable_wake(self._h6179_service_coordinator()),
+        )
+
+    async def async_set_limit_control(self, enabled: bool) -> None:
+        await self._async_h6179_service(
+            "set_limit_control",
+            supported=self.coordinator.profile.supports_limit_control,
+            action=lambda: async_set_limit_control(
+                self._h6179_service_coordinator(),
+                enabled=enabled,
+            ),
+        )
 
     # fmt: off
     async def _async_set_video_mode(self, mode: str, saturation: int = 100,

@@ -178,7 +178,7 @@ function installH6199Catalogue(model: PanelModel): void {
   const catalogue = h6199Catalogue();
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 8,
+    schema_version: 9,
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },

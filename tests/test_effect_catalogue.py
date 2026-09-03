@@ -206,6 +206,12 @@ def test_release_capability_contract_covers_every_preview_workflow() -> None:
             CapabilityWorkflow.ADVANCED,
             CapabilityWorkflow.WORKSHOP,
         },
+        "H6179": {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.SINGLE,
+            CapabilityWorkflow.MULTI,
+            CapabilityWorkflow.NATIVE_MUSIC,
+        },
     }
 
     for model, workflows in expected.items():

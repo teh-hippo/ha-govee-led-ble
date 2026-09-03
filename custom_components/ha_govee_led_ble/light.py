@@ -21,7 +21,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
@@ -37,7 +37,9 @@ from .const import (
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
     ModelProfile,
+    StaticWriteVerificationPolicy,
     effect_category_for_content_kind,
+    wire_model,
 )
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
@@ -50,6 +52,7 @@ from .effect_domain import EffectValidationError, LibraryItem, effect_content_to
 from .effect_runtime import async_apply_compiled_profile, observable_signature_for_coordinator
 from .effect_selector import (
     EffectSelectorEntry,
+    compatible_saved_effects,
     effect_selector_entries,
     normalise_effect_name,
     resolve_effect_selector,
@@ -62,6 +65,8 @@ from .effect_storage import (
 )
 from .entity import GoveeBLEEntity
 from .generated_protocol_adapter import build_brightness, build_power
+from .h6179_reactive_backend import H6179ReactiveBackend
+from .h6179_reactive_service import get_h6179_reactive_backend
 from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
 from .light_services import (
     _GoveeLightServicesMixin,
@@ -183,6 +188,7 @@ async def async_setup_entry(
                 config_entry.runtime_data,
                 config_entry_id=config_entry.entry_id,
                 effect_backend=get_effect_backend(hass),
+                reactive_backend=get_h6179_reactive_backend(hass),
             )
         ]
     )
@@ -197,6 +203,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         *,
         config_entry_id: str | None = None,
         effect_backend: EffectBackend | None = None,
+        reactive_backend: H6179ReactiveBackend | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = coordinator.address.replace(":", "").lower()
@@ -220,6 +227,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         self._config_entry_id = config_entry_id
         self._effect_backend = effect_backend
+        self._reactive_backend = reactive_backend
         self._library_snapshot = (
             effect_backend.application.library_snapshot() if effect_backend is not None else LibrarySnapshot(())
         )
@@ -324,6 +332,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if self._attr_color_mode is ColorMode.RGB:
             return _StaticColorRestoreData(ColorMode.RGB, rgb_color=self.coordinator.rgb_color)
         return None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        if self.coordinator.color_mode is ParsedMode.COLOUR:
+            supported_color_modes = self._attr_supported_color_modes or set()
+            if self.coordinator.color_temp_kelvin is not None and ColorMode.COLOR_TEMP in supported_color_modes:
+                self._attr_color_mode = ColorMode.COLOR_TEMP
+            elif ColorMode.RGB in supported_color_modes:
+                self._attr_color_mode = ColorMode.RGB
+        super()._handle_coordinator_update()
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -486,13 +504,76 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         *,
         expected_on: bool | None = None,
         expected_brightness: int | None = None,
+        expected_rgb_color: tuple[int, int, int] | None = None,
+        expected_color_temp_kelvin: int | None = None,
         expected_video_mode: str | None = None,
         expected_video_full_screen: bool | None = None,
         expected_video_saturation: int | None = None,
         expected_video_sound_effects: bool | None = None,
         expected_video_sound_effects_softness: int | None = None,
+        revision_baselines: Mapping[str, int] | None = None,
         retry_command: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
+        profile = self.coordinator.profile
+        h6179_policy = (
+            profile.static_write_verification
+            if wire_model(self.coordinator.model) == "H6179"
+            else StaticWriteVerificationPolicy.DISABLED
+        )
+        h6179_expectations = {
+            field: value
+            for field, value in (
+                ("is_on", expected_on),
+                ("brightness_pct", expected_brightness),
+                ("rgb_color", expected_rgb_color),
+                ("color_temp_kelvin", expected_color_temp_kelvin),
+            )
+            if value is not None
+        }
+        if h6179_policy is not StaticWriteVerificationPolicy.DISABLED and h6179_expectations:
+            baselines = revision_baselines or self._verification_baselines(*h6179_expectations)
+            static_readback = expected_rgb_color is not None or expected_color_temp_kelvin is not None
+
+            def accepted() -> bool:
+                revisions = getattr(self.coordinator, "_field_revisions", None)
+                return (
+                    bool(baselines)
+                    and isinstance(revisions, dict)
+                    and all(
+                        revisions.get(field, 0) > baseline
+                        and getattr(self.coordinator, field) == h6179_expectations[field]
+                        for field, baseline in baselines.items()
+                    )
+                )
+
+            async def confirm_h6179() -> bool:
+                if accepted():
+                    return True
+                if static_readback:
+                    refreshed = await self.coordinator.async_refresh_status_domains(
+                        frozenset({"mode"}),
+                        required_domains=frozenset({"mode"}),
+                    )
+                else:
+                    refreshed = await self.coordinator.refresh_state(
+                        expected_on=expected_on,
+                        expected_brightness=expected_brightness,
+                    )
+                return refreshed and accepted()
+
+            if await confirm_h6179():
+                return
+            if retry_command is not None and (
+                not static_readback or h6179_policy is StaticWriteVerificationPolicy.STRICT
+            ):
+                await retry_command()
+                if await confirm_h6179():
+                    return
+            if static_readback and h6179_policy is StaticWriteVerificationPolicy.OPTIONAL:
+                return
+            raise RuntimeError(f"Failed to confirm state for {self.coordinator.model}")
+        if expected_rgb_color is not None or expected_color_temp_kelvin is not None:
+            return
         if not self.coordinator.profile.state_readable:
             return
         confirm = partial(
@@ -512,6 +593,17 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if not await confirm():
             raise RuntimeError(f"Failed to confirm state for {self.coordinator.model}")
 
+    def _verification_baselines(self, *fields: str) -> dict[str, int]:
+        if (
+            wire_model(self.coordinator.model) != "H6179"
+            or self.coordinator.profile.static_write_verification is StaticWriteVerificationPolicy.DISABLED
+        ):
+            return {}
+        revisions = getattr(self.coordinator, "_field_revisions", None)
+        if not isinstance(revisions, dict):
+            return {}
+        return {field: revisions.get(field, 0) for field in fields}
+
     def _notify_state_changed(self) -> None:
         self.async_write_ha_state()
         self.coordinator.async_set_updated_data(self.coordinator.data or {})
@@ -523,6 +615,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 self._config_entry_id,
                 reason="home_assistant_control",
             )
+        if self._reactive_backend is not None and self._config_entry_id is not None:
+            await self._reactive_backend.async_supersede_device(self._config_entry_id)
 
     def _clear_active_workspace(self) -> None:
         active_workspaces = (
@@ -674,6 +768,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         *,
         operation_id: UUID | None = None,
         turn_on_kwargs: dict[str, Any] | None = None,
+        diy_code: int | None = None,
     ) -> DeploymentRecord:
         assert self._effect_backend is not None
         assert self._config_entry_id is not None
@@ -688,19 +783,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 ):
                     if turn_on_kwargs is not None:
                         await self._async_turn_on(**turn_on_kwargs)
-                    if operation_id is None:
-                        return await self._effect_backend.engine.async_apply_saved(
-                            self.coordinator,
-                            current,
-                            config_entry_id=self._config_entry_id,
-                            updated_at=dt_util.utcnow().isoformat(),
-                        )
+                    kwargs: dict[str, Any] = {
+                        "config_entry_id": self._config_entry_id,
+                        "updated_at": dt_util.utcnow().isoformat(),
+                    }
+                    if operation_id is not None:
+                        kwargs["operation_id"] = operation_id
+                    if diy_code is not None:
+                        kwargs["diy_code"] = diy_code
                     return await self._effect_backend.engine.async_apply_saved(
                         self.coordinator,
                         current,
-                        config_entry_id=self._config_entry_id,
-                        updated_at=dt_util.utcnow().isoformat(),
-                        operation_id=operation_id,
+                        **kwargs,
                     )
         except (EffectNotFoundError, EffectVersionConflictError) as exc:
             raise ServiceValidationError(
@@ -720,6 +814,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self,
         effect: str | None = None,
         effect_id: str | None = None,
+        diy_code: int | None = None,
     ) -> dict[str, Any]:
         if self._effect_backend is None or self._config_entry_id is None:
             raise ServiceValidationError(
@@ -739,7 +834,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         item: LibraryItem | None
         if effect is not None:
-            item = self._saved_effect(effect)
+            key = normalise_effect_name(effect)
+            item = next(
+                (
+                    candidate
+                    for candidate in compatible_saved_effects(
+                        self._library_snapshot.items,
+                        self.coordinator.model,
+                    )
+                    if self._saved_effect_visible(candidate) and normalise_effect_name(candidate.name) == key
+                ),
+                None,
+            )
         else:
             try:
                 item = self._effect_backend.application.get_saved_effect(
@@ -761,10 +867,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             )
         await self._async_supersede_preview()
         try:
-            deployment = await self._async_apply_saved_item(
-                item,
-                operation_id=operation_id,
-            )
+            kwargs: dict[str, Any] = {"operation_id": operation_id}
+            if diy_code is not None:
+                kwargs["diy_code"] = diy_code
+            deployment = await self._async_apply_saved_item(item, **kwargs)
         except Exception:
             self._record_custom_effect_service(
                 DiagnosticOutcome.FAILED,
@@ -819,31 +925,48 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         with self._rollback():
             if not self.coordinator.is_on:
+                power_baselines = self._verification_baselines("is_on")
                 await power_on()
                 self.coordinator.is_on = True
-                await self._refresh_with_retry(expected_on=True, retry_command=power_on)
+                await self._refresh_with_retry(
+                    expected_on=True,
+                    revision_baselines=power_baselines,
+                    retry_command=power_on,
+                )
             if ATTR_BRIGHTNESS in kwargs:
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
 
                 async def apply_brightness() -> None:
                     await self.coordinator.send_command(build_brightness(pct, self.coordinator.model))
 
+                brightness_baselines = self._verification_baselines("brightness_pct")
                 await apply_brightness()
                 self.coordinator.brightness_pct = pct
                 await self._refresh_with_retry(
                     expected_brightness=pct,
+                    revision_baselines=brightness_baselines,
                     retry_command=apply_brightness,
                 )
             if ATTR_RGB_COLOR in kwargs:
                 self._require_support("RGB colour", supported=self.coordinator.profile.supports_rgb)
                 r, g, b = kwargs[ATTR_RGB_COLOR]
-                await self.coordinator.send_command(build_color_rgb(r, g, b, self.coordinator.model))
+
+                async def apply_rgb() -> None:
+                    await self.coordinator.send_command(build_color_rgb(r, g, b, self.coordinator.model))
+
+                rgb_baselines = self._verification_baselines("rgb_color")
+                await apply_rgb()
                 self.coordinator.rgb_color = (r, g, b)
                 self.coordinator.mark_segment_state_optimistic(
                     colours=[(r, g, b)] * len(self.coordinator.segment_colors),
                 )
                 self._attr_color_mode, self.coordinator.color_temp_kelvin = ColorMode.RGB, None
                 self.coordinator._enter_static_mode()
+                await self._refresh_with_retry(
+                    expected_rgb_color=(r, g, b),
+                    revision_baselines=rgb_baselines,
+                    retry_command=apply_rgb,
+                )
             if ATTR_COLOR_TEMP_KELVIN in kwargs:
                 self._require_support(
                     "colour temperature",
@@ -853,13 +976,23 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     self.coordinator.profile.min_color_temp_kelvin,
                     min(self.coordinator.profile.max_color_temp_kelvin, kwargs[ATTR_COLOR_TEMP_KELVIN]),
                 )
-                await self.coordinator.send_command(build_color_temp(kelvin, self.coordinator.model))
+
+                async def apply_color_temperature() -> None:
+                    await self.coordinator.send_command(build_color_temp(kelvin, self.coordinator.model))
+
+                color_temp_baselines = self._verification_baselines("color_temp_kelvin")
+                await apply_color_temperature()
                 self.coordinator.color_temp_kelvin = kelvin
                 self.coordinator.mark_segment_state_optimistic(
                     colours=[kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors),
                 )
                 self._attr_color_mode = ColorMode.COLOR_TEMP
                 self.coordinator._enter_static_mode()
+                await self._refresh_with_retry(
+                    expected_color_temp_kelvin=kelvin,
+                    revision_baselines=color_temp_baselines,
+                    retry_command=apply_color_temperature,
+                )
             if ATTR_EFFECT in kwargs:
                 await self._apply_effect(str(kwargs[ATTR_EFFECT]))
         if clear_workspace_on_success:
@@ -889,9 +1022,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             build_power(False, self.coordinator.model),
         )
         with self._rollback():
+            power_baselines = self._verification_baselines("is_on")
             await power_off()
             self.coordinator.is_on = False
-            await self._refresh_with_retry(expected_on=False, retry_command=power_off)
+            await self._refresh_with_retry(
+                expected_on=False,
+                revision_baselines=power_baselines,
+                retry_command=power_off,
+            )
         if clear_workspace_on_success:
             self._clear_active_workspace()
         self._notify_state_changed()

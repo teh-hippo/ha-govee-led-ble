@@ -117,6 +117,32 @@ async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass:
     assert backend.engine.reconcile_current.call_args.kwargs["refreshed"] is True
 
 
+async def test_setup_entry_loads_and_attaches_reactive_lifecycle(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6179"})
+    reactive = MagicMock(
+        async_load_device=AsyncMock(),
+        async_supersede_device=AsyncMock(),
+        async_disconnect_device=AsyncMock(),
+    )
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble.get_h6179_reactive_backend", return_value=reactive),
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.profile = MODEL_PROFILES["H6179"]
+
+        assert await async_setup_entry(hass, entry) is True
+
+    reactive.async_load_device.assert_awaited_once_with(entry.entry_id)
+    hooks = cls.return_value.set_reactive_lifecycle_hooks.call_args.kwargs
+    await hooks["supersede"]()
+    await hooks["disconnect"]()
+    reactive.async_supersede_device.assert_awaited_once_with(entry.entry_id)
+    reactive.async_disconnect_device.assert_awaited_once_with(entry.entry_id)
+
+
 @pytest.mark.parametrize("data", [{}, {CONF_MODEL: "H9999"}])
 async def test_setup_entry_rejects_unknown_model(hass: HomeAssistant, data):
     entry = _entry(data=data)
@@ -179,6 +205,27 @@ async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: 
     assert order == ["preview", "platforms", "disconnect"]
 
 
+async def test_unload_entry_stops_preview_and_reactive_before_disconnect(hass: HomeAssistant):
+    order = []
+    preview = MagicMock(async_unload_device=AsyncMock(side_effect=lambda _entry_id: order.append("preview")))
+    reactive = MagicMock(async_unload_device=AsyncMock(side_effect=lambda _entry_id: order.append("reactive")))
+    entry = _entry(runtime_data=MagicMock())
+    entry.runtime_data.disconnect = AsyncMock(side_effect=lambda: order.append("disconnect"))
+
+    async def unload_platforms(_entry, _platforms):
+        order.append("platforms")
+        return True
+
+    with (
+        patch("custom_components.ha_govee_led_ble.get_effect_backend", return_value=MagicMock(preview=preview)),
+        patch("custom_components.ha_govee_led_ble.get_h6179_reactive_backend", return_value=reactive),
+        patch.object(hass.config_entries, "async_unload_platforms", side_effect=unload_platforms),
+    ):
+        assert await async_unload_entry(hass, entry) is True
+
+    assert order == ["preview", "reactive", "platforms", "disconnect"]
+
+
 async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssistant):
     entry = _entry()
     hass.data.setdefault(DOMAIN, {})[AVAILABILITY_UNAVAILABLE_DATA_KEY] = {entry.unique_id}
@@ -215,6 +262,7 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
         ([], set(), False),
         (["H6076"], set(), False),
         (["H617A"], set(), True),
+        (["H6179"], set(), True),
         (["H6076", "H6199"], set(), True),
         (["H617A"], {0}, False),
     ],
@@ -307,6 +355,11 @@ async def test_async_setup_skips_effect_studio_without_capable_device():
     with (
         patch("custom_components.ha_govee_led_ble.editor.frontend.async_register_built_in_panel") as register,
         patch("custom_components.ha_govee_led_ble.async_register_light_services") as register_services,
+        patch("custom_components.ha_govee_led_ble.async_register_h6179_services") as register_h6179_services,
+        patch(
+            "custom_components.ha_govee_led_ble.async_setup_h6179_reactive",
+            new_callable=AsyncMock,
+        ) as setup_reactive,
         patch(
             "custom_components.ha_govee_led_ble.async_setup_effects",
             new_callable=AsyncMock,
@@ -315,6 +368,8 @@ async def test_async_setup_skips_effect_studio_without_capable_device():
         assert await async_setup(hass, {}) is True
 
     register_services.assert_called_once_with(hass)
+    register_h6179_services.assert_called_once_with(hass)
+    setup_reactive.assert_awaited_once_with(hass)
     setup_effects.assert_awaited_once_with(hass)
     hass.http.async_register_static_paths.assert_not_awaited()
     register.assert_not_called()

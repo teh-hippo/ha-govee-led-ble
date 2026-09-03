@@ -839,6 +839,9 @@ export class SceneBrowserWorkflow {
     if (!isAdmin || !selectedScene || !this.hasCurrentSceneContent()) {
       return undefined;
     }
+    if (!selectedItem && this.device?.model === "H6179") {
+      return undefined;
+    }
     if (!selectedItem) {
       this.invalidateDefaultWrites(true);
     }

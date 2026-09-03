@@ -9,7 +9,7 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import Any, Final, assert_never
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, protocol_model
+from .const import MODEL_PROFILES, protocol_model
 from .coordinator_modes import (
     MUSIC_STYLE_SLUGS,
     music_mode_has_parameter_write,
@@ -30,12 +30,16 @@ from .effect_commands import (
     build_h617a_diy_multi,
     build_h617a_diy_painted,
     build_h617a_diy_single,
+    build_h6179_diy,
+    build_h6179_diy_activation,
     build_h6199_palette_diy,
     build_h6199_palette_diy_activation,
 )
 from .effect_contracts import EFFECT_COMPILER_VERSION
 from .effect_domain import (
     BuiltinScene,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
     LayeredEffect,
     LayeredScene,
     LibraryItem,
@@ -57,6 +61,7 @@ from .generated_protocol_adapter import (
 )
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
+from .music_protocol import music_code_for
 from .native_scenes import apply_scene_speed, build_native_scene_packets
 from .palette_scene_decoder import encode_palette_scene
 from .scenes import MODEL_SCENES, SceneEntry
@@ -72,6 +77,27 @@ class CompatibilityState(StrEnum):
 class ActivationMode(StrEnum):
     CUSTOM = "custom"
     SCENE = "scene"
+
+
+class UploadTransport(StrEnum):
+    NONE = "none"
+    A3 = "a3"
+    H6179_A1_02 = "h6179_a1_02"
+
+
+class ActivationObservation(StrEnum):
+    DERIVED = "derived"
+    NONE = "none"
+    DIY_CODE = "diy_code"
+    UNKNOWN_SCENE_CODE = "unknown_scene_code"
+    EFFECT = "effect"
+
+
+class ActivationPolicy(StrEnum):
+    EVIDENCED_FIXED = "evidenced_fixed"
+    REQUESTED_CODE = "requested_code"
+    OBSERVED_DISPOSABLE_APPROVAL = "observed_disposable_approval"
+    SCENE_SELECTOR = "scene_selector"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +120,19 @@ class CompiledEffect:
     artifact_sha256: str
     evidence_codes: tuple[str, ...] = ()
     compiler_version: int = EFFECT_COMPILER_VERSION
+    upload_transport: UploadTransport = UploadTransport.A3
+    activation_observation: ActivationObservation = ActivationObservation.DERIVED
+    activation_policy: ActivationPolicy = ActivationPolicy.REQUESTED_CODE
+    overwrite_risk: bool = False
+    activation_evidence: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.activation_observation is ActivationObservation.DERIVED:
+            object.__setattr__(
+                self,
+                "activation_observation",
+                _derived_activation_observation(self),
+            )
 
     @property
     def packets(self) -> tuple[bytes, ...]:
@@ -102,6 +141,16 @@ class CompiledEffect:
     @property
     def progress_total(self) -> int:
         return len(self.packets)
+
+
+def _derived_activation_observation(compiled: CompiledEffect) -> ActivationObservation:
+    if compiled.activation_packet is None:
+        return ActivationObservation.NONE
+    if compiled.activation_mode is ActivationMode.SCENE:
+        return ActivationObservation.EFFECT
+    if compiled.content_kind == "workshop" or compiled.model == "H6199":
+        return ActivationObservation.UNKNOWN_SCENE_CODE
+    return ActivationObservation.DIY_CODE
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +170,8 @@ class CompiledMusicProfile:
 
     @property
     def progress_total(self) -> int:
-        return 1 + int(music_mode_has_parameter_write(MUSIC_MODE_SLUGS[self.mode]))
+        mode_code = music_code_for(self.model, self.mode)
+        return 1 + int(music_mode_has_parameter_write(mode_code, self.model))
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +236,11 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 CompatibilityState.INCOMPATIBLE,
                 (f"Workshop effect targets {content.model}, not {model}",),
             )
+        if protocol_model(model) not in {"H617A", "H6199"}:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} Workshop application is not supported",),
+            )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
         if content.template.sku != model:
@@ -219,6 +274,13 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"H6199 palette DIY family {content.family} variation {content.variant} is not supported",),
+            )
+        return CompatibilityResult(CompatibilityState.COMPATIBLE)
+    if isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        if model != content.model:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"H6179 DIY content targets {content.model}, not {model}",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
@@ -268,6 +330,10 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
             item,
             H6199_PALETTE_DIY_APPLY_CODE if diy_code is None else diy_code,
         )
+    if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        if diy_code is None:
+            raise ValueError("H6179 DIY compilation requires an observed and explicitly approved disposable DIY code")
+        return compile_h6179(item, diy_code)
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene | LayeredEffect):
         return compile_scene_effect(item, model)
     if isinstance(item.content, WorkshopEffect):
@@ -313,6 +379,9 @@ def _compile_workshop_effect(
         upload_packets=upload,
         activation_packet=activation,
         artifact_sha256=sha256(b"".join(packets)).hexdigest(),
+        upload_transport=UploadTransport.A3,
+        activation_observation=ActivationObservation.UNKNOWN_SCENE_CODE,
+        activation_policy=ActivationPolicy.EVIDENCED_FIXED,
         evidence_codes=("effect_content_readback_unavailable",),
     )
 
@@ -395,6 +464,9 @@ def compile_scene_effect(item: LibraryItem, model: str) -> CompiledEffect:
         upload_packets=upload,
         activation_packet=activation,
         artifact_sha256=digest,
+        upload_transport=UploadTransport.A3 if upload else UploadTransport.NONE,
+        activation_observation=ActivationObservation.EFFECT,
+        activation_policy=ActivationPolicy.SCENE_SELECTOR,
         evidence_codes=tuple(evidence_codes),
     )
 
@@ -445,6 +517,9 @@ def compile_h617a(item: LibraryItem, diy_code: int, *, model: str = "H617A") -> 
         upload_packets=tuple(upload),
         activation_packet=activation,
         artifact_sha256=digest,
+        upload_transport=UploadTransport.A3,
+        activation_observation=ActivationObservation.DIY_CODE,
+        activation_policy=ActivationPolicy.REQUESTED_CODE,
     )
 
 
@@ -494,7 +569,46 @@ def compile_h6199(
         upload_packets=tuple(upload),
         activation_packet=activation,
         artifact_sha256=digest,
+        upload_transport=UploadTransport.A3,
+        activation_observation=ActivationObservation.UNKNOWN_SCENE_CODE,
+        activation_policy=ActivationPolicy.EVIDENCED_FIXED,
         evidence_codes=("effect_content_readback_unavailable",),
+    )
+
+
+def compile_h6179(item: LibraryItem, diy_code: int) -> CompiledEffect:
+    result = compatibility(item, "H6179")
+    if result.state is not CompatibilityState.COMPATIBLE:
+        raise ValueError("; ".join(result.reasons))
+    if not isinstance(diy_code, int) or isinstance(diy_code, bool) or not 0 <= diy_code <= 0xFFFF:
+        raise ValueError("H6179 DIY code must be an integer from 0 to 65535")
+
+    content = item.content
+    if not isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        raise ValueError("unsupported H6179 DIY content")
+    upload = tuple(build_h6179_diy(content))
+    activation = build_h6179_diy_activation(diy_code)
+    evidence = (
+        "h6179_diy_code_observed",
+        "h6179_diy_code_approved_disposable",
+    )
+    return CompiledEffect(
+        item_id=str(item.id),
+        item_version=item.version,
+        model="H6179",
+        content_kind=("h6179_single_diy" if isinstance(content, H6179SingleDiyEffect) else "h6179_mixed_diy"),
+        diy_code=diy_code,
+        activation_mode=ActivationMode.CUSTOM,
+        expected_effect=None,
+        upload_packets=upload,
+        activation_packet=activation,
+        artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
+        upload_transport=UploadTransport.H6179_A1_02,
+        activation_observation=ActivationObservation.DIY_CODE,
+        activation_policy=ActivationPolicy.OBSERVED_DISPOSABLE_APPROVAL,
+        overwrite_risk=True,
+        activation_evidence=evidence,
+        evidence_codes=(*evidence, "effect_content_readback_unavailable"),
     )
 
 
@@ -575,8 +689,8 @@ def compile_music_profile(item: LibraryItem, model: str) -> CompiledMusicProfile
     if content.calm is not None and content.mode not in MUSIC_STYLE_SLUGS:
         raise ValueError(f"music mode {content.mode} does not support a style setting")
 
-    mode_code = MUSIC_MODE_SLUGS[content.mode]
-    parameters = _compile_music_parameters(content.parameters, mode_code)
+    mode_code = music_code_for(model, content.mode)
+    parameters = _compile_music_parameters(content.parameters, mode_code, model)
     payload = {
         "kind": "music_profile",
         "model": model,
@@ -639,8 +753,9 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
 def _compile_music_parameters(
     raw: Mapping[str, Any],
     mode_code: int,
+    model: str,
 ) -> dict[str, int | bool | str]:
-    relevant = music_params_for_mode(mode_code)
+    relevant = music_params_for_mode(mode_code, model)
     unsupported = sorted(set(raw).difference(spec.profile_key for spec in relevant))
     if unsupported:
         raise ValueError(f"music mode does not support parameter {unsupported[0]}")

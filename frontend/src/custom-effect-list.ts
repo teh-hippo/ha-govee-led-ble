@@ -148,10 +148,14 @@ export function customEffectCategoryAvailable(
       return (
         customEffectKindAvailable(context, "h617a_painted") ||
         customEffectKindAvailable(context, "h617a_single") ||
+        customEffectKindAvailable(context, "h6179_single_diy") ||
         customEffectKindAvailable(context, "palette_diy")
       );
     case "multi-layer":
-      return customEffectKindAvailable(context, "h617a_multi");
+      return (
+        customEffectKindAvailable(context, "h617a_multi") ||
+        customEffectKindAvailable(context, "h6179_mixed_diy")
+      );
     case "advanced":
       return (
         customEffectKindAvailable(context, "advanced") ||
@@ -175,12 +179,21 @@ export function customEffectKindAvailable(
   if (kind === "h617a_single") {
     return isH617xModel(context.model) && Boolean(catalogue?.effects.length);
   }
+  if (kind === "h6179_single_diy") {
+    return context.model === "H6179" && Boolean(catalogue?.effects.length);
+  }
   if (kind === "palette_diy") {
     return context.model === "H6199" && Boolean(catalogue?.effects.length);
   }
   if (kind === "h617a_multi") {
     return (
       isH617xModel(context.model) && catalogue?.supports.multi !== "unsupported"
+    );
+  }
+  if (kind === "h6179_mixed_diy") {
+    return (
+      context.model === "H6179" &&
+      catalogue?.supports.multi !== "unsupported"
     );
   }
   if (kind === "music_profile") {
@@ -203,6 +216,9 @@ export function newEffectKindForCategory(
     if (customEffectKindAvailable(context, "h617a_single")) {
       return "h617a_single";
     }
+    if (customEffectKindAvailable(context, "h6179_single_diy")) {
+      return "h6179_single_diy";
+    }
     if (customEffectKindAvailable(context, "palette_diy")) {
       return "palette_diy";
     }
@@ -211,8 +227,11 @@ export function newEffectKindForCategory(
       : undefined;
   }
   if (category === "multi-layer") {
-    return customEffectKindAvailable(context, "h617a_multi")
-      ? "h617a_multi"
+    if (customEffectKindAvailable(context, "h617a_multi")) {
+      return "h617a_multi";
+    }
+    return customEffectKindAvailable(context, "h6179_mixed_diy")
+      ? "h6179_mixed_diy"
       : undefined;
   }
   if (category === "advanced") {
@@ -233,7 +252,11 @@ function customEffectEntryAvailable(
     case "single":
       return customEffectKindAvailable(
         context,
-        isH617xModel(context.model) ? "h617a_single" : "palette_diy",
+        context.model === "H6179"
+          ? "h6179_single_diy"
+          : isH617xModel(context.model)
+            ? "h617a_single"
+            : "palette_diy",
       );
     case "music":
       return customEffectKindAvailable(context, "music_profile");

@@ -4,8 +4,11 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime, timedelta
+from datetime import time as dt_time
 from typing import Any, cast
+from uuid import uuid4
 
 from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
 from bleak_retry_connector import establish_connection
@@ -15,16 +18,17 @@ from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection
 from .ble_device_resolver import BLEDeviceResolver
 from .const import (
     DOMAIN,
-    MUSIC_MODE_SLUGS,
     default_effect_categories,
     default_effect_families,
     get_profile,
     protocol_model,
+    wire_model,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_expectations import expectations_from_packet
@@ -33,19 +37,36 @@ from .coordinator_status import ParsedMode, StatusDomain, decode_status_frame_re
 from .effect_commands import build_h617a_diy_activation
 from .effect_deployments import PriorControlState
 from .generated_protocol_adapter import (
+    ParsedH6179Status,
     build_brightness,
     build_brightness_query,
     build_colour_mode_query,
     build_firmware_query,
+    build_h6179_clock_sync,
+    build_h6179_diy_activation,
     build_h6199_blank_screen_query,
     build_h6199_relative_brightness_query,
     build_h6199_subordinate_query,
     build_h6199_white_balance_query,
     build_hardware_query,
+    build_limit_query,
+    build_mode_query,
     build_power,
     build_power_query,
+    build_schedules_query,
     build_segment_query,
+    build_sleep_query,
+    build_wake_query,
     parse_command_result,
+)
+from .h6179_schedule import (
+    ClockSync,
+    LimitState,
+    ScheduleAction,
+    ScheduleSlot,
+    ScheduleState,
+    SleepState,
+    WakeState,
 )
 from .h6199_calibration import WHITE_BALANCE_RESET
 from .light_commands import (
@@ -56,6 +77,7 @@ from .light_commands import (
     build_segment_paint,
     kelvin_to_rgb,
 )
+from .music_protocol import music_code_for
 from .native_profile_controls import (
     apply_active_video_mode,
     apply_blank_screen,
@@ -71,13 +93,13 @@ EFFECT_SEQUENCE_CONNECT_TIMEOUT = 8.0
 
 _LOGGER = logging.getLogger(__name__)
 
+PACKET_LOG_LIMIT = 50
+PACKET_LOG_RAW_BYTES_LIMIT = 512
 DISCONNECT_DELAY = 15
 KEEP_ALIVE_INTERVAL = 5
 STATE_QUERY_EVERY_N_KEEP_ALIVES = 3
 RX_STALE_TIMEOUT = KEEP_ALIVE_INTERVAL * 4
 IDENTITY_RETRY_TICKS = 6
-PACKET_LOG_LIMIT = 50
-PACKET_LOG_RAW_BYTES_LIMIT = 512
 EXPECTED_STATE_TTL = 2.0
 AVAILABILITY_UNAVAILABLE_DATA_KEY = "availability_unavailable"
 
@@ -110,6 +132,17 @@ _COLOR_EXPECTATION_FIELDS = frozenset(
         "video_mode",
         *_COLOR_MODE_FIELDS,
     )
+)
+_H6179_STATUS_DOMAIN_ORDER = (
+    "power",
+    "brightness",
+    "mode",
+    "firmware",
+    "hardware",
+    "limit",
+    "sleep",
+    "wake",
+    "schedules",
 )
 
 
@@ -151,6 +184,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._lock = asyncio.Lock()
         self._control_arbiter = BLEControlArbiter()
         self._control_lock = self._control_arbiter
+        self._reactive_supersede: Callable[[], Awaitable[object]] | None = None
+        self._reactive_disconnect: Callable[[], Awaitable[object]] | None = None
         self._cancel_disconnect: CALLBACK_TYPE | None = None
         self._disconnect_generation = 0
         self._intentional_disconnect_client: BleakClient | None = None
@@ -206,17 +241,47 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.music_daynight_segments = 1
         self.music_daynight_speed = 10
         self.music_daynight_gradient = False
+        self.h6179_schedule_state = ScheduleState.neutral()
+        self.h6179_schedule_slot_one_time = (False, False, False, False)
+        self.h6179_wake_one_time = False
         self.packet_log: list[dict[str, Any]] = []
         self._expected_state: dict[str, tuple[Any, float]] = {}
         self._notify_started_monotonic: float | None = None
         self._last_rx_monotonic: float | None = None
         self._domain_revisions: dict[StatusDomain, int] = {}
+        self._status_domain_revisions: dict[str, int] = {}
         self._field_revisions: dict[str, int] = {}
         self._revision_event = asyncio.Event()
         # BLE presence (advertisement-driven) and first-refresh gate for ConfigEntryNotReady.
         self._present = False
         self._first_refresh_done = False
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
+
+    def set_reactive_lifecycle_hooks(
+        self,
+        *,
+        supersede: Callable[[], Awaitable[object]],
+        disconnect: Callable[[], Awaitable[object]],
+    ) -> None:
+        """Attach process-global reactive-session lifecycle hooks."""
+        self._reactive_supersede = supersede
+        self._reactive_disconnect = disconnect
+
+    async def _async_supersede_reactive(self) -> None:
+        if self._reactive_supersede is not None:
+            await self._reactive_supersede()
+
+    def _notify_reactive_disconnect(self) -> None:
+        if self._reactive_disconnect is not None and not self.hass.is_stopping:
+
+            async def disconnect_reactive() -> None:
+                assert self._reactive_disconnect is not None
+                await self._reactive_disconnect()
+
+            self.hass.async_create_task(
+                disconnect_reactive(),
+                name=f"{DOMAIN} reactive disconnect",
+            )
 
     @property
     def device_info(self) -> dr.DeviceInfo:
@@ -306,16 +371,26 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if not state.is_on:
             await self.send_command(build_power(False, self.model))
             self.is_on = False
-            return self.profile.state_readable and await self.refresh_state(expected_on=False)
+            return (self.profile.state_readable or wire_model(self.model) == "H6179") and await self.refresh_state(
+                expected_on=False
+            )
         if state.mode == "custom":
-            if (
-                state.diy_code is None
-                or (overwritten_diy_code is not None and state.diy_code == overwritten_diy_code)
-                or protocol_model(self.model) != "H617A"
-            ):
+            if state.diy_code is None or (overwritten_diy_code is not None and state.diy_code == overwritten_diy_code):
                 return False
-            await self.send_command(build_h617a_diy_activation(state.diy_code))
+            if protocol_model(self.model) == "H617A":
+                packet = build_h617a_diy_activation(state.diy_code)
+            elif wire_model(self.model) == "H6179":
+                packet = build_h6179_diy_activation(state.diy_code)
+            else:
+                return False
+            await self.send_command(packet)
             self.diy_code = state.diy_code
+            if wire_model(self.model) == "H6179":
+                domains = frozenset({"mode"})
+                return (
+                    await self.async_refresh_status_domains(domains, required_domains=domains)
+                    and self.diy_code == state.diy_code
+                )
             return self.profile.state_readable and await self.refresh_state() and self.diy_code == state.diy_code
         if state.mode == "scene" and state.effect is not None:
             scene = MODEL_SCENES.get(self.model, {}).get(state.effect)
@@ -328,7 +403,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.effect = state.effect
             self.diy_code = None
             self.music_mode = self.video_mode = "off"
-            return self.profile.state_readable and await self.refresh_state(expected_effect=state.effect)
+            return (self.profile.state_readable or wire_model(self.model) == "H6179") and await self.refresh_state(
+                expected_effect=state.effect
+            )
         if state.mode == "music" and state.music_mode in self.profile.music_modes:
             self.install_music_profile_state(
                 mode=state.music_mode,
@@ -350,9 +427,17 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 },
             )
             await self.async_select_music_slug(state.music_mode)
-            mode_code = MUSIC_MODE_SLUGS[state.music_mode]
-            if music_params_for_mode(mode_code):
+            mode_code = music_code_for(self.model, state.music_mode)
+            if music_params_for_mode(mode_code, self.model):
                 await self.async_apply_music_params(mode_code)
+            if wire_model(self.model) == "H6179":
+                return await self.refresh_state(
+                    expected_on=True,
+                    expected_music_mode=state.music_mode,
+                    expected_music_sensitivity=state.music_sensitivity,
+                    expected_music_color=state.music_color,
+                    expected_music_auto_color=state.music_color is None,
+                )
             return self.profile.state_readable and await self.refresh_state(expected_music_mode=state.music_mode)
         if state.mode == "video" and state.video_mode in {"movie", "game"} and self.profile.supports_video_mode:
             self.video_mode = state.video_mode
@@ -361,17 +446,6 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.video_sound_effects = state.video_sound_effects
             self.video_sound_effects_softness = state.video_sound_effects_softness
             return await apply_active_video_mode(self)
-        if state.mode == "scene" and state.effect is not None:
-            scene = MODEL_SCENES[self.model].get(state.effect)
-            if scene is None:
-                return False
-            packets = build_native_scene_packets(self.model, scene)
-            for packet in packets:
-                await self.send_command(packet)
-            self.effect = state.effect
-            self.diy_code = None
-            self.music_mode = self.video_mode = "off"
-            return self.profile.state_readable and await self.refresh_state(expected_effect=state.effect)
         if state.mode != "colour":
             return False
         await self.send_command(build_power(True, self.model))
@@ -385,6 +459,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.rgb_color = state.rgb_color
         self.color_temp_kelvin = state.color_temp_kelvin
         self._enter_static_mode()
+        if wire_model(self.model) == "H6179":
+            domains = frozenset({"power", "brightness", "mode"})
+            return (
+                await self.async_refresh_status_domains(domains, required_domains=domains)
+                and self.active_mode == "colour"
+            )
         return self.profile.state_readable and await self.refresh_state() and self.active_mode == "colour"
 
     @callback
@@ -518,6 +598,23 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 if first_refresh:
                     raise UpdateFailed(f"{self.address} unreachable at setup") from err
                 _LOGGER.debug("State refresh skipped for %s", self.address)
+        elif (
+            wire_model(self.model) == "H6179"
+            and self.profile.supports_notifications
+            and self.profile.setup_required_status_domains
+        ):
+            try:
+                refreshed = await self.async_refresh_status_domains(
+                    self.profile.queryable_status_domains,
+                    required_domains=self.profile.setup_required_status_domains,
+                )
+                if not refreshed:
+                    raise BleakError(f"Required status query failed for {self.address}")
+            except BleakError as err:
+                self._log_availability_transition()
+                if first_refresh:
+                    raise UpdateFailed(f"{self.address} unreachable at setup") from err
+                _LOGGER.debug("Required status refresh skipped for %s", self.address)
         elif first_refresh and not self._present:
             self._log_availability_transition()
             raise UpdateFailed(f"{self.address} not advertising at setup")
@@ -542,15 +639,29 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             disconnected_callback=self._disconnected_callback,
         )
         self._reset_disconnect_timer()
-        if self.profile.state_readable:
+        if self.profile.supports_notifications:
             try:
                 await self._start_notify()
                 await self._send_identity_queries()
             except BleakError:
                 await self._disconnect_locked()
                 raise
+            await self._async_sync_h6179_clock()
         self._log_availability_transition()
         return self._client
+
+    async def _async_sync_h6179_clock(self) -> None:
+        if wire_model(self.model) != "H6179" or not self.profile.supports_clock_sync or self._client is None:
+            return
+        clock = ClockSync(dt_util.now().replace(microsecond=0))
+        packet = build_h6179_clock_sync(clock)
+        try:
+            await self._client.write_gatt_char(WRITE_UUID, packet, response=False)
+            self._record_packet("tx", packet, outcome="sent", reason="write_succeeded")
+        except Exception:
+            _LOGGER.debug("Automatic H6179 clock sync failed for %s", self.address, exc_info=True)
+            return
+        self.h6179_schedule_state = replace(self.h6179_schedule_state, clock_sync=clock)
 
     def _renew_foreground_lease(self) -> None:
         if self._control_arbiter.current_task_intent is not ControlIntent.BACKGROUND:
@@ -605,6 +716,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if self._cancel_disconnect:
             self._cancel_disconnect()
             self._cancel_disconnect = None
+        if client is not None:
+            self._notify_reactive_disconnect()
 
     async def _start_notify(self) -> None:
         if not (self._client and self._client.is_connected):
@@ -625,6 +738,120 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         for field in fields:
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
         self._revision_event.set()
+
+    def _mark_status_domain_received(self, domain: str, legacy_domain: StatusDomain, *fields: str) -> None:
+        self._status_domain_revisions[domain] = self._status_domain_revisions.get(domain, 0) + 1
+        self._mark_received(legacy_domain, *fields)
+
+    async def _wait_for_status_domains(self, baselines: Mapping[str, int], deadline: float) -> bool:
+        def received() -> bool:
+            return all(
+                self._status_domain_revisions.get(domain, 0) > baseline for domain, baseline in baselines.items()
+            )
+
+        while not received():
+            self._revision_event.clear()
+            if received():
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            try:
+                await asyncio.wait_for(self._revision_event.wait(), timeout=remaining)
+            except TimeoutError:
+                return False
+        return True
+
+    def _h6179_status_query(self, domain: str) -> bytes:
+        if domain == "power":
+            return build_power_query(self.model)
+        if domain == "brightness":
+            return build_brightness_query(self.model)
+        if domain == "mode":
+            return build_mode_query(self.model)
+        if domain == "firmware":
+            return build_firmware_query(self.model)
+        if domain == "hardware":
+            return build_hardware_query(self.model)
+        if domain == "limit":
+            return build_limit_query(self.model)
+        if domain == "sleep":
+            return build_sleep_query(self.model)
+        if domain == "wake":
+            return build_wake_query(self.model)
+        if domain == "schedules":
+            return build_schedules_query(self.model)
+        raise ValueError(f"{self.model} has no {domain} status-query operation")
+
+    async def _send_h6179_status_queries(self, domains: frozenset[str]) -> bool:
+        if not self._client or not self._client.is_connected:
+            return False
+        try:
+            for domain in _H6179_STATUS_DOMAIN_ORDER:
+                if domain not in domains:
+                    continue
+                query = self._h6179_status_query(domain)
+                await self._client.write_gatt_char(WRITE_UUID, query, response=False)
+                self._record_packet("tx", query, outcome="sent", reason="write_succeeded")
+            return True
+        except BleakError:
+            return False
+
+    async def async_refresh_status_domains(
+        self,
+        domains: frozenset[str],
+        *,
+        required_domains: frozenset[str] | None = None,
+        timeout: float = 2.0,
+    ) -> bool:
+        """Refresh declared H6179 domains while requiring only the requested safe subset."""
+        if wire_model(self.model) != "H6179":
+            raise ValueError(f"{self.model} has no granular H6179 status lifecycle")
+        requested = frozenset(domains)
+        unsupported = requested - self.profile.queryable_status_domains
+        if unsupported:
+            raise ValueError(f"{self.model} has no status query for {', '.join(sorted(unsupported))}")
+        required = requested if required_domains is None else frozenset(required_domains)
+        if not required <= requested:
+            raise ValueError("required status domains must be included in requested domains")
+
+        current_intent = self._control_arbiter.current_task_intent
+        intent = ControlIntent.USER if current_intent is None else current_intent
+        async with async_control_intent(self, intent):
+            async with self._lock:
+                client = await self._ensure_connected()
+            if not required:
+                async with self._lock:
+                    return self._client is client and await self._send_h6179_status_queries(requested)
+
+            deadline = time.monotonic() + timeout
+            initial_baselines = {domain: self._status_domain_revisions.get(domain, 0) for domain in required}
+            for attempt in range(2):
+                baselines = {domain: self._status_domain_revisions.get(domain, 0) for domain in required}
+                async with self._lock:
+                    if self._client is not client:
+                        return False
+                    if not await self._send_h6179_status_queries(required):
+                        await self._disconnect_if_current_locked(client)
+                        return False
+                attempt_deadline = (
+                    deadline if attempt else time.monotonic() + max(0.0, (deadline - time.monotonic()) / 2)
+                )
+                if await self._wait_for_status_domains(baselines, attempt_deadline):
+                    optional = requested - required - {"firmware", "hardware"}
+                    if optional:
+                        async with self._lock:
+                            if self._client is client:
+                                await self._send_h6179_status_queries(optional)
+                    return True
+                if time.monotonic() >= deadline:
+                    break
+            if any(
+                self._status_domain_revisions.get(domain, 0) <= baseline
+                for domain, baseline in initial_baselines.items()
+            ):
+                await self._disconnect_if_current_locked(client)
+            return False
 
     @property
     def _segment_group_count(self) -> int:
@@ -832,6 +1059,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     if self._accept_expected(attr, value):
                         setattr(self, attr, value)
                         observed.append(attr)
+        if parsed.color_temp_kelvin is not None:
+            if self._accept_expected("color_temp_kelvin", parsed.color_temp_kelvin):
+                self.color_temp_kelvin = parsed.color_temp_kelvin
+                observed.append("color_temp_kelvin")
+            return tuple(observed)
         if parsed.rgb_color is not None:
             # A colour-temp state reads back as its white-point RGB with no kelvin field; recognising it
             # keeps the light in CT mode instead of clobbering kelvin and dropping to a near-white RGB.
@@ -841,7 +1073,86 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             accept_kelvin = self._accept_expected("color_temp_kelvin", None)
             if accept_rgb and accept_kelvin:
                 self.rgb_color, self.color_temp_kelvin = parsed.rgb_color, None
+                observed.extend(("rgb_color", "color_temp_kelvin"))
         return tuple(observed)
+
+    def _apply_h6179_status(self, parsed: ParsedH6179Status) -> None:
+        values = parsed.values
+        observed: tuple[str, ...] = ()
+        if parsed.domain == "power":
+            power_value = bool(values["is_on"])
+            if self._accept_expected("is_on", power_value):
+                self.is_on = power_value
+                observed = ("is_on",)
+            legacy_domain = StatusDomain.POWER
+        elif parsed.domain == "brightness":
+            brightness_value = int(values["brightness_pct"])
+            if self._accept_expected("brightness_pct", brightness_value):
+                self.brightness_pct = brightness_value
+                observed = ("brightness_pct",)
+            legacy_domain = StatusDomain.BRIGHTNESS
+        elif parsed.domain == "firmware":
+            self._note_identity(fw_version=cast(str | None, values["version"]))
+            legacy_domain = StatusDomain.FIRMWARE
+        elif parsed.domain == "hardware":
+            self._note_identity(hw_version=cast(str | None, values["version"]))
+            legacy_domain = StatusDomain.HARDWARE
+        elif parsed.domain == "mode":
+            observed = self._apply_color_mode_payload(parsed)
+            legacy_domain = StatusDomain.COLOUR_MODE
+        elif parsed.domain == "schedules":
+            slots = list(self.h6179_schedule_state.schedule_slots)
+            one_time = list(self.h6179_schedule_slot_one_time)
+            for raw_slot in values["slots"]:
+                slot = int(raw_slot["slot"])
+                slots[slot] = ScheduleSlot(
+                    slot=slot,
+                    enabled=bool(raw_slot["enabled"]),
+                    action=ScheduleAction(str(raw_slot["action"])),
+                    time=dt_time(int(raw_slot["hour"]), int(raw_slot["minute"])),
+                    repeat_day_mask=int(raw_slot["repeat_day_mask"]),
+                )
+                one_time[slot] = bool(raw_slot["one_time"])
+            updated_state = replace(self.h6179_schedule_state, schedule_slots=tuple(slots))
+            updated_one_time = cast(tuple[bool, bool, bool, bool], tuple(one_time))
+            self.h6179_schedule_state = updated_state
+            self.h6179_schedule_slot_one_time = updated_one_time
+            observed = ("h6179_schedule_state",)
+            legacy_domain = StatusDomain.OTHER
+        elif parsed.domain == "sleep":
+            sleep = SleepState(
+                enabled=bool(values["enabled"]),
+                start_brightness=int(values["start_brightness"]),
+                duration_minutes=int(values["duration_minutes"]),
+                remaining_minutes=int(values["remaining_minutes"]),
+            )
+            self.h6179_schedule_state = replace(self.h6179_schedule_state, sleep=sleep)
+            observed = ("h6179_schedule_state",)
+            legacy_domain = StatusDomain.OTHER
+        elif parsed.domain == "wake":
+            wake = WakeState(
+                enabled=bool(values["enabled"]),
+                time=dt_time(int(values["hour"]), int(values["minute"])),
+                repeat_day_mask=int(values["repeat_day_mask"]),
+                duration_minutes=int(values["duration_minutes"]),
+                target_brightness=int(values["target_brightness"]),
+            )
+            wake_one_time = bool(values["one_time"])
+            self.h6179_schedule_state = replace(self.h6179_schedule_state, wake=wake)
+            self.h6179_wake_one_time = wake_one_time
+            observed = ("h6179_schedule_state",)
+            legacy_domain = StatusDomain.OTHER
+        elif parsed.domain == "limit":
+            limit_state = LimitState(enabled=bool(values["enabled"]))
+            self.h6179_schedule_state = replace(
+                self.h6179_schedule_state,
+                limit_state=limit_state,
+            )
+            observed = ("h6179_schedule_state",)
+            legacy_domain = StatusDomain.OTHER
+        else:
+            legacy_domain = StatusDomain.OTHER
+        self._mark_status_domain_received(parsed.domain, legacy_domain, *observed)
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
@@ -884,6 +1195,30 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 reason,
                 frame.hex(),
             )
+            return
+        if wire_model(self.model) == "H6179":
+            packet_entry = self._record_packet(
+                "rx",
+                frame,
+                outcome="parsed",
+                reason="status_parsed",
+                parser=result.parser,
+                domain=decoded.raw_domain,
+            )
+            try:
+                if not isinstance(decoded.generated, ParsedH6179Status):
+                    raise ValueError("H6179 semantic status rejection")
+                self._apply_h6179_status(decoded.generated)
+                self.async_set_updated_data(self.data or {})
+            except IndexError, ValueError:
+                packet_entry["outcome"] = "rejected"
+                packet_entry["reason"] = "semantic_rejected"
+                _LOGGER.debug(
+                    "Rejected %s status frame parser=%s reason=semantic_rejected raw=%s",
+                    self.model,
+                    result.parser,
+                    frame.hex(),
+                )
             return
         domain, payload = decoded.domain, decoded.payload
         generated = decoded.generated
@@ -1001,12 +1336,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return False
         try:
             queries: list[bytes] = []
-            if query_power:
+            if query_power and "power" in self.profile.queryable_status_domains:
                 queries.append(build_power_query(self.model))
-            if query_brightness:
+            if query_brightness and "brightness" in self.profile.queryable_status_domains:
                 queries.append(build_brightness_query(self.model))
-            if query_color_mode:
-                queries.append(build_colour_mode_query(self.model))
+            colour_domain = "mode" if wire_model(self.model) == "H6179" else "colour_mode"
+            if query_color_mode and colour_domain in self.profile.queryable_status_domains:
+                queries.append(
+                    build_mode_query(self.model) if colour_domain == "mode" else build_colour_mode_query(self.model)
+                )
             full_query = query_power and query_brightness and query_color_mode
             if self.profile.supports_white_balance and (
                 query_white_balance if query_white_balance is not None else full_query
@@ -1042,10 +1380,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         """
         if not self._client or not self._client.is_connected:
             return
-        candidates = [
-            (build_hardware_query(self.model), self.hw_version),
-            (build_firmware_query(self.model), self.fw_version),
-        ]
+        candidates = []
+        if "hardware" in self.profile.queryable_status_domains:
+            candidates.append((build_hardware_query(self.model), self.hw_version))
+        if "firmware" in self.profile.queryable_status_domains:
+            candidates.append((build_firmware_query(self.model), self.fw_version))
         if self.model == "H6199":
             candidates.extend(
                 (
@@ -1121,6 +1460,67 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         refresh_all: bool = False,
         timeout: float = 2.0,
     ) -> bool:
+        if wire_model(self.model) == "H6179":
+            unsupported_expectations = (
+                expected_music_calm,
+                expected_video_mode,
+                expected_video_full_screen,
+                expected_video_saturation,
+                expected_video_sound_effects,
+                expected_video_sound_effects_softness,
+                expected_white_brightness,
+                expected_white_balance,
+                expected_blank_screen,
+                expected_relative_brightness,
+            )
+            if (
+                refresh_display_settings
+                or refresh_relative_brightness
+                or any(value is not None for value in unsupported_expectations)
+            ):
+                return False
+            mode_expected = (
+                any(
+                    value is not None
+                    for value in (
+                        expected_effect,
+                        expected_music_mode,
+                        expected_music_sensitivity,
+                        expected_music_color,
+                    )
+                )
+                or expected_music_auto_color
+            )
+            required = frozenset(
+                domain
+                for domain, enabled in (
+                    ("power", expected_on is not None),
+                    ("brightness", expected_brightness is not None),
+                    ("mode", mode_expected),
+                )
+                if enabled
+            )
+            if refresh_all:
+                requested = self.profile.queryable_status_domains
+                required = self.profile.setup_required_status_domains
+            else:
+                requested = required or frozenset({"power"})
+                required = requested
+            if not await self.async_refresh_status_domains(
+                requested,
+                required_domains=required,
+                timeout=timeout,
+            ):
+                return False
+            return (
+                (expected_on is None or self.is_on == expected_on)
+                and (expected_brightness is None or self.brightness_pct == expected_brightness)
+                and (expected_effect is None or self.effect == expected_effect)
+                and (expected_music_mode is None or self.music_mode == expected_music_mode)
+                and (expected_music_sensitivity is None or self.music_sensitivity == expected_music_sensitivity)
+                and (expected_music_color is None or self.music_color == expected_music_color)
+                and (not expected_music_auto_color or self.music_color is None)
+            )
         if not self.profile.state_readable:
             return False
         expectations: dict[str, Any] = {
@@ -1346,46 +1746,90 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         packets: Sequence[bytes],
         *,
         intent: ControlIntent,
+        prepare: Callable[[], Awaitable[None]] | None = None,
         before_write: Callable[[], Awaitable[None]] | None = None,
         attempt_started: Callable[[int], Awaitable[None]] | None = None,
         progress: Callable[[int], Awaitable[None]] | None = None,
+        final_packet: bytes | None = None,
+        before_final: Callable[[], Awaitable[None]] | None = None,
+        operation_id: str | None = None,
     ) -> None:
-        """Write one complete effect transaction, restarting from frame zero after reconnect."""
+        """Write one effect transaction, retrying uploads but never the optional final packet."""
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
         if not packets:
             raise ValueError("effect sequence must contain at least one packet")
+        if intent > ControlIntent.PREVIEW:
+            await self._async_supersede_reactive()
+        a1_part_count = sum(packet[:2] == b"\xa1\x02" for packet in packets)
+        a1_operation_id = operation_id or (str(uuid4()) if a1_part_count else None)
         async with async_control_intent(self, intent):
-            async with self._lock:
-                for attempt in range(1, EFFECT_SEQUENCE_ATTEMPTS + 1):
-                    try:
+            if prepare is not None:
+                await prepare()
+            client: BleakClient | None = None
+            for attempt in range(1, EFFECT_SEQUENCE_ATTEMPTS + 1):
+                try:
+                    async with self._lock:
                         async with asyncio.timeout(EFFECT_SEQUENCE_CONNECT_TIMEOUT):
                             client = await self._ensure_connected()
-                        if attempt_started is not None:
-                            await attempt_started(attempt)
-                        if before_write is not None:
-                            await before_write()
+                    if attempt_started is not None:
+                        await attempt_started(attempt)
+                    if before_write is not None:
+                        await before_write()
+                    async with self._lock:
+                        if before_write is not None and (self._client is not client or not client.is_connected):
+                            raise BleakError("Device disconnected after effect upload validation")
+                        a1_part_index = 0
                         for index, packet in enumerate(packets, start=1):
                             self._arm_expected(packet)
-                            await client.write_gatt_char(
-                                WRITE_UUID,
+                            await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                            packet_fields: dict[str, Any] = {}
+                            if packet[:2] == b"\xa1\x02":
+                                a1_part_index += 1
+                                packet_fields = {
+                                    "operation_id": a1_operation_id,
+                                    "part_index": a1_part_index,
+                                    "part_count": a1_part_count,
+                                }
+                            self._record_packet(
+                                "tx",
                                 packet,
-                                response=False,
+                                outcome="sent",
+                                reason="write_succeeded",
+                                **packet_fields,
                             )
-                            self._record_packet("tx", packet, outcome="sent", reason="write_succeeded")
                             self._renew_foreground_lease()
                             if progress is not None:
                                 await progress(index)
-                        return
-                    except (BleakError, TimeoutError) as err:
+                    break
+                except (BleakError, TimeoutError) as err:
+                    async with self._lock:
                         await self._disconnect_locked()
-                        if self.hass.is_stopping:
-                            raise RuntimeError("Home Assistant is stopping") from err
-                        if attempt == EFFECT_SEQUENCE_ATTEMPTS:
-                            raise
-                        error = str(err).lower()
-                        if isinstance(err, TimeoutError) or "already shutdown" in error or "not found" in error:
-                            await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
+                    if self.hass.is_stopping:
+                        raise RuntimeError("Home Assistant is stopping") from err
+                    if attempt == EFFECT_SEQUENCE_ATTEMPTS:
+                        raise
+                    error = str(err).lower()
+                    if isinstance(err, TimeoutError) or "already shutdown" in error or "not found" in error:
+                        await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
+            if final_packet is None:
+                return
+            if before_final is not None:
+                await before_final()
+            async with self._lock:
+                if client is None or self._client is not client or not client.is_connected:
+                    raise BleakError("Device disconnected before effect activation")
+                self._arm_expected(final_packet)
+                await client.write_gatt_char(WRITE_UUID, final_packet, response=False)
+                self._record_packet(
+                    "tx",
+                    final_packet,
+                    outcome="sent",
+                    reason="write_succeeded",
+                )
+                self._renew_foreground_lease()
+                if progress is not None:
+                    await progress(len(packets) + 1)
 
     async def async_preview_observe(
         self,
@@ -1520,6 +1964,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return
         current_intent = self._control_arbiter.current_task_intent
         intent = ControlIntent.USER if current_intent is None else current_intent
+        if intent > ControlIntent.PREVIEW:
+            await self._async_supersede_reactive()
         async with async_control_intent(self, intent):
             async with self._lock:
                 for attempt in range(3):
@@ -1611,12 +2057,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         reason: str,
         parser: str | None = None,
         domain: int | None = None,
+        operation_id: str | None = None,
+        part_index: int | None = None,
+        part_count: int | None = None,
     ) -> dict[str, Any]:
         if not data:
             return {}
         header = data[0]
         action = data[1] if len(data) > 1 else None
-        entry = {
+        entry: dict[str, Any] = {
             "ts": datetime.now().isoformat(),
             "dir": direction,
             "header": f"0x{header:02x}",
@@ -1628,6 +2077,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             "raw": data[:PACKET_LOG_RAW_BYTES_LIMIT].hex(),
             "truncated": len(data) > PACKET_LOG_RAW_BYTES_LIMIT,
         }
+        if operation_id is not None:
+            entry["operation_id"] = operation_id
+        if part_index is not None:
+            entry["part_index"] = part_index
+        if part_count is not None:
+            entry["part_count"] = part_count
         self.packet_log.append(entry)
         if len(self.packet_log) > PACKET_LOG_LIMIT:
             del self.packet_log[:-PACKET_LOG_LIMIT]

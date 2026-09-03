@@ -75,6 +75,7 @@ from .effect_websocket_payloads import (
     library_snapshot_payload,
 )
 from .effect_websocket_schema import (
+    DIY_CODE,
     EFFECT_CONTENT,
     EFFECT_NAME,
     IDENTIFIER,
@@ -122,6 +123,7 @@ from .effect_websocket_schema import (
     WS_USER_STATE_UPDATE,
     strict_int,
 )
+from .h6179_reactive_service import get_h6179_reactive_backend
 
 BACKEND_DATA_KEY = "effect_backend"
 PREVIEW_SESSION_NOT_FOUND_CODE = "preview_session_not_found"
@@ -411,6 +413,7 @@ async def ws_scene_apply(
             entry.entry_id,
             reason="committed_apply",
         )
+        await _async_supersede_reactive(hass, entry.entry_id)
         resolved, speed_index = await async_apply_scene(
             hass,
             entry,
@@ -729,6 +732,7 @@ async def ws_preview_close(
         vol.Optional("origin_kind"): vol.In([SourceKind.CATALOGUE_TEMPLATE.value]),
         vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("persist_default", default=False): STRICT_BOOL,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -741,6 +745,7 @@ async def ws_preview_apply_snapshot(
     backend = _backend(hass)
     try:
         backend.preview.ensure_session(msg["session_id"], connection)
+        await _async_supersede_reactive(hass, msg["config_entry_id"])
         if "origin_id" in msg and "origin_kind" not in msg:
             raise EffectValidationError("origin ID requires an origin kind")
         item = backend.application.new_authored_item(
@@ -755,15 +760,18 @@ async def ws_preview_apply_snapshot(
                 else None
             ),
         )
-        acceptance = await backend.preview.async_queue_snapshot(
-            session_id=msg["session_id"],
-            owner=connection,
-            config_entry_id=msg["config_entry_id"],
-            sequence=msg["sequence"],
-            updated_at=msg["updated_at"],
-            item=item,
-            persist_default=msg["persist_default"],
-        )
+        kwargs: dict[str, Any] = {
+            "session_id": msg["session_id"],
+            "owner": connection,
+            "config_entry_id": msg["config_entry_id"],
+            "sequence": msg["sequence"],
+            "updated_at": msg["updated_at"],
+            "item": item,
+            "persist_default": msg["persist_default"],
+        }
+        if "diy_code" in msg:
+            kwargs["diy_code"] = msg["diy_code"]
+        acceptance = await backend.preview.async_queue_snapshot(**kwargs)
     except Exception as exc:
         _send_preview_error(connection, msg["id"], exc)
         return
@@ -793,6 +801,7 @@ async def ws_preview_apply_scene(
     backend = _backend(hass)
     try:
         backend.preview.ensure_session(msg["session_id"], connection)
+        await _async_supersede_reactive(hass, msg["config_entry_id"])
         acceptance = await backend.preview.async_queue_scene(
             session_id=msg["session_id"],
             owner=connection,
@@ -1300,6 +1309,7 @@ def ws_user_state_record_colour(
         vol.Required("expected_version"): POSITIVE_REVISION,
         vol.Required("updated_at"): TIMESTAMP,
         vol.Optional("operation_id"): UUID_TEXT,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -1325,14 +1335,20 @@ async def ws_apply(
             entry.entry_id,
             reason="committed_apply",
         )
+        await _async_supersede_reactive(hass, entry.entry_id)
+        kwargs = {
+            "item_id": msg["item_id"],
+            "config_entry_id": entry.entry_id,
+            "updated_at": msg["updated_at"],
+            "operation_id": operation_id,
+            "expected_version": msg["expected_version"],
+        }
+        if "diy_code" in msg:
+            kwargs["diy_code"] = msg["diy_code"]
         result = await backend.application.async_apply_saved_effect(
             backend.engine,
             entry.runtime_data,
-            item_id=msg["item_id"],
-            config_entry_id=entry.entry_id,
-            updated_at=msg["updated_at"],
-            operation_id=operation_id,
-            expected_version=msg["expected_version"],
+            **kwargs,
         )
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
@@ -1362,6 +1378,7 @@ async def ws_apply(
         vol.Optional("origin_kind"): vol.In([SourceKind.CATALOGUE_TEMPLATE.value]),
         vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("operation_id"): UUID_TEXT,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -1383,6 +1400,7 @@ async def ws_apply_snapshot(
             entry.entry_id,
             reason="committed_apply",
         )
+        await _async_supersede_reactive(hass, entry.entry_id)
         item = backend.application.new_authored_item(
             name=msg["name"],
             content=msg["content"],
@@ -1395,13 +1413,14 @@ async def ws_apply_snapshot(
                 else None
             ),
         )
-        result = await backend.engine.async_apply_snapshot(
-            entry.runtime_data,
-            item,
-            config_entry_id=entry.entry_id,
-            updated_at=msg["updated_at"],
-            operation_id=(UUID(msg["operation_id"]) if "operation_id" in msg else None),
-        )
+        kwargs = {
+            "config_entry_id": entry.entry_id,
+            "updated_at": msg["updated_at"],
+            "operation_id": (UUID(msg["operation_id"]) if "operation_id" in msg else None),
+        }
+        if "diy_code" in msg:
+            kwargs["diy_code"] = msg["diy_code"]
+        result = await backend.engine.async_apply_snapshot(entry.runtime_data, item, **kwargs)
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
@@ -1460,6 +1479,11 @@ def async_register_effect_websocket(
 
 def _backend(hass: HomeAssistant) -> EffectBackend:
     return cast(EffectBackend, hass.data[DOMAIN][BACKEND_DATA_KEY])
+
+
+async def _async_supersede_reactive(hass: HomeAssistant, config_entry_id: str) -> None:
+    if backend := get_h6179_reactive_backend(hass):
+        await backend.async_supersede_device(config_entry_id)
 
 
 def _send_preview_error(

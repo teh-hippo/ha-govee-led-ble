@@ -19,10 +19,10 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     _A3_MAX_CONTENT,
     _U1_MAX,
     MAX_SCENE_PARAM_BYTES,
-    _check_tree,
     _write,
     build_h617a_scene,
     build_h6199_scene,
+    check_generated_tree,
     parse_scene_body_param,
 )
 from custom_components.ha_govee_led_ble.layered_scene import (
@@ -426,7 +426,7 @@ def test_decoder_preserves_unknown_generated_values_and_record_excess() -> None:
     layer.excess = b"\xaa\xbb"
     record.len_body += len(layer.excess)
     parsed.padding = []
-    _check_tree(parsed)
+    check_generated_tree(parsed)
     synthetic_envelope = _write(parsed, prefix_length + len(raw_param) + len(layer.excess))
     synthetic_param = synthetic_envelope[prefix_length:]
 

@@ -54,6 +54,9 @@
     "invalid_custom_effect": {
       "message": "The saved effect is invalid or unavailable."
     },
+    "invalid_h6179_schedule": {
+      "message": "The H6179 schedule settings are invalid."
+    },
     "effect_storage_unavailable": {
       "message": "Saved effect storage is unavailable."
     },
@@ -119,6 +122,104 @@
         }
       }
     },
+    "resync_clock": {
+      "name": "Resync clock",
+      "description": "Set the device clock and UTC offset from Home Assistant."
+    },
+    "configure_schedule_slot": {
+      "name": "Configure schedule slot",
+      "description": "Enable and update one H6179 schedule slot. Omitted fields keep their current values.",
+      "fields": {
+        "slot": {
+          "name": "Slot",
+          "description": "Schedule slot from 1 to 4."
+        },
+        "action": {
+          "name": "Action",
+          "description": "Turn the light on or off at the scheduled time."
+        },
+        "time": {
+          "name": "Time",
+          "description": "Local scheduled time."
+        },
+        "repeat": {
+          "name": "Repeat",
+          "description": "Run once, every day, or on selected weekdays."
+        },
+        "weekdays": {
+          "name": "Weekdays",
+          "description": "Days used with Selected days."
+        }
+      }
+    },
+    "disable_schedule_slot": {
+      "name": "Disable schedule slot",
+      "description": "Disable one H6179 schedule slot without changing its saved settings.",
+      "fields": {
+        "slot": {
+          "name": "Slot",
+          "description": "Schedule slot from 1 to 4."
+        }
+      }
+    },
+    "configure_sleep": {
+      "name": "Configure sleep",
+      "description": "Enable and update H6179 sleep mode. Omitted fields keep their current values.",
+      "fields": {
+        "start_brightness": {
+          "name": "Start brightness",
+          "description": "Brightness at the start of the fade."
+        },
+        "duration_minutes": {
+          "name": "Duration",
+          "description": "Fade duration in minutes."
+        }
+      }
+    },
+    "disable_sleep": {
+      "name": "Disable sleep",
+      "description": "Disable H6179 sleep mode without changing its saved settings."
+    },
+    "configure_wake": {
+      "name": "Configure wake",
+      "description": "Enable and update H6179 wake mode. Omitted fields keep their current values.",
+      "fields": {
+        "time": {
+          "name": "Time",
+          "description": "Local wake time."
+        },
+        "repeat": {
+          "name": "Repeat",
+          "description": "Run once, every day, or on selected weekdays."
+        },
+        "weekdays": {
+          "name": "Weekdays",
+          "description": "Days used with Selected days."
+        },
+        "duration_minutes": {
+          "name": "Duration",
+          "description": "Fade duration in minutes."
+        },
+        "target_brightness": {
+          "name": "Target brightness",
+          "description": "Brightness reached at the end of the fade."
+        }
+      }
+    },
+    "disable_wake": {
+      "name": "Disable wake",
+      "description": "Disable H6179 wake mode without changing its saved settings."
+    },
+    "set_limit_control": {
+      "name": "Set limit control",
+      "description": "Set the experimental H6179 limit-control flag.",
+      "fields": {
+        "enabled": {
+          "name": "Enabled",
+          "description": "Enable or disable the limit-control flag."
+        }
+      }
+    },
     "apply_custom_effect": {
       "name": "Apply custom effect",
       "description": "Apply a saved custom effect through a supported Govee light entity.",
@@ -130,6 +231,10 @@
         "effect_id": {
           "name": "Effect ID",
           "description": "Stable ID of the saved custom effect. Use either Effect or Effect ID."
+        },
+        "diy_code": {
+          "name": "Disposable DIY code",
+          "description": "H6179 only. Code of the disposable DIY item currently selected in the Govee app."
         }
       }
     }

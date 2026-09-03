@@ -7,9 +7,9 @@ from kaitaistruct import KaitaiStructError
 
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _check_tree,
     _write,
     build_h617a_scene,
+    check_generated_tree,
     parse_scene_body_param,
 )
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
@@ -65,6 +65,8 @@ def test_scene_type_prefix():
 
 def test_per_model_snapshots_preserve_vendor_identity():
     assert len(SCENE_ENTRIES["H617A"]) == 83
+    assert len(SCENE_ENTRIES["H6179"]) == 83
+    assert len(MODEL_SCENES["H6179"]) == 83
     assert len(SCENE_ENTRIES["H6199"]) == 240
     assert len({(scene.scene_id, scene.effect_id) for scene in SCENE_ENTRIES["H6199"]}) == 240
     assert MODEL_SCENES["H6199"]["dracarys"].category == "House of the Dragon"
@@ -225,7 +227,7 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
             assert len(parsed.records) == int(parsed.num_records)
             assert envelope[parameter_start : parameter_start + len(raw_param)] == raw_param
             assert not any(envelope[parameter_start + len(raw_param) :])
-            _check_tree(parsed)
+            check_generated_tree(parsed)
             assert _write(parsed, len(envelope)) == envelope
 
             scene_counts[sku] += 1

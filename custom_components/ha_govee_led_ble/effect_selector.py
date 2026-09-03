@@ -24,7 +24,13 @@ from .const import (
     get_profile,
 )
 from .effect_compiler import CompatibilityState, compatibility
-from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
+from .effect_domain import (
+    EffectValidationError,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
+    LibraryItem,
+    effect_content_to_dict,
+)
 from .scenes import MODEL_SCENE_LABELS
 
 _EFFECT_QUOTE_CHARS = "\"'“”‘’"
@@ -34,6 +40,7 @@ VIDEO_EFFECTS: dict[str, str] = {
     "Video: Game": "game",
 }
 MUSIC_EFFECTS: dict[str, str] = {f"Music: {slug.replace('_', ' ').title()}": slug for slug in MUSIC_MODE_SLUGS}
+MUSIC_EFFECTS.update({"Music: Mode 1": "mode_0", "Music: Mode 2": "mode_1"})
 
 EffectSelectorSource = Literal["scene", "video", "music", "saved"]
 SavedEffectNameKind = Literal["available", "reserved", "same_item", "saved"]
@@ -285,6 +292,7 @@ def _selector_candidates(
             item=item,
         )
         for item in compatible_saved_effects(items, model)
+        if not (model == "H6179" and isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect))
         if (category := effect_category_for_content_kind(str(effect_content_to_dict(item.content).get("kind"))))
         is not None
         and (category in categories or always_include_custom_effects)

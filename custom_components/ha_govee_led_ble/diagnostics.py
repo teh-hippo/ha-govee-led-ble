@@ -49,6 +49,8 @@ async def async_get_config_entry_diagnostics(
         "prefix_effect_names": coordinator.prefix_effect_names,
         "always_include_custom_effects": coordinator.always_include_custom_effects,
         "state_readable": coordinator.profile.state_readable,
+        "supports_power": coordinator.profile.supports_power,
+        "supports_brightness": coordinator.profile.supports_brightness,
         "supports_rgb": coordinator.profile.supports_rgb,
         "supports_color_temperature": coordinator.profile.supports_color_temperature,
         "color_temperature_range": {
@@ -62,6 +64,12 @@ async def async_get_config_entry_diagnostics(
         "supports_white_balance": coordinator.profile.supports_white_balance,
         "supports_relative_brightness": coordinator.profile.supports_relative_brightness,
         "supports_blank_screen": coordinator.profile.supports_blank_screen,
+        "supports_clock_sync": coordinator.profile.supports_clock_sync,
+        "supports_schedules": coordinator.profile.supports_schedules,
+        "supports_sleep": coordinator.profile.supports_sleep,
+        "supports_wake": coordinator.profile.supports_wake,
+        "supports_limit_control": coordinator.profile.supports_limit_control,
+        "supports_reactive_rgb": coordinator.profile.supports_reactive_rgb,
         "supports_music_mode": coordinator.profile.supports_music_mode,
         "music_modes": list(coordinator.profile.music_modes),
         "supports_music_color": coordinator.profile.supports_music_color,
@@ -111,6 +119,15 @@ async def async_get_config_entry_diagnostics(
             "same_tone_duration_seconds": coordinator.blank_screen_same_tone_duration_seconds,
         },
         "expected_brightness_pct": expected_brightness[0] if expected_brightness is not None else None,
+        "h6179_schedule": (
+            {
+                **coordinator.h6179_schedule_state.to_status_fields(),
+                "slot_one_time": list(coordinator.h6179_schedule_slot_one_time),
+                "wake_one_time": coordinator.h6179_wake_one_time,
+            }
+            if coordinator.model == "H6179"
+            else None
+        ),
         "packet_log": packet_log,
         "last_rx_aa05_raw": last_rx_aa05_raw,
     }
@@ -127,6 +144,7 @@ async def async_get_config_entry_diagnostics(
         "coordinator": async_redact_data(coordinator_data, REDACT_KEYS),
         "active_effect_state": _active_effect_state(hass, entry.entry_id),
         "effect_deployment_diagnostics": _effect_deployment_diagnostics(hass, entry.entry_id),
+        "reactive_state": _reactive_state(hass, entry.entry_id),
     }
 
 
@@ -160,3 +178,12 @@ def _active_effect_state(hass: HomeAssistant, config_entry_id: str) -> dict[str,
     if cache is None or (state := cache.get(config_entry_id)) is None:
         return None
     return cast(dict[str, Any], state.to_public_dict())
+
+
+def _reactive_state(hass: HomeAssistant, config_entry_id: str) -> dict[str, Any] | None:
+    from .h6179_reactive_service import get_h6179_reactive_backend
+
+    if not isinstance(getattr(hass, "data", None), Mapping):
+        return None
+    backend = get_h6179_reactive_backend(hass)
+    return None if backend is None else backend.status(config_entry_id).to_dict()

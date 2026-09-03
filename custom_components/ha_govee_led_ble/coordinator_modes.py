@@ -15,6 +15,11 @@ from .light_commands import (
     build_white_brightness,
 )
 from .music_commands import build_music_params
+from .music_protocol import (
+    music_code_for,
+    music_mode_supports_style,
+)
+from .music_protocol import music_mode_has_parameter_write as model_music_mode_has_parameter_write
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
 
@@ -123,12 +128,14 @@ MUSIC_PARAM_SPECS: tuple[MusicParamSpec, ...] = (
 )
 
 
-def music_params_for_mode(mode_code: int) -> tuple[MusicParamSpec, ...]:
+def music_params_for_mode(mode_code: int, model: str = "H617A") -> tuple[MusicParamSpec, ...]:
+    if not model_music_mode_has_parameter_write(model, mode_code):
+        return ()
     return tuple(spec for spec in MUSIC_PARAM_SPECS if spec.mode_code == mode_code)
 
 
-def music_mode_has_parameter_write(mode_code: int) -> bool:
-    return bool(music_params_for_mode(mode_code) or mode_code in _MUSIC_STYLE_COMPANION)
+def music_mode_has_parameter_write(mode_code: int, model: str = "H617A") -> bool:
+    return model_music_mode_has_parameter_write(model, mode_code)
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -276,8 +283,8 @@ class _ActiveModeMixin(_CoordinatorBase):
             raise ValueError(f"{self.model} does not support music mode {slug}")
         if self.active_mode == "colour":
             self._pre_mode_snapshot = self._capture_static_state()
-        mode_id = MUSIC_MODE_SLUGS[slug]
-        calm = self.music_calm if mode_id in MUSIC_STYLE_MODE_IDS else False
+        mode_id = music_code_for(self.model, slug)
+        calm = self.music_calm if music_mode_supports_style(self.model, mode_id) else False
         color = self.music_color if self.profile.supports_music_color else None
         send = self.send_command if writer is None else writer
         await send(build_power(True, self.model))
@@ -291,7 +298,11 @@ class _ActiveModeMixin(_CoordinatorBase):
                 self.model,
             )
         )
-        if include_parameters and mode_id in _MUSIC_STYLE_COMPANION:
+        if (
+            include_parameters
+            and mode_id in _MUSIC_STYLE_COMPANION
+            and model_music_mode_has_parameter_write(self.model, mode_id)
+        ):
             await self._send_music_params(mode_id, writer=send)
         self.music_mode, self.video_mode = slug, "off"
         self.effect = None
@@ -309,7 +320,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.music_sensitivity = sensitivity
         self.music_color = colour
         self.music_calm = calm
-        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode]):
+        for spec in music_params_for_mode(music_code_for(self.model, mode), self.model):
             if spec.profile_key in parameters:
                 setattr(self, spec.key, parameters[spec.profile_key])
 
@@ -327,7 +338,11 @@ class _ActiveModeMixin(_CoordinatorBase):
         *,
         writer: Callable[[bytes], Awaitable[None]] | None = None,
     ) -> None:
-        overrides = {spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code)}
+        if not model_music_mode_has_parameter_write(self.model, mode_code):
+            return
+        overrides = {
+            spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code, self.model)
+        }
         if mode_code == 0x35:
             start_point, piece_num = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
             overrides.update({26: start_point, 28: piece_num})
@@ -339,7 +354,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         if companion is not None:
             overrides.update(companion[self.music_calm])
         send = self.send_command if writer is None else writer
-        for packet in build_music_params(mode_code, overrides):
+        for packet in build_music_params(mode_code, overrides, model=self.model):
             await send(packet)
 
     async def async_restore_pre_mode(self) -> None:

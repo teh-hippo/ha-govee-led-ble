@@ -131,6 +131,47 @@
       },
       "schema": 7
     },
+    "h6179_mixed_diy": {
+      "components": [
+        {
+          "family": 0,
+          "variant": 0
+        },
+        {
+          "family": 2,
+          "variant": 0
+        }
+      ],
+      "kind": "h6179_mixed_diy",
+      "model": "H6179",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          255
+        ]
+      ],
+      "speed": 50
+    },
+    "h6179_single_diy": {
+      "family": 0,
+      "kind": "h6179_single_diy",
+      "model": "H6179",
+      "palette": [
+        [
+          255,
+          0,
+          0
+        ]
+      ],
+      "speed": 50,
+      "variant": 0
+    },
     "h617a_multi": {
       "effects": [
         {
@@ -741,6 +782,291 @@
         "palette_min": 1
       },
       "models": {
+        "H6179": {
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "rate": "speed",
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "rate": "speed",
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "twinkle",
+              "label": "Twinkle",
+              "rate": "speed",
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1
+          },
+          "music_modes": [
+            {
+              "id": "mode_0",
+              "label": "Mode 1"
+            },
+            {
+              "id": "mode_1",
+              "label": "Mode 2"
+            }
+          ],
+          "painted_effects": [],
+          "sku": "H6179",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h6179_single_diy",
+                "model": "H6179",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h6179_single_diy",
+                "model": "H6179",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h6179_single_diy",
+                "model": "H6179",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Twinkle"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "mode_0",
+                "model": "H6179",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:mode_0",
+              "label": "Mode 1"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "mode_1",
+                "model": "H6179",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:mode_1",
+              "label": "Mode 2"
+            }
+          ],
+          "video_modes": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h6179_single_diy",
+              "id": "single",
+              "label": "Single DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h6179_mixed_diy",
+              "id": "multi",
+              "label": "Mixed DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            }
+          ],
+          "workshop_templates": []
+        },
         "H617A": {
           "apply": {
             "multi": "supported",
@@ -2725,7 +3051,7 @@
           "label": "Cycle"
         }
       ],
-      "schema_version": 8,
+      "schema_version": 9,
       "sku": "H617A",
       "supports": {
         "advanced": "supported",
@@ -3415,6 +3741,7 @@
         },
         "profiles": {
           "music": "supported",
+          "reactive_rgb": "unsupported",
           "video": "unsupported"
         },
         "readback": "diy_code_only",
@@ -3453,10 +3780,49 @@
         },
         "profiles": {
           "music": "supported",
+          "reactive_rgb": "unsupported",
           "video": "unsupported"
         },
         "readback": "diy_code_only",
         "segment_count": 15
+      },
+      {
+        "active_state": null,
+        "config_entry_id": "h6179-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "supported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H6179 RGB TV Backlight",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive"
+        ],
+        "light_entity_id": null,
+        "model": "H6179",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h6179-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "reactive_rgb": "supported",
+          "video": "unsupported"
+        },
+        "readback": "diy_code_only",
+        "segment_count": 0
       },
       {
         "active_state": null,
@@ -3491,6 +3857,7 @@
         },
         "profiles": {
           "music": "supported",
+          "reactive_rgb": "unsupported",
           "video": "supported"
         },
         "readback": "scene_selector_for_user_effects",
@@ -3498,8 +3865,8 @@
       }
     ],
     "editor_info": {
-      "api_version": 14,
-      "compiler_version": 4,
+      "api_version": 16,
+      "compiler_version": 5,
       "effect_schema_version": 2,
       "limits": {
         "deployment_records": 128,
@@ -3597,6 +3964,32 @@
           },
           "updated_at": "2026-08-17T00:00:00Z",
           "version": 1
+        },
+        {
+          "content_hash": "9e633429cba2b12735adbd365e6e11b1f621664645f05a36dbf7fb17fdb84c60",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "kind": "h6179_single_diy",
+          "model": "H6179",
+          "name": "Canonical H6179 DIY",
+          "origin": {
+            "kind": "authored",
+            "source_id": null
+          },
+          "updated_at": "2026-08-17T00:00:00Z",
+          "version": 1
+        },
+        {
+          "content_hash": "9407af07de69e202aa75e15e772aa8d5c0979c2dc461afcc6d512dc8d03c04aa",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "kind": "music_profile",
+          "model": "H6179",
+          "name": "Canonical H6179 music",
+          "origin": {
+            "kind": "authored",
+            "source_id": null
+          },
+          "updated_at": "2026-08-17T00:00:00Z",
+          "version": 1
         }
       ]
     },
@@ -3616,6 +4009,31 @@
       "write_disposition": "unknown"
     },
     "scene_catalogues": {
+      "H6179": {
+        "categories": [
+          {
+            "id": 1,
+            "name": "Natural"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "Natural",
+            "category_id": 1,
+            "display_name": "Sunrise",
+            "effect_id": 46,
+            "name": "Sunrise",
+            "parameter_kind": "none",
+            "scene_id": 49,
+            "scene_type": 0,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H6179"
+      },
       "H617A": {
         "categories": [
           {

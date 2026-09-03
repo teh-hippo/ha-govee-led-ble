@@ -35,6 +35,11 @@ from .const import (
 from .coordinator import GoveeBLECoordinator, clear_availability_log_state
 from .editor import EDITOR_PANEL_PATH, async_register_editor_panel, editor_url
 from .effect_setup import async_setup_effects, get_effect_backend
+from .h6179_reactive_service import (
+    async_setup_h6179_reactive,
+    get_h6179_reactive_backend,
+)
+from .h6179_services import async_register_h6179_services
 from .light_services import async_register_light_services
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
@@ -90,6 +95,8 @@ def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_light_services(hass)
+    async_register_h6179_services(hass)
+    await async_setup_h6179_reactive(hass)
     await async_setup_effects(hass)
     await _async_update_editor_panel(hass)
     return True
@@ -211,6 +218,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+    if reactive_backend := get_h6179_reactive_backend(hass):
+        await reactive_backend.async_load_device(entry.entry_id)
+        coordinator.set_reactive_lifecycle_hooks(
+            supersede=lambda: reactive_backend.async_supersede_device(entry.entry_id),
+            disconnect=lambda: reactive_backend.async_disconnect_device(entry.entry_id),
+        )
     if effect_backend := get_effect_backend(hass):
         await effect_backend.preview.async_load_device(entry.entry_id)
         effect_backend.engine.reconcile_current(
@@ -269,13 +282,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
 
 async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> bool:
     effect_backend = get_effect_backend(hass)
+    reactive_backend = get_h6179_reactive_backend(hass)
     if effect_backend is not None:
         await effect_backend.preview.async_unload_device(entry.entry_id)
+    if reactive_backend is not None:
+        await reactive_backend.async_unload_device(entry.entry_id)
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.disconnect()
         await _async_update_editor_panel(hass)
-    elif effect_backend is not None:
-        await effect_backend.preview.async_load_device(entry.entry_id)
+    else:
+        if effect_backend is not None:
+            await effect_backend.preview.async_load_device(entry.entry_id)
+        if reactive_backend is not None:
+            await reactive_backend.async_load_device(entry.entry_id)
     return unload_ok
 
 

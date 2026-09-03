@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from .const import default_effect_categories
+from .const import default_effect_categories, get_profile
 from .effect_domain import EFFECT_SCHEMA_VERSION, JsonValue
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -18,10 +18,10 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 14
+EDITOR_API_VERSION: Final = 16
 EDITOR_ASSET_VERSION: Final = 19
-EFFECT_COMPILER_VERSION: Final = 4
-RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
+EFFECT_COMPILER_VERSION: Final = 5
+RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 2
 
 
 class CapabilityState(StrEnum):
@@ -67,6 +67,7 @@ class CompilerDeployerStrategy(StrEnum):
     STRUCTURAL_PARSER_ONLY = "structural_parser_only"
     RAW_PRESERVATION = "raw_preservation"
     A3_EFFECT_UPLOAD = "a3_effect_upload"
+    H6179_A1_EFFECT_UPLOAD = "h6179_a1_effect_upload"
 
 
 class VerificationConfidence(StrEnum):
@@ -94,6 +95,14 @@ class FrontendApplicationState(StrEnum):
     PLANNED = "planned"
 
 
+class ReleaseSupportStatus(StrEnum):
+    EXPERIMENTAL = "experimental"
+
+
+class CapabilityActivationPolicy(StrEnum):
+    OBSERVED_DISPOSABLE_APPROVAL = "observed_disposable_approval"
+
+
 @dataclass(frozen=True, slots=True)
 class ReleaseCapability:
     model: str
@@ -106,6 +115,10 @@ class ReleaseCapability:
     verification_confidence: VerificationConfidence
     physical_validation_state: PhysicalValidationState
     diagnostics_evidence_classification: EvidenceClassification
+    support_status: ReleaseSupportStatus | None = None
+    activation_policy: CapabilityActivationPolicy | None = None
+    overwrite_risk: bool = False
+    evidence_gaps: tuple[str, ...] = ()
 
     @property
     def frontend_application(self) -> FrontendApplicationState:
@@ -127,7 +140,7 @@ class ReleaseCapability:
         }
 
     def to_diagnostics_dict(self) -> dict[str, JsonValue]:
-        return {
+        result: dict[str, JsonValue] = {
             "workflow": self.workflow.value,
             "frontend_visibility": self.frontend_visibility.value,
             "persistent_content_kind": self.persistent_content_kind,
@@ -137,6 +150,15 @@ class ReleaseCapability:
             "physical_validation_state": self.physical_validation_state.value,
             "evidence_classification": self.diagnostics_evidence_classification.value,
         }
+        if self.support_status is not None:
+            result["support_status"] = self.support_status.value
+        if self.activation_policy is not None:
+            result["activation_policy"] = self.activation_policy.value
+        if self.overwrite_risk:
+            result["overwrite_risk"] = True
+        if self.evidence_gaps:
+            result["evidence_gaps"] = list(self.evidence_gaps)
+        return result
 
 
 def _capability(
@@ -149,6 +171,11 @@ def _capability(
     verification_confidence: VerificationConfidence,
     physical_validation_state: PhysicalValidationState,
     diagnostics_evidence_classification: EvidenceClassification,
+    *,
+    support_status: ReleaseSupportStatus | None = None,
+    activation_policy: CapabilityActivationPolicy | None = None,
+    overwrite_risk: bool = False,
+    evidence_gaps: tuple[str, ...] = (),
 ) -> ReleaseCapability:
     return ReleaseCapability(
         model=model,
@@ -161,6 +188,10 @@ def _capability(
         verification_confidence=verification_confidence,
         physical_validation_state=physical_validation_state,
         diagnostics_evidence_classification=diagnostics_evidence_classification,
+        support_status=support_status,
+        activation_policy=activation_policy,
+        overwrite_risk=overwrite_risk,
+        evidence_gaps=evidence_gaps,
     )
 
 
@@ -263,6 +294,70 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
         EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6179",
+        CapabilityWorkflow.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        ApplicationRoute.STUDIO_SCENE_APPLY,
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+        support_status=ReleaseSupportStatus.EXPERIMENTAL,
+        evidence_gaps=("physical_application_not_validated",),
+    ),
+    _capability(
+        "H6179",
+        CapabilityWorkflow.SINGLE,
+        "Single DIY",
+        "h6179_single_diy",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6179_A1_EFFECT_UPLOAD,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+        support_status=ReleaseSupportStatus.EXPERIMENTAL,
+        activation_policy=CapabilityActivationPolicy.OBSERVED_DISPOSABLE_APPROVAL,
+        overwrite_risk=True,
+        evidence_gaps=(
+            "activation_code_not_fixed",
+            "effect_content_readback_unavailable",
+            "physical_application_not_validated",
+        ),
+    ),
+    _capability(
+        "H6179",
+        CapabilityWorkflow.MULTI,
+        "Mixed DIY",
+        "h6179_mixed_diy",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6179_A1_EFFECT_UPLOAD,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+        support_status=ReleaseSupportStatus.EXPERIMENTAL,
+        activation_policy=CapabilityActivationPolicy.OBSERVED_DISPOSABLE_APPROVAL,
+        overwrite_risk=True,
+        evidence_gaps=(
+            "activation_code_not_fixed",
+            "effect_content_readback_unavailable",
+            "physical_application_not_validated",
+        ),
+    ),
+    _capability(
+        "H6179",
+        CapabilityWorkflow.NATIVE_MUSIC,
+        "Music",
+        "music_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+        support_status=ReleaseSupportStatus.EXPERIMENTAL,
+        evidence_gaps=("physical_application_not_validated",),
     ),
     _capability(
         "H6199",
@@ -450,6 +545,7 @@ class DeviceEffectCapabilities:
     advanced: CapabilityState
     music: CapabilityState
     video: CapabilityState
+    reactive_rgb: CapabilityState
     workshop: CapabilityState
     readback: str
     effect_categories: tuple[str, ...]
@@ -472,6 +568,7 @@ class DeviceEffectCapabilities:
             "profiles": {
                 "music": self.music.value,
                 "video": self.video.value,
+                "reactive_rgb": self.reactive_rgb.value,
             },
             "readback": self.readback,
             "effect_categories": list(self.effect_categories),
@@ -500,10 +597,13 @@ def device_effect_capabilities(
         advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED),
         music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC),
         video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO),
+        reactive_rgb=(
+            CapabilityState.SUPPORTED if get_profile(model).supports_reactive_rgb else CapabilityState.UNSUPPORTED
+        ),
         workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP),
         readback=(
             "diy_code_only"
-            if model in {"H617A", "H617E"}
+            if model in {"H617A", "H617E", "H6179"}
             else "scene_selector_for_user_effects"
             if release_capabilities_for_model(model)
             else "none"

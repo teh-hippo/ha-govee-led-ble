@@ -675,7 +675,7 @@ export function decodeSceneCatalogue(value: unknown): SceneCatalogue {
       "scene catalogue schema",
       1,
     ),
-    sku: boundedString(catalogue.sku, "scene catalogue SKU", MAX_IDENTIFIER_LENGTH),
+    sku: enumString(catalogue.sku, MODEL_SKUS, "scene catalogue SKU") as ModelSku,
     enabled: booleanValue(catalogue.enabled, "scene catalogue enabled"),
     categories: arrayValue(
       catalogue.categories,
@@ -753,6 +753,8 @@ export function decodeCatalogueTemplateDefaultDetail(
   const supported = new Set([
     "h617a_painted",
     "h617a_single",
+    "h6179_single_diy",
+    "h6179_mixed_diy",
     "palette_diy",
     "music_profile",
     "video_profile",
@@ -844,45 +846,150 @@ export function decodeEffectContent(value: unknown): EffectContent {
         speed: integerValue(content.speed, "Multi speed", 0, 100),
         palette: paletteValue(content.palette, "Multi palette", 8),
       };
-    case "palette_diy":
+    case "h6179_single_diy": {
+      const family = integerValue(
+        content.family,
+        "H6179 Single DIY family",
+        0,
+        2,
+      );
+      const variant = integerValue(
+        content.variant,
+        "H6179 Single DIY variant",
+        0,
+        0,
+      );
+      validateH6179DiyPair(family, variant, "H6179 Single DIY");
       return {
         kind,
         model: enumString(
           content.model,
-          MODEL_SKUS,
-          "palette DIY model",
-        ) as ModelSku,
+          ["H6179"],
+          "H6179 Single DIY model",
+        ),
+        family,
+        variant,
+        speed: integerValue(content.speed, "H6179 Single DIY speed", 0, 100),
+        palette: paletteValue(
+          content.palette,
+          "H6179 Single DIY palette",
+          8,
+        ),
+      };
+    }
+    case "h6179_mixed_diy": {
+      const components = arrayValue(
+        content.components,
+        "H6179 Mixed DIY components",
+        4,
+      );
+      if (components.length === 0) {
+        invalid("H6179 Mixed DIY components must not be empty");
+      }
+      return {
+        kind,
+        model: enumString(
+          content.model,
+          ["H6179"],
+          "H6179 Mixed DIY model",
+        ),
+        components: components.map((item, index) => {
+          const component = objectValue(
+            item,
+            `H6179 Mixed DIY components[${index}]`,
+          );
+          const family = integerValue(
+            component.family,
+            `H6179 Mixed DIY components[${index}] family`,
+            0,
+            2,
+          );
+          const variant = integerValue(
+            component.variant,
+            `H6179 Mixed DIY components[${index}] variant`,
+            0,
+            0,
+          );
+          validateH6179DiyPair(
+            family,
+            variant,
+            `H6179 Mixed DIY components[${index}]`,
+          );
+          return { family, variant };
+        }),
+        speed: integerValue(content.speed, "H6179 Mixed DIY speed", 0, 100),
+        palette: paletteValue(
+          content.palette,
+          "H6179 Mixed DIY palette",
+          8,
+        ),
+      };
+    }
+    case "palette_diy": {
+      const model = enumString(
+        content.model,
+        MODEL_SKUS,
+        "palette DIY model",
+      ) as ModelSku;
+      if (model === "H6179") {
+        invalid("H6179 palette DIY content is unsupported");
+      }
+      return {
+        kind,
+        model,
         family: integerValue(content.family, "palette DIY family", 0, 255),
         variant: integerValue(content.variant, "palette DIY variant", 0, 255),
         speed: integerValue(content.speed, "palette DIY speed", 0, 100),
         palette: paletteValue(content.palette, "palette DIY palette", 8),
       } satisfies PaletteDiyEffectContent;
-    case "music_profile":
+    }
+    case "music_profile": {
+      const model = enumString(
+        content.model,
+        MODEL_SKUS,
+        "music profile model",
+      ) as ModelSku;
+      const mode =
+        model === "H6179"
+          ? enumString(
+              content.mode,
+              ["mode_0", "mode_1"],
+              "H6179 music profile mode",
+            )
+          : boundedString(
+              content.mode,
+              "music profile mode",
+              MAX_IDENTIFIER_LENGTH,
+            );
+      const calm = nullableBooleanValue(
+        content.calm,
+        "music profile calm",
+      );
+      const parameters = boundedRecord(
+        content.parameters,
+        "music profile parameters",
+      ) as JsonObject;
+      if (
+        model === "H6179" &&
+        (calm !== null || Object.keys(parameters).length !== 0)
+      ) {
+        invalid("H6179 music profiles do not support style or parameters");
+      }
       return {
         kind,
-        model: enumString(
-          content.model,
-          MODEL_SKUS,
-          "music profile model",
-        ) as ModelSku,
-        mode: boundedString(
-          content.mode,
-          "music profile mode",
-          MAX_IDENTIFIER_LENGTH,
-        ),
+        model,
+        mode,
         sensitivity: integerValue(
           content.sensitivity,
           "music profile sensitivity",
           0,
-          100,
+          model === "H6179" ? 99 : 100,
         ),
         colour: nullableRgbValue(content.colour, "music profile colour"),
-        calm: nullableBooleanValue(content.calm, "music profile calm"),
-        parameters: boundedRecord(
-          content.parameters,
-          "music profile parameters",
-        ) as JsonObject,
+        calm,
+        parameters,
       } satisfies MusicProfileContent;
+    }
     case "video_profile":
       return {
         kind,
@@ -1327,6 +1434,23 @@ function paletteValue(
   return palette.map((colour, index) =>
     rgbValue(colour, `${name}[${index}]`),
   );
+}
+
+function validateH6179DiyPair(
+  family: number,
+  variant: number,
+  name: string,
+): void {
+  if (
+    ![
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ].some(([allowedFamily, allowedVariant]) =>
+      family === allowedFamily && variant === allowedVariant)
+  ) {
+    invalid(`${name} family and variant are unsupported`);
+  }
 }
 
 function rgbValue(value: unknown, name: string): RGB {

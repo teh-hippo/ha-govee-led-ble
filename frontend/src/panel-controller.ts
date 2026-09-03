@@ -1136,6 +1136,16 @@ export class PanelController {
     if (this.model.stateUpdatesUnavailable) {
       return;
     }
+    if (
+      !this.model.liveApplyEnabled &&
+      this.model.h6179DiyCodeRequired &&
+      this.model.h6179DiyCode === undefined
+    ) {
+      this.model.patch({
+        notice: this.model.h6179DiyApprovalMessage,
+      });
+      return;
+    }
     if (this.model.liveApplyEnabled) {
       this.preview.toggle(scene);
       if (this.model.autoSaveEnabled) {
@@ -1168,6 +1178,16 @@ export class PanelController {
     this.preview.toggle(scene);
   }
 
+  public async useObservedH6179DiyCode(): Promise<boolean> {
+    const code = this.model.h6179ObservedDiyCode;
+    if (!this.model.h6179DiyCodeRequired || code === undefined) {
+      return false;
+    }
+    this.model.patch({ h6179ApprovedDiyCode: code, notice: undefined });
+    await this.preview.diyCodeChanged();
+    return true;
+  }
+
   public async applyCurrentDraft(): Promise<boolean> {
     const api = this.api;
     const device = this.model.selectedDevice;
@@ -1185,6 +1205,13 @@ export class PanelController {
     }
     const transitionEpoch = this.model.editorTransitionEpoch;
     const content = cloneEditableEffect(this.model.content);
+    const diyCode = this.model.h6179DiyCode;
+    if (this.model.h6179DiyCodeRequired && diyCode === undefined) {
+      this.model.patch({
+        notice: this.model.h6179DiyApprovalMessage,
+      });
+      return false;
+    }
     this.model.patch({ applying: true, notice: undefined });
     try {
       if (
@@ -1192,22 +1219,42 @@ export class PanelController {
         this.model.currentItem &&
         !this.model.dirty
       ) {
-        await api.applySavedEffect(
-          device.config_entry_id,
-          this.model.currentItem,
-        );
+        if (diyCode === undefined) {
+          await api.applySavedEffect(
+            device.config_entry_id,
+            this.model.currentItem,
+          );
+        } else {
+          await api.applySavedEffect(
+            device.config_entry_id,
+            this.model.currentItem,
+            diyCode,
+          );
+        }
       } else {
-        await api.applySnapshot(
-          device.config_entry_id,
-          this.model.name.trim() || "Effect Studio draft",
-          content,
+        const provenance =
           this.model.editorSource.kind === "catalogue"
             ? {
-                origin_kind: "catalogue_template",
+                origin_kind: "catalogue_template" as const,
                 origin_id: this.model.editorSource.selectionIdentity,
               }
-            : undefined,
-        );
+            : undefined;
+        if (diyCode === undefined) {
+          await api.applySnapshot(
+            device.config_entry_id,
+            this.model.name.trim() || "Effect Studio draft",
+            content,
+            provenance,
+          );
+        } else {
+          await api.applySnapshot(
+            device.config_entry_id,
+            this.model.name.trim() || "Effect Studio draft",
+            content,
+            provenance,
+            diyCode,
+          );
+        }
       }
       if (transitionEpoch === this.model.editorTransitionEpoch) {
         await this.refreshSelectedDevice(transitionEpoch);
@@ -1931,8 +1978,19 @@ export class PanelController {
     if (!this.model.liveApplyEnabled) {
       return false;
     }
+    const diyCode = this.model.h6179DiyCode;
+    if (this.model.h6179DiyCodeRequired && diyCode === undefined) {
+      this.model.patch({
+        notice: this.model.h6179DiyApprovalMessage,
+      });
+      return false;
+    }
     try {
-      await this.api.applySavedEffect(configEntryId, item);
+      if (diyCode === undefined) {
+        await this.api.applySavedEffect(configEntryId, item);
+      } else {
+        await this.api.applySavedEffect(configEntryId, item, diyCode);
+      }
       if (
         !this.model.liveApplyEnabled ||
         this.model.selectedDeviceId !== configEntryId ||

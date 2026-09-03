@@ -80,6 +80,12 @@ const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = 
     "advanced",
     "workshop",
   ],
+  H6179: [
+    "native_scenes",
+    "single",
+    "multi",
+    "native_music",
+  ],
   H6199: [
     "native_scenes",
     "edited_palette_scenes",
@@ -165,6 +171,12 @@ function decodeModelCatalogues(
       "H617E",
       decodeContent,
     ),
+    H6179: decodeModelEffectCatalogue(
+      models.H6179,
+      "catalogue model H6179",
+      "H6179",
+      decodeContent,
+    ),
     H6199: decodeModelEffectCatalogue(
       models.H6199,
       "catalogue model H6199",
@@ -208,7 +220,7 @@ function decodeModelEffectCatalogue(
   if (musicSensitivityMinimum > musicSensitivityMaximum) {
     invalid(`${name} music sensitivity limits are inverted`);
   }
-  return {
+  const decoded: ModelEffectCatalogue = {
     sku,
     painted_effects: decodePaintedEffectTemplates(
       catalogue.painted_effects,
@@ -297,6 +309,8 @@ function decodeModelEffectCatalogue(
       ),
     },
   };
+  validateModelCatalogue(decoded, name);
+  return decoded;
 }
 
 function decodeCatalogueTemplates(
@@ -312,6 +326,8 @@ function decodeCatalogueTemplates(
       if (
         content.kind !== "h617a_painted" &&
         content.kind !== "h617a_single" &&
+        content.kind !== "h6179_single_diy" &&
+        content.kind !== "h6179_mixed_diy" &&
         content.kind !== "palette_diy" &&
         content.kind !== "music_profile" &&
         content.kind !== "video_profile"
@@ -347,6 +363,56 @@ function decodeCatalogueTemplates(
   );
   requireUnique(templates, (template) => template.id, `${name} IDs`);
   return templates;
+}
+
+function validateModelCatalogue(
+  catalogue: ModelEffectCatalogue,
+  name: string,
+): void {
+  if (catalogue.sku !== "H6179") {
+    return;
+  }
+  const pairs = catalogue.effects.flatMap((family) =>
+    family.variations.map((variation) => [
+      family.family,
+      variation.variant,
+    ] as const),
+  );
+  if (
+    JSON.stringify(pairs) !== JSON.stringify([[0, 0], [1, 0], [2, 0]]) ||
+    catalogue.effects.some((family) => !family.supports_multi)
+  ) {
+    invalid(`${name} H6179 DIY families are incompatible`);
+  }
+  if (
+    JSON.stringify(catalogue.music_modes) !==
+    JSON.stringify([
+      { id: "mode_0", label: "Mode 1" },
+      { id: "mode_1", label: "Mode 2" },
+    ])
+  ) {
+    invalid(`${name} H6179 music modes are incompatible`);
+  }
+  if (
+    catalogue.painted_effects.length !== 0 ||
+    catalogue.video_modes.length !== 0 ||
+    catalogue.workshop_templates.length !== 0 ||
+    catalogue.supports.multi !== "supported" ||
+    catalogue.supports.advanced !== "unsupported" ||
+    catalogue.supports.workshop !== "unsupported" ||
+    catalogue.limits.palette_min !== 1 ||
+    catalogue.limits.palette_max !== 8 ||
+    catalogue.limits.multi_max !== 4 ||
+    catalogue.limits.music_sensitivity_min !== 0 ||
+    catalogue.limits.music_sensitivity_max !== 99 ||
+    catalogue.apply.painted !== "unsupported" ||
+    catalogue.apply.single !== "supported" ||
+    catalogue.apply.multi !== "supported" ||
+    catalogue.apply.palette_diy !== "unsupported" ||
+    catalogue.apply.workshop !== "unsupported"
+  ) {
+    invalid(`${name} H6179 capability projection is incompatible`);
+  }
 }
 
 function decodeReleaseWorkflows(

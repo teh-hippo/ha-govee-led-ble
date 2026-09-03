@@ -2,13 +2,13 @@
 
 from typing import Any
 
-from .const import MUSIC_MODE_SLUGS
+from .const import wire_model
 from .coordinator_status import ParsedMode
-from .generated_protocol_adapter import parse_command
+from .generated_protocol_adapter import parse_command, parse_h6179_command
 from .light_commands import parse_static_write
+from .music_protocol import music_slug_for
 from .scenes import MODEL_SCENES
 
-_MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
 _SCENE_EFFECT_BY_MODEL_ID = {
     model: {scene.code: name for name, scene in scenes.items()} for model, scenes in MODEL_SCENES.items()
 }
@@ -21,6 +21,8 @@ def expectations_from_packet(
     static_echoes_color: bool = False,
 ) -> dict[str, Any]:
     """Map an outgoing command to the optimistic fields its replies should confirm."""
+    if wire_model(model) == "H6179":
+        return _h6179_expectations(packet, model, static_echoes_color=static_echoes_color)
     generated = parse_command(packet, model)
     if generated is None:
         return {}
@@ -44,7 +46,7 @@ def expectations_from_packet(
         mode = getattr(generated.body.sub_mode, "name", None)
         detail = generated.body.detail
         if mode == "music":
-            music_mode = _MUSIC_SLUG_BY_ID.get(int(detail.mode))
+            music_mode = music_slug_for(model, int(detail.mode))
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
             if music_mode == "rhythm":
@@ -75,7 +77,7 @@ def expectations_from_packet(
         mode = getattr(generated.body.sub, "name", None)
         detail = generated.body.sub_body
         if mode == "music":
-            music_mode = _MUSIC_SLUG_BY_ID.get(int(detail.mode_id))
+            music_mode = music_slug_for(model, int(detail.mode_id))
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
             if music_mode == "rhythm":
@@ -98,6 +100,53 @@ def expectations_from_packet(
             expectations["color_temp_kelvin"] = static.kelvin
         elif static.brightness_pct is not None:
             expectations["white_brightness"] = static.brightness_pct
+    return expectations
+
+
+def _h6179_expectations(
+    packet: bytes,
+    model: str,
+    *,
+    static_echoes_color: bool,
+) -> dict[str, Any]:
+    command = parse_h6179_command(packet)
+    if command is None:
+        return {}
+    if command.operation == "power":
+        return {"is_on": command.values["is_on"]}
+    if command.operation == "brightness":
+        return {"brightness_pct": command.values["brightness_pct"]}
+    mode = command.values.get("mode")
+    if mode == "music":
+        return {
+            "color_mode": (ParsedMode.MUSIC, None),
+            "music_mode": command.values["music_mode"],
+            "music_sensitivity": command.values["sensitivity"],
+            "music_color": command.values["colour"],
+        }
+    if mode == "scene":
+        scene_code = int(command.values["scene_code"])
+        effect = _SCENE_EFFECT_BY_MODEL_ID.get(model, {}).get(scene_code)
+        return {
+            "color_mode": (ParsedMode.SCENE, None),
+            "effect": effect,
+            "unknown_scene_code": scene_code if effect is None else None,
+        }
+    if mode == "diy":
+        return {
+            "color_mode": (ParsedMode.DIY, int(command.values["diy_code"])),
+            "effect": None,
+        }
+    if mode != "static":
+        return {}
+    expectations: dict[str, Any] = {
+        "color_mode": (ParsedMode.COLOUR, 0x0D if static_echoes_color else None),
+    }
+    static = parse_static_write(packet, model)
+    if static is not None and static.rgb is not None:
+        expectations["rgb_color"] = static.rgb
+    elif static is not None and static.kelvin is not None:
+        expectations["color_temp_kelvin"] = static.kelvin
     return expectations
 
 

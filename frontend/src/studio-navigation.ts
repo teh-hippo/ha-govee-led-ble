@@ -239,11 +239,15 @@ function workspaceStudioLocation(
   if (
     content.kind === "h617a_painted" ||
     content.kind === "h617a_single" ||
+    content.kind === "h6179_single_diy" ||
     content.kind === "palette_diy"
   ) {
     return { section: "custom", category: "single-layer" };
   }
-  if (content.kind === "h617a_multi") {
+  if (
+    content.kind === "h617a_multi" ||
+    content.kind === "h6179_mixed_diy"
+  ) {
     return { section: "custom", category: "multi-layer" };
   }
   if (content.kind === "advanced" || content.kind === "workshop") {

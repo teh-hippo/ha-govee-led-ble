@@ -29,9 +29,9 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     _A3_MAX_CONTENT,
     MAX_SCENE_PARAM_BYTES,
-    _check_tree,
     _write,
     build_h617a_scene,
+    check_generated_tree,
     parse_scene_type1_body_param,
 )
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
@@ -80,7 +80,7 @@ def test_all_committed_h617a_type_1_scenes_decode_losslessly() -> None:
         assert decoded.palette == tuple(_colour(colour) for colour in parsed.palette)
         assert envelope[parameter_start : parameter_start + len(raw_param)] == raw_param
         assert not any(envelope[parameter_start + len(raw_param) :])
-        _check_tree(parsed)
+        check_generated_tree(parsed)
         assert _write(parsed, len(envelope)) == envelope
         assert encode_palette_scene(decoded) == raw_param
         assert effect_content_from_dict(effect_content_to_dict(decoded)) == decoded
@@ -108,7 +108,9 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
 
 def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
     for model, entries in SCENE_ENTRIES.items():
-        entry = next(scene for scene in entries if scene.scene_type == 1)
+        entry = next((scene for scene in entries if scene.scene_type == 1 and not scene.selector_only), None)
+        if entry is None:
+            continue
         decoded = decode_catalogue_palette_scene(model, entry)
         assert decoded is not None
 

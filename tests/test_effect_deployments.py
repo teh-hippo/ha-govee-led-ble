@@ -398,6 +398,66 @@ async def test_legacy_painted_snapshot_uses_shared_schema_migration(hass: HomeAs
     assert migrated.source_content_hash == effect_content_hash(expected)
 
 
+@pytest.mark.parametrize(
+    ("content_kind", "target_mode", "progress_total", "expected"),
+    [
+        ("h617a_single", "custom", 3, ("a3", "diy_code", "requested_code")),
+        ("palette_diy", "custom", 3, ("a3", "unknown_scene_code", "evidenced_fixed")),
+        ("workshop", "custom", 3, ("a3", "unknown_scene_code", "evidenced_fixed")),
+        ("scene_builtin", "scene", 1, ("none", "effect", "scene_selector")),
+        ("scene_layered", "scene", 3, ("a3", "effect", "scene_selector")),
+        ("music_profile", "music", 1, ("none", "none", "evidenced_fixed")),
+        ("video_profile", "video", 4, ("none", "none", "evidenced_fixed")),
+    ],
+)
+def test_legacy_deployments_derive_transport_and_activation_metadata(
+    content_kind: str,
+    target_mode: str,
+    progress_total: int,
+    expected: tuple[str, str, str],
+) -> None:
+    item = LibraryItem.new(
+        "Legacy",
+        SingleEffect(0, 0, 50, ((255, 0, 0),)),
+    )
+    raw = DeploymentRecord(
+        operation_id=uuid4(),
+        config_entry_id="entry-a",
+        diy_code=24,
+        content_kind=content_kind,
+        phase=DeploymentPhase.CONFIRMED,
+        compiler_version=1,
+        artifact_sha256="0" * 64,
+        updated_at="2026-09-03T00:00:00+00:00",
+        target_mode=target_mode,
+        target_effect="dynamic 1" if target_mode == "scene" else None,
+        item_id=item.id,
+        item_version=item.version,
+        selector_label=item.name,
+        source_content_hash=item.content_hash,
+        progress_current=progress_total,
+        progress_total=progress_total,
+    ).to_dict()
+    for key in (
+        "upload_transport",
+        "activation_observation",
+        "activation_policy",
+        "overwrite_risk",
+        "activation_evidence",
+    ):
+        raw.pop(key)
+
+    restored = DeploymentRecord.from_dict(raw)
+
+    assert (
+        restored.upload_transport,
+        restored.activation_observation,
+        restored.activation_policy,
+    ) == expected
+    assert restored.overwrite_risk is False
+    assert restored.activation_evidence == ()
+
+
 def test_unsaved_apply_records_content_free_source_metadata() -> None:
     item = _item()
 

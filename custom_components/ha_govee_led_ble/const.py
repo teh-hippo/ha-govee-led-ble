@@ -3,6 +3,7 @@
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 DOMAIN = "ha_govee_led_ble"
@@ -31,12 +32,18 @@ EFFECT_CATEGORIES = (
 EFFECT_CATEGORY_CONTENT_KINDS = {
     EFFECT_CATEGORY_SCENES: frozenset({"scene_builtin", "scene_palette", "scene_layered"}),
     EFFECT_CATEGORY_VIDEO: frozenset({"video_profile"}),
-    EFFECT_CATEGORY_EFFECTS: frozenset({"h617a_painted", "h617a_single", "palette_diy"}),
-    EFFECT_CATEGORY_MULTI_LAYERED: frozenset({"h617a_multi"}),
+    EFFECT_CATEGORY_EFFECTS: frozenset({"h617a_painted", "h617a_single", "h6179_single_diy", "palette_diy"}),
+    EFFECT_CATEGORY_MULTI_LAYERED: frozenset({"h617a_multi", "h6179_mixed_diy"}),
     EFFECT_CATEGORY_REACTIVE: frozenset({"music_profile"}),
     EFFECT_CATEGORY_ADVANCED: frozenset({"advanced", "workshop"}),
 }
-_BLE_MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H[0-9A-Z]{4})(?:_|$)", re.IGNORECASE)
+_BLE_MODEL_PATTERN = re.compile(r"^(?:ihoment|Govee|GBK|GVH)_(H[0-9A-Z]{4})(?:_|$)", re.IGNORECASE)
+
+
+class StaticWriteVerificationPolicy(StrEnum):
+    DISABLED = "disabled"
+    STRICT = "strict"
+    OPTIONAL = "optional"
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,13 @@ class ModelProfile:
     name: str
     wire_model: str | None = None
     state_readable: bool = False
+    supports_notifications: bool = False
+    queryable_status_domains: frozenset[str] = frozenset()
+    setup_required_status_domains: frozenset[str] = frozenset()
+    provisional_status_domains: frozenset[str] = frozenset()
+    static_write_verification: StaticWriteVerificationPolicy = StaticWriteVerificationPolicy.DISABLED
+    supports_power: bool = False
+    supports_brightness: bool = False
     supports_rgb: bool = False
     supports_color_temperature: bool = False
     min_color_temp_kelvin: int = 2000
@@ -58,6 +72,12 @@ class ModelProfile:
     supports_white_balance: bool = False
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
+    supports_clock_sync: bool = False
+    supports_schedules: bool = False
+    supports_sleep: bool = False
+    supports_wake: bool = False
+    supports_limit_control: bool = False
+    supports_reactive_rgb: bool = False
     music_modes: tuple[str, ...] = ()
     music_sensitivity_min: int = 0
     music_sensitivity_max: int = 99
@@ -94,11 +114,20 @@ MUSIC_MODE_SLUGS: dict[str, int] = {
 
 _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 
+_CORE_STATUS_DOMAINS = frozenset({"power", "brightness"})
+_IDENTITY_STATUS_DOMAINS = frozenset({"firmware", "hardware"})
+
 
 _H617X_PROFILE = ModelProfile(
     "H617A/H617E LED Strip",
     wire_model="H617A",
     state_readable=True,
+    supports_notifications=True,
+    queryable_status_domains=_CORE_STATUS_DOMAINS | _IDENTITY_STATUS_DOMAINS | {"colour_mode", "segments"},
+    setup_required_status_domains=_CORE_STATUS_DOMAINS | {"colour_mode"},
+    static_write_verification=StaticWriteVerificationPolicy.STRICT,
+    supports_power=True,
+    supports_brightness=True,
     supports_rgb=True,
     supports_color_temperature=True,
     supports_color_mode_readback=True,
@@ -128,16 +157,58 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6076 Lyra Floor Lamp",
         wire_model="H617A",
         state_readable=True,
+        supports_notifications=True,
+        queryable_status_domains=_CORE_STATUS_DOMAINS | _IDENTITY_STATUS_DOMAINS,
+        setup_required_status_domains=_CORE_STATUS_DOMAINS,
+        static_write_verification=StaticWriteVerificationPolicy.STRICT,
+        supports_power=True,
+        supports_brightness=True,
         supports_rgb=True,
         supports_color_temperature=True,
         min_color_temp_kelvin=2700,
         max_color_temp_kelvin=6500,
         whole_device_mask=0x007F,
     ),
+    "H6179": ModelProfile(
+        "H6179 RGB TV Backlight",
+        wire_model="H6179",
+        state_readable=False,
+        supports_notifications=True,
+        queryable_status_domains=_CORE_STATUS_DOMAINS
+        | _IDENTITY_STATUS_DOMAINS
+        | {"mode", "schedules", "sleep", "wake", "limit"},
+        setup_required_status_domains=_CORE_STATUS_DOMAINS,
+        provisional_status_domains=frozenset({"mode", "schedules", "sleep", "wake", "limit"}),
+        static_write_verification=StaticWriteVerificationPolicy.OPTIONAL,
+        supports_power=True,
+        supports_brightness=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_color_mode_readback=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_multi_layered_effects=True,
+        supports_clock_sync=True,
+        supports_schedules=True,
+        supports_sleep=True,
+        supports_wake=True,
+        supports_limit_control=True,
+        supports_reactive_rgb=True,
+        music_modes=("mode_0", "mode_1"),
+        supports_music_color=True,
+    ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         wire_model="H6199",
         state_readable=True,
+        supports_notifications=True,
+        queryable_status_domains=_CORE_STATUS_DOMAINS
+        | _IDENTITY_STATUS_DOMAINS
+        | {"colour_mode", "subordinate_20", "subordinate_21", "display_setting", "relative_brightness", "segments"},
+        setup_required_status_domains=_CORE_STATUS_DOMAINS | {"colour_mode"},
+        static_write_verification=StaticWriteVerificationPolicy.STRICT,
+        supports_power=True,
+        supports_brightness=True,
         supports_rgb=True,
         supports_color_temperature=True,
         supports_color_mode_readback=True,

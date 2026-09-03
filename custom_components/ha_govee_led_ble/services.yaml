@@ -15,6 +15,63 @@ set_segment_brightness:
   fields:
     segments: {required: true, selector: {select: {multiple: true, options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]}}}
     brightness: {default: 100, selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+resync_clock:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+configure_schedule_slot:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+  fields:
+    slot: {required: true, selector: {number: {min: 1, max: 4, step: 1, mode: box}}}
+    action: {selector: {select: {options: ["on", "off"]}}}
+    time: {selector: {time:}}
+    repeat: {selector: {select: {options: ["one_time", "every_day", "selected_days"]}}}
+    weekdays:
+      selector:
+        select:
+          multiple: true
+          options:
+            - {value: monday, label: Monday}
+            - {value: tuesday, label: Tuesday}
+            - {value: wednesday, label: Wednesday}
+            - {value: thursday, label: Thursday}
+            - {value: friday, label: Friday}
+            - {value: saturday, label: Saturday}
+            - {value: sunday, label: Sunday}
+disable_schedule_slot:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+  fields:
+    slot: {required: true, selector: {number: {min: 1, max: 4, step: 1, mode: box}}}
+configure_sleep:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+  fields:
+    start_brightness: {selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+    duration_minutes: {selector: {number: {min: 0, max: 255, step: 1, unit_of_measurement: min}}}
+disable_sleep:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+configure_wake:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+  fields:
+    time: {selector: {time:}}
+    repeat: {selector: {select: {options: ["one_time", "every_day", "selected_days"]}}}
+    weekdays:
+      selector:
+        select:
+          multiple: true
+          options:
+            - {value: monday, label: Monday}
+            - {value: tuesday, label: Tuesday}
+            - {value: wednesday, label: Wednesday}
+            - {value: thursday, label: Thursday}
+            - {value: friday, label: Friday}
+            - {value: saturday, label: Saturday}
+            - {value: sunday, label: Sunday}
+    duration_minutes: {selector: {number: {min: 10, max: 60, step: 1, unit_of_measurement: min}}}
+    target_brightness: {selector: {number: {min: 10, max: 100, step: 1, unit_of_measurement: "%"}}}
+disable_wake:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+set_limit_control:
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+  fields:
+    enabled: {required: true, selector: {boolean:}}
 apply_custom_effect:
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
   fields:
@@ -22,3 +79,5 @@ apply_custom_effect:
       selector: {text:}
     effect_id:
       selector: {text:}
+    diy_code:
+      selector: {number: {min: 0, max: 65535, mode: box}}

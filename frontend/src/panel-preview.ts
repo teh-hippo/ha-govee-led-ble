@@ -17,6 +17,7 @@ export type PanelPreviewRequest = LivePreviewRequest &
         name: string;
         content: EffectContent;
         provenance?: PreviewSnapshotProvenance;
+        diyCode?: number;
       }
     | {
         kind: "scene";
@@ -31,6 +32,7 @@ export function snapshotPreviewRequest(
   content: EffectContent,
   persistDefault = false,
   provenance?: PreviewSnapshotProvenance,
+  diyCode?: number,
 ): PanelPreviewRequest {
   return {
     kind: "snapshot",
@@ -38,12 +40,14 @@ export function snapshotPreviewRequest(
     name,
     content,
     ...(provenance ? { provenance } : {}),
+    ...(diyCode === undefined ? {} : { diyCode }),
     fingerprint: JSON.stringify({
       configEntryId,
       name,
       content,
       provenance,
       persistDefault,
+      diyCode,
     }),
     persistDefault,
   };
@@ -313,15 +317,28 @@ export class EffectStudioPreviewSession {
       );
       return;
     }
-    await this.api.previewSnapshot(
-      this.sessionId,
-      sequence,
-      request.configEntryId,
-      request.name,
-      request.content,
-      request.persistDefault,
-      request.provenance,
-    );
+    if (request.diyCode === undefined) {
+      await this.api.previewSnapshot(
+        this.sessionId,
+        sequence,
+        request.configEntryId,
+        request.name,
+        request.content,
+        request.persistDefault,
+        request.provenance,
+      );
+    } else {
+      await this.api.previewSnapshot(
+        this.sessionId,
+        sequence,
+        request.configEntryId,
+        request.name,
+        request.content,
+        request.persistDefault,
+        request.provenance,
+        request.diyCode,
+      );
+    }
   }
 
   private acceptStatus(status: PreviewStatus): void {
