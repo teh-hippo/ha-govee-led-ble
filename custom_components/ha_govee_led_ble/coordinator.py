@@ -45,6 +45,7 @@ from .generated_protocol_adapter import (
     build_power,
     build_power_query,
     build_segment_query,
+    parse_command_result,
 )
 from .h6199_calibration import WHITE_BALANCE_RESET
 from .light_commands import (
@@ -845,6 +846,25 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
         self._last_rx_monotonic = time.monotonic()
+        if frame[:1] == b"\x33":
+            command = parse_command_result(frame, self.model)
+            outcome = "parsed" if command.parsed is not None else "rejected"
+            reason = "command_echo_parsed" if command.rejection is None else command.rejection.value
+            self._record_packet(
+                "rx",
+                frame,
+                outcome=outcome,
+                reason=reason,
+                parser=command.parser,
+            )
+            _LOGGER.debug(
+                "rx %s command echo parser=%s outcome=%s raw=%s",
+                self.model,
+                command.parser,
+                outcome,
+                frame.hex(),
+            )
+            return
         result = decode_status_frame_result(frame, self.model)
         decoded = result.parsed
         if decoded is None:

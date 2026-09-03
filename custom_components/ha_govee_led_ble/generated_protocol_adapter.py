@@ -209,8 +209,12 @@ def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
     return parse_status_result(frame, model).parsed
 
 
+def parse_command_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
+    return _parse_xor_frame(frame, model, _COMMAND_ROOTS)
+
+
 def parse_command(frame: bytes, model: str = "H617A") -> Any | None:
-    return _parse_xor_frame(frame, model, _COMMAND_ROOTS).parsed
+    return parse_command_result(frame, model).parsed
 
 
 def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:

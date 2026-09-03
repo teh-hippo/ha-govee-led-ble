@@ -870,6 +870,23 @@ def test_notify_callback_parses_full_frame_with_checksum(h6199):
     assert h6199.effect == "candlelight"
 
 
+def test_notify_callback_records_command_echoes_without_applying_status(coord, h6199):
+    for coordinator, model, parser in (
+        (coord, "H617A", "command_write"),
+        (h6199, "H6199", "h6199_command_write"),
+    ):
+        initial_state = coordinator.is_on
+        frame = build_power(not initial_state, model)
+
+        coordinator._notify_callback(None, bytearray(frame))
+
+        assert coordinator.is_on is initial_state
+        assert coordinator.packet_log[-1]["outcome"] == "parsed"
+        assert coordinator.packet_log[-1]["reason"] == "command_echo_parsed"
+        assert coordinator.packet_log[-1]["parser"] == parser
+        assert coordinator.packet_log[-1]["raw"] == frame.hex()
+
+
 def test_h6199_subordinate_versions_are_retained_without_querying_identity(h6199):
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x20, list(b"1.03.00"))))
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x21, list(b"1.00.33"))))
