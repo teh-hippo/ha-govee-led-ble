@@ -43,8 +43,13 @@ Name a module here only when something else in this file depends on knowing it e
 ## Protocol source of truth
 
 - Captures are ground truth.
-- `tools/ble/kaitai/*.ksy` is the only wire-structure source. Do not restate offsets,
+- `tools/ble/kaitai/**/*.ksy` is the only wire-structure source. Do not restate offsets,
   literals or enums elsewhere.
+- Evidence-backed H617A/H6199 schemas remain directly under `tools/ble/kaitai/`.
+  Exact-model hypotheses live under `tools/ble/kaitai/speculative/`, begin their top-level
+  `doc` with `SPECULATIVE`, and preserve uncertain bytes without invented validation.
+- Speculative runtime roots are allowed only when explicitly listed for an exact-model
+  prerelease. They do not qualify a model as Supported.
 - Unknown attributes follow official Kaitai style and omit `id`. `reserved` means known
   unused. Unparsed transport chunks are not protocol unknowns.
 - `govee_shared.ksy` contains structures independently exercised through both models;
@@ -57,4 +62,6 @@ Name a module here only when something else in this file depends on knowing it e
 - Generated Python in `custom_components/ha_govee_led_ble/generated_protocol/` is
   ignored and never edited manually.
 - After changing KSY, run `make protocol` and `make verify-protocol`.
+- Exact-SKU scene snapshots come from `tools/ble/refresh_scene_catalogues.py`. Catalogue
+  availability is official scene metadata, not proof of transport compatibility.
 - The public [`ios-ble-capture` methodology](https://github.com/teh-hippo/ios-ble-capture/blob/main/docs/methodology.md) describes capture, attribution and schema derivation.  This repository owns its KSY files and does not depend on that tool.

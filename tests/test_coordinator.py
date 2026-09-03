@@ -513,14 +513,19 @@ async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
 
 
 async def test_send_command(coord):
+    packet = proto.build_power(True)
     c = _c(write_gatt_char=AsyncMock(side_effect=[BleakError("f"), BleakError("f"), None]))
     with patch.object(coord, "_ensure_connected", return_value=c):
-        await coord.send_command(proto.build_power(True))
+        await coord.send_command(packet)
     assert c.write_gatt_char.call_count == 3
+    assert coord.packet_log[-1]["outcome"] == "sent"
+    assert coord.packet_log[-1]["reason"] == "write_succeeded"
+    assert coord.packet_log[-1]["raw"] == packet.hex()
     c2 = _c(write_gatt_char=AsyncMock(side_effect=BleakError("f")))
     with patch.object(coord, "_ensure_connected", return_value=c2), pytest.raises(BleakError):
-        await coord.send_command(proto.build_power(True))
+        await coord.send_command(packet)
     assert c2.write_gatt_char.call_count == 3 and coord._client is None
+    assert len(coord.packet_log) == 1
 
 
 async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord):
@@ -857,6 +862,10 @@ def test_notify_callback_parses_full_frame_with_checksum(h6199):
     cb = h6199._notify_callback
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x01, 0x00])))
     assert h6199.effect == "sunset"
+    assert h6199.packet_log[-1]["outcome"] == "parsed"
+    assert h6199.packet_log[-1]["reason"] == "status_parsed"
+    assert h6199.packet_log[-1]["parser"] == "h6199_status_reply"
+    assert h6199.packet_log[-1]["domain"] == "0x05"
     cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09])))
     assert h6199.effect == "candlelight"
 
@@ -2021,10 +2030,20 @@ async def test_preview_observation_does_not_repeat_silent_query(coord):
     assert not coord._control_lock.locked()
 
 
-def test_notify_callback_unknown_domain_ignored(h6199):
+def test_notify_callback_rejected_frame_is_retained_without_address(h6199, caplog):
     revision = h6199._domain_revisions.get(0x99, 0)
-    h6199._notify_callback(None, bytearray([0xAA, 0x99, 0x01, 0x00]))
+    frame = bytearray([0xAA, 0x99, 0x01, 0x00])
+    with caplog.at_level(logging.DEBUG, logger="custom_components.ha_govee_led_ble.coordinator"):
+        h6199._notify_callback(None, frame)
+
     assert h6199._domain_revisions.get(0x99, 0) == revision
+    assert h6199.packet_log[-1]["outcome"] == "rejected"
+    assert h6199.packet_log[-1]["reason"] == "invalid_length"
+    assert h6199.packet_log[-1]["domain"] == "0x99"
+    assert h6199.packet_log[-1]["raw"] == bytes(frame).hex()
+    assert "H6199" in caplog.text
+    assert "invalid_length" in caplog.text
+    assert h6199.address not in caplog.text
 
 
 def test_available_reflects_link_or_presence(coord):
@@ -2470,6 +2489,7 @@ def test_h6199_blank_screen_builder_clamps_durations() -> None:
 def test_generated_adapter_rejects_structurally_invalid_frames() -> None:
     assert parse_command(_packet(0x33, 0x04, [101])) is None
     assert parse_status(bytes.fromhex("aaa506731f646408646464fe6464640000000093")) is None
+    assert parse_command(_packet(0x33, 0x01, [1]), "H9999") is None
 
 
 @pytest.mark.parametrize(("model", "maximum"), [("H617A", 5), ("H6199", 4)])

@@ -28,7 +28,7 @@ SceneBody = cast(
 API_URL = "https://app2.govee.com/appsku/v1/light-effect-libraries"
 APP_VERSION = "9999999"
 SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_ble" / "scene_catalogues"
-DEFAULT_SKUS = ("H617A", "H6199")
+DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
 # Glacier's current iOS application was captured rewriting the two stored 0xff movement
 # bytes to the catalogue's default value 250 when applying the scene.

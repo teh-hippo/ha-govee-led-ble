@@ -16,7 +16,7 @@ PROTOCOL_ROOTS_FILE := scripts/kaitai-runtime-roots.txt
 PROTOCOL_OUTPUTS_FILE := scripts/kaitai-runtime-outputs.txt
 PROTOCOL_OUTPUT_NAMES := $(shell sed -e '/^[[:space:]]*$$/d' -e '/^[[:space:]]*#/d' $(PROTOCOL_OUTPUTS_FILE))
 PROTOCOL_OUTPUTS := $(addprefix $(PROTOCOL_DIR)/,$(PROTOCOL_OUTPUT_NAMES))
-PROTOCOL_INPUTS := $(sort $(wildcard tools/ble/kaitai/*.ksy)) scripts/generate-kaitai.sh $(PROTOCOL_ROOTS_FILE) $(PROTOCOL_OUTPUTS_FILE) mise.toml Makefile
+PROTOCOL_INPUTS := $(sort $(shell find tools/ble/kaitai -type f -name '*.ksy' -print)) scripts/generate-kaitai.sh $(PROTOCOL_ROOTS_FILE) $(PROTOCOL_OUTPUTS_FILE) mise.toml Makefile
 
 FRONTEND_MANIFEST := $(FRONTEND_OUTPUT_DIR)/manifest.json
 FRONTEND_BOOTSTRAP := $(FRONTEND_OUTPUT_DIR)/effect-studio-bootstrap.js

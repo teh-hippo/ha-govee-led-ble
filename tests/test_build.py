@@ -70,6 +70,10 @@ def build_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     _write(root / "scripts/kaitai-runtime-outputs.txt", "__init__.py\nsample.py\n")
     _write(root / "tools/ble/kaitai/sample.ksy", "meta:\n  id: sample\n")
     _write(root / "tools/ble/kaitai/shared.ksy", "meta:\n  id: shared\n")
+    _write(
+        root / "tools/ble/kaitai/speculative/candidate.ksy",
+        "meta:\n  id: candidate\ndoc: SPECULATIVE fixture\n",
+    )
 
     integration = root / "custom_components/ha_govee_led_ble"
     _write(integration / "__init__.py", 'DOMAIN = "ha_govee_led_ble"\n')
@@ -245,6 +249,27 @@ def test_build_is_incremental_and_rebuilds_missing_outputs(build_repo: tuple[Pat
     _make(root, env, "frontend")
     assert bootstrap.read_bytes() != bootstrap_content
     assert manifest.stat().st_mtime_ns > manifest_mtime
+
+
+def test_protocol_build_tracks_and_generates_nested_roots(build_repo: tuple[Path, dict[str, str]]) -> None:
+    root, env = build_repo
+    _write(root / "scripts/kaitai-runtime-roots.txt", "speculative/candidate\n")
+    _write(root / "scripts/kaitai-runtime-outputs.txt", "__init__.py\ncandidate.py\n")
+
+    _make(root, env, "protocol")
+
+    generated = root / "custom_components/ha_govee_led_ble/generated_protocol"
+    candidate = generated / "candidate.py"
+    assert candidate.is_file()
+    assert not (generated / "sample.py").exists()
+
+    first_mtime = candidate.stat().st_mtime_ns
+    source = root / "tools/ble/kaitai/speculative/candidate.ksy"
+    source.write_text("meta:\n  id: candidate\ndoc: SPECULATIVE changed fixture\n", encoding="utf-8")
+    _make(root, env, "protocol")
+    assert candidate.stat().st_mtime_ns > first_mtime
+
+    _make(root, env, "verify-protocol")
 
 
 def test_verification_rejects_modified_and_extra_outputs(build_repo: tuple[Path, dict[str, str]]) -> None:

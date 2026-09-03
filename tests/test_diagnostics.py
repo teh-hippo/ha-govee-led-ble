@@ -149,6 +149,17 @@ async def test_last_rx_aa05_from_packet_log(mock_h6199_coordinator, packet_log, 
     assert diag["coordinator"]["packet_log"] == packet_log
 
 
+async def test_last_rx_aa05_ignores_rejected_frames(mock_h6199_coordinator):
+    packet_log = [
+        {"dir": "rx", "raw": "aa05aaaa", "outcome": "parsed"},
+        {"dir": "rx", "raw": "aa05bbbb", "outcome": "rejected"},
+    ]
+
+    diag = await _run(_prep(mock_h6199_coordinator, packet_log=packet_log))
+
+    assert diag["coordinator"]["last_rx_aa05_raw"] == "aa05aaaa"
+
+
 @pytest.mark.parametrize(
     ("client_connected", "expected_connected"),
     [

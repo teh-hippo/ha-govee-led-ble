@@ -204,10 +204,22 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
     ("sku", "categories", "effects", "digest"),
     [
         (
+            "H6076",
+            6,
+            110,
+            "9ad4449bfa310169928a791ccacf6b052a92a6b4263f6e4038cf13b8283c57b3",
+        ),
+        (
             "H617A",
             5,
             83,
             "4e76c0bc2057f293ffa73f3540110fb9e978829c0f0d4edde62207a1912c8a35",
+        ),
+        (
+            "H617E",
+            12,
+            240,
+            "495fd8cce44d10b821d3e818a0ffeab657eb03b1665fe6301c33d8ba0036c0db",
         ),
         (
             "H6199",

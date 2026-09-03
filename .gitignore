@@ -17,5 +17,5 @@ frontend/node_modules/
 
 # Working breadcrumb for the in-flight protocol phase. Never source of truth:
 # the worklist lives in the session todo store and the verified structure lives
-# in tools/ble/kaitai/*.ksy. Archived to the session workspace when a phase ends.
+# in tools/ble/kaitai/**/*.ksy. Archived to the session workspace when a phase ends.
 plan.md

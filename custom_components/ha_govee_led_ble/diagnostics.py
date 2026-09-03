@@ -25,7 +25,10 @@ async def async_get_config_entry_diagnostics(
         (
             raw
             for e in reversed(packet_log)
-            if e.get("dir") == "rx" and isinstance((raw := e.get("raw")), str) and raw.startswith("aa05")
+            if e.get("dir") == "rx"
+            and e.get("outcome") in {None, "parsed"}
+            and isinstance((raw := e.get("raw")), str)
+            and raw.startswith("aa05")
         ),
         None,
     )

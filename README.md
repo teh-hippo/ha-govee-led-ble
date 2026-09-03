@@ -12,11 +12,11 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | Model | Status | Controls and limitations | Evidence |
 | --- | --- | --- | --- |
 | **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio | Repository Kaitai schemas and physical qualification |
-| **H617E** | Supported | H617A-compatible controls, scenes, effects and music modes | H617A-compatible profile and physical owner feedback |
+| **H617E** | Compatible | Owner-confirmed H617A-compatible controls, scenes, effects and music modes; exact-model protocol documentation remains incomplete | Physical owner feedback and a speculative H617A compatibility alias |
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
-| **H6076** | Partial | Confirmed power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) |
+| **H6076** | Partial | Confirmed power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) and a speculative H617A compatibility alias |
 
-**Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, prerelease and promotion process.
+**Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded and evidence-backed Kaitai coverage for every enabled wire path.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, speculative-schema, prerelease and promotion process.
 
 ## Effect Studio
 
@@ -121,6 +121,8 @@ make package
 Physical and isolated Home Assistant qualification belongs to the published [`ha-test-harness`](https://github.com/teh-hippo/ha-test-harness).  This repository does not contain privileged lab, household identity or provisioning implementations.
 
 The public [`ios-ble-capture` methodology](https://github.com/teh-hippo/ios-ble-capture/blob/main/docs/methodology.md) documents the iPhone capture, peer attribution and target-owned Kaitai workflow used when adding or revisiting a model.  This repository owns its schemas and protocol findings and has no build or runtime dependency on that tooling.
+
+Exact-model contributions without captures begin under [`tools/ble/kaitai/speculative/`](tools/ble/kaitai/speculative/README.md).  Speculative schemas compile through the normal Kaitai build, but do not qualify a model as Supported.
 
 The production frontend has two generated outputs: `effect-studio-bootstrap.js` and `manifest.json`.  Home Assistant serves them without cache headers, while `editor-loader.js` validates the manifest and retains the stable fallback module.
 

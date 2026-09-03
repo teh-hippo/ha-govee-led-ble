@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import math
+from dataclasses import dataclass
+from enum import StrEnum
 from importlib import import_module
 from typing import Any, cast
 
@@ -79,6 +81,20 @@ class SceneParameterTooLargeError(ValueError):
     """A built scene exceeds the byte limits the generated A3 fields can encode."""
 
 
+class ProtocolParseRejection(StrEnum):
+    INVALID_LENGTH = "invalid_length"
+    INVALID_CHECKSUM = "invalid_checksum"
+    UNSUPPORTED_MODEL = "unsupported_model"
+    SCHEMA_REJECTED = "schema_rejected"
+
+
+@dataclass(frozen=True, slots=True)
+class ProtocolParseResult:
+    parsed: Any | None
+    parser: str | None
+    rejection: ProtocolParseRejection | None
+
+
 DIY_PAINTED_EFFECTS = frozenset(DiyType03.Effect.__members__)
 
 _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS = 10
@@ -151,34 +167,50 @@ def _serialize_xor(root: Any, length: int = 20) -> bytes:
     return _write(root, length)
 
 
-def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
-    if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
-        return None
+_STATUS_ROOTS = {
+    "H617A": ("status_reply", StatusReply),
+    "H6199": ("h6199_status_reply", H6199StatusReply),
+}
+_COMMAND_ROOTS = {
+    "H617A": ("command_write", CommandWrite),
+    "H6199": ("h6199_command_write", H6199CommandWrite),
+}
+
+
+def _parse_xor_frame(
+    frame: bytes,
+    model: str,
+    roots: dict[str, tuple[str, Any]],
+) -> ProtocolParseResult:
+    if len(frame) != 20:
+        return ProtocolParseResult(None, None, ProtocolParseRejection.INVALID_LENGTH)
+    if xor_checksum(frame[:-1]) != frame[-1]:
+        return ProtocolParseResult(None, None, ProtocolParseRejection.INVALID_CHECKSUM)
     resolved = wire_model(model)
     if resolved is None:
-        return None
-    root_type = H6199StatusReply if resolved == "H6199" else StatusReply
+        return ProtocolParseResult(None, None, ProtocolParseRejection.UNSUPPORTED_MODEL)
+    root = roots.get(resolved)
+    if root is None:
+        return ProtocolParseResult(None, None, ProtocolParseRejection.UNSUPPORTED_MODEL)
+    parser, root_type = root
     try:
         parsed = root_type(KaitaiStream(io.BytesIO(frame)))
         parsed._read()
     except KaitaiStructError, UnicodeDecodeError:
-        return None
-    return parsed
+        return ProtocolParseResult(None, parser, ProtocolParseRejection.SCHEMA_REJECTED)
+    return ProtocolParseResult(parsed, parser, None)
+
+
+def parse_status_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
+    return _parse_xor_frame(frame, model, _STATUS_ROOTS)
+
+
+def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
+    return parse_status_result(frame, model).parsed
 
 
 def parse_command(frame: bytes, model: str = "H617A") -> Any | None:
-    if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
-        return None
-    resolved = wire_model(model)
-    if resolved is None:
-        return None
-    root_type = H6199CommandWrite if resolved == "H6199" else CommandWrite
-    try:
-        parsed = root_type(KaitaiStream(io.BytesIO(frame)))
-        parsed._read()
-    except KaitaiStructError, UnicodeDecodeError:
-        return None
-    return parsed
+    return _parse_xor_frame(frame, model, _COMMAND_ROOTS).parsed
 
 
 def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:

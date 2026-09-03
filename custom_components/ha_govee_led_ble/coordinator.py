@@ -29,7 +29,7 @@ from .const import (
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_expectations import expectations_from_packet
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin, music_params_for_mode
-from .coordinator_status import ParsedMode, StatusDomain, decode_status_frame, parse_color_mode
+from .coordinator_status import ParsedMode, StatusDomain, decode_status_frame_result, parse_color_mode
 from .effect_commands import build_h617a_diy_activation
 from .effect_deployments import PriorControlState
 from .generated_protocol_adapter import (
@@ -844,14 +844,38 @@ class GoveeBLECoordinator(_ActiveModeMixin):
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
-        decoded = decode_status_frame(frame, self.model)
+        self._last_rx_monotonic = time.monotonic()
+        result = decode_status_frame_result(frame, self.model)
+        decoded = result.parsed
         if decoded is None:
+            reason = result.rejection.value if result.rejection is not None else "schema_rejected"
+            self._record_packet(
+                "rx",
+                frame,
+                outcome="rejected",
+                reason=reason,
+                parser=result.parser,
+                domain=frame[1] if len(frame) > 1 and frame[0] == 0xAA else None,
+            )
+            _LOGGER.debug(
+                "Rejected %s status frame parser=%s reason=%s raw=%s",
+                self.model,
+                result.parser,
+                reason,
+                frame.hex(),
+            )
             return
         domain, payload = decoded.domain, decoded.payload
         generated = decoded.generated
-        self._record_packet("rx", frame)
-        self._last_rx_monotonic = time.monotonic()
-        _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.address, decoded.raw_domain, payload.hex())
+        packet_entry = self._record_packet(
+            "rx",
+            frame,
+            outcome="parsed",
+            reason="status_parsed",
+            parser=result.parser,
+            domain=decoded.raw_domain,
+        )
+        _LOGGER.debug("rx %s domain=0x%02x payload=%s", self.model, decoded.raw_domain, payload.hex())
         try:
             observed: tuple[str, ...] = ()
             if domain is StatusDomain.POWER:
@@ -933,7 +957,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self._mark_received(domain, *observed)
             self.async_set_updated_data(self.data or {})
         except IndexError, ValueError:
-            _LOGGER.debug("Failed to parse notify from %s: %s", self.address, data.hex())
+            packet_entry["outcome"] = "rejected"
+            packet_entry["reason"] = "semantic_rejected"
+            _LOGGER.debug(
+                "Rejected %s status frame parser=%s reason=semantic_rejected raw=%s",
+                self.model,
+                result.parser,
+                frame.hex(),
+            )
 
     async def _send_state_queries(
         self,
@@ -977,8 +1008,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     build_segment_query(group, self.model) for group in range(1, self._segment_group_count + 1)
                 )
             for query in queries:
-                self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
+                self._record_packet("tx", query, outcome="sent", reason="write_succeeded")
             return True
         except BleakError:
             return False
@@ -1005,8 +1036,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         queries = [q for q, value in candidates if value is None]
         try:
             for query in queries:
-                self._record_packet("tx", query)
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
+                self._record_packet("tx", query, outcome="sent", reason="write_succeeded")
         except BleakError:
             _LOGGER.debug("Identity query failed for %s", self.address)
 
@@ -1285,9 +1316,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 client = self._client
                 if client is None or not client.is_connected:
                     raise BleakError(f"Device {self.address} disconnected during preview")
-                self._record_packet("tx", packet)
                 self._arm_expected(packet)
                 await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                self._record_packet("tx", packet, outcome="sent", reason="write_succeeded")
                 self._renew_foreground_lease()
 
     async def async_write_effect_sequence(
@@ -1315,13 +1346,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         if before_write is not None:
                             await before_write()
                         for index, packet in enumerate(packets, start=1):
-                            self._record_packet("tx", packet)
                             self._arm_expected(packet)
                             await client.write_gatt_char(
                                 WRITE_UUID,
                                 packet,
                                 response=False,
                             )
+                            self._record_packet("tx", packet, outcome="sent", reason="write_succeeded")
                             self._renew_foreground_lease()
                             if progress is not None:
                                 await progress(index)
@@ -1474,9 +1505,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 for attempt in range(3):
                     try:
                         client = await self._ensure_connected()
-                        self._record_packet("tx", packet)
                         self._arm_expected(packet)
                         await client.write_gatt_char(WRITE_UUID, packet, response=False)
+                        self._record_packet(
+                            "tx",
+                            packet,
+                            outcome="sent",
+                            reason="write_succeeded",
+                        )
                         self._renew_foreground_lease()
                         return
                     except BleakError as err:
@@ -1546,23 +1582,36 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         await self.async_refresh_segments()
         self.async_set_updated_data(self.data or {})
 
-    def _record_packet(self, direction: str, data: bytes) -> None:
+    def _record_packet(
+        self,
+        direction: str,
+        data: bytes,
+        *,
+        outcome: str,
+        reason: str,
+        parser: str | None = None,
+        domain: int | None = None,
+    ) -> dict[str, Any]:
         if not data:
-            return
+            return {}
         header = data[0]
         action = data[1] if len(data) > 1 else None
-        self.packet_log.append(
-            {
-                "ts": datetime.now().isoformat(),
-                "dir": direction,
-                "header": f"0x{header:02x}",
-                "action": f"0x{action:02x}" if action is not None else None,
-                "raw": data[:PACKET_LOG_RAW_BYTES_LIMIT].hex(),
-                "truncated": len(data) > PACKET_LOG_RAW_BYTES_LIMIT,
-            }
-        )
+        entry = {
+            "ts": datetime.now().isoformat(),
+            "dir": direction,
+            "header": f"0x{header:02x}",
+            "action": f"0x{action:02x}" if action is not None else None,
+            "domain": f"0x{domain:02x}" if domain is not None else None,
+            "outcome": outcome,
+            "reason": reason,
+            "parser": parser,
+            "raw": data[:PACKET_LOG_RAW_BYTES_LIMIT].hex(),
+            "truncated": len(data) > PACKET_LOG_RAW_BYTES_LIMIT,
+        }
+        self.packet_log.append(entry)
         if len(self.packet_log) > PACKET_LOG_LIMIT:
             del self.packet_log[:-PACKET_LOG_LIMIT]
+        return entry
 
     async def disconnect(
         self,

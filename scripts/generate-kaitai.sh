@@ -49,10 +49,7 @@ case "$mode" in
       exit 2
     fi
     output="$2"
-    specs=()
-    for spec in "$kaitai"/*.ksy; do
-      specs+=("${spec##*/}")
-    done
+    mapfile -d '' -t specs < <(find "$kaitai" -type f -name '*.ksy' -printf '%P\0' | LC_ALL=C sort -z)
     package_args=()
     ;;
   *)
@@ -93,6 +90,10 @@ if [[ "$mode" == runtime ]]; then
   fi
 else
   mapfile -t expected < <(find "$stage" -maxdepth 1 -type f -name '*.py' -printf '%f\n' | LC_ALL=C sort)
+  if ((${#expected[@]} != ${#specs[@]})); then
+    echo "all-schema generation produced ${#expected[@]} modules from ${#specs[@]} schemas; check duplicate meta.id values" >&2
+    exit 1
+  fi
 fi
 
 for filename in "${expected[@]}"; do

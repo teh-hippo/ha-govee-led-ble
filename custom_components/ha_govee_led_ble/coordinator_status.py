@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any
+from typing import Any, cast
 
 from .const import MUSIC_MODE_SLUGS
-from .generated_protocol_adapter import parse_status
+from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
 from .scenes import MODEL_SCENES
 
 _MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
@@ -54,17 +54,26 @@ class ParsedStatusEnvelope:
     generated: Any
 
 
+def decode_status_frame_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
+    result = parse_status_result(frame, model)
+    if result.parsed is None:
+        return result
+    generated = result.parsed
+    return ProtocolParseResult(
+        ParsedStatusEnvelope(
+            domain=_STATUS_DOMAIN_NAMES.get(getattr(generated.domain, "name", ""), StatusDomain.OTHER),
+            raw_domain=int(generated.domain),
+            payload=bytes(frame[2:-1]),
+            generated=generated,
+        ),
+        result.parser,
+        None,
+    )
+
+
 def decode_status_frame(frame: bytes, model: str = "H617A") -> ParsedStatusEnvelope | None:
     """Parse one fixed-size status notification with its model-specific Kaitai class."""
-    parsed = parse_status(frame, model)
-    if parsed is None:
-        return None
-    return ParsedStatusEnvelope(
-        domain=_STATUS_DOMAIN_NAMES.get(getattr(parsed.domain, "name", ""), StatusDomain.OTHER),
-        raw_domain=int(parsed.domain),
-        payload=bytes(frame[2:-1]),
-        generated=parsed,
-    )
+    return cast(ParsedStatusEnvelope | None, decode_status_frame_result(frame, model).parsed)
 
 
 class ParsedMode(Enum):

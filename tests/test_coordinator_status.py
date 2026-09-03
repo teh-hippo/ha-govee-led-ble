@@ -7,8 +7,10 @@ from custom_components.ha_govee_led_ble.coordinator_status import (
     ParsedMode,
     StatusDomain,
     decode_status_frame,
+    decode_status_frame_result,
     parse_color_mode,
 )
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 H = bytes.fromhex
@@ -28,9 +30,28 @@ def test_status_envelope_rejects_invalid_frames() -> None:
     assert decode_status_frame(bytes(bad_checksum)) is None
 
 
+def test_status_rejections_expose_stable_reasons_and_fail_closed() -> None:
+    assert decode_status_frame_result(b"").rejection is ProtocolParseRejection.INVALID_LENGTH
+
+    bad_checksum = bytearray(H("aa05049d0800000000000000000000000000003e"))
+    bad_checksum[-1] ^= 1
+    assert decode_status_frame_result(bytes(bad_checksum)).rejection is ProtocolParseRejection.INVALID_CHECKSUM
+
+    unsupported = decode_status_frame_result(H("aa05049d0800000000000000000000000000003e"), "H9999")
+    assert unsupported.parser is None
+    assert unsupported.rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
+
+    invalid_shape = decode_status_frame_result(H("aaa506731f646408646464fe6464640000000093"))
+    assert invalid_shape.parser == "status_reply"
+    assert invalid_shape.rejection is ProtocolParseRejection.SCHEMA_REJECTED
+
+
 def test_status_envelope_exposes_semantic_domain() -> None:
-    decoded = decode_status_frame(H("aa05049d0800000000000000000000000000003e"))
+    result = decode_status_frame_result(H("aa05049d0800000000000000000000000000003e"))
+    decoded = result.parsed
     assert decoded is not None
+    assert result.parser == "status_reply"
+    assert result.rejection is None
     assert decoded.domain is StatusDomain.COLOUR_MODE
     assert decoded.raw_domain == 0x05
 
