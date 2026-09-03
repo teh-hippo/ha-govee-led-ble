@@ -109,6 +109,46 @@ test("multi defaults retain a compatible fallback without Flow", () => {
   ]);
 });
 
+test("H6179 DIY defaults and clones retain their distinct wire shapes", () => {
+  const h6179Catalogue: ModelEffectCatalogue = {
+    ...catalogue,
+    sku: "H6179",
+    effects: [
+      {
+        ...catalogue.effects[0],
+        family: 0,
+        variations: [{ id: "default", label: "Default", variant: 0 }],
+      },
+    ],
+    supports: {
+      multi: "supported",
+      advanced: "unsupported",
+      workshop: "unsupported",
+    },
+  };
+  const single = blankCustomEffect("h6179_single_diy", h6179Catalogue);
+  const mixed = blankCustomEffect("h6179_mixed_diy", h6179Catalogue);
+  const cloned = cloneEditableEffect(mixed);
+
+  expect(single).toMatchObject({
+    kind: "h6179_single_diy",
+    model: "H6179",
+    family: 0,
+    variant: 0,
+  });
+  expect(mixed).toMatchObject({
+    kind: "h6179_mixed_diy",
+    model: "H6179",
+    components: [{ family: 0, variant: 0 }],
+  });
+  if (cloned.kind !== "h6179_mixed_diy") {
+    throw new Error("Expected an H6179 mixed DIY clone.");
+  }
+  cloned.components[0].family = 2;
+  expect(mixed.components[0].family).toBe(0);
+  expect(customEffectCategoryForKind(mixed.kind)).toBe("multi-layer");
+});
+
 test("painted content keeps Off separate from RGB black", () => {
   const content: PaintedContent = {
     kind: "h617a_painted",

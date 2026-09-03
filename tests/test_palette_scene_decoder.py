@@ -96,7 +96,7 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
         if not get_profile(sku).supports_scenes:
             continue
         for entry in entries:
-            if entry.scene_type != 1:
+            if entry.scene_type != 1 or entry.selector_only:
                 continue
             raw_param = base64.b64decode(entry.param, validate=True)
             decoded = decode_catalogue_palette_scene(sku, entry)
@@ -111,7 +111,12 @@ def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
     for model, entries in SCENE_ENTRIES.items():
         if not get_profile(model).supports_scenes:
             continue
-        entry = next(scene for scene in entries if scene.scene_type == 1)
+        entry = next(
+            (scene for scene in entries if scene.scene_type == 1 and not scene.selector_only),
+            None,
+        )
+        if entry is None:
+            continue
         decoded = decode_catalogue_palette_scene(model, entry)
         assert decoded is not None
 

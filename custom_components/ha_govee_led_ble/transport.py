@@ -9,6 +9,13 @@ READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 _A3_FRAME_PREFIX = 0xA3
 A3_CHUNK_SIZE = 17
 
+_H6179_A1_PREFIX = 0xA1
+_H6179_A1_COM_TYPE = 0x02
+H6179_A1_02_CHUNK_SIZE = 16
+H6179_A1_02_MAX_DATA_FRAMES = 0xFF
+H6179_A1_02_MAX_BODY_SIZE = H6179_A1_02_CHUNK_SIZE * H6179_A1_02_MAX_DATA_FRAMES
+H6179_A1_02_MAX_FRAME_COUNT = H6179_A1_02_MAX_DATA_FRAMES + 2
+
 
 def xor_checksum(data: bytes | bytearray) -> int:
     checksum = 0
@@ -22,6 +29,68 @@ def _a3_frame(index: int, chunk: bytes) -> bytes:
     packet = (packet + bytearray(19 - len(packet)))[:19]
     packet.append(xor_checksum(packet))
     return bytes(packet)
+
+
+def _h6179_a1_02_frame(index: int, chunk: bytes = b"") -> bytes:
+    packet = bytearray([_H6179_A1_PREFIX, _H6179_A1_COM_TYPE, index, *chunk])
+    packet.extend(bytes(19 - len(packet)))
+    packet.append(xor_checksum(packet))
+    return bytes(packet)
+
+
+def fragment_h6179_a1_02(body: bytes) -> list[bytes]:
+    """Fragment an H6179 protocol-1.1 DIY body into A1 command-02 frames."""
+    if not isinstance(body, bytes) or not body:
+        raise ValueError("H6179 A1 02 body must be non-empty bytes")
+    if len(body) > H6179_A1_02_MAX_BODY_SIZE:
+        raise ValueError(f"H6179 A1 02 body exceeds {H6179_A1_02_MAX_BODY_SIZE} bytes")
+
+    chunks = [body[index : index + H6179_A1_02_CHUNK_SIZE] for index in range(0, len(body), H6179_A1_02_CHUNK_SIZE)]
+    return [
+        _h6179_a1_02_frame(0, bytes([len(chunks)])),
+        *(_h6179_a1_02_frame(index, chunk) for index, chunk in enumerate(chunks, 1)),
+        _h6179_a1_02_frame(0xFF),
+    ]
+
+
+def reassemble_h6179_a1_02(frames: Sequence[bytes]) -> bytes:
+    """Validate H6179 A1 command-02 frames and return the padded DIY body."""
+    if not frames:
+        raise ValueError("H6179 A1 02 reassembly requires a non-empty frame sequence")
+    if len(frames) > H6179_A1_02_MAX_FRAME_COUNT:
+        raise ValueError(f"H6179 A1 02 transfer exceeds {H6179_A1_02_MAX_FRAME_COUNT} frames")
+
+    for position, frame in enumerate(frames):
+        if not isinstance(frame, bytes) or len(frame) != 20:
+            raise ValueError(f"H6179 A1 02 frame {position} must be exactly 20 bytes")
+        if frame[:2] != bytes([_H6179_A1_PREFIX, _H6179_A1_COM_TYPE]):
+            raise ValueError(f"frame {position} is not an H6179 A1 02 frame")
+        if xor_checksum(frame[:19]) != frame[19]:
+            raise ValueError(f"H6179 A1 02 frame {position} has an invalid checksum")
+
+    start = frames[0]
+    final = frames[-1]
+    if start[2] != 0:
+        raise ValueError("H6179 A1 02 transfer has no start frame")
+    if any(start[4:19]):
+        raise ValueError("H6179 A1 02 start frame has non-zero reserved bytes")
+    if final[2] != 0xFF:
+        raise ValueError("H6179 A1 02 transfer has no final frame")
+    if any(final[3:19]):
+        raise ValueError("H6179 A1 02 final frame has non-zero reserved bytes")
+
+    declared = start[3]
+    if declared == 0:
+        raise ValueError("H6179 A1 02 start frame declares no data frames")
+    data_frames = frames[1:-1]
+    if len(data_frames) != declared:
+        raise ValueError(f"H6179 A1 02 start frame declares {declared} data frames, received {len(data_frames)}")
+
+    for expected_index, frame in enumerate(data_frames, 1):
+        if frame[2] != expected_index:
+            raise ValueError(f"H6179 A1 02 data frame {expected_index} has index {frame[2]}, expected {expected_index}")
+
+    return b"".join(frame[3:19] for frame in data_frames)
 
 
 def fragment_a3(type_byte: int, body: bytes, *, terminator: bool = False) -> list[bytes]:

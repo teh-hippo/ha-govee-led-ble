@@ -19,6 +19,8 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     EffectPair,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
     LibraryItem,
     MultiEffect,
     PaintedEffect,
@@ -28,6 +30,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import (
     UnsupportedA3EffectError,
     decode_a3_effect,
+    decode_effect_frames,
 )
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type04 import DiyType04
@@ -58,6 +61,12 @@ H6199_CONTENT = PaletteDiyEffect(
     "H6199",
     9,
     9,
+    50,
+    ((255, 0, 0), (0, 0, 255)),
+)
+H6179_CONTENT = H6179MixedDiyEffect(
+    "H6179",
+    (EffectPair(0, 0), EffectPair(2, 0)),
     50,
     ((255, 0, 0), (0, 0, 255)),
 )
@@ -146,6 +155,43 @@ def test_h6199_activation_encoder_uses_workshop_slot() -> None:
     expected = bytes.fromhex("33050491010200000000000000000000000000a0")
 
     assert proto.build_h6199_palette_diy_activation(401, 2) == expected
+
+
+def test_h6179_compiler_uses_a1_transport_and_approved_activation_code() -> None:
+    compiled = compile_effect(
+        LibraryItem.new("H6179 DIY", H6179_CONTENT),
+        "H6179",
+        diy_code=0x1234,
+    )
+
+    assert compiled.upload_transport == "h6179_a1_02"
+    assert compiled.activation_packet == H("33050a341200000000000000000000000000001a")
+    assert (
+        decode_effect_frames(
+            compiled.upload_packets,
+            compiled.model,
+            compiled.upload_transport,
+        )
+        == H6179_CONTENT
+    )
+
+
+def test_h6179_single_diy_round_trips_through_semantic_codec() -> None:
+    content = H6179SingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))
+    compiled = compile_effect(
+        LibraryItem.new("H6179 single", content),
+        "H6179",
+        diy_code=1,
+    )
+
+    assert (
+        decode_effect_frames(
+            compiled.upload_packets,
+            compiled.model,
+            compiled.upload_transport,
+        )
+        == content
+    )
 
 
 def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palette() -> None:

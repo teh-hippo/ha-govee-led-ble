@@ -1,5 +1,6 @@
 """Capture-backed music parameter encoding."""
 
+from .music_protocol import music_mode_has_parameter_write
 from .transport import fragment_a3
 
 _MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
@@ -21,8 +22,11 @@ def build_music_params(
     mode: int,
     overrides: dict[int, int],
     palette: list[tuple[int, int, int]] | None = None,
+    model: str = "H617A",
 ) -> list[bytes]:
     """Overlay decoded fields on a captured per-mode template and fragment it."""
+    if not music_mode_has_parameter_write(model, mode) and model not in {"H617A", "H617E"}:
+        return []
     body = bytearray(_MUSIC_PARAM_TEMPLATE[mode])
     if palette is not None:
         if len(palette) != _MUSIC_PARAM_COUNT[mode]:

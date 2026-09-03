@@ -64,6 +64,7 @@ H617A_SEGMENT_COUNT = 15
 
 PALETTE_CONFIG_RESERVED_MASK = 0x08
 VIDEO_PROFILE_MODES = frozenset({"movie", "game"})
+H6179_DIY_EFFECT_PAIRS = frozenset({(0, 0), (1, 0), (2, 0)})
 
 type RGB = tuple[int, int, int]
 type JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
@@ -264,6 +265,53 @@ class EffectPair:
         _validate_byte(self.variant, "effect variant")
 
 
+def _validate_h6179_diy_model(model: str) -> None:
+    _validate_identifier(model, "H6179 DIY model")
+    if model != "H6179":
+        raise EffectValidationError("H6179 DIY content must target model 'H6179'")
+
+
+def _validate_h6179_diy_effect(family: int, variant: int) -> None:
+    _validate_byte(family, "family")
+    _validate_byte(variant, "variant")
+    if (family, variant) not in H6179_DIY_EFFECT_PAIRS:
+        raise EffectValidationError(f"unsupported H6179 DIY family/variant pair ({family}, {variant})")
+
+
+@dataclass(frozen=True, slots=True)
+class H6179SingleDiyEffect:
+    model: str
+    family: int
+    variant: int
+    speed: int
+    palette: tuple[RGB, ...]
+
+    def __post_init__(self) -> None:
+        _validate_h6179_diy_model(self.model)
+        _validate_h6179_diy_effect(self.family, self.variant)
+        _validate_percent(self.speed, "speed")
+        _validate_palette(self.palette)
+
+
+@dataclass(frozen=True, slots=True)
+class H6179MixedDiyEffect:
+    model: str
+    components: tuple[EffectPair, ...]
+    speed: int
+    palette: tuple[RGB, ...]
+
+    def __post_init__(self) -> None:
+        _validate_h6179_diy_model(self.model)
+        if not 1 <= len(self.components) <= MAX_MULTI_EFFECTS:
+            raise EffectValidationError(f"mixed DIY must contain 1 to {MAX_MULTI_EFFECTS} components")
+        if any(not isinstance(component, EffectPair) for component in self.components):
+            raise EffectValidationError("mixed DIY components must be effect pairs")
+        for component in self.components:
+            _validate_h6179_diy_effect(component.family, component.variant)
+        _validate_percent(self.speed, "speed")
+        _validate_palette(self.palette)
+
+
 @dataclass(frozen=True, slots=True)
 class MultiEffect:
     effects: tuple[EffectPair, ...]
@@ -389,6 +437,8 @@ type EffectContent = (
     | PaletteDiyEffect
     | MusicProfile
     | VideoProfile
+    | H6179SingleDiyEffect
+    | H6179MixedDiyEffect
     | MultiEffect
     | LayeredEffect
     | WorkshopEffect
@@ -609,6 +659,25 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "speed": content.speed,
             "palette": [list(colour) for colour in content.palette],
         }
+    if isinstance(content, H6179SingleDiyEffect):
+        return {
+            "kind": "h6179_single_diy",
+            "model": content.model,
+            "family": content.family,
+            "variant": content.variant,
+            "speed": content.speed,
+            "palette": [list(colour) for colour in content.palette],
+        }
+    if isinstance(content, H6179MixedDiyEffect):
+        return {
+            "kind": "h6179_mixed_diy",
+            "model": content.model,
+            "components": [
+                {"family": component.family, "variant": component.variant} for component in content.components
+            ],
+            "speed": content.speed,
+            "palette": [list(colour) for colour in content.palette],
+        }
     if isinstance(content, MusicProfile):
         return {
             "kind": "music_profile",
@@ -701,6 +770,27 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             model=_required_str(raw, "model"),
             family=_required_int(raw, "family"),
             variant=_required_int(raw, "variant"),
+            speed=_required_int(raw, "speed"),
+            palette=_palette_from_value(raw.get("palette")),
+        )
+    if kind == "h6179_single_diy":
+        return H6179SingleDiyEffect(
+            model=_required_str(raw, "model"),
+            family=_required_int(raw, "family"),
+            variant=_required_int(raw, "variant"),
+            speed=_required_int(raw, "speed"),
+            palette=_palette_from_value(raw.get("palette")),
+        )
+    if kind == "h6179_mixed_diy":
+        return H6179MixedDiyEffect(
+            model=_required_str(raw, "model"),
+            components=tuple(
+                EffectPair(
+                    family=_required_int(_as_mapping(component, "DIY component"), "family"),
+                    variant=_required_int(_as_mapping(component, "DIY component"), "variant"),
+                )
+                for component in _required_sequence(raw, "components")
+            ),
             speed=_required_int(raw, "speed"),
             palette=_palette_from_value(raw.get("palette")),
         )

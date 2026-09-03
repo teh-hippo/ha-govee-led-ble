@@ -7,6 +7,8 @@ import type {
   EffectContent,
   EffectUserState,
   EffectLayer,
+  H6179MixedDiyContent,
+  H6179SingleDiyContent,
   JsonObject,
   KnownEffectContent,
   LayeredSceneContent,
@@ -161,6 +163,11 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         device.model,
         `devices[${index}].model`,
         MAX_IDENTIFIER_LENGTH,
+      ),
+      support_quality: enumString(
+        device.support_quality,
+        ["experimental", "partial", "compatible", "supported"],
+        `devices[${index}].support_quality`,
       ),
       display_name: boundedString(
         device.display_name,
@@ -754,6 +761,7 @@ export function decodeCatalogueTemplateDefaultDetail(
   const supported = new Set([
     "h617a_painted",
     "h617a_single",
+    "h6179_single_diy",
     "palette_diy",
     "music_profile",
     "video_profile",
@@ -845,6 +853,69 @@ export function decodeEffectContent(value: unknown): EffectContent {
         speed: integerValue(content.speed, "Multi speed", 0, 100),
         palette: paletteValue(content.palette, "Multi palette", 8),
       };
+    case "h6179_single_diy":
+      return {
+        kind,
+        model: enumString(
+          content.model,
+          ["H6179"],
+          "H6179 Single DIY model",
+        ),
+        family: integerValue(
+          content.family,
+          "H6179 Single DIY family",
+          0,
+          2,
+        ),
+        variant: integerValue(
+          content.variant,
+          "H6179 Single DIY variant",
+          0,
+          0,
+        ),
+        speed: integerValue(content.speed, "H6179 Single DIY speed", 0, 100),
+        palette: paletteValue(content.palette, "H6179 Single DIY palette", 8),
+      } satisfies H6179SingleDiyContent;
+    case "h6179_mixed_diy": {
+      const components = arrayValue(
+        content.components,
+        "H6179 Mixed DIY components",
+        4,
+      );
+      if (components.length === 0) {
+        invalid("H6179 Mixed DIY components must not be empty");
+      }
+      return {
+        kind,
+        model: enumString(
+          content.model,
+          ["H6179"],
+          "H6179 Mixed DIY model",
+        ),
+        components: components.map((item, index) => {
+          const component = objectValue(
+            item,
+            `H6179 Mixed DIY components[${index}]`,
+          );
+          return {
+            family: integerValue(
+              component.family,
+              `H6179 Mixed DIY components[${index}] family`,
+              0,
+              2,
+            ),
+            variant: integerValue(
+              component.variant,
+              `H6179 Mixed DIY components[${index}] variant`,
+              0,
+              0,
+            ),
+          };
+        }),
+        speed: integerValue(content.speed, "H6179 Mixed DIY speed", 0, 100),
+        palette: paletteValue(content.palette, "H6179 Mixed DIY palette", 8),
+      } satisfies H6179MixedDiyContent;
+    }
     case "palette_diy":
       return {
         kind,
@@ -1184,6 +1255,10 @@ export function decodeSceneSummary(value: unknown): SceneSummary {
       MAX_EFFECT_NAME_LENGTH,
     ),
     scene_type: integerValue(scene.scene_type, "scene type", 0, 255),
+    selector_only: booleanValue(
+      scene.selector_only,
+      "scene selector-only flag",
+    ),
     parameter_kind: parameterKind,
     speed,
   };
