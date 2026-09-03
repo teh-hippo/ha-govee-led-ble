@@ -2,7 +2,29 @@
 
 import pytest
 
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, build_power
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    ProtocolParseRejection,
+    build_brightness,
+    build_brightness_query,
+    build_colour_mode_query,
+    build_colour_temperature,
+    build_firmware_query,
+    build_h6102_extended_rgb,
+    build_hardware_query,
+    build_music_mode,
+    build_power,
+    build_power_query,
+    build_segment_colour,
+    build_segment_query,
+    parse_a3_effect_envelope,
+    parse_command,
+    parse_command_result,
+    parse_status,
+)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_segment_brightness as build_segment_brightness_mask,
+)
+from custom_components.ha_govee_led_ble.h6102_protocol import H6102RgbVariant
 from custom_components.ha_govee_led_ble.light_commands import (
     ALL_SEGMENTS,
     ALL_SEGMENTS_MASK,
@@ -26,11 +48,181 @@ def _assert_valid(frame: bytes) -> None:
     assert xor_checksum(frame[:19]) == frame[19]
 
 
-@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("model", ["H617A", "H617E", "H6076", "H6199"])
 def test_power_and_brightness_remain_byte_identical(model: str) -> None:
     assert build_power(True, model) == H("3301010000000000000000000000000000000033")
     assert build_power(False, model) == H("3301000000000000000000000000000000000032")
-    assert build_brightness(200, model)[2] == 100
+    assert build_brightness(42, model) == H("33042a000000000000000000000000000000001d")
+    assert build_brightness(200, model) == H("3304640000000000000000000000000000000053")
+
+
+@pytest.mark.parametrize(
+    ("on", "expected"),
+    [
+        (False, "3301000000000000000000000000000000000032"),
+        (True, "3301010000000000000000000000000000000033"),
+    ],
+)
+def test_h6102_power_uses_its_registered_root(on: bool, expected: str) -> None:
+    frame = build_power(on, "H6102")
+    parsed = parse_command(frame, "H6102")
+
+    assert frame == H(expected)
+    assert parsed is not None and parsed.__class__.__name__ == "H6102CommandWrite"
+    assert parsed.opcode.name == "power"
+    assert parsed.body.value == int(on)
+
+
+@pytest.mark.parametrize(
+    ("percent", "expected"),
+    [
+        (1, "3304010000000000000000000000000000000036"),
+        (50, "3304320000000000000000000000000000000005"),
+        (75, "33044b000000000000000000000000000000007c"),
+        (100, "3304640000000000000000000000000000000053"),
+    ],
+)
+def test_h6102_brightness_uses_its_registered_root(percent: int, expected: str) -> None:
+    frame = build_brightness(percent, "H6102")
+    parsed = parse_command(frame, "H6102")
+
+    assert frame == H(expected)
+    assert parsed is not None and parsed.__class__.__name__ == "H6102CommandWrite"
+    assert parsed.opcode.name == "brightness"
+    assert parsed.body.percent == percent
+
+
+@pytest.mark.parametrize("percent", [0, 101, 255])
+def test_h6102_brightness_rejects_uncaptured_values(percent: int) -> None:
+    with pytest.raises(ValueError, match="1 to 100"):
+        build_brightness(percent, "H6102")
+
+
+def test_h6102_parse_command_result_exposes_registered_parser() -> None:
+    result = parse_command_result(build_power(True, "H6102"), "H6102")
+
+    assert result.parser == "h6102_command_write"
+    assert result.rejection is None
+    assert result.parsed is not None and result.parsed.opcode.name == "power"
+
+
+def test_command_rejections_expose_stable_reasons_and_fail_closed() -> None:
+    frame = build_power(True, "H6102")
+    assert parse_command_result(frame[:-1], "H6102").rejection is ProtocolParseRejection.INVALID_LENGTH
+
+    bad_checksum = frame[:-1] + bytes([frame[-1] ^ 0x01])
+    assert parse_command_result(bad_checksum, "H6102").rejection is ProtocolParseRejection.INVALID_CHECKSUM
+
+    unsupported = parse_command_result(frame, "H9999")
+    assert unsupported.parser is None
+    assert unsupported.rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
+
+    invalid_shape = bytearray(build_brightness(100))
+    invalid_shape[2] = 101
+    invalid_shape[-1] = xor_checksum(invalid_shape[:-1])
+    rejected = parse_command_result(bytes(invalid_shape))
+    assert rejected.parser == "command_write"
+    assert rejected.rejection is ProtocolParseRejection.SCHEMA_REJECTED
+
+
+@pytest.mark.parametrize(
+    ("mask", "rgb", "expected"),
+    [
+        (0x7FFF, (32, 64, 96), "330515012040600000000000ff7f0000000000a2"),
+        (0x5961, (255, 0, 0), "33051501ff0000000000000061590000000000e5"),
+    ],
+)
+def test_h6102_extended_rgb_builder(
+    mask: int,
+    rgb: tuple[int, int, int],
+    expected: str,
+) -> None:
+    frame = build_h6102_extended_rgb(mask, *rgb)
+    parsed = parse_command(frame, "H6102")
+
+    assert frame == H(expected)
+    assert parsed is not None and parsed.opcode.name == "mode"
+    assert parsed.body.selector == b"\x15"
+    assert parsed.body.operation == b"\x01"
+    assert (parsed.body.rgb_direct.red, parsed.body.rgb_direct.green, parsed.body.rgb_direct.blue) == rgb
+    assert parsed.body.mask.bits == mask
+
+
+@pytest.mark.parametrize(
+    ("rgb", "expected"),
+    [
+        ((32, 64, 96), "330515012040600000000000ff7f0000000000a2"),
+        ((0, 0, 0), "330515010000000000000000ff7f0000000000a2"),
+    ],
+)
+def test_h6102_semantic_rgb_builder_requires_extended_variant(
+    rgb: tuple[int, int, int],
+    expected: str,
+) -> None:
+    frame = build_color_rgb(*rgb, "H6102", h6102_variant=H6102RgbVariant.EXTENDED)
+    parsed = parse_static_write(frame, "H6102")
+
+    assert frame == H(expected)
+    assert parsed is not None
+    assert parsed.whole_strip
+    assert parsed.rgb == rgb
+    assert parsed.kelvin is None
+
+
+@pytest.mark.parametrize("variant", [None, H6102RgbVariant.LEGACY])
+def test_h6102_semantic_rgb_builder_rejects_unenabled_variants(
+    variant: H6102RgbVariant | None,
+) -> None:
+    with pytest.raises(ValueError, match="requires the extended variant"):
+        build_color_rgb(255, 0, 0, "H6102", h6102_variant=variant)
+
+
+@pytest.mark.parametrize("mask", [0, 0x8000, 0x10000])
+def test_h6102_extended_rgb_requires_nonzero_15_bit_mask(mask: int) -> None:
+    with pytest.raises(ValueError, match="0x0001 to 0x7fff"):
+        build_h6102_extended_rgb(mask, 255, 0, 0)
+
+
+def test_h6102_absent_command_bodies_fail_closed() -> None:
+    for frame in (
+        H("3305130663000000000000000000000000000040"),
+        H("3305040400000000000000000000000000000036"),
+        H("33050a000000000000000000000000000000003c"),
+    ):
+        assert parse_command(frame, "H6102") is None
+
+    with pytest.raises(ValueError, match="static-colour grammar"):
+        build_segment_colour(0x7FFF, 255, 0, 0, "H6102")
+    with pytest.raises(ValueError, match="segment-brightness grammar"):
+        build_segment_brightness_mask(0x7FFF, 50, "H6102")
+    with pytest.raises(ValueError, match="colour-temperature grammar"):
+        build_colour_temperature(4000, (255, 255, 255), 0x7FFF, "H6102")
+    with pytest.raises(ValueError, match="music grammar"):
+        build_music_mode(0x03, 50, None, False, "H6102")
+
+
+def test_h6102_status_paths_fail_closed() -> None:
+    assert parse_status(H("aaa50164ff880d64ff880d64ff880d0000000010"), "H6102") is None
+
+    for builder in (
+        build_power_query,
+        build_brightness_query,
+        build_colour_mode_query,
+        build_firmware_query,
+        build_hardware_query,
+    ):
+        with pytest.raises(ValueError, match="status-query grammar"):
+            builder("H6102")
+    with pytest.raises(ValueError, match="segment-query grammar"):
+        build_segment_query(1, "H6102")
+
+
+@pytest.mark.parametrize("body_type", [0x01, 0x02, 0x03, 0x04])
+def test_h6102_a3_paths_fail_closed(body_type: int) -> None:
+    envelope = bytes([0x01, 0x01, body_type]) + bytes(14)
+
+    with pytest.raises(ValueError, match="H6102 has no generated A3 effect grammar"):
+        parse_a3_effect_envelope(envelope, "H6102")
 
 
 def test_whole_strip_colour_temperature_and_brightness() -> None:

@@ -10,7 +10,13 @@ import voluptuous as vol
 from bleak import BleakError  # type: ignore[attr-defined]
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfo
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
+from homeassistant.config_entries import (
+    SOURCE_RECONFIGURE,
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
 
@@ -19,6 +25,7 @@ from .const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
+    CONF_H6102_APP_FIRMWARE,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
@@ -28,6 +35,7 @@ from .const import (
     resolve_model,
     supported_effect_categories,
 )
+from .firmware_version import FirmwareVersion
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +98,8 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error validating a Govee BLE device")
                 return self._show_user_form(errors={"base": "unknown"})
             self._abort_if_unique_id_configured()
+            if selected_model == "H6102":
+                return await self.async_step_h6102_firmware()
             return self.async_create_entry(title=f"Govee {selected_model}", data={CONF_MODEL: selected_model})
         return self._show_user_form()
 
@@ -102,24 +112,53 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             advertised_model = model_from_ble_name(service_info.name) if service_info is not None else None
             if advertised_model is not None and advertised_model != selected_model:
                 return self._show_reconfigure_form(entry, errors={"base": "model_mismatch"})
-            options = {
-                key: value
-                for key, value in entry.options.items()
-                if key
-                not in {
-                    CONF_EFFECT_CATEGORIES,
-                    CONF_EFFECT_FAMILIES,
-                    CONF_PREFIX_EFFECT_NAMES,
-                    CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
-                }
-            }
-            return self.async_update_reload_and_abort(
-                entry,
-                title=f"Govee {selected_model}",
-                data_updates={CONF_MODEL: selected_model},
-                options=options,
-            )
+            if selected_model == "H6102":
+                return await self.async_step_h6102_firmware()
+            return self._finish_reconfigure(entry, selected_model)
         return self._show_reconfigure_form(entry)
+
+    async def async_step_h6102_firmware(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is None:
+            return self._show_h6102_firmware_form()
+        firmware = user_input.get(CONF_H6102_APP_FIRMWARE)
+        if firmware and FirmwareVersion.parse(firmware) is None:
+            return self._show_h6102_firmware_form(errors={CONF_H6102_APP_FIRMWARE: "invalid_firmware"})
+        if self.source == SOURCE_RECONFIGURE:
+            return self._finish_reconfigure(self._get_reconfigure_entry(), "H6102", firmware or None)
+        self._abort_if_unique_id_configured()
+        data = {CONF_MODEL: "H6102"}
+        if firmware:
+            data[CONF_H6102_APP_FIRMWARE] = firmware
+        return self.async_create_entry(title="Govee H6102", data=data)
+
+    def _finish_reconfigure(
+        self,
+        entry: ConfigEntry,
+        selected_model: str,
+        firmware: str | None = None,
+    ) -> ConfigFlowResult:
+        data = dict(entry.data)
+        data[CONF_MODEL] = selected_model
+        data.pop(CONF_H6102_APP_FIRMWARE, None)
+        if firmware is not None:
+            data[CONF_H6102_APP_FIRMWARE] = firmware
+        options = {
+            key: value
+            for key, value in entry.options.items()
+            if key
+            not in {
+                CONF_EFFECT_CATEGORIES,
+                CONF_EFFECT_FAMILIES,
+                CONF_PREFIX_EFFECT_NAMES,
+                CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+            }
+        }
+        return self.async_update_reload_and_abort(
+            entry,
+            title=f"Govee {selected_model}",
+            data=data,
+            options=options,
+        )
 
     def _show_user_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:
         models = list(MODEL_PROFILES.keys())
@@ -145,6 +184,22 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema({vol.Required(CONF_MODEL, default=default): vol.In(list(MODEL_PROFILES))}),
+            errors=errors,
+        )
+
+    def _show_h6102_firmware_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:
+        current = None
+        if self.source == SOURCE_RECONFIGURE:
+            stored = self._get_reconfigure_entry().data.get(CONF_H6102_APP_FIRMWARE)
+            current = stored if isinstance(stored, str) else None
+        field = (
+            vol.Optional(CONF_H6102_APP_FIRMWARE, description={"suggested_value": current})
+            if current is not None
+            else vol.Optional(CONF_H6102_APP_FIRMWARE)
+        )
+        return self.async_show_form(
+            step_id="h6102_firmware",
+            data_schema=vol.Schema({field: str}),
             errors=errors,
         )
 

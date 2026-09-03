@@ -15,8 +15,15 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio |
 | **H617E** | Compatible | H617A-compatible controls, effects and music modes with its exact 240-scene catalogue and retained legacy scene-name compatibility; exact-model protocol documentation remains incomplete |
 | **H6076** | Partial | Power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable |
+| **H6102** | Experimental | Manual setup or reconfiguration with assumed-state power and 1–100 brightness; configured software version 1.03.01 or later also enables speculative write-only whole-device RGB |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded and evidence-backed Kaitai coverage for every enabled wire path.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, speculative-schema, prerelease and promotion process.
+
+### H6102 Experimental candidate
+
+H6102 setup is manual-only until its BLE local name is confirmed.  An unresolved or older configured software version exposes power and brightness; version 1.03.01 or later also enables speculative whole-strip RGB.
+
+State is assumed and updated after writes.  Identity, state and region readback, colour temperature, region control, music, scene activation, DIY, saved effects and Effect Studio remain unavailable.  The committed exact-SKU scene catalogue is refreshable Govee metadata rather than active scene support.
 
 ## Effect Studio
 
@@ -28,6 +35,7 @@ Home Assistant commands take priority over live previews.  Effect uploads and ac
 
 ## Upgrade notes
 
+- An H6102 previously configured as H617A must be explicitly changed to H6102 through **Reconfigure**.  The config entry and entity identity are preserved.
 - An H6076 previously configured as H617A must be explicitly changed to H6076 through the integration's **Reconfigure** action.  The config entry and entity identity are preserved.
 - The standalone H617A scene-speed entity remains removed.  Edit scene speed in Effect Studio or select the native scene through the light effect selector.
 - Renaming a saved effect immediately changes its selector name.  Name-based automations must use the new name; the stable effect ID does not change.

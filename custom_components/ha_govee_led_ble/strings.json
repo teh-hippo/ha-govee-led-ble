@@ -24,10 +24,21 @@
         "data": {
           "model": "Device Model"
         }
+      },
+      "h6102_firmware": {
+        "title": "Experimental H6102 firmware context",
+        "description": "Enter the exact dotted-decimal software version shown by Govee Home. This temporary qualification context is not observed device identity. After any firmware update, reconfigure the device before further qualification. Leave blank for power and brightness only.",
+        "data": {
+          "h6102_app_firmware": "App-reported software version"
+        },
+        "data_description": {
+          "h6102_app_firmware": "Use the exact value shown by Govee Home, for example 1.03.01. Leave blank to store no firmware context."
+        }
       }
     },
     "error": {
       "invalid_address": "Enter a valid 12-digit BLE MAC address.",
+      "invalid_firmware": "Enter the exact dotted-decimal software version shown by Govee Home, for example 1.03.01.",
       "cannot_connect": "Unable to connect to the device.",
       "model_mismatch": "The device at this address advertises a different supported model.",
       "unknown": "Unexpected error while validating the device."
