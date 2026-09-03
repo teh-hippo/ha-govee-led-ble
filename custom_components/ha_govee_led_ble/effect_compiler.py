@@ -9,7 +9,7 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import Any, Final, assert_never
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, protocol_model
+from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, protocol_model, supported_effect_categories
 from .coordinator_modes import (
     MUSIC_STYLE_SLUGS,
     music_mode_has_parameter_write,
@@ -159,6 +159,11 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
         return CompatibilityResult(
             CompatibilityState.UNKNOWN,
             (f"content kind {content.kind!r} is not understood",),
+        )
+    if not supported_effect_categories(model):
+        return CompatibilityResult(
+            CompatibilityState.INCOMPATIBLE,
+            (f"{model} does not support saved effects",),
         )
     if isinstance(content, MusicProfile):
         if content.model != model:

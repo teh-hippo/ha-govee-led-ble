@@ -45,6 +45,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _control_lock: BLEControlArbiter
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]
+    segment_brightness: list[int]
+    segment_color_state_source: str
+    segment_brightness_state_source: str
 
     if TYPE_CHECKING:
 

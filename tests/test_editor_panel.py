@@ -82,7 +82,7 @@ async def test_process_setup_registers_visible_advanced_stable_route(
     assert get_effect_backend(hass) is not None
 
 
-@pytest.mark.parametrize("model", [None, "H6076"])
+@pytest.mark.parametrize("model", [None, "H6076", "H6102"])
 async def test_process_setup_hides_panel_without_capable_device(
     hass: HomeAssistant,
     model: str | None,

@@ -155,7 +155,13 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             self.coordinator,
             ControlIntent.USER,
         ):
-            self._require_support("paint_segments", supported=self.coordinator.profile.supports_segments)
+            self._require_support(
+                "paint_segments",
+                supported=(
+                    self.coordinator.profile.segment_count > 0
+                    and self.coordinator.profile.supports_segment_colour_writes
+                ),
+            )
             if not groups or any(not group.get("segments") for group in groups):
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
@@ -187,7 +193,13 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             self.coordinator,
             ControlIntent.USER,
         ):
-            self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
+            self._require_support(
+                "set_segment_brightness",
+                supported=(
+                    self.coordinator.profile.segment_count > 0
+                    and self.coordinator.profile.supports_segment_brightness_writes
+                ),
+            )
             if not segments:
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,

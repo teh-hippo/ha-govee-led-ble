@@ -3,10 +3,12 @@
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
+CONF_H6102_APP_FIRMWARE = "h6102_app_firmware"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
@@ -39,16 +41,24 @@ EFFECT_CATEGORY_CONTENT_KINDS = {
 _BLE_MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H[0-9A-Z]{4})(?:_|$)", re.IGNORECASE)
 
 
+class ReadDomain(StrEnum):
+    IDENTITY = "identity"
+    POWER = "power"
+    BRIGHTNESS = "brightness"
+    MODE = "mode"
+    REGION_COLOUR = "region_colour"
+    REGION_BRIGHTNESS = "region_brightness"
+
+
 @dataclass(frozen=True)
 class ModelProfile:
     name: str
     wire_model: str | None = None
-    state_readable: bool = False
+    read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
     supports_color_temperature: bool = False
     min_color_temp_kelvin: int = 2000
     max_color_temp_kelvin: int = 9000
-    supports_color_mode_readback: bool = False
     supports_custom_effects: bool = False
     supports_scenes: bool = False
     supports_video_mode: bool = False
@@ -66,12 +76,30 @@ class ModelProfile:
     static_readback_echoes_color: bool = False
     whole_device_mask: int = 0
     segment_count: int = 0
-    supports_segment_writes: bool = False
+    supports_segment_colour_writes: bool = False
+    supports_segment_brightness_writes: bool = False
     connection_idle_timeout: float | None = None
+
+    def can_read(self, domain: ReadDomain) -> bool:
+        return domain in self.read_domains
+
+    @property
+    def requires_notifications(self) -> bool:
+        return bool(self.read_domains)
+
+    @property
+    def state_readable(self) -> bool:
+        return bool(self.read_domains - {ReadDomain.IDENTITY})
+
+    @property
+    def supports_color_mode_readback(self) -> bool:
+        return self.can_read(ReadDomain.MODE)
 
     @property
     def supports_segments(self) -> bool:
-        return self.segment_count > 0 and self.supports_segment_writes
+        return self.segment_count > 0 and (
+            self.supports_segment_colour_writes or self.supports_segment_brightness_writes
+        )
 
     @property
     def supports_music_mode(self) -> bool:
@@ -98,10 +126,9 @@ _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 _H617X_PROFILE = ModelProfile(
     "H617A/H617E LED Strip",
     wire_model="H617A",
-    state_readable=True,
+    read_domains=frozenset(ReadDomain),
     supports_rgb=True,
     supports_color_temperature=True,
-    supports_color_mode_readback=True,
     supports_custom_effects=True,
     supports_scenes=True,
     music_modes=tuple(MUSIC_MODE_SLUGS),
@@ -112,7 +139,8 @@ _H617X_PROFILE = ModelProfile(
     # H617A and H617E expose fifteen segments through five explicit aa a5 query groups of three.
     # Segment writes ACK normally but do not publish updated groups without those queries.
     segment_count=15,
-    supports_segment_writes=True,
+    supports_segment_colour_writes=True,
+    supports_segment_brightness_writes=True,
     connection_idle_timeout=3.0,
     # supports_white_brightness stays false because static subcommand 0x02 is segment-relative
     # brightness, not the level of a white colour-temperature mode. It compounds with master
@@ -127,7 +155,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6076": ModelProfile(
         "H6076 Lyra Floor Lamp",
         wire_model="H617A",
-        state_readable=True,
+        read_domains=frozenset({ReadDomain.IDENTITY, ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
         supports_rgb=True,
         supports_color_temperature=True,
         min_color_temp_kelvin=2700,
@@ -137,10 +165,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         wire_model="H6199",
-        state_readable=True,
+        read_domains=frozenset(ReadDomain),
         supports_rgb=True,
         supports_color_temperature=True,
-        supports_color_mode_readback=True,
         supports_custom_effects=True,
         supports_scenes=True,
         supports_video_mode=True,
@@ -160,9 +187,17 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
         segment_count=15,
         # Colour and brightness writes are observed through four explicit aa a5 query groups.
-        supports_segment_writes=True,
+        supports_segment_colour_writes=True,
+        supports_segment_brightness_writes=True,
+    ),
+    "H6102": ModelProfile(
+        "H6102 LED Strip",
+        wire_model="H6102",
+        connection_idle_timeout=3.0,
     ),
 }
+
+BLE_DISCOVERABLE_MODELS = frozenset({"H6076", "H617A", "H617E", "H6199"})
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
@@ -174,7 +209,8 @@ def resolve_model(model: str) -> str | None:
 
 def model_from_ble_name(name: str) -> str | None:
     match = _BLE_MODEL_PATTERN.search(name)
-    return resolve_model(match.group(1)) if match else None
+    model = resolve_model(match.group(1)) if match else None
+    return model if model in BLE_DISCOVERABLE_MODELS else None
 
 
 def protocol_model(model: str) -> str | None:

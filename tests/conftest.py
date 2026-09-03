@@ -58,6 +58,10 @@ def _make_coord(**ov) -> MagicMock:
         music_color=None,
         segment_colors=[(255, 255, 255)] * 15,
         segment_brightness=[100] * 15,
+        segment_color_state_source="initial",
+        segment_brightness_state_source="initial",
+        segment_color_state_observed_at=None,
+        segment_brightness_state_observed_at=None,
         segment_state_source="initial",
         segment_state_observed_at=None,
         diy_code=None,
@@ -88,14 +92,24 @@ def _make_coord(**ov) -> MagicMock:
     def mark_segment_state_optimistic(*, colours=None, brightness=None) -> None:
         if colours is not None:
             c.segment_colors = colours
+            c.segment_color_state_source = "optimistic"
+            c.segment_color_state_observed_at = None
         if brightness is not None:
             c.segment_brightness = brightness
+            c.segment_brightness_state_source = "optimistic"
+            c.segment_brightness_state_observed_at = None
         c.segment_state_source = "optimistic"
         c.segment_state_observed_at = None
 
-    def mark_segment_state_restored(colours, brightness) -> None:
-        c.segment_colors = colours
-        c.segment_brightness = brightness
+    def mark_segment_state_restored(colours=None, brightness=None) -> None:
+        if colours is not None:
+            c.segment_colors = colours
+            c.segment_color_state_source = "restored"
+            c.segment_color_state_observed_at = None
+        if brightness is not None:
+            c.segment_brightness = brightness
+            c.segment_brightness_state_source = "restored"
+            c.segment_brightness_state_observed_at = None
         c.segment_state_source = "restored"
         c.segment_state_observed_at = None
 

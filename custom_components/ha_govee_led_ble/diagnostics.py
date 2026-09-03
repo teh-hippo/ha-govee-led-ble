@@ -7,7 +7,8 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
-from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
+from .const import CONF_H6102_APP_FIRMWARE, ReadDomain
+from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT, GoveeBLECoordinator
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
@@ -49,6 +50,7 @@ async def async_get_config_entry_diagnostics(
         "prefix_effect_names": coordinator.prefix_effect_names,
         "always_include_custom_effects": coordinator.always_include_custom_effects,
         "state_readable": coordinator.profile.state_readable,
+        "read_domains": sorted(domain.value for domain in coordinator.profile.read_domains),
         "supports_rgb": coordinator.profile.supports_rgb,
         "supports_color_temperature": coordinator.profile.supports_color_temperature,
         "color_temperature_range": {
@@ -67,6 +69,8 @@ async def async_get_config_entry_diagnostics(
         "supports_music_color": coordinator.profile.supports_music_color,
         "supports_white_brightness": coordinator.profile.supports_white_brightness,
         "supports_segments": coordinator.profile.supports_segments,
+        "supports_segment_colour_writes": coordinator.profile.supports_segment_colour_writes,
+        "supports_segment_brightness_writes": coordinator.profile.supports_segment_brightness_writes,
         "segment_count": coordinator.profile.segment_count,
         "connected": bool(client and client.is_connected),
         "available": coordinator.available,
@@ -80,6 +84,10 @@ async def async_get_config_entry_diagnostics(
         "rgb_color": coordinator.rgb_color,
         "segment_colors": coordinator.segment_colors,
         "segment_brightness": coordinator.segment_brightness,
+        "segment_color_state_source": coordinator.segment_color_state_source,
+        "segment_color_state_observed_at": coordinator.segment_color_state_observed_at,
+        "segment_brightness_state_source": coordinator.segment_brightness_state_source,
+        "segment_brightness_state_observed_at": coordinator.segment_brightness_state_observed_at,
         "segment_state_source": coordinator.segment_state_source,
         "segment_state_observed_at": coordinator.segment_state_observed_at,
         "color_temp_kelvin": coordinator.color_temp_kelvin,
@@ -114,6 +122,8 @@ async def async_get_config_entry_diagnostics(
         "packet_log": packet_log,
         "last_rx_aa05_raw": last_rx_aa05_raw,
     }
+    if coordinator.model == "H6102":
+        coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
     return {
         "entry": async_redact_data(
             {
@@ -128,6 +138,57 @@ async def async_get_config_entry_diagnostics(
         "active_effect_state": _active_effect_state(hass, entry.entry_id),
         "effect_deployment_diagnostics": _effect_deployment_diagnostics(hass, entry.entry_id),
     }
+
+
+def _h6102_capability_resolution(
+    entry: GoveeBLEConfigEntry,
+    coordinator: GoveeBLECoordinator,
+) -> dict[str, Any]:
+    profile = coordinator.profile
+    region_colour = {
+        "write_enabled": profile.supports_segment_colour_writes,
+        "read_enabled": profile.can_read(ReadDomain.REGION_COLOUR),
+        "state_source": coordinator.segment_color_state_source,
+        "observed_at": coordinator.segment_color_state_observed_at,
+    }
+    region_brightness = {
+        "write_enabled": profile.supports_segment_brightness_writes,
+        "read_enabled": profile.can_read(ReadDomain.REGION_BRIGHTNESS),
+        "state_source": coordinator.segment_brightness_state_source,
+        "observed_at": coordinator.segment_brightness_state_observed_at,
+    }
+    data: dict[str, Any] = {
+        "configured_app_firmware": entry.data.get(CONF_H6102_APP_FIRMWARE),
+        "resolved_profile": profile.name,
+        "firmware_source": coordinator.firmware_source,
+        "classified_rgb_variant": coordinator.rgb_variant.value if coordinator.rgb_variant is not None else None,
+        "rgb_enabled": profile.supports_rgb,
+        "capability_resolution_reason": coordinator.capability_resolution_reason,
+        "read_domains": sorted(domain.value for domain in profile.read_domains),
+        "region_colour": region_colour,
+        "region_brightness": region_brightness,
+        "surface_capabilities": {
+            "color_temperature": profile.supports_color_temperature,
+            "regions": profile.segment_count > 0
+            and any(
+                (
+                    region_colour["write_enabled"],
+                    region_colour["read_enabled"],
+                    region_brightness["write_enabled"],
+                    region_brightness["read_enabled"],
+                )
+            ),
+            "music": profile.supports_music_mode,
+            "scenes": profile.supports_scenes,
+            "diy": profile.supports_custom_effects,
+            "studio": bool(coordinator.configuration_url and coordinator.effect_categories),
+        },
+    }
+    if coordinator.fw_version is not None:
+        data["observed_firmware"] = coordinator.fw_version
+    if coordinator.hw_version is not None:
+        data["observed_hardware"] = coordinator.hw_version
+    return data
 
 
 def _bounded_packet_entry(entry: dict[str, Any]) -> dict[str, Any]:

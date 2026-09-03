@@ -21,6 +21,7 @@ from .ble_device_resolver import BLEDeviceResolver
 from .const import (
     DOMAIN,
     MUSIC_MODE_SLUGS,
+    ReadDomain,
     default_effect_categories,
     default_effect_families,
     get_profile,
@@ -47,6 +48,12 @@ from .generated_protocol_adapter import (
     build_segment_query,
     parse_command_result,
 )
+from .h6102_capabilities import (
+    H6102CapabilityResolutionReason,
+    H6102FirmwareSource,
+    resolve_h6102_capabilities,
+)
+from .h6102_protocol import H6102RgbVariant
 from .h6199_calibration import WHITE_BALANCE_RESET
 from .light_commands import (
     SegmentColorGroup,
@@ -111,6 +118,27 @@ _COLOR_EXPECTATION_FIELDS = frozenset(
         *_COLOR_MODE_FIELDS,
     )
 )
+_MODE_READ_FIELDS = frozenset(
+    {
+        "color_mode",
+        "effect",
+        "unknown_scene_code",
+        "diy_code",
+        "music_mode",
+        "video_mode",
+        *_COLOR_MODE_FIELDS,
+    }
+)
+_WHITE_BALANCE_FIELDS = frozenset({"white_balance_red", "white_balance_blue"})
+_RELATIVE_BRIGHTNESS_FIELDS = frozenset(
+    {
+        "relative_brightness",
+        "relative_brightness_left",
+        "relative_brightness_top",
+        "relative_brightness_right",
+        "relative_brightness_bottom",
+    }
+)
 
 
 class GoveeBLECoordinator(_ActiveModeMixin):
@@ -128,8 +156,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         prefix_effect_names: bool = False,
         always_include_custom_effects: bool = False,
         device_resolver: BLEDeviceResolver | None = None,
+        h6102_firmware: str | None = None,
+        h6102_firmware_source: H6102FirmwareSource | None = None,
     ) -> None:
         profile = get_profile(model)
+        resolution = resolve_h6102_capabilities(h6102_firmware, h6102_firmware_source) if model == "H6102" else None
+        if resolution is not None:
+            profile = resolution.profile
         super().__init__(
             hass,
             _LOGGER,
@@ -139,13 +172,24 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             ),
         )
         self.address, self.model, self.profile = address, model, profile
-        self.configuration_url = configuration_url
-        self.effect_families = default_effect_families(model) if effect_families is None else effect_families
-        self.effect_categories = (
-            frozenset(default_effect_categories(model)) if effect_categories is None else effect_categories
+        self.rgb_variant: H6102RgbVariant | None = resolution.rgb_variant if resolution is not None else None
+        self.firmware_source: H6102FirmwareSource | None = (
+            resolution.firmware_source if resolution is not None else None
         )
+        self.capability_resolution_reason: H6102CapabilityResolutionReason | None = (
+            resolution.capability_resolution_reason if resolution is not None else None
+        )
+        self.configuration_url = None if resolution is not None else configuration_url
+        if resolution is not None:
+            self.effect_families = frozenset()
+            self.effect_categories = frozenset()
+        else:
+            self.effect_families = default_effect_families(model) if effect_families is None else effect_families
+            self.effect_categories = (
+                frozenset(default_effect_categories(model)) if effect_categories is None else effect_categories
+            )
         self.prefix_effect_names = prefix_effect_names
-        self.always_include_custom_effects = always_include_custom_effects
+        self.always_include_custom_effects = always_include_custom_effects and profile.supports_custom_effects
         self._device_resolver = BLEDeviceResolver() if device_resolver is None else device_resolver
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
@@ -175,9 +219,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._pre_mode_snapshot = PreModeSnapshot(kind="rgb", rgb=(255, 255, 255))
         self.segment_colors: list[tuple[int, int, int]] = [self.rgb_color] * profile.segment_count
         self.segment_brightness: list[int] = [100] * profile.segment_count
+        self.segment_color_state_source = "initial"
+        self.segment_brightness_state_source = "initial"
+        self.segment_color_state_observed_at: str | None = None
+        self.segment_brightness_state_observed_at: str | None = None
+        # Compatibility metadata for consumers that have not migrated to the per-field sources.
         self.segment_state_source = "initial"
         self.segment_state_observed_at: str | None = None
-        self._segment_groups_observed: set[int] = set()
+        self._segment_color_groups_observed: set[int] = set()
+        self._segment_brightness_groups_observed: set[int] = set()
         self._segment_query_colors: list[tuple[int, int, int]] | None = None
         self._segment_query_brightness: list[int] | None = None
         self.video_saturation = self.white_brightness = 100
@@ -526,6 +576,29 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     def _state_snapshot(self) -> dict[str, Any]:
         return {field: getattr(self, field) for field in _CORE_STATE_FIELDS}
 
+    def _can_read_field(self, field: str) -> bool:
+        if field == "is_on":
+            return self.profile.can_read(ReadDomain.POWER)
+        if field == "brightness_pct":
+            return self.profile.can_read(ReadDomain.BRIGHTNESS)
+        if field in _MODE_READ_FIELDS:
+            return self.profile.can_read(ReadDomain.MODE)
+        if field in {"rgb_color", "color_temp_kelvin", "segment_colors"}:
+            return self.profile.can_read(ReadDomain.REGION_COLOUR)
+        if field == "segment_brightness":
+            return self.profile.can_read(ReadDomain.REGION_BRIGHTNESS)
+        if field in _WHITE_BALANCE_FIELDS:
+            return self.profile.supports_white_balance
+        if field == "blank_screen":
+            return self.profile.supports_blank_screen
+        if field in _RELATIVE_BRIGHTNESS_FIELDS:
+            return self.profile.supports_relative_brightness
+        return False
+
+    @property
+    def _can_read_regions(self) -> bool:
+        return self.profile.can_read(ReadDomain.REGION_COLOUR) or self.profile.can_read(ReadDomain.REGION_BRIGHTNESS)
+
     async def _ensure_connected(self) -> BleakClient:
         if self._client and self._client.is_connected:
             if not self._receive_is_stale():
@@ -542,7 +615,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             disconnected_callback=self._disconnected_callback,
         )
         self._reset_disconnect_timer()
-        if self.profile.state_readable:
+        if self.profile.requires_notifications:
             try:
                 await self._start_notify()
                 await self._send_identity_queries()
@@ -612,7 +685,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         await self._client.start_notify(READ_UUID, self._notify_callback)
         self._notify_started_monotonic = time.monotonic()
         self._last_rx_monotonic = None
-        self._start_keep_alive()
+        if self.profile.state_readable:
+            self._start_keep_alive()
 
     def _receive_is_stale(self) -> bool:
         baseline = self._last_rx_monotonic
@@ -628,7 +702,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
 
     @property
     def _segment_group_count(self) -> int:
-        if not self.profile.supports_segments:
+        if self.profile.segment_count <= 0 or not self._can_read_regions:
             return 0
         return 4 if self.model == "H6199" else 5
 
@@ -640,60 +714,92 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     ) -> None:
         if colours is not None:
             self.segment_colors = colours
+            self.segment_color_state_source = "optimistic"
+            self.segment_color_state_observed_at = None
+            self._segment_color_groups_observed.clear()
+            self._segment_query_colors = None
         if brightness is not None:
             self.segment_brightness = brightness
+            self.segment_brightness_state_source = "optimistic"
+            self.segment_brightness_state_observed_at = None
+            self._segment_brightness_groups_observed.clear()
+            self._segment_query_brightness = None
         self.segment_state_source = "optimistic"
         self.segment_state_observed_at = None
-        self._segment_groups_observed.clear()
-        self._segment_query_colors = None
-        self._segment_query_brightness = None
 
     def mark_segment_state_restored(
         self,
-        colours: list[tuple[int, int, int]],
-        brightness: list[int],
+        colours: list[tuple[int, int, int]] | None = None,
+        brightness: list[int] | None = None,
     ) -> None:
-        self.segment_colors = colours
-        self.segment_brightness = brightness
+        if colours is not None:
+            self.segment_colors = colours
+            self.segment_color_state_source = "restored"
+            self.segment_color_state_observed_at = None
+            self._segment_color_groups_observed.clear()
+            self._segment_query_colors = None
+        if brightness is not None:
+            self.segment_brightness = brightness
+            self.segment_brightness_state_source = "restored"
+            self.segment_brightness_state_observed_at = None
+            self._segment_brightness_groups_observed.clear()
+            self._segment_query_brightness = None
         self.segment_state_source = "restored"
         self.segment_state_observed_at = None
-        self._segment_groups_observed.clear()
-        self._segment_query_colors = None
-        self._segment_query_brightness = None
 
     def _apply_segment_group(self, generated: Any) -> tuple[str, ...]:
+        read_colours = self.profile.can_read(ReadDomain.REGION_COLOUR)
+        read_brightness = self.profile.can_read(ReadDomain.REGION_BRIGHTNESS)
+        if not (read_colours or read_brightness):
+            return ()
         group = int(generated.body.group)
         records = generated.body.segments
         group_size = 4 if self.model == "H6199" else 3
         offset = (group - 1) * group_size
         if offset < 0 or offset + len(records) > self.profile.segment_count:
             raise ValueError("segment group exceeds model segment count")
-        colours = self._segment_query_colors
-        brightness = self._segment_query_brightness
-        if colours is None or brightness is None:
+        colours = self._segment_query_colors if read_colours else None
+        brightness = self._segment_query_brightness if read_brightness else None
+        if read_colours and colours is None:
             colours = list(self.segment_colors)
-            brightness = list(self.segment_brightness)
             self._segment_query_colors = colours
+        if read_brightness and brightness is None:
+            brightness = list(self.segment_brightness)
             self._segment_query_brightness = brightness
         for index, record in enumerate(records, start=offset):
-            level = int(record.brightness_percent) if self.model == "H6199" else int(record.brightness)
-            colours[index] = (
-                int(record.colour.red),
-                int(record.colour.green),
-                int(record.colour.blue),
-            )
-            brightness[index] = level
-        self._segment_groups_observed.add(group)
-        if len(self._segment_groups_observed) != self._segment_group_count:
+            if colours is not None:
+                colours[index] = (
+                    int(record.colour.red),
+                    int(record.colour.green),
+                    int(record.colour.blue),
+                )
+            if brightness is not None:
+                brightness[index] = int(record.brightness_percent) if self.model == "H6199" else int(record.brightness)
+        if read_colours:
+            self._segment_color_groups_observed.add(group)
+        if read_brightness:
+            self._segment_brightness_groups_observed.add(group)
+        observed: list[str] = []
+        observed_at = datetime.now().astimezone().isoformat()
+        if colours is not None and len(self._segment_color_groups_observed) == self._segment_group_count:
+            self.segment_colors = colours
+            self.segment_color_state_source = "observed"
+            self.segment_color_state_observed_at = observed_at
+            self._segment_color_groups_observed.clear()
+            self._segment_query_colors = None
+            observed.append("segment_colors")
+        if brightness is not None and len(self._segment_brightness_groups_observed) == self._segment_group_count:
+            self.segment_brightness = brightness
+            self.segment_brightness_state_source = "observed"
+            self.segment_brightness_state_observed_at = observed_at
+            self._segment_brightness_groups_observed.clear()
+            self._segment_query_brightness = None
+            observed.append("segment_brightness")
+        if not observed:
             return ()
-        self.segment_colors = colours
-        self.segment_brightness = brightness
-        self._segment_query_colors = None
-        self._segment_query_brightness = None
         self.segment_state_source = "observed"
-        self.segment_state_observed_at = datetime.now().astimezone().isoformat()
-        observed = ["segment_colors", "segment_brightness"]
-        if self.color_mode is ParsedMode.COLOUR and len(set(self.segment_colors)) == 1:
+        self.segment_state_observed_at = observed_at
+        if "segment_colors" in observed and self.color_mode is ParsedMode.COLOUR and len(set(self.segment_colors)) == 1:
             rendered = self.segment_colors[0]
             if self.color_temp_kelvin is not None and rendered == kelvin_to_rgb(self.color_temp_kelvin):
                 if self._accept_expected("color_temp_kelvin", self.color_temp_kelvin):
@@ -899,11 +1005,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         try:
             observed: tuple[str, ...] = ()
             if domain is StatusDomain.POWER:
+                if not self.profile.can_read(ReadDomain.POWER):
+                    return
                 value = bool(generated.body.is_on)
                 if self._accept_expected("is_on", value):
                     self.is_on = value
                     observed = ("is_on",)
             elif domain is StatusDomain.BRIGHTNESS:
+                if not self.profile.can_read(ReadDomain.BRIGHTNESS):
+                    return
                 brightness_value = (
                     int(generated.body.percent) if self.model == "H6199" else int(generated.body.brightness_pct)
                 )
@@ -911,12 +1021,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     self.brightness_pct = brightness_value
                     observed = ("brightness_pct",)
             elif domain is StatusDomain.COLOUR_MODE:
-                if not self.profile.supports_color_mode_readback:
+                if not self.profile.can_read(ReadDomain.MODE):
                     return
                 observed = self._apply_color_mode_payload(generated)
             elif domain is StatusDomain.DISPLAY_SETTING:
                 current_white_balance: tuple[int, int] | None
                 if generated.body.setting == 0:
+                    if not self.profile.supports_white_balance:
+                        return
                     red = int(generated.body.payload.current_red)
                     blue = int(generated.body.payload.current_blue)
                     current_white_balance = (red, blue)
@@ -931,6 +1043,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 else:
                     blank_screen = bool(generated.body.payload.is_enabled) if generated.body.setting == 10 else None
                     if blank_screen is not None:
+                        if not self.profile.supports_blank_screen:
+                            return
                         payload = generated.body.payload
                         self.blank_screen_detection = int(payload.detection)
                         self.blank_screen_low_brightness_duration_seconds = int(payload.low_brightness_duration_seconds)
@@ -939,6 +1053,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                             self.blank_screen = blank_screen
                             observed = ("blank_screen",)
             elif domain is StatusDomain.RELATIVE_BRIGHTNESS:
+                if not self.profile.supports_relative_brightness:
+                    return
                 edges = (
                     generated.body.left_percent,
                     generated.body.top_percent,
@@ -963,17 +1079,29 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     ) = edges
                     observed = tuple(edge_values)
             elif domain is StatusDomain.SEGMENTS:
-                if not self.profile.supports_segments:
+                if not self._can_read_regions:
                     return
                 observed = self._apply_segment_group(generated)
+                if not observed:
+                    return
             elif domain is StatusDomain.FIRMWARE:
+                if not self.profile.can_read(ReadDomain.IDENTITY):
+                    return
                 self._note_identity(fw_version=generated.body.text or None)
             elif domain is StatusDomain.HARDWARE:
+                if not self.profile.can_read(ReadDomain.IDENTITY):
+                    return
                 self._note_identity(hw_version=generated.body.text or None)
             elif domain is StatusDomain.SUBORDINATE_20:
+                if not self.profile.can_read(ReadDomain.IDENTITY):
+                    return
                 self.subordinate_20_version = generated.body.text or None
             elif domain is StatusDomain.SUBORDINATE_21:
+                if not self.profile.can_read(ReadDomain.IDENTITY):
+                    return
                 self.subordinate_21_version = generated.body.text or None
+            else:
+                return
             self._mark_received(domain, *observed)
             self.async_set_updated_data(self.data or {})
         except IndexError, ValueError:
@@ -1001,13 +1129,26 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return False
         try:
             queries: list[bytes] = []
+            query_power = query_power and self.profile.can_read(ReadDomain.POWER)
+            query_brightness = query_brightness and self.profile.can_read(ReadDomain.BRIGHTNESS)
+            query_color_mode = query_color_mode and self.profile.can_read(ReadDomain.MODE)
+            enabled_core_queries = (
+                self.profile.can_read(ReadDomain.POWER),
+                self.profile.can_read(ReadDomain.BRIGHTNESS),
+                self.profile.can_read(ReadDomain.MODE),
+            )
+            requested_core_queries = (query_power, query_brightness, query_color_mode)
+            full_query = any(enabled_core_queries) and all(
+                requested
+                for enabled, requested in zip(enabled_core_queries, requested_core_queries, strict=True)
+                if enabled
+            )
             if query_power:
                 queries.append(build_power_query(self.model))
             if query_brightness:
                 queries.append(build_brightness_query(self.model))
             if query_color_mode:
                 queries.append(build_colour_mode_query(self.model))
-            full_query = query_power and query_brightness and query_color_mode
             if self.profile.supports_white_balance and (
                 query_white_balance if query_white_balance is not None else full_query
             ):
@@ -1020,13 +1161,22 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 query_relative_brightness if query_relative_brightness is not None else full_query
             ):
                 queries.append(build_h6199_relative_brightness_query())
-            if self.profile.supports_segments and (query_segments if query_segments is not None else full_query):
-                self._segment_groups_observed.clear()
-                self._segment_query_colors = list(self.segment_colors)
-                self._segment_query_brightness = list(self.segment_brightness)
+            if (
+                self.profile.segment_count > 0
+                and self._can_read_regions
+                and (query_segments if query_segments is not None else full_query)
+            ):
+                if self.profile.can_read(ReadDomain.REGION_COLOUR):
+                    self._segment_color_groups_observed.clear()
+                    self._segment_query_colors = list(self.segment_colors)
+                if self.profile.can_read(ReadDomain.REGION_BRIGHTNESS):
+                    self._segment_brightness_groups_observed.clear()
+                    self._segment_query_brightness = list(self.segment_brightness)
                 queries.extend(
                     build_segment_query(group, self.model) for group in range(1, self._segment_group_count + 1)
                 )
+            if not queries:
+                return False
             for query in queries:
                 await self._client.write_gatt_char(WRITE_UUID, query, response=False)
                 self._record_packet("tx", query, outcome="sent", reason="write_succeeded")
@@ -1040,7 +1190,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         Replies can be missed right after connect while notifications are starting, so the
         keep-alive loop retries unknown values up to ``IDENTITY_RETRY_TICKS``.
         """
-        if not self._client or not self._client.is_connected:
+        if not self.profile.can_read(ReadDomain.IDENTITY) or not self._client or not self._client.is_connected:
             return
         candidates = [
             (build_hardware_query(self.model), self.hw_version),
@@ -1062,7 +1212,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             _LOGGER.debug("Identity query failed for %s", self.address)
 
     def _identity_incomplete(self) -> bool:
-        return (
+        return self.profile.can_read(ReadDomain.IDENTITY) and (
             self.fw_version is None
             or self.hw_version is None
             or (self.model == "H6199" and (self.subordinate_20_version is None or self.subordinate_21_version is None))
@@ -1159,6 +1309,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     "relative_brightness_bottom": bottom,
                 }
             )
+        if any(not self._can_read_field(field) for field in expectations):
+            return False
         color_expectations = (
             expected_effect,
             expected_music_mode,
@@ -1172,21 +1324,36 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             expected_video_sound_effects_softness,
             expected_white_brightness,
         )
-        if not self.profile.supports_color_mode_readback and (
-            expected_music_auto_color or any(value is not None for value in color_expectations)
-        ):
-            return False
-        query_power = expected_on is not None
-        query_brightness = expected_brightness is not None
-        query_color = self.profile.supports_color_mode_readback and (
+        query_power = expected_on is not None and self.profile.can_read(ReadDomain.POWER)
+        query_brightness = expected_brightness is not None and self.profile.can_read(ReadDomain.BRIGHTNESS)
+        query_color = self.profile.can_read(ReadDomain.MODE) and (
             expected_music_auto_color or any(value is not None for value in color_expectations)
         )
-        query_white_balance = expected_white_balance is not None or refresh_display_settings
-        query_blank_screen = expected_blank_screen is not None or refresh_display_settings
-        query_relative_brightness = expected_relative_brightness is not None or refresh_relative_brightness
+        query_white_balance = self.profile.supports_white_balance and (
+            expected_white_balance is not None or refresh_display_settings
+        )
+        query_blank_screen = self.profile.supports_blank_screen and (
+            expected_blank_screen is not None or refresh_display_settings
+        )
+        query_relative_brightness = self.profile.supports_relative_brightness and (
+            expected_relative_brightness is not None or refresh_relative_brightness
+        )
+        query_segments = refresh_all and self._can_read_regions
         if refresh_all:
-            query_power = query_brightness = True
-            query_color = self.profile.supports_color_mode_readback
+            query_power = self.profile.can_read(ReadDomain.POWER)
+            query_brightness = self.profile.can_read(ReadDomain.BRIGHTNESS)
+            query_color = self.profile.can_read(ReadDomain.MODE)
+        enabled_core_queries = (
+            self.profile.can_read(ReadDomain.POWER),
+            self.profile.can_read(ReadDomain.BRIGHTNESS),
+            self.profile.can_read(ReadDomain.MODE),
+        )
+        requested_core_queries = (query_power, query_brightness, query_color)
+        full_core_query = any(enabled_core_queries) and all(
+            requested
+            for enabled, requested in zip(enabled_core_queries, requested_core_queries, strict=True)
+            if enabled
+        )
         if not any(
             (
                 query_power,
@@ -1195,10 +1362,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 query_white_balance,
                 query_blank_screen,
                 query_relative_brightness,
+                query_segments,
             )
         ):
-            query_power = True
-            query_color = self.profile.supports_color_mode_readback
+            query_power = self.profile.can_read(ReadDomain.POWER)
+            query_color = self.profile.can_read(ReadDomain.MODE)
+            if not (query_power or query_color):
+                query_brightness = self.profile.can_read(ReadDomain.BRIGHTNESS)
+            if not (query_power or query_brightness or query_color):
+                query_segments = self._can_read_regions
         queried_domains = {
             domain
             for domain, enabled in (
@@ -1207,9 +1379,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 (StatusDomain.COLOUR_MODE, query_color),
                 (StatusDomain.DISPLAY_SETTING, query_white_balance or query_blank_screen),
                 (StatusDomain.RELATIVE_BRIGHTNESS, query_relative_brightness),
+                (
+                    StatusDomain.SEGMENTS,
+                    query_segments and not (query_power or query_brightness or query_color),
+                ),
             )
             if enabled
         }
+        if not queried_domains:
+            return False
         initial_domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in queried_domains}
         current_intent = self._control_arbiter.current_task_intent
         intent = ControlIntent.USER if current_intent is None else current_intent
@@ -1223,7 +1401,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 async with self._lock:
                     if self._client is not client:
                         return False
-                    if query_white_balance or query_blank_screen or query_relative_brightness:
+                    if (
+                        query_white_balance
+                        or query_blank_screen
+                        or query_relative_brightness
+                        or (query_segments and not full_core_query)
+                    ):
                         ok = await self._send_state_queries(
                             query_power=query_power,
                             query_brightness=query_brightness,
@@ -1231,6 +1414,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                             query_white_balance=query_white_balance,
                             query_blank_screen=query_blank_screen,
                             query_relative_brightness=query_relative_brightness,
+                            query_segments=query_segments,
                         )
                     else:
                         ok = await self._send_state_queries(
@@ -1302,11 +1486,30 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     def invalidate_previews(self) -> None:
         self._control_arbiter.invalidate_previews()
 
-    async def async_refresh_segments(self, *, timeout: float = 2.0) -> bool:
-        if not self.profile.state_readable or not self.profile.supports_segments:
+    async def async_refresh_segments(
+        self,
+        *,
+        read_domain: ReadDomain | None = None,
+        timeout: float = 2.0,
+    ) -> bool:
+        if read_domain not in (None, ReadDomain.REGION_COLOUR, ReadDomain.REGION_BRIGHTNESS):
+            raise ValueError(f"{read_domain} is not a region read domain")
+        domains = (
+            tuple(
+                domain
+                for domain in (ReadDomain.REGION_COLOUR, ReadDomain.REGION_BRIGHTNESS)
+                if self.profile.can_read(domain)
+            )
+            if read_domain is None
+            else ((read_domain,) if self.profile.can_read(read_domain) else ())
+        )
+        if not domains or self.profile.segment_count <= 0:
             return False
+        fields = tuple(
+            "segment_colors" if domain is ReadDomain.REGION_COLOUR else "segment_brightness" for domain in domains
+        )
         async with async_control_intent(self, ControlIntent.USER):
-            baseline = self._field_revisions.get("segment_colors", 0)
+            baselines = {field: self._field_revisions.get(field, 0) for field in fields}
             async with self._lock:
                 client = await self._ensure_connected()
                 ok = await self._send_state_queries(
@@ -1321,7 +1524,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             while time.monotonic() < deadline:
                 if self._client is not client:
                     return False
-                if self._field_revisions.get("segment_colors", 0) > baseline:
+                if all(self._field_revisions.get(field, 0) > baseline for field, baseline in baselines.items()):
                     return True
                 remaining = deadline - time.monotonic()
                 if remaining > 0:
@@ -1393,11 +1596,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         *,
         timeout: float = 4.0,
     ) -> bool | None:
-        if not self.profile.state_readable or not expectations:
+        if (
+            not self.profile.state_readable
+            or not expectations
+            or any(not self._can_read_field(field) for field in expectations)
+        ):
             return None
-        query_power = "is_on" in expectations
-        query_brightness = "brightness_pct" in expectations
-        query_color = bool(
+        query_power = "is_on" in expectations and self.profile.can_read(ReadDomain.POWER)
+        query_brightness = "brightness_pct" in expectations and self.profile.can_read(ReadDomain.BRIGHTNESS)
+        query_color = self.profile.can_read(ReadDomain.MODE) and bool(
             set(expectations).intersection(
                 {
                     "color_mode",
@@ -1417,18 +1624,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 }
             )
         )
-        query_white_balance = bool(set(expectations).intersection({"white_balance_red", "white_balance_blue"}))
-        query_blank_screen = "blank_screen" in expectations
-        query_relative_brightness = bool(
-            set(expectations).intersection(
-                {
-                    "relative_brightness",
-                    "relative_brightness_left",
-                    "relative_brightness_top",
-                    "relative_brightness_right",
-                    "relative_brightness_bottom",
-                }
-            )
+        query_white_balance = self.profile.supports_white_balance and bool(
+            set(expectations).intersection(_WHITE_BALANCE_FIELDS)
+        )
+        query_blank_screen = self.profile.supports_blank_screen and "blank_screen" in expectations
+        query_relative_brightness = self.profile.supports_relative_brightness and bool(
+            set(expectations).intersection(_RELATIVE_BRIGHTNESS_FIELDS)
+        )
+        query_segments = bool(
+            set(expectations).intersection({"rgb_color", "color_temp_kelvin", "segment_colors", "segment_brightness"})
         )
         field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
         async with async_control_intent(self, ControlIntent.PREVIEW):
@@ -1436,13 +1640,18 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 client = self._client
                 if client is None or not client.is_connected:
                     return None
+                query_args: dict[str, bool] = {
+                    "query_power": query_power,
+                    "query_brightness": query_brightness,
+                    "query_color_mode": query_color,
+                    "query_white_balance": query_white_balance,
+                    "query_blank_screen": query_blank_screen,
+                    "query_relative_brightness": query_relative_brightness,
+                }
+                if query_segments:
+                    query_args["query_segments"] = True
                 ok = await self._send_state_queries(
-                    query_power=query_power,
-                    query_brightness=query_brightness,
-                    query_color_mode=query_color,
-                    query_white_balance=query_white_balance,
-                    query_blank_screen=query_blank_screen,
-                    query_relative_brightness=query_relative_brightness,
+                    **query_args,
                 )
         if not ok or self._client is not client:
             return None
@@ -1487,13 +1696,20 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         async with self._lock:
                             await self._send_identity_queries()
                     full = self._keep_alive_ticks % STATE_QUERY_EVERY_N_KEEP_ALIVES == 0
+                    query_args = {
+                        "query_power": self.profile.can_read(ReadDomain.POWER),
+                        "query_brightness": full and self.profile.can_read(ReadDomain.BRIGHTNESS),
+                        "query_color_mode": full and self.profile.can_read(ReadDomain.MODE),
+                        "query_white_balance": full and self.profile.supports_white_balance,
+                        "query_blank_screen": full and self.profile.supports_blank_screen,
+                        "query_relative_brightness": full and self.profile.supports_relative_brightness,
+                        "query_segments": full and self._can_read_regions,
+                    }
+                    if not any(query_args.values()):
+                        continue
                     async with self._lock:
                         client = self._client
-                        ok = await self._send_state_queries(
-                            query_power=True,
-                            query_brightness=full,
-                            query_color_mode=full and self.profile.supports_color_mode_readback,
-                        )
+                        ok = await self._send_state_queries(**query_args)
                     if not ok:
                         if client is not None:
                             await self._disconnect_if_current(client)
@@ -1551,17 +1767,18 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         publish segment state after writes, so the complete segment query verifies the
         optimistic state without resending or rolling back a completed write.
         """
-        if not self.profile.supports_segments:
-            raise ValueError(f"{self.model} does not support per-segment control")
+        if self.profile.segment_count <= 0 or not self.profile.supports_segment_colour_writes:
+            raise ValueError(f"{self.model} does not support per-segment colour control")
         resolved: list[SegmentColorGroup] = [(list(segments), rgb) for segments, rgb in groups]
         if not resolved or any(not segments for segments, _rgb in resolved):
             raise ValueError("at least one non-empty segment group is required")
         previous = list(self.segment_colors)
+        previous_color_source = self.segment_color_state_source
+        previous_color_observed_at = self.segment_color_state_observed_at
         previous_source = self.segment_state_source
         previous_observed_at = self.segment_state_observed_at
-        previous_groups = set(self._segment_groups_observed)
+        previous_groups = set(self._segment_color_groups_observed)
         previous_query_colors = self._segment_query_colors
-        previous_query_brightness = self._segment_query_brightness
         updated = list(previous)
         try:
             for segments, rgb in resolved:
@@ -1574,19 +1791,20 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 await self.send_command(packet)
         except Exception:
             self.segment_colors = previous
+            self.segment_color_state_source = previous_color_source
+            self.segment_color_state_observed_at = previous_color_observed_at
             self.segment_state_source = previous_source
             self.segment_state_observed_at = previous_observed_at
-            self._segment_groups_observed = previous_groups
+            self._segment_color_groups_observed = previous_groups
             self._segment_query_colors = previous_query_colors
-            self._segment_query_brightness = previous_query_brightness
             raise
         self._enter_static_mode()
-        await self.async_refresh_segments()
+        await self.async_refresh_segments(read_domain=ReadDomain.REGION_COLOUR)
         self.async_set_updated_data(self.data or {})
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
-        if not self.profile.supports_segments:
-            raise ValueError(f"{self.model} does not support per-segment control")
+        if self.profile.segment_count <= 0 or not self.profile.supports_segment_brightness_writes:
+            raise ValueError(f"{self.model} does not support per-segment brightness control")
         if not segments:
             raise ValueError("at least one segment is required")
         value = max(0, min(100, brightness))
@@ -1599,7 +1817,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         await self.send_command(packet)
         self.mark_segment_state_optimistic(brightness=updated)
         self._enter_static_mode()
-        await self.async_refresh_segments()
+        await self.async_refresh_segments(read_domain=ReadDomain.REGION_BRIGHTNESS)
         self.async_set_updated_data(self.data or {})
 
     def _record_packet(

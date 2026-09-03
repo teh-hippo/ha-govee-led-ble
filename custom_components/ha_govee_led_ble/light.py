@@ -21,6 +21,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -37,6 +38,7 @@ from .const import (
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
     ModelProfile,
+    ReadDomain,
     effect_category_for_content_kind,
 )
 from .control_arbiter import ControlIntent, async_control_intent
@@ -62,6 +64,7 @@ from .effect_storage import (
 )
 from .entity import GoveeBLEEntity
 from .generated_protocol_adapter import build_brightness, build_power
+from .h6102_protocol import H6102RgbVariant
 from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
 from .light_services import (
     _GoveeLightServicesMixin,
@@ -172,6 +175,14 @@ _STATE_FIELDS = (
 ).split()
 
 
+def _h6102_rgb_enabled(coordinator: GoveeBLECoordinator) -> bool:
+    return (
+        coordinator.profile.supports_rgb
+        and coordinator.rgb_variant is H6102RgbVariant.EXTENDED
+        and coordinator.firmware_source == "configured"
+    )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -202,13 +213,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._attr_unique_id = coordinator.address.replace(":", "").lower()
         self._attr_device_info = coordinator.device_info
         supported_color_modes: set[ColorMode] = set()
-        if coordinator.profile.supports_rgb:
+        if coordinator.profile.supports_rgb and (coordinator.model != "H6102" or _h6102_rgb_enabled(coordinator)):
             supported_color_modes.add(ColorMode.RGB)
         if coordinator.profile.supports_color_temperature:
             supported_color_modes.add(ColorMode.COLOR_TEMP)
         if not supported_color_modes:
-            supported_color_modes.add(ColorMode.ONOFF)
+            supported_color_modes.add(ColorMode.BRIGHTNESS if coordinator.model == "H6102" else ColorMode.ONOFF)
         self._attr_supported_color_modes = supported_color_modes
+        self._attr_assumed_state = not coordinator.profile.can_read(ReadDomain.POWER)
         self._attr_min_color_temp_kelvin = coordinator.profile.min_color_temp_kelvin
         self._attr_max_color_temp_kelvin = coordinator.profile.max_color_temp_kelvin
         self._attr_color_mode = (
@@ -216,7 +228,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             if ColorMode.RGB in supported_color_modes
             else ColorMode.COLOR_TEMP
             if ColorMode.COLOR_TEMP in supported_color_modes
-            else ColorMode.ONOFF
+            else next(iter(supported_color_modes))
         )
         self._config_entry_id = config_entry_id
         self._effect_backend = effect_backend
@@ -231,9 +243,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         try:
             yield
         except Exception as err:
-            for f, v in snap.items():
-                setattr(self.coordinator, f, v)
-            self._attr_color_mode = mode_snap
+            if self.coordinator.profile.can_read(ReadDomain.POWER):
+                for f, v in snap.items():
+                    setattr(self.coordinator, f, v)
+                self._attr_color_mode = mode_snap
             if isinstance(err, HomeAssistantError):
                 raise
             raise HomeAssistantError(
@@ -308,9 +321,20 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         attrs: dict[str, Any] = {}
         if (scene_code := self.coordinator.unknown_scene_code) is not None:
             attrs["unknown_scene_code"] = scene_code
-        if self.coordinator.profile.supports_segments:
+        profile = self.coordinator.profile
+        has_segment_colours = profile.segment_count > 0 and (
+            profile.supports_segment_colour_writes or profile.can_read(ReadDomain.REGION_COLOUR)
+        )
+        has_segment_brightness = profile.segment_count > 0 and (
+            profile.supports_segment_brightness_writes or profile.can_read(ReadDomain.REGION_BRIGHTNESS)
+        )
+        if has_segment_colours:
             attrs["segment_colors"] = [list(color) for color in self.coordinator.segment_colors]
+            attrs["segment_color_state_source"] = self.coordinator.segment_color_state_source
+        if has_segment_brightness:
             attrs["segment_brightness"] = list(self.coordinator.segment_brightness)
+            attrs["segment_brightness_state_source"] = self.coordinator.segment_brightness_state_source
+        if has_segment_colours or has_segment_brightness:
             attrs["segment_state_source"] = self.coordinator.segment_state_source
         return attrs
 
@@ -378,7 +402,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
 
     def _matching_active_workspace(self) -> Any | None:
-        if self._effect_backend is None or self._config_entry_id is None:
+        if (
+            not self.coordinator.profile.supports_custom_effects
+            or self._effect_backend is None
+            or self._config_entry_id is None
+        ):
             return None
         active_workspaces = getattr(self._effect_backend, "active_workspaces", None)
         workspace = active_workspaces.get(self._config_entry_id) if active_workspaces is not None else None
@@ -419,28 +447,57 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     async def _async_restore_static_color(self) -> None:
         coordinator = self.coordinator
-        if coordinator.color_mode not in (None, ParsedMode.COLOUR):
+        supports_static_restore = bool(
+            (self._attr_supported_color_modes or set()).intersection({ColorMode.RGB, ColorMode.COLOR_TEMP})
+        ) and (coordinator.model != "H6102" or _h6102_rgb_enabled(coordinator))
+        if not supports_static_restore and coordinator.model != "H6102":
             return
-        if (
+        static_restore_blocked = coordinator.color_mode not in (None, ParsedMode.COLOUR) or (
             coordinator.effect is not None
             or coordinator.diy_code is not None
             or coordinator.music_mode != "off"
             or coordinator.video_mode != "off"
-        ):
+        )
+        if static_restore_blocked and coordinator.model != "H6102":
             return
         if (last_state := await self.async_get_last_state()) is None:
             return
-        if last_state.attributes.get(ATTR_EFFECT) not in (None, EFFECT_OFF):
+        restored_basic_state = False
+        if coordinator.model == "H6102":
+            if not coordinator.profile.can_read(ReadDomain.POWER) and getattr(last_state, "state", None) in (
+                STATE_ON,
+                STATE_OFF,
+            ):
+                coordinator.is_on = last_state.state == STATE_ON
+                restored_basic_state = True
+            raw_brightness = last_state.attributes.get(ATTR_BRIGHTNESS)
+            if (
+                not coordinator.profile.can_read(ReadDomain.BRIGHTNESS)
+                and isinstance(raw_brightness, int)
+                and not isinstance(raw_brightness, bool)
+                and 0 < raw_brightness <= 255
+            ):
+                coordinator.brightness_pct = max(1, round(raw_brightness * 100 / 255))
+                restored_basic_state = True
+        if (
+            not supports_static_restore
+            or static_restore_blocked
+            or last_state.attributes.get(ATTR_EFFECT) not in (None, EFFECT_OFF)
+        ):
+            if restored_basic_state:
+                coordinator.async_set_updated_data(coordinator.data or {})
             return
         restored = _coerce_static_color(last_state.attributes, coordinator.profile)
         if restored is None and (extra_data := await self.async_get_last_extra_data()) is not None:
             restored = _coerce_static_color(extra_data.as_dict(), coordinator.profile)
         if restored is None:
+            if restored_basic_state:
+                coordinator.async_set_updated_data(coordinator.data or {})
             return
         restored_mode = restored.color_mode
         restored_rgb = restored.rgb_color
         restored_kelvin = restored.color_temp_kelvin
-        if coordinator.segment_state_source == "observed":
+        if coordinator.segment_color_state_source == "observed":
             if (
                 restored_kelvin is not None
                 and coordinator.segment_colors
@@ -463,8 +520,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     async def _async_restore_segments(self) -> None:
         coordinator = self.coordinator
-        count = coordinator.profile.segment_count
-        if not count or coordinator.segment_state_source != "initial":
+        profile = coordinator.profile
+        count = profile.segment_count
+        restore_colours = (
+            count > 0
+            and coordinator.segment_color_state_source == "initial"
+            and (profile.supports_segment_colour_writes or profile.can_read(ReadDomain.REGION_COLOUR))
+        )
+        restore_brightness = (
+            count > 0
+            and coordinator.segment_brightness_state_source == "initial"
+            and (profile.supports_segment_brightness_writes or profile.can_read(ReadDomain.REGION_BRIGHTNESS))
+        )
+        if not (restore_colours or restore_brightness):
             return
         if coordinator.color_mode not in (None, ParsedMode.COLOUR):
             return
@@ -474,9 +542,15 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         if (last_state := await self.async_get_last_state()) is None:
             return
-        restored = _coerce_segment_colors(last_state.attributes.get("segment_colors"), count)
-        brightness = _coerce_segment_brightness(last_state.attributes.get("segment_brightness"), count)
-        if restored is None or brightness is None:
+        restored = (
+            _coerce_segment_colors(last_state.attributes.get("segment_colors"), count) if restore_colours else None
+        )
+        brightness = (
+            _coerce_segment_brightness(last_state.attributes.get("segment_brightness"), count)
+            if restore_brightness
+            else None
+        )
+        if restored is None and brightness is None:
             return
         coordinator.mark_segment_state_restored(restored, brightness)
         coordinator.async_set_updated_data(coordinator.data or {})
@@ -557,9 +631,33 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         await async_apply_compiled_profile(self.coordinator, compiled)
         return True
 
+    def _resolve_effect_request(self, effect_name: str) -> EffectSelectorEntry | None:
+        key = normalise_effect_name(effect_name)
+        if key == normalise_effect_name(EFFECT_OFF):
+            if self.effect_list:
+                return None
+        elif key == normalise_effect_name("Custom") and self._matching_active_workspace() is not None:
+            return None
+        try:
+            selected = resolve_effect_selector(self._selector_entries(), effect_name)
+        except EffectValidationError as exc:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_effect",
+                translation_placeholders={"effect": effect_name},
+            ) from exc
+        if selected is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_effect",
+                translation_placeholders={"effect": effect_name},
+            )
+        return selected
+
     async def _apply_effect(self, effect_name: str) -> None:
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
+        selected = self._resolve_effect_request(effect_name)
         if key == EFFECT_OFF:
             if coordinator.color_temp_kelvin is not None:
                 await coordinator.send_command(
@@ -577,6 +675,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     build_color_rgb(
                         *coordinator.rgb_color,
                         coordinator.model,
+                        h6102_variant=coordinator.rgb_variant if coordinator.model == "H6102" else None,
                     )
                 )
                 self._attr_color_mode = ColorMode.RGB
@@ -587,15 +686,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         if key == normalise_effect_name("Custom") and self._matching_active_workspace() is not None:
             return
-        try:
-            selected = resolve_effect_selector(self._selector_entries(), effect_name)
-        except EffectValidationError as exc:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="unknown_effect",
-                translation_placeholders={"effect": effect_name},
-            ) from exc
-        if selected is not None and selected.source == "scene":
+        assert selected is not None
+        if selected.source == "scene":
             scene = MODEL_SCENES[coordinator.model][selected.value]
             scene_default = (
                 self._effect_backend.scene_defaults.get(
@@ -615,7 +707,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 intent=ControlIntent.USER,
             )
             return
-        if selected is not None and selected.source == "video":
+        if selected.source == "video":
             if await self._async_apply_template_default(f"template:video:{selected.value}"):
                 return
             await self._async_set_video_mode(
@@ -626,7 +718,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 sound_effects_softness=coordinator.video_sound_effects_softness,
             )
             return
-        if selected is not None and selected.source == "music":
+        if selected.source == "music":
             if await self._async_apply_template_default(f"template:music:{selected.value}"):
                 return
             await coordinator.async_select_music_slug(selected.value)
@@ -639,6 +731,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         active_workspace = self._matching_active_workspace()
+        if ATTR_EFFECT in kwargs:
+            self._resolve_effect_request(str(kwargs[ATTR_EFFECT]))
+        if self.coordinator.model == "H6102" and kwargs.get(ATTR_BRIGHTNESS) == 0:
+            await self._async_supersede_preview()
+            async with async_control_intent(
+                self.coordinator,
+                ControlIntent.USER,
+            ):
+                await self._async_turn_off(clear_workspace_on_success=active_workspace is not None)
+            return
         custom_requested = (
             ATTR_EFFECT in kwargs
             and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == normalise_effect_name("Custom")
@@ -721,6 +823,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         effect: str | None = None,
         effect_id: str | None = None,
     ) -> dict[str, Any]:
+        self._require_support(
+            "apply_custom_effect",
+            supported=self.coordinator.profile.supports_custom_effects,
+        )
         if self._effect_backend is None or self._config_entry_id is None:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
@@ -813,12 +919,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         clear_workspace_on_success: bool = False,
         **kwargs: Any,
     ) -> None:
+        if ATTR_RGB_COLOR in kwargs:
+            self._require_support("RGB colour", supported=ColorMode.RGB in (self._attr_supported_color_modes or set()))
+        if ATTR_COLOR_TEMP_KELVIN in kwargs:
+            self._require_support(
+                "colour temperature",
+                supported=ColorMode.COLOR_TEMP in (self._attr_supported_color_modes or set()),
+            )
         power_on = partial(
             self.coordinator.send_command,
             build_power(True, self.coordinator.model),
         )
         with self._rollback():
-            if not self.coordinator.is_on:
+            if not self.coordinator.profile.can_read(ReadDomain.POWER) or not self.coordinator.is_on:
                 await power_on()
                 self.coordinator.is_on = True
                 await self._refresh_with_retry(expected_on=True, retry_command=power_on)
@@ -835,9 +948,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     retry_command=apply_brightness,
                 )
             if ATTR_RGB_COLOR in kwargs:
-                self._require_support("RGB colour", supported=self.coordinator.profile.supports_rgb)
                 r, g, b = kwargs[ATTR_RGB_COLOR]
-                await self.coordinator.send_command(build_color_rgb(r, g, b, self.coordinator.model))
+                await self.coordinator.send_command(
+                    build_color_rgb(
+                        r,
+                        g,
+                        b,
+                        self.coordinator.model,
+                        h6102_variant=(self.coordinator.rgb_variant if self.coordinator.model == "H6102" else None),
+                    )
+                )
                 self.coordinator.rgb_color = (r, g, b)
                 self.coordinator.mark_segment_state_optimistic(
                     colours=[(r, g, b)] * len(self.coordinator.segment_colors),
@@ -845,10 +965,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 self._attr_color_mode, self.coordinator.color_temp_kelvin = ColorMode.RGB, None
                 self.coordinator._enter_static_mode()
             if ATTR_COLOR_TEMP_KELVIN in kwargs:
-                self._require_support(
-                    "colour temperature",
-                    supported=self.coordinator.profile.supports_color_temperature,
-                )
                 kelvin = max(
                     self.coordinator.profile.min_color_temp_kelvin,
                     min(self.coordinator.profile.max_color_temp_kelvin, kwargs[ATTR_COLOR_TEMP_KELVIN]),

@@ -15,8 +15,19 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | **H617E** | Compatible | Owner-confirmed H617A-compatible controls, scenes, effects and music modes; exact-model protocol documentation remains incomplete | Physical owner feedback and a speculative H617A compatibility alias |
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
 | **H6076** | Partial | Confirmed power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) and a speculative H617A compatibility alias |
+| **H6102** | Experimental | Manual setup or reconfiguration only.  Unresolved or legacy-configured firmware exposes assumed-state power and 1–100 brightness; configured software version 1.03.01 or later also enables speculative write-only whole-device RGB for owner qualification. | [#115](https://github.com/teh-hippo/ha-govee-led-ble/issues/115) and speculative H6102 wire roots; owner qualification and captures required |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded and evidence-backed Kaitai coverage for every enabled wire path.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, speculative-schema, prerelease and promotion process.
+
+### H6102 Experimental candidate
+
+H6102 setup is manual-only because its BLE local name is not confirmed and automatic discovery is disabled.  Select H6102 during manual setup or reconfiguration.
+
+Unresolved firmware and app-reported software versions below 1.03.01 expose power plus 1–100 brightness only.  A valid app-reported software version at or above 1.03.01 additionally enables speculative, write-only whole-device RGB for owner qualification.  This configured version is temporary qualification context, not BLE-observed device identity, and must be updated through **Reconfigure** after an app firmware update.
+
+H6102 state is assumed and updated optimistically after writes.  No H6102 identity, power, brightness, mode, region or effect readback is enabled.  Colour temperature, regions, music, scene activation, DIY, saved effects and Effect Studio remain unavailable.
+
+The complete 240-variant H6102 exact-SKU scene snapshot is packaged as inert official metadata; it is not scene support.  The H6102 wire roots remain speculative under [#115](https://github.com/teh-hippo/ha-govee-led-ble/issues/115) and require owner qualification and attributable captures before promotion.
 
 ## Effect Studio
 
@@ -50,6 +61,7 @@ Effect definitions are model-specific.  A strip cannot return the body uploaded 
 
 ## Upgrade notes
 
+- For an H6102 currently configured as H617A, use the integration's **Reconfigure** action and select H6102.  The config entry, device and entity identity are preserved.
 - An H6076 previously configured as H617A must be explicitly changed to H6076 through the integration's **Reconfigure** action.  The config entry and entity identity are preserved.
 - Version 7 adds Effect Studio while retaining the standard Home Assistant light effect selector introduced in version 6.
 - The standalone H617A scene-speed entity remains removed.  Edit scene speed in Effect Studio or select the native scene through the light effect selector.
@@ -76,7 +88,7 @@ Restart Home Assistant after updating this integration through HACS or replacing
 
 ## Configuration
 
-The integration auto-discovers exact listed models.  Experimental models are available only in their model-specific prerelease.
+The integration auto-discovers listed models with confirmed BLE names.  H6102 remains manual-only while its BLE local name is unconfirmed, and Experimental models are available only in their model-specific prerelease.
 
 To add manually in Home Assistant:
 

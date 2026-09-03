@@ -14,13 +14,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.restore_state import RestoredExtraData
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
 )
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
 from custom_components.ha_govee_led_ble.effect_compiler import CompiledMusicProfile, CompiledVideoProfile
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -41,7 +42,10 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     VideoProfile,
 )
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
-from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
+from custom_components.ha_govee_led_ble.effect_runtime import (
+    EffectDeploymentEngine,
+    observable_signature_for_coordinator,
+)
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault
 from custom_components.ha_govee_led_ble.effect_selector import (
     effect_selector_entries,
@@ -55,6 +59,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_h6199_video,
     build_power,
 )
+from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
+from custom_components.ha_govee_led_ble.h6102_protocol import H6102RgbVariant
 from custom_components.ha_govee_led_ble.light import (
     GoveeBLELight,
     _coerce_segment_brightness,
@@ -86,6 +92,22 @@ def h6199_light(mock_h6199_coordinator):
     e = GoveeBLELight(mock_h6199_coordinator)
     e.async_write_ha_state = MagicMock()
     return e
+
+
+def _h6102_light(mock_coordinator, firmware=None, firmware_source=None):
+    resolution = resolve_h6102_capabilities(firmware, firmware_source)
+    mock_coordinator.model = "H6102"
+    mock_coordinator.profile = resolution.profile
+    mock_coordinator.rgb_variant = resolution.rgb_variant
+    mock_coordinator.firmware_source = resolution.firmware_source
+    mock_coordinator.effect_families = frozenset()
+    mock_coordinator.effect_categories = frozenset()
+    mock_coordinator.scene_name_set = frozenset()
+    mock_coordinator.segment_colors = []
+    mock_coordinator.segment_brightness = []
+    light = GoveeBLELight(mock_coordinator)
+    light.async_write_ha_state = MagicMock()
+    return light
 
 
 def test_basic_and_color_props(light, mock_coordinator):
@@ -120,6 +142,324 @@ async def test_h6076_exposes_only_basic_colour_controls(mock_h6076_coordinator):
     mock_h6076_coordinator.is_on = True
     await light.async_turn_on(color_temp_kelvin=2000)
     mock_h6076_coordinator.send_command.assert_awaited_once_with(build_color_temp(2700, "H6076"))
+
+
+@pytest.mark.parametrize(
+    ("firmware", "firmware_source", "expected_modes"),
+    [
+        pytest.param(None, None, {ColorMode.BRIGHTNESS}, id="missing"),
+        pytest.param("1.03.00", "configured", {ColorMode.BRIGHTNESS}, id="legacy"),
+        pytest.param("1.03.01", "ble", {ColorMode.BRIGHTNESS}, id="observed-not-experimental"),
+        pytest.param("1.03.01", "configured", {ColorMode.RGB}, id="extended-boundary"),
+    ],
+)
+def test_h6102_exposes_rgb_only_for_the_configured_extended_variant(
+    mock_coordinator,
+    firmware,
+    firmware_source,
+    expected_modes,
+):
+    light = _h6102_light(mock_coordinator, firmware, firmware_source)
+
+    assert light.supported_color_modes == expected_modes
+    assert light.color_mode is next(iter(expected_modes))
+    assert light.assumed_state
+    assert light.effect_list == []
+    assert light.supported_features == 0
+    assert light.extra_state_attributes == {}
+
+
+@pytest.mark.parametrize(
+    ("firmware", "firmware_source"),
+    [
+        pytest.param(None, None, id="missing"),
+        pytest.param("1.03.00", "configured", id="legacy"),
+        pytest.param("1.03.01", "ble", id="observed-not-experimental"),
+    ],
+)
+async def test_h6102_rejects_rgb_without_configured_extended_resolution(
+    mock_coordinator,
+    firmware,
+    firmware_source,
+):
+    light = _h6102_light(mock_coordinator, firmware, firmware_source)
+
+    with pytest.raises(ServiceValidationError) as error:
+        await light.async_turn_on(rgb_color=(1, 2, 3))
+
+    assert error.value.translation_key == "unsupported_model"
+    mock_coordinator.send_command.assert_not_awaited()
+
+
+async def test_h6102_rejects_colour_temperature(mock_coordinator):
+    light = _h6102_light(mock_coordinator, "1.03.01", "configured")
+
+    with pytest.raises(ServiceValidationError) as error:
+        await light.async_turn_on(color_temp_kelvin=4000)
+
+    assert error.value.translation_key == "unsupported_model"
+    mock_coordinator.send_command.assert_not_awaited()
+
+
+async def test_h6102_rejects_effects_before_preview_power_or_state_changes(
+    mock_coordinator,
+):
+    _h6102_light(mock_coordinator, "1.03.01", "configured")
+    mock_coordinator.always_include_custom_effects = True
+    saved = LibraryItem.new(
+        "Saved H6102 Workshop",
+        replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model="H6102"),
+    )
+    workspace = SimpleNamespace(
+        model="H6102",
+        observable_signature=observable_signature_for_coordinator(mock_coordinator),
+    )
+    preview = SimpleNamespace(async_supersede_device=AsyncMock())
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=SimpleNamespace(
+                library_snapshot=MagicMock(return_value=LibrarySnapshot((saved,))),
+            ),
+            preview=preview,
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+            active_workspaces=SimpleNamespace(get=MagicMock(return_value=workspace)),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+    state = (
+        mock_coordinator.is_on,
+        mock_coordinator.brightness_pct,
+        mock_coordinator.rgb_color,
+        mock_coordinator.effect,
+        mock_coordinator.music_mode,
+        mock_coordinator.video_mode,
+        mock_coordinator.diy_code,
+    )
+
+    assert entity.effect_list == []
+    assert entity.effect is None
+    for effect in ("Rainbow", "off", saved.name):
+        with pytest.raises(ServiceValidationError) as error:
+            await entity.async_turn_on(effect=effect)
+        assert error.value.translation_key == "unknown_effect"
+
+    preview.async_supersede_device.assert_not_awaited()
+    mock_coordinator.send_command.assert_not_awaited()
+    assert (
+        mock_coordinator.is_on,
+        mock_coordinator.brightness_pct,
+        mock_coordinator.rgb_color,
+        mock_coordinator.effect,
+        mock_coordinator.music_mode,
+        mock_coordinator.video_mode,
+        mock_coordinator.diy_code,
+    ) == state
+
+
+@pytest.mark.parametrize(
+    "initially_on",
+    [
+        pytest.param(False, id="known-off"),
+        pytest.param(True, id="assumed-on-but-externally-off"),
+    ],
+)
+async def test_h6102_no_argument_turn_on_always_sends_power(mock_coordinator, initially_on):
+    light = _h6102_light(mock_coordinator)
+    mock_coordinator.is_on = initially_on
+
+    await light.async_turn_on()
+
+    mock_coordinator.send_command.assert_awaited_once_with(build_power(True, "H6102"))
+    mock_coordinator.refresh_state.assert_not_awaited()
+    assert mock_coordinator.is_on is True
+
+
+async def test_h6102_extended_rgb_reasserts_power_before_whole_device_frame(mock_coordinator):
+    light = _h6102_light(mock_coordinator, "1.03.01", "configured")
+    mock_coordinator.is_on = True
+
+    await light.async_turn_on(rgb_color=(32, 64, 96))
+
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == [
+        build_power(True, "H6102"),
+        build_color_rgb(
+            32,
+            64,
+            96,
+            "H6102",
+            h6102_variant=H6102RgbVariant.EXTENDED,
+        ),
+    ]
+    mock_coordinator.refresh_state.assert_not_awaited()
+    assert mock_coordinator.is_on is True
+    assert mock_coordinator.rgb_color == (32, 64, 96)
+    assert mock_coordinator.color_mode is ParsedMode.COLOUR
+    assert light.color_mode is ColorMode.RGB
+
+
+@pytest.mark.parametrize("initially_on", [False, True])
+async def test_h6102_extended_black_stays_on_and_retains_brightness(mock_coordinator, initially_on):
+    light = _h6102_light(mock_coordinator, "1.03.01", "configured")
+    mock_coordinator.is_on = initially_on
+    mock_coordinator.brightness_pct = 63
+    mock_coordinator.rgb_color = (12, 34, 56)
+    black = build_color_rgb(
+        0,
+        0,
+        0,
+        "H6102",
+        h6102_variant=H6102RgbVariant.EXTENDED,
+    )
+
+    await light.async_turn_on(rgb_color=(0, 0, 0))
+
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == [
+        build_power(True, "H6102"),
+        black,
+    ]
+    mock_coordinator.refresh_state.assert_not_awaited()
+    assert mock_coordinator.is_on is True
+    assert mock_coordinator.brightness_pct == 63
+    assert mock_coordinator.rgb_color == (0, 0, 0)
+    assert mock_coordinator.color_temp_kelvin is None
+    assert mock_coordinator.color_mode is ParsedMode.COLOUR
+    assert light.color_mode is ColorMode.RGB
+
+
+async def test_h6102_extended_rgb_failure_preserves_completed_power_and_brightness(mock_coordinator):
+    light = _h6102_light(mock_coordinator, "1.03.01", "configured")
+    mock_coordinator.is_on = False
+    mock_coordinator.brightness_pct = 63
+    mock_coordinator.rgb_color = (12, 34, 56)
+    mock_coordinator.color_temp_kelvin = 4200
+    mock_coordinator.color_mode = ParsedMode.SCENE
+    mock_coordinator.effect = "rainbow"
+    rgb = build_color_rgb(
+        32,
+        64,
+        96,
+        "H6102",
+        h6102_variant=H6102RgbVariant.EXTENDED,
+    )
+    mock_coordinator.send_command = AsyncMock(side_effect=[None, None, BleakError("RGB failed")])
+
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(brightness=128, rgb_color=(32, 64, 96))
+
+    assert error.value.translation_key == "device_command_failed"
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == [
+        build_power(True, "H6102"),
+        build_brightness(50, "H6102"),
+        rgb,
+    ]
+    assert mock_coordinator.is_on is True
+    assert mock_coordinator.brightness_pct == 50
+    assert mock_coordinator.rgb_color == (12, 34, 56)
+    assert mock_coordinator.color_temp_kelvin == 4200
+    assert mock_coordinator.color_mode is ParsedMode.SCENE
+    assert mock_coordinator.effect == "rainbow"
+    assert light.color_mode is ColorMode.RGB
+
+
+@pytest.mark.parametrize(
+    ("brightness", "expected_pct", "expected_frame", "reported_brightness"),
+    [
+        (1, 1, "3304010000000000000000000000000000000036", 3),
+        (128, 50, "3304320000000000000000000000000000000005", 128),
+        (255, 100, "3304640000000000000000000000000000000053", 255),
+    ],
+)
+async def test_h6102_brightness_maps_home_assistant_values_without_readback(
+    mock_coordinator,
+    brightness,
+    expected_pct,
+    expected_frame,
+    reported_brightness,
+):
+    light = _h6102_light(mock_coordinator)
+    mock_coordinator.is_on = True
+
+    await light.async_turn_on(brightness=brightness)
+
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == [
+        build_power(True, "H6102"),
+        bytes.fromhex(expected_frame),
+    ]
+    mock_coordinator.refresh_state.assert_not_awaited()
+    assert mock_coordinator.is_on is True
+    assert mock_coordinator.brightness_pct == expected_pct
+    assert light.brightness == reported_brightness
+
+
+async def test_h6102_zero_brightness_uses_only_power_off(mock_coordinator):
+    light = _h6102_light(mock_coordinator)
+    mock_coordinator.is_on = True
+    mock_coordinator.brightness_pct = 50
+    original_rgb = mock_coordinator.rgb_color
+
+    await light.async_turn_on(
+        brightness=0,
+        rgb_color=(1, 2, 3),
+    )
+
+    mock_coordinator.send_command.assert_awaited_once_with(build_power(False, "H6102"))
+    mock_coordinator.refresh_state.assert_not_awaited()
+    assert mock_coordinator.is_on is False
+    assert mock_coordinator.brightness_pct == 50
+    assert mock_coordinator.rgb_color == original_rgb
+
+
+async def test_h6102_brightness_failure_preserves_completed_power(mock_coordinator):
+    light = _h6102_light(mock_coordinator)
+    mock_coordinator.is_on = False
+    mock_coordinator.brightness_pct = 75
+    mock_coordinator.send_command = AsyncMock(side_effect=[None, BleakError("brightness failed")])
+
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(brightness=128)
+
+    assert error.value.translation_key == "device_command_failed"
+    assert [call.args[0] for call in mock_coordinator.send_command.await_args_list] == [
+        build_power(True, "H6102"),
+        build_brightness(50, "H6102"),
+    ]
+    assert mock_coordinator.is_on is True
+    assert mock_coordinator.brightness_pct == 75
+
+
+async def test_h6102_power_on_failure_preserves_prior_state(mock_coordinator):
+    light = _h6102_light(mock_coordinator)
+    mock_coordinator.is_on = False
+    mock_coordinator.brightness_pct = 75
+    mock_coordinator.send_command = AsyncMock(side_effect=BleakError("power on failed"))
+
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on()
+
+    assert error.value.translation_key == "device_command_failed"
+    mock_coordinator.send_command.assert_awaited_once_with(build_power(True, "H6102"))
+    assert mock_coordinator.is_on is False
+    assert mock_coordinator.brightness_pct == 75
+
+
+async def test_h6102_zero_brightness_failure_rolls_back_state(mock_coordinator):
+    light = _h6102_light(mock_coordinator)
+    mock_coordinator.is_on = True
+    mock_coordinator.brightness_pct = 75
+    mock_coordinator.send_command = AsyncMock(side_effect=BleakError("power off failed"))
+
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(brightness=0)
+
+    assert error.value.translation_key == "device_command_failed"
+    mock_coordinator.send_command.assert_awaited_once_with(build_power(False, "H6102"))
+    assert mock_coordinator.is_on is True
+    assert mock_coordinator.brightness_pct == 75
 
 
 def test_hidden_scene_family_does_not_project_internal_scene_state(
@@ -1017,6 +1357,8 @@ async def test_turn_on_effect_off_returns_to_static_colour(light, mock_coordinat
     assert mock_coordinator.effect is None
     assert mock_coordinator.unknown_scene_code is None
     assert mock_coordinator.segment_colors == [(12, 34, 56)] * 15
+    assert mock_coordinator.segment_color_state_source == "optimistic"
+    assert mock_coordinator.segment_brightness_state_source == "initial"
     assert mock_coordinator.segment_state_source == "optimistic"
     assert light.effect == "off"
 
@@ -1334,11 +1676,75 @@ async def test_segment_services_reject_unsupported(mock_coordinator):
     mock_coordinator.send_command.assert_not_called()
 
 
+async def test_h6102_segment_actions_use_standard_unsupported_model_errors(
+    mock_coordinator,
+):
+    entity = _h6102_light(mock_coordinator, "1.03.01", "configured")
+    actions = (
+        (
+            "paint_segments",
+            lambda: entity.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}]),
+        ),
+        (
+            "paint_segments",
+            lambda: entity.async_set_segment_color(segments=[1], color=(1, 2, 3)),
+        ),
+        (
+            "set_segment_brightness",
+            lambda: entity.async_set_segment_brightness(segments=[1], brightness=50),
+        ),
+    )
+
+    for service, action in actions:
+        with pytest.raises(ServiceValidationError) as error:
+            await action()
+        assert error.value.translation_key == "unsupported_model"
+        assert error.value.translation_placeholders == {
+            "service": service,
+            "model": "H6102",
+        }
+
+    mock_coordinator.async_paint_segments.assert_not_awaited()
+    mock_coordinator.async_set_segment_brightness.assert_not_awaited()
+    mock_coordinator.send_command.assert_not_awaited()
+
+
+async def test_segment_services_use_independent_write_gates(mock_coordinator):
+    colour_only = GoveeBLELight(mock_coordinator)
+    colour_only.async_write_ha_state = MagicMock()
+    mock_coordinator.profile = replace(
+        MODEL_PROFILES["H617A"],
+        supports_segment_brightness_writes=False,
+    )
+
+    await colour_only.async_set_segment_color(segments=[1], color=(1, 2, 3))
+    mock_coordinator.async_paint_segments.assert_awaited_once_with([([1], (1, 2, 3))])
+    with pytest.raises(ServiceValidationError) as brightness_error:
+        await colour_only.async_set_segment_brightness(segments=[1], brightness=50)
+    assert brightness_error.value.translation_key == "unsupported_model"
+
+    mock_coordinator.reset_mock()
+    mock_coordinator.profile = replace(
+        MODEL_PROFILES["H617A"],
+        supports_segment_colour_writes=False,
+    )
+    brightness_only = GoveeBLELight(mock_coordinator)
+    brightness_only.async_write_ha_state = MagicMock()
+
+    await brightness_only.async_set_segment_brightness(segments=[1], brightness=50)
+    mock_coordinator.async_set_segment_brightness.assert_awaited_once_with([1], 50)
+    with pytest.raises(ServiceValidationError) as colour_error:
+        await brightness_only.async_set_segment_color(segments=[1], color=(1, 2, 3))
+    assert colour_error.value.translation_key == "unsupported_model"
+
+
 def test_segment_colors_attribute_present(light, mock_coordinator):
     mock_coordinator.segment_colors = [(10, 20, 30)] * 15
     assert light.extra_state_attributes == {
         "segment_colors": [[10, 20, 30]] * 15,
+        "segment_color_state_source": "initial",
         "segment_brightness": [100] * 15,
+        "segment_brightness_state_source": "initial",
         "segment_state_source": "initial",
     }
 
@@ -1346,7 +1752,9 @@ def test_segment_colors_attribute_present(light, mock_coordinator):
 def test_h6199_segment_surface_is_exposed(h6199_light):
     assert h6199_light.extra_state_attributes == {
         "segment_colors": [[255, 255, 255]] * 15,
+        "segment_color_state_source": "initial",
         "segment_brightness": [100] * 15,
+        "segment_brightness_state_source": "initial",
         "segment_state_source": "initial",
     }
 
@@ -1368,14 +1776,52 @@ def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
 
 
 @pytest.mark.parametrize(
+    ("profile", "expected"),
+    [
+        (
+            replace(
+                MODEL_PROFILES["H617A"],
+                read_domains=MODEL_PROFILES["H617A"].read_domains - {ReadDomain.REGION_BRIGHTNESS},
+                supports_segment_brightness_writes=False,
+            ),
+            {
+                "segment_colors": [[255, 255, 255]] * 15,
+                "segment_color_state_source": "initial",
+                "segment_state_source": "initial",
+            },
+        ),
+        (
+            replace(
+                MODEL_PROFILES["H617A"],
+                read_domains=frozenset({ReadDomain.REGION_BRIGHTNESS}),
+                supports_segment_colour_writes=False,
+            ),
+            {
+                "segment_brightness": [100] * 15,
+                "segment_brightness_state_source": "initial",
+                "segment_state_source": "initial",
+            },
+        ),
+    ],
+)
+def test_segment_attributes_follow_independent_capabilities(mock_coordinator, profile, expected):
+    mock_coordinator.profile = profile
+
+    assert GoveeBLELight(mock_coordinator).extra_state_attributes == expected
+
+
+@pytest.mark.parametrize(
     (
         "segment_count",
         "initial_colors",
-        "initial_source",
+        "initial_color_source",
+        "initial_brightness_source",
         "stored_colors",
         "stored_brightness",
         "expected_colors",
         "expected_brightness",
+        "expected_color_source",
+        "expected_brightness_source",
         "reads_last_state",
         "updates_coordinator",
     ),
@@ -1384,10 +1830,13 @@ def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
             15,
             [(255, 255, 255)] * 15,
             "initial",
+            "initial",
             [[1, 2, 3]] * 15,
             [40] * 15,
             [(1, 2, 3)] * 15,
             [40] * 15,
+            "restored",
+            "restored",
             True,
             True,
             id="restores-last-state",
@@ -1396,10 +1845,13 @@ def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
             15,
             [(255, 255, 255)] * 15,
             "observed",
+            "observed",
             [[1, 2, 3]] * 15,
             [40] * 15,
             [(255, 255, 255)] * 15,
             [100] * 15,
+            "observed",
+            "observed",
             False,
             False,
             id="observed-white-device-state",
@@ -1408,27 +1860,62 @@ def test_segment_colors_attribute_absent_for_zero_count(mock_coordinator):
             15,
             [(255, 255, 255)] * 15,
             "initial",
+            "initial",
             [[1, 2, 3]] * 15,
             None,
-            [(255, 255, 255)] * 15,
+            [(1, 2, 3)] * 15,
             [100] * 15,
+            "restored",
+            "initial",
             True,
-            False,
+            True,
             id="missing-brightness",
         ),
         pytest.param(
             15,
             [(255, 255, 255)] * 15,
             "initial",
+            "initial",
             [[1, 2]] * 15,
             [40] * 15,
             [(255, 255, 255)] * 15,
-            [100] * 15,
+            [40] * 15,
+            "initial",
+            "restored",
             True,
-            False,
+            True,
             id="malformed-last-state",
         ),
-        pytest.param(0, [], "initial", [[1, 2, 3]], [40], [], [], False, False, id="unsupported-model"),
+        pytest.param(
+            15,
+            [(255, 255, 255)] * 15,
+            "observed",
+            "initial",
+            [[1, 2, 3]] * 15,
+            [40] * 15,
+            [(255, 255, 255)] * 15,
+            [40] * 15,
+            "observed",
+            "restored",
+            True,
+            True,
+            id="restores-only-unobserved-brightness",
+        ),
+        pytest.param(
+            0,
+            [],
+            "initial",
+            "initial",
+            [[1, 2, 3]],
+            [40],
+            [],
+            [],
+            "initial",
+            "initial",
+            False,
+            False,
+            id="unsupported-model",
+        ),
     ],
 )
 async def test_segment_restore(
@@ -1436,18 +1923,25 @@ async def test_segment_restore(
     mock_coordinator,
     segment_count,
     initial_colors,
-    initial_source,
+    initial_color_source,
+    initial_brightness_source,
     stored_colors,
     stored_brightness,
     expected_colors,
     expected_brightness,
+    expected_color_source,
+    expected_brightness_source,
     reads_last_state,
     updates_coordinator,
 ):
     mock_coordinator.profile = replace(MODEL_PROFILES["H617A"], segment_count=segment_count)
     mock_coordinator.segment_colors = initial_colors
     mock_coordinator.segment_brightness = [100] * segment_count
-    mock_coordinator.segment_state_source = initial_source
+    mock_coordinator.segment_color_state_source = initial_color_source
+    mock_coordinator.segment_brightness_state_source = initial_brightness_source
+    mock_coordinator.segment_state_source = (
+        initial_color_source if initial_color_source == initial_brightness_source else "initial"
+    )
     last_state = MagicMock(
         attributes={
             "segment_colors": stored_colors,
@@ -1460,7 +1954,15 @@ async def test_segment_restore(
 
     assert mock_coordinator.segment_colors == expected_colors
     assert mock_coordinator.segment_brightness == expected_brightness
-    assert mock_coordinator.segment_state_source == ("restored" if updates_coordinator else initial_source)
+    assert mock_coordinator.segment_color_state_source == expected_color_source
+    assert mock_coordinator.segment_brightness_state_source == expected_brightness_source
+    assert mock_coordinator.segment_state_source == (
+        "restored"
+        if updates_coordinator
+        else initial_color_source
+        if initial_color_source == initial_brightness_source
+        else "initial"
+    )
     if reads_last_state:
         light.async_get_last_state.assert_awaited_once()
     else:
@@ -1495,6 +1997,132 @@ async def test_async_added_to_hass_triggers_restore(light):
     super_added.assert_awaited_once()
     light._async_restore_static_color.assert_awaited_once()
     light._async_restore_segments.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("rgb_color", "stored_brightness", "initial_brightness_pct", "expected_brightness_pct"),
+    [
+        pytest.param((12, 34, 56), 161, 100, 63, id="colour"),
+        pytest.param((0, 0, 0), 0, 63, 63, id="black-keeps-last-nonzero-brightness"),
+    ],
+)
+async def test_h6102_configured_extended_restores_assumed_state_without_setup_write(
+    mock_coordinator,
+    rgb_color,
+    stored_brightness,
+    initial_brightness_pct,
+    expected_brightness_pct,
+):
+    light = _h6102_light(mock_coordinator, "1.03.01", "configured")
+    mock_coordinator.is_on = False
+    mock_coordinator.brightness_pct = initial_brightness_pct
+    mock_coordinator.rgb_color = (255, 255, 255)
+    light.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            state="on",
+            attributes={
+                "effect": "off",
+                "brightness": stored_brightness,
+                "color_mode": ColorMode.RGB,
+                "rgb_color": list(rgb_color),
+            },
+        )
+    )
+
+    with patch(
+        "custom_components.ha_govee_led_ble.entity.GoveeBLEEntity.async_added_to_hass",
+        new_callable=AsyncMock,
+    ):
+        await light.async_added_to_hass()
+
+    assert light.assumed_state
+    assert mock_coordinator.is_on is True
+    assert mock_coordinator.brightness_pct == expected_brightness_pct
+    assert mock_coordinator.rgb_color == rgb_color
+    assert light._attr_color_mode is ColorMode.RGB
+    mock_coordinator.send_command.assert_not_awaited()
+    mock_coordinator.refresh_state.assert_not_awaited()
+    mock_coordinator.async_set_updated_data.assert_called_once_with(mock_coordinator.data)
+
+
+@pytest.mark.parametrize(
+    ("firmware", "firmware_source"),
+    [
+        pytest.param(None, None, id="unknown"),
+        pytest.param("1.03.00", "configured", id="legacy"),
+        pytest.param("1.03.01", "ble", id="non-configured"),
+    ],
+)
+async def test_h6102_restore_without_configured_extended_route_stays_brightness_only(
+    mock_coordinator,
+    firmware,
+    firmware_source,
+):
+    light = _h6102_light(mock_coordinator, firmware, firmware_source)
+    mock_coordinator.is_on = True
+    mock_coordinator.brightness_pct = 75
+    mock_coordinator.rgb_color = (9, 8, 7)
+    light.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            state="off",
+            attributes={
+                "effect": "off",
+                "brightness": 128,
+                "color_mode": ColorMode.RGB,
+                "rgb_color": [12, 34, 56],
+            },
+        )
+    )
+    light.async_get_last_extra_data = AsyncMock(
+        return_value=RestoredExtraData(
+            {
+                "color_mode": ColorMode.RGB.value,
+                "rgb_color": [12, 34, 56],
+            }
+        )
+    )
+
+    await light._async_restore_static_color()
+
+    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
+    assert light._attr_color_mode is ColorMode.BRIGHTNESS
+    assert mock_coordinator.is_on is False
+    assert mock_coordinator.brightness_pct == 50
+    assert mock_coordinator.rgb_color == (9, 8, 7)
+    light.async_get_last_extra_data.assert_not_awaited()
+    mock_coordinator.send_command.assert_not_awaited()
+    mock_coordinator.async_set_updated_data.assert_called_once_with(mock_coordinator.data)
+
+
+@pytest.mark.parametrize("model", ["H617A", "H617E", "H6076", "H6199"])
+async def test_existing_models_keep_static_restore_without_basic_state_projection(mock_coordinator, model):
+    mock_coordinator.model = model
+    mock_coordinator.profile = MODEL_PROFILES[model]
+    mock_coordinator.color_mode = ParsedMode.COLOUR
+    mock_coordinator.is_on = False
+    mock_coordinator.brightness_pct = 100
+    light = GoveeBLELight(mock_coordinator)
+    light.async_write_ha_state = MagicMock()
+    light.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(
+            state="on",
+            attributes={
+                "effect": "off",
+                "brightness": 128,
+                "color_mode": ColorMode.RGB,
+                "rgb_color": [12, 34, 56],
+            },
+        )
+    )
+
+    await light._async_restore_static_color()
+
+    assert mock_coordinator.is_on is False
+    assert mock_coordinator.brightness_pct == 100
+    assert mock_coordinator.rgb_color == (12, 34, 56)
+    assert light._attr_color_mode is ColorMode.RGB
+    mock_coordinator.send_command.assert_not_awaited()
+    mock_coordinator.async_set_updated_data.assert_called_once_with(mock_coordinator.data)
 
 
 async def test_restore_static_rgb_as_last_known_presentation(light, mock_coordinator):
@@ -1617,6 +2245,8 @@ async def test_restore_static_colour_ignores_malformed_extra_data(light, mock_co
 
 async def test_restore_static_state_never_replaces_observed_segments(light, mock_coordinator):
     mock_coordinator.color_mode = ParsedMode.COLOUR
+    mock_coordinator.segment_color_state_source = "observed"
+    mock_coordinator.segment_brightness_state_source = "observed"
     mock_coordinator.segment_state_source = "observed"
     mock_coordinator.segment_colors = [(255, 255, 255)] * 15
     mock_coordinator.rgb_color = (255, 255, 255)
@@ -1637,12 +2267,15 @@ async def test_restore_static_state_never_replaces_observed_segments(light, mock
     assert mock_coordinator.rgb_color == (255, 255, 255)
     assert mock_coordinator.segment_colors == [(255, 255, 255)] * 15
     assert mock_coordinator.segment_brightness == [100] * 15
+    assert mock_coordinator.segment_color_state_source == "observed"
+    assert mock_coordinator.segment_brightness_state_source == "observed"
     assert mock_coordinator.segment_state_source == "observed"
     mock_coordinator.mark_segment_state_restored.assert_not_called()
 
 
 async def test_restore_kelvin_only_when_observed_companion_matches(light, mock_coordinator):
     mock_coordinator.color_mode = ParsedMode.COLOUR
+    mock_coordinator.segment_color_state_source = "observed"
     mock_coordinator.segment_state_source = "observed"
     mock_coordinator.segment_colors = [kelvin_to_rgb(4200)] * 15
     light.async_get_last_state = AsyncMock(
@@ -1657,6 +2290,7 @@ async def test_restore_kelvin_only_when_observed_companion_matches(light, mock_c
     await light._async_restore_static_color()
 
     assert mock_coordinator.color_temp_kelvin == 4200
+    assert mock_coordinator.segment_color_state_source == "observed"
     assert mock_coordinator.segment_state_source == "observed"
 
 

@@ -18,15 +18,21 @@ from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
     BLEDeviceResolver,
 )
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, MUSIC_MODE_SLUGS
+from custom_components.ha_govee_led_ble.const import (
+    DOMAIN,
+    MODEL_PROFILES,
+    MUSIC_MODE_SLUGS,
+    ReadDomain,
+)
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
     RX_STALE_TIMEOUT,
+    STATE_QUERY_EVERY_N_KEEP_ALIVES,
     GoveeBLECoordinator,
 )
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
-from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, StatusDomain
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_activation
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -52,6 +58,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command,
     parse_status,
 )
+from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
+from custom_components.ha_govee_led_ble.h6102_protocol import H6102RgbVariant
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -124,12 +132,23 @@ def h6199(hass):
 
 
 @pytest.fixture
+def h6102(hass):
+    return GoveeBLECoordinator(
+        hass,
+        "44:55:66:77:88:99",
+        "H6102",
+        configuration_url=None,
+    )
+
+
+@pytest.fixture
 def limited_readback_coord(hass):
     profile = replace(
         MODEL_PROFILES["H617A"],
-        supports_color_mode_readback=False,
+        read_domains=frozenset({ReadDomain.IDENTITY, ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
         segment_count=0,
-        supports_segment_writes=False,
+        supports_segment_colour_writes=False,
+        supports_segment_brightness_writes=False,
     )
     with patch(f"{M}.get_profile", return_value=profile):
         return GoveeBLECoordinator(
@@ -152,6 +171,130 @@ def test_h6199_retains_default_idle_release_and_polling(h6199):
     with patch(f"{M}.async_call_later") as call_later:
         h6199._reset_disconnect_timer()
     assert call_later.call_args.args[1] == 15
+
+
+async def test_h6102_uses_write_only_transport_and_three_second_lease(h6102):
+    device = MagicMock()
+    proxy_client_class = type("ProxyClient", (), {})
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(return_value=_resolution(device, proxy_client_class))
+    h6102._device_resolver = resolver
+    client = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    first = proto.build_power(True)
+    second = proto.build_brightness(20)
+
+    with (
+        patch(f"{M}.establish_connection", return_value=client) as connect,
+        patch(f"{M}.async_call_later", return_value=MagicMock()) as call_later,
+        patch.object(h6102, "_send_identity_queries", new_callable=AsyncMock) as identity_queries,
+        patch.object(h6102, "_send_state_queries", new_callable=AsyncMock) as state_queries,
+        patch.object(h6102, "_start_keep_alive") as start_keep_alive,
+    ):
+        await h6102.send_command(first)
+        with patch(f"{M}.time.monotonic", return_value=RX_STALE_TIMEOUT * 10):
+            await h6102.send_command(second)
+
+    resolver.async_resolve.assert_awaited_once_with(h6102.hass, h6102.address)
+    connect.assert_awaited_once_with(
+        proxy_client_class,
+        device,
+        h6102.address,
+        disconnected_callback=h6102._disconnected_callback,
+    )
+    assert client.write_gatt_char.await_args_list == [
+        call(WRITE_UUID, first, response=False),
+        call(WRITE_UUID, second, response=False),
+    ]
+    client.start_notify.assert_not_awaited()
+    identity_queries.assert_not_awaited()
+    state_queries.assert_not_awaited()
+    start_keep_alive.assert_not_called()
+    assert h6102._notify_started_monotonic is None
+    assert h6102._last_rx_monotonic is None
+    assert h6102._keep_alive_task is None
+    assert {item.args[1] for item in call_later.call_args_list} == {3.0}
+
+
+@pytest.mark.parametrize(
+    ("firmware", "expected_variant", "expected_reason", "supports_rgb"),
+    [
+        (None, None, "firmware_unknown", False),
+        ("1.03.00", H6102RgbVariant.LEGACY, "legacy_capture_required", False),
+        ("1.03.01", H6102RgbVariant.EXTENDED, None, True),
+    ],
+)
+def test_h6102_installs_resolved_capabilities_during_construction(
+    hass,
+    firmware,
+    expected_variant,
+    expected_reason,
+    supports_rgb,
+):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "44:55:66:77:88:99",
+        "H6102",
+        configuration_url=_CONFIGURATION_URL,
+        effect_families=frozenset({"scenes"}),
+        effect_categories=frozenset({"advanced"}),
+        always_include_custom_effects=True,
+        h6102_firmware=firmware,
+        h6102_firmware_source="configured" if firmware is not None else None,
+    )
+    expected = resolve_h6102_capabilities(firmware, "configured" if firmware is not None else None)
+
+    assert coordinator.profile is expected.profile
+    assert coordinator.profile.supports_rgb is supports_rgb
+    assert coordinator.update_interval is None
+    assert coordinator.rgb_variant is expected_variant
+    assert coordinator.firmware_source == ("configured" if firmware is not None else None)
+    assert coordinator.capability_resolution_reason == expected_reason
+    assert coordinator.effect_families == coordinator.effect_categories == frozenset()
+    assert not coordinator.always_include_custom_effects
+    assert coordinator.configuration_url is None
+    assert coordinator.segment_colors == coordinator.segment_brightness == []
+    assert not coordinator.profile.read_domains
+    assert not coordinator.profile.supports_segments
+    assert not coordinator.profile.supports_color_temperature
+    assert not coordinator.profile.supports_custom_effects
+    assert not coordinator.profile.supports_music_mode
+    assert not coordinator.profile.supports_video_mode
+
+
+def test_h6102_configured_firmware_is_not_observed_identity(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "44:55:66:77:88:99",
+        "H6102",
+        configuration_url=None,
+        h6102_firmware="1.03.01",
+        h6102_firmware_source="configured",
+    )
+
+    assert coordinator.fw_version is None
+    assert coordinator.hw_version is None
+    assert coordinator.device_info.get("sw_version") is None
+    assert coordinator.device_info.get("hw_version") is None
+
+
+def test_non_h6102_construction_does_not_enter_capability_resolver(hass):
+    with patch(f"{M}.resolve_h6102_capabilities") as resolver:
+        coordinator = GoveeBLECoordinator(
+            hass,
+            "AA:BB:CC:DD:EE:FF",
+            "H617A",
+            configuration_url=_CONFIGURATION_URL,
+            h6102_firmware="1.03.01",
+            h6102_firmware_source="configured",
+        )
+
+    resolver.assert_not_called()
+    assert coordinator.profile is MODEL_PROFILES["H617A"]
+    assert coordinator.rgb_variant is None
+    assert coordinator.firmware_source is None
+    assert coordinator.capability_resolution_reason is None
+    assert coordinator.update_interval is None
+    assert coordinator.effect_families == frozenset({"scenes", "music"})
 
 
 def _c(**kw):
@@ -528,6 +671,153 @@ async def test_send_command(coord):
     assert len(coord.packet_log) == 1
 
 
+async def test_h6102_serialises_foreground_writes(h6102):
+    first = proto.build_power(True)
+    second = proto.build_brightness(20)
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    writes: list[tuple[str, bytes, bool]] = []
+
+    async def write(uuid: str, packet: bytes, *, response: bool) -> None:
+        writes.append((uuid, packet, response))
+        if packet == first:
+            first_started.set()
+            await release_first.wait()
+
+    h6102._client = _c(write_gatt_char=AsyncMock(side_effect=write))
+    with patch(f"{M}.async_call_later", return_value=MagicMock()):
+        first_task = asyncio.create_task(h6102.send_command(first))
+        await first_started.wait()
+        second_task = asyncio.create_task(h6102.send_command(second))
+        await asyncio.sleep(0)
+        assert writes == [(WRITE_UUID, first, False)]
+        release_first.set()
+        await asyncio.gather(first_task, second_task)
+
+    assert writes == [
+        (WRITE_UUID, first, False),
+        (WRITE_UUID, second, False),
+    ]
+
+
+async def test_h6102_reconnects_through_fresh_proxy_path_after_idle_lease(h6102):
+    first_device = MagicMock()
+    second_device = MagicMock()
+    first_proxy_client = type("FirstProxyClient", (), {})
+    second_proxy_client = type("SecondProxyClient", (), {})
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(
+        side_effect=[
+            _resolution(first_device, first_proxy_client),
+            None,
+            _resolution(second_device, second_proxy_client),
+        ]
+    )
+    h6102._device_resolver = resolver
+    first_client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    second_client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    first_packet = proto.build_power(True)
+    second_packet = proto.build_brightness(80)
+
+    with (
+        patch(f"{M}.establish_connection", side_effect=[first_client, second_client]) as connect,
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock) as sleep,
+        patch(f"{M}.async_call_later", return_value=MagicMock()),
+    ):
+        await h6102.send_command(first_packet)
+        lease_generation = h6102._disconnect_generation
+        await h6102._async_disconnect_on_timeout(lease_generation)
+        assert h6102._client is None
+        await h6102.send_command(second_packet)
+
+    assert resolver.async_resolve.await_count == 3
+    sleep.assert_awaited_once()
+    assert connect.await_args_list == [
+        call(
+            first_proxy_client,
+            first_device,
+            h6102.address,
+            disconnected_callback=h6102._disconnected_callback,
+        ),
+        call(
+            second_proxy_client,
+            second_device,
+            h6102.address,
+            disconnected_callback=h6102._disconnected_callback,
+        ),
+    ]
+    first_client.disconnect.assert_awaited_once_with()
+    first_client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, first_packet, response=False)
+    second_client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, second_packet, response=False)
+    assert h6102._client is second_client
+
+
+async def test_h6102_transport_error_clears_client_before_bounded_retry(h6102):
+    devices = [MagicMock(), MagicMock()]
+    proxy_clients = [type("FirstProxyClient", (), {}), type("SecondProxyClient", (), {})]
+    resolutions = [
+        _resolution(device, client_class)
+        for device, client_class in zip(
+            devices,
+            proxy_clients,
+            strict=True,
+        )
+    ]
+    resolution_index = 0
+
+    async def resolve(_hass, _address):
+        nonlocal resolution_index
+        if resolution_index:
+            assert h6102._client is None
+        resolution = resolutions[resolution_index]
+        resolution_index += 1
+        return resolution
+
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(side_effect=resolve)
+    h6102._device_resolver = resolver
+    failed = _c(write_gatt_char=AsyncMock(side_effect=BleakError("connection dropped")), disconnect=AsyncMock())
+    recovered = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    packet = proto.build_power(True)
+
+    with (
+        patch(f"{M}.establish_connection", side_effect=[failed, recovered]) as connect,
+        patch(f"{M}.async_call_later", return_value=MagicMock()),
+    ):
+        await h6102.send_command(packet)
+
+    assert resolver.async_resolve.await_count == 2
+    assert connect.await_count == 2
+    failed.write_gatt_char.assert_awaited_once_with(WRITE_UUID, packet, response=False)
+    failed.disconnect.assert_awaited_once_with()
+    recovered.write_gatt_char.assert_awaited_once_with(WRITE_UUID, packet, response=False)
+    assert h6102._client is recovered
+
+
+async def test_h6102_remote_disconnect_clears_stale_client_before_app_handoff_reconnect(h6102):
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(side_effect=[_resolution(), _resolution()])
+    h6102._device_resolver = resolver
+    before_handoff = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    after_handoff = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    packet = proto.build_power(True)
+
+    with (
+        patch(f"{M}.establish_connection", side_effect=[before_handoff, after_handoff]),
+        patch(f"{M}.async_call_later", return_value=MagicMock()),
+    ):
+        await h6102.send_command(packet)
+        h6102._disconnected_callback(before_handoff)
+        assert h6102._client is None
+        assert h6102._cancel_disconnect is None
+        await h6102.send_command(packet)
+
+    assert resolver.async_resolve.await_count == 2
+    before_handoff.write_gatt_char.assert_awaited_once_with(WRITE_UUID, packet, response=False)
+    after_handoff.write_gatt_char.assert_awaited_once_with(WRITE_UUID, packet, response=False)
+    assert h6102._client is after_handoff
+
+
 async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord):
     packets = [b"first", b"second", b"activation"]
     attempted: list[bytes] = []
@@ -870,9 +1160,10 @@ def test_notify_callback_parses_full_frame_with_checksum(h6199):
     assert h6199.effect == "candlelight"
 
 
-def test_notify_callback_records_command_echoes_without_applying_status(coord, h6199):
+def test_notify_callback_records_command_echoes_without_applying_status(coord, h6102, h6199):
     for coordinator, model, parser in (
         (coord, "H617A", "command_write"),
+        (h6102, "H6102", "h6102_command_write"),
         (h6199, "H6199", "h6199_command_write"),
     ):
         initial_state = coordinator.is_on
@@ -885,6 +1176,31 @@ def test_notify_callback_records_command_echoes_without_applying_status(coord, h
         assert coordinator.packet_log[-1]["reason"] == "command_echo_parsed"
         assert coordinator.packet_log[-1]["parser"] == parser
         assert coordinator.packet_log[-1]["raw"] == frame.hex()
+
+
+def test_h6102_rejected_status_frames_remain_diagnostics_only(h6102):
+    profile = h6102.profile
+    state = (
+        h6102.is_on,
+        h6102.brightness_pct,
+        h6102.rgb_color,
+        h6102.fw_version,
+        h6102.hw_version,
+    )
+
+    h6102._notify_callback(None, bytearray.fromhex("aa05049d0800000000000000000000000000003e"))
+
+    assert h6102.profile is profile
+    assert (
+        h6102.is_on,
+        h6102.brightness_pct,
+        h6102.rgb_color,
+        h6102.fw_version,
+        h6102.hw_version,
+    ) == state
+    assert h6102.packet_log[-1]["outcome"] == "rejected"
+    assert h6102.packet_log[-1]["reason"] == "unsupported_model"
+    assert h6102.packet_log[-1]["raw"] == "aa05049d0800000000000000000000000000003e"
 
 
 def test_h6199_subordinate_versions_are_retained_without_querying_identity(h6199):
@@ -1004,6 +1320,29 @@ async def test_start_notify(coord, h6199):
     assert h6199._notify_started_monotonic is None
 
 
+async def test_identity_only_profile_subscribes_without_starting_keep_alive(coord):
+    coord.profile = replace(
+        coord.profile,
+        read_domains=frozenset({ReadDomain.IDENTITY}),
+    )
+    client = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=client),
+        patch.object(coord, "_start_keep_alive") as start_keep_alive,
+    ):
+        assert await coord._ensure_connected() is client
+
+    client.start_notify.assert_awaited_once()
+    assert [item.args[1] for item in client.write_gatt_char.await_args_list] == [
+        build_hardware_query(),
+        build_firmware_query(),
+    ]
+    start_keep_alive.assert_not_called()
+    await coord.disconnect()
+
+
 async def test_ensure_connected_cleans_up_notify_failure(coord):
     client = _c(start_notify=AsyncMock(side_effect=BleakError("notify failed")), disconnect=AsyncMock())
     with (
@@ -1098,6 +1437,17 @@ async def test_send_state_queries_selective(coord):
     assert calls == [build_power_query(), build_colour_mode_query()]
 
 
+async def test_send_state_queries_respect_independent_read_domains(coord):
+    coord.profile = replace(
+        coord.profile,
+        read_domains=frozenset({ReadDomain.IDENTITY, ReadDomain.BRIGHTNESS}),
+    )
+    coord._client = c = _c(write_gatt_char=AsyncMock())
+
+    assert await coord._send_state_queries() is True
+    c.write_gatt_char.assert_awaited_once_with(WRITE_UUID, build_brightness_query(), response=False)
+
+
 async def test_send_state_queries_include_h6199_display_state(h6199):
     c = _c(write_gatt_char=AsyncMock())
     h6199._client = c
@@ -1165,6 +1515,29 @@ def test_notify_callback_power_expectation(h6199):
     assert h6199.is_on is True
     assert h6199._field_revisions["is_on"] == field_revision + 1
     assert "is_on" in h6199._expected_state
+
+
+def test_notify_callback_ignores_disabled_read_domains(coord):
+    coord.profile = replace(
+        coord.profile,
+        read_domains=frozenset({ReadDomain.IDENTITY}),
+    )
+    coord.is_on = False
+    coord.brightness_pct = 100
+
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [42])))
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x9D, 0x08])))
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x06, list(b"3.02.24"))))
+
+    assert coord.is_on is False
+    assert coord.brightness_pct == 100
+    assert coord.color_mode is None
+    assert coord.fw_version == "3.02.24"
+    assert StatusDomain.POWER not in coord._domain_revisions
+    assert StatusDomain.BRIGHTNESS not in coord._domain_revisions
+    assert StatusDomain.COLOUR_MODE not in coord._domain_revisions
+    assert coord._domain_revisions[StatusDomain.FIRMWARE] == 1
 
 
 def test_notify_callback_static_readback_keeps_color_temp(h6199):
@@ -1432,6 +1805,16 @@ async def test_profile_without_colour_readback_rejects_colour_expectations(limit
     ensure.assert_not_awaited()
 
 
+async def test_profile_without_power_readback_rejects_power_expectations(coord):
+    coord.profile = replace(
+        coord.profile,
+        read_domains=coord.profile.read_domains - {ReadDomain.POWER},
+    )
+    with patch.object(coord, "_ensure_connected", new_callable=AsyncMock) as ensure:
+        assert await coord.refresh_state(expected_on=True) is False
+    ensure.assert_not_awaited()
+
+
 async def test_h6076_refresh_all_uses_limited_readback_profile(hass):
     coordinator = GoveeBLECoordinator(
         hass,
@@ -1643,6 +2026,8 @@ def test_segment_colors_initial_state(coord, h6199):
     assert h6199.segment_colors == [(255, 255, 255)] * 15
     assert coord.segment_brightness == [100] * 15
     assert h6199.segment_brightness == [100] * 15
+    assert coord.segment_color_state_source == h6199.segment_color_state_source == "initial"
+    assert coord.segment_brightness_state_source == h6199.segment_brightness_state_source == "initial"
     assert coord.segment_state_source == h6199.segment_state_source == "initial"
     assert len(coord.segment_colors) == coord.profile.segment_count
 
@@ -1676,6 +2061,74 @@ def _send_uniform_segment_replies(coordinator, rgb: tuple[int, int, int]) -> Non
         coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, payload)))
 
 
+@pytest.mark.parametrize("complete", [False, True])
+async def test_async_refresh_segments_waits_for_complete_group_cycle(coord, complete: bool):
+    coord._client = client = _c()
+    coord._last_rx_monotonic = None
+
+    async def reply(**kwargs) -> bool:
+        assert kwargs["query_segments"] is True
+        if complete:
+            _send_uniform_segment_replies(coord, (10, 20, 30))
+        else:
+            coord._notify_callback(
+                None,
+                bytearray(proto.build_packet(0xAA, 0xA5, [1, *([100, 10, 20, 30] * 3)])),
+            )
+        return True
+
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=reply)),
+    ):
+        assert await coord.async_refresh_segments(timeout=0.01) is complete
+
+    assert coord._last_rx_monotonic is not None
+    assert coord._domain_revisions.get(StatusDomain.SEGMENTS, 0) == int(complete)
+    assert coord._field_revisions.get("segment_colors", 0) == int(complete)
+    assert coord._field_revisions.get("segment_brightness", 0) == int(complete)
+    expected_source = "observed" if complete else "initial"
+    assert coord.segment_color_state_source == expected_source
+    assert coord.segment_brightness_state_source == expected_source
+
+
+@pytest.mark.parametrize(
+    ("domain", "expected_colours", "expected_brightness"),
+    [
+        (ReadDomain.REGION_COLOUR, [(10, 20, 30)] * 15, [10] * 15),
+        (ReadDomain.REGION_BRIGHTNESS, [(1, 2, 3)] * 15, [100] * 15),
+    ],
+)
+def test_segment_replies_update_only_enabled_read_domain(
+    coord,
+    domain: ReadDomain,
+    expected_colours: list[tuple[int, int, int]],
+    expected_brightness: list[int],
+):
+    coord.profile = replace(coord.profile, read_domains=frozenset({domain}))
+    coord.segment_colors = [(1, 2, 3)] * 15
+    coord.segment_brightness = [10] * 15
+
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+
+    assert coord.segment_colors == expected_colours
+    assert coord.segment_brightness == expected_brightness
+    expected_field = "segment_colors" if domain is ReadDomain.REGION_COLOUR else "segment_brightness"
+    other_field = "segment_brightness" if domain is ReadDomain.REGION_COLOUR else "segment_colors"
+    assert coord._field_revisions[expected_field] == 1
+    assert other_field not in coord._field_revisions
+    if domain is ReadDomain.REGION_COLOUR:
+        assert coord.segment_color_state_source == "observed"
+        assert coord.segment_color_state_observed_at is not None
+        assert coord.segment_brightness_state_source == "initial"
+        assert coord.segment_brightness_state_observed_at is None
+    else:
+        assert coord.segment_color_state_source == "initial"
+        assert coord.segment_color_state_observed_at is None
+        assert coord.segment_brightness_state_source == "observed"
+        assert coord.segment_brightness_state_observed_at is not None
+
+
 def test_h6199_static_segment_readback_updates_uniform_rgb(h6199):
     h6199.color_mode = ParsedMode.COLOUR
     h6199.rgb_color = (1, 2, 3)
@@ -1703,6 +2156,10 @@ def test_partial_segment_refresh_does_not_publish_mixed_snapshot(coord):
     original_brightness = [10] * 15
     coord.segment_colors = original_colors
     coord.segment_brightness = original_brightness
+    coord.segment_color_state_source = "observed"
+    coord.segment_brightness_state_source = "observed"
+    coord.segment_color_state_observed_at = "2026-08-17T00:00:00+00:00"
+    coord.segment_brightness_state_observed_at = "2026-08-17T00:00:00+00:00"
     coord.segment_state_source = "observed"
     coord.segment_state_observed_at = "2026-08-17T00:00:00+00:00"
 
@@ -1713,6 +2170,10 @@ def test_partial_segment_refresh_does_not_publish_mixed_snapshot(coord):
 
     assert coord.segment_colors == original_colors
     assert coord.segment_brightness == original_brightness
+    assert coord.segment_color_state_source == "observed"
+    assert coord.segment_brightness_state_source == "observed"
+    assert coord.segment_color_state_observed_at == "2026-08-17T00:00:00+00:00"
+    assert coord.segment_brightness_state_observed_at == "2026-08-17T00:00:00+00:00"
     assert coord.segment_state_source == "observed"
     assert coord.segment_state_observed_at == "2026-08-17T00:00:00+00:00"
 
@@ -1738,6 +2199,10 @@ def test_segment_query_replies_replace_restored_state(
 
     assert coordinator.segment_state_source == "observed"
     assert coordinator.segment_state_observed_at is not None
+    assert coordinator.segment_color_state_source == "observed"
+    assert coordinator.segment_color_state_observed_at is not None
+    assert coordinator.segment_brightness_state_source == "observed"
+    assert coordinator.segment_brightness_state_observed_at is not None
     assert coordinator.segment_brightness == list(range(20, 35))
     assert coordinator.segment_colors == [(value, value + 1, value + 2) for value in range(15)]
 
@@ -1753,8 +2218,10 @@ async def test_async_paint_segments_updates_slots_and_sends(coord):
     assert [call.args[0] for call in sc.await_args_list] == proto.build_segment_paint(groups)
     assert sc.await_count == 2
     assert coord.segment_colors[:4] == [(255, 0, 0), (255, 0, 0), (0, 0, 255), (255, 255, 255)]
+    assert coord.segment_color_state_source == "optimistic"
+    assert coord.segment_brightness_state_source == "initial"
     assert coord.segment_state_source == "optimistic"
-    refresh.assert_awaited_once_with()
+    refresh.assert_awaited_once_with(read_domain=ReadDomain.REGION_COLOUR)
     pushed.assert_called_once()
 
 
@@ -1766,6 +2233,8 @@ async def test_async_paint_segments_rolls_back_on_failure(coord):
     ):
         await coord.async_paint_segments([([1, 2], (255, 0, 0))])
     assert coord.segment_colors == before
+    assert coord.segment_color_state_source == "initial"
+    assert coord.segment_brightness_state_source == "initial"
     assert coord.segment_state_source == "initial"
 
 
@@ -1778,17 +2247,29 @@ async def test_async_set_segment_brightness_verifies_complete_state(coord):
 
     send.assert_awaited_once_with(build_segment_brightness([2, 4], 60))
     assert coord.segment_brightness[:5] == [100, 60, 100, 60, 100]
+    assert coord.segment_color_state_source == "initial"
+    assert coord.segment_brightness_state_source == "optimistic"
     assert coord.segment_state_source == "optimistic"
-    refresh.assert_awaited_once_with()
+    refresh.assert_awaited_once_with(read_domain=ReadDomain.REGION_BRIGHTNESS)
 
 
 async def test_async_paint_segments_rejects_unsupported(coord):
-    coord.profile = replace(coord.profile, supports_segment_writes=False)
+    coord.profile = replace(coord.profile, supports_segment_colour_writes=False)
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
         pytest.raises(ValueError),
     ):
         await coord.async_paint_segments([([1], (1, 2, 3))])
+    sc.assert_not_awaited()
+
+
+async def test_async_set_segment_brightness_rejects_unsupported(coord):
+    coord.profile = replace(coord.profile, supports_segment_brightness_writes=False)
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
+        pytest.raises(ValueError),
+    ):
+        await coord.async_set_segment_brightness([1], 50)
     sc.assert_not_awaited()
 
 
@@ -2215,6 +2696,19 @@ async def test_send_identity_queries_only_unknown(coord):
     c.write_gatt_char.assert_not_awaited()
 
 
+async def test_send_identity_queries_skip_profile_without_identity_readback(coord):
+    coord.profile = replace(
+        coord.profile,
+        read_domains=coord.profile.read_domains - {ReadDomain.IDENTITY},
+    )
+    coord._client = client = _c(write_gatt_char=AsyncMock())
+
+    await coord._send_identity_queries()
+
+    client.write_gatt_char.assert_not_awaited()
+    assert coord._identity_incomplete() is False
+
+
 async def test_h6199_identity_queries_include_only_non_sensitive_subordinate_versions(h6199):
     c = _c(write_gatt_char=AsyncMock())
     h6199._client = c
@@ -2308,6 +2802,34 @@ async def test_keep_alive_skips_identity_when_versions_known(coord):
     assert coord._client is None
 
 
+async def test_keep_alive_polls_only_enabled_read_domains(coord):
+    coord.profile = replace(
+        coord.profile,
+        read_domains=frozenset({ReadDomain.IDENTITY, ReadDomain.BRIGHTNESS}),
+    )
+    coord._keep_alive_ticks = 0
+    coord._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coord.fw_version, coord.hw_version = "3.02.24", "3.01.01"
+
+    with (
+        patch.object(coord, "_send_state_queries", new_callable=AsyncMock, return_value=False) as queries,
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock) as sleep,
+    ):
+        await coord._keep_alive_loop()
+
+    assert sleep.await_count == STATE_QUERY_EVERY_N_KEEP_ALIVES
+    queries.assert_awaited_once_with(
+        query_power=False,
+        query_brightness=True,
+        query_color_mode=False,
+        query_white_balance=False,
+        query_blank_screen=False,
+        query_relative_brightness=False,
+        query_segments=False,
+    )
+    client.disconnect.assert_awaited_once()
+
+
 async def test_async_setup_registers_presence_and_callbacks_flip(coord):
     with patch(f"{M}.bluetooth") as bt:
         bt.async_address_present.return_value = False
@@ -2336,7 +2858,7 @@ async def test_first_refresh_reports_update_failed_then_degrades_silently(coord)
 
 
 async def test_first_refresh_non_readable_requires_presence(hass):
-    flat = replace(MODEL_PROFILES["H617A"], state_readable=False)
+    flat = replace(MODEL_PROFILES["H617A"], read_domains=frozenset())
     with patch(f"{M}.get_profile", return_value=flat):
         c = GoveeBLECoordinator(
             hass,
@@ -2420,6 +2942,17 @@ def test_expectations_from_packet_covers_every_command_family():
 
     assert expectations_from_packet(b"\x00\x01") == {}
     assert expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}
+
+
+@pytest.mark.parametrize("on", [False, True])
+def test_h6102_power_expectations_use_neutral_wire_value(on: bool):
+    assert expectations_from_packet(build_power(on, "H6102"), "H6102") == {"is_on": on}
+
+
+@pytest.mark.parametrize("model", ["H617A", "H617E", "H6076", "H6199"])
+@pytest.mark.parametrize("on", [False, True])
+def test_existing_power_expectations_remain_unchanged(model: str, on: bool):
+    assert expectations_from_packet(build_power(on, model), model) == {"is_on": on}
 
 
 def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
