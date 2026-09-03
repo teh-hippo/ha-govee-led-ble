@@ -15,6 +15,7 @@ from custom_components.ha_govee_led_ble import (
 )
 from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+    CONF_H6102_APP_FIRMWARE,
     CONF_MODEL,
     DOMAIN,
     MODEL_PROFILES,
@@ -70,6 +71,8 @@ async def test_setup_entry(hass: HomeAssistant):
         ),
         prefix_effect_names=False,
         always_include_custom_effects=True,
+        h6102_firmware=None,
+        h6102_firmware_source=None,
     )
     build_url.assert_called_once_with(entry.entry_id)
     assert entry.runtime_data is cls.return_value
@@ -78,19 +81,62 @@ async def test_setup_entry(hass: HomeAssistant):
     update_panel.assert_awaited_once_with(hass)
 
 
-async def test_setup_entry_omits_editor_link_for_h6076(hass: HomeAssistant):
-    entry = _entry(data={CONF_MODEL: "H6076"})
+@pytest.mark.parametrize("model", ["H6076", "H6102"])
+async def test_setup_entry_omits_editor_link_for_basic_models(hass: HomeAssistant, model: str):
+    entry = _entry(data={CONF_MODEL: model})
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
-        cls.return_value.profile = MODEL_PROFILES["H6076"]
+        cls.return_value.profile = MODEL_PROFILES[model]
 
         assert await async_setup_entry(hass, entry) is True
 
     assert cls.call_args.kwargs["configuration_url"] is None
+
+
+async def test_setup_entry_passes_configured_h6102_firmware_context(hass: HomeAssistant):
+    entry = _entry(
+        data={
+            CONF_MODEL: "H6102",
+            CONF_H6102_APP_FIRMWARE: "1.03.01",
+        }
+    )
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.profile = MODEL_PROFILES["H6102"]
+
+        assert await async_setup_entry(hass, entry) is True
+
+    assert cls.call_args.kwargs["h6102_firmware"] == "1.03.01"
+    assert cls.call_args.kwargs["h6102_firmware_source"] == "configured"
+
+
+async def test_setup_entry_ignores_stale_h6102_firmware_for_other_models(hass: HomeAssistant):
+    entry = _entry(
+        data={
+            CONF_MODEL: "H617A",
+            CONF_H6102_APP_FIRMWARE: "1.03.01",
+        }
+    )
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.profile = MODEL_PROFILES["H617A"]
+
+        assert await async_setup_entry(hass, entry) is True
+
+    assert cls.call_args.kwargs["h6102_firmware"] is None
+    assert cls.call_args.kwargs["h6102_firmware_source"] is None
 
 
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
@@ -214,6 +260,7 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
     [
         ([], set(), False),
         (["H6076"], set(), False),
+        (["H6102"], set(), False),
         (["H617A"], set(), True),
         (["H6076", "H6199"], set(), True),
         (["H617A"], {0}, False),
