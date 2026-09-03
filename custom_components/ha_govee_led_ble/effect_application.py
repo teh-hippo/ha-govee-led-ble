@@ -95,19 +95,22 @@ class EffectStudioApplication:
         updated_at: str,
         operation_id: UUID | None = None,
         expected_version: int | None = None,
+        diy_code: int | None = None,
     ) -> DeploymentRecord:
         async with self.saved_effect_for_apply(
             item_id,
             model=coordinator.model,
             expected_version=expected_version,
+            diy_code=diy_code,
         ) as item:
-            return await engine.async_apply_saved(
-                coordinator,
-                item,
-                config_entry_id=config_entry_id,
-                updated_at=updated_at,
-                operation_id=operation_id,
-            )
+            kwargs: dict[str, Any] = {
+                "config_entry_id": config_entry_id,
+                "updated_at": updated_at,
+                "operation_id": operation_id,
+            }
+            if diy_code is not None:
+                kwargs["diy_code"] = diy_code
+            return await engine.async_apply_saved(coordinator, item, **kwargs)
 
     @asynccontextmanager
     async def saved_effect_for_apply(
@@ -116,12 +119,13 @@ class EffectStudioApplication:
         *,
         model: str,
         expected_version: int | None = None,
+        diy_code: int | None = None,
     ) -> AsyncIterator[LibraryItem]:
         async with self._library_mutation_lock:
             item = self.get_saved_effect(item_id)
             if expected_version is not None and item.version != expected_version:
                 raise EffectVersionConflictError(item.version)
-            compile_application(item, model, diy_code=resolve_diy_code(item, model=model))
+            compile_application(item, model, diy_code=resolve_diy_code(item, diy_code, model=model))
             yield item
 
     async def async_create_library_item(

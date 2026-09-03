@@ -125,7 +125,7 @@ async def test_authenticated_users_can_read_contracts(
     assert info["result"]["api_version"] == EDITOR_API_VERSION
     assert "drafts_per_owner" not in info["result"]["limits"]
     assert library["result"] == {"generation": 0, "items": []}
-    assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H617E", "H6199"]
+    assert set(catalogue["result"]["catalogue"]["models"]) == {"H617A", "H617E", "H6179", "H6199"}
 
 
 async def test_non_admin_cannot_mutate_library(
@@ -384,6 +384,7 @@ async def test_apply_forwards_expected_item_version(
         config_entry_id=entry.entry_id,
         updated_at="2026-08-27T00:00:00Z",
         operation_id=None,
+        diy_code=None,
     )
 
 

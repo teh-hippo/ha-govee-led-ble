@@ -80,6 +80,7 @@ from .effect_websocket_payloads import (
     library_snapshot_payload,
 )
 from .effect_websocket_schema import (
+    DIY_CODE,
     EFFECT_CONTENT,
     EFFECT_NAME,
     IDENTIFIER,
@@ -728,6 +729,7 @@ async def ws_preview_close(
         vol.Optional("origin_kind"): vol.In([SourceKind.CATALOGUE_TEMPLATE.value]),
         vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("persist_default", default=False): STRICT_BOOL,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -754,15 +756,18 @@ async def ws_preview_apply_snapshot(
                 else None
             ),
         )
-        acceptance = await backend.preview.async_queue_snapshot(
-            session_id=msg["session_id"],
-            owner=connection,
-            config_entry_id=msg["config_entry_id"],
-            sequence=msg["sequence"],
-            updated_at=msg["updated_at"],
-            item=item,
-            persist_default=msg["persist_default"],
-        )
+        kwargs: dict[str, Any] = {
+            "session_id": msg["session_id"],
+            "owner": connection,
+            "config_entry_id": msg["config_entry_id"],
+            "sequence": msg["sequence"],
+            "updated_at": msg["updated_at"],
+            "item": item,
+            "persist_default": msg["persist_default"],
+        }
+        if "diy_code" in msg:
+            kwargs["diy_code"] = msg["diy_code"]
+        acceptance = await backend.preview.async_queue_snapshot(**kwargs)
     except Exception as exc:
         _send_preview_error(connection, msg["id"], exc)
         return
@@ -1299,6 +1304,7 @@ def ws_user_state_record_colour(
         vol.Required("expected_version"): POSITIVE_REVISION,
         vol.Required("updated_at"): TIMESTAMP,
         vol.Optional("operation_id"): UUID_TEXT,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -1324,6 +1330,7 @@ async def ws_apply(
             msg["item_id"],
             model=entry.runtime_data.model,
             expected_version=msg["expected_version"],
+            diy_code=msg.get("diy_code"),
         ) as item:
             validate_video_request(entry.runtime_data, item.content)
             await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
@@ -1333,6 +1340,7 @@ async def ws_apply(
                 config_entry_id=entry.entry_id,
                 updated_at=msg["updated_at"],
                 operation_id=operation_id,
+                diy_code=msg.get("diy_code"),
             )
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
@@ -1362,6 +1370,7 @@ async def ws_apply(
         vol.Optional("origin_kind"): vol.In([SourceKind.CATALOGUE_TEMPLATE.value]),
         vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("operation_id"): UUID_TEXT,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -1392,8 +1401,11 @@ async def ws_apply_snapshot(
             ),
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
+        diy_code = resolve_diy_code(item, msg.get("diy_code"), model=entry.runtime_data.model)
         compile_application(
-            item, entry.runtime_data.model, diy_code=resolve_diy_code(item, model=entry.runtime_data.model)
+            item,
+            entry.runtime_data.model,
+            diy_code=diy_code,
         )
         validate_video_request(entry.runtime_data, item.content)
         await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
@@ -1403,6 +1415,7 @@ async def ws_apply_snapshot(
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
             operation_id=operation_id,
+            diy_code=diy_code,
         )
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))

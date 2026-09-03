@@ -220,7 +220,11 @@ export function nativeSceneActions(
   autoSaveFailed = false,
   _liveApplyEnabled = true,
   defaultWritePending = false,
+  readOnly = false,
 ): NativeSceneAction[] {
+  if (readOnly) {
+    return [];
+  }
   const actions: NativeSceneAction[] = [];
   actions.push({ id: "save-as", label: "Save As", style: "secondary" });
   if (catalogueDirty) {

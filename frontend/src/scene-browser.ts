@@ -461,6 +461,7 @@ export class GoveeSceneBrowser extends LitElement {
                 this.autoSaveFailed || state.defaultSaveFailed,
                 this.liveApplyEnabled,
                 this.workflow.defaultWritePending,
+                state.selectedScene?.selector_only ?? false,
               )
                 .filter(
                   (action) =>

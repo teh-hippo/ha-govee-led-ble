@@ -33,6 +33,8 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         content.get("model")
         if kind
         in {
+            "h6179_single_diy",
+            "h6179_mixed_diy",
             "palette_diy",
             "music_profile",
             "video_profile",

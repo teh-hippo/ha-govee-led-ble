@@ -21,6 +21,7 @@ const firstScene: SceneSummary = {
   variant: "",
   display_name: "Glacier",
   scene_type: 1,
+  selector_only: false,
   parameter_kind: "none",
   speed: { option_count: 3, default_index: 1 },
 };

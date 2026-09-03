@@ -44,10 +44,7 @@ from .effect_domain import (
     WorkshopEffect,
 )
 from .effect_identity import ActiveEffectHint, EffectDeviceCache, ObservedDeviceState
-from .effect_protocol_decoder import (
-    UnsupportedA3EffectError,
-    decode_a3_effect_frames,
-)
+from .effect_protocol_decoder import decode_effect_frames
 from .generated_protocol_adapter import (
     build_blank_screen,
     build_power,
@@ -451,6 +448,7 @@ class EffectDeploymentEngine:
                     if isinstance(compiled, CompiledVideoProfile):
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
+                    _validate_h6179_diy_approval(coordinator, compiled)
                     self._reconcile_observation(
                         coordinator,
                         config_entry_id=record.config_entry_id,
@@ -512,12 +510,24 @@ class EffectDeploymentEngine:
                         if upload_count == 0:
                             current = replace(current, phase=DeploymentPhase.ACTIVATING)
                             await self._deployments.async_put(current, expected_version=None)
-                        await coordinator.async_write_effect_sequence(
-                            compiled.packets,
-                            intent=ControlIntent.APPLY,
-                            attempt_started=attempt_started,
-                            progress=record_sequence_progress,
+                        h6179_activation = (
+                            compiled.activation_packet if compiled.upload_transport == "h6179_a1_02" else None
                         )
+                        if h6179_activation is None:
+                            await coordinator.async_write_effect_sequence(
+                                compiled.packets,
+                                intent=ControlIntent.APPLY,
+                                attempt_started=attempt_started,
+                                progress=record_sequence_progress,
+                            )
+                        else:
+                            await coordinator.async_write_effect_sequence(
+                                compiled.upload_packets,
+                                intent=ControlIntent.APPLY,
+                                attempt_started=attempt_started,
+                                progress=record_sequence_progress,
+                                final_packet=h6179_activation,
+                            )
                     else:
                         current = await self._async_apply_profile(coordinator, compiled, current)
 
@@ -1154,8 +1164,8 @@ def _active_workspace_content(
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
         return source
     try:
-        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
-    except UnsupportedA3EffectError:
+        decoded = decode_effect_frames(compiled.upload_packets, compiled.model, compiled.upload_transport)
+    except ValueError:
         return source
     return decoded if type(decoded) is type(source) else source
 
@@ -1335,6 +1345,18 @@ def _record_signature(record: DeploymentRecord, model: str) -> str | None:
         ):
             return f"scene-code:{record.diy_code}"
     return None
+
+
+def _validate_h6179_diy_approval(
+    coordinator: GoveeBLECoordinator,
+    compiled: CompiledApplication,
+) -> None:
+    if not isinstance(compiled, CompiledEffect) or compiled.model != "H6179":
+        return
+    if compiled.content_kind not in {"h6179_single_diy", "h6179_mixed_diy"}:
+        return
+    if coordinator.diy_code != compiled.diy_code:
+        raise ValueError("approved H6179 disposable DIY code is no longer selected")
 
 
 def _activation_matches(

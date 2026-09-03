@@ -22,7 +22,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
@@ -59,6 +59,7 @@ from .effect_runtime import (
 from .effect_scenes import scene_default_for
 from .effect_selector import (
     EffectSelectorEntry,
+    compatible_saved_effects,
     effect_selector_entries,
     normalise_effect_name,
     resolve_effect_selector,
@@ -385,6 +386,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if self.color_mode is ColorMode.RGB:
             return _StaticColorRestoreData(ColorMode.RGB, rgb_color=self.coordinator.rgb_color)
         return None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        if self.coordinator.color_mode is ParsedMode.COLOUR:
+            supported = self._attr_supported_color_modes or set()
+            if self.coordinator.color_temp_kelvin is not None and ColorMode.COLOR_TEMP in supported:
+                self._attr_color_mode = ColorMode.COLOR_TEMP
+            elif ColorMode.RGB in supported:
+                self._attr_color_mode = ColorMode.RGB
+        super()._handle_coordinator_update()
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -784,6 +795,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         *,
         operation_id: UUID | None = None,
         turn_on_kwargs: dict[str, Any] | None = None,
+        diy_code: int | None = None,
     ) -> DeploymentRecord:
         assert self._effect_backend is not None
         assert self._config_entry_id is not None
@@ -792,6 +804,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 str(item.id),
                 model=self.coordinator.model,
                 expected_version=item.version,
+                diy_code=diy_code,
             ) as current:
                 validate_video_request(self.coordinator, current.content)
                 await self._async_supersede_preview()
@@ -806,19 +819,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                             else None,
                             **turn_on_kwargs,
                         )
-                    if operation_id is None:
-                        return await self._effect_backend.engine.async_apply_saved(
-                            self.coordinator,
-                            current,
-                            config_entry_id=self._config_entry_id,
-                            updated_at=dt_util.utcnow().isoformat(),
-                        )
+                    kwargs: dict[str, Any] = {
+                        "config_entry_id": self._config_entry_id,
+                        "updated_at": dt_util.utcnow().isoformat(),
+                    }
+                    if operation_id is not None:
+                        kwargs["operation_id"] = operation_id
+                    if diy_code is not None:
+                        kwargs["diy_code"] = diy_code
                     return await self._effect_backend.engine.async_apply_saved(
                         self.coordinator,
                         current,
-                        config_entry_id=self._config_entry_id,
-                        updated_at=dt_util.utcnow().isoformat(),
-                        operation_id=operation_id,
+                        **kwargs,
                     )
         except (EffectNotFoundError, EffectVersionConflictError) as exc:
             raise ServiceValidationError(
@@ -838,6 +850,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self,
         effect: str | None = None,
         effect_id: str | None = None,
+        diy_code: int | None = None,
     ) -> dict[str, Any]:
         if self._effect_backend is None or self._config_entry_id is None:
             raise ServiceValidationError(
@@ -857,7 +870,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         item: LibraryItem | None
         if effect is not None:
-            item = self._saved_effect(effect)
+            key = normalise_effect_name(effect)
+            item = next(
+                (
+                    candidate
+                    for candidate in compatible_saved_effects(
+                        self._library_snapshot.items,
+                        self.coordinator.model,
+                    )
+                    if self._saved_effect_visible(candidate) and normalise_effect_name(candidate.name) == key
+                ),
+                None,
+            )
         else:
             try:
                 item = self._effect_backend.application.get_saved_effect(
@@ -881,6 +905,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             deployment = await self._async_apply_saved_item(
                 item,
                 operation_id=operation_id,
+                diy_code=diy_code,
             )
         except Exception:
             self._record_custom_effect_service(

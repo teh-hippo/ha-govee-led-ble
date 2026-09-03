@@ -45,10 +45,7 @@ from .effect_domain import (
 )
 from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
-from .effect_protocol_decoder import (
-    UnsupportedA3EffectError,
-    decode_a3_effect_frames,
-)
+from .effect_protocol_decoder import decode_effect_frames
 from .effect_runtime import (
     active_workspace_matches,
     async_apply_compiled_profile,
@@ -68,7 +65,7 @@ from .effect_scenes import (
 from .effect_template_defaults import CatalogueTemplateDefault, CatalogueTemplateDefaultRepository
 from .generated_protocol_adapter import build_power
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body, resolve_native_scene_body
-from .scenes import canonical_scene_key, scene_code_is_ambiguous
+from .scenes import canonical_scene_key, scene_code_is_ambiguous, scene_selector_code
 from .video_applicability import validate_video_request
 
 PREVIEW_VERIFY_DELAY = 0.75
@@ -481,11 +478,12 @@ class EffectPreviewManager:
         updated_at: str,
         item: LibraryItem,
         persist_default: bool = False,
+        diy_code: int | None = None,
     ) -> PreviewAcceptance:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
         try:
-            diy_code = resolve_diy_code(item, model=coordinator.model)
+            diy_code = resolve_diy_code(item, diy_code, model=coordinator.model)
             compiled = compile_application(item, coordinator.model, diy_code=diy_code)
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
@@ -502,7 +500,7 @@ class EffectPreviewManager:
                 item.origin.source_id,
                 item.content,
             )
-        fingerprint = _snapshot_fingerprint(coordinator.model, item)
+        fingerprint = _snapshot_fingerprint(coordinator.model, item, diy_code)
         request = _PreviewRequest(
             session_id=session_id,
             config_entry_id=config_entry_id,
@@ -929,6 +927,13 @@ class EffectPreviewManager:
         writer: _PreviewWriter | None = None
         try:
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
+            if isinstance(compiled, CompiledEffect) and compiled.content_kind in {
+                "h6179_single_diy",
+                "h6179_mixed_diy",
+            }:
+                refreshed = await coordinator.refresh_state()
+                if not refreshed or coordinator.diy_code != compiled.diy_code:
+                    raise PreviewError("approved H6179 disposable DIY code is no longer selected")
             writer = _PreviewWriter(self, request, coordinator)
             if request.scene is not None:
                 await coordinator.async_apply_native_scene(
@@ -943,15 +948,32 @@ class EffectPreviewManager:
             else:
                 assert compiled is not None
                 if isinstance(compiled, CompiledEffect):
-                    packets = list(compiled.packets)
+                    h6179_activation = (
+                        compiled.activation_packet if compiled.upload_transport == "h6179_a1_02" else None
+                    )
+                    packets = list(compiled.upload_packets if h6179_activation is not None else compiled.packets)
                     power_required = not coordinator.is_on
                     if power_required:
                         packets.insert(0, build_power(True, coordinator.model))
-                    await coordinator.async_write_effect_sequence(
-                        packets,
-                        intent=ControlIntent.PREVIEW,
-                        before_write=writer.begin,
-                    )
+                    if h6179_activation is None:
+                        await coordinator.async_write_effect_sequence(
+                            packets,
+                            intent=ControlIntent.PREVIEW,
+                            before_write=writer.begin,
+                        )
+                    else:
+
+                        async def before_final() -> None:
+                            if not await self._async_request_is_current(request):
+                                raise _PreviewSupersededError
+
+                        await coordinator.async_write_effect_sequence(
+                            packets,
+                            intent=ControlIntent.PREVIEW,
+                            before_write=writer.begin,
+                            final_packet=h6179_activation,
+                            before_final=before_final,
+                        )
                     if power_required:
                         coordinator.is_on = True
                     _install_effect_state(coordinator, compiled)
@@ -1591,11 +1613,12 @@ def _preview_request_key(request: _PreviewRequest) -> tuple[str, str, bool]:
     )
 
 
-def _snapshot_fingerprint(model: str, item: LibraryItem) -> str:
+def _snapshot_fingerprint(model: str, item: LibraryItem, diy_code: int | None) -> str:
     encoded = json.dumps(
         {
             "model": model,
             "content": effect_content_to_dict(item.content),
+            "diy_code": diy_code,
         },
         allow_nan=False,
         ensure_ascii=False,
@@ -1618,8 +1641,8 @@ def _active_workspace_content(
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
         return source
     try:
-        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
-    except UnsupportedA3EffectError:
+        decoded = decode_effect_frames(compiled.upload_packets, compiled.model, compiled.upload_transport)
+    except ValueError:
         return source
     return decoded if type(decoded) is type(source) else source
 
@@ -1699,11 +1722,12 @@ def _verification_expectations(
     if not coordinator.profile.can_read(ReadDomain.POWER) or not coordinator.profile.supports_color_mode_readback:
         return None
     if request.scene is not None:
+        scene_code = scene_selector_code(coordinator.model, request.scene.entry)
         scene_expectations: dict[str, Any] = {
             "is_on": True,
-            "scene_code": request.scene.entry.code,
+            "scene_code": scene_code,
         }
-        if scene_code_is_ambiguous(coordinator.model, request.scene.entry.code):
+        if scene_code_is_ambiguous(coordinator.model, scene_code):
             scene_expectations["effect"] = canonical_scene_key(coordinator.model, request.scene.key)
         return scene_expectations
     return None if compiled is None else compiled_observation(compiled, profile=coordinator.profile)[0]

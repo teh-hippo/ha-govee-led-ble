@@ -22,3 +22,5 @@ apply_custom_effect:
       selector: {text:}
     effect_id:
       selector: {text:}
+    diy_code:
+      selector: {number: {min: 0, max: 65535, mode: box}}
