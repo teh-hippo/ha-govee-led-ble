@@ -22,7 +22,7 @@ from homeassistant.components.light import (  # type: ignore[attr-defined]
     LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
@@ -37,7 +37,6 @@ from .const import (
     EFFECT_FAMILY_MUSIC,
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
-    MUSIC_MODE_SLUGS,
     ModelProfile,
     ReadDomain,
     effect_category_for_content_kind,
@@ -66,6 +65,7 @@ from .effect_runtime import (
 from .effect_scenes import scene_default_for
 from .effect_selector import (
     EffectSelectorEntry,
+    compatible_saved_effects,
     effect_selector_entries,
     normalise_effect_name,
     resolve_effect_selector,
@@ -83,6 +83,7 @@ from .light_services import (
     _GoveeLightServicesMixin,
 )
 from .music_commands import prepare_music_request
+from .music_protocol import music_code_for
 from .music_semantics import music_variant
 from .native_profile_controls import _send_video_setting, async_require_video_controls, prepare_video_mode
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
@@ -428,6 +429,16 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if self.color_mode is ColorMode.RGB:
             return _StaticColorRestoreData(ColorMode.RGB, rgb_color=self.coordinator.rgb_color)
         return None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        if self.coordinator.color_mode is ParsedMode.COLOUR:
+            supported = self._attr_supported_color_modes or set()
+            if self.coordinator.color_temp_kelvin is not None and ColorMode.COLOR_TEMP in supported:
+                self._attr_color_mode = ColorMode.COLOR_TEMP
+            elif ColorMode.RGB in supported:
+                self._attr_color_mode = ColorMode.RGB
+        super()._handle_coordinator_update()
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -824,7 +835,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 if video_guards is not None:
                     video_guards.append(lambda: validate_compiled_geometry(compiled, coordinator.profile))
                 return partial(async_apply_compiled_profile, coordinator, compiled)
-            variant = music_variant(coordinator.profile, MUSIC_MODE_SLUGS[selected.value])
+            variant = music_variant(coordinator.profile, music_code_for(coordinator.model, selected.value))
             prepare_music_request(
                 coordinator.model,
                 selected.value,
@@ -926,6 +937,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         *,
         operation_id: UUID | None = None,
         turn_on_kwargs: dict[str, Any] | None = None,
+        diy_code: int | None = None,
     ) -> DeploymentRecord:
         assert self._effect_backend is not None
         assert self._config_entry_id is not None
@@ -935,11 +947,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 model=self.coordinator.model,
                 expected_version=item.version,
                 profile=self.coordinator.profile,
+                diy_code=diy_code,
             ) as current:
                 compiled = compile_application(
                     current,
                     self.coordinator.model,
-                    diy_code=resolve_diy_code(current, model=self.coordinator.model),
+                    diy_code=resolve_diy_code(current, diy_code, model=self.coordinator.model),
                     profile=self.coordinator.profile,
                 )
 
@@ -959,19 +972,18 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                             **turn_on_kwargs,
                         )
                     guard()
-                    if operation_id is None:
-                        return await self._effect_backend.engine.async_apply_saved(
-                            self.coordinator,
-                            current,
-                            config_entry_id=self._config_entry_id,
-                            updated_at=dt_util.utcnow().isoformat(),
-                        )
+                    kwargs: dict[str, Any] = {
+                        "config_entry_id": self._config_entry_id,
+                        "updated_at": dt_util.utcnow().isoformat(),
+                    }
+                    if operation_id is not None:
+                        kwargs["operation_id"] = operation_id
+                    if diy_code is not None:
+                        kwargs["diy_code"] = diy_code
                     return await self._effect_backend.engine.async_apply_saved(
                         self.coordinator,
                         current,
-                        config_entry_id=self._config_entry_id,
-                        updated_at=dt_util.utcnow().isoformat(),
-                        operation_id=operation_id,
+                        **kwargs,
                     )
         except (EffectNotFoundError, EffectVersionConflictError) as exc:
             raise ServiceValidationError(
@@ -991,6 +1003,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self,
         effect: str | None = None,
         effect_id: str | None = None,
+        diy_code: int | None = None,
     ) -> dict[str, Any]:
         self._require_support(
             "apply_custom_effect",
@@ -1015,7 +1028,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         item: LibraryItem | None
         if effect is not None:
             await async_require_video_controls(self.coordinator, ())
-            item = self._saved_effect(effect)
+            key = normalise_effect_name(effect)
+            item = next(
+                (
+                    candidate
+                    for candidate in compatible_saved_effects(
+                        self._library_snapshot.items,
+                        self.coordinator.model,
+                        profile=self.coordinator.profile,
+                    )
+                    if self._saved_effect_visible(candidate) and normalise_effect_name(candidate.name) == key
+                ),
+                None,
+            )
         else:
             try:
                 item = self._effect_backend.application.get_saved_effect(
@@ -1039,6 +1064,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             deployment = await self._async_apply_saved_item(
                 item,
                 operation_id=operation_id,
+                diy_code=diy_code,
             )
         except Exception:
             self._record_custom_effect_service(

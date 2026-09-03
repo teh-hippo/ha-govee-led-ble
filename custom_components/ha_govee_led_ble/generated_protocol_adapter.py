@@ -8,11 +8,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib import import_module
+from types import MappingProxyType
 from typing import Any, cast
 
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
 from .const import ModelProfile, ReadDomain, get_profile
+from .music_protocol import music_slug_for
 from .music_semantics import MusicVariant, music_variant
 from .transport import A3_CHUNK_SIZE, reassemble_a3, xor_checksum
 
@@ -52,6 +54,14 @@ H6199CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
 )
+H6179CommandWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_command_write").H6179CommandWrite,
+)
+H6179DiyBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_diy_body").H6179DiyBody,
+)
 H6199CommandAck = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_ack").H6199CommandAck,
@@ -72,6 +82,10 @@ H6199StatusQuery = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_query").H6199StatusQuery,
 )
+H6179StatusQuery = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_status_query").H6179StatusQuery,
+)
 GoveeShared = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_shared").GoveeShared,
@@ -87,6 +101,10 @@ StatusReply = cast(
 H6199StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
+)
+H6179StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_status_reply").H6179StatusReply,
 )
 H6102StatusReply = cast(
     Any,
@@ -148,6 +166,7 @@ class ProtocolParseRejection(StrEnum):
     INVALID_CHECKSUM = "invalid_checksum"
     UNSUPPORTED_MODEL = "unsupported_model"
     SCHEMA_REJECTED = "schema_rejected"
+    SEMANTIC_REJECTED = "semantic_rejected"
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +182,7 @@ _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS = 10
 _BLANK_SCREEN_SAME_TONE_SECONDS = 120
 
 
-def _check_tree(value: Any, seen: set[int] | None = None) -> None:
+def check_generated_tree(value: Any, seen: set[int] | None = None) -> None:
     seen = seen or set()
     if not isinstance(value, ReadWriteKaitaiStruct) or id(value) in seen:
         return
@@ -172,11 +191,14 @@ def _check_tree(value: Any, seen: set[int] | None = None) -> None:
         if name.startswith("_"):
             continue
         if isinstance(child, ReadWriteKaitaiStruct):
-            _check_tree(child, seen)
+            check_generated_tree(child, seen)
         elif isinstance(child, list):
             for item in child:
-                _check_tree(item, seen)
+                check_generated_tree(item, seen)
     value._check()
+
+
+_check_tree = check_generated_tree
 
 
 def _write(value: ReadWriteKaitaiStruct, length: int) -> bytes:
@@ -236,19 +258,38 @@ _STATUS_ROOTS = {
     "H6102": ("h6102_status_reply", H6102StatusReply),
     "H6099": ("h6099_status_reply", H6099StatusReply),
     "H617A": ("status_reply", StatusReply),
+    "H6179": ("h6179_status_reply", H6179StatusReply),
     "H6199": ("h6199_status_reply", H6199StatusReply),
 }
 _COMMAND_ROOTS = {
     "H601C": ("h601c_command_write", H601cCommandWrite),
     "H6099": ("h6099_command_write", H6099CommandWrite),
     "H617A": ("command_write", CommandWrite),
+    "H6179": ("h6179_command_write", H6179CommandWrite),
     "H6199": ("h6199_command_write", H6199CommandWrite),
+}
+_STATUS_QUERY_ROOTS = {
+    "H601C": ("status_query", StatusQuery),
+    "H6099": ("h6099_status_query", H6099StatusQuery),
+    "H617A": ("status_query", StatusQuery),
+    "H6179": ("h6179_status_query", H6179StatusQuery),
+    "H6199": ("h6199_status_query", H6199StatusQuery),
 }
 _COMMAND_ACK_ROOTS = {
     "H6099": ("h6099_command_ack", H6099CommandAck),
     "H617A": ("h617a_command_ack", H617aCommandAck),
     "H6199": ("h6199_command_ack", H6199CommandAck),
 }
+
+
+def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
+    if getattr(parsed.opcode, "name", None) is None:
+        return True
+    if parser == "command_write" and parsed.opcode.name == "multi":
+        return getattr(parsed.body.sub, "name", None) is None
+    if parser == "h6199_command_write" and parsed.opcode.name == "mode":
+        return getattr(parsed.body.sub_mode, "name", None) is None
+    return False
 
 
 def _parse_xor_frame(
@@ -287,7 +328,10 @@ def parse_status(frame: bytes, model: str = "H617A", *, profile: ModelProfile | 
 def parse_command_result(
     frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
 ) -> ProtocolParseResult:
-    return _parse_xor_frame(frame, (profile or get_profile(model)).command_grammar, _COMMAND_ROOTS)
+    result = _parse_xor_frame(frame, (profile or get_profile(model)).command_grammar, _COMMAND_ROOTS)
+    if result.parsed is not None and _has_unknown_discriminator(result.parsed, result.parser or ""):
+        return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
+    return result
 
 
 def parse_command_ack_result(frame: bytes, model: str, *, profile: ModelProfile | None = None) -> ProtocolParseResult:
@@ -325,6 +369,166 @@ def upload_ack_success(parsed: Any, subtype: int) -> bool | None:
 
 def parse_command(frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None) -> Any | None:
     return parse_command_result(frame, model, profile=profile).parsed
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedH6179Command:
+    operation: str
+    values: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedH6179Status:
+    domain: str
+    values: Mapping[str, Any]
+
+
+def _values(**values: Any) -> Mapping[str, Any]:
+    return MappingProxyType(values)
+
+
+def _has_zero_opaque(body: Any) -> bool:
+    return not any(body.opaque)
+
+
+def _h6179_mode_values(body: Any, *, command: bool) -> Mapping[str, Any] | None:
+    mode = getattr(body.mode, "name", None)
+    if mode is None:
+        return None
+    detail = body.payload if command else body.detail
+    profile = get_profile("H6179")
+    if not _has_zero_opaque(detail):
+        return None
+    if mode == "static":
+        direct = detail.rgb_direct if command else detail.colour
+        preview = detail.rgb_preview if command else detail.temperature_colour
+        kelvin = int(detail.kelvin)
+        if kelvin and not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
+            return None
+        return _values(
+            mode=mode,
+            raw_mode=int(body.mode),
+            rgb=(int(direct.red), int(direct.green), int(direct.blue)),
+            kelvin=kelvin,
+            preview_rgb=(int(preview.red), int(preview.green), int(preview.blue)),
+        )
+    if mode == "scene":
+        return _values(mode=mode, raw_mode=int(body.mode), scene_code=int(detail.scene_id))
+    if mode == "diy":
+        return _values(mode=mode, raw_mode=int(body.mode), diy_code=int(detail.diy_id))
+    if mode == "music":
+        mode_id = int(detail.effect_id if command else detail.music_id)
+        if (
+            music_slug_for("H6179", mode_id) is None
+            or not profile.music_sensitivity_min <= int(detail.sensitivity) <= profile.music_sensitivity_max
+            or detail.colour_mode not in {0, 1}
+        ):
+            return None
+        colour = None
+        if detail.colour_mode:
+            colour = (
+                int(detail.fixed_colour.red),
+                int(detail.fixed_colour.green),
+                int(detail.fixed_colour.blue),
+            )
+        return _values(
+            mode=mode,
+            raw_mode=int(body.mode),
+            music_mode=music_slug_for("H6179", mode_id),
+            music_mode_id=mode_id,
+            sensitivity=int(detail.sensitivity),
+            colour=colour,
+        )
+    return None
+
+
+def parse_h6179_command(frame: bytes) -> ParsedH6179Command | None:
+    """Parse an H6179 command into semantic values without exposing generated classes."""
+    parsed = parse_command(frame, "H6179")
+    if parsed is None:
+        return None
+    operation = getattr(parsed.opcode, "name", None)
+    if operation == "power":
+        if parsed.body.is_on not in {0, 1} or not _has_zero_opaque(parsed.body):
+            return None
+        values = _values(is_on=bool(parsed.body.is_on))
+    elif operation == "brightness":
+        if not _has_zero_opaque(parsed.body):
+            return None
+        try:
+            brightness_pct = decode_h6179_brightness(int(parsed.body.raw))
+        except ValueError:
+            return None
+        values = _values(brightness_pct=brightness_pct)
+    elif operation == "mode":
+        mode_values = _h6179_mode_values(parsed.body, command=True)
+        if mode_values is None:
+            return None
+        values = mode_values
+    else:
+        return None
+    return ParsedH6179Command(operation=operation, values=values)
+
+
+def parse_h6179_status_query(frame: bytes) -> str | None:
+    """Return the semantic H6179 domain selected by a valid status query."""
+    parsed = _parse_xor_frame(frame, "H6179", _STATUS_QUERY_ROOTS).parsed
+    if parsed is None:
+        return None
+    domain = getattr(parsed.domain, "name", None)
+    if domain is None or not _has_zero_opaque(parsed.body):
+        return None
+    if domain == "mode" and getattr(parsed.body.selector, "name", None) != "current":
+        return None
+    if domain == "hardware" and getattr(parsed.body.selector, "name", None) != "primary":
+        return None
+    return cast(str, domain)
+
+
+def _parse_h6179_status(parsed: Any) -> ParsedH6179Status | None:
+    domain = getattr(parsed.domain, "name", None)
+    if domain is None:
+        return None
+    body = parsed.body
+    if domain != "mode" and not _has_zero_opaque(body):
+        return None
+    if domain == "power":
+        if body.state not in {0, 1}:
+            return None
+        values = _values(is_on=bool(body.is_on))
+    elif domain == "brightness":
+        values = _values(brightness_pct=decode_h6179_brightness(int(body.raw_brightness)))
+    elif domain in {"firmware", "hardware"}:
+        if domain == "hardware" and getattr(body.selector, "name", None) != "primary":
+            return None
+        values = _values(version=body.text or None)
+    elif domain == "mode":
+        mode_values = _h6179_mode_values(body, command=False)
+        if mode_values is None:
+            return None
+        values = mode_values
+    else:
+        return None
+    return ParsedH6179Status(domain=domain, values=values)
+
+
+def parse_h6179_status_result(frame: bytes) -> ProtocolParseResult:
+    """Parse an H6179 reply into stable semantic fields and preserve rejection detail."""
+    result = parse_status_result(frame, "H6179")
+    if result.parsed is None:
+        return result
+    try:
+        parsed = _parse_h6179_status(result.parsed)
+    except AttributeError, IndexError, TypeError, ValueError:
+        parsed = None
+    if parsed is None:
+        return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
+    return ProtocolParseResult(parsed, result.parser, None)
+
+
+def parse_h6179_status(frame: bytes) -> ParsedH6179Status | None:
+    """Parse an H6179 reply into stable semantic fields."""
+    return cast(ParsedH6179Status | None, parse_h6179_status_result(frame).parsed)
 
 
 def boolean_control_name(operation: str) -> str | None:
@@ -372,10 +576,11 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                     expected_companion = _H601C_KELVIN_RGB.get(static.kelvin or 0, bytes(3))
                     if companion != expected_companion:
                         raise ValueError("H601C authored companion RGB does not match Kelvin")
-                if not static.segment_mask:
+                if static.segment_mask is not None and not static.segment_mask:
                     raise ValueError("no segments selected")
-                if not static.whole_strip or (
-                    static.brightness_pct is not None and not profile.supports_white_brightness
+                if static.segment_mask is not None and (
+                    not static.whole_strip
+                    or (static.brightness_pct is not None and not profile.supports_white_brightness)
                 ):
                     if not profile.supports_segments:
                         raise ValueError(f"{profile.name} does not support per-segment control")
@@ -403,12 +608,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     query = _parse_xor_frame(
         frame,
         profile.command_grammar,
-        {
-            "H601C": ("status_query", StatusQuery),
-            "H6199": ("h6199_status_query", H6199StatusQuery),
-            "H6099": ("h6099_status_query", H6099StatusQuery),
-            "H617A": ("status_query", StatusQuery),
-        },
+        _STATUS_QUERY_ROOTS,
     ).parsed
     if query is not None:
         domain = getattr(query.domain, "name", "")
@@ -466,7 +666,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
 
 def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any, Any, Any]:
     resolved = (profile or get_profile(model)).command_grammar
-    if resolved in {"H601C", "H6099", "H6199"}:
+    if resolved in {"H601C", "H6099", "H6179", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         return root_type, root_type.PowerBody, root_type.BrightnessBody
     if resolved != "H617A":
@@ -490,26 +690,34 @@ def _build_status_query(
     segment_group: int | None = None,
     colour_mode_selector: int = 0,
 ) -> bytes:
-    if grammar not in {"H601C", "H617A", "H6099", "H6199"}:
+    if grammar not in _STATUS_QUERY_ROOTS:
         raise ValueError(f"{grammar} has no generated status-query grammar")
-    root_type = {"H601C": StatusQuery, "H617A": StatusQuery, "H6099": H6099StatusQuery, "H6199": H6199StatusQuery}[
-        grammar
-    ]
+    root_type = _STATUS_QUERY_ROOTS[grammar][1]
     root = root_type()
     root.header = b"\xaa"
-    root.domain = getattr(root_type.QueryDomain, domain)
+    generated_domain = "mode" if grammar == "H6179" and domain == "colour_mode" else domain
+    root.domain = getattr(
+        root_type.StatusDomain if grammar == "H6179" else root_type.QueryDomain,
+        generated_domain,
+    )
     if display_setting is not None:
         body = _child(root_type.DisplaySettingQueryBody, root)
         body.setting = getattr(root_type.DisplaySetting, display_setting)
         body.zeros = [0] * 16
     elif segment_group is not None:
+        if grammar == "H6179":
+            raise ValueError("H6179 has no segment status-query operation")
         body = _child(root_type.SegmentQueryBody, root)
         body.group = segment_group
         body.zeros = [0] * 16
     elif domain == "hardware":
         body = _child(root_type.HardwareQueryBody, root)
-        body.selector = b"\x03"
-        body.zeros = [0] * 16
+        if grammar == "H6179":
+            body.selector = root_type.HardwareQuerySelector.primary
+            body.opaque = bytes(16)
+        else:
+            body.selector = b"\x03"
+            body.zeros = [0] * 16
     elif domain == "relative_brightness":
         body = _child(root_type.RelativeBrightnessQueryBody, root)
         body.selector = b"\x01"
@@ -522,9 +730,17 @@ def _build_status_query(
         body = _child(root_type.ColourModeQueryBody, root)
         body.selector = colour_mode_selector
         body.zeros = [0] * 16
+    elif domain == "colour_mode" and grammar == "H6179":
+        body = _child(root_type.ModeQueryBody, root)
+        body.selector = root_type.ModeQuerySelector.current
+        body.opaque = bytes(16)
     else:
-        body = _child(root_type.ZeroBody, root)
-        body.zeros = [0] * 17
+        if grammar == "H6179":
+            body = _child(root_type.OpaqueBody, root)
+            body.opaque = bytes(17)
+        else:
+            body = _child(root_type.ZeroBody, root)
+            body.zeros = [0] * 17
     root.body = body
     return _serialize_xor(root)
 
@@ -792,7 +1008,7 @@ def build_h6199_palette_diy_envelope(
     content.palette = [new_rgb(content, colour) for colour in palette]
     root.content = content
     content.padding = [0] * h6199_diy_padding_len(len(palette))
-    _check_tree(root)
+    check_generated_tree(root)
     return _write(root, root.diy_chunk_count * A3_CHUNK_SIZE)
 
 
@@ -821,7 +1037,7 @@ def _parse_a3_scene(
     header = _a3_header(synthetic)
     header_length = len(header.marker) + 1
     header.linecount = max(header.linecount, math.ceil((header_length + 1 + len(raw_param)) / A3_CHUNK_SIZE))
-    _check_tree(header)
+    check_generated_tree(header)
     header_bytes = _write(header, header_length)
     envelope = header_bytes + bytes((scene_type_byte,)) + raw_param
     unpadded = root_type(KaitaiStream(io.BytesIO(envelope)))
@@ -883,7 +1099,7 @@ def serialize_workshop_body_param(root: Any) -> bytes:
 def serialize_h6199_workshop_content(content: Any) -> bytes:
     """Serialize built H6199 Workshop content without its A3 envelope."""
     _set_effect_layer_lengths(content.blocks)
-    _check_tree(content)
+    check_generated_tree(content)
     content_size = _serialized_length(content)
     if content_size + 3 > _A3_MAX_CONTENT:
         raise SceneParameterTooLargeError(
@@ -894,7 +1110,7 @@ def serialize_h6199_workshop_content(content: Any) -> bytes:
 
 def _set_effect_layer_lengths(records: list[Any]) -> None:
     for record in records:
-        _check_tree(record.body)
+        check_generated_tree(record.body)
         body_length = _serialized_length(record.body)
         if body_length > _U1_MAX:
             raise SceneParameterTooLargeError(
@@ -933,7 +1149,7 @@ def build_h617a_diy_painted_body(
         root.groups.append(group)
     root.padding = []
     length = 10 + sum(4 + len(segments) for _, segments in groups)
-    _check_tree(root)
+    check_generated_tree(root)
     return _write(root, length)[3:]
 
 
@@ -962,7 +1178,7 @@ def build_h617a_diy_single_body(
     body.padding = []
     root.body = body
     length = 7 + body.len_palette
-    _check_tree(root)
+    check_generated_tree(root)
     return _write(root, length)[3:]
 
 
@@ -991,7 +1207,7 @@ def build_h617a_diy_multi_body(
     body.padding = []
     root.body = body
     length = 8 + body.len_palette + body.seqlen
-    _check_tree(root)
+    check_generated_tree(root)
     return _write(root, length)[3:]
 
 
@@ -999,22 +1215,45 @@ def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None 
     root_type, power_type, _ = _command_types(model, profile)
     root = root_type()
     root.header = b"\x33"
-    root.opcode = root_type.CommandOp.power
+    root.opcode = root_type.CommandOpcode.power if root_type is H6179CommandWrite else root_type.CommandOp.power
     body = power_type(None, root, root._root)
     body.is_on = int(on)
-    if root_type is H601cCommandWrite:
+    if root_type is H6179CommandWrite:
+        body.opaque = bytes(16)
+    elif root_type is H601cCommandWrite:
         body.padding = bytes(16)
     root.body = body
     return _serialize_xor(root)
+
+
+def encode_h6179_brightness(percent: int) -> int:
+    """Convert a semantic 1..100 brightness percentage to H6179 raw brightness."""
+    if not isinstance(percent, int) or isinstance(percent, bool) or not 1 <= percent <= 100:
+        raise ValueError("H6179 brightness must be an integer from 1 to 100")
+    return (2000 + (percent - 1) * 237) // 100
+
+
+def decode_h6179_brightness(raw: int) -> int:
+    """Convert a candidate H6179 raw brightness byte to a percentage."""
+    if not isinstance(raw, int) or isinstance(raw, bool) or not 20 <= raw <= 254:
+        raise ValueError("H6179 raw brightness must be an integer from 20 to 254")
+    scaled = (raw - 20) * 100
+    return max(1, min(100, 1 - (-scaled // 237)))
 
 
 def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
     root_type, _, brightness_type = _command_types(model, profile)
     root = root_type()
     root.header = b"\x33"
-    root.opcode = root_type.CommandOp.brightness
+    root.opcode = (
+        root_type.CommandOpcode.brightness if root_type is H6179CommandWrite else root_type.CommandOp.brightness
+    )
     body = brightness_type(None, root, root._root)
-    body.percent = max(0, min(100, percent))
+    if root_type is H6179CommandWrite:
+        body.raw = encode_h6179_brightness(percent)
+        body.opaque = bytes(16)
+    else:
+        body.percent = max(0, min(100, percent))
     if root_type is H601cCommandWrite:
         body.padding = bytes(16)
     root.body = body
@@ -1085,6 +1324,27 @@ def _build_h601c_static_colour(mask: int, direct: tuple[int, int, int], kelvin: 
     return _serialize_xor(root)
 
 
+def _build_h6179_static_colour(
+    *,
+    direct: tuple[int, int, int],
+    kelvin: int,
+    preview: tuple[int, int, int],
+) -> bytes:
+    root = H6179CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6179CommandWrite.CommandOpcode.mode
+    mode = _child(H6179CommandWrite.ModeBody, root)
+    mode.mode = H6179CommandWrite.ModeSelector.static
+    static = _child(H6179CommandWrite.StaticBody, mode)
+    static.rgb_direct = _rgb(static, *direct)
+    static.kelvin = kelvin
+    static.rgb_preview = _rgb(static, *preview)
+    static.opaque = bytes(8)
+    mode.payload = static
+    root.body = mode
+    return _serialize_xor(root)
+
+
 def build_segment_colour(
     mask: int,
     red: int,
@@ -1098,6 +1358,14 @@ def build_segment_colour(
     resolved = profile.command_grammar
     if resolved == "H601C":
         return _build_h601c_static_colour(mask, (red, green, blue), 0, profile)
+    if resolved == "H6179":
+        if mask != 0:
+            raise ValueError("H6179 static colour is inherently whole-device and has no segment mask")
+        return _build_h6179_static_colour(
+            direct=(red, green, blue),
+            kelvin=0,
+            preview=(0, 0, 0),
+        )
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
@@ -1140,6 +1408,14 @@ def build_colour_temperature(
     resolved = profile.command_grammar
     if resolved == "H601C":
         return _build_h601c_static_colour(mask, (255, 255, 255), kelvin, profile)
+    if resolved == "H6179":
+        if mask != 0:
+            raise ValueError("H6179 colour temperature is inherently whole-device and has no segment mask")
+        return _build_h6179_static_colour(
+            direct=(255, 255, 255),
+            kelvin=value,
+            preview=preview,
+        )
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
@@ -1178,6 +1454,8 @@ def build_segment_brightness(
 ) -> bytes:
     value = max(0, min(100, percent))
     resolved = (profile or get_profile(model)).command_grammar
+    if resolved == "H6179":
+        raise ValueError("H6179 has no segment-brightness operation")
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
@@ -1225,6 +1503,10 @@ def build_scene_activation(
     grammar = (profile or get_profile(model)).command_grammar
     if grammar == "H617A":
         return build_h617a_scene(scene_code, scene_type=scene_type)
+    if grammar == "H6179":
+        if music_code or scene_type:
+            raise ValueError("H6179 scene selector has no music-code or scene-type field")
+        return build_h6179_scene(scene_code)
     if grammar == "H6199":
         return build_h6199_scene(scene_code, music_code)
     if grammar == "H6099":
@@ -1254,6 +1536,22 @@ def build_h6199_scene(scene_code: int, music_code: int = 0) -> bytes:
     detail.music_code = max(0, min(0xFFFF, music_code))
     detail.reserved = bytes(12)
     mode.detail = detail
+    root.body = mode
+    return _serialize_xor(root)
+
+
+def build_h6179_scene(scene_code: int) -> bytes:
+    if not isinstance(scene_code, int) or isinstance(scene_code, bool) or not 0 <= scene_code <= 0xFF:
+        raise ValueError("H6179 scene code must be an integer from 0 to 255")
+    root = H6179CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6179CommandWrite.CommandOpcode.mode
+    mode = _child(H6179CommandWrite.ModeBody, root)
+    mode.mode = H6179CommandWrite.ModeSelector.scene
+    detail = _child(H6179CommandWrite.SceneBody, mode)
+    detail.scene_id = scene_code
+    detail.opaque = bytes(15)
+    mode.payload = detail
     root.body = mode
     return _serialize_xor(root)
 
@@ -1297,6 +1595,22 @@ def build_h6099_diy_activation(diy_code: int = 254) -> bytes:
     detail = _child(H6099CommandWrite.DiyBody, mode)
     detail.code = diy_code
     mode.detail = detail
+    root.body = mode
+    return _serialize_xor(root)
+
+
+def build_h6179_diy_activation(diy_code: int) -> bytes:
+    if not isinstance(diy_code, int) or isinstance(diy_code, bool) or not 0 <= diy_code <= 0xFFFF:
+        raise ValueError("H6179 DIY code must be an integer from 0 to 65535")
+    root = H6179CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6179CommandWrite.CommandOpcode.mode
+    mode = _child(H6179CommandWrite.ModeBody, root)
+    mode.mode = H6179CommandWrite.ModeSelector.diy
+    detail = _child(H6179CommandWrite.DiyBody, mode)
+    detail.diy_id = diy_code
+    detail.opaque = bytes(14)
+    mode.payload = detail
     root.body = mode
     return _serialize_xor(root)
 
@@ -1541,10 +1855,8 @@ def build_music_mode(
     *,
     profile: ModelProfile | None = None,
 ) -> bytes:
-    from .const import MUSIC_MODE_SLUGS
-
     profile = profile or get_profile(model)
-    if type(mode_id) is not int or mode_id not in (MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes):
+    if type(mode_id) is not int or music_slug_for(model, mode_id) not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode_id}")
     if (
         type(sensitivity) is not int
@@ -1562,6 +1874,22 @@ def build_music_mode(
     ):
         raise ValueError("fixed music colour is unsupported or invalid")
     resolved = profile.command_grammar
+    if resolved == "H6179":
+        root = H6179CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H6179CommandWrite.CommandOpcode.mode
+        mode = _child(H6179CommandWrite.ModeBody, root)
+        mode.mode = H6179CommandWrite.ModeSelector.music
+        detail = _child(H6179CommandWrite.MusicBody, mode)
+        detail.effect_id = mode_id
+        detail.sensitivity = sensitivity
+        detail.colour_mode = int(colour is not None)
+        if colour is not None:
+            detail.fixed_colour = _rgb(detail, *colour)
+        detail.opaque = bytes(10 if colour is not None else 13)
+        mode.payload = detail
+        root.body = mode
+        return _serialize_xor(root)
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()

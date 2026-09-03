@@ -9,6 +9,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import voluptuous as vol
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
@@ -16,8 +17,10 @@ from homeassistant.exceptions import ServiceValidationError
 from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, PaintedEffect
+from custom_components.ha_govee_led_ble.effect_domain import H6179SingleDiyEffect, LibraryItem
 from custom_components.ha_govee_led_ble.effect_services import (
+    APPLY_CUSTOM_EFFECT_SCHEMA,
+    ATTR_DIY_CODE,
     SERVICE_APPLY_CUSTOM_EFFECT,
     async_register_effect_services,
 )
@@ -43,6 +46,7 @@ def test_service_registration_uses_home_assistant_entity_targeting(
     assert register.call_args.kwargs["entity_domain"] is Platform.LIGHT
     assert register.call_args.kwargs["func"] == "async_apply_custom_effect"
     assert register.call_args.kwargs["supports_response"] is SupportsResponse.OPTIONAL
+    assert vol.Schema(APPLY_CUSTOM_EFFECT_SCHEMA)({ATTR_DIY_CODE: 0x1234}) == {ATTR_DIY_CODE: 0x1234}
 
 
 @pytest.mark.parametrize("reference", ["name", "id"])
@@ -50,9 +54,11 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     mock_coordinator,
     reference: str,
 ) -> None:
+    mock_coordinator.model = "H6179"
+    mock_coordinator.effect_categories = frozenset({"effects"})
     item = LibraryItem.new(
         "Paint",
-        PaintedEffect("clockwise", 50, 100, (None,) * 15),
+        H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
     )
     deployment = SimpleNamespace(
         to_public_dict=MagicMock(
@@ -92,6 +98,7 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     response = await entity.async_apply_custom_effect(
         effect=item.name if reference == "name" else None,
         effect_id=str(item.id) if reference == "id" else None,
+        diy_code=0x1234,
     )
 
     assert response["phase"] == "confirmed"
@@ -102,6 +109,7 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     apply_saved.assert_awaited_once()
     assert apply_saved.await_args is not None
     assert apply_saved.await_args.kwargs["operation_id"] is not None
+    assert apply_saved.await_args.kwargs["diy_code"] == 0x1234
 
 
 @pytest.mark.parametrize(

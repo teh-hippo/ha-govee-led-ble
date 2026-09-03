@@ -17,7 +17,7 @@ test("canonical backend catalogue decodes through the production catalogue valid
   expect(decoded.sku).toBe("H617A");
   expect(decoded.models.H6099.video_controls?.saturation_min).toBe(1);
   expect(decoded.models.H6199.video_controls?.saturation_min).toBe(0);
-  expect(Object.keys(decoded.models)).toEqual(["H6099", "H6102", "H617A", "H617E", "H6199"]);
+  expect(Object.keys(decoded.models)).toEqual(["H6099", "H6102", "H6179", "H617A", "H617E", "H6199"]);
   expect(decoded.models.H6199.video_settings).toEqual([
     "capture_region",
     "saturation",
@@ -57,7 +57,7 @@ test("structural nine-colour imports and future catalogues do not widen shipped 
   expect(imported).toEqual(raw);
   expect(effectContentEligible(imported, decoded.models.H6199, "H6199", 15)).toBe(false);
   expect(effectContentEligible(decodeEffectContent({ ...raw, model: "H9909" }), decoded.models.H9909, "H9909", 15)).toBe(true);
-  for (const sku of ["H617A", "H617E", "H6199"]) expect(decoded.models[sku].limits.palette_max).toBe(8);
+  for (const sku of ["H6179", "H617A", "H617E", "H6199"]) expect(decoded.models[sku].limits.palette_max).toBe(8);
   for (const kind of ["h617a_single", "h617a_multi", "palette_diy"]) {
     expect(() => decodeEffectContent({ ...raw, kind, effects: [{ family: 0, variant: 0 }],
       palette: Array.from({ length: 85 }, () => [1, 2, 3]) })).not.toThrow();

@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Any
 from uuid import UUID, uuid4
 
-from .const import MUSIC_MODE_SLUGS, ModelProfile, ReadDomain, get_profile
+from .const import ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .effect_active_workspace import (
@@ -45,10 +45,7 @@ from .effect_domain import (
     WorkshopEffect,
 )
 from .effect_identity import ActiveEffectHint, EffectDeviceCache, ObservedDeviceState
-from .effect_protocol_decoder import (
-    UnsupportedA3EffectError,
-    decode_a3_effect_frames,
-)
+from .effect_protocol_decoder import decode_effect_frames
 from .generated_protocol_adapter import (
     build_black_border,
     build_blank_screen,
@@ -57,6 +54,7 @@ from .generated_protocol_adapter import (
     build_white_balance,
 )
 from .music_commands import prepare_music_profile_writes
+from .music_protocol import music_code_for
 from .music_semantics import capture_music_parameters, music_variant
 from .native_profile_controls import (
     ProfileWriter,
@@ -105,7 +103,7 @@ async def async_apply_compiled_profile(
 
         await coordinator.async_write_music_sequence(
             writes,
-            mode_code=MUSIC_MODE_SLUGS[compiled.mode],
+            mode_code=music_code_for(compiled.model, compiled.mode),
             physical_ic_count=compiled.physical_ic_count,
             intent=ControlIntent.APPLY,
             writer=writer,
@@ -496,6 +494,7 @@ class EffectDeploymentEngine:
                         require_video_mode(coordinator.profile, coordinator)
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
+                    _validate_h6179_diy_approval(coordinator, compiled)
                     validate_compiled_geometry(compiled, coordinator.profile)
                     self._reconcile_observation(
                         coordinator,
@@ -572,8 +571,13 @@ class EffectDeploymentEngine:
                         ack_options: dict[str, Any] = {}
                         if "native_diy_positive_ack_required" in compiled.evidence_codes:
                             ack_options = {"require_upload_ack": True, "upload_ack_index": upload_count - 1}
+                        h6179_activation = (
+                            compiled.activation_packet if compiled.upload_transport == "h6179_a1_02" else None
+                        )
+                        if h6179_activation is not None:
+                            ack_options["final_packet"] = h6179_activation
                         await coordinator.async_write_effect_sequence(
-                            compiled.packets,
+                            compiled.upload_packets if h6179_activation is not None else compiled.packets,
                             intent=ControlIntent.APPLY,
                             attempt_started=attempt_started,
                             progress=record_sequence_progress,
@@ -1280,8 +1284,8 @@ def _active_workspace_content(
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
         return source
     try:
-        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
-    except UnsupportedA3EffectError:
+        decoded = decode_effect_frames(compiled.upload_packets, compiled.model, compiled.upload_transport)
+    except ValueError:
         return source
     if isinstance(source, LayeredEffect) and isinstance(decoded, LayeredEffect):
         return replace(decoded, native_diy=source.native_diy)
@@ -1399,7 +1403,7 @@ def compiled_observation(
         # H617A settings are not confirmed by the shipped readback evidence.
         if profile.status_grammar in {"H6099", "H6199"}:
             expectations["music_sensitivity"] = compiled.sensitivity
-            variant = music_variant(profile, MUSIC_MODE_SLUGS[compiled.mode])
+            variant = music_variant(profile, music_code_for(compiled.model, compiled.mode))
             if profile.supports_music_color and (variant is None or variant.supports_fixed_colour):
                 expectations["music_color"] = compiled.colour
             if compiled.mode == "rhythm" and variant and variant.supports_style:
@@ -1490,6 +1494,18 @@ def _record_signature(record: DeploymentRecord, model: str) -> str | None:
         ):
             return f"scene-code:{record.diy_code}"
     return None
+
+
+def _validate_h6179_diy_approval(
+    coordinator: GoveeBLECoordinator,
+    compiled: CompiledApplication,
+) -> None:
+    if not isinstance(compiled, CompiledEffect) or compiled.model != "H6179":
+        return
+    if compiled.content_kind not in {"h6179_single_diy", "h6179_mixed_diy"}:
+        return
+    if coordinator.diy_code != compiled.diy_code:
+        raise ValueError("approved H6179 disposable DIY code is no longer selected")
 
 
 def _activation_matches(

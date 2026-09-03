@@ -10,7 +10,7 @@ from hashlib import sha256
 from types import MappingProxyType
 from typing import Any, Literal, assert_never
 
-from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile, supported_effect_categories
+from .const import ModelProfile, get_profile, supported_effect_categories
 from .effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H617A_WORKSHOP_APPLY_CODE,
@@ -29,6 +29,8 @@ from .effect_commands import (
     build_h617a_diy_multi,
     build_h617a_diy_painted,
     build_h617a_diy_single,
+    build_h6179_diy,
+    build_h6179_diy_activation,
     build_h6199_palette_diy,
 )
 from .effect_contracts import (
@@ -38,6 +40,8 @@ from .effect_contracts import (
 )
 from .effect_domain import (
     BuiltinScene,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
     LayeredEffect,
     LayeredScene,
     LibraryItem,
@@ -60,9 +64,10 @@ from .generated_protocol_adapter import (
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
 from .music_commands import resolve_music_profile
+from .music_protocol import music_code_for
 from .music_semantics import music_parameters_depend_on_ic, music_variant
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body
-from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity
+from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity, scene_selector_code
 from .transport import fragment_a3
 
 
@@ -99,6 +104,7 @@ class CompiledEffect:
     evidence_codes: tuple[str, ...] = ()
     compiler_version: int = EFFECT_COMPILER_VERSION
     physical_ic_count: int | None = None
+    upload_transport: str = "a3"
 
     @property
     def packets(self) -> tuple[bytes, ...]:
@@ -188,7 +194,7 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
     if isinstance(compiled, CompiledMusicProfile):
         if compiled.mode not in profile.music_modes:
             raise ValueError("Device profile no longer supports the compiled music mode")
-        variant = music_variant(profile, MUSIC_MODE_SLUGS[compiled.mode])
+        variant = music_variant(profile, music_code_for(compiled.model, compiled.mode))
         dependent = music_parameters_depend_on_ic(variant, compiled.parameters)
     if dependent and compiled.physical_ic_count != profile.physical_ic_count:
         raise ValueError("Physical IC count changed since compilation; refresh and retry")
@@ -248,6 +254,18 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                 CompatibilityState.INCOMPATIBLE,
                 (f"{model} does not support video mode {content.mode}",),
             )
+        return CompatibilityResult(CompatibilityState.COMPATIBLE)
+    if isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        if model != "H6179" or content.model != model:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} cannot apply H6179 DIY content",),
+            )
+        workflow = CapabilityWorkflow.SINGLE if isinstance(content, H6179SingleDiyEffect) else CapabilityWorkflow.MULTI
+        try:
+            require_effect_route(model, workflow, ("H6179",))
+        except ValueError as error:
+            return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, WorkshopEffect):
         if content.model != model:
@@ -348,6 +366,10 @@ def compile_effect(
     result = compatibility(item, model, profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
+    if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        if diy_code is None:
+            raise ValueError("H6179 DIY application requires an approved disposable DIY code")
+        return compile_h6179(item, diy_code)
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
         if get_profile(model).effect_grammar == "H6099":
             diy_code = resolve_diy_code(item, diy_code, model=model)
@@ -402,6 +424,17 @@ def resolve_diy_code(
         if requested is not None:
             raise ValueError("profiles do not use a DIY code")
         return None
+    if isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        model = content.model if model is None else model
+        if content.model != model:
+            raise ValueError(f"effect targets {content.model}, not {model}")
+        workflow = CapabilityWorkflow.SINGLE if isinstance(content, H6179SingleDiyEffect) else CapabilityWorkflow.MULTI
+        require_effect_route(model, workflow, ("H6179",))
+        if requested is None:
+            raise ValueError("H6179 DIY application requires an explicitly approved disposable DIY code")
+        if not isinstance(requested, int) or isinstance(requested, bool) or not 0 <= requested <= 0xFFFF:
+            raise ValueError("DIY code must be an integer from 0 to 65535")
+        return requested
     if isinstance(content, WorkshopEffect | PaletteDiyEffect):
         model = content.model if model is None else model
         if content.model != model:
@@ -578,7 +611,7 @@ def compile_scene_effect(item: LibraryItem, model: str, *, profile: ModelProfile
         item_version=item.version,
         model=model,
         content_kind=content_kind,
-        diy_code=entry.code,
+        diy_code=scene_selector_code(model, entry),
         activation_mode=ActivationMode.SCENE,
         selector_kind="scene",
         expected_effect=scene_key,
@@ -653,6 +686,31 @@ def compile_h617a(
         physical_ic_count=profile.physical_ic_count
         if isinstance(content, PaintedEffect) and content.addressing == "physical_ic"
         else None,
+    )
+
+
+def compile_h6179(item: LibraryItem, diy_code: int) -> CompiledEffect:
+    result = compatibility(item, "H6179")
+    if result.state is not CompatibilityState.COMPATIBLE:
+        raise ValueError("; ".join(result.reasons))
+    content = item.content
+    if not isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        raise ValueError("unsupported H6179 DIY content")
+    upload = tuple(build_h6179_diy(content))
+    activation = build_h6179_diy_activation(diy_code)
+    return CompiledEffect(
+        item_id=str(item.id),
+        item_version=item.version,
+        model="H6179",
+        content_kind="h6179_single_diy" if isinstance(content, H6179SingleDiyEffect) else "h6179_mixed_diy",
+        diy_code=diy_code,
+        activation_mode=ActivationMode.CUSTOM,
+        expected_effect=None,
+        upload_packets=upload,
+        activation_packet=activation,
+        artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
+        evidence_codes=("effect_content_readback_unavailable",),
+        upload_transport="h6179_a1_02",
     )
 
 
@@ -755,7 +813,9 @@ def compile_application(
         return compile_music_profile(item, model, profile=profile)
     if isinstance(item.content, VideoProfile):
         return compile_video_profile(item, model, profile=profile)
-    if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
+    if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        resolve_diy_code(item, diy_code, model=model)
+    elif isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
         resolved = resolve_diy_code(item, diy_code, model=model)
         if get_profile(model).effect_grammar == "H6099":
             diy_code = resolved

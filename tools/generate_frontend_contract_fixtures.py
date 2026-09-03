@@ -27,6 +27,8 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     EffectPair,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
     LibraryItem,
     MultiEffect,
     MusicProfile,
@@ -63,6 +65,8 @@ CONTENT_FAMILIES = {
     "h617a_painted",
     "h617a_single",
     "h617a_multi",
+    "h6179_single_diy",
+    "h6179_mixed_diy",
     "palette_diy",
     "music_profile",
     "video_profile",
@@ -159,6 +163,15 @@ def _content_samples(
                 ((255, 0, 0), (0, 255, 0)),
             )
         ),
+        "h6179_single_diy": effect_content_to_dict(H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),))),
+        "h6179_mixed_diy": effect_content_to_dict(
+            H6179MixedDiyEffect(
+                "H6179",
+                (EffectPair(0, 0), EffectPair(2, 0)),
+                50,
+                ((255, 0, 0), (0, 0, 255)),
+            )
+        ),
         "palette_diy": effect_content_to_dict(PaletteDiyEffect("H6199", 2, 1, 70, ((255, 128, 0),))),
         "music_profile": effect_content_to_dict(
             MusicProfile("H617A", "separation", 50, (1, 2, 3), False, {"point": 3, "gradient": True})
@@ -215,6 +228,20 @@ def rendered_data() -> str:
         name="Canonical palette scene",
         content=effect_content_from_dict(scene_details["scene_palette"]["content"]),
     )
+    h6179_diy_item = LibraryItem(
+        id=UUID("00000000-0000-4000-8000-000000000005"),
+        version=1,
+        updated_at=TIMESTAMP,
+        name="Canonical H6179 DIY",
+        content=H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)),
+    )
+    h6179_music_item = LibraryItem(
+        id=UUID("00000000-0000-4000-8000-000000000006"),
+        version=1,
+        updated_at=TIMESTAMP,
+        name="Canonical H6179 music",
+        content=MusicProfile("H6179", "mode_0", 50),
+    )
     deployment = DeploymentRecord(
         operation_id=DEPLOYMENT_ID,
         config_entry_id="h617a-main",
@@ -257,7 +284,7 @@ def rendered_data() -> str:
             confidence=ObservationConfidence.ACTIVATION_MATCH,
         ),
     )
-    library_snapshot = LibrarySnapshot((item, scene_item))
+    library_snapshot = LibrarySnapshot((item, scene_item, h6179_diy_item, h6179_music_item))
     devices = []
     for model in MODELS:
         device = device_effect_capabilities(

@@ -14,6 +14,7 @@ from .generated_protocol_adapter import (
     music_default_palette,
     parse_music_parameters,
 )
+from .music_protocol import music_code_for, music_mode_has_parameter_write
 from .music_semantics import (
     compile_music_parameters,
     music_parameters_available,
@@ -70,7 +71,7 @@ def prepare_music_request(
     profile = get_profile(model) if profile is None else profile
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
-    mode_code = MUSIC_MODE_SLUGS[mode]
+    mode_code = music_code_for(model, mode)
     variant = music_variant(profile, mode_code)
     if palette is not None and (variant is None or variant.palette_bounds is None):
         raise ValueError("music mode does not support an authored palette")
@@ -80,7 +81,7 @@ def prepare_music_request(
         build_music_params(
             mode_code, parameters, None if palette is None else list(palette), profile=profile, calm=calm
         )
-        if include_parameters
+        if include_parameters and music_mode_has_parameter_write(model, mode_code)
         else []
     )
     selector = build_music_mode(mode_code, sensitivity, colour, calm, model, profile=profile)
@@ -103,13 +104,14 @@ def resolve_music_profile(
     profile = get_profile(model) if profile is None else profile
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
-    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
+    mode_code = music_code_for(model, mode)
+    variant = music_variant(profile, mode_code)
     if calm is not None and (variant is None or not variant.supports_style):
         raise ValueError(f"music mode {mode} does not support a style setting")
     if colour is not None and not (profile.supports_music_color and (variant is None or variant.supports_fixed_colour)):
         raise ValueError(f"{model} does not support a fixed music colour")
     resolved_calm = calm if calm is not None else variant.calm_default if variant and variant.supports_style else False
-    compiled = compile_music_parameters(parameters, MUSIC_MODE_SLUGS[mode], profile)
+    compiled = compile_music_parameters(parameters, mode_code, profile)
     packets = prepare_music_request(
         model, mode, sensitivity, colour, resolved_calm, compiled, profile=profile, palette=palette
     )
@@ -162,7 +164,8 @@ def prepare_music_profile_writes(
         "effect": None,
         "diy_code": None,
     }
-    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
+    mode_code = music_code_for(model, mode)
+    variant = music_variant(profile, mode_code)
     if variant and variant.layout in {"music_body", "h6099_music_parameters"}:
         # New selectors carry neither style nor fixed colour, even without an upload.
         del states[selector_index]["music_calm"]
@@ -172,7 +175,7 @@ def prepare_music_profile_writes(
         companion_index = len(packets) - 2 if profile.music_upload_before_selector else len(packets) - 1
         states[companion_index] = {
             spec.key: parameters.get(spec.profile_key, spec.default)
-            for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], profile)
+            for spec in music_params_for_mode(mode_code, profile)
             if original_body is None
         }
         if original_body is None and variant and variant.supports_style:
@@ -183,7 +186,7 @@ def prepare_music_profile_writes(
             if original_body is not None
             else encode_music_parameters(
                 variant,
-                compile_music_parameters(parameters, MUSIC_MODE_SLUGS[mode], profile),
+                compile_music_parameters(parameters, mode_code, profile),
                 palette=None if palette is None else list(palette),
                 calm=calm,
                 physical_ic_count=profile.physical_ic_count,

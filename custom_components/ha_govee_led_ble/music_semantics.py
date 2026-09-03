@@ -515,7 +515,9 @@ def capture_music_parameters(source: object, profile: ModelProfile, mode: str) -
 
     if mode not in profile.music_modes:
         return {}
+    mode_code = MUSIC_MODE_SLUGS.get(mode)
+    if mode_code is None:
+        return {}
     return {
-        spec.profile_key: getattr(source, spec.key, spec.default)
-        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], profile)
+        spec.profile_key: getattr(source, spec.key, spec.default) for spec in music_params_for_mode(mode_code, profile)
     }

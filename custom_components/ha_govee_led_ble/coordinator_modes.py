@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from .const import MUSIC_MODE_SLUGS
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_status import ParsedMode
@@ -21,6 +20,7 @@ from .music_commands import (
     prepare_music_body_writes,
     prepare_music_profile_writes,
 )
+from .music_protocol import music_code_for, music_mode_supports_style
 from .music_semantics import music_parameters_depend_on_ic, music_params_for_mode, music_variant
 from .native_profile_controls import ProfileWriter
 from .native_scenes import build_native_scene_packets
@@ -85,7 +85,8 @@ class _ActiveModeMixin(_CoordinatorBase):
     def music_calm(self) -> bool:
         if self._music_calm is not None:
             return self._music_calm
-        variant = music_variant(self.profile, MUSIC_MODE_SLUGS.get(self.music_mode, -1))
+        mode_code = music_code_for(self.model, self.music_mode) if self.music_mode in self.profile.music_modes else -1
+        variant = music_variant(self.profile, mode_code)
         return variant.calm_default if variant and variant.supports_style else False
 
     @music_calm.setter
@@ -244,13 +245,13 @@ class _ActiveModeMixin(_CoordinatorBase):
             return
         if slug not in self.profile.music_modes:
             raise ValueError(f"{self.model} does not support music mode {slug}")
-        mode_id = MUSIC_MODE_SLUGS[slug]
+        mode_id = music_code_for(self.model, slug)
         variant = music_variant(self.profile, mode_id)
-        calm = (
-            (self._music_calm if self._music_calm is not None else variant.calm_default)
-            if variant is not None and variant.supports_style
-            else False
+        supports_style = (variant is not None and variant.supports_style) or music_mode_supports_style(
+            self.model, mode_id
         )
+        calm_default = variant.calm_default if variant is not None else False
+        calm = (self._music_calm if self._music_calm is not None else calm_default) if supports_style else False
         color = (
             self.music_color
             if self.profile.supports_music_color and (variant is None or variant.supports_fixed_colour)
@@ -323,7 +324,7 @@ class _ActiveModeMixin(_CoordinatorBase):
 
         def guard(index: int) -> None:
             nonlocal attempted_upload, revision
-            if mode_code not in (MUSIC_MODE_SLUGS[slug] for slug in self.profile.music_modes):
+            if mode_code not in (music_code_for(self.model, slug) for slug in self.profile.music_modes):
                 raise ValueError("Device profile no longer supports the requested music mode")
             if dependent and physical_ic_count != self.profile.physical_ic_count:
                 raise ValueError("Physical IC count changed since preparation; refresh and retry")
@@ -373,7 +374,9 @@ class _ActiveModeMixin(_CoordinatorBase):
         parameters: Mapping[str, Any] | None = None,
         calm: bool | None = None,
     ) -> None:
-        if MUSIC_MODE_SLUGS.get(self.music_mode) != mode_code or self.music_body is None:
+        if self.music_mode not in self.profile.music_modes or music_code_for(self.model, self.music_mode) != mode_code:
+            raise ValueError("Cannot preserve unknown music body; select or apply a complete profile")
+        if self.music_body is None:
             raise ValueError("Cannot preserve unknown music body; select or apply a complete profile")
         retained_body_revision = self._music_body_revision
         previous = music_body_parameters(self.music_body, self.music_mode, profile=self.profile)

@@ -6,7 +6,7 @@ import base64
 from dataclasses import dataclass, replace
 from typing import Final
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, ModelProfile, get_profile, supported_effect_categories
+from .const import MODEL_PROFILES, ModelProfile, get_profile, supported_effect_categories
 from .effect_contracts import (
     CapabilityState,
     CapabilityWorkflow,
@@ -18,6 +18,7 @@ from .effect_domain import (
     MAX_MULTI_EFFECTS,
     EffectContent,
     EffectValidationError,
+    H6179SingleDiyEffect,
     JsonValue,
     LayeredEffect,
     MultiEffect,
@@ -34,6 +35,7 @@ from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-define
 from .generated_protocol_adapter import music_default_palette
 from .layered_scene_decoder import decode_workshop_effect
 from .music_commands import music_default_available
+from .music_protocol import MUSIC_MODE_CODES_BY_MODEL, music_code_for
 from .music_semantics import music_parameters_available, music_params_for_mode, music_variant
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 10
@@ -237,7 +239,8 @@ class ModelEffectCatalogue:
                 mode.id: {
                     "available": music_default_available(self.sku, mode.id, profile=profile),
                     "style": bool(
-                        (variant := music_variant(profile, MUSIC_MODE_SLUGS[mode.id])) and variant.supports_style
+                        (variant := music_variant(profile, music_code_for(self.sku, mode.id)))
+                        and variant.supports_style
                     ),
                     "calm_default": variant.calm_default if variant else False,
                     "colour": bool(profile.supports_music_color and variant and variant.supports_fixed_colour),
@@ -262,7 +265,7 @@ class ModelEffectCatalogue:
                             "max": spec.max_value,
                             "options": list(spec.options),
                         }
-                        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode.id], profile)
+                        for spec in music_params_for_mode(music_code_for(self.sku, mode.id), profile)
                     },
                 }
                 for mode in self.music_modes
@@ -488,7 +491,7 @@ def _native_music_modes(model: str) -> tuple[NativeModeOption, ...]:
             slug,
             _mode_label(slug),
         )
-        for slug in MUSIC_MODE_SLUGS
+        for slug in MUSIC_MODE_CODES_BY_MODEL[model]
         if slug in supported
     )
 
@@ -496,11 +499,44 @@ def _native_music_modes(model: str) -> tuple[NativeModeOption, ...]:
 H617A_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617A")
 H617A_WORKSHOP_APPLY_CODE: Final = 401
 H617A_WORKSHOP_SCENE_TYPE: Final = 2
+H6179_DIY_SOURCE_REFERENCE: Final = "tools/ble/kaitai/speculative/h6179_diy_body.ksy"
 H6199_DIY_SOURCE_REFERENCE: Final = "tools/ble/kaitai/h6199_effect_upload.ksy"
 H6199_PALETTE_DIY_APPLY_CODE: Final = 401
 H6199_PALETTE_DIY_APPLY_MUSIC_CODE: Final = 2
 H6199_WORKSHOP_APPLY_CODE: Final = 402
 H6199_WORKSHOP_APPLY_MUSIC_CODE: Final = 0
+
+H6179_DIY_FAMILIES: Final = (
+    DiyEffectFamily(
+        "fade",
+        "Fade",
+        0,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference=H6179_DIY_SOURCE_REFERENCE,
+    ),
+    DiyEffectFamily(
+        "jumping",
+        "Jumping",
+        1,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference=H6179_DIY_SOURCE_REFERENCE,
+    ),
+    DiyEffectFamily(
+        "twinkle",
+        "Twinkle",
+        2,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference=H6179_DIY_SOURCE_REFERENCE,
+    ),
+)
+
+H6179_NATIVE_MUSIC_MODES: Final = (
+    NativeModeOption("mode_0", "Mode 1"),
+    NativeModeOption("mode_1", "Mode 2"),
+)
 
 H6199_DIY_EFFECTS: Final = (
     DiyEffectTemplate(
@@ -667,6 +703,14 @@ def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
             speed=50,
             palette=((255, 0, 0), (0, 255, 0), (0, 0, 255)) if family.palette_max == 3 else DEFAULT_PALETTE,
         )
+    elif grammar == "H6179":
+        content = H6179SingleDiyEffect(
+            model=model,
+            family=family.family,
+            variant=variation.variant,
+            speed=50,
+            palette=DEFAULT_PALETTE,
+        )
     elif grammar == "H6199":
         content = PaletteDiyEffect(
             model=model,
@@ -687,7 +731,7 @@ def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
 
 def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
     profile = MODEL_PROFILES[model]
-    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode.id])
+    variant = music_variant(profile, music_code_for(model, mode.id))
     return CatalogueTemplate(
         id=f"template:music:{mode.id}",
         label=mode.label,
@@ -837,6 +881,11 @@ H617A_CATALOGUE_TEMPLATES: Final = (
 )
 H617E_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617E")
 H617E_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617E", H617E_NATIVE_MUSIC_MODES)
+
+H6179_CATALOGUE_TEMPLATES: Final = (
+    *(_single_template("H6179", family) for family in H6179_DIY_FAMILIES),
+    *(_music_template("H6179", mode) for mode in H6179_NATIVE_MUSIC_MODES),
+)
 
 H6199_CATALOGUE_TEMPLATES: Final = (
     *(_single_template("H6199", family) for family in H6199_PALETTE_DIY_FAMILIES),
@@ -1020,6 +1069,27 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H617E", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H617E", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H617E", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H6179": ModelEffectCatalogue(
+        sku="H6179",
+        painted_effects=(),
+        effects=H6179_DIY_FAMILIES,
+        music_modes=H6179_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=H6179_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6179", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6179", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6179", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H6179", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6179", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6179", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6179", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6179", CapabilityWorkflow.WORKSHOP),
         ),
     ),
     "H6199": ModelEffectCatalogue(
@@ -1265,6 +1335,9 @@ def validate_catalogue_template_identity(
         or isinstance(canonical, SingleEffect)
         and isinstance(content, SingleEffect)
         and (content.family, content.variant) == (canonical.family, canonical.variant)
+        or isinstance(canonical, H6179SingleDiyEffect)
+        and isinstance(content, H6179SingleDiyEffect)
+        and (content.model, content.family, content.variant) == (canonical.model, canonical.family, canonical.variant)
         or isinstance(canonical, PaletteDiyEffect)
         and isinstance(content, PaletteDiyEffect)
         and (content.model, content.family, content.variant) == (canonical.model, canonical.family, canonical.variant)

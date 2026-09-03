@@ -155,10 +155,14 @@ export function customEffectCategoryAvailable(
       return (
         customEffectKindAvailable(context, "h617a_painted") ||
         customEffectKindAvailable(context, "h617a_single") ||
+        customEffectKindAvailable(context, "h6179_single_diy") ||
         customEffectKindAvailable(context, "palette_diy")
       );
     case "multi-layer":
-      return customEffectKindAvailable(context, "h617a_multi");
+      return (
+        customEffectKindAvailable(context, "h617a_multi") ||
+        customEffectKindAvailable(context, "h6179_mixed_diy")
+      );
     case "advanced":
       return (
         customEffectKindAvailable(context, "advanced") ||
@@ -185,6 +189,16 @@ export function customEffectKindAvailable(
   }
   if (kind === "h617a_single") {
     return (
+      !catalogue.workflows.some(
+        (workflow) => workflow.content_kind === "h6179_single_diy",
+      ) &&
+      Boolean(catalogue.effects.length) &&
+      catalogue.apply.single !== "unsupported"
+    );
+  }
+  if (kind === "h6179_single_diy") {
+    return (
+      catalogue.workflows.some((workflow) => workflow.content_kind === kind) &&
       Boolean(catalogue.effects.length) &&
       catalogue.apply.single !== "unsupported"
     );
@@ -197,6 +211,16 @@ export function customEffectKindAvailable(
   }
   if (kind === "h617a_multi") {
     return (
+      !catalogue.workflows.some(
+        (workflow) => workflow.content_kind === "h6179_mixed_diy",
+      ) &&
+      catalogue.supports.multi !== "unsupported" &&
+      catalogue.apply.multi !== "unsupported"
+    );
+  }
+  if (kind === "h6179_mixed_diy") {
+    return (
+      catalogue.workflows.some((workflow) => workflow.content_kind === kind) &&
       catalogue.supports.multi !== "unsupported" &&
       catalogue.apply.multi !== "unsupported"
     );
@@ -221,6 +245,9 @@ export function newEffectKindForCategory(
     if (customEffectKindAvailable(context, "h617a_single")) {
       return "h617a_single";
     }
+    if (customEffectKindAvailable(context, "h6179_single_diy")) {
+      return "h6179_single_diy";
+    }
     if (customEffectKindAvailable(context, "palette_diy")) {
       return "palette_diy";
     }
@@ -229,8 +256,11 @@ export function newEffectKindForCategory(
       : undefined;
   }
   if (category === "multi-layer") {
-    return customEffectKindAvailable(context, "h617a_multi")
-      ? "h617a_multi"
+    if (customEffectKindAvailable(context, "h617a_multi")) {
+      return "h617a_multi";
+    }
+    return customEffectKindAvailable(context, "h6179_mixed_diy")
+      ? "h6179_mixed_diy"
       : undefined;
   }
   if (category === "advanced") {
@@ -255,7 +285,9 @@ function customEffectEntryAvailable(
         context,
         customEffectKindAvailable(context, "h617a_single")
           ? "h617a_single"
-          : "palette_diy",
+          : customEffectKindAvailable(context, "h6179_single_diy")
+            ? "h6179_single_diy"
+            : "palette_diy",
       );
     case "music":
       return customEffectKindAvailable(context, "music_profile");

@@ -242,12 +242,14 @@ export class EffectStudioApi {
   public async applySavedEffect(
     configEntryId: string,
     item: Pick<LibraryItem, "id" | "version">,
+    diyCode?: number,
   ): Promise<void> {
     await this.call("apply", {
       config_entry_id: configEntryId,
       item_id: item.id,
       expected_version: item.version,
       updated_at: new Date().toISOString(),
+      ...(diyCode === undefined ? {} : { diy_code: diyCode }),
     });
   }
 
@@ -256,6 +258,7 @@ export class EffectStudioApi {
     name: string,
     content: EffectContent,
     provenance?: PreviewSnapshotProvenance,
+    diyCode?: number,
   ): Promise<void> {
     await this.call("apply_snapshot", {
       config_entry_id: configEntryId,
@@ -263,6 +266,7 @@ export class EffectStudioApi {
       content: effectContentToWire(content),
       updated_at: new Date().toISOString(),
       ...(provenance ?? {}),
+      ...(diyCode === undefined ? {} : { diy_code: diyCode }),
     });
   }
 
@@ -293,6 +297,7 @@ export class EffectStudioApi {
     content: EffectContent,
     persistDefault = false,
     provenance?: PreviewSnapshotProvenance,
+    diyCode?: number,
   ): Promise<void> {
     await this.call("preview/apply_snapshot", {
       session_id: sessionId,
@@ -303,6 +308,7 @@ export class EffectStudioApi {
       updated_at: new Date().toISOString(),
       persist_default: persistDefault,
       ...(provenance ?? {}),
+      ...(diyCode === undefined ? {} : { diy_code: diyCode }),
     });
   }
 

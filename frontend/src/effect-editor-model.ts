@@ -199,6 +199,14 @@ export function blankCustomEffect(
   catalogue: ModelEffectCatalogue,
 ): Extract<CustomEffectContent, { kind: "h617a_multi" }>;
 export function blankCustomEffect(
+  kind: "h6179_single_diy",
+  catalogue: ModelEffectCatalogue,
+): Extract<CustomEffectContent, { kind: "h6179_single_diy" }>;
+export function blankCustomEffect(
+  kind: "h6179_mixed_diy",
+  catalogue: ModelEffectCatalogue,
+): Extract<CustomEffectContent, { kind: "h6179_mixed_diy" }>;
+export function blankCustomEffect(
   kind: CustomEffectContent["kind"],
   catalogue: ModelEffectCatalogue,
 ): CustomEffectContent;
@@ -222,6 +230,7 @@ export function blankCustomEffect(
       brightness: catalogue.limits.brightness_max,
     };
   }
+  const mixed = kind === "h617a_multi" || kind === "h6179_mixed_diy";
   const preferred =
     kind === "h617a_multi"
       ? catalogue.effects.find(
@@ -233,7 +242,7 @@ export function blankCustomEffect(
       : undefined;
   const first =
     preferred ??
-    (kind === "h617a_multi"
+    (mixed
       ? catalogue.effects.find(
           (effect) =>
             effect.supports_multi && effect.variations.length > 0,
@@ -247,7 +256,7 @@ export function blankCustomEffect(
   const variation =
     variant !== undefined
       ? first.variations.find((candidate) => candidate.variant === variant)
-      : (kind === "h617a_multi"
+      : (mixed
         ? first.variations.find((candidate) => candidate.id === "clockwise")
         : undefined) ?? first.variations[0];
   if (!variation) throw new Error("The target catalogue has no matching variation.");
@@ -261,6 +270,24 @@ export function blankCustomEffect(
       ...pair,
       speed: Math.max(first.rate_min, Math.min(50, first.rate_max)),
       palette: first.palette_max === 3 ? [[255, 0, 0], [0, 255, 0], [0, 0, 255]] : defaultPalette(catalogue).slice(0, first.palette_max),
+    };
+  }
+  if (kind === "h6179_single_diy") {
+    return {
+      kind,
+      model: catalogue.sku,
+      ...pair,
+      speed: 50,
+      palette: defaultPalette(),
+    };
+  }
+  if (kind === "h6179_mixed_diy") {
+    return {
+      kind,
+      model: catalogue.sku,
+      components: [pair],
+      speed: 50,
+      palette: defaultPalette(),
     };
   }
   return {
@@ -314,9 +341,19 @@ export function cloneCustomEffect(
   if (content.kind === "h617a_painted") {
     return clonePainted(content);
   }
-  if (content.kind === "h617a_single") {
+  if (
+    content.kind === "h617a_single" ||
+    content.kind === "h6179_single_diy"
+  ) {
     return {
       ...content,
+      palette: clonePalette(content.palette),
+    };
+  }
+  if (content.kind === "h6179_mixed_diy") {
+    return {
+      ...content,
+      components: content.components.map((component) => ({ ...component })),
       palette: clonePalette(content.palette),
     };
   }
@@ -503,7 +540,9 @@ function isCustomEffectKind(
   return (
     kind === "h617a_painted" ||
     kind === "h617a_single" ||
-    kind === "h617a_multi"
+    kind === "h617a_multi" ||
+    kind === "h6179_single_diy" ||
+    kind === "h6179_mixed_diy"
   );
 }
 
@@ -569,6 +608,10 @@ export function customKindLabel(kind: unknown): string {
       return "Single";
     case "h617a_multi":
       return "Multi";
+    case "h6179_single_diy":
+      return "Single DIY";
+    case "h6179_mixed_diy":
+      return "Mixed DIY";
     case "advanced":
       return "Advanced";
     case "palette_diy":
@@ -609,6 +652,8 @@ export function libraryKindPriority(
         "h617a_painted",
         "h617a_single",
         "h617a_multi",
+        "h6179_single_diy",
+        "h6179_mixed_diy",
         "music_profile",
         "workshop",
         "advanced",
@@ -621,7 +666,7 @@ export function libraryKindPriority(
 export function customEffectCategoryForKind(
   kind: string,
 ): Exclude<CustomEffectCategory, "all" | "my-effects"> {
-  if (kind === "h617a_multi") {
+  if (kind === "h617a_multi" || kind === "h6179_mixed_diy") {
     return "multi-layer";
   }
   if (kind === "music_profile") {
@@ -630,6 +675,7 @@ export function customEffectCategoryForKind(
   if (
     kind === "h617a_painted" ||
     kind === "h617a_single" ||
+    kind === "h6179_single_diy" ||
     kind === "palette_diy"
   ) {
     return "single-layer";
@@ -698,6 +744,8 @@ export function upsertSummary(
 function libraryItemModel(item: LibraryItem): ModelSku | undefined {
   const content = item.content;
   if (
+    content.kind === "h6179_single_diy" ||
+    content.kind === "h6179_mixed_diy" ||
     content.kind === "palette_diy" ||
     content.kind === "workshop" ||
     content.kind === "music_profile" ||

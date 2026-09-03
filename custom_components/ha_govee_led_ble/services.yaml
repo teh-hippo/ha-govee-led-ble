@@ -41,6 +41,8 @@ apply_custom_effect:
       selector: {text:}
     effect_id:
       selector: {text:}
+    diy_code:
+      selector: {number: {min: 0, max: 65535, mode: box}}
 replace_dreamview_group:
   name: Replace DreamView Group
   description: Replace DreamView membership and Area Config on a supported profile. Previous device membership cannot be read or recovered. Local authored metadata is not confirmed membership. Supply known cmd_ver and is_rgbic, exactly one address or name, and zones (wire 1..10, 0 unassigned, 255 disabled). Member capacity is target-specific (seven for H6099). No command-version defaults.

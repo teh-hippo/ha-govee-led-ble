@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .const import MUSIC_MODE_SLUGS, ModelProfile, resolve_model
+from .const import ModelProfile, resolve_model
 from .effect_catalogue import MODEL_EFFECT_CATALOGUES
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
@@ -15,6 +15,7 @@ from .effect_domain import (
 )
 from .effect_storage import LibrarySnapshot
 from .music_commands import music_body_parameters, music_body_style
+from .music_protocol import music_code_for
 from .music_semantics import retained_music_profile
 
 
@@ -30,7 +31,7 @@ def retained_music_edit(coordinator: Any) -> dict[str, Any] | None:
     if not isinstance(body, bytes) or mode not in coordinator.profile.music_modes:
         return None
     try:
-        profile = retained_music_profile(coordinator.profile, MUSIC_MODE_SLUGS[mode])
+        profile = retained_music_profile(coordinator.profile, music_code_for(coordinator.model, mode))
         settings = device_music_settings(coordinator.model, profile=profile)["music_settings"][mode]
         parameters = music_body_parameters(body, mode, profile=profile)
         return {
@@ -63,6 +64,8 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
         content.get("model")
         if kind
         in {
+            "h6179_single_diy",
+            "h6179_mixed_diy",
             "palette_diy",
             "music_profile",
             "video_profile",

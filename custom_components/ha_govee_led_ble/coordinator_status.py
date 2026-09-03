@@ -6,15 +6,17 @@ from typing import Any, cast
 
 from .const import MUSIC_MODE_SLUGS, ModelProfile, ReadDomain, get_profile
 from .generated_protocol_adapter import (
+    ParsedH6179Status,
     ProtocolParseResult,
     boolean_control_is_authorized,
     boolean_control_name,
+    parse_h6179_status_result,
     parse_status_result,
     video_parameters_from_detail,
 )
-from .scenes import MODEL_SCENES
+from .music_protocol import music_slug_for
+from .scenes import MODEL_SCENES, scene_key_for_code
 
-_MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
 _SCENE_EFFECT_BY_MODEL_ID = {
     model: {scene.code: name for name, scene in scenes.items()} for model, scenes in MODEL_SCENES.items()
 }
@@ -29,6 +31,7 @@ _STATUS_DOMAIN_NAMES = {
     "brightness": StatusDomain.BRIGHTNESS,
     "colormode": StatusDomain.COLOUR_MODE,
     "colour_mode": StatusDomain.COLOUR_MODE,
+    "mode": StatusDomain.MODE,
     "fw_version": StatusDomain.FIRMWARE,
     "firmware": StatusDomain.FIRMWARE,
     "hw_version": StatusDomain.HARDWARE,
@@ -54,14 +57,21 @@ class ParsedStatusEnvelope:
 def decode_status_frame_result(
     frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
 ) -> ProtocolParseResult:
-    result = parse_status_result(frame, model, profile=profile)
+    effective_profile = profile or get_profile(model)
+    result = (
+        parse_h6179_status_result(frame)
+        if effective_profile.status_grammar == "H6179"
+        else parse_status_result(frame, model, profile=effective_profile)
+    )
     if result.parsed is None:
         return result
     generated = result.parsed
+    domain = generated.domain
+    domain_name = domain if isinstance(domain, str) else getattr(domain, "name", "")
     return ProtocolParseResult(
         ParsedStatusEnvelope(
-            domain=_STATUS_DOMAIN_NAMES.get(getattr(generated.domain, "name", ""), StatusDomain.OTHER),
-            raw_domain=int(generated.domain),
+            domain=_STATUS_DOMAIN_NAMES.get(domain_name, StatusDomain.OTHER),
+            raw_domain=frame[1],
             payload=bytes(frame[2:-1]),
             generated=generated,
         ),
@@ -117,12 +127,59 @@ class ParsedColorModeResponse:
     color_temp_kelvin: int | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
+    raw_mode: int | None = None
 
 
 def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None = None) -> ParsedColorModeResponse:
+    profile = profile or get_profile(model)
+    if profile.status_grammar == "H6179":
+        if not isinstance(generated, ParsedH6179Status) or generated.domain != "mode":
+            return ParsedColorModeResponse()
+        values = generated.values
+        mode_name = values.get("mode")
+        if mode_name == "static":
+            kelvin = int(values["kelvin"])
+            if kelvin:
+                return ParsedColorModeResponse(
+                    mode=ParsedMode.COLOUR,
+                    color_temp_kelvin=kelvin,
+                    raw_mode=int(values["raw_mode"]),
+                )
+            red, green, blue = values["rgb"]
+            return ParsedColorModeResponse(
+                mode=ParsedMode.COLOUR,
+                rgb_color=(int(red), int(green), int(blue)),
+                raw_mode=int(values["raw_mode"]),
+            )
+        if mode_name == "scene":
+            scene_code = int(values["scene_code"])
+            return ParsedColorModeResponse(
+                mode=ParsedMode.SCENE,
+                effect=scene_key_for_code(model, scene_code),
+                scene_code=scene_code,
+            )
+        if mode_name == "diy":
+            return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(values["diy_code"]))
+        if mode_name == "music":
+            colour = values["colour"]
+            music_color = None
+            if colour is not None:
+                red, green, blue = colour
+                music_color = (int(red), int(green), int(blue))
+            return ParsedColorModeResponse(
+                mode=ParsedMode.MUSIC,
+                music_mode=music_slug_for(
+                    profile.status_grammar or model,
+                    int(values["music_mode_id"]),
+                    direction="status",
+                ),
+                music_sensitivity=int(values["sensitivity"]),
+                music_color=music_color,
+            )
+        return ParsedColorModeResponse()
+
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
-    profile = profile or get_profile(model)
     if mode_name == "video" and profile.video_grammar == "H66A0-video":
         detail = body.detail
         source = getattr(detail.source, "name", None)
@@ -145,21 +202,24 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
     if mode_name == "music":
         detail = getattr(body, "detail", getattr(body, "mode_body", None))
         mode_id = int(getattr(detail, "mode", getattr(detail, "mode_id", -1)))
-        music_mode = _MUSIC_SLUG_BY_ID.get(mode_id)
+        music_mode = music_slug_for(profile.status_grammar or model, mode_id, direction="status")
         if music_mode not in profile.music_modes:
             raise ValueError("music selector is unsupported for model")
     if mode_name in {"static", "static_colour"}:
         detail = getattr(body, "mode_body", getattr(body, "detail", None))
         rgb = getattr(detail, "rgb", None)
-        kelvin = getattr(detail, "kelvin", None) or None
-        if kelvin is not None and not profile.min_color_temp_kelvin <= int(kelvin) <= profile.max_color_temp_kelvin:
+        raw_kelvin = getattr(detail, "kelvin", None) or None
+        if (
+            raw_kelvin is not None
+            and not profile.min_color_temp_kelvin <= int(raw_kelvin) <= profile.max_color_temp_kelvin
+        ):
             raise ValueError("static Kelvin outside profile range")
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,
             rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue))
-            if rgb is not None and not (profile.status_grammar == "H601C" and kelvin is not None)
+            if rgb is not None and not (profile.status_grammar == "H601C" and raw_kelvin is not None)
             else None,
-            color_temp_kelvin=int(kelvin) if kelvin is not None else None,
+            color_temp_kelvin=int(raw_kelvin) if raw_kelvin is not None else None,
             multi_effect_flag=getattr(detail, "sub", None),
         )
     if profile.status_grammar in {"H6099", "H6199"} or (

@@ -17,6 +17,10 @@ speculative/h6099_status_query
 speculative/h6099_status_reply
 speculative/h617a_command_ack
 speculative/h617a_control_payload
+speculative/h6179_command_write
+speculative/h6179_diy_body
+speculative/h6179_status_query
+speculative/h6179_status_reply
 speculative/h66a0_video_command
 speculative/h66a0_video_status
 h6199_command_write

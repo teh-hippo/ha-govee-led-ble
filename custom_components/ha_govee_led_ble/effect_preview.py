@@ -66,7 +66,7 @@ from .effect_template_defaults import CatalogueTemplateDefault, CatalogueTemplat
 from .generated_protocol_adapter import build_power
 from .native_profile_controls import async_require_video_controls
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body, resolve_native_scene_body
-from .scenes import canonical_scene_key, scene_code_is_ambiguous
+from .scenes import canonical_scene_key, scene_code_is_ambiguous, scene_selector_code
 from .video_applicability import requested_video_controls, require_video_mode, validate_video_request
 
 PREVIEW_VERIFY_DELAY = 0.75
@@ -479,11 +479,12 @@ class EffectPreviewManager:
         updated_at: str,
         item: LibraryItem,
         persist_default: bool = False,
+        diy_code: int | None = None,
     ) -> PreviewAcceptance:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
         try:
-            diy_code = resolve_diy_code(item, model=coordinator.model)
+            diy_code = resolve_diy_code(item, diy_code, model=coordinator.model)
             compiled = compile_application(item, coordinator.model, diy_code=diy_code, profile=coordinator.profile)
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
@@ -505,7 +506,7 @@ class EffectPreviewManager:
                 item.content,
                 profile=coordinator.profile,
             )
-        fingerprint = _snapshot_fingerprint(coordinator.model, item)
+        fingerprint = _snapshot_fingerprint(coordinator.model, item, diy_code)
         request = _PreviewRequest(
             session_id=session_id,
             config_entry_id=config_entry_id,
@@ -941,6 +942,13 @@ class EffectPreviewManager:
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
             if compiled is not None:
                 validate_compiled_geometry(compiled, coordinator.profile)
+            if isinstance(compiled, CompiledEffect) and compiled.content_kind in {
+                "h6179_single_diy",
+                "h6179_mixed_diy",
+            }:
+                refreshed = await coordinator.refresh_state()
+                if not refreshed or coordinator.diy_code != compiled.diy_code:
+                    raise PreviewError("approved H6179 disposable DIY code is no longer selected")
             writer = _PreviewWriter(self, request, coordinator)
             if request.scene is not None:
                 await coordinator.async_apply_native_scene(
@@ -955,24 +963,35 @@ class EffectPreviewManager:
             else:
                 assert compiled is not None
                 if isinstance(compiled, CompiledEffect):
-                    packets = list(compiled.packets)
+                    h6179_activation = (
+                        compiled.activation_packet if compiled.upload_transport == "h6179_a1_02" else None
+                    )
+                    packets = list(compiled.upload_packets if h6179_activation is not None else compiled.packets)
                     power_required = not coordinator.is_on
                     if power_required:
                         packets.insert(0, build_power(True, coordinator.model))
+
+                    async def before_final() -> None:
+                        if not await self._async_request_is_current(request):
+                            raise _PreviewSupersededError
+
+                    write_options: dict[str, Any] = (
+                        {
+                            "require_upload_ack": True,
+                            "upload_ack_index": len(compiled.upload_packets) - 1 + int(power_required),
+                            "writer": writer,
+                        }
+                        if "native_diy_positive_ack_required" in compiled.evidence_codes
+                        else {}
+                    )
+                    if h6179_activation is not None:
+                        write_options.update(final_packet=h6179_activation, before_final=before_final)
                     await coordinator.async_write_effect_sequence(
                         packets,
                         intent=ControlIntent.PREVIEW,
                         before_write=writer.begin,
                         write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
-                        **(
-                            {
-                                "require_upload_ack": True,
-                                "upload_ack_index": len(compiled.upload_packets) - 1 + int(power_required),
-                                "writer": writer,
-                            }
-                            if "native_diy_positive_ack_required" in compiled.evidence_codes
-                            else {}
-                        ),
+                        **write_options,
                     )
                     if power_required:
                         coordinator.is_on = True
@@ -1614,11 +1633,12 @@ def _preview_request_key(request: _PreviewRequest) -> tuple[str, str, bool]:
     )
 
 
-def _snapshot_fingerprint(model: str, item: LibraryItem) -> str:
+def _snapshot_fingerprint(model: str, item: LibraryItem, diy_code: int | None) -> str:
     encoded = json.dumps(
         {
             "model": model,
             "content": effect_content_to_dict(item.content),
+            "diy_code": diy_code,
         },
         allow_nan=False,
         ensure_ascii=False,
@@ -1710,11 +1730,12 @@ def _verification_expectations(
     if not coordinator.profile.can_read(ReadDomain.POWER) or not coordinator.profile.supports_color_mode_readback:
         return None
     if request.scene is not None:
+        scene_code = scene_selector_code(coordinator.model, request.scene.entry)
         scene_expectations: dict[str, Any] = {
             "is_on": True,
-            "scene_code": request.scene.entry.code,
+            "scene_code": scene_code,
         }
-        if scene_code_is_ambiguous(coordinator.model, request.scene.entry.code):
+        if scene_code_is_ambiguous(coordinator.model, scene_code):
             scene_expectations["effect"] = canonical_scene_key(coordinator.model, request.scene.key)
         return scene_expectations
     return None if compiled is None else compiled_observation(compiled, profile=coordinator.profile)[0]

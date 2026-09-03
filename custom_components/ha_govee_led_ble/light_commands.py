@@ -9,6 +9,7 @@ from .generated_protocol_adapter import (
     build_colour_temperature,
     build_segment_colour,
     parse_command,
+    parse_h6179_command,
 )
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
@@ -155,7 +156,7 @@ class ParsedStaticWrite:
     """Static-command fields used by optimistic state and the BLE simulator."""
 
     operation: int
-    segment_mask: int
+    segment_mask: int | None
     whole_device_mask: int = ALL_SEGMENTS_MASK
     rgb: tuple[int, int, int] | None = None
     kelvin: int | None = None
@@ -164,7 +165,7 @@ class ParsedStaticWrite:
 
     @property
     def whole_strip(self) -> bool:
-        return self.segment_mask == self.whole_device_mask
+        return self.segment_mask is None or self.segment_mask == self.whole_device_mask
 
 
 def parse_static_write(
@@ -172,6 +173,25 @@ def parse_static_write(
 ) -> ParsedStaticWrite | None:
     """Convert a generated static command into optimistic semantic state."""
     profile = profile or get_profile(model)
+    if profile.command_grammar == "H6179":
+        command = parse_h6179_command(packet)
+        if command is None or command.operation != "mode" or command.values.get("mode") != "static":
+            return None
+        kelvin = int(command.values["kelvin"])
+        if kelvin:
+            return ParsedStaticWrite(
+                operation=int(command.values["raw_mode"]),
+                segment_mask=None,
+                whole_device_mask=0,
+                kelvin=kelvin,
+                kelvin_companion_rgb=command.values["preview_rgb"],
+            )
+        return ParsedStaticWrite(
+            operation=int(command.values["raw_mode"]),
+            segment_mask=None,
+            whole_device_mask=0,
+            rgb=command.values["rgb"],
+        )
     generated = parse_command(packet, model, profile=profile)
     if generated is None or not hasattr(generated.opcode, "name"):
         return None

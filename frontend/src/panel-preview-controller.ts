@@ -177,6 +177,14 @@ export class PanelPreviewController {
     this.submit(scenePreviewRequest(request, deviceId));
   }
 
+  public async diyCodeChanged(): Promise<void> {
+    await this.cancel();
+    const request = this.currentRequest();
+    if (request) {
+      this.submit(request);
+    }
+  }
+
   public toggle(scene?: ScenePreviewRequest): void {
     if (this.model.liveApplyEnabled) {
       this.model.update((model) => {
@@ -263,6 +271,7 @@ export class PanelPreviewController {
       this.model.content,
       this.model.autoSaveEnabled && this.model.builtInDefaultDirty,
       editorSnapshotProvenance(this.model.editorSource),
+      this.model.h6179DiyCode,
     );
   }
 
@@ -384,6 +393,8 @@ export class PanelPreviewController {
       this.model.isAdmin &&
       !this.model.deletingCurrentItem &&
       this.model.previewCapability === "supported" &&
+      (!this.model.h6179DiyCodeRequired ||
+        this.model.h6179DiyCode !== undefined) &&
       this.model.selectedDevice !== undefined &&
       this.session?.ready === true
     );

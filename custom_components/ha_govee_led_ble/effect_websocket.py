@@ -23,7 +23,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, MUSIC_MODE_SLUGS, ModelProfile, supported_effect_categories
+from .const import DOMAIN, ModelProfile, supported_effect_categories
 from .control_arbiter import ControlIntent
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
@@ -85,6 +85,7 @@ from .effect_websocket_payloads import (
     retained_music_edit,
 )
 from .effect_websocket_schema import (
+    DIY_CODE,
     EFFECT_CONTENT,
     EFFECT_NAME,
     IDENTIFIER,
@@ -133,6 +134,7 @@ from .effect_websocket_schema import (
     strict_int,
 )
 from .music_commands import music_body_style
+from .music_protocol import music_code_for
 from .native_profile_controls import async_require_video_controls
 from .video_applicability import requested_video_controls, video_control_states
 
@@ -775,7 +777,7 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
         # The existing apply path compiles the complete body before acquiring control,
         # then guards its captured revision at each physical write.
         await coordinator.async_apply_music_params(
-            MUSIC_MODE_SLUGS[msg["mode"]],
+            music_code_for(coordinator.model, msg["mode"]),
             parameters=msg["parameters"],
             calm=msg.get("calm")
             if "calm" in msg or coordinator.music_body is None
@@ -799,6 +801,7 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
         vol.Optional("origin_kind"): vol.In([SourceKind.CATALOGUE_TEMPLATE.value]),
         vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("persist_default", default=False): STRICT_BOOL,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -825,15 +828,18 @@ async def ws_preview_apply_snapshot(
                 else None
             ),
         )
-        acceptance = await backend.preview.async_queue_snapshot(
-            session_id=msg["session_id"],
-            owner=connection,
-            config_entry_id=msg["config_entry_id"],
-            sequence=msg["sequence"],
-            updated_at=msg["updated_at"],
-            item=item,
-            persist_default=msg["persist_default"],
-        )
+        kwargs: dict[str, Any] = {
+            "session_id": msg["session_id"],
+            "owner": connection,
+            "config_entry_id": msg["config_entry_id"],
+            "sequence": msg["sequence"],
+            "updated_at": msg["updated_at"],
+            "item": item,
+            "persist_default": msg["persist_default"],
+        }
+        if "diy_code" in msg:
+            kwargs["diy_code"] = msg["diy_code"]
+        acceptance = await backend.preview.async_queue_snapshot(**kwargs)
     except Exception as exc:
         _send_preview_error(connection, msg["id"], exc)
         return
@@ -1370,6 +1376,7 @@ def ws_user_state_record_colour(
         vol.Required("expected_version"): POSITIVE_REVISION,
         vol.Required("updated_at"): TIMESTAMP,
         vol.Optional("operation_id"): UUID_TEXT,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -1396,6 +1403,7 @@ async def ws_apply(
             model=entry.runtime_data.model,
             expected_version=msg["expected_version"],
             profile=entry.runtime_data.profile,
+            diy_code=msg.get("diy_code"),
         ) as item:
             if isinstance(item.content, VideoProfile):
                 await async_require_video_controls(
@@ -1408,6 +1416,7 @@ async def ws_apply(
                 config_entry_id=entry.entry_id,
                 updated_at=msg["updated_at"],
                 operation_id=operation_id,
+                diy_code=msg.get("diy_code"),
             )
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
@@ -1437,6 +1446,7 @@ async def ws_apply(
         vol.Optional("origin_kind"): vol.In([SourceKind.CATALOGUE_TEMPLATE.value]),
         vol.Optional("origin_id"): IDENTIFIER,
         vol.Optional("operation_id"): UUID_TEXT,
+        vol.Optional("diy_code"): DIY_CODE,
     }
 )
 @require_admin
@@ -1467,10 +1477,11 @@ async def ws_apply_snapshot(
             ),
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
+        diy_code = resolve_diy_code(item, msg.get("diy_code"), model=entry.runtime_data.model)
         compile_application(
             item,
             entry.runtime_data.model,
-            diy_code=resolve_diy_code(item, model=entry.runtime_data.model),
+            diy_code=diy_code,
             profile=entry.runtime_data.profile,
         )
         if isinstance(item.content, VideoProfile):
@@ -1484,6 +1495,7 @@ async def ws_apply_snapshot(
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
             operation_id=operation_id,
+            diy_code=diy_code,
         )
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
