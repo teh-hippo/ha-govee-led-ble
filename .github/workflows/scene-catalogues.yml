@@ -10,14 +10,20 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   check:
-    name: Check committed snapshots
+    name: Refresh committed snapshots
     runs-on: ubuntu-latest
+    env:
+      DRIFT_BRANCH: automation/scene-catalogue-drift
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.14"
@@ -26,4 +32,32 @@ jobs:
           install_args: github:kaitai-io/kaitai_struct_compiler
       - run: uv sync --locked
       - run: make protocol
-      - run: uv run --no-sync python tools/ble/refresh_scene_catalogues.py --check
+      - run: uv run --no-sync python tools/ble/refresh_scene_catalogues.py
+      - id: drift
+        run: |
+          if [[ -n "$(git status --porcelain -- custom_components/ha_govee_led_ble/scene_catalogues)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.drift.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$DRIFT_BRANCH"
+          git add custom_components/ha_govee_led_ble/scene_catalogues
+          git commit -m "chore: refresh scene catalogues"
+
+          remote_sha="$(git ls-remote --heads origin "refs/heads/$DRIFT_BRANCH" | awk '{print $1}')"
+          if [[ -n "$remote_sha" ]]; then
+            git push --force-with-lease="refs/heads/$DRIFT_BRANCH:$remote_sha" origin "HEAD:refs/heads/$DRIFT_BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$DRIFT_BRANCH"
+          fi
+
+          if [[ -z "$(gh pr list --head "$DRIFT_BRANCH" --state open --json number --jq '.[0].number // empty')" ]]; then
+            gh pr create \
+              --base master \
+              --head "$DRIFT_BRANCH" \
+              --title "chore: refresh scene catalogues" \
+              --body "Govee's exact-SKU scene catalogue data changed. Review the generated snapshot diff before merging; removals and changed identifiers are not applied automatically." \
+              --reviewer teh-hippo
+          fi
