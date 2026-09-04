@@ -49,6 +49,7 @@ from .generated_protocol_adapter import (
     parse_command_ack_result,
     parse_command_result,
 )
+from .govee_encryption import GoveeEncryptionSession
 from .h6199_calibration import WHITE_BALANCE_RESET
 from .light_commands import (
     SegmentColorGroup,
@@ -154,6 +155,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.always_include_custom_effects = always_include_custom_effects
         self._device_resolver = BLEDeviceResolver() if device_resolver is None else device_resolver
         self._client: BleakClient | None = None
+        # Connection-scoped.  Inert until a device asks for encryption, and reset on every
+        # disconnect so a reconnect renegotiates rather than reusing a dead session.
+        self._encryption = GoveeEncryptionSession(address)
         self._lock = asyncio.Lock()
         self._control_arbiter = BLEControlArbiter()
         self._control_lock = self._control_arbiter
@@ -700,6 +704,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if self._client is not client:
             return
         self._client = None
+        self._encryption.reset()
         self._notify_started_monotonic = None
         self._last_rx_monotonic = None
         self._expected_state.clear()
@@ -713,6 +718,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if not (self._client and self._client.is_connected):
             return
         await self._client.start_notify(READ_UUID, self._notify_callback)
+        # The device answers the handshake on the notify characteristic, so this has to run
+        # after start_notify.  A device that does not want encryption, or fails to negotiate,
+        # leaves the session inactive and stays on the plaintext path.
+        await self._encryption.async_negotiate(self._client)
         self._notify_started_monotonic = time.monotonic()
         self._last_rx_monotonic = None
         if self.profile.state_readable:
@@ -986,7 +995,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         return tuple(observed)
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
-        frame = bytes(data)
+        # None means the frame was the encryption handshake, or failed its tag check.
+        if (frame := self._encryption.decode(bytes(data))) is None:
+            return
         self._last_rx_monotonic = time.monotonic()
         if frame[:1] == b"\x33":
             command = parse_command_ack_result(frame, self.model)
@@ -1162,8 +1173,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self._arm_expected_values(dict(expected_values))
         if arm_expected:
             self.control_write_attempts += 1
-        await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
-        self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
+        encrypted_packet = self._encryption.encode(wire_packet)
+        await client.write_gatt_char(WRITE_UUID, encrypted_packet, response=False)
+        self._record_packet("tx", encrypted_packet, outcome="sent", reason="write_succeeded")
 
     async def _send_state_queries(
         self,

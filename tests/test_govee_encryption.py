@@ -14,8 +14,10 @@ import pytest
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.ble_device_resolver import BLEDeviceResolution, BLEDeviceResolver
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
@@ -58,7 +60,7 @@ def patch_connection(client: object):
     Pair it with ``device_resolver=make_resolver()`` on the coordinator: the resolver is
     constructed in ``__init__``, so patching the class afterwards is too late.
     """
-    return patch(f"{_COORDINATOR}.establish_connection", return_value=client)
+    return patch(f"{_COORDINATOR}.async_establish_ble_connection", return_value=client)
 
 
 # --- invented device identity ------------------------------------------------------------
@@ -82,6 +84,88 @@ def make_handshake_response(device_iv_key: bytes, *, sku: bytes = SKU, mac: byte
     iv = bytes(range(12))
     header = bytes([crypto.MAGIC, crypto.CMD_SESSION, status]) + iv
     return header + AESGCM(crypto.KEY_HANDSHAKE).encrypt(iv, device_iv_key + sku + mac, header)
+
+
+async def test_the_coordinator_drives_an_encrypted_device_end_to_end(hass, encrypted_coordinator):
+    device = EncryptedDevice(GoveeDeviceDouble("H617A"))
+    with (
+        patch_connection(device),
+    ):
+        await encrypted_coordinator.send_command(build_power(True))
+        await encrypted_coordinator.send_command(build_brightness(40))
+
+    assert encrypted_coordinator._encryption.active
+    # Every frame the device saw arrived sealed and decrypted to the packet we built.
+    assert build_power(True) in device.plaintext_writes
+    assert build_brightness(40) in device.plaintext_writes
+    assert not any(write in device.raw_writes for write in (build_power(True), build_brightness(40))), (
+        "a command frame reached the wire in the clear"
+    )
+    assert device.strip.is_on and device.strip.brightness_pct == 40
+
+
+async def test_notifications_from_an_encrypted_device_reach_the_coordinator_state(hass, encrypted_coordinator):
+    device = EncryptedDevice(GoveeDeviceDouble("H617A"))
+    device.strip.is_on = True
+    device.strip.brightness_pct = 63
+    with (
+        patch_connection(device),
+    ):
+        await encrypted_coordinator._ensure_connected()
+        await encrypted_coordinator._send_state_queries()
+        await asyncio.sleep(0)
+
+    assert encrypted_coordinator.is_on is True
+    assert encrypted_coordinator.brightness_pct == 63
+
+
+async def test_a_reconnect_renegotiates_instead_of_reusing_a_dead_session(hass, encrypted_coordinator):
+    """The counter/session-scope bug: nonces and counters belong to one connection.
+
+    Reusing them across a reconnect makes every frame fail its tag check on the device,
+    which looks exactly like a light that has stopped responding.
+    """
+    first = EncryptedDevice(GoveeDeviceDouble("H617A"))
+    with (
+        patch_connection(first),
+    ):
+        await encrypted_coordinator.send_command(build_power(True))
+        await encrypted_coordinator.send_command(build_power(False))
+        await encrypted_coordinator.disconnect()
+
+    assert not encrypted_coordinator._encryption.active, "the session outlived its connection"
+
+    second = EncryptedDevice(GoveeDeviceDouble("H617A"))
+    second.device_iv_key = bytes.fromhex("b0b1b2b3b4b5b6b7")  # a fresh session, fresh nonce
+    with (
+        patch_connection(second),
+    ):
+        await encrypted_coordinator.send_command(build_power(True))
+
+    assert second.strip.is_on, "the command did not survive the reconnect"
+    # The second connection's first command frame carries the opening counter again, which is
+    # what the device expects from a session that has just been keyed.
+    command_frames = [write for write in second.raw_writes if not crypto.is_handshake_response(write)]
+    assert int.from_bytes(command_frames[0][:4], "big") == crypto.HOST_COUNTER_START
+
+
+async def test_a_plaintext_model_is_untouched_by_the_encryption_layer(hass):
+    """H617A and H6199 must take exactly the path they took before this package existed."""
+    coordinator = GoveeBLECoordinator(
+        hass, "11:22:33:44:55:66", "H617A", configuration_url=TEST_CONFIGURATION_URL, device_resolver=make_resolver()
+    )
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="11:22:33:44:55:66", data={CONF_MODEL: "H617A"})
+    entry.add_to_hass(hass)
+    coordinator.config_entry = entry
+    device = EncryptedDevice(GoveeDeviceDouble("H617A"), marker=None)
+    with (
+        patch_connection(device),
+    ):
+        await coordinator.send_command(build_power(True))
+
+    assert not coordinator._encryption.active
+    assert build_power(True) in device.raw_writes, "the frame was altered on a plaintext device"
+    assert device.strip.is_on
 
 
 # ============================================================== crypto: key derivation
@@ -504,13 +588,22 @@ async def test_reset_cancels_a_handshake_still_in_flight():
 
 @pytest.fixture
 def encrypted_coordinator(hass):
-    return GoveeBLECoordinator(
+    # Any model whose profile requires notifications will do.  Encryption is negotiated from
+    # what the DEVICE presents -- the 0x2B12 marker and the SKU in its handshake reply -- not
+    # from the profile, so this test deliberately does not depend on a particular model.
+    coordinator = GoveeBLECoordinator(
         hass,
         "AA:BB:CC:DD:EE:FF",
-        "H66A0",
+        "H617A",
         configuration_url=TEST_CONFIGURATION_URL,
         device_resolver=make_resolver(),
     )
+    # Identity updates are scoped to a config entry, so a coordinator built outside one cannot
+    # record a firmware version.  Attach an entry rather than avoid the path.
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H617A"})
+    entry.add_to_hass(hass)
+    coordinator.config_entry = entry
+    return coordinator
 
 
 # ============================================================== log diagnosability
