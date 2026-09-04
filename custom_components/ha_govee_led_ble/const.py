@@ -90,9 +90,13 @@ class ModelProfile:
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
+    white_balance_uses_position: bool = False
+    video_white_balance_min: int = 1
+    video_white_balance_max: int = 20
     video_white_balance_default: int = 17
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
+    supports_black_border: bool = False
     music_modes: tuple[str, ...] = ()
     music_sensitivity_min: int = 0
     music_sensitivity_max: int = 99
@@ -113,6 +117,8 @@ class ModelProfile:
     def __post_init__(self) -> None:
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
+        if not self.video_white_balance_min <= self.video_white_balance_default <= self.video_white_balance_max:
+            raise ValueError("video white-balance default must be within its range")
 
     def can_read(self, domain: ReadDomain) -> bool:
         return domain in self.read_domains
@@ -236,6 +242,56 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         max_color_temp_kelvin=6500,
         whole_device_mask=0x007F,
         scene_catalogue_sku="H6076",
+    ),
+    "H6099": ModelProfile(
+        "H6099 TV Backlight",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        wire_model="H6099",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+            }
+        ),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_video_mode=True,
+        supports_video_sound_effects=True,
+        supports_white_balance=True,
+        white_balance_uses_position=True,
+        video_white_balance_max=100,
+        video_white_balance_default=50,
+        supports_relative_brightness=True,
+        supports_blank_screen=True,
+        supports_black_border=True,
+        music_modes=tuple(MUSIC_MODE_SLUGS),
+        supports_music_color=True,
+        supports_advanced_effects=True,
+        whole_device_mask=0x3FFF,
+        segment_count=14,
+        segment_group_size=4,
+        supports_segment_writes=True,
+        scene_catalogue_sku="H6099",
+        advanced_scene_carrier=(29884, 41599),
+        default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
+        effect_readback="scene_selector_for_user_effects",
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",

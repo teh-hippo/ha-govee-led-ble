@@ -12,6 +12,8 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_PAINTED_EFFECTS,
     H617A_TYPE04_APPLY_CODE,
     H617A_TYPE04_FAMILIES,
+    H6099_CATALOGUE_TEMPLATES,
+    H6099_NATIVE_MUSIC_MODES,
     H6199_CATALOGUE_TEMPLATES,
     H6199_NATIVE_MUSIC_MODES,
     H6199_PALETTE_DIY_FAMILIES,
@@ -60,6 +62,8 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "multi_max": 4,
         "music_sensitivity_min": 0,
         "music_sensitivity_max": 99,
+        "video_white_balance_min": 1,
+        "video_white_balance_max": 20,
     }
     assert H617A_TYPE04_APPLY_CODE == 24
     assert catalogue["apply"] == {
@@ -143,13 +147,18 @@ def test_native_music_modes_are_derived_from_profiles_and_slug_catalogue() -> No
         ]
 
     assert [mode.to_dict() for mode in H617A_NATIVE_MUSIC_MODES] == expected_modes("H617A")
+    assert [mode.to_dict() for mode in H6099_NATIVE_MUSIC_MODES] == expected_modes("H6099")
     assert [mode.to_dict() for mode in H6199_NATIVE_MUSIC_MODES] == expected_modes("H6199")
-    assert all(mode.id != "custom" for mode in (*H617A_NATIVE_MUSIC_MODES, *H6199_NATIVE_MUSIC_MODES))
+    assert all(
+        mode.id != "custom"
+        for mode in (*H617A_NATIVE_MUSIC_MODES, *H6099_NATIVE_MUSIC_MODES, *H6199_NATIVE_MUSIC_MODES)
+    )
     models = cast(
         dict[str, dict[str, JsonValue]],
         custom_effect_catalogue_payload()["models"],
     )
     assert models["H617A"]["music_modes"] == expected_modes("H617A")
+    assert models["H6099"]["music_modes"] == expected_modes("H6099")
 
 
 def test_palette_music_families_remain_single_layer_effects_for_both_models() -> None:
@@ -182,6 +191,7 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
         "multi": "unsupported",
         "advanced": "supported",
         "workshop": "supported",
+        "black_border": False,
     }
     assert catalogue["apply"] == {
         "painted": "unsupported",
@@ -190,6 +200,39 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
         "palette_diy": "supported",
         "workshop": "supported",
     }
+
+
+def test_h6099_model_catalogue_reuses_camera_effects_with_exact_model_profiles() -> None:
+    catalogue = cast(
+        dict[str, dict[str, JsonValue]],
+        custom_effect_catalogue_payload()["models"],
+    )["H6099"]
+
+    assert catalogue["effects"] == [family.to_dict() for family in H6199_PALETTE_DIY_FAMILIES]
+    assert catalogue["templates"] == [template.to_dict() for template in H6099_CATALOGUE_TEMPLATES]
+    video = cast(
+        dict[str, JsonValue],
+        resolve_catalogue_template("H6099", "template:video:movie").to_dict()["content"],
+    )
+    assert video["model"] == "H6099"
+    assert video["white_balance_position"] == 50
+    assert video["black_border"] is False
+    assert catalogue["supports"] == {
+        "multi": "unsupported",
+        "advanced": "supported",
+        "workshop": "evidence_gap",
+        "black_border": True,
+    }
+    assert catalogue["apply"] == {
+        "painted": "unsupported",
+        "single": "unsupported",
+        "multi": "unsupported",
+        "palette_diy": "supported",
+        "workshop": "unsupported",
+    }
+    limits = cast(dict[str, JsonValue], catalogue["limits"])
+    assert limits["video_white_balance_min"] == 1
+    assert limits["video_white_balance_max"] == 100
 
 
 def test_release_capability_contract_covers_every_preview_workflow() -> None:
@@ -206,6 +249,16 @@ def test_release_capability_contract_covers_every_preview_workflow() -> None:
             CapabilityWorkflow.WORKSHOP,
         },
         "H6199": {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.EDITED_PALETTE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.PALETTE_DIY,
+            CapabilityWorkflow.NATIVE_MUSIC,
+            CapabilityWorkflow.VIDEO,
+            CapabilityWorkflow.ADVANCED,
+            CapabilityWorkflow.WORKSHOP,
+        },
+        "H6099": {
             CapabilityWorkflow.NATIVE_SCENES,
             CapabilityWorkflow.EDITED_PALETTE_SCENES,
             CapabilityWorkflow.LAYERED_SCENES,
@@ -260,6 +313,8 @@ def test_release_capability_contract_routes_saved_effects_through_home_assistant
     h6199_music = release_capability("H6199", CapabilityWorkflow.NATIVE_MUSIC)
     h6199_video = release_capability("H6199", CapabilityWorkflow.VIDEO)
     h6199_diy = release_capability("H6199", CapabilityWorkflow.PALETTE_DIY)
+    h6099_video = release_capability("H6099", CapabilityWorkflow.VIDEO)
+    h6099_advanced = release_capability("H6099", CapabilityWorkflow.ADVANCED)
 
     assert all(
         capability is not None
@@ -294,6 +349,13 @@ def test_release_capability_contract_routes_saved_effects_through_home_assistant
     assert h6199_diy.compiler_deployer_strategy is CompilerDeployerStrategy.H6199_CUSTOM_ENGINE
     assert h6199_diy.verification_confidence is VerificationConfidence.SELECTION_ONLY
     assert h6199_diy.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
+    assert h6099_video is not None
+    assert h6099_video.verification_confidence is VerificationConfidence.UNVERIFIED
+    assert h6099_video.physical_validation_state is PhysicalValidationState.NOT_VALIDATED
+    assert h6099_advanced is not None
+    assert h6099_advanced.application_route is ApplicationRoute.HOME_ASSISTANT_CONTROL
+    assert h6099_advanced.compiler_deployer_strategy is CompilerDeployerStrategy.MODEL_SCENE_ENGINE
+    assert h6099_advanced.verification_confidence is VerificationConfidence.UNVERIFIED
 
 
 def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contract() -> None:
@@ -324,9 +386,11 @@ def test_catalogue_apply_support_and_visible_workflows_derive_from_release_contr
 def test_capability_state_distinguishes_visibility_from_deployability() -> None:
     assert workflow_capability_state("H617A", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
     assert workflow_capability_state("H6199", CapabilityWorkflow.ADVANCED) is CapabilityState.SUPPORTED
+    assert workflow_capability_state("H6099", CapabilityWorkflow.WORKSHOP) is CapabilityState.EVIDENCE_GAP
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H617A", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
     assert studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP) is CapabilityState.SUPPORTED
+    assert studio_apply_capability_state("H6099", CapabilityWorkflow.WORKSHOP) is CapabilityState.UNSUPPORTED
 
 
 def test_workshop_protocol_fixtures_decode_embedded_payloads() -> None:
@@ -382,6 +446,7 @@ def test_catalogue_templates_expose_canonical_sidebar_defaults() -> None:
         "white_balance_position": 17,
         "relative_brightness": {"left": 100, "top": 100, "right": 100, "bottom": 100},
         "blank_screen": False,
+        "black_border": False,
     }
 
 

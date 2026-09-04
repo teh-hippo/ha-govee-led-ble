@@ -161,6 +161,21 @@ function decodeModelEffectCatalogue(
   if (musicSensitivityMinimum > musicSensitivityMaximum) {
     invalid(`${name} music sensitivity limits are inverted`);
   }
+  const videoWhiteBalanceMinimum = integerValue(
+    limits.video_white_balance_min,
+    `${name} minimum video white balance`,
+    1,
+    100,
+  );
+  const videoWhiteBalanceMaximum = integerValue(
+    limits.video_white_balance_max,
+    `${name} maximum video white balance`,
+    1,
+    100,
+  );
+  if (videoWhiteBalanceMinimum > videoWhiteBalanceMaximum) {
+    invalid(`${name} video white-balance limits are inverted`);
+  }
   return {
     sku,
     painted_effects: decodePaintedEffectTemplates(
@@ -205,6 +220,10 @@ function decodeModelEffectCatalogue(
         supports.workshop,
         `${name} Workshop support`,
       ),
+      black_border: booleanValue(
+        supports.black_border,
+        `${name} black-border support`,
+      ),
     },
     limits: {
       palette_min: integerValue(
@@ -227,6 +246,8 @@ function decodeModelEffectCatalogue(
       ),
       music_sensitivity_min: musicSensitivityMinimum,
       music_sensitivity_max: musicSensitivityMaximum,
+      video_white_balance_min: videoWhiteBalanceMinimum,
+      video_white_balance_max: videoWhiteBalanceMaximum,
     },
     apply: {
       painted: capabilityValue(

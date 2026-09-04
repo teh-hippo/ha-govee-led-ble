@@ -57,6 +57,7 @@ from .generated_protocol_adapter import build_power
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .native_profile_controls import (
     apply_active_video_mode,
+    apply_black_border,
     apply_blank_screen,
     apply_relative_brightness,
     apply_white_balance,
@@ -125,9 +126,12 @@ async def async_apply_compiled_profile(
     if progress is not None:
         await progress(1)
 
-    red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
-    coordinator.white_balance_red = red
-    coordinator.white_balance_blue = blue
+    if coordinator.profile.white_balance_uses_position:
+        coordinator.white_balance_position = compiled.white_balance_position
+    else:
+        red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
+        coordinator.white_balance_red = red
+        coordinator.white_balance_blue = blue
     if writer is None and verify:
         await apply_white_balance(coordinator)
     else:
@@ -155,6 +159,14 @@ async def async_apply_compiled_profile(
         await apply_blank_screen(coordinator, writer=writer, verify=verify)
     if progress is not None:
         await progress(4)
+    if coordinator.profile.supports_black_border:
+        coordinator.black_border = compiled.black_border
+        if writer is None and verify:
+            await apply_black_border(coordinator)
+        else:
+            await apply_black_border(coordinator, writer=writer, verify=verify)
+        if progress is not None:
+            await progress(5)
 
 
 class EffectDeploymentEngine:
@@ -761,9 +773,13 @@ class EffectDeploymentEngine:
             refresh_relative_brightness=True,
         ):
             raise RuntimeError("Could not read the current video settings before applying the profile")
+        white_balance = (
+            (coordinator.white_balance_position,)
+            if coordinator.profile.white_balance_uses_position
+            else (coordinator.white_balance_red, coordinator.white_balance_blue)
+        )
         required = (
-            coordinator.white_balance_red,
-            coordinator.white_balance_blue,
+            *white_balance,
             coordinator.relative_brightness_left,
             coordinator.relative_brightness_top,
             coordinator.relative_brightness_right,
@@ -772,6 +788,7 @@ class EffectDeploymentEngine:
             coordinator.blank_screen_detection,
             coordinator.blank_screen_low_brightness_duration_seconds,
             coordinator.blank_screen_same_tone_duration_seconds,
+            coordinator.black_border if coordinator.profile.supports_black_border else False,
         )
         if any(value is None for value in required):
             raise RuntimeError("The current video settings are incomplete")
@@ -824,6 +841,7 @@ class EffectDeploymentEngine:
             video_saturation=getattr(coordinator, "video_saturation", 100),
             video_sound_effects=getattr(coordinator, "video_sound_effects", False),
             video_sound_effects_softness=getattr(coordinator, "video_sound_effects_softness", 100),
+            white_balance_position=getattr(coordinator, "white_balance_position", None),
             white_balance_red=getattr(coordinator, "white_balance_red", None),
             white_balance_blue=getattr(coordinator, "white_balance_blue", None),
             relative_brightness=getattr(coordinator, "relative_brightness", None),
@@ -843,6 +861,7 @@ class EffectDeploymentEngine:
                 "blank_screen_same_tone_duration_seconds",
                 None,
             ),
+            black_border=getattr(coordinator, "black_border", None),
         )
 
     def _reconcile_observation(
@@ -1110,7 +1129,11 @@ async def _async_refresh_profile(
             expected_music_color=compiled.colour,
             expected_music_auto_color=compiled.colour is None,
         )
-    red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
+    white_balance = (
+        {"expected_white_balance_position": compiled.white_balance_position}
+        if coordinator.profile.white_balance_uses_position
+        else {"expected_white_balance": WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]}
+    )
     return await coordinator.refresh_state(
         expected_on=True,
         expected_video_mode=compiled.mode,
@@ -1118,8 +1141,9 @@ async def _async_refresh_profile(
         expected_video_saturation=compiled.saturation,
         expected_video_sound_effects=compiled.sound_effects,
         expected_video_sound_effects_softness=compiled.sound_effects_softness,
-        expected_white_balance=(red, blue),
+        **white_balance,
         expected_blank_screen=compiled.blank_screen,
+        expected_black_border=compiled.black_border if coordinator.profile.supports_black_border else None,
         expected_relative_brightness=compiled.relative_brightness,
     )
 

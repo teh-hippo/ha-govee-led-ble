@@ -22,14 +22,17 @@ from custom_components.ha_govee_led_ble.const import (
 
 def test_segment_count_and_supports_segments():
     assert MODEL_PROFILES["H617A"].segment_count == 15
+    assert MODEL_PROFILES["H6099"].segment_count == 14
     assert MODEL_PROFILES["H6199"].segment_count == 15
     assert MODEL_PROFILES["H617A"].segment_group_count == 5
+    assert MODEL_PROFILES["H6099"].segment_group_count == 4
     assert MODEL_PROFILES["H6199"].segment_group_count == 4
     assert MODEL_PROFILES["H617A"].supports_segments
     # Both models paint segments. The H6199 was gated off until captured app writes on it were
     # reproduced byte for byte, whole-strip and per-segment, including the union frame that proves
     # the field is a mask and not an index.
     assert MODEL_PROFILES["H6199"].supports_segments
+    assert MODEL_PROFILES["H6099"].supports_segments
 
 
 def test_supports_segments_defaults_false():
@@ -86,6 +89,44 @@ def test_setup_required_domains_must_be_readable():
         ModelProfile("x", setup_required_read_domains=frozenset({ReadDomain.POWER}))
 
 
+def test_h6099_profile_is_exact_model_and_camera_capable():
+    profile = MODEL_PROFILES["H6099"]
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert wire_model("H6099") == "H6099"
+    assert profile.read_domains == {
+        ReadDomain.POWER,
+        ReadDomain.BRIGHTNESS,
+        ReadDomain.COLOUR_MODE,
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+        ReadDomain.DISPLAY_SETTING,
+        ReadDomain.RELATIVE_BRIGHTNESS,
+        ReadDomain.SEGMENTS,
+    }
+    assert profile.setup_required_read_domains == {
+        ReadDomain.POWER,
+        ReadDomain.BRIGHTNESS,
+        ReadDomain.COLOUR_MODE,
+        ReadDomain.DISPLAY_SETTING,
+        ReadDomain.RELATIVE_BRIGHTNESS,
+    }
+    assert profile.whole_device_mask == 0x3FFF
+    assert profile.segment_count == 14
+    assert profile.segment_group_size == 4
+    assert profile.supports_video_mode and profile.supports_video_sound_effects
+    assert profile.supports_white_balance and profile.white_balance_uses_position
+    assert (
+        profile.video_white_balance_min,
+        profile.video_white_balance_max,
+        profile.video_white_balance_default,
+    ) == (1, 100, 50)
+    assert profile.supports_relative_brightness
+    assert profile.supports_blank_screen
+    assert profile.supports_black_border
+    assert len(profile.music_modes) == 11
+    assert profile.scene_catalogue_sku == "H6099"
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments
@@ -97,6 +138,7 @@ def test_unknown_models_fail_closed():
 
 def test_effect_family_defaults_and_options():
     assert default_effect_families("H617A") == {"scenes", "music"}
+    assert default_effect_families("H6099") == {"video"}
     assert default_effect_families("H6199") == {"video"}
     assert effect_families_from_options("H6199", {}) == {"video"}
     assert effect_families_from_options(
@@ -126,6 +168,7 @@ def test_model_specific_music_capabilities():
         "shiny",
     )
     assert MODEL_PROFILES["H6199"].music_modes == ("energetic", "rhythm", "spectrum", "rolling")
+    assert MODEL_PROFILES["H6099"].music_modes == MODEL_PROFILES["H617A"].music_modes
     assert MODEL_PROFILES["H617A"].supports_music_color
     assert MODEL_PROFILES["H6199"].supports_music_color
     assert (MODEL_PROFILES["H617A"].music_sensitivity_min, MODEL_PROFILES["H617A"].music_sensitivity_max) == (0, 99)
