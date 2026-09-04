@@ -142,7 +142,7 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
     catalogue_excess = 0
     multi_line_bodies = 0
 
-    for sku in ("H617A", "H6199"):
+    for sku in ("H617A", "H6099", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != _LAYERED_SCENE_TYPE:
@@ -179,8 +179,8 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
             layer_count += len(decoded.effect.layers)
             multi_line_bodies += parsed.header.linecount > 2
 
-    assert scene_counts == {"H617A": 72, "H6199": 226}
-    assert layer_count == 863
+    assert scene_counts == {"H617A": 72, "H6099": 226, "H6199": 226}
+    assert layer_count == 1537
     assert catalogue_unknown_flags == 0
     assert catalogue_excess == 0
     assert multi_line_bodies > 0
@@ -220,7 +220,7 @@ def test_unknown_flags_and_excess_survive_decode_and_json() -> None:
 
 
 def test_decoded_layered_scenes_compile_to_byte_exact_model_frames() -> None:
-    for model in ("H617A", "H6199"):
+    for model in ("H617A", "H6099", "H6199"):
         entry = next(scene for scene in SCENE_ENTRIES[model] if scene.scene_type == _LAYERED_SCENE_TYPE)
         content = decode_layered_scene(
             _reference(model, entry),
@@ -242,7 +242,7 @@ def test_decoded_layered_scenes_compile_to_byte_exact_model_frames() -> None:
 
 
 def test_saved_builtin_scenes_compile_to_native_scene_packets() -> None:
-    for model in ("H617A", "H6199"):
+    for model in ("H617A", "H6099", "H6199"):
         entry = next(scene for scene in SCENE_ENTRIES[model] if scene.scene_type == 0)
         item = LibraryItem.new(
             "Scene copy",

@@ -52,6 +52,7 @@ test("canonical backend responses decode through the production validators", () 
   expect(devices.map((device) => device.model)).toEqual([
     "H617A",
     "H617E",
+    "H6099",
     "H6199",
   ]);
   expect(devices[0].light_entity_id).toBe("light.h617a_main");

@@ -921,7 +921,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
           content.white_balance_position,
           "video profile white-balance position",
           1,
-          20,
+          100,
         ),
         relative_brightness: relativeBrightnessValue(
           content.relative_brightness,
@@ -930,6 +930,10 @@ export function decodeEffectContent(value: unknown): EffectContent {
         blank_screen: booleanValue(
           content.blank_screen,
           "video profile blank-screen flag",
+        ),
+        black_border: booleanValue(
+          content.black_border ?? false,
+          "video profile black-border flag",
         ),
       } satisfies VideoProfileContent;
     case "advanced":

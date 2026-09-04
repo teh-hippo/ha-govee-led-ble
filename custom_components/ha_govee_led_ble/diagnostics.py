@@ -65,8 +65,13 @@ async def async_get_config_entry_diagnostics(
         "supports_video_mode": coordinator.profile.supports_video_mode,
         "supports_video_sound_effects": coordinator.profile.supports_video_sound_effects,
         "supports_white_balance": coordinator.profile.supports_white_balance,
+        "white_balance_uses_position": coordinator.profile.white_balance_uses_position,
+        "video_white_balance_min": coordinator.profile.video_white_balance_min,
+        "video_white_balance_max": coordinator.profile.video_white_balance_max,
+        "video_white_balance_default": coordinator.profile.video_white_balance_default,
         "supports_relative_brightness": coordinator.profile.supports_relative_brightness,
         "supports_blank_screen": coordinator.profile.supports_blank_screen,
+        "supports_black_border": coordinator.profile.supports_black_border,
         "supports_music_mode": coordinator.profile.supports_music_mode,
         "music_modes": list(coordinator.profile.music_modes),
         "supports_music_color": coordinator.profile.supports_music_color,
@@ -88,6 +93,7 @@ async def async_get_config_entry_diagnostics(
         "segment_state_source": coordinator.segment_state_source,
         "segment_state_observed_at": coordinator.segment_state_observed_at,
         "color_temp_kelvin": coordinator.color_temp_kelvin,
+        "black_border": coordinator.black_border,
         "effect": coordinator.effect,
         "diy_code": coordinator.diy_code,
         "color_mode": coordinator.color_mode.name.lower() if coordinator.color_mode is not None else None,
@@ -101,7 +107,9 @@ async def async_get_config_entry_diagnostics(
         "video_full_screen": coordinator.video_full_screen,
         "white_balance": white_balance,
         "white_balance_position": (
-            WHITE_BALANCE_POSITIONS.index(white_balance) + 1
+            coordinator.white_balance_position
+            if coordinator.white_balance_position is not None
+            else WHITE_BALANCE_POSITIONS.index(white_balance) + 1
             if white_balance is not None and white_balance in WHITE_BALANCE_POSITIONS
             else None
         ),

@@ -16,7 +16,7 @@ from homeassistant.helpers.typing import VolDictType
 from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
-from .generated_protocol_adapter import build_h6199_video, build_power
+from .generated_protocol_adapter import build_power, build_video
 from .light_commands import SegmentColorGroup
 from .native_profile_controls import apply_active_video_mode
 
@@ -121,7 +121,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
             # fmt: off
-            packet = build_h6199_video(resolved_fs, mode == "game", saturation, resolved_sound, resolved_softness)
+            packet = build_video(c.model, resolved_fs, mode == "game", saturation, resolved_sound, resolved_softness)
             # fmt: on
             async def apply() -> None:
                 await self.coordinator.send_command(

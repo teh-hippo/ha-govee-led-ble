@@ -866,6 +866,12 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-video-profile-editor
         .content=${this.content}
         .disabled=${this.editorDisabled}
+        .whiteBalanceMinimum=${this.model.modelCatalogue?.limits
+          .video_white_balance_min ?? 1}
+        .whiteBalanceMaximum=${this.model.modelCatalogue?.limits
+          .video_white_balance_max ?? 20}
+        .supportsBlackBorder=${this.model.modelCatalogue?.supports
+          .black_border ?? false}
         @content-changed=${(
           event: CustomEvent<{
             content: VideoProfileContent;

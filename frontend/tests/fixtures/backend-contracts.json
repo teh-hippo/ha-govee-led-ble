@@ -556,6 +556,7 @@
       "trailing_padding": 0
     },
     "video_profile": {
+      "black_border": false,
       "blank_screen": false,
       "full_screen": true,
       "kind": "video_profile",
@@ -738,9 +739,711 @@
         "music_sensitivity_max": 99,
         "music_sensitivity_min": 0,
         "palette_max": 8,
-        "palette_min": 1
+        "palette_min": 1,
+        "video_white_balance_max": 20,
+        "video_white_balance_min": 1
       },
       "models": {
+        "H6099": {
+          "apply": {
+            "multi": "unsupported",
+            "painted": "unsupported",
+            "palette_diy": "supported",
+            "single": "unsupported",
+            "workshop": "unsupported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "rate": "speed",
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "video_white_balance_max": 100,
+            "video_white_balance_min": 1
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            }
+          ],
+          "painted_effects": [],
+          "sku": "H6099",
+          "supports": {
+            "advanced": "supported",
+            "black_border": true,
+            "multi": "unsupported",
+            "workshop": "evidence_gap"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "palette_diy",
+                "model": "H6099",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "palette_diy",
+                "model": "H6099",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "palette_diy",
+                "model": "H6099",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Twinkle"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "palette_diy",
+                "model": "H6099",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "palette_diy",
+                "model": "H6099",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "palette_diy",
+                "model": "H6099",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Chasing"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "palette_diy",
+                "model": "H6099",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Rainbow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "palette_diy",
+                "model": "H6099",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Crossing"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "fountain",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:fountain",
+              "label": "Fountain"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "bloom",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:bloom",
+              "label": "Bloom"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "shiny",
+                "model": "H6099",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:shiny",
+              "label": "Shiny"
+            },
+            {
+              "category": "video",
+              "content": {
+                "black_border": false,
+                "blank_screen": false,
+                "full_screen": true,
+                "kind": "video_profile",
+                "mode": "movie",
+                "model": "H6099",
+                "relative_brightness": {
+                  "bottom": 100,
+                  "left": 100,
+                  "right": 100,
+                  "top": 100
+                },
+                "saturation": 50,
+                "sound_effects": false,
+                "sound_effects_softness": 50,
+                "white_balance_position": 50
+              },
+              "id": "template:video:movie",
+              "label": "Movie"
+            },
+            {
+              "category": "video",
+              "content": {
+                "black_border": false,
+                "blank_screen": false,
+                "full_screen": true,
+                "kind": "video_profile",
+                "mode": "game",
+                "model": "H6099",
+                "relative_brightness": {
+                  "bottom": 100,
+                  "left": 100,
+                  "right": 100,
+                  "top": 100
+                },
+                "saturation": 50,
+                "sound_effects": false,
+                "sound_effects_softness": 50,
+                "white_balance_position": 50
+              },
+              "id": "template:video:game",
+              "label": "Game"
+            }
+          ],
+          "video_modes": [
+            {
+              "id": "movie",
+              "label": "Movie"
+            }
+          ],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_palette",
+              "id": "edited_palette_scenes",
+              "label": "Edited palette scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "palette_diy",
+              "id": "palette_diy",
+              "label": "Palette DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "video_profile",
+              "id": "video",
+              "label": "Video"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "advanced",
+              "id": "advanced",
+              "label": "Advanced"
+            },
+            {
+              "application": "planned",
+              "content_kind": "workshop",
+              "id": "workshop",
+              "label": "Workshop"
+            }
+          ],
+          "workshop_templates": []
+        },
         "H617A": {
           "apply": {
             "multi": "supported",
@@ -781,7 +1484,9 @@
             "music_sensitivity_max": 99,
             "music_sensitivity_min": 0,
             "palette_max": 8,
-            "palette_min": 1
+            "palette_min": 1,
+            "video_white_balance_max": 20,
+            "video_white_balance_min": 1
           },
           "music_modes": [
             {
@@ -798,6 +1503,7 @@
           "sku": "H617A",
           "supports": {
             "advanced": "supported",
+            "black_border": false,
             "multi": "supported",
             "workshop": "supported"
           },
@@ -1468,7 +2174,9 @@
             "music_sensitivity_max": 99,
             "music_sensitivity_min": 0,
             "palette_max": 8,
-            "palette_min": 1
+            "palette_min": 1,
+            "video_white_balance_max": 20,
+            "video_white_balance_min": 1
           },
           "music_modes": [
             {
@@ -1485,6 +2193,7 @@
           "sku": "H617E",
           "supports": {
             "advanced": "supported",
+            "black_border": false,
             "multi": "supported",
             "workshop": "supported"
           },
@@ -2145,7 +2854,9 @@
             "music_sensitivity_max": 100,
             "music_sensitivity_min": 1,
             "palette_max": 8,
-            "palette_min": 1
+            "palette_min": 1,
+            "video_white_balance_max": 20,
+            "video_white_balance_min": 1
           },
           "music_modes": [
             {
@@ -2157,6 +2868,7 @@
           "sku": "H6199",
           "supports": {
             "advanced": "supported",
+            "black_border": false,
             "multi": "unsupported",
             "workshop": "supported"
           },
@@ -2612,6 +3324,7 @@
             {
               "category": "video",
               "content": {
+                "black_border": false,
                 "blank_screen": false,
                 "full_screen": true,
                 "kind": "video_profile",
@@ -2634,6 +3347,7 @@
             {
               "category": "video",
               "content": {
+                "black_border": false,
                 "blank_screen": false,
                 "full_screen": true,
                 "kind": "video_profile",
@@ -2729,6 +3443,7 @@
       "sku": "H617A",
       "supports": {
         "advanced": "supported",
+        "black_border": false,
         "multi": "supported",
         "workshop": "supported"
       },
@@ -3460,6 +4175,44 @@
       },
       {
         "active_state": null,
+        "config_entry_id": "h6099-main",
+        "custom_effects": {
+          "advanced": "supported",
+          "multi": "unsupported",
+          "painted": "unsupported",
+          "palette_diy": "supported",
+          "single": "unsupported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H6099 TV Backlight",
+        "effect_categories": [
+          "video",
+          "scenes",
+          "effects",
+          "reactive",
+          "advanced"
+        ],
+        "light_entity_id": null,
+        "model": "H6099",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h6099-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "supported"
+        },
+        "readback": "scene_selector_for_user_effects",
+        "segment_count": 14
+      },
+      {
+        "active_state": null,
         "config_entry_id": "h6199-main",
         "custom_effects": {
           "advanced": "supported",
@@ -3498,8 +4251,8 @@
       }
     ],
     "editor_info": {
-      "api_version": 14,
-      "compiler_version": 4,
+      "api_version": 15,
+      "compiler_version": 5,
       "effect_schema_version": 2,
       "limits": {
         "deployment_records": 128,
@@ -3616,6 +4369,63 @@
       "write_disposition": "unknown"
     },
     "scene_catalogues": {
+      "H6099": {
+        "categories": [
+          {
+            "id": 2522,
+            "name": "House of the Dragon"
+          },
+          {
+            "id": 5,
+            "name": "Natural"
+          },
+          {
+            "id": 6,
+            "name": "Festival"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "House of the Dragon",
+            "category_id": 2522,
+            "display_name": "Dracarys",
+            "effect_id": 41599,
+            "name": "Dracarys",
+            "parameter_kind": "layers",
+            "scene_id": 29884,
+            "scene_type": 2,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 5,
+            "display_name": "Sunrise",
+            "effect_id": 110,
+            "name": "Sunrise",
+            "parameter_kind": "none",
+            "scene_id": 128,
+            "scene_type": 0,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Festival",
+            "category_id": 6,
+            "display_name": "Halloween-A",
+            "effect_id": 133,
+            "name": "Halloween",
+            "parameter_kind": "palette",
+            "scene_id": 151,
+            "scene_type": 1,
+            "speed": null,
+            "variant": "A"
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H6099"
+      },
       "H617A": {
         "categories": [
           {
