@@ -4,6 +4,7 @@ import {
   buildCustomEffectEntries,
   customEffectKindAvailable,
   libraryItemAvailable,
+  newEffectKindForCategory,
   type CustomEffectListContext,
 } from "../../src/custom-effect-list";
 import {
@@ -123,6 +124,79 @@ test("content-kind capabilities allow model-independent protocol effects", () =>
       kind: "music_profile",
     }),
   ).toBe(false);
+});
+
+test("H6179 exposes only its single, mixed, and music surfaces", () => {
+  const h6179Catalogue: ModelEffectCatalogue = {
+    ...catalogue,
+    sku: "H6179",
+    painted_effects: [],
+    effects: [
+      {
+        ...catalogue.effects[0],
+        family: 0,
+        variations: [{ id: "default", label: "Default", variant: 0 }],
+      },
+    ],
+    workshop_templates: [],
+    workflows: [
+      {
+        id: "single",
+        label: "Single DIY",
+        content_kind: "h6179_single_diy",
+        application: "home_assistant",
+      },
+      {
+        id: "multi",
+        label: "Mixed DIY",
+        content_kind: "h6179_mixed_diy",
+        application: "home_assistant",
+      },
+      {
+        id: "native_music",
+        label: "Music",
+        content_kind: "music_profile",
+        application: "home_assistant",
+      },
+    ],
+    supports: {
+      multi: "supported",
+      advanced: "unsupported",
+      workshop: "unsupported",
+    },
+    limits: {
+      ...catalogue.limits,
+      multi_max: 4,
+      music_sensitivity_max: 99,
+    },
+    apply: {
+      painted: "unsupported",
+      single: "supported",
+      multi: "supported",
+      palette_diy: "unsupported",
+      workshop: "unsupported",
+    },
+  };
+  const h6179: CustomEffectListContext = {
+    model: "H6179",
+    catalogue: h6179Catalogue,
+    libraryItems: [],
+  };
+
+  expect(
+    buildCustomEffectEntries(h6179, "single-layer").map(
+      (entry) => entry.label,
+    ),
+  ).toEqual(["Jumping"]);
+  expect(newEffectKindForCategory(h6179, "single-layer")).toBe(
+    "h6179_single_diy",
+  );
+  expect(newEffectKindForCategory(h6179, "multi-layer")).toBe(
+    "h6179_mixed_diy",
+  );
+  expect(customEffectKindAvailable(h6179, "advanced")).toBe(false);
+  expect(customEffectKindAvailable(h6179, "workshop")).toBe(false);
+  expect(customEffectKindAvailable(h6179, "palette_diy")).toBe(false);
 });
 
 test("saved Workshop content remains available without starter templates", () => {

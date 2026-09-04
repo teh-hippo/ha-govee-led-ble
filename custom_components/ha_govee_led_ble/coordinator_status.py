@@ -4,11 +4,16 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, cast
 
-from .const import MUSIC_MODE_SLUGS, ReadDomain
-from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
-from .scenes import MODEL_SCENES
+from .const import MUSIC_MODE_SLUGS, ReadDomain, wire_model
+from .generated_protocol_adapter import (
+    ParsedH6179Status,
+    ProtocolParseResult,
+    parse_h6179_status_result,
+    parse_status_result,
+)
+from .music_protocol import music_slug_for
+from .scenes import MODEL_SCENES, scene_key_for_code
 
-_MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
 _SCENE_EFFECT_BY_MODEL_ID = {
     model: {scene.code: name for name, scene in scenes.items()} for model, scenes in MODEL_SCENES.items()
 }
@@ -23,6 +28,7 @@ _STATUS_DOMAIN_NAMES = {
     "brightness": StatusDomain.BRIGHTNESS,
     "colormode": StatusDomain.COLOUR_MODE,
     "colour_mode": StatusDomain.COLOUR_MODE,
+    "mode": StatusDomain.MODE,
     "fw_version": StatusDomain.FIRMWARE,
     "firmware": StatusDomain.FIRMWARE,
     "hw_version": StatusDomain.HARDWARE,
@@ -44,14 +50,16 @@ class ParsedStatusEnvelope:
 
 
 def decode_status_frame_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
-    result = parse_status_result(frame, model)
+    result = parse_h6179_status_result(frame) if wire_model(model) == "H6179" else parse_status_result(frame, model)
     if result.parsed is None:
         return result
     generated = result.parsed
+    domain = generated.domain
+    domain_name = domain if isinstance(domain, str) else getattr(domain, "name", "")
     return ProtocolParseResult(
         ParsedStatusEnvelope(
-            domain=_STATUS_DOMAIN_NAMES.get(getattr(generated.domain, "name", ""), StatusDomain.OTHER),
-            raw_domain=int(generated.domain),
+            domain=_STATUS_DOMAIN_NAMES.get(domain_name, StatusDomain.OTHER),
+            raw_domain=frame[1],
             payload=bytes(frame[2:-1]),
             generated=generated,
         ),
@@ -92,11 +100,55 @@ class ParsedColorModeResponse:
     music_calm: bool | None = None
     music_color: tuple[int, int, int] | None = None
     rgb_color: tuple[int, int, int] | None = None
+    color_temp_kelvin: int | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
+    raw_mode: int | None = None
 
 
 def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
+    if wire_model(model) == "H6179":
+        if not isinstance(generated, ParsedH6179Status) or generated.domain != "mode":
+            return ParsedColorModeResponse()
+        values = generated.values
+        mode_name = values.get("mode")
+        if mode_name == "static":
+            kelvin = int(values["kelvin"])
+            if kelvin:
+                return ParsedColorModeResponse(
+                    mode=ParsedMode.COLOUR,
+                    color_temp_kelvin=kelvin,
+                    raw_mode=int(values["raw_mode"]),
+                )
+            red, green, blue = values["rgb"]
+            return ParsedColorModeResponse(
+                mode=ParsedMode.COLOUR,
+                rgb_color=(int(red), int(green), int(blue)),
+                raw_mode=int(values["raw_mode"]),
+            )
+        if mode_name == "scene":
+            scene_code = int(values["scene_code"])
+            return ParsedColorModeResponse(
+                mode=ParsedMode.SCENE,
+                effect=scene_key_for_code(model, scene_code),
+                scene_code=scene_code,
+            )
+        if mode_name == "diy":
+            return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(values["diy_code"]))
+        if mode_name == "music":
+            colour = values["colour"]
+            music_color = None
+            if colour is not None:
+                red, green, blue = colour
+                music_color = (int(red), int(green), int(blue))
+            return ParsedColorModeResponse(
+                mode=ParsedMode.MUSIC,
+                music_mode=music_slug_for(model, int(values["music_mode_id"])),
+                music_sensitivity=int(values["sensitivity"]),
+                music_color=music_color,
+            )
+        return ParsedColorModeResponse()
+
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
     if model == "H6199":
@@ -125,7 +177,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
                 )
             return ParsedColorModeResponse(
                 mode=ParsedMode.MUSIC,
-                music_mode=_MUSIC_SLUG_BY_ID.get(int(detail.mode)),
+                music_mode=music_slug_for(model, int(detail.mode)),
                 music_sensitivity=int(detail.sensitivity),
                 music_calm=bool(detail.is_calm),
                 music_color=fixed_colour,
@@ -157,7 +209,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             music_color = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,
-            music_mode=_MUSIC_SLUG_BY_ID.get(int(detail.mode_id)),
+            music_mode=music_slug_for(model, int(detail.mode_id)),
             music_sensitivity=int(detail.sensitivity),
             music_calm=bool(detail.style) if int(detail.mode_id) == _RHYTHM_MODE_ID else None,
             music_color=music_color,

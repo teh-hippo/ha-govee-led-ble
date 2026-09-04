@@ -52,6 +52,21 @@ def test_h6076_uses_its_whole_device_mask_and_kelvin_range() -> None:
     assert build_color_temp(9000, "H6076")[7:9] == (6500).to_bytes(2, "big")
 
 
+def test_h6179_uses_exact_raw_brightness_and_whole_device_static_commands() -> None:
+    assert build_power(True, "H6179") == H("3301010000000000000000000000000000000033")
+    assert build_brightness(100, "H6179") == H("3304fe00000000000000000000000000000000c9")
+
+    rgb = build_color_rgb(10, 20, 30, "H6179")
+    parsed_rgb = parse_static_write(rgb, "H6179")
+    temperature = build_color_temp(3600, "H6179")
+    parsed_temperature = parse_static_write(temperature, "H6179")
+
+    assert rgb == H("33050d0a141e000000000000000000000000003b")
+    assert parsed_rgb is not None and parsed_rgb.rgb == (10, 20, 30) and parsed_rgb.whole_strip
+    assert parsed_temperature is not None and parsed_temperature.kelvin == 3600
+    assert parsed_temperature.kelvin_companion_rgb == kelvin_to_rgb(3600)
+
+
 def test_segment_numbering_and_masks() -> None:
     assert segments_to_mask([1]) == 0x0001
     assert segments_to_mask([3]) == 0x0004

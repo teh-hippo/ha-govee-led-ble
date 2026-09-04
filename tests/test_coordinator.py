@@ -124,6 +124,16 @@ def h6199(hass):
 
 
 @pytest.fixture
+def h6179(hass):
+    return GoveeBLECoordinator(
+        hass,
+        "44:55:66:77:88:99",
+        "H6179",
+        configuration_url=_CONFIGURATION_URL,
+    )
+
+
+@pytest.fixture
 def limited_readback_coord(hass):
     profile = replace(
         MODEL_PROFILES["H617A"],
@@ -153,6 +163,17 @@ def test_h6199_retains_default_idle_release_and_polling(h6199):
     with patch(f"{M}.async_call_later") as call_later:
         h6199._reset_disconnect_timer()
     assert call_later.call_args.args[1] == 15
+
+
+def test_h6179_notifications_update_power_brightness_and_diy_mode(h6179):
+    h6179._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
+    h6179._notify_callback(None, bytearray(_packet(0xAA, 0x04, [0x88])))
+    h6179._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x0A, 0x34, 0x12])))
+
+    assert h6179.is_on
+    assert h6179.brightness_pct == 50
+    assert h6179.color_mode is ParsedMode.DIY
+    assert h6179.diy_code == 0x1234
 
 
 def _c(**kw):
@@ -625,25 +646,37 @@ async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord):
     async def replacement_write(_uuid, packet, **_kwargs):
         attempted.append(packet)
 
-    first = _c(write_gatt_char=AsyncMock(side_effect=first_write))
-    replacement = _c(write_gatt_char=AsyncMock(side_effect=replacement_write))
+    first = _c(write_gatt_char=AsyncMock(side_effect=first_write), disconnect=AsyncMock())
+    replacement = _c(write_gatt_char=AsyncMock(side_effect=replacement_write), disconnect=AsyncMock())
     attempts: list[int] = []
+    validations: list[int] = []
     progress: list[int] = []
 
     async def note_attempt(attempt: int) -> None:
         attempts.append(attempt)
 
+    async def validate_attempt() -> None:
+        validations.append(len(attempts))
+
     async def note_progress(index: int) -> None:
         progress.append(index)
+
+    clients = iter((first, replacement))
+
+    async def connect():
+        client = next(clients)
+        coord._client = client
+        return client
 
     with patch.object(
         coord,
         "_ensure_connected",
-        new=AsyncMock(side_effect=[first, replacement]),
+        new=AsyncMock(side_effect=connect),
     ):
         await coord.async_write_effect_sequence(
             packets,
             intent=ControlIntent.PREVIEW,
+            before_write=validate_attempt,
             attempt_started=note_attempt,
             progress=note_progress,
         )
@@ -656,6 +689,7 @@ async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord):
         b"activation",
     ]
     assert attempts == [1, 2]
+    assert validations == [1, 2]
     assert progress == [1, 1, 2, 3]
 
 
@@ -677,6 +711,30 @@ async def test_effect_sequence_does_not_reconnect_during_shutdown(coord):
 
     assert ensure_connected.await_count == 1
     disconnect.assert_awaited_once_with()
+
+
+async def test_effect_sequence_does_not_retry_optional_final_packet(coord):
+    attempted: list[bytes] = []
+
+    async def write(_uuid, packet, **_kwargs):
+        attempted.append(packet)
+        if packet == b"selector":
+            raise BleakError("selector failed")
+
+    client = _c(write_gatt_char=AsyncMock(side_effect=write))
+    coord._client = client
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)) as ensure_connected,
+        pytest.raises(BleakError, match="selector failed"),
+    ):
+        await coord.async_write_effect_sequence(
+            [b"start", b"data", b"finish"],
+            intent=ControlIntent.PREVIEW,
+            final_packet=b"selector",
+        )
+
+    assert attempted == [b"start", b"data", b"finish", b"selector"]
+    ensure_connected.assert_awaited_once_with()
 
 
 async def test_foreground_command_waits_for_atomic_preview_packets(coord):

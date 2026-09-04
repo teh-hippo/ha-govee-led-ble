@@ -160,6 +160,10 @@ def scene_detail_payload(
     scene_default: NativeSceneDefault | None = None,
 ) -> dict[str, JsonValue]:
     resolved = resolve_scene(model, scene_id, effect_id)
+    if resolved.entry.selector_only:
+        if scene_default is not None:
+            raise ValueError(f"{model} selector-only scenes do not accept canonical-body defaults")
+        scene_default = None
     if scene_default is not None and resolved.entry.scene_type == 0:
         scene_default = None
     speed_index = (
@@ -265,6 +269,8 @@ async def async_set_scene_default(
 ) -> ResolvedScene:
     coordinator = config_entry.runtime_data
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
+    if resolved.entry.selector_only:
+        raise EffectValidationError(f"{coordinator.model} selector-only scenes do not support device-specific defaults")
     parsed = effect_content_from_dict(content)
     _validate_scene_content_identity(coordinator.model, resolved.entry, parsed)
     if isinstance(parsed, PaletteScene | LayeredScene):
@@ -297,6 +303,8 @@ def _scene_content(
     canonical_body: bytes | None,
     speed_index: int | None,
 ) -> EffectContent:
+    if entry.selector_only:
+        return BuiltinScene(template)
     body = canonical_body
     if body is None and entry.param:
         body = base64.b64decode(entry.param, validate=True)
@@ -322,11 +330,15 @@ def _validate_scene_content_identity(
         or template.catalogue_schema_version != CATALOGUE_SCHEMA_VERSION
     ):
         raise EffectValidationError("scene default content has mismatched catalogue identity")
-    expected_type = {
-        0: BuiltinScene,
-        1: PaletteScene,
-        2: LayeredScene,
-    }.get(entry.scene_type)
+    expected_type = (
+        BuiltinScene
+        if entry.selector_only
+        else {
+            0: BuiltinScene,
+            1: PaletteScene,
+            2: LayeredScene,
+        }.get(entry.scene_type)
+    )
     if expected_type is None or not isinstance(content, expected_type):
         raise EffectValidationError("scene default content does not match the catalogue scene structure")
 
@@ -337,6 +349,12 @@ def resolve_scene_application_body(
     scene_default: NativeSceneDefault | None,
     speed_index: int | None,
 ) -> tuple[bytes, int | None]:
+    if scene.selector_only:
+        if speed_index is not None:
+            raise ValueError("selector-only scenes do not accept speed_index")
+        if scene_default is not None:
+            raise ValueError("selector-only scenes do not accept canonical_body defaults")
+        return b"", None
     if scene_default is None:
         return resolve_native_scene_body(scene, speed_index=speed_index)
     speed = scene.speed
@@ -359,7 +377,7 @@ def _scene_summary(model: str, entry: SceneEntry) -> dict[str, JsonValue]:
     resolved = resolve_scene(model, entry.scene_id, entry.effect_id)
     parameter_kind = (
         "none"
-        if not entry.param
+        if entry.selector_only or not entry.param
         else "palette"
         if entry.scene_type == 1
         else "layers"
@@ -374,14 +392,15 @@ def _scene_summary(model: str, entry: SceneEntry) -> dict[str, JsonValue]:
         "name": entry.name,
         "variant": entry.variant,
         "display_name": resolved.label,
-        "scene_type": entry.scene_type,
+        "scene_type": 0 if entry.selector_only else entry.scene_type,
+        "selector_only": entry.selector_only,
         "parameter_kind": parameter_kind,
         "speed": (
             {
                 "option_count": entry.speed.option_count,
                 "default_index": entry.speed.default_index,
             }
-            if entry.speed is not None
+            if entry.speed is not None and not entry.selector_only
             else None
         ),
     }

@@ -18,9 +18,9 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 14
+EDITOR_API_VERSION: Final = 15
 EDITOR_ASSET_VERSION: Final = 19
-EFFECT_COMPILER_VERSION: Final = 4
+EFFECT_COMPILER_VERSION: Final = 5
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
 
@@ -67,6 +67,7 @@ class CompilerDeployerStrategy(StrEnum):
     STRUCTURAL_PARSER_ONLY = "structural_parser_only"
     RAW_PRESERVATION = "raw_preservation"
     A3_EFFECT_UPLOAD = "a3_effect_upload"
+    H6179_A1_EFFECT_UPLOAD = "h6179_a1_effect_upload"
 
 
 class VerificationConfidence(StrEnum):
@@ -265,6 +266,50 @@ _RELEASE_CAPABILITY_BASE: Final = (
         EvidenceClassification.STRUCTURAL,
     ),
     _capability(
+        "H6179",
+        CapabilityWorkflow.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        ApplicationRoute.STUDIO_SCENE_APPLY,
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6179",
+        CapabilityWorkflow.SINGLE,
+        "Single DIY",
+        "h6179_single_diy",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6179_A1_EFFECT_UPLOAD,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6179",
+        CapabilityWorkflow.MULTI,
+        "Mixed DIY",
+        "h6179_mixed_diy",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6179_A1_EFFECT_UPLOAD,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6179",
+        CapabilityWorkflow.NATIVE_MUSIC,
+        "Music",
+        "music_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
         "H6199",
         CapabilityWorkflow.NATIVE_SCENES,
         "Scenes",
@@ -358,6 +403,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
 RELEASE_CAPABILITY_CONTRACT: Final = (
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
+    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6179"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
 )
 
@@ -461,6 +507,7 @@ class DeviceEffectCapabilities:
             "config_entry_id": self.config_entry_id,
             "light_entity_id": self.light_entity_id,
             "model": self.model,
+            "support_quality": get_profile(self.model).support_quality.value,
             "display_name": self.display_name,
             "segment_count": self.segment_count,
             "custom_effects": {

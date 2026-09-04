@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from .effect_domain import H6179MixedDiyEffect, H6179SingleDiyEffect
 from .generated_protocol_adapter import (
     DIY_PAINTED_EFFECTS,
     build_h617a_diy_multi_body,
@@ -14,8 +15,12 @@ from .generated_protocol_adapter import (
 from .generated_protocol_adapter import (
     build_h617a_diy_activation as build_diy_activation,
 )
+from .generated_protocol_adapter import (
+    build_h6179_diy_activation as build_h6179_activation,
+)
+from .h6179_effect_codec import encode_h6179_effect
 from .light_commands import SEGMENT_COUNT
-from .transport import fragment_a3, fragment_a3_envelope
+from .transport import fragment_a3, fragment_a3_envelope, fragment_h6179_a1_02
 
 type RGB = tuple[int, int, int]
 
@@ -86,6 +91,16 @@ def build_h617a_diy_activation(diy_code: int) -> bytes:
     if not isinstance(diy_code, int) or not 0 <= diy_code <= 0xFFFF:
         raise ValueError("DIY code must be an integer from 0 to 65535")
     return build_diy_activation(diy_code)
+
+
+def build_h6179_diy(
+    content: H6179SingleDiyEffect | H6179MixedDiyEffect,
+) -> list[bytes]:
+    return fragment_h6179_a1_02(encode_h6179_effect(content))
+
+
+def build_h6179_diy_activation(diy_code: int) -> bytes:
+    return build_h6179_activation(diy_code)
 
 
 def build_h6199_palette_diy(

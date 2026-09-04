@@ -27,6 +27,11 @@ StatusReply = _generated("status_reply", "StatusReply")
 StatusQuery = _generated("status_query", "StatusQuery")
 H6199StatusQuery = _generated("h6199_status_query", "H6199StatusQuery")
 H6199StatusReply = _generated("h6199_status_reply", "H6199StatusReply")
+H6179CommandWrite = _generated("h6179_command_write", "H6179CommandWrite")
+H6179DiyBody = _generated("h6179_diy_body", "H6179DiyBody")
+H6179StatusQuery = _generated("h6179_status_query", "H6179StatusQuery")
+H6179StatusReply = _generated("h6179_status_reply", "H6179StatusReply")
+H6179ScheduleWrite = _generated("h6179_schedule_write", "H6179ScheduleWrite") if _GENERATED_DIR else None
 DiyType03 = _generated("diy_type03", "DiyType03")
 DiyType04 = _generated("diy_type04", "DiyType04")
 H6199EffectUpload = _generated("h6199_effect_upload", "H6199EffectUpload")
@@ -43,6 +48,12 @@ COMMAND_STATIC = bytes.fromhex("330515010000000e10ffcb8dff7f000000000005")
 STATUS_SEGMENTS = bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010")
 H617A_SEGMENT_QUERY = bytes.fromhex("aaa505000000000000000000000000000000000a")
 H6199_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
+H6179_MODE_QUERY = bytes.fromhex("aa050100000000000000000000000000000000ae")
+H6179_STATIC = bytes.fromhex("33050d0a141e000000000000000000000000003b")
+H6179_LEGACY_COLOUR = bytes.fromhex("3305020a141e0000000000000000000000000034")
+H6179_STATUS = bytes.fromhex("aa050d12345600000000000000000000000000d2")
+H6179_DIY = bytes.fromhex("feff003206ff00000000ff0400000200")
+H6179_SCHEDULE = bytes.fromhex("33091314040401091e000000000000000000002b")
 TYPE03_PAINTED = bytes.fromhex(
     "0105030900640101010f01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff000701eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
 )
@@ -81,6 +92,16 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(StatusReply, STATUS_SEGMENTS, id="H617A status"),
     pytest.param(StatusQuery, H617A_SEGMENT_QUERY, id="H617A segment query"),
     pytest.param(H6199StatusQuery, H6199_SEGMENT_QUERY, id="H6199 segment query"),
+    pytest.param(H6179CommandWrite, H6179_STATIC, id="H6179 command"),
+    pytest.param(H6179CommandWrite, H6179_LEGACY_COLOUR, id="H6179 legacy colour evidence"),
+    pytest.param(H6179DiyBody, H6179_DIY, id="H6179 DIY"),
+    pytest.param(H6179StatusQuery, H6179_MODE_QUERY, id="H6179 status query"),
+    pytest.param(H6179StatusReply, H6179_STATUS, id="H6179 status"),
+    *(
+        (pytest.param(H6179ScheduleWrite, H6179_SCHEDULE, id="H6179 schedule evidence"),)
+        if H6179ScheduleWrite is not None
+        else ()
+    ),
     pytest.param(DiyType03, TYPE03_PAINTED, id="Type03 painted"),
     pytest.param(DiyType04, TYPE04_FLAT, id="Type04 flat"),
     pytest.param(DiyType04, TYPE04_COMBO, id="Type04 combo"),
@@ -132,6 +153,27 @@ def test_command_and_status_fields_are_meaningful() -> None:
     h6199_query = _parse(H6199StatusQuery, H6199_SEGMENT_QUERY)
     assert (h617a_query.domain.name, h617a_query.body.group) == ("segments", 5)
     assert (h6199_query.domain.name, h6199_query.body.group) == ("segments", 4)
+
+    h6179_command = _parse(H6179CommandWrite, H6179_STATIC)
+    h6179_legacy = _parse(H6179CommandWrite, H6179_LEGACY_COLOUR)
+    h6179_query = _parse(H6179StatusQuery, H6179_MODE_QUERY)
+    h6179_status = _parse(H6179StatusReply, H6179_STATUS)
+    assert (
+        h6179_command.body.payload.rgb_direct.red,
+        h6179_command.body.payload.rgb_direct.green,
+        h6179_command.body.payload.rgb_direct.blue,
+    ) == (10, 20, 30)
+    assert (
+        h6179_legacy.body.payload.colour.red,
+        h6179_legacy.body.payload.colour.green,
+        h6179_legacy.body.payload.colour.blue,
+    ) == (10, 20, 30)
+    assert (h6179_query.domain, h6179_query.body.selector) == (0x05, 0x01)
+    assert (
+        h6179_status.body.detail.colour.red,
+        h6179_status.body.detail.colour.green,
+        h6179_status.body.detail.colour.blue,
+    ) == (0x12, 0x34, 0x56)
 
 
 def test_diy_shapes_expose_painted_flat_and_combo_fields() -> None:

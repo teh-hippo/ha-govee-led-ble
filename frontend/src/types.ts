@@ -6,6 +6,11 @@ export interface JsonObject {
 }
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
+export type SupportQuality =
+  | "experimental"
+  | "partial"
+  | "compatible"
+  | "supported";
 export type ModelSku = string;
 export type ObservationConfidence =
   | "exact_session"
@@ -49,6 +54,7 @@ export interface DeviceCapabilities {
   config_entry_id: string;
   light_entity_id: string | null;
   model: string;
+  support_quality: SupportQuality;
   display_name: string;
   segment_count: number;
   custom_effects: {
@@ -146,6 +152,23 @@ export interface EffectPair {
 export interface MultiContent {
   kind: "h617a_multi";
   effects: EffectPair[];
+  speed: number;
+  palette: RGB[];
+}
+
+export interface H6179SingleDiyContent {
+  kind: "h6179_single_diy";
+  model: ModelSku;
+  family: number;
+  variant: number;
+  speed: number;
+  palette: RGB[];
+}
+
+export interface H6179MixedDiyContent {
+  kind: "h6179_mixed_diy";
+  model: ModelSku;
+  components: EffectPair[];
   speed: number;
   palette: RGB[];
 }
@@ -262,7 +285,9 @@ export interface WorkshopContent {
 export type CustomEffectContent =
   | PaintedContent
   | SingleContent
-  | MultiContent;
+  | MultiContent
+  | H6179SingleDiyContent
+  | H6179MixedDiyContent;
 
 export interface PaintedEffectTemplate {
   id: PaintedContent["effect"];
@@ -349,7 +374,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 8;
+  schema_version: 9;
   sku: ModelSku;
   models: Record<ModelSku, ModelEffectCatalogue>;
 }
@@ -532,6 +557,7 @@ export interface SceneSummary {
   variant: string;
   display_name: string;
   scene_type: number;
+  selector_only: boolean;
   parameter_kind: SceneParameterKind;
   speed: {
     option_count: number;

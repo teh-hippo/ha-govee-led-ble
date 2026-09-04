@@ -32,8 +32,8 @@ EFFECT_CATEGORIES = (
 EFFECT_CATEGORY_CONTENT_KINDS = {
     EFFECT_CATEGORY_SCENES: frozenset({"scene_builtin", "scene_palette", "scene_layered"}),
     EFFECT_CATEGORY_VIDEO: frozenset({"video_profile"}),
-    EFFECT_CATEGORY_EFFECTS: frozenset({"h617a_painted", "h617a_single", "palette_diy"}),
-    EFFECT_CATEGORY_MULTI_LAYERED: frozenset({"h617a_multi"}),
+    EFFECT_CATEGORY_EFFECTS: frozenset({"h617a_painted", "h617a_single", "h6179_single_diy", "palette_diy"}),
+    EFFECT_CATEGORY_MULTI_LAYERED: frozenset({"h617a_multi", "h6179_mixed_diy"}),
     EFFECT_CATEGORY_REACTIVE: frozenset({"music_profile"}),
     EFFECT_CATEGORY_ADVANCED: frozenset({"advanced", "workshop"}),
 }
@@ -106,6 +106,7 @@ class ModelProfile:
     connection_idle_timeout: float | None = None
     scene_catalogue_sku: str | None = None
     legacy_scene_catalogue_sku: str | None = None
+    selector_only_scene_bits: int | None = None
     advanced_scene_carrier: tuple[int, int] | None = None
     default_effect_families_override: frozenset[str] | None = None
     effect_readback: str = "none"
@@ -113,6 +114,8 @@ class ModelProfile:
     def __post_init__(self) -> None:
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
+        if self.selector_only_scene_bits is not None and not 1 <= self.selector_only_scene_bits <= 16:
+            raise ValueError("selector-only scene width must be from 1 to 16 bits")
 
     def can_read(self, domain: ReadDomain) -> bool:
         return domain in self.read_domains
@@ -236,6 +239,38 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         max_color_temp_kelvin=6500,
         whole_device_mask=0x007F,
         scene_catalogue_sku="H6076",
+    ),
+    "H6179": ModelProfile(
+        "H6179 RGB TV Backlight",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        wire_model="H6179",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+            }
+        ),
+        setup_required_read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.MODE,
+            }
+        ),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_multi_layered_effects=True,
+        music_modes=("mode_0", "mode_1"),
+        supports_music_color=True,
+        static_readback_echoes_color=True,
+        scene_catalogue_sku="H6179",
+        selector_only_scene_bits=8,
+        effect_readback="diy_code_only",
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",

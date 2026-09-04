@@ -5,11 +5,11 @@ from dataclasses import replace
 
 from .const import protocol_model
 from .effect_domain import LayeredScene, PaletteScene
-from .generated_protocol_adapter import build_h617a_scene, build_h6199_scene
+from .generated_protocol_adapter import build_h617a_scene, build_h6179_scene, build_h6199_scene
 from .layered_scene import CatalogueRef, LayeredEffect
 from .layered_scene_decoder import decode_layered_scene, encode_layered_scene
 from .palette_scene_decoder import encode_palette_scene
-from .scenes import SceneEntry, SceneSpeed
+from .scenes import SceneEntry, SceneSpeed, scene_selector_code
 from .transport import fragment_a3
 
 
@@ -58,13 +58,20 @@ def build_native_scene_packets(
     canonical_body: bytes | None = None,
 ) -> list[bytes]:
     """Build a catalogue scene upload and activation with its resolved speed default."""
+    resolved = protocol_model(model)
+    if resolved == "H6179":
+        if speed_index is not None:
+            raise ValueError("H6179 native scenes are selector-only and do not accept speed_index")
+        if canonical_body is not None:
+            raise ValueError("H6179 native scenes are selector-only and do not accept canonical_body")
+        return [build_h6179_scene(scene_selector_code(model, scene))]
+
     payload, _resolved_speed = resolve_native_scene_body(
         scene,
         speed_index=speed_index,
         canonical_body=canonical_body,
     )
     upload = fragment_a3(scene.scene_type, payload) if payload else []
-    resolved = protocol_model(model)
     if resolved == "H6199":
         activation = build_h6199_scene(scene.code, scene.music_code)
     elif resolved == "H617A":
