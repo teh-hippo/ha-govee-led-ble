@@ -2,7 +2,8 @@
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import Any
 
 DOMAIN = "ha_govee_led_ble"
@@ -39,16 +40,49 @@ EFFECT_CATEGORY_CONTENT_KINDS = {
 _BLE_MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H[0-9A-Z]{4})(?:_|$)", re.IGNORECASE)
 
 
+class SupportQuality(StrEnum):
+    EXPERIMENTAL = "experimental"
+    PARTIAL = "partial"
+    COMPATIBLE = "compatible"
+    SUPPORTED = "supported"
+
+
+class ReadDomain(StrEnum):
+    POWER = "power"
+    BRIGHTNESS = "brightness"
+    COLOUR_MODE = "colour_mode"
+    MODE = "mode"
+    FIRMWARE = "firmware"
+    HARDWARE = "hardware"
+    SUBORDINATE_20 = "subordinate_20"
+    SUBORDINATE_21 = "subordinate_21"
+    DISPLAY_SETTING = "display_setting"
+    RELATIVE_BRIGHTNESS = "relative_brightness"
+    SEGMENTS = "segments"
+    OTHER = "other"
+
+
+_IDENTITY_READ_DOMAINS = frozenset(
+    {
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+        ReadDomain.SUBORDINATE_20,
+        ReadDomain.SUBORDINATE_21,
+    }
+)
+
+
 @dataclass(frozen=True)
 class ModelProfile:
     name: str
+    support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
     wire_model: str | None = None
-    state_readable: bool = False
+    read_domains: frozenset[ReadDomain] = frozenset()
+    setup_required_read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
     supports_color_temperature: bool = False
     min_color_temp_kelvin: int = 2000
     max_color_temp_kelvin: int = 9000
-    supports_color_mode_readback: bool = False
     supports_custom_effects: bool = False
     supports_scenes: bool = False
     supports_video_mode: bool = False
@@ -56,6 +90,7 @@ class ModelProfile:
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
+    video_white_balance_default: int = 17
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
     music_modes: tuple[str, ...] = ()
@@ -66,12 +101,43 @@ class ModelProfile:
     static_readback_echoes_color: bool = False
     whole_device_mask: int = 0
     segment_count: int = 0
+    segment_group_size: int = 0
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
+    scene_catalogue_sku: str | None = None
+    legacy_scene_catalogue_sku: str | None = None
+    advanced_scene_carrier: tuple[int, int] | None = None
+    default_effect_families_override: frozenset[str] | None = None
+    effect_readback: str = "none"
+
+    def __post_init__(self) -> None:
+        if not self.setup_required_read_domains <= self.read_domains:
+            raise ValueError("setup-required read domains must also be readable")
+
+    def can_read(self, domain: ReadDomain) -> bool:
+        return domain in self.read_domains
+
+    @property
+    def requires_notifications(self) -> bool:
+        return bool(self.read_domains)
+
+    @property
+    def state_readable(self) -> bool:
+        return bool(self.read_domains - _IDENTITY_READ_DOMAINS)
+
+    @property
+    def supports_color_mode_readback(self) -> bool:
+        return self.can_read(ReadDomain.COLOUR_MODE) or self.can_read(ReadDomain.MODE)
 
     @property
     def supports_segments(self) -> bool:
         return self.segment_count > 0 and self.supports_segment_writes
+
+    @property
+    def segment_group_count(self) -> int:
+        if not self.supports_segments or self.segment_group_size <= 0:
+            return 0
+        return (self.segment_count + self.segment_group_size - 1) // self.segment_group_size
 
     @property
     def supports_music_mode(self) -> bool:
@@ -95,13 +161,29 @@ MUSIC_MODE_SLUGS: dict[str, int] = {
 _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 
 
-_H617X_PROFILE = ModelProfile(
-    "H617A/H617E LED Strip",
+_H617A_PROFILE = ModelProfile(
+    "H617A LED Strip",
+    support_quality=SupportQuality.SUPPORTED,
     wire_model="H617A",
-    state_readable=True,
+    read_domains=frozenset(
+        {
+            ReadDomain.POWER,
+            ReadDomain.BRIGHTNESS,
+            ReadDomain.COLOUR_MODE,
+            ReadDomain.FIRMWARE,
+            ReadDomain.HARDWARE,
+            ReadDomain.SEGMENTS,
+        }
+    ),
+    setup_required_read_domains=frozenset(
+        {
+            ReadDomain.POWER,
+            ReadDomain.BRIGHTNESS,
+            ReadDomain.COLOUR_MODE,
+        }
+    ),
     supports_rgb=True,
     supports_color_temperature=True,
-    supports_color_mode_readback=True,
     supports_custom_effects=True,
     supports_scenes=True,
     music_modes=tuple(MUSIC_MODE_SLUGS),
@@ -112,8 +194,12 @@ _H617X_PROFILE = ModelProfile(
     # H617A and H617E expose fifteen segments through five explicit aa a5 query groups of three.
     # Segment writes ACK normally but do not publish updated groups without those queries.
     segment_count=15,
+    segment_group_size=3,
     supports_segment_writes=True,
     connection_idle_timeout=3.0,
+    scene_catalogue_sku="H617A",
+    advanced_scene_carrier=(1013, 11836),
+    effect_readback="diy_code_only",
     # supports_white_brightness stays false because static subcommand 0x02 is segment-relative
     # brightness, not the level of a white colour-temperature mode. It compounds with master
     # brightness and is exposed through set_segment_brightness, including all-segment writes;
@@ -122,25 +208,64 @@ _H617X_PROFILE = ModelProfile(
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
-    "H617A": _H617X_PROFILE,
-    "H617E": _H617X_PROFILE,
+    "H617A": _H617A_PROFILE,
+    "H617E": replace(
+        _H617A_PROFILE,
+        name="H617E LED Strip",
+        support_quality=SupportQuality.COMPATIBLE,
+        scene_catalogue_sku="H617E",
+        legacy_scene_catalogue_sku="H617A",
+        advanced_scene_carrier=(29884, 41599),
+    ),
     "H6076": ModelProfile(
         "H6076 Lyra Floor Lamp",
+        support_quality=SupportQuality.PARTIAL,
         wire_model="H617A",
-        state_readable=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
         supports_rgb=True,
         supports_color_temperature=True,
         min_color_temp_kelvin=2700,
         max_color_temp_kelvin=6500,
         whole_device_mask=0x007F,
+        scene_catalogue_sku="H6076",
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
+        support_quality=SupportQuality.SUPPORTED,
         wire_model="H6199",
-        state_readable=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+            }
+        ),
         supports_rgb=True,
         supports_color_temperature=True,
-        supports_color_mode_readback=True,
         supports_custom_effects=True,
         supports_scenes=True,
         supports_video_mode=True,
@@ -159,8 +284,13 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # queries. Kelvin remains last-known while its RGB companion matches.
         # Fifteen segment bits are independently writable. The aa 40 value 38 is not a segment count.
         segment_count=15,
+        segment_group_size=4,
         # Colour and brightness writes are observed through four explicit aa a5 query groups.
         supports_segment_writes=True,
+        scene_catalogue_sku="H6199",
+        advanced_scene_carrier=(29884, 41599),
+        default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
+        effect_readback="scene_selector_for_user_effects",
     ),
 }
 
@@ -260,10 +390,10 @@ def effect_category_for_content_kind(content_kind: str) -> str | None:
 
 
 def default_effect_families(model: str) -> frozenset[str]:
+    profile = get_profile(model)
     supported = supported_effect_families(model)
-    if model == "H6199":
-        return frozenset({EFFECT_FAMILY_VIDEO}) & supported
-    return supported
+    requested = profile.default_effect_families_override
+    return supported if requested is None else requested & supported
 
 
 def effect_families_from_options(model: str, options: Mapping[str, Any]) -> frozenset[str]:

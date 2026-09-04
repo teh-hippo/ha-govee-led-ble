@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   buildCustomEffectEntries,
+  customEffectKindAvailable,
   libraryItemAvailable,
   type CustomEffectListContext,
 } from "../../src/custom-effect-list";
@@ -70,6 +71,17 @@ function context(items: LibrarySummary[] = []): CustomEffectListContext {
   };
 }
 
+test("effect kinds remain unavailable without a model catalogue", () => {
+  const unavailable = {
+    model: "H7000",
+    catalogue: undefined,
+    libraryItems: [],
+  };
+
+  expect(customEffectKindAvailable(unavailable, "h617a_multi")).toBe(false);
+  expect(customEffectKindAvailable(unavailable, "advanced")).toBe(false);
+});
+
 test("starter lists expose product choices but not protocol evidence fixtures", () => {
   expect(
     buildCustomEffectEntries(context(), "single-layer").map(
@@ -97,16 +109,16 @@ test("saved effects remain available in their content category", () => {
   ]);
 });
 
-test("H617E devices retain H617x effects summarised with the legacy model", () => {
-  const h617eContext: CustomEffectListContext = {
-    model: "H617E",
-    catalogue: { ...catalogue, sku: "H617E" },
+test("content-kind capabilities allow model-independent protocol effects", () => {
+  const futureContext: CustomEffectListContext = {
+    model: "H7000",
+    catalogue: { ...catalogue, sku: "H7000" },
     libraryItems: [saved],
   };
 
-  expect(libraryItemAvailable(h617eContext, saved)).toBe(true);
+  expect(libraryItemAvailable(futureContext, saved)).toBe(true);
   expect(
-    libraryItemAvailable(h617eContext, {
+    libraryItemAvailable(futureContext, {
       ...saved,
       kind: "music_profile",
     }),

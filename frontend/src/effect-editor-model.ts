@@ -28,7 +28,7 @@ import type {
   WorkshopContent,
 } from "./types";
 import { clonePalette, cloneRgb, sameRgb } from "./ui-utils";
-import { isModelSku } from "./validation-constants";
+import { LEGACY_CUSTOM_CATALOGUE_SKU } from "./validation-constants";
 
 type AdvancedEditableContent =
   | AdvancedContent
@@ -186,8 +186,10 @@ export function blankPaletteDiy(
   family?: number,
   variant?: number,
 ): PaletteDiyEffectContent {
-  if (!isModelSku(model)) {
-    throw new Error(`Unsupported custom-effect model ${model}.`);
+  if (catalogue.sku !== model) {
+    throw new Error(
+      `Custom-effect catalogue ${catalogue.sku} does not target ${model}.`,
+    );
   }
   const selected =
     catalogue.effects.find((effect) => effect.family === family) ??
@@ -202,26 +204,6 @@ export function blankPaletteDiy(
     variant: variant ?? selected.variations[0].variant,
     speed: 50,
     palette: defaultPalette(),
-  };
-}
-
-export function blankVideoProfile(mode: string): VideoProfileContent {
-  return {
-    kind: "video_profile",
-    model: "H6199",
-    mode: mode === "game" ? "game" : "movie",
-    full_screen: true,
-    saturation: 50,
-    sound_effects: false,
-    sound_effects_softness: 50,
-    white_balance_position: 17,
-    relative_brightness: {
-      left: 100,
-      top: 100,
-      right: 100,
-      bottom: 100,
-    },
-    blank_screen: false,
   };
 }
 
@@ -515,26 +497,28 @@ export function isMyEffectKind(kind: string): boolean {
 
 export function libraryKindPriority(
   kind: string,
-  model: ModelSku | undefined,
+  catalogue: ModelEffectCatalogue | undefined,
 ): number {
-  const order =
-    model === "H6199"
-      ? [
-          "palette_diy",
-          "workshop",
-          "music_profile",
-          "advanced",
-          "scene_layered",
-        ]
-      : [
-          "h617a_painted",
-          "h617a_single",
-          "h617a_multi",
-          "music_profile",
-          "workshop",
-          "advanced",
-          "scene_layered",
-        ];
+  const paletteDiyFirst =
+    catalogue?.apply.palette_diy !== "unsupported" &&
+    catalogue?.apply.single === "unsupported";
+  const order = paletteDiyFirst
+    ? [
+        "palette_diy",
+        "workshop",
+        "music_profile",
+        "advanced",
+        "scene_layered",
+      ]
+    : [
+        "h617a_painted",
+        "h617a_single",
+        "h617a_multi",
+        "music_profile",
+        "workshop",
+        "advanced",
+        "scene_layered",
+      ];
   const priority = order.indexOf(kind);
   return priority === -1 ? order.length : priority;
 }
@@ -631,21 +615,14 @@ function libraryItemModel(item: LibraryItem): ModelSku | undefined {
     content.kind === "h617a_single" ||
     content.kind === "h617a_multi"
   ) {
-    return knownModel(item.target_hint?.model) ?? "H617A";
+    return item.target_hint?.model ?? LEGACY_CUSTOM_CATALOGUE_SKU;
   }
   if (
     content.kind === "scene_builtin" ||
     content.kind === "scene_palette" ||
     content.kind === "scene_layered"
   ) {
-    return knownModel(content.template.sku);
+    return content.template.sku;
   }
-  return knownModel(item.target_hint?.model);
-}
-
-function knownModel(
-  model: string | null | undefined,
-): ModelSku | undefined {
-  const candidate = model ?? undefined;
-  return isModelSku(candidate) ? candidate : undefined;
+  return item.target_hint?.model ?? undefined;
 }

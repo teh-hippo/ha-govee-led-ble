@@ -10,7 +10,6 @@ import type {
   ModelSku,
 } from "./types";
 import { compareLabels } from "./ui-utils";
-import { isH617xModel } from "./validation-constants";
 
 export interface CustomEffectListContext {
   model?: ModelSku;
@@ -114,23 +113,20 @@ export function libraryItemAvailable(
   context: CustomEffectListContext,
   item: LibrarySummary,
 ): boolean {
-  const h617xContent = ["h617a_painted", "h617a_single", "h617a_multi"].includes(item.kind);
+  const modelIndependentContent = [
+    "h617a_painted",
+    "h617a_single",
+    "h617a_multi",
+  ].includes(item.kind);
   if (
     item.model !== undefined &&
     item.model !== context.model &&
-    !(h617xContent && isH617xModel(item.model) && isH617xModel(context.model))
+    !modelIndependentContent
   ) {
     return false;
   }
   if (item.kind === "video_profile") {
     return Boolean(context.catalogue?.video_modes.length);
-  }
-  if (
-    item.model === undefined &&
-    h617xContent &&
-    !isH617xModel(context.model)
-  ) {
-    return false;
   }
   return customEffectKindAvailable(context, item.kind);
 }
@@ -167,32 +163,43 @@ export function customEffectKindAvailable(
   kind: string,
 ): boolean {
   const catalogue = context.catalogue;
+  if (!catalogue) {
+    return false;
+  }
   if (kind === "h617a_painted") {
     return (
-      isH617xModel(context.model) && Boolean(catalogue?.painted_effects.length)
+      Boolean(catalogue.painted_effects.length) &&
+      catalogue.apply.painted !== "unsupported"
     );
   }
   if (kind === "h617a_single") {
-    return isH617xModel(context.model) && Boolean(catalogue?.effects.length);
+    return (
+      Boolean(catalogue.effects.length) &&
+      catalogue.apply.single !== "unsupported"
+    );
   }
   if (kind === "palette_diy") {
-    return context.model === "H6199" && Boolean(catalogue?.effects.length);
+    return (
+      Boolean(catalogue.effects.length) &&
+      catalogue.apply.palette_diy !== "unsupported"
+    );
   }
   if (kind === "h617a_multi") {
     return (
-      isH617xModel(context.model) && catalogue?.supports.multi !== "unsupported"
+      catalogue.supports.multi !== "unsupported" &&
+      catalogue.apply.multi !== "unsupported"
     );
   }
   if (kind === "music_profile") {
-    return Boolean(catalogue?.music_modes.length);
+    return Boolean(catalogue.music_modes.length);
   }
   if (kind === "workshop") {
     return (
-      catalogue !== undefined &&
-      catalogue.supports.workshop !== "unsupported"
+      catalogue.supports.workshop !== "unsupported" &&
+      catalogue.apply.workshop !== "unsupported"
     );
   }
-  return catalogue?.supports.advanced !== "unsupported";
+  return catalogue.supports.advanced !== "unsupported";
 }
 
 export function newEffectKindForCategory(
@@ -233,7 +240,9 @@ function customEffectEntryAvailable(
     case "single":
       return customEffectKindAvailable(
         context,
-        isH617xModel(context.model) ? "h617a_single" : "palette_diy",
+        customEffectKindAvailable(context, "h617a_single")
+          ? "h617a_single"
+          : "palette_diy",
       );
     case "music":
       return customEffectKindAvailable(context, "music_profile");

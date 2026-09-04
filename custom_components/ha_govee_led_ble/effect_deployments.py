@@ -87,6 +87,7 @@ class PriorControlState:
     rgb_color: tuple[int, int, int]
     color_temp_kelvin: int | None = None
     effect: str | None = None
+    scene_code: int | None = None
     diy_code: int | None = None
     music_mode: str = "off"
     video_mode: str = "off"
@@ -151,10 +152,9 @@ class PriorControlState:
                     maximum=MAX_IDENTIFIER_LENGTH,
                     error_type=EffectStorageError,
                 )
-        if self.diy_code is not None and (
-            not isinstance(self.diy_code, int) or isinstance(self.diy_code, bool) or not 0 <= self.diy_code <= 0xFFFF
-        ):
-            raise EffectStorageError("prior DIY code must be from 0 to 65535")
+        for code, name in ((self.scene_code, "scene"), (self.diy_code, "DIY")):
+            if code is not None and (not isinstance(code, int) or isinstance(code, bool) or not 0 <= code <= 0xFFFF):
+                raise EffectStorageError(f"prior {name} code must be from 0 to 65535")
         if (
             not isinstance(self.music_sensitivity, int)
             or isinstance(self.music_sensitivity, bool)
@@ -232,6 +232,7 @@ class PriorControlState:
             "rgb_color": list(self.rgb_color),
             "color_temp_kelvin": self.color_temp_kelvin,
             "effect": self.effect,
+            "scene_code": self.scene_code,
             "diy_code": self.diy_code,
             "music_mode": self.music_mode,
             "video_mode": self.video_mode,
@@ -272,6 +273,7 @@ class PriorControlState:
             rgb_color=_required_rgb(raw, "rgb_color"),
             color_temp_kelvin=_optional_int(raw, "color_temp_kelvin"),
             effect=_optional_str(raw, "effect"),
+            scene_code=_optional_int(raw, "scene_code"),
             diy_code=_optional_int(raw, "diy_code"),
             music_mode=_optional_str(raw, "music_mode") or "off",
             video_mode=_optional_str(raw, "video_mode") or "off",
@@ -637,6 +639,20 @@ class EffectDeploymentRepository:
             if record.config_entry_id == config_entry_id
             and record.target_mode == "scene"
             and record.target_effect == effect
+        )
+        return max(matching, key=lambda record: record.updated_at, default=None)
+
+    def latest_for_scene_code(
+        self,
+        config_entry_id: str,
+        scene_code: int,
+    ) -> DeploymentRecord | None:
+        matching = tuple(
+            record
+            for record in self.snapshot().records
+            if record.config_entry_id == config_entry_id
+            and record.target_mode == "scene"
+            and record.diy_code == scene_code
         )
         return max(matching, key=lambda record: record.updated_at, default=None)
 

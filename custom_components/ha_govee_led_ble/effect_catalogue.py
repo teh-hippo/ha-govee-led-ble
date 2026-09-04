@@ -15,7 +15,6 @@ from .effect_contracts import (
     workflow_capability_state,
 )
 from .effect_domain import (
-    H617A_SEGMENT_COUNT,
     MAX_MULTI_EFFECTS,
     MAX_PALETTE_COLOURS,
     EffectContent,
@@ -508,6 +507,7 @@ def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
 
 
 def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
+    profile = MODEL_PROFILES[model]
     return CatalogueTemplate(
         id=f"template:music:{mode.id}",
         label=mode.label,
@@ -515,7 +515,7 @@ def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
         content=MusicProfile(
             model=model,
             mode=mode.id,
-            sensitivity=100 if model == "H6199" else 99,
+            sensitivity=profile.music_sensitivity_max,
             colour=None,
             calm=False if mode.id in {"rhythm", "bloom", "shiny"} else None,
             parameters={},
@@ -523,63 +523,54 @@ def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
     )
 
 
-def _video_template(mode: NativeModeOption) -> CatalogueTemplate:
+def _video_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
     return CatalogueTemplate(
         id=f"template:video:{mode.id}",
         label=mode.label,
         category="video",
         content=VideoProfile(
-            model="H6199",
+            model=model,
             mode=mode.id,
             full_screen=True,
             saturation=50,
             sound_effects=False,
             sound_effects_softness=50,
-            white_balance_position=17,
+            white_balance_position=MODEL_PROFILES[model].video_white_balance_default,
             relative_brightness=RelativeBrightness(100, 100, 100, 100),
             blank_screen=False,
         ),
     )
 
 
-H617A_CATALOGUE_TEMPLATES: Final = (
-    CatalogueTemplate(
-        id="template:paint",
-        label="Paint",
-        category="single-layer",
-        content=PaintedEffect(
-            effect="clockwise",
-            speed=50,
-            brightness=100,
-            segments=(None,) * H617A_SEGMENT_COUNT,
+def _h617a_catalogue_templates(
+    model: str,
+    music_modes: tuple[NativeModeOption, ...],
+) -> tuple[CatalogueTemplate, ...]:
+    return (
+        CatalogueTemplate(
+            id="template:paint",
+            label="Paint",
+            category="single-layer",
+            content=PaintedEffect(
+                effect="clockwise",
+                speed=50,
+                brightness=100,
+                segments=(None,) * MODEL_PROFILES[model].segment_count,
+            ),
         ),
-    ),
-    *(_single_template("H617A", family) for family in H617A_TYPE04_FAMILIES),
-    *(_music_template("H617A", mode) for mode in H617A_NATIVE_MUSIC_MODES),
-)
+        *(_single_template(model, family) for family in H617A_TYPE04_FAMILIES),
+        *(_music_template(model, mode) for mode in music_modes),
+    )
 
+
+H617A_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617A", H617A_NATIVE_MUSIC_MODES)
 H617E_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617E")
-
-H617E_CATALOGUE_TEMPLATES: Final = (
-    CatalogueTemplate(
-        id="template:paint",
-        label="Paint",
-        category="single-layer",
-        content=PaintedEffect(
-            effect="clockwise",
-            speed=50,
-            brightness=100,
-            segments=(None,) * H617A_SEGMENT_COUNT,
-        ),
-    ),
-    *(_single_template("H617E", family) for family in H617A_TYPE04_FAMILIES),
-    *(_music_template("H617E", mode) for mode in H617E_NATIVE_MUSIC_MODES),
-)
+H617E_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617E", H617E_NATIVE_MUSIC_MODES)
 
 H6199_CATALOGUE_TEMPLATES: Final = (
     *(_single_template("H6199", family) for family in H6199_PALETTE_DIY_FAMILIES),
     *(_music_template("H6199", mode) for mode in H6199_NATIVE_MUSIC_MODES),
-    *(_video_template(mode) for mode in H6199_VIDEO_MODES),
+    *(_video_template("H6199", mode) for mode in H6199_VIDEO_MODES),
 )
 
 WORKSHOP_PROTOCOL_FIXTURES: Final = (

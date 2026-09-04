@@ -233,9 +233,10 @@ def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinat
 
 
 def test_selector_projection_preserves_unique_aliases_and_rejects_built_in_ambiguity():
+    h617x_categories = frozenset({"scenes", "effects", "multi_layered", "reactive", "advanced"})
     h617a = effect_selector_entries(
         "H617A",
-        frozenset({"scenes", "effects", "multi_layered", "reactive", "advanced"}),
+        h617x_categories,
         (),
         prefix_effect_names=False,
     )
@@ -245,6 +246,37 @@ def test_selector_projection_preserves_unique_aliases_and_rejects_built_in_ambig
     assert resolve_effect_selector(h617a, "Energetic [Reactive]").source == "music"
     with pytest.raises(EffectValidationError, match="ambiguous"):
         resolve_effect_selector(h617a, "Energetic")
+
+    h617e = effect_selector_entries(
+        "H617E",
+        frozenset({"scenes", "effects", "multi_layered", "reactive", "advanced"}),
+        (),
+        prefix_effect_names=False,
+    )
+    assert resolve_effect_selector(h617e, "aurora").value == "aurora-a"
+    assert resolve_effect_selector(h617e, "Scene: Aurora").value == "aurora-a"
+    assert resolve_effect_selector(h617e, "Energetic [Scene]").value == "energetic-a"
+    assert resolve_effect_selector(h617e, "flying").value == "flying"
+    with pytest.raises(EffectValidationError, match="ambiguous"):
+        resolve_effect_selector(h617e, "Energetic")
+    for prefix_effect_names in (False, True):
+        legacy = effect_selector_entries(
+            "H617A",
+            h617x_categories,
+            (),
+            prefix_effect_names=prefix_effect_names,
+        )
+        current = effect_selector_entries(
+            "H617E",
+            h617x_categories,
+            (),
+            prefix_effect_names=prefix_effect_names,
+        )
+        assert all(
+            resolve_effect_selector(current, entry.display_label).source == "scene"
+            for entry in legacy
+            if entry.source == "scene"
+        )
 
     h6199 = effect_selector_entries(
         "H6199",

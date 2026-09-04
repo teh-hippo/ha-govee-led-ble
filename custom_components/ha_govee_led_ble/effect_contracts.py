@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Final
 
-from .const import default_effect_categories
+from .const import default_effect_categories, get_profile
 from .effect_domain import EFFECT_SCHEMA_VERSION, JsonValue
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -164,7 +164,7 @@ def _capability(
     )
 
 
-RELEASE_CAPABILITY_CONTRACT: Final = (
+_RELEASE_CAPABILITY_BASE: Final = (
     _capability(
         "H617A",
         CapabilityWorkflow.NATIVE_SCENES,
@@ -355,21 +355,23 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
 )
 
 
-_CAPABILITY_MODEL_ALIASES: Final = {"H617E": "H617A"}
+RELEASE_CAPABILITY_CONTRACT: Final = (
+    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
+    *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
+    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
+)
 
 
 def release_capabilities_for_model(model: str) -> tuple[ReleaseCapability, ...]:
-    contract_model = _CAPABILITY_MODEL_ALIASES.get(model, model)
-    return tuple(capability for capability in RELEASE_CAPABILITY_CONTRACT if capability.model == contract_model)
+    return tuple(capability for capability in RELEASE_CAPABILITY_CONTRACT if capability.model == model)
 
 
 def release_capability(model: str, workflow: CapabilityWorkflow) -> ReleaseCapability | None:
-    contract_model = _CAPABILITY_MODEL_ALIASES.get(model, model)
     return next(
         (
             capability
             for capability in RELEASE_CAPABILITY_CONTRACT
-            if capability.model == contract_model and capability.workflow is workflow
+            if capability.model == model and capability.workflow is workflow
         ),
         None,
     )
@@ -501,12 +503,6 @@ def device_effect_capabilities(
         music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC),
         video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO),
         workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP),
-        readback=(
-            "diy_code_only"
-            if model in {"H617A", "H617E"}
-            else "scene_selector_for_user_effects"
-            if release_capabilities_for_model(model)
-            else "none"
-        ),
+        readback=get_profile(model).effect_readback,
         effect_categories=(default_effect_categories(model) if effect_categories is None else effect_categories),
     )

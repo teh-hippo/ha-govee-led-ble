@@ -7,9 +7,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256
-from typing import Any, Final, assert_never
+from typing import Any, assert_never
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, protocol_model
+from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, get_profile, protocol_model
 from .coordinator_modes import (
     MUSIC_STYLE_SLUGS,
     music_mode_has_parameter_write,
@@ -59,7 +59,7 @@ from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
 from .native_scenes import apply_scene_speed, build_native_scene_packets
 from .palette_scene_decoder import encode_palette_scene
-from .scenes import MODEL_SCENES, SceneEntry
+from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity
 from .transport import fragment_a3
 
 
@@ -147,12 +147,6 @@ class CompiledVideoProfile:
 CompiledApplication = CompiledEffect | CompiledMusicProfile | CompiledVideoProfile
 
 
-_ADVANCED_CARRIER_IDENTITIES: Final = {
-    "H617A": (1013, 11836),
-    "H6199": (29884, 41599),
-}
-
-
 def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
     content = item.content
     if isinstance(content, OpaqueContent):
@@ -188,6 +182,11 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
+        if not get_profile(model).supports_scenes:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} native scenes are not supported",),
+            )
         if content.template.sku != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
@@ -229,6 +228,11 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             (f"this H617A custom-effect definition is not supported on {model}",),
         )
     if isinstance(content, PaletteScene | LayeredScene):
+        if not get_profile(model).supports_scenes:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} authored scenes are not supported",),
+            )
         if content.template.sku != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
@@ -246,12 +250,11 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, LayeredEffect):
-        if protocol_model(model) in _ADVANCED_CARRIER_IDENTITIES:
-            return CompatibilityResult(CompatibilityState.COMPATIBLE)
-        return CompatibilityResult(
-            CompatibilityState.INCOMPATIBLE,
-            (f"{model} layered-scene framing is not supported",),
-        )
+        try:
+            _advanced_carrier(model)
+        except ValueError as error:
+            return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
+        return CompatibilityResult(CompatibilityState.COMPATIBLE)
     assert_never(content)
 
 
@@ -506,25 +509,25 @@ def _resolve_scene(
 ) -> tuple[str, SceneEntry]:
     if template.catalogue_schema_version != 1:
         raise ValueError(f"catalogue schema version {template.catalogue_schema_version} is not supported")
-    scenes = MODEL_SCENES.get(model)
-    if scenes is None:
+    if model not in MODEL_SCENES:
         raise ValueError(f"{model} has no scene catalogue")
-    for key, entry in scenes.items():
-        if entry.scene_id == template.scene_id and entry.effect_id == template.effect_id:
-            if expected_scene_type is not None and entry.scene_type != expected_scene_type:
-                raise ValueError(
-                    f"{model} scene identity ({template.scene_id}, {template.effect_id}) "
-                    f"uses type {entry.scene_type}, not type {expected_scene_type}"
-                )
-            return key, entry
-    raise ValueError(f"{model} scene identity ({template.scene_id}, {template.effect_id}) was not found")
+    resolved = resolve_scene_identity(model, template.scene_id, template.effect_id)
+    if resolved is None:
+        raise ValueError(f"{model} scene identity ({template.scene_id}, {template.effect_id}) was not found")
+    key, entry = resolved
+    if expected_scene_type is not None and entry.scene_type != expected_scene_type:
+        raise ValueError(
+            f"{model} scene identity ({template.scene_id}, {template.effect_id}) "
+            f"uses type {entry.scene_type}, not type {expected_scene_type}"
+        )
+    return key, entry
 
 
 def _advanced_carrier(model: str) -> tuple[str, SceneEntry]:
-    try:
-        scene_id, effect_id = _ADVANCED_CARRIER_IDENTITIES[protocol_model(model) or model]
-    except KeyError as error:
-        raise ValueError(f"{model} layered-scene framing is not supported") from error
+    identity = get_profile(model).advanced_scene_carrier
+    if identity is None:
+        raise ValueError(f"{model} layered-scene framing is not supported")
+    scene_id, effect_id = identity
     return _resolve_scene(
         model,
         CatalogueRef(model, scene_id, effect_id),

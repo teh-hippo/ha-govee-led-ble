@@ -429,6 +429,7 @@ def test_deployment_round_trip_preserves_prior_state_and_verification_confidence
         rgb_color=(1, 2, 3),
         color_temp_kelvin=4000,
         effect="forest",
+        scene_code=2163,
         diy_code=800,
         music_mode="separation",
         video_mode="game",
@@ -481,6 +482,7 @@ def test_deployment_round_trip_preserves_prior_state_and_verification_confidence
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
+        ({"scene_code": -1}, "prior scene code must be from 0 to 65535"),
         ({"music_separation_point": 0}, "prior separation point must be from 1 to 5"),
         ({"music_separation_gradient": 1}, "prior separation gradient must be a boolean"),
         ({"music_fountain_direction": "sideways"}, "prior fountain direction is invalid"),

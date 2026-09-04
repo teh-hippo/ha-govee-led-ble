@@ -18,7 +18,7 @@ from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
     BLEDeviceResolver,
 )
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, MUSIC_MODE_SLUGS
+from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, MUSIC_MODE_SLUGS, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
@@ -127,7 +127,8 @@ def h6199(hass):
 def limited_readback_coord(hass):
     profile = replace(
         MODEL_PROFILES["H617A"],
-        supports_color_mode_readback=False,
+        read_domains=MODEL_PROFILES["H617A"].read_domains - {ReadDomain.COLOUR_MODE, ReadDomain.SEGMENTS},
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
         segment_count=0,
         supports_segment_writes=False,
     )
@@ -316,7 +317,7 @@ async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
 
         assert recovered is True
         assert send.await_args_list == [call(packet) for packet in expected]
-        refresh.assert_awaited_once_with(expected_effect=effect)
+        refresh.assert_awaited_once_with(expected_scene_code=scene.code)
         assert coordinator.active_mode == "scene"
 
 
@@ -507,9 +508,93 @@ async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
 
     assert recovered is True
     assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H6199", scene)]
-    refresh.assert_awaited_once_with(expected_effect="forest")
+    refresh.assert_awaited_once_with(expected_scene_code=scene.code)
     assert h6199.effect == "forest"
     assert (h6199.diy_code, h6199.music_mode, h6199.video_mode) == (None, "off", "off")
+
+
+async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:78",
+        "H617E",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    state = PriorControlState(
+        mode="scene",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        effect="aurora",
+    )
+    scene = MODEL_SCENES["H617E"]["aurora-a"]
+
+    with (
+        patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+
+    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", scene)]
+    refresh.assert_awaited_once_with(expected_scene_code=scene.code)
+    assert coordinator.effect == "aurora-a"
+
+
+async def test_restore_effect_control_state_preserves_h617e_raw_legacy_scene(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:79",
+        "H617E",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    exact_codes = {scene.code for scene in MODEL_SCENES["H617E"].values()}
+    legacy_name, legacy = next(
+        (name, scene) for name, scene in MODEL_SCENES["H617A"].items() if scene.code not in exact_codes
+    )
+    coordinator.is_on = True
+    coordinator.color_mode = ParsedMode.SCENE
+    coordinator._scene_code = legacy.code
+    coordinator.effect = None
+    state = coordinator.capture_effect_control_state()
+
+    assert state.mode == "scene"
+    assert state.scene_code == legacy.code
+    with (
+        patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+
+    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", legacy)]
+    refresh.assert_awaited_once_with(expected_scene_code=legacy.code)
+    assert coordinator.effect == legacy_name
+
+
+async def test_restore_effect_control_state_uses_legacy_identity_to_disambiguate_scene_code(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:80",
+        "H617E",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    legacy = MODEL_SCENES["H617A"]["aurora"]
+    state = PriorControlState(
+        mode="scene",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        effect="aurora",
+        scene_code=legacy.code,
+    )
+
+    with (
+        patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True),
+    ):
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+
+    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", legacy)]
+    assert coordinator.effect == "aurora"
 
 
 async def test_send_command(coord):
@@ -1388,6 +1473,52 @@ async def test_refresh_state_query_selection(coord):
         sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
 
 
+async def test_h617e_legacy_scene_verifies_by_raw_selector_code(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "33:44:55:66:77:89",
+        "H617E",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    coordinator._client = client = _c()
+    exact_codes = {scene.code for scene in MODEL_SCENES["H617E"].values()}
+    legacy = next(scene for scene in MODEL_SCENES["H617A"].values() if scene.code not in exact_codes)
+
+    async def _reply(**_kwargs) -> bool:
+        coordinator._notify_callback(
+            None,
+            bytearray(proto.build_packet(0xAA, 0x05, [0x04, legacy.code & 0xFF, legacy.code >> 8])),
+        )
+        return True
+
+    with (
+        patch.object(coordinator, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coordinator, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
+    ):
+        assert await coordinator.refresh_state(expected_scene_code=legacy.code, timeout=0.02)
+
+    assert coordinator.scene_code == legacy.code
+    assert coordinator.unknown_scene_code == legacy.code
+
+
+async def test_refresh_all_can_require_only_the_setup_domains(coord):
+    coord._client = client = _c()
+
+    async def _reply(**_kwargs) -> bool:
+        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+        return True
+
+    with (
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_reply)),
+    ):
+        assert await coord.refresh_state(
+            refresh_all=True,
+            required_domains=frozenset({ReadDomain.POWER}),
+            timeout=0.02,
+        )
+
+
 async def test_refresh_without_colour_readback_requires_power_and_brightness_only(limited_readback_coord):
     limited_readback_coord._client = client = _c()
     limited_readback_coord.rgb_color = (12, 34, 56)
@@ -1453,6 +1584,10 @@ async def test_h6076_refresh_all_uses_limited_readback_profile(hass):
     ):
         assert await coordinator.refresh_state(refresh_all=True, timeout=0.02)
 
+    assert coordinator.scene_name_set == frozenset()
+    with pytest.raises(ValueError, match="does not support native scenes"):
+        await coordinator.async_apply_native_scene(next(iter(MODEL_SCENES["H6076"])))
+
 
 async def test_refresh_reply_timeout_starts_after_connection(coord):
     client = _c(disconnect=AsyncMock())
@@ -1512,6 +1647,14 @@ async def test_refresh_state_queries_each_display_domain(h6199):
         assert queries.await_args.kwargs["query_blank_screen"] is True
         queries.reset_mock()
         assert await h6199.refresh_state(expected_relative_brightness=(51, 20, 31, 41))
+        assert queries.await_args.kwargs["query_relative_brightness"] is True
+        queries.reset_mock()
+        assert await h6199.refresh_state(
+            refresh_all=True,
+            required_domains=frozenset({ReadDomain.DISPLAY_SETTING, ReadDomain.RELATIVE_BRIGHTNESS}),
+        )
+        assert queries.await_args.kwargs["query_white_balance"] is True
+        assert queries.await_args.kwargs["query_blank_screen"] is True
         assert queries.await_args.kwargs["query_relative_brightness"] is True
 
 
@@ -2038,12 +2181,13 @@ async def test_preview_observation_does_not_repeat_silent_query(coord):
         new=AsyncMock(side_effect=query_state),
     ) as query:
         result = await coord.async_preview_observe(
-            {"effect": "glacier"},
+            {"scene_code": SCENES["glacier"].code},
             timeout=0.05,
         )
 
     assert result is None
     assert query.await_count == 1
+    assert query.await_args.kwargs["query_color_mode"] is True
     assert not coord._control_lock.locked()
 
 
@@ -2336,7 +2480,11 @@ async def test_first_refresh_reports_update_failed_then_degrades_silently(coord)
 
 
 async def test_first_refresh_non_readable_requires_presence(hass):
-    flat = replace(MODEL_PROFILES["H617A"], state_readable=False)
+    flat = replace(
+        MODEL_PROFILES["H617A"],
+        read_domains=frozenset(),
+        setup_required_read_domains=frozenset(),
+    )
     with patch(f"{M}.get_profile", return_value=flat):
         c = GoveeBLECoordinator(
             hass,

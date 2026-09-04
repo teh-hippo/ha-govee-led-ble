@@ -321,10 +321,31 @@ describe("focused response mutations", () => {
     expect(isCompatibleEditorInfo(decodeEditorApiInfo(payload))).toBe(false);
   });
 
-  test("unknown library models remain optional compatibility hints", () => {
+  test("future library models remain bounded compatibility hints", () => {
     const payload = cloneObject(responses.library_snapshot);
     objectArray(payload.items)[0].model = "future-model";
-    expect(decodeLibrarySnapshot(payload).items[0]).not.toHaveProperty("model");
+    expect(decodeLibrarySnapshot(payload).items[0].model).toBe("future-model");
+
+    objectArray(payload.items)[0].model = "x".repeat(256);
+    expect(() => decodeLibrarySnapshot(payload)).toThrow(
+      "library items[0].model must contain 1 to 255 characters",
+    );
+  });
+
+  test("profile models and video modes accept bounded future identifiers", () => {
+    const payload = cloneObject(contentSamples.video_profile);
+    payload.model = "H7000";
+    payload.mode = "cinema";
+    expect(decodeEffectContent(payload)).toMatchObject({
+      kind: "video_profile",
+      model: "H7000",
+      mode: "cinema",
+    });
+
+    payload.model = "x".repeat(256);
+    expect(() => decodeEffectContent(payload)).toThrow(
+      "video profile model must contain 1 to 255 characters",
+    );
   });
 
   test("library snapshots reject duplicate IDs and malformed item collections", () => {

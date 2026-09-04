@@ -780,14 +780,14 @@ export class GoveeLedEffectStudio extends LitElement {
       .sort((left, right) => compareLabels(left.name, right.name));
     return html`
       <aside class="sidebar item-sidebar library" aria-label="Video profiles">
-        ${catalogue.video_modes.map((mode) =>
+        ${this.model.videoTemplates.map((template) =>
           this.videoListButton(
-            `template:video:${mode.id}`,
-            mode.label,
+            template.id,
+            template.label,
             (returnFocus) =>
               void this.controller.selectVideoTemplate(
-                mode.id,
-                mode.label,
+                template.id,
+                template.label,
                 returnFocus,
               ),
           ),

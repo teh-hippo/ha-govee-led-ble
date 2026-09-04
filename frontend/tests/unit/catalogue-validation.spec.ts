@@ -37,19 +37,41 @@ test("catalogue families require variations and the single-layer category", () =
   );
 });
 
-test("model catalogues require every release workflow", () => {
+test("release workflows remain bounded and unique without model-specific lists", () => {
   const payload = structuredClone(
     backendContracts.responses.custom_catalogue,
   );
-  payload.models.H6199.workflows = payload.models.H6199.workflows.filter(
-    (workflow) => workflow.id !== "workshop",
+  payload.models.H6199.workflows.push(
+    structuredClone(payload.models.H6199.workflows[0]),
   );
   expect(() => decodeCatalogue(payload)).toThrow(
-    "release workflows does not match H6199",
+    "release workflows IDs must be unique",
   );
 });
 
-test("catalogue keys and embedded template models must agree", () => {
+test("catalogue model keys are dynamic and embedded models must agree", () => {
+  const futureModel = structuredClone(
+    backendContracts.responses.custom_catalogue.models.H6199,
+  ) as unknown as {
+    sku: string;
+    templates: Array<{ content: Record<string, unknown> }>;
+    workshop_templates: Array<{ content: { model: string } }>;
+  };
+  futureModel.sku = "H7000";
+  for (const template of futureModel.templates) {
+    if ("model" in template.content) {
+      template.content.model = "H7000";
+    }
+  }
+  for (const template of futureModel.workshop_templates) {
+    template.content.model = "H7000";
+  }
+  const futurePayload = structuredClone(
+    backendContracts.responses.custom_catalogue,
+  );
+  (futurePayload.models as Record<string, unknown>).H7000 = futureModel;
+  expect(decodeCatalogue(futurePayload).models.H7000.sku).toBe("H7000");
+
   const wrongSku = structuredClone(
     backendContracts.responses.custom_catalogue,
   );
@@ -78,5 +100,15 @@ test("catalogue keys and embedded template models must agree", () => {
   ).workshop_templates = workshopTemplates;
   expect(() => decodeCatalogue(wrongTemplateModel)).toThrow(
     "content does not target H617A",
+  );
+
+  const invalidKey = structuredClone(
+    backendContracts.responses.custom_catalogue,
+  );
+  (invalidKey.models as Record<string, unknown>)["x".repeat(256)] = structuredClone(
+    invalidKey.models.H6199,
+  );
+  expect(() => decodeCatalogue(invalidKey)).toThrow(
+    "catalogue model key must contain 1 to 255 characters",
   );
 });

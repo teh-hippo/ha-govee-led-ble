@@ -62,6 +62,30 @@ const catalogue: ModelEffectCatalogue = {
   effects: [],
   music_modes: [{ id: "separation", label: "Separation" }],
   video_modes: [{ id: "movie", label: "Movie" }],
+  templates: [
+    {
+      id: "template:video:movie",
+      label: "Movie",
+      category: "video",
+      content: {
+        kind: "video_profile",
+        model: "H617A",
+        mode: "movie",
+        full_screen: true,
+        saturation: 50,
+        sound_effects: false,
+        sound_effects_softness: 50,
+        white_balance_position: 17,
+        relative_brightness: {
+          left: 100,
+          top: 100,
+          right: 100,
+          bottom: 100,
+        },
+        blank_screen: false,
+      },
+    },
+  ],
   workshop_templates: [],
   workflows: [],
   supports: {

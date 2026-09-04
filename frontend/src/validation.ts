@@ -12,7 +12,6 @@ import type {
   LayeredSceneContent,
   LibraryItem,
   LibrarySnapshot,
-  ModelSku,
   MusicProfileContent,
   PaletteSceneContent,
   PaletteDiyEffectContent,
@@ -67,11 +66,9 @@ import {
   MAX_SCENE_CATALOGUE_ENTRIES,
   MAX_TIMESTAMP_LENGTH,
   MAX_USER_STATE_NAVIGATION_BYTES,
-  MODEL_SKUS,
   MOVEMENT_UNKNOWN_FLAGS_MASK,
   PALETTE_CONFIG_RESERVED_MASK,
   SCENE_TRAILING_PADDING_MAX,
-  VIDEO_MODE_IDS,
 } from "./validation-constants";
 
 const VERIFICATION_CONFIDENCE = [
@@ -447,7 +444,11 @@ export function decodeLibrarySnapshot(value: unknown): LibrarySnapshot {
       const model =
         summary.model === undefined
           ? undefined
-          : knownModelSku(summary.model);
+          : boundedString(
+              summary.model,
+              `library items[${index}].model`,
+              MAX_IDENTIFIER_LENGTH,
+            );
       return {
         id: boundedString(summary.id, "library item ID", MAX_IDENTIFIER_LENGTH),
         version: revisionValue(summary.version, "library item version", 1),
@@ -847,11 +848,11 @@ export function decodeEffectContent(value: unknown): EffectContent {
     case "palette_diy":
       return {
         kind,
-        model: enumString(
+        model: boundedString(
           content.model,
-          MODEL_SKUS,
           "palette DIY model",
-        ) as ModelSku,
+          MAX_IDENTIFIER_LENGTH,
+        ),
         family: integerValue(content.family, "palette DIY family", 0, 255),
         variant: integerValue(content.variant, "palette DIY variant", 0, 255),
         speed: integerValue(content.speed, "palette DIY speed", 0, 100),
@@ -860,11 +861,11 @@ export function decodeEffectContent(value: unknown): EffectContent {
     case "music_profile":
       return {
         kind,
-        model: enumString(
+        model: boundedString(
           content.model,
-          MODEL_SKUS,
           "music profile model",
-        ) as ModelSku,
+          MAX_IDENTIFIER_LENGTH,
+        ),
         mode: boundedString(
           content.mode,
           "music profile mode",
@@ -886,8 +887,16 @@ export function decodeEffectContent(value: unknown): EffectContent {
     case "video_profile":
       return {
         kind,
-        model: enumString(content.model, ["H6199"], "video profile model"),
-        mode: enumString(content.mode, VIDEO_MODE_IDS, "video profile mode"),
+        model: boundedString(
+          content.model,
+          "video profile model",
+          MAX_IDENTIFIER_LENGTH,
+        ),
+        mode: boundedString(
+          content.mode,
+          "video profile mode",
+          MAX_IDENTIFIER_LENGTH,
+        ),
         full_screen: booleanValue(
           content.full_screen,
           "video profile full-screen flag",
@@ -932,11 +941,11 @@ export function decodeEffectContent(value: unknown): EffectContent {
       const effect = objectValue(content.effect, "Workshop effect");
       return {
         kind,
-        model: enumString(
+        model: boundedString(
           content.model,
-          MODEL_SKUS,
           "Workshop model",
-        ) as ModelSku,
+          MAX_IDENTIFIER_LENGTH,
+        ),
         template: boundedString(
           content.template,
           "Workshop template",
@@ -1412,12 +1421,6 @@ function timestampString(value: unknown, name: string): string {
     invalid(`${name} must be an ISO 8601 timestamp with a UTC offset`);
   }
   return timestamp;
-}
-
-function knownModelSku(value: unknown): ModelSku | undefined {
-  return typeof value === "string" && MODEL_SKUS.includes(value as ModelSku)
-    ? (value as ModelSku)
-    : undefined;
 }
 
 function revisionValue(

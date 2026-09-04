@@ -9,49 +9,26 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 
 ## Device support
 
-| Model | Status | Controls and limitations | Evidence |
-| --- | --- | --- | --- |
-| **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio | Repository Kaitai schemas and physical qualification |
-| **H617E** | Compatible | Owner-confirmed H617A-compatible controls, scenes, effects and music modes; exact-model protocol documentation remains incomplete | Physical owner feedback and a speculative H617A compatibility alias |
-| **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
-| **H6076** | Partial | Confirmed power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) and a speculative H617A compatibility alias |
+| Model | Status | Controls and limitations |
+| --- | --- | --- |
+| **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio |
+| **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio |
+| **H617E** | Compatible | H617A-compatible controls, effects and music modes with its exact 240-scene catalogue and retained legacy scene-name compatibility; exact-model protocol documentation remains incomplete |
+| **H6076** | Partial | Power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded and evidence-backed Kaitai coverage for every enabled wire path.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, speculative-schema, prerelease and promotion process.
 
 ## Effect Studio
 
-Govee Effect Studio is added to the Home Assistant sidebar when at least one enabled configured light supports it.  Users can hide or
-reorder the panel through Home Assistant's sidebar settings.  It provides local, model-aware effect editing without a Govee cloud account.
+Effect Studio appears in the Home Assistant sidebar when a configured light supports it.  Available scenes, effects, music, video, and editing controls follow the selected device's capabilities.
 
-| Model | Studio surfaces |
-| --- | --- |
-| H617A | Scenes, painted segments, single-layer effects, multi-layered effects, reactive music effects and advanced layered effects |
-| H617E | H617A-compatible scenes, effects and reactive music effects |
-| H6199 | Scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |
+Administrators can preview, edit, apply, and save supported effects.  Other authenticated users can browse scenes and compatible saved effects in read-only mode.  Saved names are also available through the standard Home Assistant light effect selector.
 
-H6199 video profiles keep saturation, capture area, sound effects, softness, white balance, relative brightness and blank-screen behaviour together as one reusable effect.
-
-Administrators can edit effects and manage the shared saved-effect library.  Other authenticated users can browse scenes and compatible saved effects in read-only mode.
-
-### Using the editor
-
-1. Open **Govee Effect Studio** from the Home Assistant sidebar and choose a light.
-2. Select a category, then choose a built-in template or saved effect.
-3. Leave **Live** enabled to preview changes on the light, or disable it and use **Apply** when the draft is ready.
-4. Use **Save** for a built-in default, **Save As** for a named library effect, and **Reset** to restore the catalogue version.
-
-**Auto Save** persists committed changes to the selected built-in default or saved effect.  Editable built-ins can retain a per-light default, including native scenes, music profiles and H6199 video profiles.  The current unsaved draft is retained per device.
-
-Saved effect names appear in the standard Home Assistant light effect selector, so dashboards, scenes, scripts and automations use the same control path as Effect Studio.  The `ha_govee_led_ble.apply_custom_effect` entity action accepts either the current saved name or its stable effect ID and supports entity, device, area and label targets.
-
-Home Assistant light commands, scenes and automations take priority over Live previews.  Effect uploads and activation use one serialised operation, with verification and recovery on state-readable devices.
-
-Effect definitions are model-specific.  A strip cannot return the body uploaded by the Govee app, and the app provides no supported export format, so Effect Studio cannot import an arbitrary app-authored DIY effect directly.  The protocol boundary is documented in [#89](https://github.com/teh-hippo/ha-govee-led-ble/issues/89).
+Home Assistant commands take priority over live previews.  Effect uploads and activation are serialised with verification and recovery where the device supports readback.  Arbitrary app-authored DIY effects cannot be imported because the app provides no supported export format.
 
 ## Upgrade notes
 
 - An H6076 previously configured as H617A must be explicitly changed to H6076 through the integration's **Reconfigure** action.  The config entry and entity identity are preserved.
-- Version 7 adds Effect Studio while retaining the standard Home Assistant light effect selector introduced in version 6.
 - The standalone H617A scene-speed entity remains removed.  Edit scene speed in Effect Studio or select the native scene through the light effect selector.
 - Renaming a saved effect immediately changes its selector name.  Name-based automations must use the new name; the stable effect ID does not change.
 - Effect Studio stores the current saved definition rather than revision history.  Deleting a saved effect is permanent.
@@ -88,24 +65,23 @@ Use **Reconfigure** to correct the selected model while preserving the existing 
 
 ## Scope, non-goals, and expert tools
 
-The maintained product scope and per-model limitations are defined by the [device support table](#device-support).  The persistent H617A [`0xa3` register](https://github.com/teh-hippo/ha-govee-led-ble/issues/131) stores the app's gradual-colour-change switch, but the app explicitly classifies H617A as unsupported.  Paired physical comparisons found no visible effect, so the integration preserves the raw boolean and exposes no user-facing behaviour for it.
+The maintained product scope and per-model limitations are defined by the [device support table](#device-support).  H617A stores a gradual-colour-change boolean, but the app classifies the model as unsupported and physical comparisons found no visible effect, so the integration exposes no user-facing behaviour for it.
 
 Wi-Fi provisioning is not a maintained integration or contributor workflow.  The decoded H6199 [`a1 11` frame](tools/ble/kaitai/h6199_wifi_provision.ksy), [reassembled body](tools/ble/kaitai/h6199_wifi_body.ksy) and [`ee 11` result](tools/ble/kaitai/h6199_wifi_result.ksy) remain as tested protocol findings.
 
 The following are intentional non-goals for this integration:
 
-- on-device timers;
+- Wi-Fi provisioning, cloud control, and account or network setup;
+- user-facing on-device timers and schedules;
+- host microphone capture or audio-derived control;
+- continuous host-driven BLE streaming for real-time audio or animation;
+- firmware or OTA updates;
 - manufacturer-style animated scene previews;
-- phone-microphone music-stream injection;
-- firmware or OTA updates.
+- camera calibration that depends on Govee Wi-Fi or cloud services.
 
-The retained music-stream schema is decode-only evidence support.  It does not provide injection or playback control.
-
-Native H6199 camera calibration is unavailable from the current local interfaces.  The completed [camera-calibration investigation](https://github.com/teh-hippo/ha-govee-led-ble/issues/136) found that the required geometry exchange remains behind the manufacturer's trusted network service.
+The repository may retain Kaitai schemas and protocol findings for non-goals without exposing runtime controls.  Onboard device-microphone modes, ordinary BLE commands, and bounded multipart effect uploads remain supported.
 
 Additional models follow the request and qualification process in [CONTRIBUTING.md](CONTRIBUTING.md).  Cross-SKU evidence, Home Assistant quality-scale work, and restart-free integration updates remain separate programmes.
-
-The historical [7.0 UX completion evidence matrix](docs/completion-evidence.md) records that programme's issue dispositions, cleanup metrics, retained tests and release qualification.
 
 ## Development
 

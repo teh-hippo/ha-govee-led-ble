@@ -25,7 +25,7 @@ from .const import (
 )
 from .effect_compiler import CompatibilityState, compatibility
 from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
-from .scenes import MODEL_SCENE_LABELS
+from .scenes import MODEL_SCENE_LABELS, scene_aliases
 
 _EFFECT_QUOTE_CHARS = "\"'“”‘’"
 
@@ -106,9 +106,15 @@ def effect_selector_entries(
         always_include_custom_effects=always_include_custom_effects,
         native_categories=native_categories,
     )
-    counts = Counter(normalise_effect_name(candidate.base_label) for candidate in candidates)
+    names_by_candidate = tuple(
+        frozenset(normalise_effect_name(name) for name in (candidate.base_label, *candidate.aliases))
+        for candidate in candidates
+    )
+    counts = Counter(name for names in names_by_candidate for name in names)
     category_counts = Counter(
-        (normalise_effect_name(candidate.base_label), candidate.category) for candidate in candidates
+        (name, candidate.category)
+        for candidate, names in zip(candidates, names_by_candidate, strict=True)
+        for name in names
     )
     counts[normalise_effect_name(EFFECT_OFF)] += 1
     if active_custom:
@@ -120,13 +126,10 @@ def effect_selector_entries(
             _project_candidate(
                 candidate,
                 use_prefix=use_prefixes,
-                collides=counts[normalise_effect_name(candidate.base_label)] > 1,
-                same_category_collides=category_counts[
-                    (normalise_effect_name(candidate.base_label), candidate.category)
-                ]
-                > 1,
+                collides=any(counts[name] > 1 for name in names),
+                same_category_collides=any(category_counts[(name, candidate.category)] > 1 for name in names),
             )
-            for candidate in candidates
+            for candidate, names in zip(candidates, names_by_candidate, strict=True)
         ),
         use_prefix=use_prefixes,
     )
@@ -247,7 +250,7 @@ def _selector_candidates(
                 category=EFFECT_CATEGORY_SCENES,
                 base_label=label,
                 value=key,
-                aliases=(key,),
+                aliases=(key, *_legacy_scene_selector_aliases(model, key)),
             )
             for key, label in MODEL_SCENE_LABELS[model].items()
         )
@@ -290,6 +293,25 @@ def _selector_candidates(
         and (category in categories or always_include_custom_effects)
     )
     return tuple(candidates)
+
+
+def _legacy_scene_selector_aliases(model: str, scene_key: str) -> tuple[str, ...]:
+    legacy_model = get_profile(model).legacy_scene_catalogue_sku
+    legacy_labels = MODEL_SCENE_LABELS.get(legacy_model or "", {})
+    aliases: list[str] = []
+    for alias in scene_aliases(model, scene_key):
+        label = legacy_labels.get(alias, alias)
+        aliases.extend(
+            (
+                alias,
+                label,
+                f"Scene: {label}",
+                f"{label} [Scene]",
+                f"Scene: {label} [Built-in]",
+                f"{label} [Scene, Built-in]",
+            )
+        )
+    return tuple(aliases)
 
 
 def _project_candidate(

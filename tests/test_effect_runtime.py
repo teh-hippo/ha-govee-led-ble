@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from hashlib import sha256
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call
@@ -28,6 +29,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentRecord,
     EffectDeploymentRepository,
     ObservationConfidence,
+    PriorControlState,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     LibraryItem,
@@ -40,9 +42,10 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SourceKind,
     VideoProfile,
 )
-from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
+from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache, ObservedDeviceState
 from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
+    _activation_matches,
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
@@ -151,6 +154,47 @@ def _music_item(model: str = "H617A") -> LibraryItem:
     )
 
 
+def test_scene_activation_uses_name_only_when_raw_code_is_unavailable() -> None:
+    record = replace(
+        _confirmed_saved_record(_item()),
+        target_mode="scene",
+        target_effect="forest",
+        diy_code=2163,
+    )
+    coordinator = SimpleNamespace(
+        is_on=True,
+        scene_code=212,
+        effect="forest",
+        diy_code=None,
+        unknown_scene_code=None,
+    )
+
+    assert not _activation_matches(coordinator, record)
+    coordinator.scene_code = None
+    assert _activation_matches(coordinator, record)
+
+
+def test_scene_activation_rejects_ambiguous_code_with_a_different_label() -> None:
+    legacy = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.name == "Aurora")
+    record = replace(
+        _confirmed_saved_record(_item(), diy_code=legacy.code),
+        target_mode="scene",
+        target_effect="aurora",
+    )
+    coordinator = SimpleNamespace(
+        is_on=True,
+        model="H617E",
+        scene_code=legacy.code,
+        effect="racing game-a",
+        diy_code=None,
+        unknown_scene_code=None,
+    )
+
+    assert not _activation_matches(coordinator, record)
+    coordinator.effect = "aurora-a"
+    assert _activation_matches(coordinator, record)
+
+
 def _video_item() -> LibraryItem:
     return LibraryItem.new(
         "Movie",
@@ -179,6 +223,7 @@ def _coordinator(*, readable: bool = True):
         rgb_color=(1, 2, 3),
         color_temp_kelvin=None,
         effect=None,
+        scene_code=None,
         unknown_scene_code=None,
         diy_code=None,
         music_mode="off",
@@ -904,6 +949,118 @@ async def test_reconciliation_matches_only_latest_confirmed_selector(
     )
 
     assert changed.active_effect is None
+
+
+async def test_reconciliation_matches_scene_deployments_by_raw_selector_code(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    item = _item()
+    official_codes = {scene.code for scene in SCENE_ENTRIES["H617E"]}
+    legacy = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.code not in official_codes)
+    confirmed = replace(
+        _confirmed_saved_record(item, diy_code=legacy.code),
+        target_mode="scene",
+        target_effect=legacy.name.casefold(),
+    )
+    await repository.async_put(confirmed, expected_version=None)
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
+    active_workspaces.set(
+        replace(
+            _flow_workspace(),
+            model="H617E",
+            selector_label=item.name,
+            content=item.content,
+            origin=item.origin,
+            observable_signature=f"scene:{legacy.name.casefold()}",
+        )
+    )
+    coordinator = _coordinator()
+    coordinator.model = "H617E"
+    coordinator.effect = None
+    coordinator.scene_code = legacy.code
+
+    observed = await EffectDeploymentEngine(repository, cache, active_workspaces).async_reconcile(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-11T00:01:00Z",
+    )
+
+    assert observed.matched_operation_id == confirmed.operation_id
+    assert observed.active_effect is not None
+    assert observed.active_effect.item_id == item.id
+    workspace = active_workspaces.get("entry-a")
+    assert workspace is not None
+    assert workspace.observable_signature == f"scene-code:{legacy.code}"
+
+
+async def test_reconciliation_does_not_fall_back_to_scene_name_when_codes_differ(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    item = _item()
+    legacy = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.name == "Forest")
+    exact = next(scene for scene in SCENE_ENTRIES["H617E"] if scene.name == "Forest")
+    await repository.async_put(
+        replace(
+            _confirmed_saved_record(item, diy_code=legacy.code),
+            target_mode="scene",
+            target_effect="forest",
+        ),
+        expected_version=None,
+    )
+    coordinator = _coordinator()
+    coordinator.model = "H617E"
+    coordinator.effect = "forest"
+    coordinator.scene_code = exact.code
+
+    observed = await EffectDeploymentEngine(repository, cache).async_reconcile(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at="2026-08-11T00:01:00Z",
+    )
+
+    assert observed.matched_operation_id is None
+    assert observed.active_effect is None
+
+
+async def test_prior_state_uses_the_confirmed_scene_identity_for_ambiguous_codes(
+    hass: HomeAssistant,
+) -> None:
+    repository, cache = await _repositories(hass)
+    item = _item()
+    legacy = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.name == "Aurora")
+    confirmed = replace(
+        _confirmed_saved_record(item, diy_code=legacy.code),
+        target_mode="scene",
+        target_effect="aurora",
+    )
+    await repository.async_put(confirmed, expected_version=None)
+    cache.set(
+        ObservedDeviceState(
+            config_entry_id="entry-a",
+            mode="scene",
+            observed_at="2026-08-11T00:01:00Z",
+            matched_operation_id=confirmed.operation_id,
+        )
+    )
+    coordinator = _coordinator()
+    coordinator.capture_effect_control_state = lambda: PriorControlState(
+        mode="scene",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        effect="racing game-a",
+        scene_code=legacy.code,
+    )
+
+    captured = EffectDeploymentEngine(repository, cache)._capture_prior_state(
+        coordinator,
+        config_entry_id="entry-a",
+    )
+
+    assert captured.effect == "aurora"
 
 
 async def test_matching_flow_workspace_suppresses_saved_sena_selector_history(

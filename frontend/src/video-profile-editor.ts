@@ -88,7 +88,7 @@ export class GoveeVideoProfileEditor extends LitElement {
         <section class="card empty-state" role="status">
           <h3 class="section-title">Video profile unavailable</h3>
           <p class="muted">
-            Load an H6199 video profile to edit video-sync settings.
+            Load a video profile to edit video-sync settings.
           </p>
         </section>
       `;

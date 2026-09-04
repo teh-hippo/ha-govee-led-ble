@@ -172,7 +172,7 @@ async def test_worker_compiles_active_then_only_newest_pending_request(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    coordinator = _coordinator()
+    coordinator = _coordinator(readable=True)
     first_started = asyncio.Event()
     release_first = asyncio.Event()
     writes = 0
@@ -444,13 +444,14 @@ async def test_native_scene_preview_uses_scene_speed_primitive_for_repeated_sele
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    coordinator = _coordinator()
+    coordinator = _coordinator(readable=True)
     coordinator.effect_families = set()
     applied = []
 
     async def apply_scene(
         scene_name,
         *,
+        scene_entry,
         speed_index,
         canonical_body,
         before_write,
@@ -458,6 +459,7 @@ async def test_native_scene_preview_uses_scene_speed_primitive_for_repeated_sele
         intent,
     ):
         async with coordinator._control_lock:
+            assert scene_entry is scene
             applied.append((scene_name, speed_index, verify))
             await before_write()
             await coordinator.async_preview_write(b"scene")
@@ -485,6 +487,56 @@ async def test_native_scene_preview_uses_scene_speed_primitive_for_repeated_sele
 
     assert len(applied) == 2
     assert all(item[1:] == (scene.speed.default_index, False) for item in applied)
+    assert coordinator.async_preview_observe.await_args_list[-1].args[0] == {
+        "is_on": True,
+        "scene_code": scene.code,
+    }
+    await manager.async_shutdown()
+
+
+async def test_ambiguous_h617e_legacy_scene_preview_requires_code_and_canonical_label(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    coordinator = _coordinator(model="H617E", readable=True)
+
+    async def apply_scene(
+        _scene_name,
+        *,
+        scene_entry,
+        speed_index,
+        canonical_body,
+        before_write,
+        verify,
+        intent,
+    ):
+        assert scene_entry.name == "Aurora"
+        await before_write()
+        await coordinator.async_preview_write(b"scene")
+
+    coordinator.async_apply_native_scene = AsyncMock(side_effect=apply_scene)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    session_id = _open(manager, owner, [])
+    legacy = next(entry for entry in SCENE_ENTRIES["H617A"] if entry.name == "Aurora")
+
+    await manager.async_queue_scene(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id="entry-a",
+        sequence=1,
+        updated_at="2026-08-17T00:00:01Z",
+        scene_id=legacy.scene_id,
+        effect_id=legacy.effect_id,
+        speed_index=legacy.speed.default_index if legacy.speed is not None else None,
+    )
+    await manager.async_wait_idle("entry-a")
+
+    assert coordinator.async_preview_observe.await_args.args[0] == {
+        "is_on": True,
+        "scene_code": legacy.code,
+        "effect": "aurora-a",
+    }
     await manager.async_shutdown()
 
 
@@ -679,7 +731,7 @@ async def test_scene_default_storage_failure_is_reported_after_transport(
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     monkeypatch.setattr(
         manager._scene_defaults,
-        "async_set",
+        "async_replace_identities",
         AsyncMock(side_effect=OSError("storage failed")),
     )
     owner = object()
@@ -722,12 +774,14 @@ async def test_selector_only_scene_preview_never_creates_a_default(
     async def apply_scene(
         _scene_name,
         *,
+        scene_entry,
         speed_index,
         canonical_body,
         before_write,
         verify,
         intent,
     ):
+        assert scene_entry is scene
         assert speed_index is None
         assert canonical_body is None
         assert verify is False

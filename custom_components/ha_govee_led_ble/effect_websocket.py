@@ -53,11 +53,14 @@ from .effect_preview import (
     PreviewStatus,
     PreviewTargetUnavailableError,
 )
+from .effect_runtime import observable_signatures_for_coordinator
 from .effect_scenes import (
     async_apply_scene,
     async_reset_scene_default,
     async_set_scene_default,
+    resolve_scene,
     scene_catalogue_payload,
+    scene_default_for,
     scene_detail_payload,
 )
 from .effect_selector import ReservedEffectNameError, SavedEffectNameConflictError
@@ -214,21 +217,11 @@ def _device_payload(
         workspace.to_dict()
         if workspace is not None
         and workspace.model == coordinator.model
-        and workspace.observable_signature == _observed_signature(observed)
+        and workspace.observable_signature in observable_signatures_for_coordinator(coordinator)
         else None
     )
     device["preview_health"] = backend.preview.health(entry.entry_id).to_dict()
     return device
-
-
-def _observed_signature(observed: Any) -> str | None:
-    if observed.mode == "custom" and observed.diy_code is not None:
-        return f"custom:{observed.diy_code}"
-    if observed.mode == "scene" and observed.effect is not None:
-        return f"scene:{observed.effect}"
-    if observed.mode in {"music", "video"} and observed.native_mode is not None:
-        return f"{observed.mode}:{observed.native_mode}"
-    return None
 
 
 def _light_entity_id(hass: HomeAssistant, config_entry_id: str) -> str | None:
@@ -369,14 +362,17 @@ def ws_scene_catalogue_get(
         return
     try:
         backend = _backend(hass)
+        resolved = resolve_scene(entry.runtime_data.model, msg["scene_id"], msg["effect_id"])
         detail = scene_detail_payload(
             entry.runtime_data.model,
             msg["scene_id"],
             msg["effect_id"],
-            scene_default=backend.scene_defaults.get(
+            scene_default=scene_default_for(
+                backend.scene_defaults,
                 entry.entry_id,
-                msg["scene_id"],
-                msg["effect_id"],
+                entry.runtime_data.model,
+                resolved.key,
+                resolved.entry,
             ),
         )
     except ValueError as exc:
@@ -439,10 +435,12 @@ async def ws_scene_apply(
                 entry.runtime_data.model,
                 resolved.entry.scene_id,
                 resolved.entry.effect_id,
-                scene_default=backend.scene_defaults.get(
+                scene_default=scene_default_for(
+                    backend.scene_defaults,
                     entry.entry_id,
-                    resolved.entry.scene_id,
-                    resolved.entry.effect_id,
+                    entry.runtime_data.model,
+                    resolved.key,
+                    resolved.entry,
                 ),
             )["scene"],
             "speed_index": speed_index,
@@ -537,10 +535,12 @@ async def ws_scene_default_set(
             entry.runtime_data.model,
             resolved.entry.scene_id,
             resolved.entry.effect_id,
-            scene_default=backend.scene_defaults.get(
+            scene_default=scene_default_for(
+                backend.scene_defaults,
                 entry.entry_id,
-                resolved.entry.scene_id,
-                resolved.entry.effect_id,
+                entry.runtime_data.model,
+                resolved.key,
+                resolved.entry,
             ),
         ),
     )

@@ -19,7 +19,6 @@ import type {
   EffectStudioCatalogue,
   EffectStudioModeOption,
   ModelEffectCatalogue,
-  ModelSku,
   PaintedContent,
   PaintedEffectTemplate,
   PaletteDiyFamily,
@@ -34,9 +33,6 @@ import {
   MAX_CATALOGUE_JSON_NODES,
   MAX_EFFECT_NAME_LENGTH,
   MAX_IDENTIFIER_LENGTH,
-  MODEL_SKUS,
-  isH617xModel,
-  VIDEO_MODE_IDS,
 } from "./validation-constants";
 
 const RELEASE_WORKFLOW_IDS = [
@@ -57,41 +53,6 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
   "home_assistant",
   "planned",
 ] as const;
-const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = {
-  H617A: [
-    "native_scenes",
-    "edited_palette_scenes",
-    "layered_scenes",
-    "painted",
-    "single",
-    "multi",
-    "native_music",
-    "advanced",
-    "workshop",
-  ],
-  H617E: [
-    "native_scenes",
-    "edited_palette_scenes",
-    "layered_scenes",
-    "painted",
-    "single",
-    "multi",
-    "native_music",
-    "advanced",
-    "workshop",
-  ],
-  H6199: [
-    "native_scenes",
-    "edited_palette_scenes",
-    "layered_scenes",
-    "palette_diy",
-    "native_music",
-    "video",
-    "advanced",
-    "workshop",
-  ],
-};
-
 export function decodeCustomCataloguePayload(
   value: unknown,
   decodeContent: (value: unknown) => EffectContent,
@@ -115,7 +76,7 @@ export function decodeCustomCataloguePayload(
     JSON.stringify(models[LEGACY_CUSTOM_CATALOGUE_SKU])
   ) {
     throw new Error(
-      "Malformed Effect Studio server payload: legacy custom-effect catalogue view does not match models.H617A.",
+      `Malformed Effect Studio server payload: legacy custom-effect catalogue view does not match models.${LEGACY_CUSTOM_CATALOGUE_SKU}.`,
     );
   }
   exactInteger(
@@ -135,49 +96,37 @@ export function decodeCustomCataloguePayload(
 function decodeModelCatalogues(
   value: unknown,
   decodeContent: (value: unknown) => EffectContent,
-): Record<ModelSku, ModelEffectCatalogue> {
+): Record<string, ModelEffectCatalogue> {
   const models = objectValue(value, "custom-effect catalogue models");
-  const unexpected = Object.keys(models).filter(
-    (key) => !MODEL_SKUS.includes(key as ModelSku),
-  );
-  if (unexpected.length > 0) {
+  if (!Object.hasOwn(models, LEGACY_CUSTOM_CATALOGUE_SKU)) {
     throw new Error(
-      `Malformed Effect Studio server payload: unexpected catalogue models ${unexpected.join(", ")}.`,
+      `Malformed Effect Studio server payload: missing catalogue model ${LEGACY_CUSTOM_CATALOGUE_SKU}.`,
     );
   }
-  for (const sku of MODEL_SKUS) {
-    if (!(sku in models)) {
-      throw new Error(
-        `Malformed Effect Studio server payload: missing catalogue model ${sku}.`,
+  return Object.fromEntries(
+    Object.entries(models).map(([key, catalogue]) => {
+      const model = boundedString(
+        key,
+        "catalogue model key",
+        MAX_IDENTIFIER_LENGTH,
       );
-    }
-  }
-  return {
-    H617A: decodeModelEffectCatalogue(
-      models.H617A,
-      "catalogue model H617A",
-      "H617A",
-      decodeContent,
-    ),
-    H617E: decodeModelEffectCatalogue(
-      models.H617E,
-      "catalogue model H617E",
-      "H617E",
-      decodeContent,
-    ),
-    H6199: decodeModelEffectCatalogue(
-      models.H6199,
-      "catalogue model H6199",
-      "H6199",
-      decodeContent,
-    ),
-  };
+      return [
+        model,
+        decodeModelEffectCatalogue(
+          catalogue,
+          `catalogue model ${model}`,
+          model,
+          decodeContent,
+        ),
+      ];
+    }),
+  );
 }
 
 function decodeModelEffectCatalogue(
   value: unknown,
   name: string,
-  expectedSku: ModelSku,
+  expectedSku: string,
   decodeContent: (value: unknown) => EffectContent,
 ): ModelEffectCatalogue {
   const catalogue = objectValue(value, name);
@@ -187,7 +136,11 @@ function decodeModelEffectCatalogue(
     `${name} support capabilities`,
   );
   const apply = objectValue(catalogue.apply, `${name} Apply capabilities`);
-  const sku = enumString(catalogue.sku, MODEL_SKUS, `${name} SKU`) as ModelSku;
+  const sku = boundedString(
+    catalogue.sku,
+    `${name} SKU`,
+    MAX_IDENTIFIER_LENGTH,
+  );
   if (sku !== expectedSku) {
     throw new Error(
       `Malformed Effect Studio server payload: ${name} is keyed as ${expectedSku} but declares ${sku}.`,
@@ -225,7 +178,6 @@ function decodeModelEffectCatalogue(
     video_modes: decodeModeOptions(
       catalogue.video_modes,
       `${name} video modes`,
-      VIDEO_MODE_IDS,
     ),
     templates: decodeCatalogueTemplates(
       catalogue.templates,
@@ -242,7 +194,6 @@ function decodeModelEffectCatalogue(
     workflows: decodeReleaseWorkflows(
       catalogue.workflows,
       `${name} release workflows`,
-      expectedSku,
     ),
     supports: {
       multi: capabilityValue(supports.multi, `${name} Multi support`),
@@ -302,7 +253,7 @@ function decodeModelEffectCatalogue(
 function decodeCatalogueTemplates(
   value: unknown,
   name: string,
-  model: ModelSku,
+  model: string,
   decodeContent: (value: unknown) => EffectContent,
 ): CatalogueTemplate[] {
   const templates = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map(
@@ -319,9 +270,8 @@ function decodeCatalogueTemplates(
         invalid(`${name}[${index}] content is not a supported built-in template`);
       }
       if (
-        ("model" in content && content.model !== model) ||
-        (content.kind === "h617a_painted" && !isH617xModel(model)) ||
-        (content.kind === "h617a_single" && !isH617xModel(model))
+        "model" in content &&
+        content.model !== model
       ) {
         invalid(`${name}[${index}] content does not target ${model}`);
       }
@@ -352,7 +302,6 @@ function decodeCatalogueTemplates(
 function decodeReleaseWorkflows(
   value: unknown,
   name: string,
-  model: ModelSku,
 ): ReleaseWorkflowCapability[] {
   const workflows = arrayValue(value, name, RELEASE_WORKFLOW_IDS.length).map(
     (item, index): ReleaseWorkflowCapability => {
@@ -382,17 +331,6 @@ function decodeReleaseWorkflows(
     },
   );
   requireUnique(workflows, (workflow) => workflow.id, `${name} IDs`);
-  const expected = MODEL_RELEASE_WORKFLOWS[model];
-  const actual = new Set(workflows.map((workflow) => workflow.id));
-  const missing = expected.filter((workflow) => !actual.has(workflow));
-  const unexpected = workflows
-    .map((workflow) => workflow.id)
-    .filter((workflow) => !expected.includes(workflow));
-  if (missing.length > 0 || unexpected.length > 0) {
-    throw new Error(
-      `Malformed Effect Studio server payload: ${name} does not match ${model}.`,
-    );
-  }
   return workflows;
 }
 
@@ -518,19 +456,16 @@ function decodePaletteDiyFamilies(
 function decodeModeOptions(
   value: unknown,
   name: string,
-  allowedIds?: readonly string[],
 ): EffectStudioModeOption[] {
   const modes = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map(
     (item, index) => {
       const mode = objectValue(item, `${name}[${index}]`);
       return {
-        id: allowedIds
-          ? enumString(mode.id, allowedIds, `${name}[${index}] ID`)
-          : boundedString(
-              mode.id,
-              `${name}[${index}] ID`,
-              MAX_IDENTIFIER_LENGTH,
-            ),
+        id: boundedString(
+          mode.id,
+          `${name}[${index}] ID`,
+          MAX_IDENTIFIER_LENGTH,
+        ),
         label: boundedString(
           mode.label,
           `${name}[${index}] label`,
@@ -546,7 +481,7 @@ function decodeModeOptions(
 function decodeWorkshopTemplates(
   value: unknown,
   name: string,
-  model: ModelSku,
+  model: string,
   decodeContent: (value: unknown) => EffectContent,
 ): WorkshopTemplate[] {
   const templates = arrayValue(value, name, MAX_JSON_COLLECTION_ITEMS).map(

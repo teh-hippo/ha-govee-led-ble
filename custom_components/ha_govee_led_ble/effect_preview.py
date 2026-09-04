@@ -19,6 +19,7 @@ from homeassistant.core import Event, HomeAssistant
 
 from .const import DOMAIN, protocol_model
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
+from .coordinator_status import ParsedMode
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
 from .effect_catalogue import (
     H6199_PALETTE_DIY_APPLY_CODE,
@@ -58,12 +59,20 @@ from .effect_runtime import (
     observable_signature_for_state,
     resolve_diy_code,
 )
-from .effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
-from .effect_scenes import ResolvedScene, resolve_scene, resolve_scene_application_body
+from .effect_scene_defaults import NativeSceneDefaultRepository
+from .effect_scenes import (
+    ResolvedScene,
+    async_delete_scene_defaults,
+    async_store_scene_default,
+    resolve_scene,
+    resolve_scene_application_body,
+    scene_default_for,
+)
 from .effect_template_defaults import CatalogueTemplateDefault, CatalogueTemplateDefaultRepository
 from .generated_protocol_adapter import build_power
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .native_scenes import encode_authored_scene_body, resolve_native_scene_body
+from .scenes import canonical_scene_key, scene_code_is_ambiguous
 
 PREVIEW_VERIFY_DELAY = 0.75
 PREVIEW_VERIFY_TIMEOUT = 4.0
@@ -499,10 +508,12 @@ class EffectPreviewManager:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
         resolved = resolve_scene(coordinator.model, scene_id, effect_id)
-        scene_default = self._scene_defaults.get(
+        scene_default = scene_default_for(
+            self._scene_defaults,
             config_entry_id,
-            scene_id,
-            effect_id,
+            coordinator.model,
+            resolved.key,
+            resolved.entry,
         )
         try:
             canonical_body, resolved_speed = resolve_scene_application_body(
@@ -893,6 +904,7 @@ class EffectPreviewManager:
             if request.scene is not None:
                 await coordinator.async_apply_native_scene(
                     request.scene.key,
+                    scene_entry=request.scene.entry,
                     speed_index=request.speed_index,
                     canonical_body=request.canonical_body,
                     before_write=writer.begin,
@@ -1009,11 +1021,17 @@ class EffectPreviewManager:
             return
 
         if request.item is not None and self._active_workspaces is not None:
-            signature = observable_signature_for_state(
-                coordinator,
-                mode=_active_mode_for_workspace(coordinator),
-                diy_code=coordinator.diy_code,
-                effect=coordinator.effect,
+            signature = (
+                f"scene-code:{compiled.diy_code}"
+                if isinstance(compiled, CompiledEffect)
+                and compiled.activation_mode is ActivationMode.SCENE
+                and compiled.diy_code is not None
+                else observable_signature_for_state(
+                    coordinator,
+                    mode=_active_mode_for_workspace(coordinator),
+                    diy_code=coordinator.diy_code,
+                    effect=coordinator.effect,
+                )
             )
             if signature is not None:
                 self._active_workspaces.set(
@@ -1163,21 +1181,21 @@ class EffectPreviewManager:
             )
         catalogue_body, catalogue_speed = resolve_native_scene_body(scene.entry)
         if canonical_body == catalogue_body and speed_index == catalogue_speed:
-            await self._scene_defaults.async_delete(
+            await async_delete_scene_defaults(
+                self._scene_defaults,
                 request.config_entry_id,
-                scene.entry.scene_id,
-                scene.entry.effect_id,
+                self._loaded_coordinator(request.config_entry_id).model,
+                scene,
             )
             return
-        await self._scene_defaults.async_set(
-            NativeSceneDefault(
-                config_entry_id=request.config_entry_id,
-                scene_id=scene.entry.scene_id,
-                effect_id=scene.entry.effect_id,
-                updated_at=request.updated_at,
-                canonical_body=canonical_body,
-                speed_index=speed_index,
-            )
+        await async_store_scene_default(
+            self._scene_defaults,
+            request.config_entry_id,
+            self._loaded_coordinator(request.config_entry_id).model,
+            scene,
+            updated_at=request.updated_at,
+            canonical_body=canonical_body,
+            speed_index=speed_index,
         )
 
     async def _async_begin_transmission(self, request: _PreviewRequest) -> None:
@@ -1657,7 +1675,9 @@ def _install_effect_state(coordinator: Any, compiled: CompiledEffect) -> None:
     if compiled.activation_packet is None:
         return
     if compiled.activation_mode is ActivationMode.SCENE:
+        coordinator.color_mode = ParsedMode.SCENE
         coordinator.effect = compiled.expected_effect
+        coordinator._scene_code = compiled.diy_code
         coordinator.diy_code = None
     else:
         coordinator.effect = None
@@ -1673,10 +1693,26 @@ def _verification_expectations(
     if not coordinator.profile.state_readable:
         return None
     if request.scene is not None:
-        return {"is_on": True, "effect": request.scene.key}
+        scene_expectations: dict[str, Any] = {
+            "is_on": True,
+            "scene_code": request.scene.entry.code,
+        }
+        if scene_code_is_ambiguous(coordinator.model, request.scene.entry.code):
+            scene_expectations["effect"] = canonical_scene_key(coordinator.model, request.scene.key)
+        return scene_expectations
     if isinstance(compiled, CompiledEffect):
         if compiled.activation_mode is ActivationMode.SCENE:
-            return {"is_on": True, "effect": compiled.expected_effect}
+            compiled_expectations: dict[str, Any] = {
+                "is_on": True,
+                "scene_code": compiled.diy_code,
+            }
+            if (
+                compiled.diy_code is not None
+                and compiled.expected_effect is not None
+                and scene_code_is_ambiguous(compiled.model, compiled.diy_code)
+            ):
+                compiled_expectations["effect"] = canonical_scene_key(compiled.model, compiled.expected_effect)
+            return compiled_expectations
         if compiled.content_kind == "workshop":
             return {"is_on": True, "unknown_scene_code": compiled.diy_code}
         if protocol_model(compiled.model) == "H617A":
