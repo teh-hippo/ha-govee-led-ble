@@ -52,6 +52,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command,
     parse_status,
 )
+from custom_components.ha_govee_led_ble.h6102_protocol import H6102RgbVariant
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -121,6 +122,42 @@ def h6199(hass):
         "H6199",
         configuration_url=_CONFIGURATION_URL,
     )
+
+
+@pytest.fixture
+def h6102(hass):
+    return GoveeBLECoordinator(
+        hass,
+        "44:55:66:77:88:99",
+        "H6102",
+        configuration_url=_CONFIGURATION_URL,
+    )
+
+
+def test_h6102_construction_uses_resolved_write_only_profile(h6102):
+    assert h6102.profile is MODEL_PROFILES["H6102"]
+    assert h6102.rgb_variant is None
+    assert h6102.firmware_source is None
+    assert h6102.capability_resolution_reason == "firmware_unknown"
+    assert h6102.configuration_url is None
+    assert h6102.effect_categories == frozenset()
+    assert h6102.update_interval is None
+
+
+def test_h6102_configured_firmware_enables_only_extended_rgb(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "44:55:66:77:88:99",
+        "H6102",
+        configuration_url=_CONFIGURATION_URL,
+        h6102_firmware="1.03.01",
+        h6102_firmware_source="configured",
+    )
+
+    assert coordinator.profile.supports_rgb
+    assert coordinator.rgb_variant is H6102RgbVariant.EXTENDED
+    assert coordinator.firmware_source == "configured"
+    assert coordinator.capability_resolution_reason is None
 
 
 @pytest.fixture

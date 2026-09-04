@@ -7,12 +7,14 @@ from dataclasses import dataclass
 from .const import get_profile
 from .generated_protocol_adapter import (
     build_colour_temperature,
+    build_h6102_extended_rgb,
     build_segment_colour,
     parse_command,
 )
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
 )
+from .h6102_protocol import H6102RgbVariant
 
 SEGMENT_COUNT = 15
 ALL_SEGMENTS: tuple[int, ...] = tuple(range(1, SEGMENT_COUNT + 1))
@@ -64,7 +66,18 @@ def build_segment_paint(
     return [build_segment_color(segments, red, green, blue, model) for segments, (red, green, blue) in groups]
 
 
-def build_color_rgb(red: int, green: int, blue: int, model: str = "H617A") -> bytes:
+def build_color_rgb(
+    red: int,
+    green: int,
+    blue: int,
+    model: str = "H617A",
+    *,
+    h6102_variant: H6102RgbVariant | None = None,
+) -> bytes:
+    if model == "H6102":
+        if h6102_variant is not H6102RgbVariant.EXTENDED:
+            raise ValueError("H6102 RGB requires the extended variant")
+        return build_h6102_extended_rgb(ALL_SEGMENTS_MASK, red, green, blue)
     return build_segment_colour(get_profile(model).whole_device_mask, red, green, blue, model)
 
 
@@ -112,6 +125,15 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
     generated = parse_command(packet, model)
     if generated is None:
         return None
+    if model == "H6102":
+        if generated.opcode.name != "mode":
+            return None
+        detail = generated.body
+        return ParsedStaticWrite(
+            operation=int.from_bytes(detail.operation),
+            segment_mask=int(detail.mask.bits),
+            rgb=(int(detail.rgb_direct.red), int(detail.rgb_direct.green), int(detail.rgb_direct.blue)),
+        )
     whole_device_mask = get_profile(model).whole_device_mask
     if model == "H6199":
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":

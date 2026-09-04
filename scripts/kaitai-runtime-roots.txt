@@ -1,6 +1,7 @@
 command_write
 diy_type03
 diy_type04
+speculative/h6102_command_write
 h6199_command_write
 h6199_effect_upload
 h6199_status_query
