@@ -23,12 +23,15 @@ import {
   type PaintedSegmentDraft,
 } from "./effect-editor-model";
 import type { SceneInitialSelection } from "./scene-browser";
-import type { StudioSection } from "./studio-navigation";
+import {
+  videoCatalogueTemplate,
+  videoCatalogueTemplates,
+  type StudioSection,
+} from "./studio-navigation";
 import type {
   CustomEffectCatalogue, DeviceCapabilities, DiyEffectFamily, EffectContent, EffectUserState, LibraryItem, LibrarySnapshot,
   LibrarySummary, HomeAssistant, ModelEffectCatalogue, ModelSku, PreviewStatus, RGB,
 } from "./types";
-import { isModelSku } from "./validation-constants";
 
 export type DeleteCandidate = Pick<LibrarySummary, "id" | "version" | "updated_at" | "name"> & {
   discardsOpenEdits?: boolean;
@@ -233,8 +236,7 @@ export class PanelModel {
   }
 
   public get selectedModel(): ModelSku | undefined {
-    const model = this.selectedDevice?.model;
-    return isModelSku(model) ? model : undefined;
+    return this.selectedDevice?.model;
   }
 
   public get showDeviceSelector(): boolean {
@@ -289,8 +291,23 @@ export class PanelModel {
   public get videoAvailable(): boolean {
     return (
       this.effectCategoryEnabled("video") &&
-      Boolean(this.modelCatalogue?.video_modes.length)
+      this.selectedDevice?.profiles.video !== "unsupported" &&
+      this.videoTemplates.length > 0
     );
+  }
+
+  public get videoTemplates() {
+    if (
+      !this.effectCategoryEnabled("video") ||
+      this.selectedDevice?.profiles.video === "unsupported"
+    ) {
+      return [];
+    }
+    return videoCatalogueTemplates(this.modelCatalogue);
+  }
+
+  public videoTemplate(mode: string) {
+    return videoCatalogueTemplate(this.modelCatalogue, mode);
   }
 
   public get customEffectsAvailable(): boolean {

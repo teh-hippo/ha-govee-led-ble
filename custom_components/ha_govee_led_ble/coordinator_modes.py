@@ -16,7 +16,7 @@ from .light_commands import (
 )
 from .music_commands import build_music_params
 from .native_scenes import build_native_scene_packets
-from .scenes import MODEL_SCENES
+from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,7 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     @property
     def scene_name_set(self) -> frozenset[str]:
-        return frozenset(MODEL_SCENES[self.model])
+        return frozenset(MODEL_SCENES.get(self.model, ())) if self.profile.supports_scenes else frozenset()
 
     @property
     def active_mode(self) -> str:
@@ -154,7 +154,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             return "off"
         if self.diy_code is not None:
             return "custom"
-        if self.effect is not None:
+        if self.effect is not None or (self.color_mode is ParsedMode.SCENE and self._scene_code is not None):
             return "scene"
         if self.music_mode not in (None, "off"):
             return "music"
@@ -166,6 +166,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self,
         scene_name: str,
         *,
+        scene_entry: SceneEntry | None = None,
         speed_index: int | None = None,
         canonical_body: bytes | None = None,
         writer: Callable[[bytes], Awaitable[None]] | None = None,
@@ -177,6 +178,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         async with async_control_intent(self, intent):
             await self._async_apply_native_scene_locked(
                 scene_name,
+                scene_entry=scene_entry,
                 speed_index=speed_index,
                 canonical_body=canonical_body,
                 writer=writer,
@@ -190,6 +192,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         self,
         scene_name: str,
         *,
+        scene_entry: SceneEntry | None = None,
         speed_index: int | None = None,
         canonical_body: bytes | None = None,
         writer: Callable[[bytes], Awaitable[None]] | None = None,
@@ -198,7 +201,13 @@ class _ActiveModeMixin(_CoordinatorBase):
         verify: bool,
         intent: ControlIntent,
     ) -> None:
-        scene = MODEL_SCENES[self.model].get(scene_name)
+        if not self.profile.supports_scenes:
+            raise ValueError(f"{self.model} does not support native scenes")
+        if scene_entry is None:
+            scene_name = canonical_scene_key(self.model, scene_name)
+            scene = MODEL_SCENES[self.model].get(scene_name)
+        else:
+            scene = scene_entry
         if scene is None:
             raise ValueError(f"unknown native scene {scene_name!r}")
         packets = build_native_scene_packets(
@@ -240,11 +249,13 @@ class _ActiveModeMixin(_CoordinatorBase):
         await apply()
         if power_in_sequence:
             self.is_on = True
-        if verify and self.profile.state_readable and not await self.refresh_state(expected_effect=scene_name):
+        if verify and self.profile.state_readable and not await self.refresh_state(expected_scene_code=scene.code):
             await apply()
-            if not await self.refresh_state(expected_effect=scene_name):
+            if not await self.refresh_state(expected_scene_code=scene.code):
                 raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
+        self.color_mode = ParsedMode.SCENE
         self.effect = scene_name
+        self._scene_code = scene.code
         self.diy_code = None
         self.music_mode = self.video_mode = "off"
         self.async_set_updated_data(self.data or {})

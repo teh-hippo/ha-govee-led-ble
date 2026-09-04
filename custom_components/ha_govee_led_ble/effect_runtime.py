@@ -61,6 +61,7 @@ from .native_profile_controls import (
     apply_relative_brightness,
     apply_white_balance,
 )
+from .scenes import canonical_scene_key, scene_code_is_ambiguous
 
 ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
@@ -381,7 +382,10 @@ class EffectDeploymentEngine:
                         observed_at=record.updated_at,
                         refreshed=refreshed,
                     )
-                    prior_state = self._capture_prior_state(coordinator)
+                    prior_state = self._capture_prior_state(
+                        coordinator,
+                        config_entry_id=current.config_entry_id,
+                    )
                     next_record = replace(current, prior_state=prior_state)
                     await self._deployments.async_put(next_record, expected_version=None)
                     current = next_record
@@ -776,12 +780,23 @@ class EffectDeploymentEngine:
     def _capture_prior_state(
         self,
         coordinator: GoveeBLECoordinator,
+        *,
+        config_entry_id: str,
     ) -> PriorControlState:
         capture = getattr(coordinator, "capture_effect_control_state", None)
         if capture is not None:
             captured = capture()
             if not isinstance(captured, PriorControlState):
                 raise TypeError("coordinator returned an invalid prior control state")
+            observed = self._device_cache.get(config_entry_id) if self._device_cache is not None else None
+            if captured.scene_code is not None and observed is not None and observed.matched_operation_id is not None:
+                matched = self._deployments.get_optional(observed.matched_operation_id)
+                if (
+                    matched is not None
+                    and matched.target_mode == ActivationMode.SCENE.value
+                    and matched.diy_code == captured.scene_code
+                ):
+                    captured = replace(captured, effect=matched.target_effect)
             return captured
         return PriorControlState(
             mode=_coordinator_mode(coordinator),
@@ -790,6 +805,7 @@ class EffectDeploymentEngine:
             rgb_color=getattr(coordinator, "rgb_color", (255, 255, 255)),
             color_temp_kelvin=getattr(coordinator, "color_temp_kelvin", None),
             effect=getattr(coordinator, "effect", None),
+            scene_code=getattr(coordinator, "scene_code", None),
             diy_code=coordinator.diy_code,
             music_mode=getattr(coordinator, "music_mode", "off"),
             video_mode=getattr(coordinator, "video_mode", "off"),
@@ -840,20 +856,50 @@ class EffectDeploymentEngine:
     ) -> ObservedDeviceState:
         mode = _coordinator_mode(coordinator)
         previous = self._device_cache.get(config_entry_id) if self._device_cache is not None else None
+        scene_code = getattr(coordinator, "scene_code", None)
         raw_scene_code = getattr(coordinator, "unknown_scene_code", None)
         diy_code = coordinator.diy_code if mode == "custom" else None
         effect = coordinator.effect if mode == "scene" else None
         observable_signature = observable_signature_for_coordinator(coordinator)
+        observable_signatures = observable_signatures_for_coordinator(coordinator)
         workspace = self._active_workspaces.get(config_entry_id) if self._active_workspaces is not None else None
         workspace_matches = (
             workspace is not None
             and workspace.model == coordinator.model
-            and workspace.observable_signature == observable_signature
+            and workspace.observable_signature in observable_signatures
         )
         if workspace_matches and raw_scene_code is not None:
             mode = "custom"
             diy_code = raw_scene_code
             effect = None
+        if scene_code is not None and matched_record is None:
+            latest_scene = self._deployments.latest_for_scene_code(config_entry_id, scene_code)
+            if (
+                latest_scene is not None
+                and latest_scene.phase is DeploymentPhase.CONFIRMED
+                and _scene_record_matches(coordinator, latest_scene, scene_code)
+            ):
+                matched_record = latest_scene
+        if matched_record is not None and matched_record.target_mode == ActivationMode.SCENE.value:
+            observable_signature = f"scene-code:{scene_code}" if scene_code is not None else observable_signature
+            if (
+                workspace is not None
+                and workspace.model == coordinator.model
+                and matched_record.target_effect is not None
+                and workspace.observable_signature
+                in {
+                    observable_signature,
+                    f"scene:{matched_record.target_effect}",
+                }
+            ):
+                workspace_matches = True
+                if (
+                    self._active_workspaces is not None
+                    and observable_signature is not None
+                    and workspace.observable_signature != observable_signature
+                ):
+                    workspace = replace(workspace, observable_signature=observable_signature)
+                    self._active_workspaces.set(workspace)
         if raw_scene_code is not None:
             if matched_record is None and not workspace_matches:
                 latest = self._deployments.latest_for_diy_code(config_entry_id, raw_scene_code)
@@ -866,7 +912,7 @@ class EffectDeploymentEngine:
             latest = self._deployments.latest_for_diy_code(config_entry_id, diy_code)
             if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
                 matched_record = latest
-        if effect is not None and matched_record is None and not workspace_matches:
+        if scene_code is None and effect is not None and matched_record is None and not workspace_matches:
             latest = self._deployments.latest_for_effect(config_entry_id, effect)
             if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
                 matched_record = latest
@@ -883,7 +929,7 @@ class EffectDeploymentEngine:
             confidence = workspace.confidence
         elif profile_match and matched_record is not None:
             confidence = matched_record.verification_confidence
-        elif diy_code is not None or effect is not None:
+        elif diy_code is not None or effect is not None or scene_code is not None:
             confidence = (
                 ObservationConfidence.ACTIVATION_MATCH if matched_record is not None else ObservationConfidence.UNKNOWN
             )
@@ -998,6 +1044,9 @@ def _active_workspace_content(
 def observable_signature_for_coordinator(
     coordinator: GoveeBLECoordinator,
 ) -> str | None:
+    scene_code = getattr(coordinator, "scene_code", None)
+    if scene_code is not None and coordinator.effect is not None:
+        return f"scene-code:{scene_code}"
     unknown_scene_code = coordinator.unknown_scene_code
     if unknown_scene_code is not None:
         return f"custom:{unknown_scene_code}"
@@ -1007,6 +1056,21 @@ def observable_signature_for_coordinator(
         diy_code=coordinator.diy_code,
         effect=coordinator.effect,
     )
+
+
+def observable_signatures_for_coordinator(
+    coordinator: GoveeBLECoordinator,
+) -> frozenset[str]:
+    signatures = {
+        signature
+        for signature in (
+            observable_signature_for_coordinator(coordinator),
+            (f"scene-code:{coordinator.scene_code}" if getattr(coordinator, "scene_code", None) is not None else None),
+            f"scene:{coordinator.effect}" if coordinator.effect is not None else None,
+        )
+        if signature is not None
+    }
+    return frozenset(signatures)
 
 
 def _coordinator_mode(coordinator: GoveeBLECoordinator) -> str:
@@ -1099,5 +1163,24 @@ def _activation_matches(
     if not coordinator.is_on:
         return False
     if record.target_mode == ActivationMode.SCENE.value:
+        scene_code = getattr(coordinator, "scene_code", None)
+        if scene_code is not None:
+            return _scene_record_matches(coordinator, record, scene_code)
         return record.target_effect is not None and coordinator.effect == record.target_effect
     return coordinator.diy_code == record.diy_code or coordinator.unknown_scene_code == record.diy_code
+
+
+def _scene_record_matches(
+    coordinator: GoveeBLECoordinator,
+    record: DeploymentRecord,
+    scene_code: int,
+) -> bool:
+    if record.diy_code != scene_code:
+        return False
+    if not scene_code_is_ambiguous(coordinator.model, scene_code):
+        return True
+    return (
+        record.target_effect is not None
+        and coordinator.effect is not None
+        and canonical_scene_key(coordinator.model, record.target_effect) == coordinator.effect
+    )

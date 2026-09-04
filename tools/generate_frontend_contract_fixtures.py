@@ -11,6 +11,7 @@ from uuid import UUID
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.effect_catalogue import (
+    MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
     custom_effect_catalogue_payload,
 )
@@ -54,7 +55,7 @@ from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = REPO_ROOT / "frontend" / "tests" / "fixtures" / "backend-contracts.json"
-MODELS = ("H617A", "H617E", "H6199")
+MODELS = tuple(MODEL_EFFECT_CATALOGUES)
 TIMESTAMP = "2026-08-17T00:00:00Z"
 ITEM_ID = UUID("00000000-0000-4000-8000-000000000001")
 DEPLOYMENT_ID = UUID("00000000-0000-4000-8000-000000000003")

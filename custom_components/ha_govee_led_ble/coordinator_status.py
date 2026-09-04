@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, cast
 
-from .const import MUSIC_MODE_SLUGS
+from .const import MUSIC_MODE_SLUGS, ReadDomain
 from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
 from .scenes import MODEL_SCENES
 
@@ -15,18 +15,7 @@ _SCENE_EFFECT_BY_MODEL_ID = {
 _RHYTHM_MODE_ID = MUSIC_MODE_SLUGS["rhythm"]
 
 
-class StatusDomain(Enum):
-    POWER = auto()
-    BRIGHTNESS = auto()
-    COLOUR_MODE = auto()
-    FIRMWARE = auto()
-    HARDWARE = auto()
-    SUBORDINATE_20 = auto()
-    SUBORDINATE_21 = auto()
-    DISPLAY_SETTING = auto()
-    RELATIVE_BRIGHTNESS = auto()
-    SEGMENTS = auto()
-    OTHER = auto()
+StatusDomain = ReadDomain
 
 
 _STATUS_DOMAIN_NAMES = {
@@ -145,7 +134,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             scene_code = int(body.detail.scene_id)
             return ParsedColorModeResponse(
                 mode=ParsedMode.SCENE,
-                effect=_SCENE_EFFECT_BY_MODEL_ID["H6199"].get(scene_code),
+                effect=_SCENE_EFFECT_BY_MODEL_ID.get(model, {}).get(scene_code),
                 scene_code=scene_code,
             )
         if mode_name == "static_colour":
@@ -156,7 +145,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
         scene_code = int(body.mode_body.scene_id)
         return ParsedColorModeResponse(
             mode=ParsedMode.SCENE,
-            effect=_SCENE_EFFECT_BY_MODEL_ID["H617A"].get(scene_code),
+            effect=_SCENE_EFFECT_BY_MODEL_ID.get(model, {}).get(scene_code),
             scene_code=scene_code,
         )
     if mode_name == "diy":

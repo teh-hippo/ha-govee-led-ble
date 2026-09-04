@@ -64,6 +64,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             self,
             *,
             expected_effect: str | None = None,
+            expected_scene_code: int | None = None,
             expected_on: bool | None = None,
         ) -> bool: ...
 

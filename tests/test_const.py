@@ -1,3 +1,5 @@
+import pytest
+
 from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_FAMILIES,
@@ -5,6 +7,8 @@ from custom_components.ha_govee_led_ble.const import (
     MODEL_PROFILES,
     UNSUPPORTED_PROFILE,
     ModelProfile,
+    ReadDomain,
+    SupportQuality,
     always_include_custom_effects_from_options,
     default_effect_families,
     effect_families_from_options,
@@ -19,6 +23,8 @@ from custom_components.ha_govee_led_ble.const import (
 def test_segment_count_and_supports_segments():
     assert MODEL_PROFILES["H617A"].segment_count == 15
     assert MODEL_PROFILES["H6199"].segment_count == 15
+    assert MODEL_PROFILES["H617A"].segment_group_count == 5
+    assert MODEL_PROFILES["H6199"].segment_group_count == 4
     assert MODEL_PROFILES["H617A"].supports_segments
     # Both models paint segments. The H6199 was gated off until captured app writes on it were
     # reproduced byte for byte, whole-strip and per-segment, including the union frame that proves
@@ -31,17 +37,22 @@ def test_supports_segments_defaults_false():
     assert not ModelProfile("x").supports_segments
 
 
-def test_h617a_and_h617e_share_complete_feature_profile():
-    profile = MODEL_PROFILES["H617A"]
-    assert MODEL_PROFILES["H617E"] is profile
-    assert profile.supports_scenes
-    assert profile.supports_music_mode
-    assert len(profile.music_modes) == 11
-    assert profile.segment_count == 15
-    assert profile.supports_segments
-    assert profile.supports_advanced_effects
-    assert profile.supports_multi_layered_effects
-    assert profile.connection_idle_timeout == 3.0
+def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
+    h617a = MODEL_PROFILES["H617A"]
+    h617e = MODEL_PROFILES["H617E"]
+    assert h617e is not h617a
+    assert h617e.name == "H617E LED Strip"
+    assert h617e.support_quality is SupportQuality.COMPATIBLE
+    assert h617e.scene_catalogue_sku == "H617E"
+    assert h617e.read_domains == h617a.read_domains
+    assert h617e.supports_scenes
+    assert h617e.supports_music_mode
+    assert len(h617e.music_modes) == 11
+    assert h617e.segment_count == 15
+    assert h617e.supports_segments
+    assert h617e.supports_advanced_effects
+    assert h617e.supports_multi_layered_effects
+    assert h617e.connection_idle_timeout == 3.0
     assert resolve_model("H617E") == "H617E"
     assert protocol_model("H617E") == "H617A"
     assert wire_model("H617E") == "H617A"
@@ -49,7 +60,15 @@ def test_h617a_and_h617e_share_complete_feature_profile():
 
 def test_h6076_profile_is_basic_and_fail_closed():
     profile = MODEL_PROFILES["H6076"]
+    assert profile.support_quality is SupportQuality.PARTIAL
     assert profile.state_readable
+    assert profile.read_domains == {
+        ReadDomain.POWER,
+        ReadDomain.BRIGHTNESS,
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+    }
+    assert profile.setup_required_read_domains == {ReadDomain.POWER, ReadDomain.BRIGHTNESS}
     assert profile.supports_rgb and profile.supports_color_temperature
     assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2700, 6500)
     assert not profile.supports_color_mode_readback
@@ -60,6 +79,11 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert profile.whole_device_mask == 0x007F
     assert wire_model("H6076") == "H617A"
     assert protocol_model("H6076") == "H6076"
+
+
+def test_setup_required_domains_must_be_readable():
+    with pytest.raises(ValueError, match="setup-required"):
+        ModelProfile("x", setup_required_read_domains=frozenset({ReadDomain.POWER}))
 
 
 def test_unknown_models_fail_closed():

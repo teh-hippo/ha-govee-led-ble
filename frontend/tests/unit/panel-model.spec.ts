@@ -16,7 +16,6 @@ import {
 } from "../../src/studio-navigation";
 import {
   blankPainted,
-  blankVideoProfile,
   serialiseEditable,
 } from "../../src/effect-editor-model";
 import { blankAdvancedContent } from "../../src/advanced-effect-model";
@@ -32,6 +31,7 @@ import type {
   MusicProfileContent,
   PaintedContent,
   PaletteDiyEffectContent,
+  VideoProfileContent,
 } from "../../src/types";
 
 function device(
@@ -92,13 +92,36 @@ function painted(): PaintedContent {
   };
 }
 
+function videoProfile(
+  model: ModelSku,
+  mode: string,
+): VideoProfileContent {
+  return {
+    kind: "video_profile",
+    model,
+    mode,
+    full_screen: true,
+    saturation: 50,
+    sound_effects: false,
+    sound_effects_softness: 50,
+    white_balance_position: 17,
+    relative_brightness: {
+      left: 100,
+      top: 100,
+      right: 100,
+      bottom: 100,
+    },
+    blank_screen: false,
+  };
+}
+
 function templateDefaultDetail(
   templateId: string,
   model: ModelSku = "H6199",
 ): CatalogueTemplateDefaultDetail {
   const content =
     templateId.startsWith("template:video:")
-      ? blankVideoProfile(templateId.endsWith(":game") ? "game" : "movie")
+      ? videoProfile(model, templateId.endsWith(":game") ? "game" : "movie")
       : templateId.startsWith("template:music:")
         ? {
             kind: "music_profile" as const,
@@ -150,6 +173,20 @@ function h6199Catalogue(): ModelEffectCatalogue {
       { id: "movie", label: "Movie" },
       { id: "game", label: "Game" },
     ],
+    templates: [
+      {
+        id: "template:video:movie",
+        label: "Movie",
+        category: "video",
+        content: videoProfile("H6199", "movie"),
+      },
+      {
+        id: "template:video:game",
+        label: "Game",
+        category: "video",
+        content: videoProfile("H6199", "game"),
+      },
+    ],
     workshop_templates: [],
     workflows: [],
     supports: {
@@ -184,6 +221,30 @@ function installH6199Catalogue(model: PanelModel): void {
       H617A: { ...catalogue, sku: "H617A" },
       H617E: { ...catalogue, sku: "H617E" },
       H6199: catalogue,
+    },
+  } as CustomEffectCatalogue;
+}
+
+function installFutureCatalogue(
+  model: PanelModel,
+  sku: ModelSku,
+  musicSensitivityMaximum: number,
+): void {
+  const catalogue = structuredClone(h6199Catalogue());
+  catalogue.sku = sku;
+  catalogue.limits.music_sensitivity_max = musicSensitivityMaximum;
+  for (const template of catalogue.templates ?? []) {
+    if ("model" in template.content) {
+      template.content.model = sku;
+    }
+  }
+  model.customCatalogue = {
+    ...catalogue,
+    schema_version: 8,
+    sku: "H617A",
+    models: {
+      H617A: { ...catalogue, sku: "H617A" },
+      [sku]: catalogue,
     },
   } as CustomEffectCatalogue;
 }
@@ -746,6 +807,7 @@ test("pending transitions save named new drafts directly", async () => {
   model.devices = [device("entry-a", "H617A")];
   model.devices[0].custom_effects.advanced = "supported";
   model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
   const { controller, editorController } = panelControllerHarness(model);
 
   editorController.newEffect("advanced");
@@ -971,6 +1033,7 @@ test("busy pending-transition saves ignore cancellation until persistence finish
   model.devices = [device("entry-a", "H617A")];
   model.devices[0].custom_effects.advanced = "supported";
   model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
   const { controller, editorController, modal } =
     panelControllerHarness(model);
   editorController.newEffect("advanced");
@@ -1017,6 +1080,7 @@ test("pending-transition navigation preserves a standalone Live apply error", as
   selected.custom_effects.advanced = "supported";
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
+  installH6199Catalogue(model);
   const { controller, editorController } = panelControllerHarness(model);
   editorController.newEffect("advanced");
   model.name = "Named Advanced effect";
@@ -1363,6 +1427,7 @@ test("Reset restores a new effect name and blank content", () => {
   model.devices = [device("entry-a", "H617A")];
   model.devices[0].custom_effects.advanced = "supported";
   model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
   const controller = editor(model);
 
   controller.newEffect("advanced");
@@ -1392,6 +1457,7 @@ test("name-only Reset restores a new draft without scheduling preview", () => {
   model.devices = [device("entry-a", "H617A")];
   model.devices[0].custom_effects.advanced = "supported";
   model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
   const preview = new PanelPreviewController(model);
   const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
   const modal = new PanelModalController(model, {
@@ -1422,6 +1488,7 @@ test("Advanced waits for New or a saved effect instead of opening a redundant st
   model.devices = [device("entry-a", "H617A")];
   model.devices[0].custom_effects.advanced = "supported";
   model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
   const controller = editor(model);
   const transitionEpoch = controller.beginTransition();
 
@@ -1438,6 +1505,7 @@ test("explicit New Reset restores its name while layered scene Reset retains its
   model.devices = [device("entry-a", "H617A")];
   model.devices[0].custom_effects.advanced = "supported";
   model.selectedDeviceId = "entry-a";
+  installH6199Catalogue(model);
   const controller = editor(model);
 
   controller.newEffect("advanced");
@@ -1548,6 +1616,37 @@ test("category transitions stay blank without a matching active item", async () 
   expect(model.name).toBe("");
   await controller.selectSection("video");
   expect(model.name).toBe("");
+});
+
+test("future model profile defaults come from catalogue limits and templates", () => {
+  const selected = device("entry-a", "H7000");
+  selected.profiles = { music: "supported", video: "supported" };
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.customEffectCategory = "music";
+  installFutureCatalogue(model, selected.model, 87);
+  const controller = editor(model);
+
+  controller.newCustomEffect("music");
+  expect(model.content).toMatchObject({
+    kind: "music_profile",
+    model: "H7000",
+    sensitivity: 87,
+  });
+
+  model.section = "video";
+  controller.openVideoTemplate("movie", "Movie", false);
+  expect(model.editorSource).toMatchObject({
+    kind: "catalogue",
+    selectionIdentity: "template:video:movie",
+  });
+  expect(model.content).toMatchObject({
+    kind: "video_profile",
+    model: "H7000",
+    mode: "movie",
+  });
 });
 
 test("automatic restoration selects only a matching fresh native category", async () => {
@@ -1994,6 +2093,7 @@ test("painted workspace restoration keeps variation content under the fixed Pain
     { id: "clockwise", label: "Clockwise" },
     { id: "twinkle", label: "Twinkle" },
   ];
+  model.customCatalogue!.models.H617A.apply.painted = "supported";
   const { controller } = panelControllerHarness(model);
 
   await controller.openInitialContext();
@@ -2880,7 +2980,7 @@ test("Save As keeps video profile copies in the Video section", async () => {
     version: 2,
     updated_at: "2026-08-18T00:00:00Z",
     name: "Cinema",
-    content: blankVideoProfile("movie"),
+    content: videoProfile("H6199", "movie"),
     content_hash: "video-hash",
     origin: { kind: "authored", source_id: null },
     extensions: {},
@@ -3266,6 +3366,7 @@ test("automatic save flushes before navigation and exposes failures to the trans
   model.customCatalogue!.models.H617A.painted_effects = [
     { id: "cycle", label: "Cycle" },
   ];
+  model.customCatalogue!.models.H617A.apply.painted = "supported";
   const { controller, editorController, modal } = panelControllerHarness(model);
   const saved = item(painted());
   editorController.applyLibraryItem(saved);
@@ -3383,6 +3484,7 @@ test("Live-off No discards local saved edits and reopens the clean active item",
   model.customCatalogue!.models.H617A.painted_effects = [
     { id: "cycle", label: "Cycle" },
   ];
+  model.customCatalogue!.models.H617A.apply.painted = "supported";
   const { controller, editorController } = panelControllerHarness(model);
   editorController.applyLibraryItem(saved);
   editorController.updatePaintedContent({ speed: 92 }, "committed");
@@ -3449,6 +3551,7 @@ test("device, item, scene, and New transitions share the pre-mutation guard", as
   model.customCatalogue!.models.H617A.painted_effects = [
     { id: "cycle", label: "Cycle" },
   ];
+  model.customCatalogue!.models.H617A.apply.painted = "supported";
   const { controller, editorController } = panelControllerHarness(model);
   const saved = item(painted());
   editorController.applyLibraryItem(saved);
@@ -3499,7 +3602,7 @@ test("video template selection is guarded and restores focus on Cancel", async (
       .mockImplementation(async (_deviceId: string, templateId: string) =>
         templateDefaultDetail(templateId, "H6199")),
   } as unknown as EffectStudioApi;
-  const content = blankVideoProfile("movie");
+  const content = videoProfile("H6199", "movie");
   const saved: LibraryItem = {
     schema_version: 1,
     id: "saved-video",
@@ -3523,7 +3626,7 @@ test("video template selection is guarded and restores focus on Cancel", async (
   } as unknown as HTMLElement;
   const epoch = model.editorTransitionEpoch;
 
-  await controller.selectVideoTemplate("game", "Game", returnFocus);
+  await controller.selectVideoTemplate("template:video:game", "Game", returnFocus);
 
   expect(model.pendingTransitionDialog?.primaryLabel).toBe("Save");
   expect(model.editorTransitionEpoch).toBe(epoch);
@@ -3537,7 +3640,7 @@ test("video template selection is guarded and restores focus on Cancel", async (
   await Promise.resolve();
   expect(focus).toHaveBeenCalledOnce();
 
-  await controller.selectVideoTemplate("game", "Game", returnFocus);
+  await controller.selectVideoTemplate("template:video:game", "Game", returnFocus);
   await controller.declinePendingTransition();
   expect(model.editorSource.kind).toBe("catalogue");
   expect(model.templateSelection).toBe("template:video:game");

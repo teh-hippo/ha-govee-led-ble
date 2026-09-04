@@ -47,7 +47,11 @@ from .effect_compiler import CompiledMusicProfile, CompiledVideoProfile, compile
 from .effect_deployments import DeploymentRecord
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
 from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
-from .effect_runtime import async_apply_compiled_profile, observable_signature_for_coordinator
+from .effect_runtime import (
+    async_apply_compiled_profile,
+    observable_signatures_for_coordinator,
+)
+from .effect_scenes import scene_default_for
 from .effect_selector import (
     EffectSelectorEntry,
     effect_selector_entries,
@@ -349,10 +353,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         hint = observed.active_effect if observed is not None else None
         if hint is None or hint.source_kind != "saved_effect" or hint.item_id is None:
             return None
-        observable_signature = observable_signature_for_coordinator(self.coordinator)
         if self._matching_active_workspace() is not None:
             return None
-        if hint.observable_signature != observable_signature:
+        if hint.observable_signature not in observable_signatures_for_coordinator(self.coordinator):
             return None
         item = next(
             (
@@ -382,11 +385,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return None
         active_workspaces = getattr(self._effect_backend, "active_workspaces", None)
         workspace = active_workspaces.get(self._config_entry_id) if active_workspaces is not None else None
-        observable_signature = observable_signature_for_coordinator(self.coordinator)
+        observable_signatures = observable_signatures_for_coordinator(self.coordinator)
         if (
             workspace is None
             or workspace.model != self.coordinator.model
-            or workspace.observable_signature != observable_signature
+            or workspace.observable_signature not in observable_signatures
         ):
             return None
         return workspace
@@ -598,10 +601,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if selected is not None and selected.source == "scene":
             scene = MODEL_SCENES[coordinator.model][selected.value]
             scene_default = (
-                self._effect_backend.scene_defaults.get(
+                scene_default_for(
+                    self._effect_backend.scene_defaults,
                     self._config_entry_id,
-                    scene.scene_id,
-                    scene.effect_id,
+                    coordinator.model,
+                    selected.value,
+                    scene,
                 )
                 if self._effect_backend is not None and self._config_entry_id is not None
                 else None

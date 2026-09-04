@@ -1,5 +1,6 @@
 """Native scene editor contracts."""
 
+import asyncio
 import base64
 import binascii
 from dataclasses import replace
@@ -13,10 +14,13 @@ from homeassistant.core import HomeAssistant
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_scenes import (
     async_apply_scene,
+    async_delete_scene_defaults,
     async_reset_scene_default,
     async_set_scene_default,
+    async_store_scene_default,
     resolve_scene,
     scene_catalogue_payload,
+    scene_default_for,
     scene_detail_payload,
 )
 from custom_components.ha_govee_led_ble.native_scenes import resolve_native_scene_body
@@ -40,6 +44,146 @@ def test_catalogue_and_identity_errors() -> None:
         resolve_scene("H617A", -1, -1)
 
     assert scene_catalogue_payload("H6199")["enabled"] is True
+    assert scene_catalogue_payload("H6076")["enabled"] is False
+
+
+def test_h617e_legacy_scene_identity_preserves_its_original_metadata() -> None:
+    legacy = MODEL_SCENES["H617A"]["sunrise"]
+
+    resolved = resolve_scene("H617E", legacy.scene_id, legacy.effect_id)
+    detail = scene_detail_payload("H617E", legacy.scene_id, legacy.effect_id)
+
+    assert resolved.entry == legacy
+    content = cast(dict[str, Any], detail["content"])
+    assert content["template"] == {
+        "sku": "H617E",
+        "scene_id": legacy.scene_id,
+        "effect_id": legacy.effect_id,
+        "catalogue_schema_version": 1,
+    }
+
+
+async def test_h617e_exact_scene_finds_a_legacy_saved_default() -> None:
+    legacy = MODEL_SCENES["H617A"]["sunrise"]
+    exact = MODEL_SCENES["H617E"]["sunrise"]
+    resolved = resolve_scene("H617E", exact.scene_id, exact.effect_id)
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await repository.async_set(
+        NativeSceneDefault(
+            config_entry_id="entry-a",
+            scene_id=legacy.scene_id,
+            effect_id=legacy.effect_id,
+            updated_at=TIMESTAMP,
+            canonical_body=b"\x01",
+        )
+    )
+
+    migrated = scene_default_for(
+        repository,
+        "entry-a",
+        "H617E",
+        resolved.key,
+        resolved.entry,
+    )
+
+    assert migrated is not None
+    assert (migrated.scene_id, migrated.effect_id) == (exact.scene_id, exact.effect_id)
+    assert migrated.canonical_body == b"\x01"
+
+
+async def test_h617e_legacy_scene_finds_and_deletes_an_exact_saved_default() -> None:
+    legacy = MODEL_SCENES["H617A"]["aurora"]
+    exact = MODEL_SCENES["H617E"]["aurora-a"]
+    resolved = resolve_scene("H617E", legacy.scene_id, legacy.effect_id)
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await repository.async_set(
+        NativeSceneDefault(
+            config_entry_id="entry-a",
+            scene_id=exact.scene_id,
+            effect_id=exact.effect_id,
+            updated_at=TIMESTAMP,
+            canonical_body=b"\x01",
+        )
+    )
+
+    migrated = scene_default_for(repository, "entry-a", "H617E", resolved.key, resolved.entry)
+
+    assert migrated is not None
+    assert migrated.canonical_body == b"\x01"
+    await async_delete_scene_defaults(repository, "entry-a", "H617E", resolved)
+    assert repository.get("entry-a", exact.scene_id, exact.effect_id) is None
+
+
+async def test_h617e_alias_default_replacement_is_atomic() -> None:
+    legacy = MODEL_SCENES["H617A"]["aurora"]
+    exact = MODEL_SCENES["H617E"]["aurora-a"]
+    legacy_resolved = resolve_scene("H617E", legacy.scene_id, legacy.effect_id)
+    exact_resolved = resolve_scene("H617E", exact.scene_id, exact.effect_id)
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+
+    await asyncio.gather(
+        async_store_scene_default(
+            repository,
+            "entry-a",
+            "H617E",
+            legacy_resolved,
+            updated_at=TIMESTAMP,
+            canonical_body=b"\x01",
+            speed_index=None,
+        ),
+        async_store_scene_default(
+            repository,
+            "entry-a",
+            "H617E",
+            exact_resolved,
+            updated_at=TIMESTAMP,
+            canonical_body=b"\x02",
+            speed_index=None,
+        ),
+    )
+
+    values = (
+        repository.get("entry-a", legacy.scene_id, legacy.effect_id),
+        repository.get("entry-a", exact.scene_id, exact.effect_id),
+    )
+    assert sum(value is not None for value in values) == 1
+
+
+async def test_h617e_legacy_default_is_normalised_and_deleted_with_the_exact_scene() -> None:
+    key, legacy = next(
+        (key, entry)
+        for key, entry in MODEL_SCENES["H617A"].items()
+        if entry.speed is not None and key in MODEL_SCENES["H617E"] and MODEL_SCENES["H617E"][key].speed is None
+    )
+    exact = MODEL_SCENES["H617E"][key]
+    assert legacy.speed is not None
+    resolved = resolve_scene("H617E", exact.scene_id, exact.effect_id)
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    await repository.async_set(
+        NativeSceneDefault(
+            config_entry_id="entry-a",
+            scene_id=legacy.scene_id,
+            effect_id=legacy.effect_id,
+            updated_at=TIMESTAMP,
+            canonical_body=b"\x01",
+            speed_index=legacy.speed.default_index,
+        )
+    )
+
+    migrated = scene_default_for(repository, "entry-a", "H617E", resolved.key, resolved.entry)
+
+    assert migrated is not None
+    assert (migrated.scene_id, migrated.effect_id, migrated.speed_index) == (
+        exact.scene_id,
+        exact.effect_id,
+        None,
+    )
+    await async_delete_scene_defaults(repository, "entry-a", "H617E", resolved)
+    assert repository.get("entry-a", legacy.scene_id, legacy.effect_id) is None
 
 
 def test_layered_scene_detail_decodes_strict_base64_template(monkeypatch) -> None:
@@ -185,6 +329,7 @@ async def test_scene_without_speed_uses_coordinator_primitive(
     assert speed_index is None
     coordinator.async_apply_native_scene.assert_awaited_once_with(
         resolved.key,
+        scene_entry=resolved.entry,
         speed_index=None,
         canonical_body=base64.b64decode(scene.param, validate=True) if scene.param else None,
     )
@@ -227,6 +372,7 @@ async def test_scene_application_uses_the_stored_device_default(
     assert applied_speed == 0
     coordinator.async_apply_native_scene.assert_awaited_once_with(
         resolved.key,
+        scene_entry=resolved.entry,
         speed_index=0,
         canonical_body=body,
     )
@@ -238,7 +384,7 @@ async def test_reset_deletes_default_without_applying_to_the_device() -> None:
         model="H617A",
         async_apply_native_scene=AsyncMock(),
     )
-    repository = SimpleNamespace(async_delete=AsyncMock())
+    repository = SimpleNamespace(async_replace_identities=AsyncMock())
     entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
 
     await async_reset_scene_default(
@@ -248,7 +394,11 @@ async def test_reset_deletes_default_without_applying_to_the_device() -> None:
         scene_defaults=repository,
     )
 
-    repository.async_delete.assert_awaited_once_with("entry-a", scene.scene_id, scene.effect_id)
+    repository.async_replace_identities.assert_awaited_once_with(
+        "entry-a",
+        ((scene.scene_id, scene.effect_id),),
+        None,
+    )
     coordinator.async_apply_native_scene.assert_not_awaited()
 
 

@@ -34,6 +34,7 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
     PhysicalValidationState,
     VerificationConfidence,
     frontend_release_capabilities,
+    release_capabilities_for_model,
     release_capability,
     studio_apply_capability_state,
     workflow_capability_state,
@@ -68,6 +69,14 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "palette_diy": "unsupported",
         "workshop": "supported",
     }
+
+
+def test_h617e_has_exact_release_capability_records():
+    h617a = release_capabilities_for_model("H617A")
+    h617e = release_capabilities_for_model("H617E")
+
+    assert {capability.workflow for capability in h617e} == {capability.workflow for capability in h617a}
+    assert all(capability.model == "H617E" for capability in h617e)
 
 
 def test_h617a_model_catalogue_preserves_type04_and_painted_contracts() -> None:

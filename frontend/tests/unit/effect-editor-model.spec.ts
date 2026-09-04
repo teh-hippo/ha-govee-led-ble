@@ -239,8 +239,22 @@ test("library summaries retain model metadata and stable ordering", () => {
   expect(summaries[0].model).toBe("H617A");
   expect(isEditableEffectContent(item.content)).toBe(true);
   expect(customEffectCategoryForKind(item.content.kind)).toBe("single-layer");
-  expect(libraryKindPriority("palette_diy", "H6199")).toBeLessThan(
-    libraryKindPriority("advanced", "H6199"),
+  const paletteCatalogue = {
+    ...catalogue,
+    apply: {
+      ...catalogue.apply,
+      single: "unsupported",
+      palette_diy: "supported",
+    },
+  } satisfies ModelEffectCatalogue;
+  expect(libraryKindPriority("palette_diy", paletteCatalogue)).toBeLessThan(
+    libraryKindPriority("workshop", paletteCatalogue),
+  );
+  expect(libraryKindPriority("workshop", paletteCatalogue)).toBeLessThan(
+    libraryKindPriority("music_profile", paletteCatalogue),
+  );
+  expect(libraryKindPriority("music_profile", catalogue)).toBeLessThan(
+    libraryKindPriority("workshop", catalogue),
   );
 });
 

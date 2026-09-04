@@ -11,6 +11,7 @@ from custom_components.ha_govee_led_ble.coordinator_status import (
     parse_color_mode,
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import ProtocolParseRejection
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 H = bytes.fromhex
@@ -75,6 +76,20 @@ def test_h617a_colour_modes_preserve_scene_diy_and_music_semantics() -> None:
     assert rhythm.music_mode == "rhythm" and rhythm.music_sensitivity == 88 and rhythm.music_calm is True
     static = _parse_colour("aa051501000000000000000000000000000000bb")
     assert static.mode is ParsedMode.COLOUR and static.multi_effect_flag == 1
+
+
+def test_h617e_scene_readback_uses_its_exact_catalogue() -> None:
+    h617a_codes = {scene.code for scene in MODEL_SCENES["H617A"].values()}
+    name, scene = next((name, scene) for name, scene in MODEL_SCENES["H617E"].items() if scene.code not in h617a_codes)
+    frame = bytearray(20)
+    frame[:3] = bytes((0xAA, 0x05, 0x04))
+    frame[3:5] = scene.code.to_bytes(2, "little")
+    frame[-1] = xor_checksum(frame[:-1])
+    decoded = decode_status_frame(bytes(frame), "H617E")
+
+    assert decoded is not None
+    parsed = parse_color_mode(decoded.generated, "H617E")
+    assert parsed.effect == name
 
 
 def test_h6199_video_and_music_fields_decode() -> None:

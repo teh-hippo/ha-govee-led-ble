@@ -45,6 +45,39 @@ def _raw_param(entry: SceneEntry) -> bytes:
     return base64.b64decode(entry.param, validate=True)
 
 
+def test_inert_catalogue_metadata_does_not_enable_scene_compilation() -> None:
+    entry = SCENE_ENTRIES["H6076"][0]
+    item = LibraryItem.new("Unsupported scene", BuiltinScene(_reference("H6076", entry)))
+
+    result = compatibility(item, "H6076")
+
+    assert result.state is CompatibilityState.INCOMPATIBLE
+    assert result.reasons == ("H6076 native scenes are not supported",)
+    with pytest.raises(ValueError, match="native scenes are not supported"):
+        compile_effect(item, "H6076")
+
+
+def test_all_legacy_h617e_saved_scenes_remain_compilable() -> None:
+    for legacy in SCENE_ENTRIES["H617A"]:
+        item = LibraryItem.new(
+            "Legacy H617E scene",
+            BuiltinScene(
+                _reference("H617E", legacy),
+                speed_index=legacy.speed.default_index if legacy.speed is not None else None,
+            ),
+        )
+
+        compiled = compile_effect(item, "H617E")
+
+        assert compiled.packets == tuple(
+            build_native_scene_packets(
+                "H617E",
+                legacy,
+                speed_index=legacy.speed.default_index if legacy.speed is not None else None,
+            )
+        )
+
+
 def _assert_movement(decoded: Any, parsed: Any) -> None:
     assert decoded.enabled is bool(parsed.enabled)
     assert decoded.enter_exit is bool(parsed.enter_exit_effect)
@@ -109,7 +142,6 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
     catalogue_excess = 0
     multi_line_bodies = 0
 
-    assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
     for sku in ("H617A", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:

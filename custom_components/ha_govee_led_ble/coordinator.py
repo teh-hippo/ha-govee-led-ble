@@ -21,6 +21,7 @@ from .ble_device_resolver import BLEDeviceResolver
 from .const import (
     DOMAIN,
     MUSIC_MODE_SLUGS,
+    ReadDomain,
     default_effect_categories,
     default_effect_families,
     get_profile,
@@ -63,7 +64,7 @@ from .native_profile_controls import (
     apply_white_balance,
 )
 from .native_scenes import build_native_scene_packets
-from .scenes import MODEL_SCENES
+from .scenes import MODEL_SCENES, canonical_scene_key, resolve_scene_code
 from .transport import READ_UUID, WRITE_UUID
 
 EFFECT_SEQUENCE_ATTEMPTS = 3
@@ -103,6 +104,7 @@ _COLOR_EXPECTATION_FIELDS = frozenset(
     (
         "color_mode",
         "effect",
+        "scene_code",
         "unknown_scene_code",
         "rgb_color",
         "color_temp_kelvin",
@@ -239,6 +241,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             rgb_color=self.rgb_color,
             color_temp_kelvin=self.color_temp_kelvin,
             effect=self.effect,
+            scene_code=self.scene_code,
             diy_code=self.diy_code,
             music_mode=self.music_mode,
             video_mode=self.video_mode,
@@ -317,18 +320,36 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             await self.send_command(build_h617a_diy_activation(state.diy_code))
             self.diy_code = state.diy_code
             return self.profile.state_readable and await self.refresh_state() and self.diy_code == state.diy_code
-        if state.mode == "scene" and state.effect is not None:
-            scene = MODEL_SCENES.get(self.model, {}).get(state.effect)
-            if scene is None:
+        if state.mode == "scene" and (state.effect is not None or state.scene_code is not None):
+            resolved = (
+                resolve_scene_code(
+                    self.model,
+                    state.scene_code,
+                    preferred_key=state.effect,
+                )
+                if state.scene_code is not None
+                else None
+            )
+            if resolved is not None:
+                scene_name, scene = resolved
+            elif state.effect is not None:
+                scene_name = canonical_scene_key(self.model, state.effect)
+                candidate = MODEL_SCENES.get(self.model, {}).get(scene_name)
+                if candidate is None:
+                    return False
+                scene = candidate
+            else:
                 return False
             packets = build_native_scene_packets(self.model, scene)
             for packet in packets:
                 await self.send_command(packet)
             self.is_on = True
-            self.effect = state.effect
+            self.color_mode = ParsedMode.SCENE
+            self.effect = scene_name
+            self._scene_code = scene.code
             self.diy_code = None
             self.music_mode = self.video_mode = "off"
-            return self.profile.state_readable and await self.refresh_state(expected_effect=state.effect)
+            return self.profile.state_readable and await self.refresh_state(expected_scene_code=scene.code)
         if state.mode == "music" and state.music_mode in self.profile.music_modes:
             self.install_music_profile_state(
                 mode=state.music_mode,
@@ -361,17 +382,6 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.video_sound_effects = state.video_sound_effects
             self.video_sound_effects_softness = state.video_sound_effects_softness
             return await apply_active_video_mode(self)
-        if state.mode == "scene" and state.effect is not None:
-            scene = MODEL_SCENES[self.model].get(state.effect)
-            if scene is None:
-                return False
-            packets = build_native_scene_packets(self.model, scene)
-            for packet in packets:
-                await self.send_command(packet)
-            self.effect = state.effect
-            self.diy_code = None
-            self.music_mode = self.video_mode = "off"
-            return self.profile.state_readable and await self.refresh_state(expected_effect=state.effect)
         if state.mode != "colour":
             return False
         await self.send_command(build_power(True, self.model))
@@ -415,6 +425,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             reset_red if self.white_balance_red is None else self.white_balance_red,
             reset_blue if self.white_balance_blue is None else self.white_balance_blue,
         )
+
+    @property
+    def scene_code(self) -> int | None:
+        return self._scene_code if self.color_mode is ParsedMode.SCENE else None
 
     @property
     def unknown_scene_code(self) -> int | None:
@@ -503,6 +517,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     previous_client = self._client
                     refreshed = await self.refresh_state(
                         refresh_all=True,
+                        required_domains=self.profile.setup_required_read_domains,
                     )
                     client = self._client
                     if not refreshed or client is None:
@@ -542,7 +557,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             disconnected_callback=self._disconnected_callback,
         )
         self._reset_disconnect_timer()
-        if self.profile.state_readable:
+        if self.profile.requires_notifications:
             try:
                 await self._start_notify()
                 await self._send_identity_queries()
@@ -612,7 +627,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         await self._client.start_notify(READ_UUID, self._notify_callback)
         self._notify_started_monotonic = time.monotonic()
         self._last_rx_monotonic = None
-        self._start_keep_alive()
+        if self.profile.state_readable:
+            self._start_keep_alive()
 
     def _receive_is_stale(self) -> bool:
         baseline = self._last_rx_monotonic
@@ -628,9 +644,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
 
     @property
     def _segment_group_count(self) -> int:
-        if not self.profile.supports_segments:
-            return 0
-        return 4 if self.model == "H6199" else 5
+        return self.profile.segment_group_count
 
     def mark_segment_state_optimistic(
         self,
@@ -664,7 +678,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     def _apply_segment_group(self, generated: Any) -> tuple[str, ...]:
         group = int(generated.body.group)
         records = generated.body.segments
-        group_size = 4 if self.model == "H6199" else 3
+        group_size = self.profile.segment_group_size
         offset = (group - 1) * group_size
         if offset < 0 or offset + len(records) > self.profile.segment_count:
             raise ValueError("segment group exceeds model segment count")
@@ -765,9 +779,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         # Track the device's scene independently from Home Assistant's configured effect-list projection.
         scene_effect = parsed.effect if parsed.effect in self.scene_name_set else None
         # A scene we cannot name still leaves the light running something, and effect has to stay
-        # None because HA rejects one outside effect_list. Keep the raw id so the state is honest
-        # rather than silently claiming nothing is on. None for every other mode, so this one
-        # assignment cannot leave a stale code behind.
+        # None because HA rejects one outside effect_list.
         unknown_scene_code = parsed.scene_code if scene_effect is None else None
         observed: list[str] = ["color_mode"]
         accept_parameters = True
@@ -802,11 +814,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         elif parsed.mode is ParsedMode.SCENE:
             values = {
                 "effect": scene_effect,
+                "scene_code": parsed.scene_code,
                 "unknown_scene_code": unknown_scene_code,
             }
             if self._accept_expected_values(values):
                 self.effect = scene_effect
-                self._scene_code = unknown_scene_code
+                self._scene_code = parsed.scene_code
                 self.music_mode, self.video_mode = "off", "off"
                 self.diy_code = None
                 observed.extend(values)
@@ -1001,26 +1014,36 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return False
         try:
             queries: list[bytes] = []
-            if query_power:
+            if query_power and self.profile.can_read(ReadDomain.POWER):
                 queries.append(build_power_query(self.model))
-            if query_brightness:
+            if query_brightness and self.profile.can_read(ReadDomain.BRIGHTNESS):
                 queries.append(build_brightness_query(self.model))
-            if query_color_mode:
+            if query_color_mode and self.profile.supports_color_mode_readback:
                 queries.append(build_colour_mode_query(self.model))
             full_query = query_power and query_brightness and query_color_mode
-            if self.profile.supports_white_balance and (
-                query_white_balance if query_white_balance is not None else full_query
+            if (
+                self.profile.can_read(ReadDomain.DISPLAY_SETTING)
+                and self.profile.supports_white_balance
+                and (query_white_balance if query_white_balance is not None else full_query)
             ):
                 queries.append(build_h6199_white_balance_query())
-            if self.profile.supports_blank_screen and (
-                query_blank_screen if query_blank_screen is not None else full_query
+            if (
+                self.profile.can_read(ReadDomain.DISPLAY_SETTING)
+                and self.profile.supports_blank_screen
+                and (query_blank_screen if query_blank_screen is not None else full_query)
             ):
                 queries.append(build_h6199_blank_screen_query())
-            if self.profile.supports_relative_brightness and (
-                query_relative_brightness if query_relative_brightness is not None else full_query
+            if (
+                self.profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS)
+                and self.profile.supports_relative_brightness
+                and (query_relative_brightness if query_relative_brightness is not None else full_query)
             ):
                 queries.append(build_h6199_relative_brightness_query())
-            if self.profile.supports_segments and (query_segments if query_segments is not None else full_query):
+            if (
+                self.profile.can_read(ReadDomain.SEGMENTS)
+                and self.profile.supports_segments
+                and (query_segments if query_segments is not None else full_query)
+            ):
                 self._segment_groups_observed.clear()
                 self._segment_query_colors = list(self.segment_colors)
                 self._segment_query_brightness = list(self.segment_brightness)
@@ -1042,17 +1065,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         """
         if not self._client or not self._client.is_connected:
             return
-        candidates = [
-            (build_hardware_query(self.model), self.hw_version),
-            (build_firmware_query(self.model), self.fw_version),
-        ]
-        if self.model == "H6199":
-            candidates.extend(
-                (
-                    (build_h6199_subordinate_query(0x20), self.subordinate_20_version),
-                    (build_h6199_subordinate_query(0x21), self.subordinate_21_version),
-                )
-            )
+        candidates: list[tuple[bytes, str | None]] = []
+        if self.profile.can_read(ReadDomain.HARDWARE):
+            candidates.append((build_hardware_query(self.model), self.hw_version))
+        if self.profile.can_read(ReadDomain.FIRMWARE):
+            candidates.append((build_firmware_query(self.model), self.fw_version))
+        if self.profile.can_read(ReadDomain.SUBORDINATE_20):
+            candidates.append((build_h6199_subordinate_query(0x20), self.subordinate_20_version))
+        if self.profile.can_read(ReadDomain.SUBORDINATE_21):
+            candidates.append((build_h6199_subordinate_query(0x21), self.subordinate_21_version))
         queries = [q for q, value in candidates if value is None]
         try:
             for query in queries:
@@ -1062,10 +1083,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             _LOGGER.debug("Identity query failed for %s", self.address)
 
     def _identity_incomplete(self) -> bool:
-        return (
-            self.fw_version is None
-            or self.hw_version is None
-            or (self.model == "H6199" and (self.subordinate_20_version is None or self.subordinate_21_version is None))
+        return any(
+            value is None
+            for domain, value in (
+                (ReadDomain.FIRMWARE, self.fw_version),
+                (ReadDomain.HARDWARE, self.hw_version),
+                (ReadDomain.SUBORDINATE_20, self.subordinate_20_version),
+                (ReadDomain.SUBORDINATE_21, self.subordinate_21_version),
+            )
+            if self.profile.can_read(domain)
         )
 
     async def _wait_for_revisions(
@@ -1100,6 +1126,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self,
         *,
         expected_effect: str | None = None,
+        expected_scene_code: int | None = None,
         expected_on: bool | None = None,
         expected_brightness: int | None = None,
         expected_music_mode: str | None = None,
@@ -1119,6 +1146,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         refresh_display_settings: bool = False,
         refresh_relative_brightness: bool = False,
         refresh_all: bool = False,
+        required_domains: frozenset[ReadDomain] | None = None,
         timeout: float = 2.0,
     ) -> bool:
         if not self.profile.state_readable:
@@ -1127,6 +1155,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             field: value
             for field, value in (
                 ("effect", expected_effect),
+                ("scene_code", expected_scene_code),
                 ("is_on", expected_on),
                 ("brightness_pct", expected_brightness),
                 ("music_mode", expected_music_mode),
@@ -1161,6 +1190,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             )
         color_expectations = (
             expected_effect,
+            expected_scene_code,
             expected_music_mode,
             expected_music_sensitivity,
             expected_music_calm,
@@ -1187,6 +1217,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if refresh_all:
             query_power = query_brightness = True
             query_color = self.profile.supports_color_mode_readback
+            query_white_balance = self.profile.supports_white_balance
+            query_blank_screen = self.profile.supports_blank_screen
+            query_relative_brightness = self.profile.supports_relative_brightness
         if not any(
             (
                 query_power,
@@ -1202,15 +1235,16 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         queried_domains = {
             domain
             for domain, enabled in (
-                (StatusDomain.POWER, query_power),
-                (StatusDomain.BRIGHTNESS, query_brightness),
-                (StatusDomain.COLOUR_MODE, query_color),
-                (StatusDomain.DISPLAY_SETTING, query_white_balance or query_blank_screen),
-                (StatusDomain.RELATIVE_BRIGHTNESS, query_relative_brightness),
+                (ReadDomain.POWER, query_power),
+                (ReadDomain.BRIGHTNESS, query_brightness),
+                (ReadDomain.COLOUR_MODE, query_color),
+                (ReadDomain.DISPLAY_SETTING, query_white_balance or query_blank_screen),
+                (ReadDomain.RELATIVE_BRIGHTNESS, query_relative_brightness),
             )
-            if enabled
+            if enabled and self.profile.can_read(domain)
         }
-        initial_domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in queried_domains}
+        awaited_domains = queried_domains if required_domains is None else queried_domains & required_domains
+        initial_domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
         current_intent = self._control_arbiter.current_task_intent
         intent = ControlIntent.USER if current_intent is None else current_intent
         async with async_control_intent(self, intent):
@@ -1219,7 +1253,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             deadline = time.monotonic() + timeout
             for attempt in range(2):
                 field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
-                domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in queried_domains}
+                domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
                 async with self._lock:
                     if self._client is not client:
                         return False
@@ -1402,6 +1436,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 {
                     "color_mode",
                     "effect",
+                    "scene_code",
                     "unknown_scene_code",
                     "diy_code",
                     "music_mode",

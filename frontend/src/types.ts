@@ -6,7 +6,7 @@ export interface JsonObject {
 }
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
-export type ModelSku = "H617A" | "H617E" | "H6199";
+export type ModelSku = string;
 export type ObservationConfidence =
   | "exact_session"
   | "activation_match"
@@ -178,8 +178,8 @@ export interface RelativeBrightness {
 
 export interface VideoProfileContent {
   kind: "video_profile";
-  model: "H6199";
-  mode: "movie" | "game";
+  model: ModelSku;
+  mode: string;
   full_screen: boolean;
   saturation: number;
   sound_effects: boolean;
@@ -350,7 +350,7 @@ export interface ModelEffectCatalogue {
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
   schema_version: 8;
-  sku: "H617A";
+  sku: ModelSku;
   models: Record<ModelSku, ModelEffectCatalogue>;
 }
 

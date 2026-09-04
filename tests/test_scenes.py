@@ -19,6 +19,7 @@ from custom_components.ha_govee_led_ble.native_scenes import (
     build_native_scene_packets,
 )
 from custom_components.ha_govee_led_ble.scenes import (
+    MODEL_SCENE_ALIASES,
     MODEL_SCENES,
     SCENE_ENTRIES,
     SCENES,
@@ -65,12 +66,25 @@ def test_scene_type_prefix():
 
 def test_per_model_snapshots_preserve_vendor_identity():
     assert len(SCENE_ENTRIES["H617A"]) == 83
+    assert len(SCENE_ENTRIES["H617E"]) == 240
+    assert len(SCENE_ENTRIES["H6076"]) == 110
     assert len(SCENE_ENTRIES["H6199"]) == 240
+    assert SCENE_ENTRIES["H617E"] is not SCENE_ENTRIES["H617A"]
+    assert len(MODEL_SCENES["H617E"]) == 247
+    assert all(key in MODEL_SCENES["H617E"] or key in MODEL_SCENE_ALIASES["H617E"] for key in MODEL_SCENES["H617A"])
     assert len({(scene.scene_id, scene.effect_id) for scene in SCENE_ENTRIES["H6199"]}) == 240
     assert MODEL_SCENES["H6199"]["dracarys"].category == "House of the Dragon"
     assert MODEL_SCENES["H6199"]["green reign"].code == 16183
     assert MODEL_SCENES["H6199"]["fire & blood"].code == 16184
     assert {"flash [emotion]", "flash [zootopia 2]"} <= MODEL_SCENES["H6199"].keys()
+
+
+def test_h617e_uses_its_exact_catalogue_with_the_shared_wire_adapter():
+    selector = next(scene for scene in SCENE_ENTRIES["H617E"] if scene.scene_type == 0)
+    uploaded = next(scene for scene in SCENE_ENTRIES["H617E"] if scene.scene_type == 2)
+
+    assert build_native_scene_packets("H617E", selector) == [build_h617a_scene(selector.code)]
+    assert build_native_scene_packets("H617E", uploaded)[-1] == build_h617a_scene(uploaded.code)
 
 
 def test_aurora_b_matches_current_ios_capture():
@@ -209,8 +223,7 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
     scene_counts: Counter[str] = Counter()
     record_count = 0
 
-    assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
-    for sku in ("H617A", "H6199"):
+    for sku in ("H6076", "H617A", "H617E", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != int(SceneBody.SceneType.scene_v2):
@@ -231,8 +244,8 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
             scene_counts[sku] += 1
             record_count += len(parsed.records)
 
-    assert scene_counts == {"H617A": 72, "H6199": 226}
-    assert record_count == 863
+    assert scene_counts == {"H6076": 101, "H617A": 72, "H617E": 226, "H6199": 226}
+    assert record_count == 1799
 
 
 @pytest.mark.parametrize("raw_param", [bytearray(b"\x00"), memoryview(b"\x00"), "\x00"])

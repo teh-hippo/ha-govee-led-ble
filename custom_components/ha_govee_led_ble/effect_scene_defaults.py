@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any, Final, cast
@@ -115,24 +115,51 @@ class NativeSceneDefaultRepository:
         return None if not isinstance(raw, Mapping) else NativeSceneDefault.from_dict(raw)
 
     async def async_set(self, value: NativeSceneDefault) -> None:
+        await self.async_replace_identities(
+            value.config_entry_id,
+            ((value.scene_id, value.effect_id),),
+            value,
+        )
+
+    async def async_delete(self, config_entry_id: str, scene_id: int, effect_id: int) -> None:
+        await self.async_replace_identities(
+            config_entry_id,
+            ((scene_id, effect_id),),
+            None,
+        )
+
+    async def async_replace_identities(
+        self,
+        config_entry_id: str,
+        identities: Iterable[tuple[int, int]],
+        value: NativeSceneDefault | None,
+    ) -> None:
+        if value is not None and value.config_entry_id != config_entry_id:
+            raise EffectStorageError("scene-default replacement has mismatched config entry")
         async with self._lock:
             candidate = copy.deepcopy(self._require_loaded())
             devices = candidate["devices"]
-            if value.config_entry_id not in devices and len(devices) >= MAX_DEVICE_CACHE_ENTRIES:
+            if value is not None and config_entry_id not in devices and len(devices) >= MAX_DEVICE_CACHE_ENTRIES:
                 raise EffectLimitError(f"scene-default store must not exceed {MAX_DEVICE_CACHE_ENTRIES} devices")
-            devices.setdefault(value.config_entry_id, {})[_scene_key(value.scene_id, value.effect_id)] = value.to_dict()
-            _validate_store(candidate)
-            await self._store.async_save(candidate)
-            self._data = candidate
-
-    async def async_delete(self, config_entry_id: str, scene_id: int, effect_id: int) -> None:
-        async with self._lock:
-            candidate = copy.deepcopy(self._require_loaded())
-            records = candidate["devices"].get(config_entry_id)
-            if not isinstance(records, dict) or records.pop(_scene_key(scene_id, effect_id), None) is None:
+            records = devices.get(config_entry_id)
+            if not isinstance(records, dict):
+                records = {}
+            changed = False
+            for scene_id, effect_id in identities:
+                changed = records.pop(_scene_key(scene_id, effect_id), None) is not None or changed
+            if value is not None:
+                raw = value.to_dict()
+                key = _scene_key(value.scene_id, value.effect_id)
+                changed = records.get(key) != raw or changed
+                records[key] = raw
+                devices[config_entry_id] = records
+            elif records:
+                devices[config_entry_id] = records
+            else:
+                changed = devices.pop(config_entry_id, None) is not None or changed
+            if not changed:
                 return
-            if not records:
-                candidate["devices"].pop(config_entry_id)
+            _validate_store(candidate)
             await self._store.async_save(candidate)
             self._data = candidate
 

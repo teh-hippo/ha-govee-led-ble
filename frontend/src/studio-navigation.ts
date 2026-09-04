@@ -1,10 +1,12 @@
 import type {
+  CatalogueTemplate,
   DeviceCapabilities,
   EffectContent,
   EffectUserState,
   LibraryOrigin,
   LibrarySummary,
   ModelEffectCatalogue,
+  VideoProfileContent,
 } from "./types";
 import type { CustomEffectCategory } from "./effect-editor-model";
 
@@ -35,6 +37,35 @@ export type ActiveStudioContext =
       label: string;
     }
   | { kind: "root" };
+
+export type VideoCatalogueTemplate = CatalogueTemplate & {
+  content: VideoProfileContent;
+};
+
+export function videoCatalogueTemplates(
+  catalogue: ModelEffectCatalogue | undefined,
+): VideoCatalogueTemplate[] {
+  if (!catalogue) {
+    return [];
+  }
+  const modes = new Set(catalogue.video_modes.map((mode) => mode.id));
+  return (catalogue.templates ?? []).filter(
+    (template): template is VideoCatalogueTemplate =>
+      template.category === "video" &&
+      template.content.kind === "video_profile" &&
+      template.content.model === catalogue.sku &&
+      modes.has(template.content.mode),
+  );
+}
+
+export function videoCatalogueTemplate(
+  catalogue: ModelEffectCatalogue | undefined,
+  mode: string,
+): VideoCatalogueTemplate | undefined {
+  return videoCatalogueTemplates(catalogue).find(
+    (template) => template.content.mode === mode,
+  );
+}
 
 export function deviceIdFromEditorPath(pathname: string): string | undefined {
   const match = pathname.match(/^\/ha-govee-led-ble\/editor\/([^/]+)\/?$/);
@@ -177,15 +208,13 @@ export function activeStudioContext(
     return { kind: "native-scene", effect: nativeMode };
   }
   if (active.mode === "video") {
-    const mode = catalogue?.video_modes.find(
-      (candidate) => candidate.id === nativeMode,
-    );
-    return mode
+    const template = videoCatalogueTemplate(catalogue, nativeMode);
+    return template
       ? {
           kind: "native-profile",
           section: "video",
-          mode: mode.id,
-          label: mode.label,
+          mode: template.content.mode,
+          label: template.label,
         }
       : { kind: "root" };
   }

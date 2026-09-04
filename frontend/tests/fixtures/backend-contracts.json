@@ -3393,7 +3393,7 @@
           "single": "supported",
           "workshop": "supported"
         },
-        "display_name": "H617A/H617E LED Strip",
+        "display_name": "H617A LED Strip",
         "effect_categories": [
           "scenes",
           "effects",
@@ -3431,7 +3431,7 @@
           "single": "supported",
           "workshop": "supported"
         },
-        "display_name": "H617A/H617E LED Strip",
+        "display_name": "H617E LED Strip",
         "effect_categories": [
           "scenes",
           "effects",
@@ -3675,54 +3675,55 @@
       "H617E": {
         "categories": [
           {
-            "id": 129,
+            "id": 2522,
+            "name": "House of the Dragon"
+          },
+          {
+            "id": 5,
             "name": "Natural"
           },
           {
-            "id": 133,
+            "id": 6,
             "name": "Festival"
           }
         ],
         "enabled": true,
         "scenes": [
           {
+            "category": "House of the Dragon",
+            "category_id": 2522,
+            "display_name": "Dracarys",
+            "effect_id": 41599,
+            "name": "Dracarys",
+            "parameter_kind": "layers",
+            "scene_id": 29884,
+            "scene_type": 2,
+            "speed": null,
+            "variant": ""
+          },
+          {
             "category": "Natural",
-            "category_id": 129,
+            "category_id": 5,
             "display_name": "Sunrise",
-            "effect_id": 1073,
+            "effect_id": 110,
             "name": "Sunrise",
             "parameter_kind": "none",
-            "scene_id": 1011,
+            "scene_id": 128,
             "scene_type": 0,
             "speed": null,
             "variant": ""
           },
           {
-            "category": "Natural",
-            "category_id": 129,
-            "display_name": "Forest",
-            "effect_id": 11836,
-            "name": "Forest",
-            "parameter_kind": "layers",
-            "scene_id": 1013,
-            "scene_type": 2,
-            "speed": {
-              "default_index": 3,
-              "option_count": 4
-            },
-            "variant": ""
-          },
-          {
             "category": "Festival",
-            "category_id": 133,
-            "display_name": "Halloween",
-            "effect_id": 1103,
+            "category_id": 6,
+            "display_name": "Halloween-A",
+            "effect_id": 133,
             "name": "Halloween",
             "parameter_kind": "palette",
-            "scene_id": 1041,
+            "scene_id": 151,
             "scene_type": 1,
             "speed": null,
-            "variant": ""
+            "variant": "A"
           }
         ],
         "schema_version": 1,

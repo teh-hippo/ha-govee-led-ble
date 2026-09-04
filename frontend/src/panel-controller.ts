@@ -374,14 +374,14 @@ export class PanelController {
   }
 
   public async selectVideoTemplate(
-    mode: string,
+    templateId: string,
     label: string,
     returnFocus?: HTMLElement,
   ): Promise<void> {
     await this.requestTransition(
       async () => {
         await this.openCatalogueTemplate(
-          `template:video:${mode}`,
+          templateId,
           label,
           { section: "video" },
           this.editor.beginSelectionTransition(),
@@ -513,9 +513,13 @@ export class PanelController {
         return;
       }
       if (context.section === "video") {
+        const template = this.model.videoTemplate(context.mode);
+        if (!template) {
+          return;
+        }
         await this.openCatalogueTemplate(
-          `template:video:${context.mode}`,
-          context.label,
+          template.id,
+          template.label,
           { section: "video" },
           transitionEpoch,
           false,

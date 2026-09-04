@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from .const import get_profile
 from .effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -28,8 +29,12 @@ from .palette_scene_decoder import decode_palette_scene
 from .scenes import (
     MODEL_SCENE_LABELS,
     MODEL_SCENES,
+    OFFICIAL_MODEL_SCENES,
     SCENE_ENTRIES,
     SceneEntry,
+    canonical_scene_key,
+    legacy_scene_entries,
+    resolve_scene_identity,
 )
 
 CATALOGUE_SCHEMA_VERSION = 1
@@ -40,6 +45,92 @@ class ResolvedScene:
     key: str
     label: str
     entry: SceneEntry
+
+
+def scene_default_for(
+    repository: NativeSceneDefaultRepository,
+    config_entry_id: str,
+    model: str,
+    scene_key: str,
+    entry: SceneEntry,
+) -> NativeSceneDefault | None:
+    value = next(
+        (
+            value
+            for scene_id, effect_id in _scene_default_identities(model, scene_key, entry)
+            if (value := repository.get(config_entry_id, scene_id, effect_id)) is not None
+        ),
+        None,
+    )
+    if value is None:
+        return None
+    speed_index = value.speed_index
+    if entry.speed is None:
+        speed_index = None
+    elif speed_index is None or not 0 <= speed_index < entry.speed.option_count:
+        speed_index = entry.speed.default_index
+    return replace(
+        value,
+        scene_id=entry.scene_id,
+        effect_id=entry.effect_id,
+        speed_index=speed_index,
+    )
+
+
+def _scene_default_identities(
+    model: str,
+    scene_key: str,
+    entry: SceneEntry,
+) -> tuple[tuple[int, int], ...]:
+    canonical_key = canonical_scene_key(model, scene_key)
+    official_entry = OFFICIAL_MODEL_SCENES.get(model, {}).get(canonical_key)
+    identities = [(official_entry.scene_id, official_entry.effect_id)] if official_entry is not None else []
+    entry_identity = (entry.scene_id, entry.effect_id)
+    if entry_identity not in identities:
+        identities.append(entry_identity)
+    for legacy_entry in legacy_scene_entries(model, canonical_key):
+        legacy_identity = (legacy_entry.scene_id, legacy_entry.effect_id)
+        if legacy_identity not in identities:
+            identities.append(legacy_identity)
+    return tuple(identities)
+
+
+async def async_delete_scene_defaults(
+    repository: NativeSceneDefaultRepository,
+    config_entry_id: str,
+    model: str,
+    resolved: ResolvedScene,
+) -> None:
+    await repository.async_replace_identities(
+        config_entry_id,
+        _scene_default_identities(model, resolved.key, resolved.entry),
+        None,
+    )
+
+
+async def async_store_scene_default(
+    repository: NativeSceneDefaultRepository,
+    config_entry_id: str,
+    model: str,
+    resolved: ResolvedScene,
+    *,
+    updated_at: str,
+    canonical_body: bytes,
+    speed_index: int | None,
+) -> None:
+    value = NativeSceneDefault(
+        config_entry_id=config_entry_id,
+        scene_id=resolved.entry.scene_id,
+        effect_id=resolved.entry.effect_id,
+        updated_at=updated_at,
+        canonical_body=canonical_body,
+        speed_index=speed_index,
+    )
+    await repository.async_replace_identities(
+        config_entry_id,
+        _scene_default_identities(model, resolved.key, resolved.entry),
+        value,
+    )
 
 
 def scene_catalogue_payload(model: str) -> dict[str, JsonValue]:
@@ -55,7 +146,7 @@ def scene_catalogue_payload(model: str) -> dict[str, JsonValue]:
     return {
         "schema_version": CATALOGUE_SCHEMA_VERSION,
         "sku": model,
-        "enabled": True,
+        "enabled": get_profile(model).supports_scenes,
         "categories": categories,
         "scenes": [_scene_summary(model, entry) for entry in entries],
     }
@@ -80,8 +171,8 @@ def scene_detail_payload(
     )
     template = CatalogueRef(
         sku=model,
-        scene_id=scene_id,
-        effect_id=effect_id,
+        scene_id=resolved.entry.scene_id,
+        effect_id=resolved.entry.effect_id,
         catalogue_schema_version=CATALOGUE_SCHEMA_VERSION,
     )
     catalogue_speed = resolved.entry.speed.default_index if resolved.entry.speed is not None else None
@@ -101,14 +192,14 @@ def scene_detail_payload(
 
 
 def resolve_scene(model: str, scene_id: int, effect_id: int) -> ResolvedScene:
-    scenes = MODEL_SCENES.get(model)
     labels = MODEL_SCENE_LABELS.get(model)
-    if scenes is None or labels is None:
-        raise ValueError(f"{model} has no native scene catalogue")
-    for key, entry in scenes.items():
-        if entry.scene_id == scene_id and entry.effect_id == effect_id:
-            return ResolvedScene(key, labels[key], entry)
-    raise ValueError(f"{model} scene identity ({scene_id}, {effect_id}) was not found")
+    resolved = resolve_scene_identity(model, scene_id, effect_id)
+    if resolved is None or labels is None:
+        if model not in MODEL_SCENES:
+            raise ValueError(f"{model} has no native scene catalogue")
+        raise ValueError(f"{model} scene identity ({scene_id}, {effect_id}) was not found")
+    key, entry = resolved
+    return ResolvedScene(key, labels.get(key, entry.display_name), entry)
 
 
 async def async_apply_scene(
@@ -124,7 +215,17 @@ async def async_apply_scene(
     del hass, user_id
     coordinator = config_entry.runtime_data
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
-    scene_default = scene_defaults.get(config_entry.entry_id, scene_id, effect_id) if scene_defaults else None
+    scene_default = (
+        scene_default_for(
+            scene_defaults,
+            config_entry.entry_id,
+            coordinator.model,
+            resolved.key,
+            resolved.entry,
+        )
+        if scene_defaults
+        else None
+    )
     canonical_body, resolved_speed = resolve_scene_application_body(
         resolved.entry,
         scene_default=scene_default,
@@ -133,6 +234,7 @@ async def async_apply_scene(
 
     await coordinator.async_apply_native_scene(
         resolved.key,
+        scene_entry=resolved.entry,
         speed_index=resolved_speed,
         canonical_body=canonical_body or None,
     )
@@ -148,7 +250,7 @@ async def async_reset_scene_default(
 ) -> ResolvedScene:
     coordinator = config_entry.runtime_data
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
-    await scene_defaults.async_delete(config_entry.entry_id, scene_id, effect_id)
+    await async_delete_scene_defaults(scene_defaults, config_entry.entry_id, coordinator.model, resolved)
     return resolved
 
 
@@ -175,17 +277,16 @@ async def async_set_scene_default(
         )
     catalogue_body, catalogue_speed = resolve_native_scene_body(resolved.entry)
     if canonical_body == catalogue_body and resolved_speed == catalogue_speed:
-        await scene_defaults.async_delete(config_entry.entry_id, scene_id, effect_id)
+        await async_delete_scene_defaults(scene_defaults, config_entry.entry_id, coordinator.model, resolved)
     elif canonical_body:
-        await scene_defaults.async_set(
-            NativeSceneDefault(
-                config_entry_id=config_entry.entry_id,
-                scene_id=scene_id,
-                effect_id=effect_id,
-                updated_at=updated_at,
-                canonical_body=canonical_body,
-                speed_index=resolved_speed,
-            )
+        await async_store_scene_default(
+            scene_defaults,
+            config_entry.entry_id,
+            coordinator.model,
+            resolved,
+            updated_at=updated_at,
+            canonical_body=canonical_body,
+            speed_index=resolved_speed,
         )
     return resolved
 

@@ -6,7 +6,6 @@ import {
   blankCustomEffect,
   blankPainted,
   blankPaletteDiy,
-  blankVideoProfile,
   cloneCustomEffect,
   cloneEditableEffect,
   cloneOpaqueContent,
@@ -41,7 +40,6 @@ import type {
   RGB,
   VideoProfileContent,
 } from "./types";
-import { isH617xModel } from "./validation-constants";
 
 interface PanelEditorOptions {
   apiReady(): boolean;
@@ -114,7 +112,7 @@ export class PanelEditorController {
     } else {
       const catalogue = this.model.modelCatalogue;
       if (!catalogue) return;
-      if (isH617xModel(this.model.selectedModel)) {
+      if (this.model.customEffectKindAvailable("h617a_single")) {
         const content = blankCustomEffect("h617a_single", catalogue);
         this.openEditableTemplate(
           entry.label,
@@ -123,7 +121,7 @@ export class PanelEditorController {
           { section: "custom", category: entry.category },
           true,
         );
-      } else {
+      } else if (this.model.customEffectKindAvailable("palette_diy")) {
         this.openEditableTemplate(
           entry.label,
           blankPaletteDiy(catalogue, this.model.selectedModel!, entry.family, entry.variant),
@@ -159,11 +157,12 @@ export class PanelEditorController {
     explicit = true,
     existingTransitionEpoch?: number,
   ): void {
-    if (this.model.selectedModel === "H6199") {
+    const template = this.model.videoTemplate(mode);
+    if (this.model.videoAvailable && template) {
       this.openEditableTemplate(
         label,
-        blankVideoProfile(mode),
-        `template:video:${mode}`,
+        cloneVideoProfileContent(template.content),
+        template.id,
         { section: "video" },
         explicit,
         existingTransitionEpoch,
@@ -786,14 +785,19 @@ export class PanelEditorController {
 
   private musicTemplateContent(mode: string): MusicProfileContent | undefined {
     const selectedModel = this.model.selectedModel;
-    if (!selectedModel || !mode) {
+    const catalogue = this.model.modelCatalogue;
+    if (
+      !selectedModel ||
+      !catalogue ||
+      !catalogue.music_modes.some((candidate) => candidate.id === mode)
+    ) {
       return undefined;
     }
     return {
       kind: "music_profile",
       model: selectedModel,
       mode,
-      sensitivity: selectedModel === "H6199" ? 100 : 99,
+      sensitivity: catalogue.limits.music_sensitivity_max,
       colour: null,
       calm: ["rhythm", "bloom", "shiny"].includes(mode) ? false : null,
       parameters: {},
@@ -824,7 +828,6 @@ export class PanelEditorController {
     }
     if (
       content.kind === "h617a_painted" &&
-      isH617xModel(selectedModel) &&
       this.model.customEffectKindAvailable(content.kind)
     ) {
       return {
@@ -834,8 +837,11 @@ export class PanelEditorController {
       };
     }
     if (
-      (content.kind === "h617a_single" && isH617xModel(selectedModel)) ||
-      (content.kind === "palette_diy" && content.model === selectedModel)
+      (content.kind === "h617a_single" &&
+        this.model.customEffectKindAvailable(content.kind)) ||
+      (content.kind === "palette_diy" &&
+        content.model === selectedModel &&
+        this.model.customEffectKindAvailable(content.kind))
     ) {
       const matches = catalogue.effects.flatMap((family) =>
         family.family === content.family
@@ -888,16 +894,15 @@ export class PanelEditorController {
     }
     if (
       content.kind === "video_profile" &&
-      selectedModel === "H6199"
+      content.model === selectedModel &&
+      this.model.videoAvailable
     ) {
-      const modes = catalogue.video_modes.filter(
-        (mode) => mode.id === content.mode,
-      );
-      return modes.length === 1
+      const template = this.model.videoTemplate(content.mode);
+      return template
         ? {
-            selectionIdentity: `template:video:${modes[0].id}`,
-            label: modes[0].label,
-            resetContent: blankVideoProfile(modes[0].id),
+            selectionIdentity: template.id,
+            label: template.label,
+            resetContent: cloneVideoProfileContent(template.content),
           }
         : undefined;
     }

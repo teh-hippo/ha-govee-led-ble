@@ -48,7 +48,12 @@ async def async_get_config_entry_diagnostics(
         "effect_categories": sorted(coordinator.effect_categories),
         "prefix_effect_names": coordinator.prefix_effect_names,
         "always_include_custom_effects": coordinator.always_include_custom_effects,
+        "support_quality": coordinator.profile.support_quality.value,
         "state_readable": coordinator.profile.state_readable,
+        "read_domains": sorted(domain.value for domain in coordinator.profile.read_domains),
+        "setup_required_read_domains": sorted(
+            domain.value for domain in coordinator.profile.setup_required_read_domains
+        ),
         "supports_rgb": coordinator.profile.supports_rgb,
         "supports_color_temperature": coordinator.profile.supports_color_temperature,
         "color_temperature_range": {
