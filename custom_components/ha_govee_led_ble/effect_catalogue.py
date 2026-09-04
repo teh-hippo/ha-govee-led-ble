@@ -474,6 +474,7 @@ H6199_PALETTE_DIY_FAMILIES: Final = (
 )
 
 H6199_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6199")
+H6099_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6099")
 
 H6199_VIDEO_MODES: Final = (
     NativeModeOption("movie", "Movie"),
@@ -523,21 +524,22 @@ def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
     )
 
 
-def _video_template(mode: NativeModeOption) -> CatalogueTemplate:
+def _video_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
     return CatalogueTemplate(
         id=f"template:video:{mode.id}",
         label=mode.label,
         category="video",
         content=VideoProfile(
-            model="H6199",
+            model=model,
             mode=mode.id,
             full_screen=True,
             saturation=50,
             sound_effects=False,
             sound_effects_softness=50,
-            white_balance_position=17,
+            white_balance_position=50 if model == "H6099" else 17,
             relative_brightness=RelativeBrightness(100, 100, 100, 100),
             blank_screen=False,
+            black_border=False,
         ),
     )
 
@@ -579,7 +581,13 @@ H617E_CATALOGUE_TEMPLATES: Final = (
 H6199_CATALOGUE_TEMPLATES: Final = (
     *(_single_template("H6199", family) for family in H6199_PALETTE_DIY_FAMILIES),
     *(_music_template("H6199", mode) for mode in H6199_NATIVE_MUSIC_MODES),
-    *(_video_template(mode) for mode in H6199_VIDEO_MODES),
+    *(_video_template("H6199", mode) for mode in H6199_VIDEO_MODES),
+)
+
+H6099_CATALOGUE_TEMPLATES: Final = (
+    *(_single_template("H6099", family) for family in H6199_PALETTE_DIY_FAMILIES),
+    *(_music_template("H6099", mode) for mode in H6099_NATIVE_MUSIC_MODES),
+    *(_video_template("H6099", mode) for mode in H6199_VIDEO_MODES),
 )
 
 WORKSHOP_PROTOCOL_FIXTURES: Final = (
@@ -697,6 +705,27 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H6199", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H6099": ModelEffectCatalogue(
+        sku="H6099",
+        painted_effects=(),
+        effects=H6199_PALETTE_DIY_FAMILIES,
+        music_modes=H6099_NATIVE_MUSIC_MODES,
+        video_modes=H6199_VIDEO_MODES,
+        templates=H6099_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6099", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6099", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6099", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H6099", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6099", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6099", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6099", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6099", CapabilityWorkflow.WORKSHOP),
         ),
     ),
 }

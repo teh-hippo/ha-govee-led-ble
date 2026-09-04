@@ -18,9 +18,9 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 14
-EDITOR_ASSET_VERSION: Final = 19
-EFFECT_COMPILER_VERSION: Final = 4
+EDITOR_API_VERSION: Final = 15
+EDITOR_ASSET_VERSION: Final = 20
+EFFECT_COMPILER_VERSION: Final = 5
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
 
@@ -262,6 +262,83 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
         VerificationConfidence.SELECTION_ONLY,
         PhysicalValidationState.CAPTURE_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        ApplicationRoute.STUDIO_SCENE_APPLY,
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.EDITED_PALETTE_SCENES,
+        "Edited palette scenes",
+        "scene_palette",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.LAYERED_SCENES,
+        "Layered scenes",
+        "scene_layered",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.PALETTE_DIY,
+        "Palette DIY",
+        "palette_diy",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6199_CUSTOM_ENGINE,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.NATIVE_MUSIC,
+        "Music",
+        "music_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.VIDEO,
+        "Video",
+        "video_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.ADVANCED,
+        "Advanced",
+        "advanced",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
         EvidenceClassification.STRUCTURAL,
     ),
     _capability(

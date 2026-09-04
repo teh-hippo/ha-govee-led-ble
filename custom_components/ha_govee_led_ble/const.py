@@ -56,8 +56,10 @@ class ModelProfile:
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
+    white_balance_max: int = 20
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
+    supports_black_border: bool = False
     music_modes: tuple[str, ...] = ()
     music_sensitivity_min: int = 0
     music_sensitivity_max: int = 99
@@ -133,6 +135,29 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         min_color_temp_kelvin=2700,
         max_color_temp_kelvin=6500,
         whole_device_mask=0x007F,
+    ),
+    "H6099": ModelProfile(
+        "H6099 TV Backlight",
+        wire_model="H6099",
+        state_readable=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_color_mode_readback=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_video_mode=True,
+        supports_video_sound_effects=True,
+        supports_white_balance=True,
+        white_balance_max=100,
+        supports_relative_brightness=True,
+        supports_blank_screen=True,
+        supports_black_border=True,
+        music_modes=tuple(MUSIC_MODE_SLUGS),
+        supports_music_color=True,
+        supports_advanced_effects=True,
+        whole_device_mask=0x3FFF,
+        segment_count=14,
+        supports_segment_writes=True,
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
@@ -261,7 +286,7 @@ def effect_category_for_content_kind(content_kind: str) -> str | None:
 
 def default_effect_families(model: str) -> frozenset[str]:
     supported = supported_effect_families(model)
-    if model == "H6199":
+    if model in {"H6099", "H6199"}:
         return frozenset({EFFECT_FAMILY_VIDEO}) & supported
     return supported
 

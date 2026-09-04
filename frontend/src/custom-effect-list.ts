@@ -176,7 +176,10 @@ export function customEffectKindAvailable(
     return isH617xModel(context.model) && Boolean(catalogue?.effects.length);
   }
   if (kind === "palette_diy") {
-    return context.model === "H6199" && Boolean(catalogue?.effects.length);
+    return (
+      (context.model === "H6099" || context.model === "H6199") &&
+      Boolean(catalogue?.effects.length)
+    );
   }
   if (kind === "h617a_multi") {
     return (

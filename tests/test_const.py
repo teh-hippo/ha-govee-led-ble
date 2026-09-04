@@ -3,6 +3,7 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_EFFECT_FAMILIES,
     CONF_PREFIX_EFFECT_NAMES,
     MODEL_PROFILES,
+    MUSIC_MODE_SLUGS,
     UNSUPPORTED_PROFILE,
     ModelProfile,
     always_include_custom_effects_from_options,
@@ -18,12 +19,14 @@ from custom_components.ha_govee_led_ble.const import (
 
 def test_segment_count_and_supports_segments():
     assert MODEL_PROFILES["H617A"].segment_count == 15
+    assert MODEL_PROFILES["H6099"].segment_count == 14
     assert MODEL_PROFILES["H6199"].segment_count == 15
     assert MODEL_PROFILES["H617A"].supports_segments
     # Both models paint segments. The H6199 was gated off until captured app writes on it were
     # reproduced byte for byte, whole-strip and per-segment, including the union frame that proves
     # the field is a mask and not an index.
     assert MODEL_PROFILES["H6199"].supports_segments
+    assert MODEL_PROFILES["H6099"].supports_segments
 
 
 def test_supports_segments_defaults_false():
@@ -62,6 +65,20 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert protocol_model("H6076") == "H6076"
 
 
+def test_h6099_profile_is_exact_model_and_camera_capable():
+    profile = MODEL_PROFILES["H6099"]
+    assert wire_model("H6099") == "H6099"
+    assert profile.whole_device_mask == 0x3FFF
+    assert profile.segment_count == 14
+    assert profile.supports_video_mode
+    assert profile.supports_video_sound_effects
+    assert profile.supports_white_balance and profile.white_balance_max == 100
+    assert profile.supports_relative_brightness
+    assert profile.supports_blank_screen
+    assert profile.supports_black_border
+    assert profile.music_modes == tuple(MUSIC_MODE_SLUGS)
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments
@@ -74,6 +91,7 @@ def test_unknown_models_fail_closed():
 def test_effect_family_defaults_and_options():
     assert default_effect_families("H617A") == {"scenes", "music"}
     assert default_effect_families("H6199") == {"video"}
+    assert default_effect_families("H6099") == {"video"}
     assert effect_families_from_options("H6199", {}) == {"video"}
     assert effect_families_from_options(
         "H6199",
@@ -102,6 +120,7 @@ def test_model_specific_music_capabilities():
         "shiny",
     )
     assert MODEL_PROFILES["H6199"].music_modes == ("energetic", "rhythm", "spectrum", "rolling")
+    assert MODEL_PROFILES["H6099"].music_modes == MODEL_PROFILES["H617A"].music_modes
     assert MODEL_PROFILES["H617A"].supports_music_color
     assert MODEL_PROFILES["H6199"].supports_music_color
     assert (MODEL_PROFILES["H617A"].music_sensitivity_min, MODEL_PROFILES["H617A"].music_sensitivity_max) == (0, 99)

@@ -1,0 +1,204 @@
+meta:
+  id: h6099_status_reply
+  title: Govee H6099 "aa" status-reply envelope
+  endian: le
+  imports:
+    - ../govee_shared
+doc: |
+  SPECULATIVE H6099 20-byte status reply for issue #258.
+  The final byte is the XOR of bytes 0 through 18.
+
+  The structure is derived from the official app's H6099 product path and remains
+  speculative until exact-model owner qualification. The final two records in
+  segment group four are preserved as unknown bytes because H6099 exposes 14 pieces.
+seq:
+  - id: header
+    contents: [0xaa]
+  - id: domain
+    type: u1
+    enum: status_domain
+  - id: body
+    size: 17
+    type:
+      switch-on: domain
+      cases:
+        'status_domain::power': power_body
+        'status_domain::brightness': brightness_body
+        'status_domain::firmware': version_body
+        'status_domain::hardware': hardware_version_body
+        'status_domain::colour_mode': colour_mode_body
+        'status_domain::display_setting': display_setting_body
+        'status_domain::relative_brightness': relative_brightness_body
+        'status_domain::segments': segment_group_body
+  - id: checksum
+    type: u1
+enums:
+  status_domain:
+    0x01: power
+    0x04: brightness
+    0x05: colour_mode
+    0x06: firmware
+    0x07: hardware
+    0xa5: segments
+    0xa9: display_setting
+    0xae: relative_brightness
+  display_setting:
+    0x06: white_balance
+    0x0a: blank_screen
+    0x0b: black_border
+  blank_screen_detection:
+    0x01: low_brightness
+    0x02: same_tone
+  mode_sel:
+    0x00: video
+    0x04: scene
+    0x13: music
+    0x15: static_colour
+  video_source:
+    0x00: movie
+    0x01: game
+  video_region:
+    0x08: part
+    0x09: all
+types:
+  display_setting_body:
+    seq:
+      - id: setting
+        type: u1
+        enum: display_setting
+      - id: len
+        type: u1
+      - id: payload
+        size: len
+        type:
+          switch-on: setting
+          cases:
+            'display_setting::white_balance': white_balance_state
+            'display_setting::blank_screen': blank_screen_state
+            'display_setting::black_border': black_border_state
+      - id: padding
+        type: u1
+        valid: 0
+        repeat: eos
+  white_balance_state:
+    seq:
+      - id: progress
+        type: u1
+  black_border_state:
+    seq:
+      - id: is_enabled
+        type: u1
+  blank_screen_state:
+    seq:
+      - id: is_enabled
+        type: u1
+      - id: detection
+        type: u1
+        enum: blank_screen_detection
+      - id: low_brightness_duration_seconds
+        type: u2
+      - id: same_tone_duration_seconds
+        type: u2
+  relative_brightness_body:
+    seq:
+      - id: selector
+        contents: [0x01]
+      - id: edge_count
+        type: u1
+        valid: 0x04
+      - id: left_percent
+        type: u1
+      - id: top_percent
+        type: u1
+      - id: right_percent
+        type: u1
+      - id: bottom_percent
+        type: u1
+      - id: strip_left_percent
+        type: u1
+      - id: strip_right_percent
+        type: u1
+  colour_mode_body:
+    seq:
+      - id: mode
+        type: u1
+        enum: mode_sel
+      - id: detail
+        size: 16
+        type:
+          switch-on: mode
+          cases:
+            'mode_sel::video': video_state
+            'mode_sel::music': music_state
+            'mode_sel::scene': scene_state
+  music_state:
+    seq:
+      - id: mode
+        type: u1
+      - id: sensitivity
+        type: u1
+      - id: is_calm
+        type: u1
+      - id: has_fixed_colour
+        type: u1
+      - id: fixed_colour
+        type: govee_shared::rgb
+  video_state:
+    seq:
+      - id: source
+        type: u1
+        enum: video_source
+      - id: region
+        type: u1
+        enum: video_region
+      - id: saturation
+        type: u1
+      - id: sound_effects
+        type: u1
+      - id: sound_type
+        type: u1
+      - id: softness
+        type: u1
+  scene_state:
+    seq:
+      - id: scene_id
+        type: u2le
+  power_body:
+    seq:
+      - id: is_on
+        type: u1
+  brightness_body:
+    seq:
+      - id: percent
+        type: u1
+  segment_record:
+    seq:
+      - id: brightness_percent
+        type: u1
+      - id: colour
+        type: govee_shared::rgb
+  segment_group_body:
+    seq:
+      - id: group
+        type: u1
+        valid:
+          min: 1
+          max: 4
+      - id: segments
+        type: segment_record
+        repeat: expr
+        repeat-expr: 'group == 4 ? 2 : 4'
+      - size: 8
+        if: group == 4
+  version_body:
+    seq:
+      - id: text
+        type: strz
+        encoding: ASCII
+  hardware_version_body:
+    seq:
+      - id: prefix
+        contents: [0x03]
+      - id: text
+        type: strz
+        encoding: ASCII

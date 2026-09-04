@@ -105,6 +105,7 @@ class PriorControlState:
     video_saturation: int = 100
     video_sound_effects: bool = False
     video_sound_effects_softness: int = 100
+    white_balance_position: int | None = None
     white_balance_red: int | None = None
     white_balance_blue: int | None = None
     relative_brightness: int | None = None
@@ -116,6 +117,7 @@ class PriorControlState:
     blank_screen_detection: int | None = None
     blank_screen_low_brightness_duration_seconds: int | None = None
     blank_screen_same_tone_duration_seconds: int | None = None
+    black_border: bool | None = None
 
     def __post_init__(self) -> None:
         validate_bounded_string(
@@ -193,6 +195,7 @@ class PriorControlState:
         if self.music_fountain_direction not in {"clockwise", "counterclockwise", "two_way"}:
             raise EffectStorageError("prior fountain direction is invalid")
         optional_numeric_values: tuple[tuple[int | None, str, int, int], ...] = (
+            (self.white_balance_position, "prior white-balance position", 1, 100),
             (self.white_balance_red, "prior white-balance red", 0, 255),
             (self.white_balance_blue, "prior white-balance blue", 0, 255),
             (self.relative_brightness, "prior relative brightness", 1, 100),
@@ -223,6 +226,8 @@ class PriorControlState:
                 raise EffectStorageError(f"{optional_name} must be from {minimum} to {maximum}")
         if self.blank_screen is not None and not isinstance(self.blank_screen, bool):
             raise EffectStorageError("prior blank-screen state must be a boolean or null")
+        if self.black_border is not None and not isinstance(self.black_border, bool):
+            raise EffectStorageError("prior black-border state must be a boolean or null")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -250,6 +255,7 @@ class PriorControlState:
             "video_saturation": self.video_saturation,
             "video_sound_effects": self.video_sound_effects,
             "video_sound_effects_softness": self.video_sound_effects_softness,
+            "white_balance_position": self.white_balance_position,
             "white_balance_red": self.white_balance_red,
             "white_balance_blue": self.white_balance_blue,
             "relative_brightness": self.relative_brightness,
@@ -261,6 +267,7 @@ class PriorControlState:
             "blank_screen_detection": self.blank_screen_detection,
             "blank_screen_low_brightness_duration_seconds": self.blank_screen_low_brightness_duration_seconds,
             "blank_screen_same_tone_duration_seconds": self.blank_screen_same_tone_duration_seconds,
+            "black_border": self.black_border,
         }
 
     @classmethod
@@ -290,6 +297,7 @@ class PriorControlState:
             video_saturation=_optional_int(raw, "video_saturation", default=100),
             video_sound_effects=_optional_bool(raw, "video_sound_effects", default=False),
             video_sound_effects_softness=_optional_int(raw, "video_sound_effects_softness", default=100),
+            white_balance_position=_optional_int(raw, "white_balance_position"),
             white_balance_red=_optional_int(raw, "white_balance_red"),
             white_balance_blue=_optional_int(raw, "white_balance_blue"),
             relative_brightness=_optional_int(raw, "relative_brightness"),
@@ -307,6 +315,7 @@ class PriorControlState:
                 raw,
                 "blank_screen_same_tone_duration_seconds",
             ),
+            black_border=_optional_bool(raw, "black_border"),
         )
 
 

@@ -80,6 +80,15 @@ const MODEL_RELEASE_WORKFLOWS: Record<ModelSku, readonly ReleaseWorkflowId[]> = 
     "advanced",
     "workshop",
   ],
+  H6099: [
+    "native_scenes",
+    "edited_palette_scenes",
+    "layered_scenes",
+    "palette_diy",
+    "native_music",
+    "video",
+    "advanced",
+  ],
   H6199: [
     "native_scenes",
     "edited_palette_scenes",
@@ -163,6 +172,12 @@ function decodeModelCatalogues(
       models.H617E,
       "catalogue model H617E",
       "H617E",
+      decodeContent,
+    ),
+    H6099: decodeModelEffectCatalogue(
+      models.H6099,
+      "catalogue model H6099",
+      "H6099",
       decodeContent,
     ),
     H6199: decodeModelEffectCatalogue(

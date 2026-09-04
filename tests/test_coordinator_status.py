@@ -87,6 +87,20 @@ def test_h6199_video_and_music_fields_decode() -> None:
     assert music.music_sensitivity == 77 and music.music_color == (1, 2, 3)
 
 
+def test_h6099_video_and_display_fields_decode() -> None:
+    video = _parse_colour("aa050001092a01023700000000000000000000b9", "H6099")
+    assert video.mode is ParsedMode.VIDEO and video.video_mode == "game"
+    assert (video.video_full_screen, video.video_saturation) == (True, 42)
+    assert (video.video_sound_effects, video.video_sound_effects_softness) == (True, 55)
+
+    white = decode_status_frame(H("aaa9060132000000000000000000000000000036"), "H6099")
+    border = decode_status_frame(H("aaa90b0101000000000000000000000000000008"), "H6099")
+    segments = decode_status_frame(H("aaa504640102036404050600000000000000000c"), "H6099")
+    assert white is not None and white.generated.body.payload.progress == 50
+    assert border is not None and border.generated.body.payload.is_enabled == 1
+    assert segments is not None and len(segments.generated.body.segments) == 2
+
+
 @pytest.mark.parametrize("offset", [3, 4])
 def test_h6199_unknown_video_selectors_are_ignored(offset: int) -> None:
     frame = bytearray(H("aa050000012a01370000000000000000000000b2"))

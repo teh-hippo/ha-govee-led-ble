@@ -8,6 +8,9 @@ h6199_command_write.py
 h6199_effect_upload.py
 h6199_status_query.py
 h6199_status_reply.py
+h6099_command_write.py
+h6099_status_query.py
+h6099_status_reply.py
 h6199_wifi_body.py
 h6199_wifi_provision.py
 h6199_wifi_result.py

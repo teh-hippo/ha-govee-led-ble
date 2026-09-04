@@ -6,11 +6,13 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from .generated_protocol_adapter import (
-    build_h6199_blank_screen,
-    build_h6199_relative_brightness,
-    build_h6199_video,
+    build_black_border,
+    build_blank_screen,
+    build_h6099_white_balance,
     build_h6199_white_balance,
     build_power,
+    build_relative_brightness,
+    build_video,
 )
 
 if TYPE_CHECKING:
@@ -26,7 +28,8 @@ async def apply_video_mode_from_state(
     sound_effects = coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects
     send = coordinator.send_command if writer is None else writer
     await send(
-        build_h6199_video(
+        build_video(
+            coordinator.model,
             coordinator.video_full_screen,
             game_mode,
             coordinator.video_saturation,
@@ -76,9 +79,21 @@ async def apply_white_balance(
     writer: Callable[[bytes], Awaitable[None]] | None = None,
     verify: bool = True,
 ) -> bool:
+    send = coordinator.send_command if writer is None else writer
+    if coordinator.model == "H6099":
+        expected_position = 50 if coordinator.white_balance_position is None else coordinator.white_balance_position
+        for _ in range(2 if verify else 1):
+            if verify:
+                coordinator._arm_expected_values({"white_balance_position": expected_position})
+            await send(build_h6099_white_balance(expected_position))
+            if not verify:
+                return True
+            if await coordinator.refresh_state(expected_white_balance_position=expected_position):
+                return True
+        raise RuntimeError("White-balance write was not confirmed by the device")
+
     expected = coordinator.white_balance
     fields = {"white_balance_red": expected[0], "white_balance_blue": expected[1]}
-    send = coordinator.send_command if writer is None else writer
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values(fields)
@@ -114,7 +129,7 @@ async def apply_relative_brightness(
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values(fields)
-        await send(build_h6199_relative_brightness(*expected))
+        await send(build_relative_brightness(coordinator.model, *expected))
         if not verify:
             return True
         if await coordinator.refresh_state(expected_relative_brightness=expected):
@@ -138,9 +153,28 @@ async def apply_blank_screen(
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values({"blank_screen": expected})
-        await send(build_h6199_blank_screen(expected, detection, low_duration, same_duration))
+        await send(build_blank_screen(coordinator.model, expected, detection, low_duration, same_duration))
         if not verify:
             return True
         if await coordinator.refresh_state(expected_blank_screen=expected):
             return True
     raise RuntimeError("Blank-screen write was not confirmed by the device")
+
+
+async def apply_black_border(
+    coordinator: GoveeBLECoordinator,
+    *,
+    writer: Callable[[bytes], Awaitable[None]] | None = None,
+    verify: bool = True,
+) -> bool:
+    expected = bool(coordinator.black_border)
+    send = coordinator.send_command if writer is None else writer
+    for _ in range(2 if verify else 1):
+        if verify:
+            coordinator._arm_expected_values({"black_border": expected})
+        await send(build_black_border(expected))
+        if not verify:
+            return True
+        if await coordinator.refresh_state(expected_black_border=expected):
+            return True
+    raise RuntimeError("Black-border write was not confirmed by the device")

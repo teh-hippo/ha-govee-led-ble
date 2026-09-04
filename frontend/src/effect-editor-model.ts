@@ -205,16 +205,19 @@ export function blankPaletteDiy(
   };
 }
 
-export function blankVideoProfile(mode: string): VideoProfileContent {
+export function blankVideoProfile(
+  mode: string,
+  model: "H6099" | "H6199" = "H6199",
+): VideoProfileContent {
   return {
     kind: "video_profile",
-    model: "H6199",
+    model,
     mode: mode === "game" ? "game" : "movie",
     full_screen: true,
     saturation: 50,
     sound_effects: false,
     sound_effects_softness: 50,
-    white_balance_position: 17,
+    white_balance_position: model === "H6099" ? 50 : 17,
     relative_brightness: {
       left: 100,
       top: 100,
@@ -222,6 +225,7 @@ export function blankVideoProfile(mode: string): VideoProfileContent {
       bottom: 100,
     },
     blank_screen: false,
+    black_border: false,
   };
 }
 
@@ -518,7 +522,7 @@ export function libraryKindPriority(
   model: ModelSku | undefined,
 ): number {
   const order =
-    model === "H6199"
+    model === "H6099" || model === "H6199"
       ? [
           "palette_diy",
           "workshop",

@@ -6,7 +6,7 @@ export interface JsonObject {
 }
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
-export type ModelSku = "H617A" | "H617E" | "H6199";
+export type ModelSku = "H617A" | "H617E" | "H6099" | "H6199";
 export type ObservationConfidence =
   | "exact_session"
   | "activation_match"
@@ -178,7 +178,7 @@ export interface RelativeBrightness {
 
 export interface VideoProfileContent {
   kind: "video_profile";
-  model: "H6199";
+  model: "H6099" | "H6199";
   mode: "movie" | "game";
   full_screen: boolean;
   saturation: number;
@@ -187,6 +187,7 @@ export interface VideoProfileContent {
   white_balance_position: number;
   relative_brightness: RelativeBrightness;
   blank_screen: boolean;
+  black_border?: boolean;
 }
 
 export type BrightnessOrder = 0 | 1 | 2 | 3;

@@ -32,11 +32,15 @@ from custom_components.ha_govee_led_ble.effect_deployments import PriorControlSt
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     H6199StatusReply,
     StatusReply,
+    build_black_border,
+    build_black_border_query,
+    build_blank_screen_query,
     build_brightness,
     build_brightness_query,
     build_colour_mode_query,
     build_firmware_query,
     build_h617a_scene,
+    build_h6099_white_balance,
     build_h6199_blank_screen,
     build_h6199_blank_screen_query,
     build_h6199_relative_brightness_query,
@@ -48,7 +52,10 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_music_mode,
     build_power,
     build_power_query,
+    build_relative_brightness_query,
     build_segment_query,
+    build_video,
+    build_white_balance_query,
     parse_command,
     parse_status,
 )
@@ -101,6 +108,16 @@ proto = SimpleNamespace(
     build_segment_paint=build_segment_paint,
     build_white_brightness=build_white_brightness,
 )
+
+
+@pytest.fixture
+def h6099(hass):
+    return GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:77",
+        "H6099",
+        configuration_url=_CONFIGURATION_URL,
+    )
 
 
 @pytest.fixture
@@ -819,6 +836,26 @@ def test_notify_callback(h6199):
     assert h6199.is_on is False
 
 
+def test_h6099_notify_callback_uses_exact_display_and_video_shapes(h6099):
+    cb = h6099._notify_callback
+    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x01, 0x09, 42, 1, 2, 55])))
+    assert (h6099.video_mode, h6099.video_full_screen, h6099.video_saturation) == ("game", True, 42)
+    assert (h6099.video_sound_effects, h6099.video_sound_effects_softness) == (True, 55)
+    cb(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x06, 0x01, 50])))
+    cb(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 1, 2, 10, 0, 120, 0])))
+    cb(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0B, 0x01, 1])))
+    cb(None, bytearray(proto.build_packet(0xAA, 0xAE, [1, 4, 10, 20, 30, 40])))
+    assert h6099.white_balance_position == 50
+    assert h6099.blank_screen is True
+    assert h6099.black_border is True
+    assert (
+        h6099.relative_brightness_left,
+        h6099.relative_brightness_top,
+        h6099.relative_brightness_right,
+        h6099.relative_brightness_bottom,
+    ) == (10, 20, 30, 40)
+
+
 def test_display_replies_reject_stale_composite_values_atomically(h6199):
     h6199.white_balance_red, h6199.white_balance_blue = 16, 3
     h6199._arm_expected_values({"white_balance_red": 21, "white_balance_blue": 5})
@@ -1110,6 +1147,22 @@ async def test_send_state_queries_include_h6199_display_state(h6199):
         build_h6199_blank_screen_query(),
         build_h6199_relative_brightness_query(),
         *(build_segment_query(group, "H6199") for group in range(1, 5)),
+    ]
+
+
+async def test_send_state_queries_include_h6099_display_state(h6099):
+    c = _c(write_gatt_char=AsyncMock())
+    h6099._client = c
+    assert await h6099._send_state_queries() is True
+    assert [call.args[1] for call in c.write_gatt_char.await_args_list] == [
+        build_power_query("H6099"),
+        build_brightness_query("H6099"),
+        build_colour_mode_query("H6099"),
+        build_white_balance_query("H6099"),
+        build_blank_screen_query("H6099"),
+        build_black_border_query("H6099"),
+        build_relative_brightness_query("H6099"),
+        *(build_segment_query(group, "H6099") for group in range(1, 5)),
     ]
 
 
@@ -1515,6 +1568,22 @@ async def test_refresh_state_queries_each_display_domain(h6199):
         assert queries.await_args.kwargs["query_relative_brightness"] is True
 
 
+async def test_h6099_refresh_state_queries_black_border(h6099):
+    h6099._client = client = _c()
+
+    async def _reply(**kwargs) -> bool:
+        if kwargs.get("query_black_border"):
+            h6099._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0B, 0x01, 1])))
+        return True
+
+    with (
+        patch.object(h6099, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(h6099, "_send_state_queries", new=AsyncMock(side_effect=_reply)) as queries,
+    ):
+        assert await h6099.refresh_state(expected_black_border=True)
+        assert queries.await_args.kwargs["query_black_border"] is True
+
+
 async def test_refresh_state_rejects_optimistic_value_without_fresh_reply(coord):
     coord.is_on = True
     coord._client = client = _c(disconnect=AsyncMock())
@@ -1892,6 +1961,7 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord):
         query_color_mode=True,
         query_white_balance=False,
         query_blank_screen=False,
+        query_black_border=False,
         query_relative_brightness=False,
     )
     disconnect.assert_not_awaited()
@@ -2503,13 +2573,19 @@ def test_h6199_blank_screen_builder_clamps_durations() -> None:
     ) == bytes.fromhex("33a90a0601020000ffff00000000000000000095")
 
 
+def test_h6099_camera_builders_use_exact_model_fields() -> None:
+    assert build_video("H6099", True, True, 42, True, 55) == bytes.fromhex("33050001092a0102370000000000000000000020")
+    assert build_h6099_white_balance(50) == bytes.fromhex("33a90601320000000000000000000000000000af")
+    assert build_black_border(True) == bytes.fromhex("33a90b0101000000000000000000000000000091")
+
+
 def test_generated_adapter_rejects_structurally_invalid_frames() -> None:
     assert parse_command(_packet(0x33, 0x04, [101])) is None
     assert parse_status(bytes.fromhex("aaa506731f646408646464fe6464640000000093")) is None
     assert parse_command(_packet(0x33, 0x01, [1]), "H9999") is None
 
 
-@pytest.mark.parametrize(("model", "maximum"), [("H617A", 5), ("H6199", 4)])
+@pytest.mark.parametrize(("model", "maximum"), [("H617A", 5), ("H6099", 4), ("H6199", 4)])
 def test_segment_query_groups_are_model_bounded(model: str, maximum: int) -> None:
     assert build_segment_query(maximum, model)[2] == maximum
     with pytest.raises(ValueError, match=f"1 to {maximum}"):

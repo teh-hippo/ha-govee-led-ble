@@ -159,10 +159,13 @@ export class PanelEditorController {
     explicit = true,
     existingTransitionEpoch?: number,
   ): void {
-    if (this.model.selectedModel === "H6199") {
+    if (
+      this.model.selectedModel === "H6099" ||
+      this.model.selectedModel === "H6199"
+    ) {
       this.openEditableTemplate(
         label,
-        blankVideoProfile(mode),
+        blankVideoProfile(mode, this.model.selectedModel),
         `template:video:${mode}`,
         { section: "video" },
         explicit,
@@ -888,7 +891,7 @@ export class PanelEditorController {
     }
     if (
       content.kind === "video_profile" &&
-      selectedModel === "H6199"
+      (selectedModel === "H6099" || selectedModel === "H6199")
     ) {
       const modes = catalogue.video_modes.filter(
         (mode) => mode.id === content.mode,
@@ -897,7 +900,7 @@ export class PanelEditorController {
         ? {
             selectionIdentity: `template:video:${modes[0].id}`,
             label: modes[0].label,
-            resetContent: blankVideoProfile(modes[0].id),
+            resetContent: blankVideoProfile(modes[0].id, selectedModel),
           }
         : undefined;
     }

@@ -22,6 +22,10 @@ H6199CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
 )
+H6099CommandWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_command_write").H6099CommandWrite,
+)
 H6199EffectUpload = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload").H6199EffectUpload,
@@ -33,6 +37,10 @@ StatusQuery = cast(
 H6199StatusQuery = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_query").H6199StatusQuery,
+)
+H6099StatusQuery = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_status_query").H6099StatusQuery,
 )
 GoveeShared = cast(
     Any,
@@ -49,6 +57,10 @@ StatusReply = cast(
 H6199StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
+)
+H6099StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_status_reply").H6099StatusReply,
 )
 DiyType03 = cast(
     Any,
@@ -169,10 +181,12 @@ def _serialize_xor(root: Any, length: int = 20) -> bytes:
 
 _STATUS_ROOTS = {
     "H617A": ("status_reply", StatusReply),
+    "H6099": ("h6099_status_reply", H6099StatusReply),
     "H6199": ("h6199_status_reply", H6199StatusReply),
 }
 _COMMAND_ROOTS = {
     "H617A": ("command_write", CommandWrite),
+    "H6099": ("h6099_command_write", H6099CommandWrite),
     "H6199": ("h6199_command_write", H6199CommandWrite),
 }
 
@@ -238,7 +252,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
         }.get(envelope[2])
         if root_type is None:
             raise ValueError(f"H617A A3 body type 0x{envelope[2]:02x} is not supported")
-    elif model == "H6199":
+    elif model in {"H6099", "H6199"}:
         root_type = H6199EffectUpload
     else:
         raise ValueError(f"{model} has no generated A3 effect grammar")
@@ -255,11 +269,12 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
 
 def _command_types(model: str) -> tuple[Any, Any, Any]:
     resolved = wire_model(model)
-    if resolved == "H6199":
+    if resolved in {"H6099", "H6199"}:
+        root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
         return (
-            H6199CommandWrite,
-            H6199CommandWrite.PowerBody,
-            H6199CommandWrite.BrightnessBody,
+            root_type,
+            root_type.PowerBody,
+            root_type.BrightnessBody,
         )
     if resolved != "H617A":
         raise ValueError(f"{model} has no generated command grammar")
@@ -284,7 +299,11 @@ def _build_status_query(
     resolved = wire_model(model)
     if resolved is None:
         raise ValueError(f"{model} has no generated status-query grammar")
-    root_type = H6199StatusQuery if resolved == "H6199" else StatusQuery
+    root_type = {
+        "H617A": StatusQuery,
+        "H6099": H6099StatusQuery,
+        "H6199": H6199StatusQuery,
+    }[resolved]
     root = root_type()
     root.header = b"\xaa"
     root.domain = getattr(root_type.QueryDomain, domain)
@@ -331,16 +350,32 @@ def build_hardware_query(model: str = "H617A") -> bytes:
     return _build_status_query("hardware", model)
 
 
+def build_white_balance_query(model: str) -> bytes:
+    return _build_status_query("display_setting", model, display_setting="white_balance")
+
+
+def build_blank_screen_query(model: str) -> bytes:
+    return _build_status_query("display_setting", model, display_setting="blank_screen")
+
+
+def build_black_border_query(model: str) -> bytes:
+    return _build_status_query("display_setting", model, display_setting="black_border")
+
+
+def build_relative_brightness_query(model: str) -> bytes:
+    return _build_status_query("relative_brightness", model)
+
+
 def build_h6199_white_balance_query() -> bytes:
-    return _build_status_query("display_setting", "H6199", display_setting="white_balance")
+    return build_white_balance_query("H6199")
 
 
 def build_h6199_blank_screen_query() -> bytes:
-    return _build_status_query("display_setting", "H6199", display_setting="blank_screen")
+    return build_blank_screen_query("H6199")
 
 
 def build_h6199_relative_brightness_query() -> bytes:
-    return _build_status_query("relative_brightness", "H6199")
+    return build_relative_brightness_query("H6199")
 
 
 def build_h6199_subordinate_query(domain: int) -> bytes:
@@ -353,7 +388,7 @@ def build_segment_query(group: int, model: str = "H617A") -> bytes:
     resolved = wire_model(model)
     if resolved is None:
         raise ValueError(f"{model} has no generated segment-query grammar")
-    maximum = 4 if resolved == "H6199" else 5
+    maximum = 4 if resolved in {"H6099", "H6199"} else 5
     if not 1 <= group <= maximum:
         raise ValueError(f"segment query group must be from 1 to {maximum}")
     return _build_status_query("segments", model, segment_group=group)
@@ -663,14 +698,15 @@ def build_segment_colour(
     model: str = "H617A",
 ) -> bytes:
     resolved = wire_model(model)
-    if resolved == "H6199":
-        root = H6199CommandWrite()
+    if resolved in {"H6099", "H6199"}:
+        root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H6199CommandWrite.CommandOp.mode
-        mode = _child(H6199CommandWrite.ModeBody, root)
-        mode.sub_mode = H6199CommandWrite.ModeSel.static_colour
-        detail = _child(H6199CommandWrite.StaticColourBody, mode)
-        detail.operation = H6199CommandWrite.StaticOperation.colour
+        root.opcode = root_type.CommandOp.mode
+        mode = _child(root_type.ModeBody, root)
+        mode.sub_mode = root_type.ModeSel.static_colour
+        detail = _child(root_type.StaticColourBody, mode)
+        detail.operation = root_type.StaticOperation.colour
         detail.red = max(0, min(255, red))
         detail.green = max(0, min(255, green))
         detail.blue = max(0, min(255, blue))
@@ -699,14 +735,15 @@ def build_colour_temperature(
 ) -> bytes:
     value = max(2000, min(9000, kelvin))
     resolved = wire_model(model)
-    if resolved == "H6199":
-        root = H6199CommandWrite()
+    if resolved in {"H6099", "H6199"}:
+        root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H6199CommandWrite.CommandOp.mode
-        mode = _child(H6199CommandWrite.ModeBody, root)
-        mode.sub_mode = H6199CommandWrite.ModeSel.static_colour
-        detail = _child(H6199CommandWrite.StaticColourBody, mode)
-        detail.operation = H6199CommandWrite.StaticOperation.colour
+        root.opcode = root_type.CommandOp.mode
+        mode = _child(root_type.ModeBody, root)
+        mode.sub_mode = root_type.ModeSel.static_colour
+        detail = _child(root_type.StaticColourBody, mode)
+        detail.operation = root_type.StaticOperation.colour
         detail.red = 0
         detail.green = 0
         detail.blue = 0
@@ -734,14 +771,15 @@ def build_segment_brightness(
 ) -> bytes:
     value = max(0, min(100, percent))
     resolved = wire_model(model)
-    if resolved == "H6199":
-        root = H6199CommandWrite()
+    if resolved in {"H6099", "H6199"}:
+        root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H6199CommandWrite.CommandOp.mode
-        mode = _child(H6199CommandWrite.ModeBody, root)
-        mode.sub_mode = H6199CommandWrite.ModeSel.static_colour
-        detail = _child(H6199CommandWrite.StaticColourBody, mode)
-        detail.operation = H6199CommandWrite.StaticOperation.brightness
+        root.opcode = root_type.CommandOp.mode
+        mode = _child(root_type.ModeBody, root)
+        mode.sub_mode = root_type.ModeSel.static_colour
+        detail = _child(root_type.StaticColourBody, mode)
+        detail.operation = root_type.StaticOperation.brightness
         detail.brightness_percent = value
         detail.brightness_segment_mask = mask
         mode.detail = detail
@@ -769,15 +807,28 @@ def build_segment_brightness(
 
 
 def build_h6199_scene(scene_code: int, music_code: int = 0) -> bytes:
-    root = H6199CommandWrite()
+    return _build_camera_scene(scene_code, music_code, "H6199")
+
+
+def build_h6099_scene(scene_code: int) -> bytes:
+    return _build_camera_scene(scene_code, 0, "H6099")
+
+
+def _build_camera_scene(scene_code: int, music_code: int, model: str) -> bytes:
+    resolved = wire_model(model)
+    root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H6199CommandWrite.CommandOp.mode
-    mode = _child(H6199CommandWrite.ModeBody, root)
-    mode.sub_mode = H6199CommandWrite.ModeSel.scene
-    detail = _child(H6199CommandWrite.SceneBody, mode)
+    root.opcode = root_type.CommandOp.mode
+    mode = _child(root_type.ModeBody, root)
+    mode.sub_mode = root_type.ModeSel.scene
+    detail = _child(root_type.SceneBody, mode)
     detail.scene_id = max(0, min(0xFFFF, scene_code))
-    detail.music_code = max(0, min(0xFFFF, music_code))
-    detail.reserved = bytes(12)
+    if resolved == "H6199":
+        detail.music_code = max(0, min(0xFFFF, music_code))
+        detail.reserved = bytes(12)
+    else:
+        detail.reserved = bytes(14)
     mode.detail = detail
     root.body = mode
     return _serialize_xor(root)
@@ -817,18 +868,43 @@ def build_h6199_video(
     sound_effects: bool,
     softness: int,
 ) -> bytes:
-    root = H6199CommandWrite()
+    return build_video(
+        "H6199",
+        full_screen,
+        game_mode,
+        saturation,
+        sound_effects,
+        softness,
+    )
+
+
+def build_video(
+    model: str,
+    full_screen: bool,
+    game_mode: bool,
+    saturation: int,
+    sound_effects: bool,
+    softness: int,
+) -> bytes:
+    resolved = wire_model(model)
+    if resolved not in {"H6099", "H6199"}:
+        raise ValueError(f"{model} has no generated video grammar")
+    root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H6199CommandWrite.CommandOp.mode
-    mode = _child(H6199CommandWrite.ModeBody, root)
-    mode.sub_mode = H6199CommandWrite.ModeSel.video
-    detail = _child(H6199CommandWrite.VideoBody, mode)
-    detail.region = H6199CommandWrite.VideoRegion.all if full_screen else H6199CommandWrite.VideoRegion.part
-    detail.source = H6199CommandWrite.VideoSource.game if game_mode else H6199CommandWrite.VideoSource.movie
+    root.opcode = root_type.CommandOp.mode
+    mode = _child(root_type.ModeBody, root)
+    mode.sub_mode = root_type.ModeSel.video
+    detail = _child(root_type.VideoBody, mode)
+    detail.region = root_type.VideoRegion.all if full_screen else root_type.VideoRegion.part
+    detail.source = root_type.VideoSource.game if game_mode else root_type.VideoSource.movie
     detail.saturation = max(0, min(100, saturation))
     detail.sound_effects = int(sound_effects)
     detail.softness = max(1, min(100, softness))
-    detail.relative_brightness_percent = 0
+    if resolved == "H6199":
+        detail.relative_brightness_percent = 0
+    else:
+        detail.sound_type = b"\x02"
     mode.detail = detail
     root.body = mode
     return _serialize_xor(root)
@@ -850,21 +926,40 @@ def build_h6199_white_balance(red: int, blue: int) -> bytes:
     return _serialize_xor(root)
 
 
-def build_h6199_blank_screen(
+def build_h6099_white_balance(progress: int) -> bytes:
+    root = H6099CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6099CommandWrite.CommandOp.display_setting
+    body = _child(H6099CommandWrite.DisplaySettingBody, root)
+    body.setting = H6099CommandWrite.DisplaySetting.white_balance
+    body.len = 1
+    payload = _child(H6099CommandWrite.WhiteBalancePayload, body)
+    payload.progress = max(1, min(100, progress))
+    body.payload = payload
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_blank_screen(
+    model: str,
     enabled: bool,
     detection: int = 2,
     low_brightness_duration_seconds: int = _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS,
     same_tone_duration_seconds: int = _BLANK_SCREEN_SAME_TONE_SECONDS,
 ) -> bytes:
-    root = H6199CommandWrite()
+    resolved = wire_model(model)
+    if resolved not in {"H6099", "H6199"}:
+        raise ValueError(f"{model} has no generated blank-screen grammar")
+    root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H6199CommandWrite.CommandOp.display_setting
-    body = _child(H6199CommandWrite.DisplaySettingBody, root)
-    body.setting = H6199CommandWrite.DisplaySetting.blank_screen
+    root.opcode = root_type.CommandOp.display_setting
+    body = _child(root_type.DisplaySettingBody, root)
+    body.setting = root_type.DisplaySetting.blank_screen
     body.len = 6
-    payload = _child(H6199CommandWrite.BlankScreenPayload, body)
+    payload = _child(root_type.BlankScreenPayload, body)
     payload.is_on = int(enabled)
-    payload.detection = H6199CommandWrite.BlankScreenDetection(detection)
+    payload.detection = root_type.BlankScreenDetection(detection)
     payload.low_brightness_duration_seconds = max(0, min(0xFFFF, low_brightness_duration_seconds))
     payload.same_tone_duration_seconds = max(0, min(0xFFFF, same_tone_duration_seconds))
     body.payload = payload
@@ -872,16 +967,36 @@ def build_h6199_blank_screen(
     return _serialize_xor(root)
 
 
-def build_h6199_relative_brightness(
+def build_h6199_blank_screen(
+    enabled: bool,
+    detection: int = 2,
+    low_brightness_duration_seconds: int = _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS,
+    same_tone_duration_seconds: int = _BLANK_SCREEN_SAME_TONE_SECONDS,
+) -> bytes:
+    return build_blank_screen(
+        "H6199",
+        enabled,
+        detection,
+        low_brightness_duration_seconds,
+        same_tone_duration_seconds,
+    )
+
+
+def build_relative_brightness(
+    model: str,
     left: int,
     top: int,
     right: int,
     bottom: int,
 ) -> bytes:
-    root = H6199CommandWrite()
+    resolved = wire_model(model)
+    if resolved not in {"H6099", "H6199"}:
+        raise ValueError(f"{model} has no generated relative-brightness grammar")
+    root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H6199CommandWrite.CommandOp.relative_brightness
-    body = _child(H6199CommandWrite.RelativeBrightnessBody, root)
+    root.opcode = root_type.CommandOp.relative_brightness
+    body = _child(root_type.RelativeBrightnessBody, root)
     body.selector = b"\x01"
     body.edge_count = 4
     body.left_percent = max(0, min(100, left))
@@ -894,6 +1009,29 @@ def build_h6199_relative_brightness(
     return _serialize_xor(root)
 
 
+def build_h6199_relative_brightness(
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+) -> bytes:
+    return build_relative_brightness("H6199", left, top, right, bottom)
+
+
+def build_black_border(enabled: bool) -> bytes:
+    root = H6099CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6099CommandWrite.CommandOp.display_setting
+    body = _child(H6099CommandWrite.DisplaySettingBody, root)
+    body.setting = H6099CommandWrite.DisplaySetting.black_border
+    body.len = 1
+    payload = _child(H6099CommandWrite.BlackBorderPayload, body)
+    payload.is_on = int(enabled)
+    body.payload = payload
+    root.body = body
+    return _serialize_xor(root)
+
+
 def build_music_mode(
     mode_id: int,
     sensitivity: int,
@@ -902,14 +1040,15 @@ def build_music_mode(
     model: str = "H617A",
 ) -> bytes:
     resolved = wire_model(model)
-    if resolved == "H6199":
-        root = H6199CommandWrite()
+    if resolved in {"H6099", "H6199"}:
+        root_type = H6099CommandWrite if resolved == "H6099" else H6199CommandWrite
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H6199CommandWrite.CommandOp.mode
-        mode = _child(H6199CommandWrite.ModeBody, root)
-        mode.sub_mode = H6199CommandWrite.ModeSel.music
-        detail = _child(H6199CommandWrite.MusicBody, mode)
-        detail.mode = H6199CommandWrite.MusicMode(mode_id)
+        root.opcode = root_type.CommandOp.mode
+        mode = _child(root_type.ModeBody, root)
+        mode.sub_mode = root_type.ModeSel.music
+        detail = _child(root_type.MusicBody, mode)
+        detail.mode = root_type.MusicMode(mode_id)
         detail.sensitivity = max(0, min(100, sensitivity))
         detail.is_calm = int(calm)
         detail.has_fixed_colour = int(colour is not None)

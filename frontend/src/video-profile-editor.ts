@@ -88,7 +88,7 @@ export class GoveeVideoProfileEditor extends LitElement {
         <section class="card empty-state" role="status">
           <h3 class="section-title">Video profile unavailable</h3>
           <p class="muted">
-            Load an H6199 video profile to edit video-sync settings.
+            Load a supported video profile to edit video-sync settings.
           </p>
         </section>
       `;
@@ -166,6 +166,16 @@ export class GoveeVideoProfileEditor extends LitElement {
                   content.blank_screen = checked;
                 }),
             )}
+            ${this.content.model === "H6099"
+              ? this.renderCheckboxField(
+                  "Remove black bars",
+                  this.content.black_border ?? false,
+                  (checked) =>
+                    this.updateContent((content) => {
+                      content.black_border = checked;
+                    }),
+                )
+              : nothing}
           </div>
         </section>
 
@@ -182,7 +192,10 @@ export class GoveeVideoProfileEditor extends LitElement {
                   content.saturation = clampInteger(value, 0, 100);
                 }),
             )}
-            ${this.renderWhiteBalanceField(this.content.white_balance_position)}
+            ${this.renderWhiteBalanceField(
+              this.content.white_balance_position,
+              this.content.model === "H6099" ? 100 : 20,
+            )}
           </div>
         </section>
 
@@ -293,7 +306,7 @@ export class GoveeVideoProfileEditor extends LitElement {
     `;
   }
 
-  private renderWhiteBalanceField(value: number) {
+  private renderWhiteBalanceField(value: number, maximum: number) {
     return html`
       <label class="range-field white-balance-field">
         <span class="parameter-label">White balance</span>
@@ -301,8 +314,8 @@ export class GoveeVideoProfileEditor extends LitElement {
           <input
             type="range"
             min="1"
-            max="20"
-            .value=${String(clampInteger(value, 1, 20))}
+            max=${String(maximum)}
+            .value=${String(clampInteger(value, 1, maximum))}
             aria-label="White balance"
             ?disabled=${this.disabled}
             @input=${(event: Event) =>
@@ -311,7 +324,7 @@ export class GoveeVideoProfileEditor extends LitElement {
                   content.white_balance_position = clampInteger(
                     Number((event.target as HTMLInputElement).value),
                     1,
-                    20,
+                    maximum,
                   );
                 },
                 "changing",

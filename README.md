@@ -13,6 +13,7 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | --- | --- | --- | --- |
 | **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio | Repository Kaitai schemas and physical qualification |
 | **H617E** | Compatible | Owner-confirmed H617A-compatible controls, scenes, effects and music modes; exact-model protocol documentation remains incomplete | Physical owner feedback and a speculative H617A compatibility alias |
+| **H6099** | Experimental | Candidate power, brightness, RGB, colour temperature, 14 segments, 240 scenes, 11 music modes, video and advanced controls; awaiting owner qualification | [#258](https://github.com/teh-hippo/ha-govee-led-ble/issues/258), exact-model speculative Kaitai schemas and app-behaviour research |
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio | Repository Kaitai schemas and physical qualification |
 | **H6076** | Partial | Confirmed power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable | [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) and a speculative H617A compatibility alias |
 
@@ -27,6 +28,7 @@ reorder the panel through Home Assistant's sidebar settings.  It provides local,
 | --- | --- |
 | H617A | Scenes, painted segments, single-layer effects, multi-layered effects, reactive music effects and advanced layered effects |
 | H617E | H617A-compatible scenes, effects and reactive music effects |
+| H6099 | Candidate scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |
 | H6199 | Scenes, palette effects, reactive music effects, Movie and Game video profiles, and advanced layered effects |
 
 H6199 video profiles keep saturation, capture area, sound effects, softness, white balance, relative brightness and blank-screen behaviour together as one reusable effect.

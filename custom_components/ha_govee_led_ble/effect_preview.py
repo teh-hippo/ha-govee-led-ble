@@ -1689,7 +1689,7 @@ def _verification_expectations(
             "is_on": True,
             "music_mode": compiled.mode,
         }
-        if compiled.model == "H6199":
+        if compiled.model in {"H6099", "H6199"}:
             expectations.update(
                 {
                     "music_sensitivity": compiled.sensitivity,
@@ -1700,17 +1700,14 @@ def _verification_expectations(
                 expectations["music_calm"] = compiled.calm
         return expectations
     if isinstance(compiled, CompiledVideoProfile):
-        red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
         left, top, right, bottom = compiled.relative_brightness
-        return {
+        expectations = {
             "is_on": True,
             "video_mode": compiled.mode,
             "video_full_screen": compiled.full_screen,
             "video_saturation": compiled.saturation,
             "video_sound_effects": compiled.sound_effects,
             "video_sound_effects_softness": compiled.sound_effects_softness,
-            "white_balance_red": red,
-            "white_balance_blue": blue,
             "relative_brightness": left if len(set(compiled.relative_brightness)) == 1 else None,
             "relative_brightness_left": left,
             "relative_brightness_top": top,
@@ -1718,6 +1715,14 @@ def _verification_expectations(
             "relative_brightness_bottom": bottom,
             "blank_screen": compiled.blank_screen,
         }
+        if compiled.model == "H6099":
+            expectations["white_balance_position"] = compiled.white_balance_position
+        else:
+            red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
+            expectations.update({"white_balance_red": red, "white_balance_blue": blue})
+        if getattr(coordinator.profile, "supports_black_border", False):
+            expectations["black_border"] = compiled.black_border
+        return expectations
     return None
 
 

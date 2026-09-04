@@ -27,6 +27,9 @@ StatusReply = _generated("status_reply", "StatusReply")
 StatusQuery = _generated("status_query", "StatusQuery")
 H6199StatusQuery = _generated("h6199_status_query", "H6199StatusQuery")
 H6199StatusReply = _generated("h6199_status_reply", "H6199StatusReply")
+H6099CommandWrite = _generated("h6099_command_write", "H6099CommandWrite")
+H6099StatusQuery = _generated("h6099_status_query", "H6099StatusQuery")
+H6099StatusReply = _generated("h6099_status_reply", "H6099StatusReply")
 DiyType03 = _generated("diy_type03", "DiyType03")
 DiyType04 = _generated("diy_type04", "DiyType04")
 H6199EffectUpload = _generated("h6199_effect_upload", "H6199EffectUpload")
@@ -43,6 +46,9 @@ COMMAND_STATIC = bytes.fromhex("330515010000000e10ffcb8dff7f000000000005")
 STATUS_SEGMENTS = bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010")
 H617A_SEGMENT_QUERY = bytes.fromhex("aaa505000000000000000000000000000000000a")
 H6199_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
+H6099_VIDEO = bytes.fromhex("33050001092a0102370000000000000000000020")
+H6099_VIDEO_STATUS = bytes.fromhex("aa050001092a01023700000000000000000000b9")
+H6099_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
 TYPE03_PAINTED = bytes.fromhex(
     "0105030900640101010f01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff000701eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
 )
@@ -81,6 +87,9 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(StatusReply, STATUS_SEGMENTS, id="H617A status"),
     pytest.param(StatusQuery, H617A_SEGMENT_QUERY, id="H617A segment query"),
     pytest.param(H6199StatusQuery, H6199_SEGMENT_QUERY, id="H6199 segment query"),
+    pytest.param(H6099CommandWrite, H6099_VIDEO, id="H6099 command"),
+    pytest.param(H6099StatusReply, H6099_VIDEO_STATUS, id="H6099 status"),
+    pytest.param(H6099StatusQuery, H6099_SEGMENT_QUERY, id="H6099 segment query"),
     pytest.param(DiyType03, TYPE03_PAINTED, id="Type03 painted"),
     pytest.param(DiyType04, TYPE04_FLAT, id="Type04 flat"),
     pytest.param(DiyType04, TYPE04_COMBO, id="Type04 combo"),
@@ -130,8 +139,15 @@ def test_command_and_status_fields_are_meaningful() -> None:
 
     h617a_query = _parse(StatusQuery, H617A_SEGMENT_QUERY)
     h6199_query = _parse(H6199StatusQuery, H6199_SEGMENT_QUERY)
+    h6099_query = _parse(H6099StatusQuery, H6099_SEGMENT_QUERY)
     assert (h617a_query.domain.name, h617a_query.body.group) == ("segments", 5)
     assert (h6199_query.domain.name, h6199_query.body.group) == ("segments", 4)
+    assert (h6099_query.domain.name, h6099_query.body.group) == ("segments", 4)
+
+    h6099_video = _parse(H6099CommandWrite, H6099_VIDEO)
+    assert h6099_video.body.detail.source.name == "game"
+    assert h6099_video.body.detail.region.name == "all"
+    assert h6099_video.body.detail.sound_type == b"\x02"
 
 
 def test_diy_shapes_expose_painted_flat_and_combo_fields() -> None:

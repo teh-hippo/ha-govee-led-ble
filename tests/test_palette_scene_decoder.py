@@ -92,7 +92,7 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
     fixtures = 0
 
     assert SCENE_ENTRIES["H617E"] is SCENE_ENTRIES["H617A"]
-    for sku in ("H617A", "H6199"):
+    for sku in ("H617A", "H6099", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != 1:
@@ -103,7 +103,7 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
             assert encode_palette_scene(decoded) == raw_param
             fixtures += 1
 
-    assert fixtures == 4
+    assert fixtures == 6
 
 
 def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:

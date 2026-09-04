@@ -5,6 +5,9 @@ h6199_command_write
 h6199_effect_upload
 h6199_status_query
 h6199_status_reply
+speculative/h6099_command_write
+speculative/h6099_status_query
+speculative/h6099_status_reply
 h6199_wifi_body
 h6199_wifi_provision
 h6199_wifi_result
