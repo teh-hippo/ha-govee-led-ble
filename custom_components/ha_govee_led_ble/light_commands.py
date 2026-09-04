@@ -4,7 +4,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .const import get_profile
+from .const import get_profile, wire_model
 from .generated_protocol_adapter import (
     build_colour_temperature,
     build_segment_colour,
@@ -87,7 +87,8 @@ def build_color_temp(kelvin: int, model: str = "H617A") -> bytes:
 
 
 def build_white_brightness(percent: int, model: str = "H617A") -> bytes:
-    return build_segment_brightness(ALL_SEGMENTS, percent, model)
+    segment_count = get_profile(model).segment_count
+    return build_segment_brightness(range(1, segment_count + 1), percent, model)
 
 
 @dataclass(frozen=True)
@@ -113,7 +114,7 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
     if generated is None:
         return None
     whole_device_mask = get_profile(model).whole_device_mask
-    if model == "H6199":
+    if wire_model(model) in {"H6099", "H6199"}:
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
             return None
         detail = generated.body.detail

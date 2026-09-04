@@ -5,7 +5,7 @@ from dataclasses import replace
 
 from .const import protocol_model
 from .effect_domain import LayeredScene, PaletteScene
-from .generated_protocol_adapter import build_h617a_scene, build_h6199_scene
+from .generated_protocol_adapter import build_camera_scene, build_h617a_scene
 from .layered_scene import CatalogueRef, LayeredEffect
 from .layered_scene_decoder import decode_layered_scene, encode_layered_scene
 from .palette_scene_decoder import encode_palette_scene
@@ -65,10 +65,10 @@ def build_native_scene_packets(
     )
     upload = fragment_a3(scene.scene_type, payload) if payload else []
     resolved = protocol_model(model)
-    if resolved == "H6199":
-        activation = build_h6199_scene(scene.code, scene.music_code)
-    elif resolved == "H617A":
+    if resolved == "H617A":
         activation = build_h617a_scene(scene.code)
+    elif resolved is not None:
+        activation = build_camera_scene(model, scene.code, scene.music_code)
     else:
         raise ValueError(f"{model} has no native-scene grammar")
     return [*upload, activation]

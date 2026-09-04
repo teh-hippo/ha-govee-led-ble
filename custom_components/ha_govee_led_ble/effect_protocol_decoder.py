@@ -66,19 +66,19 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
             )
         raise TypeError("tree is not a generated H617A A3 effect root")
 
-    if model == "H6199":
+    if model in {"H6099", "H6199"}:
         if not isinstance(tree, H6199EffectUpload):
-            raise TypeError("tree is not a generated H6199 A3 effect root")
+            raise TypeError(f"tree is not a generated {model} A3 effect root")
         if tree.kind == H6199EffectUpload.BodyKind.diy:
             return _decode_h6199_palette_diy(tree)
         if tree.kind == H6199EffectUpload.BodyKind.scene:
             return _decode_layered_tree(tree, model)
         if tree.kind == H6199EffectUpload.BodyKind.builtin_parameters:
             raise UnsupportedA3EffectError(
-                "H6199 built-in parameter bodies require catalogue identity and are not "
+                f"{model} built-in parameter bodies require catalogue identity and are not "
                 "decoded from upload packets alone"
             )
-        raise UnsupportedA3EffectError(f"H6199 A3 body kind {int(tree.kind)} is not supported")
+        raise UnsupportedA3EffectError(f"{model} A3 body kind {int(tree.kind)} is not supported")
 
     raise ValueError(f"{model} has no canonical A3 effect decoder")
 

@@ -108,7 +108,7 @@ def decode_workshop_effect(
     if model == "H617A":
         parsed, trailing_padding = parse_workshop_body(raw_param)
         records = parsed.layers
-    elif model == "H6199":
+    elif model in {"H6099", "H6199"}:
         parsed, trailing_padding = parse_h6199_workshop_content(raw_param)
         records = parsed.blocks
     else:
@@ -133,7 +133,7 @@ def encode_workshop_effect(
         root.padding = [0] * trailing_padding
         serializer = serialize_workshop_body_param
         value = root
-    elif model == "H6199":
+    elif model in {"H6099", "H6199"}:
         root = H6199EffectUpload()
         content = new_child(H6199EffectUpload.SceneContent, root)
         content.num_blocks = len(effect.layers)

@@ -104,7 +104,7 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
             assert encode_palette_scene(decoded) == raw_param
             fixtures += 1
 
-    assert fixtures == 6
+    assert fixtures == 8
 
 
 def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:

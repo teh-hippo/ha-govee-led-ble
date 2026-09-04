@@ -68,6 +68,7 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert len(SCENE_ENTRIES["H617A"]) == 83
     assert len(SCENE_ENTRIES["H617E"]) == 240
     assert len(SCENE_ENTRIES["H6076"]) == 110
+    assert len(SCENE_ENTRIES["H6099"]) == 240
     assert len(SCENE_ENTRIES["H6199"]) == 240
     assert SCENE_ENTRIES["H617E"] is not SCENE_ENTRIES["H617A"]
     assert len(MODEL_SCENES["H617E"]) == 247
@@ -223,7 +224,7 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
     scene_counts: Counter[str] = Counter()
     record_count = 0
 
-    for sku in ("H6076", "H617A", "H617E", "H6199"):
+    for sku in ("H6076", "H6099", "H617A", "H617E", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != int(SceneBody.SceneType.scene_v2):
@@ -244,8 +245,8 @@ def test_generated_scene_body_parser_round_trips_type_2_catalogues():
             scene_counts[sku] += 1
             record_count += len(parsed.records)
 
-    assert scene_counts == {"H6076": 101, "H617A": 72, "H617E": 226, "H6199": 226}
-    assert record_count == 1799
+    assert scene_counts == {"H6076": 101, "H6099": 226, "H617A": 72, "H617E": 226, "H6199": 226}
+    assert record_count == 2473
 
 
 @pytest.mark.parametrize("raw_param", [bytearray(b"\x00"), memoryview(b"\x00"), "\x00"])
