@@ -7,6 +7,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
+from .const import CONF_H6102_APP_FIRMWARE
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
@@ -119,6 +120,8 @@ async def async_get_config_entry_diagnostics(
         "packet_log": packet_log,
         "last_rx_aa05_raw": last_rx_aa05_raw,
     }
+    if coordinator.model == "H6102":
+        coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
     return {
         "entry": async_redact_data(
             {
@@ -133,6 +136,35 @@ async def async_get_config_entry_diagnostics(
         "active_effect_state": _active_effect_state(hass, entry.entry_id),
         "effect_deployment_diagnostics": _effect_deployment_diagnostics(hass, entry.entry_id),
     }
+
+
+def _h6102_capability_resolution(
+    entry: GoveeBLEConfigEntry,
+    coordinator: Any,
+) -> dict[str, Any]:
+    profile = coordinator.profile
+    data: dict[str, Any] = {
+        "configured_app_firmware": entry.data.get(CONF_H6102_APP_FIRMWARE),
+        "resolved_profile": profile.name,
+        "firmware_source": coordinator.firmware_source,
+        "classified_rgb_variant": coordinator.rgb_variant.value if coordinator.rgb_variant is not None else None,
+        "rgb_enabled": profile.supports_rgb,
+        "capability_resolution_reason": coordinator.capability_resolution_reason,
+        "read_domains": sorted(domain.value for domain in profile.read_domains),
+        "surface_capabilities": {
+            "color_temperature": profile.supports_color_temperature,
+            "regions": profile.supports_segments,
+            "music": profile.supports_music_mode,
+            "scenes": profile.supports_scenes,
+            "diy": profile.supports_custom_effects,
+            "studio": bool(coordinator.configuration_url and coordinator.effect_categories),
+        },
+    }
+    if coordinator.fw_version is not None:
+        data["observed_firmware"] = coordinator.fw_version
+    if coordinator.hw_version is not None:
+        data["observed_hardware"] = coordinator.hw_version
+    return data
 
 
 def _bounded_packet_entry(entry: dict[str, Any]) -> dict[str, Any]:

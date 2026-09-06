@@ -55,6 +55,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_h6199_video,
     build_power,
 )
+from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
+from custom_components.ha_govee_led_ble.h6102_protocol import H6102RgbVariant
 from custom_components.ha_govee_led_ble.light import (
     GoveeBLELight,
     _coerce_segment_brightness,
@@ -86,6 +88,69 @@ def h6199_light(mock_h6199_coordinator):
     e = GoveeBLELight(mock_h6199_coordinator)
     e.async_write_ha_state = MagicMock()
     return e
+
+
+def _h6102_light(mock_coordinator, firmware=None, firmware_source=None):
+    resolution = resolve_h6102_capabilities(firmware, firmware_source)
+    mock_coordinator.model = "H6102"
+    mock_coordinator.profile = resolution.profile
+    mock_coordinator.rgb_variant = resolution.rgb_variant
+    mock_coordinator.firmware_source = resolution.firmware_source
+    mock_coordinator.effect_families = frozenset()
+    mock_coordinator.effect_categories = frozenset()
+    mock_coordinator.scene_name_set = frozenset()
+    mock_coordinator.segment_colors = []
+    mock_coordinator.segment_brightness = []
+    light = GoveeBLELight(mock_coordinator)
+    light.async_write_ha_state = MagicMock()
+    return light
+
+
+async def test_h6102_write_only_controls_follow_resolved_capabilities(mock_coordinator):
+    light = _h6102_light(mock_coordinator)
+    mock_coordinator.is_on = True
+
+    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
+    assert light.assumed_state is True
+
+    await light.async_turn_on(brightness=128)
+
+    assert [item.args[0] for item in mock_coordinator.send_command.await_args_list] == [
+        build_power(True, "H6102"),
+        build_brightness(50, "H6102"),
+    ]
+    mock_coordinator.refresh_state.assert_not_awaited()
+
+
+async def test_h6102_extended_rgb_uses_the_firmware_selected_kaitai_path(mock_coordinator):
+    light = _h6102_light(mock_coordinator, "1.03.01", "configured")
+    mock_coordinator.is_on = True
+
+    await light.async_turn_on(rgb_color=(32, 64, 96))
+
+    assert light.supported_color_modes == {ColorMode.RGB}
+    assert [item.args[0] for item in mock_coordinator.send_command.await_args_list] == [
+        build_power(True, "H6102"),
+        build_color_rgb(
+            32,
+            64,
+            96,
+            "H6102",
+            h6102_variant=H6102RgbVariant.EXTENDED,
+        ),
+    ]
+
+
+async def test_h6102_zero_brightness_uses_power_off_only(mock_coordinator):
+    light = _h6102_light(mock_coordinator)
+    mock_coordinator.is_on = True
+    mock_coordinator.brightness_pct = 50
+
+    await light.async_turn_on(brightness=0, rgb_color=(1, 2, 3))
+
+    mock_coordinator.send_command.assert_awaited_once_with(build_power(False, "H6102"))
+    assert mock_coordinator.is_on is False
+    assert mock_coordinator.brightness_pct == 50
 
 
 def test_basic_and_color_props(light, mock_coordinator):

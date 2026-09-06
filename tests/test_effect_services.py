@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,12 +15,14 @@ from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, PaintedEffect
 from custom_components.ha_govee_led_ble.effect_services import (
     SERVICE_APPLY_CUSTOM_EFFECT,
     async_register_effect_services,
 )
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
+from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 
 
@@ -133,3 +136,58 @@ async def test_entity_action_requires_one_effect_reference(
         )
 
     assert error.value.translation_key == "invalid_custom_effect"
+
+
+@pytest.mark.parametrize("reference", ["name", "id"])
+async def test_h6102_custom_effect_action_fails_before_preview_or_deployment(
+    mock_coordinator,
+    reference,
+) -> None:
+    resolution = resolve_h6102_capabilities("1.03.01", "configured")
+    mock_coordinator.model = "H6102"
+    mock_coordinator.profile = resolution.profile
+    mock_coordinator.rgb_variant = resolution.rgb_variant
+    mock_coordinator.firmware_source = resolution.firmware_source
+    item = LibraryItem.new(
+        "Saved H6102 Workshop",
+        replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model="H6102"),
+    )
+    application = SimpleNamespace(
+        library_snapshot=MagicMock(return_value=LibrarySnapshot((item,))),
+        get_saved_effect=MagicMock(return_value=item),
+    )
+    apply_saved = AsyncMock()
+    preview = SimpleNamespace(async_supersede_device=AsyncMock())
+    diagnostics = SimpleNamespace(record=MagicMock())
+    backend = cast(
+        EffectBackend,
+        SimpleNamespace(
+            application=application,
+            engine=SimpleNamespace(async_apply_saved=apply_saved),
+            preview=preview,
+            diagnostics=diagnostics,
+            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
+        ),
+    )
+    entity = GoveeBLELight(
+        mock_coordinator,
+        config_entry_id="entry-a",
+        effect_backend=backend,
+    )
+
+    with pytest.raises(ServiceValidationError) as error:
+        await entity.async_apply_custom_effect(
+            effect=item.name if reference == "name" else None,
+            effect_id=str(item.id) if reference == "id" else None,
+        )
+
+    assert error.value.translation_key == "unsupported_model"
+    assert error.value.translation_placeholders == {
+        "service": "apply_custom_effect",
+        "model": "H6102",
+    }
+    application.get_saved_effect.assert_not_called()
+    preview.async_supersede_device.assert_not_awaited()
+    apply_saved.assert_not_awaited()
+    diagnostics.record.assert_not_called()
+    mock_coordinator.send_command.assert_not_awaited()

@@ -1,6 +1,7 @@
 import pytest
 
 from custom_components.ha_govee_led_ble.const import (
+    BLE_DISCOVERABLE_MODELS,
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_FAMILIES,
     CONF_PREFIX_EFFECT_NAMES,
@@ -13,6 +14,7 @@ from custom_components.ha_govee_led_ble.const import (
     default_effect_families,
     effect_families_from_options,
     get_profile,
+    model_from_ble_name,
     prefix_effect_names_from_options,
     protocol_model,
     resolve_model,
@@ -79,6 +81,18 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert profile.whole_device_mask == 0x007F
     assert wire_model("H6076") == "H617A"
     assert protocol_model("H6076") == "H6076"
+
+
+def test_h6102_profile_is_manual_only_and_fail_closed():
+    profile = MODEL_PROFILES["H6102"]
+
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.wire_model == "H6102"
+    assert profile.scene_catalogue_sku == "H6102"
+    assert not profile.read_domains
+    assert not profile.supports_rgb
+    assert "H6102" not in BLE_DISCOVERABLE_MODELS
+    assert model_from_ble_name("Govee_H6102_ABCD") is None
 
 
 def test_setup_required_domains_must_be_readable():

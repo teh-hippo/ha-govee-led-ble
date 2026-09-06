@@ -4,6 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, supported_effect_categories
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from tools.ble.refresh_scene_catalogues import SNAPSHOT_DIR, _snapshot_speed, build_snapshot
 
 
@@ -200,6 +202,12 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
     }
 
 
+def test_h6102_committed_snapshot_remains_inert_metadata():
+    assert not MODEL_PROFILES["H6102"].supports_scenes
+    assert supported_effect_categories("H6102") == ()
+    assert len(SCENE_ENTRIES["H6102"]) == 240
+
+
 @pytest.mark.parametrize(
     ("sku", "categories", "effects", "digest"),
     [
@@ -208,6 +216,12 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
             6,
             110,
             "9ad4449bfa310169928a791ccacf6b052a92a6b4263f6e4038cf13b8283c57b3",
+        ),
+        (
+            "H6102",
+            12,
+            240,
+            "a478385e7356d2d142ec30f08dd2c42ae9725589d95f4eb098271119b7e236c7",
         ),
         (
             "H617A",

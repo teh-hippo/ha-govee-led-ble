@@ -647,12 +647,30 @@ def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
         compile_effect(workshop, "H6199")
 
 
+def test_h6102_saved_effects_are_incompatible_before_compilation() -> None:
+    items = (
+        LibraryItem.new(
+            "Workshop",
+            replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model="H6102"),
+        ),
+        LibraryItem.new("Effect", SingleEffect(0, 0, 50, ((255, 0, 0),))),
+    )
+
+    for item in items:
+        result = compatibility(item, "H6102")
+        assert result.state is CompatibilityState.INCOMPATIBLE
+        assert result.reasons == ("H6102 does not support saved effects",)
+        with pytest.raises(ValueError, match="H6102 does not support saved effects"):
+            compile_effect(item, "H6102")
+
+
 def test_editor_contract_reports_first_slice_boundaries() -> None:
     api = EditorApiInfo().to_dict()
     h617a = device_effect_capabilities("entry-a", "H617A", "Test Light", 15)
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
     unknown = device_effect_capabilities("entry-c", "H9999", "Unknown", 0)
     h6076 = device_effect_capabilities("entry-d", "H6076", "Floor Lamp", 0)
+    h6102 = device_effect_capabilities("entry-e", "H6102", "LED Strip", 0)
 
     assert api == {
         "api_version": EDITOR_API_VERSION,
@@ -680,6 +698,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h6199.to_dict()["readback"] == "scene_selector_for_user_effects"
     assert unknown.to_dict()["readback"] == "none"
     assert h6076.to_dict()["readback"] == "none"
+    assert h6102.to_dict()["readback"] == "none"
     assert all(
         capability is CapabilityState.UNSUPPORTED
         for capability in (
@@ -691,6 +710,14 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
             unknown.music,
             unknown.video,
             unknown.workshop,
+            h6102.painted,
+            h6102.single,
+            h6102.multi,
+            h6102.palette_diy,
+            h6102.advanced,
+            h6102.music,
+            h6102.video,
+            h6102.workshop,
         )
     )
 

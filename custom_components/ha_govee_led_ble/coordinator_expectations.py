@@ -28,7 +28,8 @@ def expectations_from_packet(
     if operation is None:
         return {}
     if operation == "power":
-        return {"is_on": bool(generated.body.is_on)}
+        value = generated.body.value if model == "H6102" else generated.body.is_on
+        return {"is_on": bool(value)}
     if operation == "brightness":
         return {"brightness_pct": int(generated.body.percent)}
     expectations: dict[str, Any] = {}

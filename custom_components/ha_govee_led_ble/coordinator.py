@@ -48,6 +48,12 @@ from .generated_protocol_adapter import (
     build_segment_query,
     parse_command_result,
 )
+from .h6102_capabilities import (
+    H6102CapabilityResolutionReason,
+    H6102FirmwareSource,
+    resolve_h6102_capabilities,
+)
+from .h6102_protocol import H6102RgbVariant
 from .h6199_calibration import WHITE_BALANCE_RESET
 from .light_commands import (
     SegmentColorGroup,
@@ -130,8 +136,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         prefix_effect_names: bool = False,
         always_include_custom_effects: bool = False,
         device_resolver: BLEDeviceResolver | None = None,
+        h6102_firmware: str | None = None,
+        h6102_firmware_source: H6102FirmwareSource | None = None,
     ) -> None:
         profile = get_profile(model)
+        resolution = resolve_h6102_capabilities(h6102_firmware, h6102_firmware_source) if model == "H6102" else None
+        if resolution is not None:
+            profile = resolution.profile
         super().__init__(
             hass,
             _LOGGER,
@@ -141,7 +152,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             ),
         )
         self.address, self.model, self.profile = address, model, profile
-        self.configuration_url = configuration_url
+        self.rgb_variant: H6102RgbVariant | None = resolution.rgb_variant if resolution is not None else None
+        self.firmware_source: H6102FirmwareSource | None = (
+            resolution.firmware_source if resolution is not None else None
+        )
+        self.capability_resolution_reason: H6102CapabilityResolutionReason | None = (
+            resolution.capability_resolution_reason if resolution is not None else None
+        )
+        self.configuration_url = None if resolution is not None else configuration_url
         self.effect_families = default_effect_families(model) if effect_families is None else effect_families
         self.effect_categories = (
             frozenset(default_effect_categories(model)) if effect_categories is None else effect_categories

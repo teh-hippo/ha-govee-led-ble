@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -8,11 +9,13 @@ from homeassistant.components.bluetooth import BluetoothServiceInfo
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_CATEGORIES,
+    CONF_H6102_APP_FIRMWARE,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
@@ -24,6 +27,7 @@ SVC = BluetoothServiceInfo("ihoment_H617A_ABCD", "AA:BB:CC:DD:EE:FF", -60, {}, {
 SVC_LOWER = BluetoothServiceInfo("ihoment_H617A_ABCD", "aa:bb:cc:dd:ee:ff", -60, {}, {}, [], "local")
 SVC_H617E = BluetoothServiceInfo("Govee_H617E_ABCD", "22:33:44:55:66:77", -60, {}, {}, [], "local")
 SVC_H6076 = BluetoothServiceInfo("Govee_H6076_ABCD", "33:44:55:66:77:88", -60, {}, {}, [], "local")
+SVC_H6102 = BluetoothServiceInfo("Govee_H6102_ABCD", "44:55:66:77:88:99", -60, {}, {}, [], "local")
 SVC_UNSUPPORTED = BluetoothServiceInfo("SomeOtherDevice", "11:22:33:44:55:66", -60, {}, {}, [], "local")
 
 
@@ -72,6 +76,19 @@ async def test_bluetooth_discovery_unsupported_aborts(hass: HomeAssistant):
     r = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_UNSUPPORTED)
     assert r["type"] == FlowResultType.ABORT and r["reason"] == "not_supported"
     assert not hass.config_entries.async_entries(DOMAIN)
+
+
+async def test_h6102_is_not_automatically_discovered(hass: HomeAssistant):
+    result = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_H6102)
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "not_supported"
+
+
+def test_h6102_is_absent_from_bluetooth_manifest() -> None:
+    manifest = (Path(__file__).parents[1] / "custom_components/ha_govee_led_ble/manifest.json").read_text()
+
+    assert "H6102" not in manifest
 
 
 async def test_bluetooth_discovery_normalizes_unique_id(hass: HomeAssistant):
@@ -167,6 +184,82 @@ async def test_user_step_creates_entry(hass: HomeAssistant, mock_manual_validati
     mock_manual_validation.assert_awaited_once_with(hass, "AA:BB:CC:DD:EE:FF")
 
 
+async def test_user_step_creates_manual_h6102_entry_without_promoting_discovery(
+    hass: HomeAssistant,
+    mock_manual_validation,
+):
+    with patch(f"{M}.bluetooth.async_last_service_info", return_value=SVC_H6102):
+        firmware = await _init(
+            hass,
+            config_entries.SOURCE_USER,
+            {CONF_ADDRESS: SVC_H6102.address, CONF_MODEL: "H6102"},
+        )
+
+    assert firmware["type"] is FlowResultType.FORM
+    assert firmware["step_id"] == "h6102_firmware"
+    result = await hass.config_entries.flow.async_configure(firmware["flow_id"], {})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {CONF_MODEL: "H6102"}
+    mock_manual_validation.assert_awaited_once_with(hass, SVC_H6102.address)
+
+
+async def test_user_step_stores_valid_h6102_firmware(hass: HomeAssistant):
+    firmware = await _init(
+        hass,
+        config_entries.SOURCE_USER,
+        {CONF_ADDRESS: SVC_H6102.address, CONF_MODEL: "H6102"},
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        firmware["flow_id"],
+        {CONF_H6102_APP_FIRMWARE: "1.03.01"},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_MODEL: "H6102",
+        CONF_H6102_APP_FIRMWARE: "1.03.01",
+    }
+
+
+async def test_h6102_firmware_step_rechecks_duplicate(hass: HomeAssistant):
+    firmware = await _init(
+        hass,
+        config_entries.SOURCE_USER,
+        {CONF_ADDRESS: SVC_H6102.address, CONF_MODEL: "H6102"},
+    )
+    MockConfigEntry(domain=DOMAIN, unique_id=SVC_H6102.address).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_configure(firmware["flow_id"], {})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+
+
+@pytest.mark.parametrize("firmware", ["1..3", "1. 3", "+1.03.01", "version 1.03.01"])
+async def test_user_step_rejects_invalid_h6102_firmware(hass: HomeAssistant, firmware: str):
+    result = await _init(
+        hass,
+        config_entries.SOURCE_USER,
+        {CONF_ADDRESS: SVC_H6102.address, CONF_MODEL: "H6102"},
+    )
+
+    invalid = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_H6102_APP_FIRMWARE: firmware},
+    )
+
+    assert invalid["type"] is FlowResultType.FORM
+    assert invalid["step_id"] == "h6102_firmware"
+    assert invalid["errors"] == {CONF_H6102_APP_FIRMWARE: "invalid_firmware"}
+    assert not hass.config_entries.async_entries(DOMAIN)
+
+    cleared = await hass.config_entries.flow.async_configure(invalid["flow_id"], {})
+
+    assert cleared["type"] is FlowResultType.CREATE_ENTRY
+    assert cleared["data"] == {CONF_MODEL: "H6102"}
+
+
 async def test_user_step_rejects_positive_model_mismatch(hass: HomeAssistant, mock_manual_validation):
     with patch(f"{M}.bluetooth.async_last_service_info", return_value=SVC):
         r = await _init(
@@ -258,6 +351,14 @@ _EM += [
     ("GVH_H6076_ABCD", "H6076"),
     ("Govee_H60760_ABCD", None),
     ("Govee_H6076X_ABCD", None),
+    ("ihoment_H6199_ABCD", "H6199"),
+    ("Govee_H6199_ABCD", "H6199"),
+    ("GBK_H6199_ABCD", "H6199"),
+    ("GVH_H6199_ABCD", "H6199"),
+    ("ihoment_H6102_ABCD", None),
+    ("Govee_H6102_ABCD", None),
+    ("GBK_H6102_ABCD", None),
+    ("GVH_H6102_ABCD", None),
 ]
 
 
@@ -326,8 +427,21 @@ async def test_options_flow_aborts_for_unsupported_model(hass: HomeAssistant):
     assert result["reason"] == "not_supported"
 
 
-async def test_options_flow_aborts_when_model_has_no_effect_options(hass: HomeAssistant):
-    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6076"}, unique_id=SVC_H6076.address)
+@pytest.mark.parametrize(
+    ("data", "address"),
+    [
+        ({CONF_MODEL: "H6076"}, SVC_H6076.address),
+        ({CONF_MODEL: "H6102"}, SVC_H6102.address),
+        ({CONF_MODEL: "H6102", CONF_H6102_APP_FIRMWARE: "1.03.00"}, SVC_H6102.address),
+        ({CONF_MODEL: "H6102", CONF_H6102_APP_FIRMWARE: "1.03.01"}, SVC_H6102.address),
+    ],
+)
+async def test_options_flow_aborts_when_model_has_no_effect_options(
+    hass: HomeAssistant,
+    data: dict[str, str],
+    address: str,
+):
+    entry = MockConfigEntry(domain=DOMAIN, data=data, unique_id=address)
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
@@ -399,6 +513,96 @@ async def test_reconfigure_preserves_entry_identity_and_clears_effect_options(ha
     assert entry.title == "Govee H617E"
     assert entry.data == {CONF_MODEL: "H617E"}
     assert entry.options == {}
+    reload_entry.assert_called_once_with(entry.entry_id)
+
+
+@pytest.mark.parametrize(
+    ("initial_model", "initial_firmware", "submitted", "expected_firmware"),
+    [
+        pytest.param("H617A", None, {CONF_H6102_APP_FIRMWARE: "1.03.01"}, "1.03.01", id="set"),
+        pytest.param("H6102", "1.03.01", {CONF_H6102_APP_FIRMWARE: "1.10.00"}, "1.10.00", id="change"),
+        pytest.param("H6102", "1.03.01", {CONF_H6102_APP_FIRMWARE: ""}, None, id="clear"),
+    ],
+)
+async def test_reconfigure_h6102_firmware_preserves_identity(
+    hass: HomeAssistant,
+    initial_model: str,
+    initial_firmware: str | None,
+    submitted: dict[str, str],
+    expected_firmware: str | None,
+):
+    data = {CONF_MODEL: initial_model}
+    if initial_firmware is not None:
+        data[CONF_H6102_APP_FIRMWARE] = initial_firmware
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=f"Govee {initial_model}",
+        data=data,
+        options={
+            CONF_EFFECT_CATEGORIES: ["scenes", "effects"],
+            CONF_PREFIX_EFFECT_NAMES: True,
+            CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True,
+        },
+        unique_id=SVC_H6102.address,
+    )
+    entry.add_to_hass(hass)
+    entity = er.async_get(hass).async_get_or_create(
+        "light",
+        DOMAIN,
+        f"{SVC_H6102.address.lower()}_light",
+        config_entry=entry,
+    )
+    original_entry_id = entry.entry_id
+    original_entity_id = entity.entity_id
+    original_entity_unique_id = entity.unique_id
+
+    with patch.object(hass.config_entries, "async_schedule_reload") as reload_entry:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        firmware = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_MODEL: "H6102"})
+        updated = await hass.config_entries.flow.async_configure(firmware["flow_id"], submitted)
+
+    assert firmware["type"] is FlowResultType.FORM
+    assert firmware["step_id"] == "h6102_firmware"
+    assert updated["type"] is FlowResultType.ABORT
+    assert updated["reason"] == "reconfigure_successful"
+    assert entry.entry_id == original_entry_id
+    assert entry.unique_id == SVC_H6102.address
+    assert entry.title == "Govee H6102"
+    assert entry.data == {
+        CONF_MODEL: "H6102",
+        **({CONF_H6102_APP_FIRMWARE: expected_firmware} if expected_firmware is not None else {}),
+    }
+    assert entry.options == {}
+    current_entity = er.async_get(hass).async_get(original_entity_id)
+    assert current_entity is not None
+    assert current_entity.unique_id == original_entity_unique_id
+    reload_entry.assert_called_once_with(entry.entry_id)
+
+
+async def test_reconfigure_non_h6102_removes_stale_firmware_context(hass: HomeAssistant):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Govee H6102",
+        data={
+            CONF_MODEL: "H6102",
+            CONF_H6102_APP_FIRMWARE: "1.03.01",
+        },
+        unique_id=SVC_H6102.address,
+    )
+    entry.add_to_hass(hass)
+
+    with patch.object(hass.config_entries, "async_schedule_reload") as reload_entry:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+        updated = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_MODEL: "H617A"})
+
+    assert updated["type"] is FlowResultType.ABORT
+    assert entry.data == {CONF_MODEL: "H617A"}
     reload_entry.assert_called_once_with(entry.entry_id)
 
 

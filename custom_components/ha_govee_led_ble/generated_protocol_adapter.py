@@ -18,6 +18,14 @@ CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.command_write").CommandWrite,
 )
+H6102CommandWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_command_write").H6102CommandWrite,
+)
+H6102Common = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_common").H6102Common,
+)
 H6199CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
@@ -70,6 +78,20 @@ WorkshopBody = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.workshop_body").WorkshopBody,
 )
+
+_STATUS_QUERY_ROOTS = {
+    "H617A": StatusQuery,
+    "H6199": H6199StatusQuery,
+}
+_COMMAND_TYPES = {
+    "H617A": (CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd),
+    "H6102": (H6102CommandWrite, H6102CommandWrite.PowerBody, H6102CommandWrite.BrightnessBody),
+    "H6199": (H6199CommandWrite, H6199CommandWrite.PowerBody, H6199CommandWrite.BrightnessBody),
+}
+_SEGMENT_QUERY_GROUPS = {
+    "H617A": 5,
+    "H6199": 4,
+}
 
 _U1_MAX = 0xFF
 _A3_MAX_CONTENT = _U1_MAX * A3_CHUNK_SIZE
@@ -173,6 +195,7 @@ _STATUS_ROOTS = {
 }
 _COMMAND_ROOTS = {
     "H617A": ("command_write", CommandWrite),
+    "H6102": ("h6102_command_write", H6102CommandWrite),
     "H6199": ("h6199_command_write", H6199CommandWrite),
 }
 
@@ -255,15 +278,10 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
 
 def _command_types(model: str) -> tuple[Any, Any, Any]:
     resolved = wire_model(model)
-    if resolved == "H6199":
-        return (
-            H6199CommandWrite,
-            H6199CommandWrite.PowerBody,
-            H6199CommandWrite.BrightnessBody,
-        )
-    if resolved != "H617A":
+    command_types = _COMMAND_TYPES.get(resolved) if resolved is not None else None
+    if command_types is None:
         raise ValueError(f"{model} has no generated command grammar")
-    return CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
+    return command_types
 
 
 def new_child(struct_type: Any, parent: Any) -> Any:
@@ -282,9 +300,9 @@ def _build_status_query(
     segment_group: int | None = None,
 ) -> bytes:
     resolved = wire_model(model)
-    if resolved is None:
+    root_type = _STATUS_QUERY_ROOTS.get(resolved) if resolved is not None else None
+    if root_type is None:
         raise ValueError(f"{model} has no generated status-query grammar")
-    root_type = H6199StatusQuery if resolved == "H6199" else StatusQuery
     root = root_type()
     root.header = b"\xaa"
     root.domain = getattr(root_type.QueryDomain, domain)
@@ -351,9 +369,9 @@ def build_h6199_subordinate_query(domain: int) -> bytes:
 
 def build_segment_query(group: int, model: str = "H617A") -> bytes:
     resolved = wire_model(model)
-    if resolved is None:
+    maximum = _SEGMENT_QUERY_GROUPS.get(resolved) if resolved is not None else None
+    if maximum is None:
         raise ValueError(f"{model} has no generated segment-query grammar")
-    maximum = 4 if resolved == "H6199" else 5
     if not 1 <= group <= maximum:
         raise ValueError(f"segment query group must be from 1 to {maximum}")
     return _build_status_query("segments", model, segment_group=group)
@@ -612,7 +630,11 @@ def build_power(on: bool, model: str = "H617A") -> bytes:
     root.header = b"\x33"
     root.opcode = root_type.CommandOp.power
     body = power_type(None, root, root._root)
-    body.is_on = int(on)
+    if root_type is H6102CommandWrite:
+        body.value = int(on)
+        body._unnamed1 = bytes(16)
+    else:
+        body.is_on = int(on)
     root.body = body
     return _serialize_xor(root)
 
@@ -623,7 +645,13 @@ def build_brightness(percent: int, model: str = "H617A") -> bytes:
     root.header = b"\x33"
     root.opcode = root_type.CommandOp.brightness
     body = brightness_type(None, root, root._root)
-    body.percent = max(0, min(100, percent))
+    if root_type is H6102CommandWrite:
+        if not 1 <= percent <= 100:
+            raise ValueError("H6102 brightness must be from 1 to 100")
+        body.percent = percent
+        body._unnamed1 = bytes(16)
+    else:
+        body.percent = max(0, min(100, percent))
     root.body = body
     return _serialize_xor(root)
 
@@ -652,6 +680,30 @@ def _build_h617a_static_colour(
     static.static_body = colour
     multi.sub_body = static
     root.body = multi
+    return _serialize_xor(root)
+
+
+def build_h6102_extended_rgb(
+    mask: int,
+    red: int,
+    green: int,
+    blue: int,
+) -> bytes:
+    if not 1 <= mask <= 0x7FFF:
+        raise ValueError("H6102 region mask must be from 0x0001 to 0x7fff")
+    root = H6102CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6102CommandWrite.CommandOp.mode
+    body = _child(H6102CommandWrite.ExtendedRgbBody, root)
+    body.selector = b"\x15"
+    body.operation = b"\x01"
+    body.rgb_direct = _rgb(body, red, green, blue)
+    body._unnamed3 = bytes(5)
+    region_mask = _child(H6102Common.RegionMask15, body)
+    region_mask.bits = mask
+    body.mask = region_mask
+    body._unnamed5 = bytes(5)
+    root.body = body
     return _serialize_xor(root)
 
 
