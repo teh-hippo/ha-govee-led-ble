@@ -14,6 +14,7 @@ CONF_MODEL = "model"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
+CONF_DREAMVIEW_MEMBERS = "dreamview_members"
 CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS = "always_include_custom_effects"
 EFFECT_FAMILY_SCENES = "scenes"
 EFFECT_FAMILY_MUSIC = "music"
@@ -151,6 +152,8 @@ class ModelProfile:
     # the product rather than the installation.
     segment_count_from_ic_probe: bool = False
     supports_segment_writes: bool = False
+    supports_dreamview: bool = False
+    dreamview_max_sub_devices: int = 10
     connection_idle_timeout: float | None = None
     scene_catalogue_sku: str | None = None
     legacy_scene_catalogue_sku: str | None = None
@@ -163,6 +166,8 @@ class ModelProfile:
             type(self.physical_ic_count) is not int or self.physical_ic_count <= 0
         ):
             raise ValueError("physical IC count must be a positive integer or unknown")
+        if type(self.dreamview_max_sub_devices) is not int or self.dreamview_max_sub_devices <= 0:
+            raise ValueError("DreamView member limit must be a positive integer")
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
         if len({condition.control for condition in self.video_firmware_conditions}) != len(
@@ -610,6 +615,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         video_modes=("movie", "game"),
         supports_video_saturation=True,
         supports_video_sound_effects=True,
+        supports_dreamview=True,
         supports_relative_brightness=True,
         video_brightness_zones=("left", "top", "right", "bottom", "strip_left", "strip_right"),
         music_modes=_H66A0_MUSIC_MODES,

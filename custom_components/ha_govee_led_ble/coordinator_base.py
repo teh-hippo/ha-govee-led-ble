@@ -10,6 +10,8 @@ from .control_arbiter import BLEControlArbiter, ControlIntent
 from .coordinator_status import ParsedMode
 
 if TYPE_CHECKING:
+    from bleak import BleakClient
+
     from .coordinator_modes import PreModeSnapshot
 
 
@@ -44,6 +46,37 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     music_calm: bool
     diy_code: int | None
     color_mode: ParsedMode | None
+    # Video-surface state.  Declared here so the display mixin can see it, the same way
+    # the mode state above is declared for the mode mixin.
+    video_full_screen: bool
+    video_saturation: int
+    video_sound_effects: bool
+    video_sound_effects_softness: int
+    video_picture_preset: str | None
+    video_reserved: int
+    video_settings: dict[int, list[int]]
+    camera_installed: bool | None
+    _dreamview_frames: dict[int, bytes]
+
+    # Supplied by the concrete coordinator.  Declared here so a write mixin can reach the
+    # connection and the transmit path without importing the coordinator and creating a cycle.
+    _client: BleakClient | None
+
+    if TYPE_CHECKING:
+
+        def _record_packet(
+            self,
+            direction: str,
+            data: bytes,
+            *,
+            outcome: str,
+            reason: str,
+            parser: str | None = ...,
+            domain: int | None = ...,
+        ) -> dict[str, Any]: ...
+
+        async def _async_write_packet(self, client: BleakClient, packet: bytes) -> None: ...
+
     _control_lock: BLEControlArbiter
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]

@@ -1291,8 +1291,8 @@ def build_black_screen_detection(enabled: bool, opaque: Sequence[int]) -> bytes:
     return _serialize_xor(root)
 
 
-def build_camera_install_query() -> bytes:
-    return _build_status_query("camera_install")
+def build_camera_install_query(model: str = "H66A0") -> bytes:
+    return _build_status_query("camera_install", get_profile(model).command_grammar)
 
 
 def build_dreamview_brightness_unite(enabled: bool) -> bytes:

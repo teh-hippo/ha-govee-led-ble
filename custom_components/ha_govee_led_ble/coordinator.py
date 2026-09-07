@@ -27,6 +27,8 @@ from .const import (
     get_profile,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
+from .coordinator_display import _DisplaySettingsMixin
+from .coordinator_dreamview import _DreamviewMixin
 from .coordinator_expectations import expectations_from_packet
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_status import ParsedMode, StatusDomain, decode_status_frame_result, parse_color_mode
@@ -121,7 +123,7 @@ _COLOR_EXPECTATION_FIELDS = frozenset(
 )
 
 
-class GoveeBLECoordinator(_ActiveModeMixin):
+class GoveeBLECoordinator(_ActiveModeMixin, _DisplaySettingsMixin, _DreamviewMixin):
     """Manages BLE connection lifecycle for a Govee device."""
 
     def __init__(
@@ -189,17 +191,24 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.segment_brightness: list[int] = [100] * profile.segment_count
         self.segment_state_source = "initial"
         self.segment_state_observed_at: str | None = None
-        # aa 40.  ic_count is [0:2] big-endian; reported_segment_count is [2], trusted as
-        # a segment count only where the profile says so (segment_count_from_ic_probe).
+        # aa 40.  ic_count is [0:2] big-endian; reported_segment_count is [2], trusted as a
+        # segment count only where the profile says so (segment_count_from_ic_probe).
         self.ic_count: int | None = None
         self.reported_segment_count: int | None = None
+        self.video_picture_preset: str | None = None
+        self.video_reserved = 0x02
+        self.video_settings: dict[int, list[int]] = {}
+        self.camera_installed: bool | None = None
+        self._dreamview_frames: dict[int, bytes] = {}
+        # Set by async_release_ble so a DreamView sync centre can claim a sub-device.
+        self._ble_hold_until: float | None = None
         self._segment_groups_observed: set[int] = set()
         self._segment_query_colors: list[tuple[int, int, int]] | None = None
         self._segment_query_brightness: list[int] | None = None
         self.video_saturation = self.white_brightness = 100
-        self.music_sensitivity = 99
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
+        self.music_sensitivity = 99
         self.music_color: tuple[int, int, int] | None = None
         # H6199 display settings and edge brightness. None means the first read has not landed.
         self.white_balance_red: int | None = None
@@ -602,6 +611,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._first_refresh_done = True
         if self.hass.is_stopping:
             return self._state_snapshot()
+        if self._ble_hold_until is not None:
+            if time.monotonic() < self._ble_hold_until:
+                # Deliberately holding off the radio.  Report the last known state rather than
+                # reconnecting, which would take the link straight back off whoever wanted it.
+                return self._state_snapshot()
+            self._ble_hold_until = None
         if self.profile.state_readable:
             try:
                 async with async_control_intent(self, ControlIntent.BACKGROUND, wait=False) as acquired:
@@ -2016,6 +2031,26 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if len(self.packet_log) > PACKET_LOG_LIMIT:
             del self.packet_log[:-PACKET_LOG_LIMIT]
         return entry
+
+    async def async_release_ble(self, seconds: float) -> None:
+        """Drop this device's BLE link and stay off it for `seconds`.
+
+        For handing a device to a DreamView sync centre.  A sync centre drives its sub-devices
+        over BLE itself, and a Govee device accepts one central at a time, so while Home
+        Assistant holds a strip's link the sync centre cannot complete the handover: the group
+        reports that member as `1` (connecting) rather than `2` (connected), and stays there
+        until we happen to let go.
+
+        A bare disconnect is not enough for the same reason -- the next poll reconnects.  The
+        HOLD is what makes the release useful, and it has to cover the whole session rather than
+        just the handover: measured on hardware, a sync centre that loses the race never
+        retries, so a window that closes early loses the member permanently.
+
+        The device is not touched during the hold; its state stays at its last known values, and
+        normal polling resumes when the window expires.  `seconds=0` clears an existing hold.
+        """
+        self._ble_hold_until = time.monotonic() + seconds if seconds > 0 else None
+        await self.disconnect()
 
     async def disconnect(
         self,
