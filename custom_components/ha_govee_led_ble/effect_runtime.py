@@ -159,6 +159,8 @@ async def async_apply_compiled_profile(
         if compiled.sound_effects_softness is None
         else compiled.sound_effects_softness,
         coordinator.model,
+        picture_preset=getattr(coordinator, "video_picture_preset", None),
+        reserved=getattr(coordinator, "video_reserved", None),
     )
     if compiled.white_balance_wire is not None:
         build_white_balance(
@@ -1272,7 +1274,7 @@ def compiled_observation(
                 expectations["music_calm"] = compiled.calm
     else:
         expectations["video_mode"] = compiled.mode
-        if profile.video_grammar != "H6199":
+        if profile.video_grammar not in {"H6199", "H66A0"}:
             return None, ObservationConfidence.UNKNOWN
         complete = True
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness"):

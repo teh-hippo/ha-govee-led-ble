@@ -49,6 +49,7 @@ enums:
     0x0b: sound_effects
     0x0d: delete_group
   display_setting:
+    0x06: white_balance
     0x0a: black_screen_detection
     0x0b: black_border_removal
     0x10: ai_filter
@@ -223,9 +224,8 @@ types:
       Write to one 0xa9 register: the sub-command, a value count, and that many values --
       the same shape the read answers in (status_reply::display_setting_body).
 
-      Two sub-commands carry a typed payload, and only because each meets the same bar: the
-      APK names every byte AND the write was round-tripped on an H66A0. Every other register
-      stays raw -- a named field is a claim, and the rest have not earned one.
+      Typed payloads require matching write and read-back evidence. Every other register
+      stays raw.
     seq:
       - id: setting
         type: u1
@@ -237,10 +237,15 @@ types:
         type:
           switch-on: setting
           cases:
+            'display_setting::white_balance': scalar_white_balance_payload
             'display_setting::black_screen_detection': black_screen_payload
             'display_setting::black_border_removal': black_border_removal_payload
             'display_setting::hdr_effect': hdr_effect_payload
             'display_setting::ai_filter': ai_filter_payload
+  scalar_white_balance_payload:
+    seq:
+      - id: value
+        type: u1
   ai_filter_payload:
     doc: |
       The app's AI Filter toggle. `33 a9 10 0f <on> <8 zero bytes> <timestamp>`, and the read
@@ -252,20 +257,9 @@ types:
         33 a9 10 0f 01 00*8 ea 07 08 1a 08 21
         33 a9 10 0f 00 00*8 ea 07 08 1a 08 21
 
-      The eight bytes between the enable and the timestamp are the SELECTED FILTER, and they are
-      zero in that capture only because no filter was configured. AiFilterController builds them
-      from an AiFilterStatusBean as four single bytes then two big-endian u16s, four of which
-      default to 50 -- so they are a parameter set, not padding, and a writer that zeroes them
-      would silently clear the filter the user picked. They are `params` here for that reason:
-      READ THEM BACK AND PRESERVE THEM.
-
-      The tail is a wall-clock stamp in **UTC** (the app converts via
-      TimeFormatM.getTimeByZone(..., TimeZone.getTimeZone("UTC"))): `ea 07` is 2026
-      little-endian, then month 08, day 26, hour 08, minute 33.
-
-      The toggle and the parameters are BLE. The CATALOGUE of filters is not -- the app fetches
-      it from `/bff-app/v1/filter/init` per SKU and firmware version, so which filters exist and
-      what their numbers mean cannot be discovered from the device.
+      The eight bytes between the enable and timestamp are selected-filter parameters, not
+      padding. A writer must read and preserve them because their meanings are unavailable
+      from the device. The tail is a UTC wall-clock stamp.
     seq:
       - id: is_on
         type: u1
@@ -315,27 +309,8 @@ types:
     doc: |
       HDR contrast: an enable and a GEAR INDEX, not a percentage.
 
-      `VideoHdrEffectController` writes `{17, 2, enabled, gear}` and reads it back through
-      `HDREffectBean(bArr[2] == 1, bArr[3])`, so the APK names both bytes. The vendor control
-      is a four-position picker -- `VideoTextSpiltPointView` over a `SpiltPointViewV2`, with
-      the layout `b2light_video_text_spilt_point` fixing `spiltPoint_nums="4"`.
-
-      The range is **1..4, not 0..3**, and that correction came from hardware rather than from
-      reading the widget. `spiltPoint_nums="4"` plus `onPositionChange(i)` writing the index
-      straight through looked like 0..3, and this file said so. Then a device whose app showed
-      "4 of 4" answered `aa a9 11` with `02 01 04`, and one showing step 2 answered `02 01 02`.
-      So the wire value is the 1-based position on the scale. The circles carry no numbers --
-      the owner counted them as a human would -- but a 0-based index would put the fourth
-      circle at 3, and the device reported 4. A builder validating max 3 would have refused a
-      setting the vendor uses.
-
-      This contradicts the decompiled widget, where `onPositionChange(i)` appears to hand the
-      raw index straight to the bean. Either the widget is 1-based here or something offsets
-      it; the hardware is what this file follows.
-
-      Round-tripped on an H66A0 on 2026-08-25, in video mode with the camera attached: gear 1
-      written and read back as `02 01 01`, gear 3 as `02 01 03`, then restored to the device's
-      own `02 01 02`. The owner independently confirmed a four-dot picker in the app.
+      Captured writes and replies establish the field order. The range is 1..4: labelled
+      device states reported `02 01 01` through `02 01 04`.
     seq:
       - id: is_on
         type: u1
@@ -351,42 +326,15 @@ types:
       Video mode on an H66A0: `33 05 00` followed by six bytes. An `aa 05` read in video mode
       returns the same six fields after the mode byte, so read and write share this layout.
 
-      pact_tvlightv4's VideoVm.O() builds {0, d(), b(), e(), f(), g(), i()} and
-      Info4Detail.g0() parses the reply back with byte[0]->l() byte[1]->j() byte[2]->m()
-      byte[3]->n(Z) byte[4]->o() byte[5]->q(). Writer and parser agree slot for slot.
-
         game_mode       0 = Movie, 1 = Game.
-        picture_preset  0x08 | index. The index order is NOT the app's list order. Measured on
-                        2026-08-27 by setting each preset IN THE APP and reading the device back:
-                        0x08 Vivid, 0x09 Solid, 0x0a Smooth, 0x0b Delicate -- so Solid and Vivid
-                        are transposed against the app's Solid, Vivid, Smooth, Delicate.
-                        Bit 3 is REQUIRED -- written cleared, the device stores the value but the
-                        app then shows no preset selected.
+        picture_preset  0x08 Vivid, 0x09 Solid, 0x0a Smooth, 0x0b Delicate.
         saturation      0..100. Read back as 0x3e = 62 against a slider showing 62%.
-        sound_effects   0/1, set by SoundEffectViewInterface.onSwitch -> n(z).
-        reserved        NOT WRITTEN by this pact, and not identified. Reads 0x02 on this device
-                        and never moved in any capture, nor when the owner changed softness in
-                        the app. Preserve whatever the device reports rather than assuming 2.
+        sound_effects   0/1.
+        reserved        Unidentified. Preserve the reported value.
         sound_effects_softness
-                        0..100, the app's Softness slider under the Sound Effects toggle.
+                        0..100.
 
-      HISTORY, because this was got wrong in both directions and the reasoning matters.
-
-      The APK appears to say the last two bytes are the other way round: o() is called from
-      SoundEffectViewInterface.onSoftnessChange, and q() only from changeWholeRlBrightness. An
-      earlier revision followed that and swapped them. It was wrong, and the device disagreed
-      three ways: changing softness in the app left this byte at 0x02, a "whole relative
-      brightness" control built on the last byte did nothing, and the per-side relative
-      brightness (0xae) was already working on its own.
-
-      The resolution is in the accessor map. VideoModeControllerParams holds relative brightness
-      as a RelativeBrightnessBean in field `g`, reached by c()/k() -- a field that is NOT IN THIS
-      BODY AT ALL. Relative brightness is the separate 0xae command; the video body has no such
-      slot. What misled the earlier reading is that `onSoftnessChanged` is the GENERIC callback
-      name of the shared slider widget, used verbatim by SaturationViewInterface,
-      SensitivityViewInterface and WholeRLBrightnessViewInterface. On this device the Softness
-      slider is wired through that shared widget to q(), and nothing on the screen drives o() --
-      which is exactly why the reserved byte never moves.
+      Relative brightness is carried by the separate 0xae command.
     seq:
       - id: game_mode
         type: u1
@@ -408,4 +356,3 @@ types:
         type: u1
         valid:
           max: 100
-

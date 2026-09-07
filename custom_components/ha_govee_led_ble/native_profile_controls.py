@@ -14,6 +14,7 @@ from .generated_protocol_adapter import (
     build_white_balance,
 )
 from .video_applicability import require_video_controls
+from .video_settings import VIDEO_DEFAULT_PRESET
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
@@ -57,6 +58,11 @@ async def apply_active_video_mode(
         )
         if field not in requested_values and supported
     }
+    if coordinator.profile.video_grammar == "H66A0":
+        retained.update(
+            picture_preset=coordinator.video_picture_preset,
+            reserved=coordinator.video_reserved,
+        )
 
     def check_retained() -> None:
         if any(getattr(coordinator, f"video_{field}") != value for field, value in retained.items()):
@@ -67,6 +73,9 @@ async def apply_active_video_mode(
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
     }
     values["sound_effects"] = values["sound_effects"] and coordinator.profile.supports_video_sound_effects
+    if coordinator.profile.video_grammar == "H66A0":
+        values["picture_preset"] = coordinator.video_picture_preset or VIDEO_DEFAULT_PRESET
+        values["reserved"] = coordinator.video_reserved
     packet = build_video_mode(
         mode,
         values["full_screen"],
@@ -74,6 +83,8 @@ async def apply_active_video_mode(
         values["sound_effects"],
         values["sound_effects_softness"],
         coordinator.model,
+        picture_preset=values.get("picture_preset"),
+        reserved=values.get("reserved"),
     )
     state_values = {f"video_{field}": value for field, value in values.items()}
     state_values.update(video_mode=mode, effect=None, music_mode="off", diy_code=None)

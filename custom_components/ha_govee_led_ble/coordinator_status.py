@@ -5,7 +5,12 @@ from enum import Enum, auto
 from typing import Any, cast
 
 from .const import MUSIC_MODE_SLUGS, ReadDomain, get_profile
-from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
+from .generated_protocol_adapter import (
+    _PICTURE_PRESET_BASE,
+    PICTURE_PRESETS,
+    ProtocolParseResult,
+    parse_status_result,
+)
 from .scenes import MODEL_SCENES
 
 _MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
@@ -84,6 +89,8 @@ class ParsedColorModeResponse:
     scene_code: int | None = None
     diy_code: int | None = None
     music_mode: str | None = None
+    video_picture_preset: str | None = None
+    video_reserved: int | None = None
     video_mode: str | None = None
     video_full_screen: bool | None = None
     video_saturation: int | None = None
@@ -159,6 +166,18 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             )
         return ParsedColorModeResponse()
 
+    if mode_name == "video" and get_profile(model).video_grammar == "H66A0":
+        detail = body.mode_body
+        preset = int(detail.picture_preset) - _PICTURE_PRESET_BASE
+        return ParsedColorModeResponse(
+            mode=ParsedMode.VIDEO,
+            video_mode="game" if detail.game_mode else "movie",
+            video_picture_preset=(PICTURE_PRESETS[preset] if 0 <= preset < len(PICTURE_PRESETS) else None),
+            video_saturation=int(detail.saturation),
+            video_sound_effects=bool(detail.sound_effects),
+            video_reserved=int(detail.reserved),
+            video_sound_effects_softness=int(detail.sound_effects_softness),
+        )
     if mode_name == "scene":
         scene_code = int(body.mode_body.scene_id)
         return ParsedColorModeResponse(

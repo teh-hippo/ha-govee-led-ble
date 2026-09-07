@@ -25,6 +25,7 @@ seq:
         'query_domain::gradual_change': zero_body
         'query_domain::segments': segment_query_body
         'query_domain::display_setting': display_setting_query_body
+        'query_domain::relative_brightness': relative_brightness_query_body
   - id: checksum
     type: u1
 enums:
@@ -43,6 +44,7 @@ enums:
     0xa3: gradual_change
     0xa5: segments
     0xa9: display_setting
+    0xae: relative_brightness
 types:
   zero_body:
     seq:
@@ -78,6 +80,14 @@ types:
     seq:
       - id: setting
         type: u1
+      - id: zeros
+        type: u1
+        valid: 0
+        repeat: eos
+  relative_brightness_query_body:
+    seq:
+      - id: selector
+        contents: [0x01]
       - id: zeros
         type: u1
         valid: 0

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import io
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from importlib import import_module
 from typing import Any, cast
@@ -305,6 +307,7 @@ def _build_status_query(
     *,
     display_setting: str | None = None,
     segment_group: int | None = None,
+    video_setting: int | None = None,
 ) -> bytes:
     if grammar not in {"H617A", "H6199"}:
         raise ValueError(f"{grammar} has no generated status-query grammar")
@@ -312,7 +315,15 @@ def _build_status_query(
     root = root_type()
     root.header = b"\xaa"
     root.domain = getattr(root_type.QueryDomain, domain)
-    if display_setting is not None:
+    if video_setting is not None:
+        # The 0xa9 read on the H617A-family schema: a bare sub-command BYTE.  Distinct from the
+        # `display_setting` path below, which selects from a named enum; here the sub-command is
+        # a number, because most of the registers behind it are ones this repository can read
+        # but has not identified.
+        body = _child(root_type.DisplaySettingQueryBody, root)
+        body.setting = video_setting
+        body.zeros = [0] * 16
+    elif display_setting is not None:
         body = _child(root_type.DisplaySettingQueryBody, root)
         body.setting = getattr(root_type.DisplaySetting, display_setting)
         body.zeros = [0] * 16
@@ -366,9 +377,12 @@ def build_white_balance_query(model: str) -> bytes:
     profile = get_profile(model)
     if not profile.supports_white_balance:
         raise ValueError(f"{model} does not support white balance")
-    if _video_grammar(model) == "H6199":
+    grammar = _video_grammar(model)
+    if grammar == "H6199":
         setting = "scalar_white_balance" if profile.video_white_balance_representation == "scalar" else "white_balance"
         return _build_status_query("display_setting", "H6199", display_setting=setting)
+    if grammar == "H66A0" and profile.video_white_balance_representation == "scalar":
+        return build_video_setting_query(0x06, model)
     raise ValueError(f"{model} has no generated white-balance query grammar")
 
 
@@ -376,8 +390,11 @@ def build_blank_screen_query(model: str) -> bytes:
     profile = get_profile(model)
     if not profile.supports_blank_screen:
         raise ValueError(f"{model} does not support blank-screen detection")
-    if _video_grammar(model) == "H6199":
+    grammar = _video_grammar(model)
+    if grammar == "H6199":
         return _build_status_query("display_setting", "H6199", display_setting="blank_screen")
+    if grammar == "H66A0":
+        return build_video_setting_query(0x0A, model)
     raise ValueError(f"{model} has no generated blank-screen query grammar")
 
 
@@ -385,8 +402,11 @@ def build_relative_brightness_query(model: str) -> bytes:
     profile = get_profile(model)
     if not profile.supports_relative_brightness:
         raise ValueError(f"{model} does not support relative brightness")
-    if _video_grammar(model) == "H6199":
+    grammar = _video_grammar(model)
+    if grammar == "H6199":
         return _build_status_query("relative_brightness", "H6199")
+    if grammar == "H66A0":
+        return _build_status_query("relative_brightness", profile.command_grammar)
     raise ValueError(f"{model} has no generated relative-brightness query grammar")
 
 
@@ -880,11 +900,24 @@ def build_video_mode(
     sound_effects: bool,
     softness: int,
     model: str,
+    *,
+    picture_preset: str | None = None,
+    reserved: int | None = None,
 ) -> bytes:
     profile = get_profile(model)
     if video_mode not in profile.video_modes:
         raise ValueError(f"{model} does not support video mode {video_mode}")
-    if _video_grammar(model) != "H6199":
+    grammar = _video_grammar(model)
+    if grammar == "H66A0":
+        return build_video_mode_h66a0(
+            game_mode=video_mode == "game",
+            picture_preset="solid" if picture_preset is None else picture_preset,
+            saturation=saturation,
+            sound_effects=sound_effects,
+            sound_effects_softness=softness,
+            reserved=0x02 if reserved is None else reserved,
+        )
+    if grammar != "H6199":
         raise ValueError(f"{model} has no generated video-mode grammar")
     if video_mode not in {"movie", "game"}:
         raise ValueError(f"{model} video mode {video_mode} is not supported by the H6199 grammar")
@@ -919,7 +952,22 @@ def build_white_balance(red: int, blue: int | None, model: str) -> bytes:
     profile = get_profile(model)
     if not profile.supports_white_balance:
         raise ValueError(f"{model} does not support white balance")
-    if _video_grammar(model) != "H6199":
+    grammar = _video_grammar(model)
+    if grammar == "H66A0":
+        if blue is not None or type(red) is not int or not 0 <= red <= 100:
+            raise ValueError("H66A0 white balance requires one percentage byte")
+        root = CommandWrite()
+        root.header = b"\x33"
+        root.opcode = CommandWrite.CommandOp.display_setting
+        body = _child(CommandWrite.DisplaySettingCmd, root)
+        body.setting = CommandWrite.DisplaySetting.white_balance
+        body.len = 1
+        payload = _child(CommandWrite.ScalarWhiteBalancePayload, body)
+        payload.value = red
+        body.payload = payload
+        root.body = body
+        return _serialize_xor(root)
+    if grammar != "H6199":
         raise ValueError(f"{model} has no generated white-balance grammar")
     root = H6199CommandWrite()
     root.header = b"\x33"
@@ -956,7 +1004,19 @@ def build_blank_screen(
     profile = get_profile(model)
     if not profile.supports_blank_screen:
         raise ValueError(f"{model} does not support blank-screen detection")
-    if _video_grammar(model) != "H6199":
+    grammar = _video_grammar(model)
+    if grammar == "H66A0":
+        return build_black_screen_detection(
+            enabled,
+            [
+                detection,
+                low_brightness_duration_seconds & 0xFF,
+                low_brightness_duration_seconds >> 8,
+                same_tone_duration_seconds & 0xFF,
+                same_tone_duration_seconds >> 8,
+            ],
+        )
+    if grammar != "H6199":
         raise ValueError(f"{model} has no generated blank-screen grammar")
     root = H6199CommandWrite()
     root.header = b"\x33"
@@ -986,7 +1046,7 @@ def build_relative_brightness(
     profile = get_profile(model)
     if not profile.supports_relative_brightness:
         raise ValueError(f"{model} does not support relative brightness")
-    if _video_grammar(model) != "H6199":
+    if _video_grammar(model) not in {"H6199", "H66A0"}:
         raise ValueError(f"{model} has no generated relative-brightness grammar")
     root = H6199CommandWrite()
     root.header = b"\x33"
@@ -1111,3 +1171,289 @@ def encode_music_parameters(
         tail.style_companion = MusicBody.ShinyStyle(value) if isinstance(tail, MusicBody.ShinyTail) else value
     _check_tree(root)
     return _write(root, len(variant.template) + 3)[3:]
+
+
+# WIRE order: index encoded as `0x08 | index`. NOT the order the app lists them in.
+#
+# Measured, not inferred. On 2026-08-27 the owner set each preset IN THE APP and the device was
+# read back each time, which gives wire value -> app label with nothing in between:
+#
+#     app Vivid  -> 0x08        app Solid    -> 0x09
+#     app Smooth -> 0x0a        app Delicate -> 0x0b
+#
+# 0x08 = Vivid is confirmed twice on different days: this measurement, and a first-session
+# read-back of `00 01 08 3e 01 02 01` taken while the app showed Vivid.
+#
+# So SOLID and VIVID are transposed relative to the app's list; Smooth and Delicate sit where you
+# would expect. Two earlier attempts to fix this by swapping Vivid with SMOOTH both failed, which
+# is what a wrong guess about which pair moved looks like.
+PICTURE_PRESETS: tuple[str, ...] = ("vivid", "solid", "smooth", "delicate")
+PICTURE_PRESET_DISPLAY_ORDER: tuple[str, ...] = ("solid", "vivid", "smooth", "delicate")
+_PICTURE_PRESET_BASE = 0x08
+
+# The 20-byte frame is header + opcode + 17 body bytes + checksum, and the body is one
+# sub-command byte plus a 16-byte payload, so the zero padding is 16 minus the named fields.
+# 1 enable + 8 filter parameters + 6 timestamp, which is the 0x0f the app sends.
+_AI_FILTER_PARAMS_LEN = 8
+_AI_FILTER_PAYLOAD_LEN = 15
+
+_DREAMVIEW_PAYLOAD_LEN = 16
+
+
+def _dreamview(sub_name: str, payload_cls: str, used: int, **fields: object) -> bytes:
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.dreamview
+    body = _child(CommandWrite.DreamviewCmd, root)
+    body.sub = getattr(CommandWrite.DreamviewSub, sub_name)
+    payload = _child(getattr(CommandWrite, payload_cls), body)
+    for name, value in fields.items():
+        setattr(payload, name, value)
+    payload.padding = [0] * (_DREAMVIEW_PAYLOAD_LEN - used)
+    body.payload = payload
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_ai_filter(enabled: bool, params: bytes | None = None, *, now: datetime | None = None) -> bytes:
+    """Build `33 a9 10` -- the app's AI Filter.
+
+    `params` is the eight-byte SELECTED FILTER. It must be the value read back from the device:
+    the app builds it from a filter definition fetched from the cloud, so zeroing it would clear
+    a selection this integration cannot reconstruct. Defaults to zeros only for the case where
+    the device itself reports zeros.
+
+    The timestamp is UTC, matching TimeFormatM.getTimeByZone(..., "UTC") in the app. `now` exists
+    so tests can pin it.
+    """
+    if params is not None and len(params) != _AI_FILTER_PARAMS_LEN:
+        raise ValueError(f"params must be {_AI_FILTER_PARAMS_LEN} bytes, got {len(params)}")
+    stamp = now or datetime.now(UTC)
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.display_setting
+    body = _child(CommandWrite.DisplaySettingCmd, root)
+    body.setting = CommandWrite.DisplaySetting.ai_filter
+    payload = _child(CommandWrite.AiFilterPayload, body)
+    payload.is_on = 1 if enabled else 0
+    payload.params = bytes(params) if params is not None else bytes(_AI_FILTER_PARAMS_LEN)
+    payload.year = stamp.year
+    payload.month = stamp.month
+    payload.day = stamp.day
+    payload.hour = stamp.hour
+    payload.minute = stamp.minute
+    body.payload = payload
+    body.len = _AI_FILTER_PAYLOAD_LEN
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_black_border_removal(enabled: bool) -> bytes:
+    """Build the 0xa9 sub-0x0b write: black-border removal on or off.
+
+    The only 0xa9 write this integration builds. One byte, 0 or 1, in the same
+    setting/len/values envelope the read answers in.
+    """
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.display_setting
+    body = _child(CommandWrite.DisplaySettingCmd, root)
+    body.setting = CommandWrite.DisplaySetting.black_border_removal
+    body.len = 1
+    payload = _child(CommandWrite.BlackBorderRemovalPayload, body)
+    payload.is_on = 1 if enabled else 0
+    body.payload = payload
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_black_screen_detection(enabled: bool, opaque: Sequence[int]) -> bytes:
+    """Build the 0xa9 sub-0x0a write: blank-screen detection on or off.
+
+    ``opaque`` is the register's other five bytes, which must be READ BACK from the device and
+    passed through unchanged -- they hold a configuration the user set in the app and none of
+    them is identified. See command_write.ksy::black_screen_payload.
+    """
+    values = list(opaque)
+    if len(values) != 5:
+        raise ValueError(f"blank-screen register carries five opaque bytes, got {len(values)}")
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.display_setting
+    body = _child(CommandWrite.DisplaySettingCmd, root)
+    body.setting = CommandWrite.DisplaySetting.black_screen_detection
+    body.len = 6
+    payload = _child(CommandWrite.BlackScreenPayload, body)
+    payload.is_on = 1 if enabled else 0
+    payload.opaque = values
+    body.payload = payload
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_camera_install_query() -> bytes:
+    return _build_status_query("camera_install")
+
+
+def build_dreamview_brightness_unite(enabled: bool) -> bytes:
+    """`33 60 04` -- one brightness for every member instead of per-member.
+
+    The app calls this "Same Brightness" (FeastBrightnessUniteController).
+    """
+    return _dreamview("brightness_unite", "DreamviewSingle", 1, value=1 if enabled else 0)
+
+
+def build_dreamview_delete() -> bytes:
+    """Build `33 60 0d` -- delete the DreamView group (MovieDeleteController).
+
+    Included deliberately, and late: creating a group is not read-backable, so without a way to
+    remove one the integration could reach a state it cannot leave except through the vendor app.
+    """
+    return _dreamview("delete_group", "DreamviewSingle", 1, value=0)
+
+
+def build_dreamview_device_brightness(level: int, index: int) -> bytes:
+    """`33 60 03 {level, index}` -- per-member brightness (FeastBrightnessController).
+
+    Round-tripped: writes at indices 0, 1, 2 read back through `aa 60 03` as `34 51 44`.
+    """
+    if not 0 <= level <= 100:
+        raise ValueError(f"brightness must be 0..100, got {level}")
+    if not 0 <= index <= 5:
+        raise ValueError(f"member index must be 0..5, got {index}")
+    return _dreamview("device_brightness", "DreamviewPair", 2, first=level, second=index)
+
+
+def build_dreamview_query(sub: int) -> bytes:
+    """`aa 60 <sub>` -- read one DreamView register."""
+    frame = bytearray(20)
+    frame[0], frame[1], frame[2] = 0xAA, 0x60, sub
+    check = 0
+    for byte in frame[:19]:
+        check ^= byte
+    frame[19] = check
+    return bytes(frame)
+
+
+def build_dreamview_saturation(saturation: int) -> bytes:
+    """`33 60 09` -- saturation, 0..100 (MovieSaturationController)."""
+    if not 0 <= saturation <= 100:
+        raise ValueError(f"saturation must be 0..100, got {saturation}")
+    return _dreamview("saturation", "DreamviewSingle", 1, value=saturation)
+
+
+def build_dreamview_sound_effects(enabled: bool, softness: int) -> bytes:
+    """`33 60 0b {on, softness}` -- sound effects and their softness (MovieSoundController)."""
+    if not 0 <= softness <= 100:
+        raise ValueError(f"softness must be 0..100, got {softness}")
+    return _dreamview("sound_effects", "DreamviewPair", 2, first=1 if enabled else 0, second=softness)
+
+
+def build_dreamview_sub_device_connect(index: int, connect: bool) -> bytes:
+    """`33 60 05 {index, connect}` -- disconnect ONE sub-device, or reconnect it.
+
+    This is the app's per-member Disconnect button. A DreamView sync centre holds its
+    sub-devices' BLE links itself, which is why they stop advertising while a group runs and
+    why Home Assistant reports them unavailable. Disconnecting one hands its link back WITHOUT
+    touching group membership, the Area Config or any per-member setting -- so unlike deleting
+    a group, it is fully reversible from here: pass connect=True to give it back.
+
+    That matters because membership and Area Config are write-only. No `aa 60` query returns
+    them, so a deleted group can only be rebuilt by someone who knows what it was.
+
+    Read the result with `aa 60 05`, which reports one byte per slot:
+    0 disconnected, 1 connecting, 2 connected.
+    """
+    if not 0 <= index <= 5:
+        raise ValueError(f"member index must be 0..5, got {index}")
+    return _dreamview("sub_device_connect", "DreamviewPair", 2, first=index, second=1 if connect else 0)
+
+
+def build_dreamview_switch(enabled: bool) -> bytes:
+    """`33 60 01 {on, 1}` -- turn a DreamView group on or off (MovieOpenControllerV2)."""
+    return _dreamview("switch_on_off", "DreamviewSwitch", 2, is_on=1 if enabled else 0, trailer=b"\x01")
+
+
+def build_hdr_effect(enabled: bool, gear: int) -> bytes:
+    """Build the 0xa9 sub-0x11 write: HDR contrast enable and gear.
+
+    Two bytes in the same setting/len/values envelope the read answers in. ``gear`` is the
+    position the app displays, 1..4, not a percentage -- see command_write.ksy::hdr_effect_payload.
+    """
+    if not 1 <= gear <= 4:
+        raise ValueError(f"HDR gear must be 1..4, got {gear}")
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.display_setting
+    body = _child(CommandWrite.DisplaySettingCmd, root)
+    body.setting = CommandWrite.DisplaySetting.hdr_effect
+    body.len = 2
+    payload = _child(CommandWrite.HdrEffectPayload, body)
+    payload.is_on = 1 if enabled else 0
+    payload.gear = gear
+    body.payload = payload
+    root.body = body
+    return _serialize_xor(root)
+
+
+def build_ic_segment_count_query(model: str = "H66A0") -> bytes:
+    return _build_status_query("ic_segment_count", get_profile(model).command_grammar)
+
+
+def build_video_mode_h66a0(
+    *,
+    game_mode: bool = False,
+    picture_preset: str = "vivid",
+    saturation: int = 50,
+    sound_effects: bool = False,
+    sound_effects_softness: int = 1,
+    reserved: int = 0x02,
+) -> bytes:
+    """Build the H66A0 video-mode write: ``33 05 00`` plus its six body bytes.
+
+    Every field is corroborated by command and labelled read-back evidence; see
+    command_write.ksy::video_body_h66a0. ``picture_preset`` is one of PICTURE_PRESETS
+    and is encoded as ``0x08 | index``.
+
+    ``reserved`` is not identified; pass back whatever the device reported so a
+    write cannot change a field we do not understand. Relative brightness is NOT in this body at
+    all -- it is the separate 0xae command.
+    """
+    if picture_preset not in PICTURE_PRESETS:
+        raise ValueError(f"picture_preset must be one of {PICTURE_PRESETS}, got {picture_preset!r}")
+    if not 0 <= saturation <= 100:
+        raise ValueError(f"saturation must be 0..100, got {saturation}")
+    if not 0 <= sound_effects_softness <= 100:
+        raise ValueError(f"sound_effects_softness must be 0..100, got {sound_effects_softness}")
+    if not 0 <= reserved <= 0xFF:
+        raise ValueError(f"reserved must be a byte, got {reserved}")
+    root = CommandWrite()
+    root.header = b"\x33"
+    root.opcode = CommandWrite.CommandOp.multi
+    body = _child(CommandWrite.MultiCmd, root)
+    body.sub = CommandWrite.MultiSub.video
+    sub_body = _child(CommandWrite.VideoBodyH66a0, body)
+    sub_body.game_mode = 1 if game_mode else 0
+    sub_body.picture_preset = _PICTURE_PRESET_BASE | PICTURE_PRESETS.index(picture_preset)
+    sub_body.saturation = saturation
+    sub_body.sound_effects = 1 if sound_effects else 0
+    sub_body.reserved = reserved
+    sub_body.sound_effects_softness = sound_effects_softness
+    body.sub_body = sub_body
+    root.body = body
+    return _serialize_xor(root)
+
+
+# The 20-byte frame is header + opcode + 17 body bytes + checksum, and the body is one
+# sub-command byte plus a 16-byte payload, so the zero padding is 16 minus the named fields.
+# 1 enable + 8 filter parameters + 6 timestamp, which is the 0x0f the app sends.
+
+
+def build_video_setting_query(setting: int, model: str = "H66A0") -> bytes:
+    if _video_grammar(model) != "H66A0":
+        raise ValueError(f"{model} has no H66A0 video-setting query grammar")
+    return _build_status_query(
+        "display_setting",
+        get_profile(model).command_grammar,
+        video_setting=setting,
+    )
