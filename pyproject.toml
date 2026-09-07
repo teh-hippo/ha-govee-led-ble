@@ -74,6 +74,7 @@ tag_format = "v{version}"
 assets = ["uv.lock"]
 
 [tool.semantic_release.commit_parser_options]
+ignore_merge_commits = false
 patch_tags = ["fix", "perf", "build"]
 other_allowed_tags = ["chore", "ci", "docs", "style", "refactor", "test"]
 

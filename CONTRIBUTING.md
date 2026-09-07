@@ -145,6 +145,8 @@ Onboard device-microphone modes, ordinary BLE commands, and bounded multipart ef
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
+Keep Conventional Commit merge parsing enabled in semantic-release so release-bearing merges still trigger releases when the branch commits are fixups.
+
 For live qualification, distinguish optimistic entity state from fresh BLE readback.
 Use `homeassistant.update_entity` when verifying state outside the command's confirmation queries.
 H617A static RGB is confirmed through complete segment replies, not the colour-mode reply.
