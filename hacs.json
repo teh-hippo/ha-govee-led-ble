@@ -1,6 +1,6 @@
 {
   "name": "Govee LED BLE",
-  "homeassistant": "2026.3.0",
+  "homeassistant": "2026.9.0",
   "zip_release": true,
   "filename": "ha_govee_led_ble.zip",
   "hide_default_branch": true
