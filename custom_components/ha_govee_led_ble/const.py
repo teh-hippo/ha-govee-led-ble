@@ -293,6 +293,27 @@ MUSIC_MODE_SLUGS: dict[str, int] = {
     "orbit": 0xA3,  # multi_value_sub_youdong -> app_move_about
 }
 
+# Tested directly on 2026-08-27:
+# each was written with `33 05 13 <id> 3c` and the device acked, then `aa 05` reported the
+# PREVIOUS mode still in place -- a silent rejection, not an error. The same method applied to all
+# eleven ids above showed every one of them taking effect, so the negative is the method working,
+# not the method failing.
+#
+#   0x36 waves (hailang)      0x38 rhythm RGBIC      0x39 energic RGBIC
+#   0x3a rippling             0x3b swiping (slide)
+#
+# They are recorded rather than exposed. Another device may well accept them -- the names come
+# from IMusicEffectStatic and strings.xml -- but nothing here has shown one, and the owner's app
+# showing sixteen entries is not evidence that these five are among them.
+MUSIC_MODE_IDS_REJECTED_BY_H66A0: dict[str, int] = {
+    "spectrum_alt": 0x54,  # INERT: accepted and reported back, LEDs stayed dark
+    "waves": 0x36,
+    "rhythm_rgbic": 0x38,
+    "energetic_rgbic": 0x39,
+    "rippling": 0x3A,
+    "swiping": 0x3B,
+}
+
 MUSIC_MODE_IDS_ACCEPTED_BY_H61F5: tuple[int, ...] = (
     0x03, 0x04, 0x05, 0x06, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37, 0x84, 0x85, 0x92, 0xA3,
 )  # fmt: skip

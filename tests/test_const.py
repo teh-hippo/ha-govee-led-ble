@@ -12,6 +12,8 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_EFFECT_FAMILIES,
     CONF_PREFIX_EFFECT_NAMES,
     MODEL_PROFILES,
+    MUSIC_MODE_IDS_REFUSED_BY_H61F5,
+    MUSIC_MODE_IDS_REJECTED_BY_H66A0,
     MUSIC_MODE_SLUGS,
     UNSUPPORTED_PROFILE,
     ModelProfile,
@@ -327,3 +329,21 @@ def test_h61f5_profile_matches_its_sibling_strip_but_keeps_its_own_identity():
     # a shared table would widen one model's claims to ids its own evidence never showed.
     assert profile.scene_catalogue_sku == "H61F5" != sibling.scene_catalogue_sku
     assert profile.music_modes is not sibling.music_modes
+
+
+def test_rejected_modes_are_recorded_but_never_exposed():
+    """A device refusing a mode is a measurement, and it has to outrank the registry.
+
+    Both lists were produced the same way: write `33 05 13 <id>`, then read `aa 05` back.  An id
+    that reported the previous mode still in place was refused, not errored -- which is why the
+    negatives are kept rather than discarded.
+    """
+    for model, rejected in (
+        ("H66A0", set(MUSIC_MODE_IDS_REJECTED_BY_H66A0.values())),
+        ("H61F5", set(MUSIC_MODE_IDS_REFUSED_BY_H61F5)),
+    ):
+        profile = MODEL_PROFILES.get(model)
+        if profile is None:
+            continue
+        offered = {MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes}
+        assert not offered & rejected, f"{model} offers an id it was measured refusing"
