@@ -408,8 +408,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.hw_version, changed = hw_version, True
         if not changed:
             return
+        assert self.config_entry is not None
         registry = dr.async_get(self.hass)
-        device = registry.async_get_device(identifiers={(DOMAIN, self.address)})
+        device = registry.async_get_device_by_identifier((DOMAIN, self.address), self.config_entry.entry_id)
         if device is not None:
             registry.async_update_device(device.id, sw_version=self.fw_version, hw_version=self.hw_version)
 

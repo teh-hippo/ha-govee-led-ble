@@ -28,6 +28,7 @@ Home Assistant commands take priority over live previews.  Effect uploads and ac
 
 ## Upgrade notes
 
+- Home Assistant Core 2026.9.0 or newer is required for config-entry-scoped device metadata updates.  Upgrade Core before installing, including manual installations.
 - An H6076 previously configured as H617A must be explicitly changed to H6076 through the integration's **Reconfigure** action.  The config entry and entity identity are preserved.
 - The standalone H617A scene-speed entity remains removed.  Edit scene speed in Effect Studio or select the native scene through the light effect selector.
 - Renaming a saved effect immediately changes its selector name.  Name-based automations must use the new name; the stable effect ID does not change.
@@ -114,5 +115,5 @@ MIT
 [release-url]: https://github.com/teh-hippo/ha-govee-led-ble/releases
 [validate-badge]: https://img.shields.io/github/actions/workflow/status/teh-hippo/ha-govee-led-ble/validate.yml?branch=master&label=validate
 [validate-url]: https://github.com/teh-hippo/ha-govee-led-ble/actions/workflows/validate.yml
-[ha-badge]: https://img.shields.io/badge/HA-2026.3%2B-blue.svg
+[ha-badge]: https://img.shields.io/badge/HA-2026.9%2B-blue.svg
 [ha-url]: https://www.home-assistant.io

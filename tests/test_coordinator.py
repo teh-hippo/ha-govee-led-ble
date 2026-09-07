@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from bleak import BleakClient, BleakError
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntryState, current_entry
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -105,12 +105,15 @@ proto = SimpleNamespace(
 
 @pytest.fixture
 def coord(hass):
-    return GoveeBLECoordinator(
-        hass,
-        "AA:BB:CC:DD:EE:FF",
-        "H617A",
-        configuration_url=_CONFIGURATION_URL,
-    )
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="AA:BB:CC:DD:EE:FF")
+    entry.add_to_hass(hass)
+    with current_entry.set(entry):
+        return GoveeBLECoordinator(
+            hass,
+            "AA:BB:CC:DD:EE:FF",
+            "H617A",
+            configuration_url=_CONFIGURATION_URL,
+        )
 
 
 @pytest.fixture
@@ -2306,37 +2309,66 @@ def test_device_info_replaces_a_stale_configuration_url(hass, coord):
     assert device.configuration_url == _CONFIGURATION_URL
 
 
-def test_notify_callback_sets_fw_hw_versions(coord):
+def test_notify_callback_pushes_identity_to_own_registry_device(hass, coord):
+    registry = dr.async_get(hass)
+    other_entry = MockConfigEntry(domain=DOMAIN)
+    other_entry.add_to_hass(hass)
+    foreign_device = registry.async_get_or_create(
+        config_entry_id=other_entry.entry_id,
+        identifiers={(DOMAIN, coord.address)},
+        sw_version="other-firmware",
+        hw_version="other-hardware",
+    )
+    unrelated_device = registry.async_get_or_create(
+        config_entry_id=coord.config_entry.entry_id,
+        identifiers={(DOMAIN, "11:22:33:44:55:66")},
+    )
+    device = registry.async_get_or_create(config_entry_id=coord.config_entry.entry_id, **coord.device_info)
     fw = proto.build_packet(proto.STATUS_HEADER, proto.FIRMWARE_PACKET_TYPE, list(b"3.02.24"))
     hw = proto.build_packet(proto.STATUS_HEADER, proto.HARDWARE_PACKET_TYPE, [0x03, *b"3.01.01"])
-    coord._notify_callback(None, bytearray(fw))
-    coord._notify_callback(None, bytearray(hw))
-    assert coord.fw_version == "3.02.24" and coord.hw_version == "3.01.01"
+    with (
+        patch.object(registry, "async_get_device", side_effect=AssertionError("Deprecated device lookup")),
+        patch.object(registry, "async_update_device", wraps=registry.async_update_device) as update,
+    ):
+        coord._notify_callback(None, bytearray(fw))
+        coord._notify_callback(None, bytearray(hw))
+        assert update.call_args_list == [
+            call(device.id, sw_version="3.02.24", hw_version=None),
+            call(device.id, sw_version="3.02.24", hw_version="3.01.01"),
+        ]
+        update.reset_mock()
+        coord._notify_callback(None, bytearray(fw))
+        coord._notify_callback(None, bytearray(hw))
+        update.assert_not_called()
+
+    updated_device = registry.async_get(device.id)
+    assert (updated_device.sw_version, updated_device.hw_version) == (coord.fw_version, coord.hw_version)
+    assert registry.async_get(foreign_device.id) == foreign_device
+    assert registry.async_get(unrelated_device.id) == unrelated_device
 
 
-def test_notify_callback_pushes_identity_to_registry(coord):
-    """#97: fw/hw arrive after entities snapshot device_info, so the coordinator must push the
-    version into the device registry itself or the device page stays blank."""
+def test_note_identity_retains_versions_until_own_device_is_registered(hass, coord):
+    registry = dr.async_get(hass)
+    other_entry = MockConfigEntry(domain=DOMAIN)
+    other_entry.add_to_hass(hass)
+    foreign_device = registry.async_get_or_create(
+        config_entry_id=other_entry.entry_id,
+        identifiers={(DOMAIN, coord.address)},
+    )
     fw = proto.build_packet(proto.STATUS_HEADER, proto.FIRMWARE_PACKET_TYPE, list(b"3.02.24"))
-    registry = MagicMock()
-    registry.async_get_device.return_value = MagicMock(id="dev-1")
-    with patch(f"{M}.dr.async_get", return_value=registry):
+    hw = proto.build_packet(proto.STATUS_HEADER, proto.HARDWARE_PACKET_TYPE, [0x03, *b"3.01.01"])
+    with (
+        patch.object(registry, "async_get_device", side_effect=AssertionError("Deprecated device lookup")),
+        patch.object(registry, "async_update_device", wraps=registry.async_update_device) as update,
+    ):
         coord._notify_callback(None, bytearray(fw))
-        registry.async_update_device.assert_called_once_with("dev-1", sw_version="3.02.24", hw_version=None)
-        # A repeat reply carrying the same value must not re-write the registry.
-        registry.async_update_device.reset_mock()
-        coord._notify_callback(None, bytearray(fw))
-        registry.async_update_device.assert_not_called()
+        coord._notify_callback(None, bytearray(hw))
+        update.assert_not_called()
 
-
-def test_note_identity_skips_registry_when_device_absent(coord):
-    """No device yet (identity read races entity setup): store the value, never crash."""
-    registry = MagicMock()
-    registry.async_get_device.return_value = None
-    with patch(f"{M}.dr.async_get", return_value=registry):
-        coord._note_identity(fw_version="3.02.24")
-    assert coord.fw_version == "3.02.24"
-    registry.async_update_device.assert_not_called()
+    assert dr.async_entries_for_config_entry(registry, coord.config_entry.entry_id) == []
+    assert registry.async_get(foreign_device.id) == foreign_device
+    device = registry.async_get_or_create(config_entry_id=coord.config_entry.entry_id, **coord.device_info)
+    assert (device.sw_version, device.hw_version) == ("3.02.24", "3.01.01")
 
 
 async def test_send_identity_queries_only_unknown(coord):
