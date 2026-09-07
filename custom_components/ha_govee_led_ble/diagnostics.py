@@ -89,6 +89,28 @@ async def async_get_config_entry_diagnostics(
         "segment_colors": coordinator.segment_colors,
         "segment_brightness": coordinator.segment_brightness,
         "segment_state_source": coordinator.segment_state_source,
+        # aa 40, both fields, unfiltered by whether the second one is trusted for this model.
+        "ic_count": coordinator.ic_count,
+        "reported_segment_count": coordinator.reported_segment_count,
+        "segment_count_from_ic_probe": coordinator.profile.segment_count_from_ic_probe,
+        "command_grammar": coordinator.profile.command_grammar,
+        "status_grammar": coordinator.profile.status_grammar,
+        "effect_grammar": coordinator.profile.effect_grammar,
+        "video_grammar": coordinator.profile.video_grammar,
+        # None means the device never answered aa 32, which is what a detached camera module
+        # looks like.  Video settings are keyed by 0xa9 sub-command and left as raw byte lists:
+        # only a few subs have an identified meaning, and naming the others here would be
+        # inventing fields for a diagnostics reader to trust.
+        "supports_black_border": coordinator.profile.supports_black_border,
+        "camera_installed": coordinator.camera_installed,
+        "video_settings": {
+            f"0x{setting:02x}": values for setting, values in sorted(coordinator.video_settings.items())
+        },
+        # The negotiation: live state and last outcome both.  `encryption.active` is False for
+        # most of a device's life -- the session is scoped to one connection and the idle timer
+        # drops it -- so `last_negotiation` answers "does encryption work on this device", and
+        # is the field to read first in a bug report.
+        "encryption": coordinator._encryption.diagnostics(),
         "segment_state_observed_at": coordinator.segment_state_observed_at,
         "color_temp_kelvin": coordinator.color_temp_kelvin,
         "effect": coordinator.effect,

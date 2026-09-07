@@ -143,6 +143,10 @@ def _make_coord(**ov) -> MagicMock:
         segment_brightness=[100] * 15,
         segment_state_source="initial",
         segment_state_observed_at=None,
+        ic_count=None,
+        reported_segment_count=None,
+        camera_installed=None,
+        video_settings={},
         diy_code=None,
         color_mode=None,
         music_mode="off",
@@ -163,6 +167,12 @@ def _make_coord(**ov) -> MagicMock:
         frozenset(MODEL_SCENES[model]) if "scenes" in effect_families else frozenset(),
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
+    # `spec=` sees the class, so attributes the coordinator creates in __init__ have to be
+    # attached here.  The session reports itself through diagnostics(), so that is what a
+    # test double has to provide.
+    if "_encryption" not in ov:
+        c._encryption = MagicMock()
+        c._encryption.diagnostics.return_value = {"active": False, "last_negotiation": None}
     c.send_command = AsyncMock()
     c.install_static_color = MagicMock(
         side_effect=lambda **kwargs: GoveeBLECoordinator.install_static_color(c, **kwargs)
