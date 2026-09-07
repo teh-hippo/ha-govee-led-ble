@@ -639,9 +639,7 @@ def test_h61f5_music_modes_are_the_fifteen_the_strip_accepted():
     assert profile.music_modes == _H61F5_MUSIC_MODES
     assert profile.supports_music_mode is True
     assert len(profile.music_modes) == 15
-    assert sorted(MUSIC_MODE_SLUGS[slug] for slug in _H61F5_MUSIC_MODES) == sorted(
-        MUSIC_MODE_IDS_ACCEPTED_BY_H61F5
-    )
+    assert sorted(MUSIC_MODE_SLUGS[slug] for slug in _H61F5_MUSIC_MODES) == sorted(MUSIC_MODE_IDS_ACCEPTED_BY_H61F5)
 
 
 def test_h61f5_does_not_claim_the_ids_its_own_sweep_refused():

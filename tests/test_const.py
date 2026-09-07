@@ -347,3 +347,22 @@ def test_rejected_modes_are_recorded_but_never_exposed():
             continue
         offered = {MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes}
         assert not offered & rejected, f"{model} offers an id it was measured refusing"
+
+
+def test_h66a0_declares_the_video_registers_its_captures_prove():
+    """Each of these was captured with the vendor app writing it to this device.
+
+    Declaring the capability is what lets a write be refused on a model that lacks it, rather
+    than sent and silently ignored.
+    """
+    profile = MODEL_PROFILES["H66A0"]
+    assert profile.supports_white_balance
+    assert profile.supports_blank_screen
+    assert profile.supports_black_border
+
+    # The strips have none of it, so the flags must not be a blanket default.
+    for model in ("H1A42", "H61F5"):
+        other = MODEL_PROFILES[model]
+        assert not other.supports_white_balance
+        assert not other.supports_blank_screen
+        assert not other.supports_black_border

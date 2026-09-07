@@ -64,6 +64,7 @@ class ReadDomain(StrEnum):
     RELATIVE_BRIGHTNESS = "relative_brightness"
     SEGMENTS = "segments"
     IC_SEGMENT_COUNT = "ic_segment_count"
+    CAMERA_INSTALL = "camera_install"
     OTHER = "other"
 
 
@@ -134,6 +135,7 @@ class ModelProfile:
     video_brightness_zones: tuple[str, ...] = ()
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
+    supports_black_border: bool = False
     music_modes: tuple[str, ...] = ()
     music_variants: tuple[MusicVariant, ...] = ()
     # Physical IC count is independent of logical segment_count. None means unknown.
@@ -597,6 +599,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 ReadDomain.RELATIVE_BRIGHTNESS,
                 ReadDomain.SEGMENTS,
                 ReadDomain.IC_SEGMENT_COUNT,
+                ReadDomain.CAMERA_INSTALL,
             }
         ),
         setup_required_read_domains=frozenset(
@@ -615,6 +618,17 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         video_modes=("movie", "game"),
         supports_video_saturation=True,
         supports_video_sound_effects=True,
+        # All three are attested by the vendor app writing them to this device: two
+        # white-balance values plus an auto-run trigger, four black-screen writes, and
+        # black-border removal both on and off.
+        supports_white_balance=True,
+        video_white_balance_default=50,
+        video_white_balance_representation="scalar",
+        video_white_balance_min=0,
+        video_white_balance_max=100,
+        video_white_balance_calibration=tuple((value,) for value in range(101)),
+        supports_blank_screen=True,
+        supports_black_border=True,
         supports_dreamview=True,
         supports_relative_brightness=True,
         video_brightness_zones=("left", "top", "right", "bottom", "strip_left", "strip_right"),

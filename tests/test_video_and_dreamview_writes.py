@@ -322,3 +322,17 @@ async def test_softness_is_required_when_the_group_will_not_report_it(coord, mon
         await coord.async_set_dreamview_sound_effects(True)
 
     assert not _writes(coord), "nothing should be written when the value is unknown"
+
+
+async def test_a_video_write_is_refused_on_a_model_without_the_capability(hass) -> None:
+    """A strip has no video registers, so the write must be refused rather than sent.
+
+    The device would accept the frame and ignore it, which looks like the control working.
+    """
+    strip = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H1A42", configuration_url=_URL)
+    assert not strip.profile.supports_black_border
+    assert not strip.profile.supports_blank_screen
+    with pytest.raises(ValueError, match="black-border removal"):
+        await strip.async_set_black_border_removal(True)
+    with pytest.raises(ValueError, match="blank-screen detection"):
+        await strip.async_set_video_blank_screen(True)

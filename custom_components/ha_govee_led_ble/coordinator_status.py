@@ -38,6 +38,7 @@ _STATUS_DOMAIN_NAMES = {
     "relative_brightness": StatusDomain.RELATIVE_BRIGHTNESS,
     "segments": StatusDomain.SEGMENTS,
     "ic_segment_count": StatusDomain.IC_SEGMENT_COUNT,
+    "camera_install": StatusDomain.CAMERA_INSTALL,
 }
 
 

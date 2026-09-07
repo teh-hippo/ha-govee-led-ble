@@ -161,6 +161,9 @@ class _DisplaySettingsMixin(_CoordinatorBase):
         back and written through unchanged, so this only ever flips the enable. Refuses when the
         register has not been read, rather than inventing them.
         """
+        if not self.profile.supports_blank_screen:
+            raise ValueError(f"{self.model} does not support blank-screen detection")
+
         values = self.video_settings.get(BLACK_SCREEN_DETECTION_SETTING)
         if not values or len(values) < 6:
             raise ValueError(
@@ -276,6 +279,9 @@ class _DisplaySettingsMixin(_CoordinatorBase):
         that accepts a write without applying it is a shape we have already met on this
         surface (sub 0x01 does exactly that).
         """
+        if not self.profile.supports_black_border:
+            raise ValueError(f"{self.model} does not support black-border removal")
+
         async with self._control_lock:
             previous = self.video_settings.get(BLACK_BORDER_REMOVAL_SETTING)
             self.video_settings[BLACK_BORDER_REMOVAL_SETTING] = [int(enabled)]
