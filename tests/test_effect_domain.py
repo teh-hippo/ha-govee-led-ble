@@ -742,7 +742,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
             "preview_sequence": MAX_PREVIEW_SEQUENCE,
         },
     }
-    assert h6125.to_dict()["readback"] == "diy_code_only"
+    assert h6125.to_dict()["readback"] == "none"
     assert h6125.painted is CapabilityState.UNSUPPORTED
     assert h6125.single is CapabilityState.SUPPORTED
     assert h6125.multi is CapabilityState.SUPPORTED

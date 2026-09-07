@@ -360,11 +360,7 @@ def resolve_diy_code(
         )
         require_effect_route("H617A" if model is None else model, workflow, ("H617A",))
         default_code = (
-            800
-            if isinstance(content, PaintedEffect)
-            else 0x00FE
-            if model == "H6125"
-            else H617A_TYPE04_APPLY_CODE
+            800 if isinstance(content, PaintedEffect) else 0x00FE if model == "H6125" else H617A_TYPE04_APPLY_CODE
         )
         code = default_code if requested is None else requested
         if model == "H6125" and code != 0x00FE:

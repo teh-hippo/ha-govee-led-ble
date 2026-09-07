@@ -98,7 +98,6 @@ _CORE_STATE_FIELDS = (
     "diy_code",
 )
 _COLOR_MODE_FIELDS = (
-    "color_temp_kelvin",
     "video_full_screen",
     "video_saturation",
     "video_sound_effects",
@@ -926,7 +925,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     self.color_temp_kelvin = None
                     self.color_temp_kelvin_source = "initial"
                 observed.append("rgb_color")
-        elif self.color_mode is ParsedMode.COLOUR and self.color_temp_kelvin is not None:
+        elif (
+            self.color_mode is ParsedMode.COLOUR
+            and self.color_temp_kelvin is not None
+            and self.color_temp_kelvin_source != "observed"
+        ):
             if self._accept_expected("color_temp_kelvin", None):
                 self.color_temp_kelvin = None
                 self.color_temp_kelvin_source = "initial"
@@ -1074,14 +1077,6 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             ):
                 self.color_temp_kelvin = None
                 self.color_temp_kelvin_source = "initial"
-                observed.append("color_temp_kelvin")
-            if (
-                self.model == "H6125"
-                and parsed.mode is ParsedMode.COLOUR
-                and parsed.color_temp_kelvin is None
-                and self._accept_expected("color_temp_kelvin", None)
-            ):
-                self.color_temp_kelvin = None
                 observed.append("color_temp_kelvin")
             for attr in _COLOR_MODE_FIELDS:
                 if (value := getattr(parsed, attr)) is not None:
@@ -2080,12 +2075,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 await self.send_command(packet)
         except Exception:
             self.segment_colors = previous
-            self.rgb_color = previous_rgb
-            self.color_temp_kelvin = previous_kelvin
             self.segment_state_source = previous_source
             if all(
                 self._field_revisions.get(field, 0) == revision for field, revision in previous_static_revisions.items()
             ):
+                self.rgb_color = previous_rgb
+                self.color_temp_kelvin = previous_kelvin
                 self.rgb_color_source, self.color_temp_kelvin_source = previous_static_sources
             self.segment_state_observed_at = previous_observed_at
             self._segment_groups_observed = previous_groups

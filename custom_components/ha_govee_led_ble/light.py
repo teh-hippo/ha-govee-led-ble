@@ -1003,8 +1003,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 with self._rollback():
                     self.coordinator.install_static_color(kelvin=kelvin)
                     self.coordinator.mark_segment_state_optimistic(
-                        colours=[kelvin_to_rgb(kelvin, self.coordinator.model)]
-                        * len(self.coordinator.segment_colors),
+                        colours=[kelvin_to_rgb(kelvin, self.coordinator.model)] * len(self.coordinator.segment_colors),
                     )
                     self._attr_color_mode = ColorMode.COLOR_TEMP
                     self.coordinator._enter_static_mode()

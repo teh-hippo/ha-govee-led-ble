@@ -115,11 +115,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             settings = detail.settings
             manual_colour = int(getattr(settings, "manual_colour", 0))
             rgb = getattr(settings, "rgb", None)
-            music_color = (
-                (int(rgb.red), int(rgb.green), int(rgb.blue))
-                if manual_colour and rgb is not None
-                else None
-            )
+            music_color = (int(rgb.red), int(rgb.green), int(rgb.blue)) if manual_colour and rgb is not None else None
             return ParsedColorModeResponse(
                 mode=ParsedMode.MUSIC,
                 music_mode=music_mode_slug(model, mode_id),
@@ -131,7 +127,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
         detail = getattr(body, "mode_body", getattr(body, "detail", None))
         rgb = getattr(detail, "rgb", None)
         kelvin = getattr(detail, "kelvin", None)
-        kelvin_value = int(kelvin) if kelvin not in {None, 0} else None
+        kelvin_value = None if model == "H6125" and kelvin == 0 else int(kelvin) if kelvin is not None else None
         profile = get_profile(model)
         if (
             kelvin_value is not None

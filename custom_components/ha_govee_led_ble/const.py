@@ -255,6 +255,7 @@ class ModelProfile:
     def supports_music_mode(self) -> bool:
         return bool(self.music_modes)
 
+
 MUSIC_MODE_SLUGS: dict[str, int] = {
     "energetic": 0x05,
     "rhythm": 0x03,
@@ -408,7 +409,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_segment_writes=True,
         connection_idle_timeout=3.0,
         scene_catalogue_sku="H6125",
-        effect_readback="diy_code_only",
     ),
     "H6076": ModelProfile(
         "H6076 Lyra Floor Lamp",
