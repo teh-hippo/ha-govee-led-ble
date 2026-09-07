@@ -245,19 +245,53 @@ class ModelProfile:
         return bool(self.music_modes)
 
 
+# The vendor registry.  Ids are the vendor's own, not an index.  A model exposes only the
+# subset its device accepts, so every profile lists its modes rather than deriving them.
 MUSIC_MODE_SLUGS: dict[str, int] = {
     "energetic": 0x05,
     "rhythm": 0x03,
     "spectrum": 0x04,
     "rolling": 0x06,
-    "separation": 0x32,
-    "hopping": 0x33,
-    "piano_keys": 0x34,
-    "fountain": 0x35,
-    "day_and_night": 0x37,
-    "bloom": 0x30,
-    "shiny": 0x31,
+    "separation": 0x32,  # fenli
+    "hopping": 0x33,  # yuedong
+    "piano_keys": 0x34,  # gangqinjian
+    "fountain": 0x35,  # duiji
+    "day_and_night": 0x37,  # zhouye
+    "bloom": 0x30,  # zhanfang
+    "shiny": 0x31,  # cuican
+    # NOT ALL EQUALLY EVIDENCED, and the difference matters when a profile decides what to
+    # claim.  0x84, 0x85, 0x92 and 0xA3 were written by the vendor app itself and are captured.
+    # 0x53, 0x55, 0x65 and 0x78 come from the app's own registry and from sweeping a device,
+    # and the single device swept REFUSED all four -- see MUSIC_MODE_IDS_REFUSED_BY_H61F5.
+    # They are named here because the registry names them; naming an id is not evidence that
+    # any particular device accepts it, which is the profile's question, not the registry's.
+    #
+    # They sit far outside the 0x30-0x3b block that an earlier pass assumed was the whole
+    # space -- the registry actually runs 0x16-0xab.
+    #
+    # Appended rather than merged into the run above, because this dict's insertion order is
+    # MUSIC_MODES' display order and reordering it would shuffle an existing user's effect list.
+    "flowing_light": 0x53,  # liuguang -> new_scenes_liuguang
+    "color_painting": 0x55,  # caihui -> b2light_music_caihui
+    "meteor": 0x65,  # meteor_shower
+    "windmill": 0x78,  # windmill_606a
+    "splash": 0x84,  # water_flower -> b2light_music_water_flower
+    "spring": 0x85,  # spring -> b2light_music_spring
+    # Swept from an H1A42 strip on 2026-08-27. Neither id has an entry in
+    # IMusicEffectStatic.parseSubStr4New, which is why an earlier read of that file alone would
+    # have called them unnamed. SubMusicModeConfig carries the labels instead, bound to the id
+    # through each maker's default argument: makeLianYi$default defaults to
+    # RhyRule.op_type_trigger_finish_clean (146 = 0x92) and its maker passes
+    # R.string.b2light_scenes_ripple; makeYouDong$default defaults to -93 (0xa3) and passes
+    # R.string.app_move_about. strings.xml renders those "Ripple" and "Orbit" -- transcribed.
+    "ripple": 0x92,  # h70CX_multi_value_sub_lianyi -> b2light_scenes_ripple
+    "orbit": 0xA3,  # multi_value_sub_youdong -> app_move_about
 }
+
+MUSIC_MODE_IDS_ACCEPTED_BY_H61F5: tuple[int, ...] = (
+    0x03, 0x04, 0x05, 0x06, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37, 0x84, 0x85, 0x92, 0xA3,
+)  # fmt: skip
+MUSIC_MODE_IDS_REFUSED_BY_H61F5: tuple[int, ...] = (0x53, 0x55, 0x65, 0x78)
 
 _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 

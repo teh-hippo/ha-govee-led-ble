@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_EFFECT_FAMILIES,
     CONF_PREFIX_EFFECT_NAMES,
     MODEL_PROFILES,
+    MUSIC_MODE_SLUGS,
     UNSUPPORTED_PROFILE,
     ModelProfile,
     ReadDomain,
@@ -242,3 +243,10 @@ async def test_new_encoding_metadata_does_not_enable_music_before_profile_constr
         with pytest.raises(ValueError, match="music mode"):
             await coordinator.async_select_music_slug("future_mode")
         coordinator.send_command.assert_not_awaited()
+
+
+def test_no_profile_claims_a_mode_the_registry_cannot_resolve():
+    """Every mode exposed by a profile must resolve to a wire identifier."""
+    for model, profile in MODEL_PROFILES.items():
+        unknown = [slug for slug in profile.music_modes if slug not in MUSIC_MODE_SLUGS]
+        assert not unknown, f"{model} lists modes with no id: {unknown}"
