@@ -52,6 +52,7 @@ from .generated_protocol_adapter import (
 from .govee_encryption import GoveeEncryptionSession
 from .h6199_calibration import WHITE_BALANCE_RESET
 from .light_commands import (
+    SEGMENT_COUNT,
     SegmentColorGroup,
     build_color_rgb,
     build_color_temp,
@@ -188,6 +189,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.segment_brightness: list[int] = [100] * profile.segment_count
         self.segment_state_source = "initial"
         self.segment_state_observed_at: str | None = None
+        # aa 40.  ic_count is [0:2] big-endian; reported_segment_count is [2], trusted as
+        # a segment count only where the profile says so (segment_count_from_ic_probe).
+        self.ic_count: int | None = None
+        self.reported_segment_count: int | None = None
         self._segment_groups_observed: set[int] = set()
         self._segment_query_colors: list[tuple[int, int, int]] | None = None
         self._segment_query_brightness: list[int] | None = None
@@ -740,8 +745,45 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._revision_event.set()
 
     @property
+    def segment_count(self) -> int:
+        """How many segments this device actually has.
+
+        The `aa 40` probe where the profile says that model's byte IS a segment count and the
+        device answered; the profile constant otherwise.  Callers that address segments must use
+        this rather than the mask width, which is the width of the wire field: a device can have
+        fourteen segments and a fifteen-bit mask.
+
+        The probe is not trusted blind.  An H6199 answers 38 to the same query and 38 was
+        positively excluded as its segment count, so only a model whose byte has been
+        cross-checked sets `segment_count_from_ic_probe`.
+        """
+        if self.profile.segment_count_from_ic_probe and self.reported_segment_count:
+            return min(self.reported_segment_count, SEGMENT_COUNT)
+        return self.profile.segment_count
+
+    def _note_ic_segment_count(self, ic_count: int, reported: int) -> None:
+        """Record BOTH `aa 40` fields, and say so when the second contradicts the profile.
+
+        A warning rather than a silent resize: every profile that sets
+        `segment_count_from_ic_probe` reached its count by two independent methods, so a
+        disagreement means either a firmware change or a reply shape read wrongly, and a silent
+        resize would hide both.  A strip cut to length is the ordinary cause.
+        """
+        self.ic_count = ic_count
+        self.reported_segment_count = reported
+        if reported and reported != self.profile.segment_count:
+            _LOGGER.warning(
+                "%s reports %d segments, profile expects %d; using the reported value",
+                self.model,
+                reported,
+                self.profile.segment_count,
+            )
+
+    @property
     def _segment_group_count(self) -> int:
-        return self.profile.segment_group_count
+        if not self.profile.supports_segment_writes or self.profile.segment_group_size <= 0:
+            return 0
+        return (self.segment_count + self.profile.segment_group_size - 1) // self.profile.segment_group_size
 
     def mark_segment_state_optimistic(
         self,
@@ -1126,6 +1168,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 if not self.profile.supports_segments:
                     return
                 observed = self._apply_segment_group(generated)
+            elif domain is StatusDomain.IC_SEGMENT_COUNT and self.profile.segment_count_from_ic_probe:
+                self._note_ic_segment_count(int(generated.body.ic_count), int(generated.body.segment_count))
             elif domain is StatusDomain.FIRMWARE:
                 self._note_identity(fw_version=generated.body.text or None)
             elif domain is StatusDomain.HARDWARE:

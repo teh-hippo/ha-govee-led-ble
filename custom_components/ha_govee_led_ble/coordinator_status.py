@@ -32,6 +32,7 @@ _STATUS_DOMAIN_NAMES = {
     "display_setting": StatusDomain.DISPLAY_SETTING,
     "relative_brightness": StatusDomain.RELATIVE_BRIGHTNESS,
     "segments": StatusDomain.SEGMENTS,
+    "ic_segment_count": StatusDomain.IC_SEGMENT_COUNT,
 }
 
 

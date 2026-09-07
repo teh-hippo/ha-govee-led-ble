@@ -358,6 +358,32 @@ _RELEASE_CAPABILITY_BASE: Final = (
 RELEASE_CAPABILITY_CONTRACT: Final = (
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
+    *(
+        replace(capability, model="H66A0")
+        for capability in _RELEASE_CAPABILITY_BASE
+        if capability.model == "H617A"
+        and capability.workflow
+        in {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.EDITED_PALETTE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.PAINTED,
+            CapabilityWorkflow.SINGLE,
+            CapabilityWorkflow.MULTI,
+            CapabilityWorkflow.NATIVE_MUSIC,
+        }
+    ),
+    _capability(
+        "H66A0",
+        CapabilityWorkflow.VIDEO,
+        "Video",
+        "video_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.STATE_CONFIRMED,
+        PhysicalValidationState.APPLICATION_VALIDATED,
+        EvidenceClassification.LIVE,
+    ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
 )
 

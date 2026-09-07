@@ -62,6 +62,7 @@ class ReadDomain(StrEnum):
     DISPLAY_SETTING = "display_setting"
     RELATIVE_BRIGHTNESS = "relative_brightness"
     SEGMENTS = "segments"
+    IC_SEGMENT_COUNT = "ic_segment_count"
     OTHER = "other"
 
 
@@ -145,6 +146,10 @@ class ModelProfile:
     whole_device_mask: int = 0
     segment_count: int = 0
     segment_group_size: int = 0
+    # Prefer the segment count the device reports over the one declared above.  A strip
+    # that has been cut to length reports its own, and the declared value then describes
+    # the product rather than the installation.
+    segment_count_from_ic_probe: bool = False
     supports_segment_writes: bool = False
     connection_idle_timeout: float | None = None
     scene_catalogue_sku: str | None = None
@@ -293,6 +298,26 @@ MUSIC_MODE_IDS_ACCEPTED_BY_H61F5: tuple[int, ...] = (
 )  # fmt: skip
 MUSIC_MODE_IDS_REFUSED_BY_H61F5: tuple[int, ...] = (0x53, 0x55, 0x65, 0x78)
 
+_H66A0_MUSIC_MODES = (
+    "energetic",
+    "rhythm",
+    "spectrum",
+    "rolling",
+    "separation",
+    "hopping",
+    "piano_keys",
+    "fountain",
+    "day_and_night",
+    "bloom",
+    "shiny",
+    "flowing_light",
+    "color_painting",
+    "meteor",
+    "windmill",
+    "splash",
+    "spring",
+)
+
 _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 
 
@@ -405,6 +430,58 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         max_color_temp_kelvin=6500,
         whole_device_mask=0x007F,
         scene_catalogue_sku="H6076",
+    ),
+    "H66A0": ModelProfile(
+        "Govee TV Backlight 3 Pro (H66A0)",
+        support_quality=SupportQuality.COMPATIBLE,
+        command_grammar="H617A",
+        status_grammar="H66A0",
+        effect_grammar="H617A",
+        video_grammar="H66A0",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+                ReadDomain.SEGMENTS,
+                ReadDomain.IC_SEGMENT_COUNT,
+            }
+        ),
+        setup_required_read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+            }
+        ),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_scenes=True,
+        supports_video_mode=True,
+        video_modes=("movie", "game"),
+        supports_video_sound_effects=True,
+        supports_relative_brightness=True,
+        video_brightness_zones=("left", "top", "right", "bottom", "strip_left", "strip_right"),
+        music_modes=_H66A0_MUSIC_MODES,
+        music_variants=H617A_MUSIC_VARIANTS,
+        supports_music_color=True,
+        whole_device_mask=0x7FFF,
+        # The device reports 14 segments and 90 lamp beads through its aa 40 probe.  The
+        # count is read from the device rather than fixed here, because a strip that has
+        # been cut reports its own length.
+        segment_count=14,
+        segment_group_size=4,
+        segment_count_from_ic_probe=True,
+        supports_segment_writes=True,
+        scene_catalogue_sku="H66A0",
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",

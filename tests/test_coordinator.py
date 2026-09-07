@@ -3196,3 +3196,26 @@ def test_unknown_model_encoders_fail_closed() -> None:
 def test_h6199_subordinate_queries_exclude_identity_domain() -> None:
     with pytest.raises(ValueError, match="0x20 or 0x21"):
         build_h6199_subordinate_query(0x14)
+
+
+def test_segment_count_prefers_what_the_device_reports(coord) -> None:
+    """A strip cut to length reports its own segment count, and that has to win.
+
+    The profile constant describes the product; the `aa 40` probe describes the installation.
+    Only a model whose byte has been cross-checked sets `segment_count_from_ic_probe`, because
+    an H6199 answers 38 to the same query and 38 was positively excluded as its segment count.
+    """
+    assert coord.segment_count == coord.profile.segment_count
+
+    coord._note_ic_segment_count(21, 5)
+    assert coord.ic_count == 21
+    assert coord.reported_segment_count == 5
+    if coord.profile.segment_count_from_ic_probe:
+        assert coord.segment_count == 5
+    else:
+        assert coord.segment_count == coord.profile.segment_count
+
+
+def test_a_reported_count_cannot_exceed_the_wire_field(coord) -> None:
+    coord._note_ic_segment_count(200, 99)
+    assert coord.segment_count <= 15
