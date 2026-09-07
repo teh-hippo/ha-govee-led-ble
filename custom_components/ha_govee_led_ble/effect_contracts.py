@@ -18,7 +18,7 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 14
+EDITOR_API_VERSION: Final = 15
 EDITOR_ASSET_VERSION: Final = 21
 EFFECT_COMPILER_VERSION: Final = 5
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
@@ -367,7 +367,21 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             CapabilityWorkflow.NATIVE_SCENES,
             CapabilityWorkflow.EDITED_PALETTE_SCENES,
             CapabilityWorkflow.LAYERED_SCENES,
-            CapabilityWorkflow.PAINTED,
+            CapabilityWorkflow.SINGLE,
+            CapabilityWorkflow.MULTI,
+            CapabilityWorkflow.NATIVE_MUSIC,
+        }
+    ),
+    *(
+        replace(capability, model=model)
+        for model in ("H1A42", "H61F5")
+        for capability in _RELEASE_CAPABILITY_BASE
+        if capability.model == "H617A"
+        and capability.workflow
+        in {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.EDITED_PALETTE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
             CapabilityWorkflow.SINGLE,
             CapabilityWorkflow.MULTI,
             CapabilityWorkflow.NATIVE_MUSIC,

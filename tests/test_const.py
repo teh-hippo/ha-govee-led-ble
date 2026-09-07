@@ -310,3 +310,21 @@ def test_h1a42_profile_is_a_cut_strip_without_video():
     # No pact is claimed, so the generic dialect applies and no video body is implied.
     assert profile.pact == "generic"
     assert not profile.uses_h6199_video_body
+
+
+def test_h61f5_profile_matches_its_sibling_strip_but_keeps_its_own_identity():
+    profile = MODEL_PROFILES["H61F5"]
+    sibling = MODEL_PROFILES["H1A42"]
+    assert profile.support_quality is SupportQuality.COMPATIBLE
+    assert wire_model("H61F5") == "H617A"
+    assert protocol_model("H61F5") == "H61F5"
+
+    assert profile.supports_music_mode and profile.supports_music_color
+    assert profile.supports_segments and profile.segment_count == 5
+    assert profile.segment_count_from_ic_probe
+    assert not profile.supports_video_mode
+
+    # Two strips with the same wire format still keep separate catalogues and mode lists:
+    # a shared table would widen one model's claims to ids its own evidence never showed.
+    assert profile.scene_catalogue_sku == "H61F5" != sibling.scene_catalogue_sku
+    assert profile.music_modes is not sibling.music_modes

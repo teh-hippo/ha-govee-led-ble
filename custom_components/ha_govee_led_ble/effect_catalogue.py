@@ -15,6 +15,7 @@ from .effect_contracts import (
     workflow_capability_state,
 )
 from .effect_domain import (
+    H617A_SEGMENT_COUNT,
     MAX_MULTI_EFFECTS,
     EffectContent,
     EffectValidationError,
@@ -631,18 +632,25 @@ def _h617a_catalogue_templates(
     model: str,
     music_modes: tuple[NativeModeOption, ...],
 ) -> tuple[CatalogueTemplate, ...]:
-    return (
-        CatalogueTemplate(
-            id="template:paint",
-            label="Paint",
-            category="single-layer",
-            content=PaintedEffect(
-                effect="clockwise",
-                speed=50,
-                brightness=100,
-                segments=(None,) * MODEL_PROFILES[model].segment_count,
+    painted_templates = (
+        (
+            CatalogueTemplate(
+                id="template:paint",
+                label="Paint",
+                category="single-layer",
+                content=PaintedEffect(
+                    effect="clockwise",
+                    speed=50,
+                    brightness=100,
+                    segments=(None,) * MODEL_PROFILES[model].segment_count,
+                ),
             ),
-        ),
+        )
+        if MODEL_PROFILES[model].segment_count == H617A_SEGMENT_COUNT
+        else ()
+    )
+    return (
+        *painted_templates,
         *(_single_template(model, family) for family in H617A_TYPE04_FAMILIES),
         *(_music_template(model, mode) for mode in music_modes),
     )
@@ -651,6 +659,16 @@ def _h617a_catalogue_templates(
 H617A_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617A", H617A_NATIVE_MUSIC_MODES)
 H617E_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617E")
 H617E_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617E", H617E_NATIVE_MUSIC_MODES)
+H1A42_NATIVE_MUSIC_MODES: Final = _native_music_modes("H1A42")
+H1A42_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H1A42", H1A42_NATIVE_MUSIC_MODES)
+H61F5_NATIVE_MUSIC_MODES: Final = _native_music_modes("H61F5")
+H61F5_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H61F5", H61F5_NATIVE_MUSIC_MODES)
+H66A0_NATIVE_MUSIC_MODES: Final = _native_music_modes("H66A0")
+H66A0_VIDEO_MODES: Final = _native_video_modes("H66A0")
+H66A0_CATALOGUE_TEMPLATES: Final = (
+    *_h617a_catalogue_templates("H66A0", H66A0_NATIVE_MUSIC_MODES),
+    *(_video_template("H66A0", mode) for mode in H66A0_VIDEO_MODES),
+)
 
 H6199_CATALOGUE_TEMPLATES: Final = (
     *(_single_template("H6199", family) for family in H6199_PALETTE_DIY_FAMILIES),
@@ -752,6 +770,69 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H617E", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H617E", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H617E", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H1A42": ModelEffectCatalogue(
+        sku="H1A42",
+        painted_effects=(),
+        effects=H617A_TYPE04_FAMILIES,
+        music_modes=H1A42_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=H1A42_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H1A42", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H1A42", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H1A42", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H1A42", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H1A42", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H1A42", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H1A42", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H1A42", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H61F5": ModelEffectCatalogue(
+        sku="H61F5",
+        painted_effects=(),
+        effects=H617A_TYPE04_FAMILIES,
+        music_modes=H61F5_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=H61F5_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H61F5", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H61F5", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H61F5", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H61F5", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H61F5", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H61F5", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H61F5", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H61F5", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H66A0": ModelEffectCatalogue(
+        sku="H66A0",
+        painted_effects=(),
+        effects=H617A_TYPE04_FAMILIES,
+        music_modes=H66A0_NATIVE_MUSIC_MODES,
+        video_modes=H66A0_VIDEO_MODES,
+        templates=H66A0_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H66A0", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H66A0", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H66A0", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H66A0", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H66A0", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H66A0", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H66A0", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H66A0", CapabilityWorkflow.WORKSHOP),
         ),
     ),
     "H6199": ModelEffectCatalogue(

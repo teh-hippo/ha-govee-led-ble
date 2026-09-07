@@ -747,6 +747,885 @@
         "speed_min": 0
       },
       "models": {
+        "H1A42": {
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            }
+          ],
+          "music_settings": {
+            "bloom": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617A captured Bloom companion",
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "day_and_night": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617A qualified Day and Night captures",
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 7,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 10,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "energetic": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "fountain": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617A qualified Fountain captures; speed pinned to captured 0x50",
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "clockwise",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617A qualified Hopping captures",
+              "palette_size": 7,
+              "parameters": {
+                "relative_brightness": {
+                  "default": 50,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "orbit": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617A qualified selector style",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "ripple": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617A qualified Separation captures",
+              "palette_size": 5,
+              "parameters": {
+                "gradient": {
+                  "default": true,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "shiny": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617A captured Shiny companion",
+              "palette_size": 5,
+              "parameters": {},
+              "style": true
+            },
+            "spectrum": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "splash": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "spring": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_effects": [],
+          "sku": "H1A42",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "fountain",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:fountain",
+              "label": "Fountain"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "bloom",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:bloom",
+              "label": "Bloom"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "shiny",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:shiny",
+              "label": "Shiny"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "splash",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:splash",
+              "label": "Splash"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spring",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spring",
+              "label": "Spring"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "ripple",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:ripple",
+              "label": "Ripple"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "orbit",
+                "model": "H1A42",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:orbit",
+              "label": "Orbit"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_palette",
+              "id": "edited_palette_scenes",
+              "label": "Edited palette scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Multi"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            }
+          ],
+          "workshop_templates": []
+        },
         "H617A": {
           "apply": {
             "multi": "supported",
@@ -3147,6 +4026,1946 @@
             }
           ],
           "workshop_templates": []
+        },
+        "H61F5": {
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            }
+          ],
+          "music_settings": {
+            "bloom": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A captured Bloom companion",
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "day_and_night": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Day and Night captures",
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 7,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 10,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "energetic": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "fountain": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Fountain captures; speed pinned to captured 0x50",
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "clockwise",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Hopping captures",
+              "palette_size": 7,
+              "parameters": {
+                "relative_brightness": {
+                  "default": 50,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "orbit": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "piano_keys": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Piano Keys captures; captured key-count/half relationship",
+              "palette_size": 7,
+              "parameters": {
+                "key_count": {
+                  "default": 15,
+                  "kind": "number",
+                  "max": 15,
+                  "min": 8,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified selector style",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "ripple": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Separation captures",
+              "palette_size": 5,
+              "parameters": {
+                "gradient": {
+                  "default": true,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "shiny": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A captured Shiny companion",
+              "palette_size": 5,
+              "parameters": {},
+              "style": true
+            },
+            "spectrum": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "splash": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "spring": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_effects": [],
+          "sku": "H61F5",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "fountain",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:fountain",
+              "label": "Fountain"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "bloom",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:bloom",
+              "label": "Bloom"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "shiny",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:shiny",
+              "label": "Shiny"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "splash",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:splash",
+              "label": "Splash"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spring",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spring",
+              "label": "Spring"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "ripple",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:ripple",
+              "label": "Ripple"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "orbit",
+                "model": "H61F5",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:orbit",
+              "label": "Orbit"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_palette",
+              "id": "edited_palette_scenes",
+              "label": "Edited palette scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Multi"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            }
+          ],
+          "workshop_templates": []
+        },
+        "H66A0": {
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            }
+          ],
+          "music_settings": {
+            "bloom": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A captured Bloom companion",
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "color_painting": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "day_and_night": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Day and Night captures",
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 7,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 10,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "energetic": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "flowing_light": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "fountain": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Fountain captures; speed pinned to captured 0x50",
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "clockwise",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Hopping captures",
+              "palette_size": 7,
+              "parameters": {
+                "relative_brightness": {
+                  "default": 50,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "meteor": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "piano_keys": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Piano Keys captures; captured key-count/half relationship",
+              "palette_size": 7,
+              "parameters": {
+                "key_count": {
+                  "default": 15,
+                  "kind": "number",
+                  "max": 15,
+                  "min": 8,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified selector style",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Separation captures",
+              "palette_size": 5,
+              "parameters": {
+                "gradient": {
+                  "default": true,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "shiny": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A captured Shiny companion",
+              "palette_size": 5,
+              "parameters": {},
+              "style": true
+            },
+            "spectrum": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "splash": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "spring": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "windmill": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_effects": [],
+          "sku": "H66A0",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "fountain",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:fountain",
+              "label": "Fountain"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "bloom",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:bloom",
+              "label": "Bloom"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "shiny",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:shiny",
+              "label": "Shiny"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "flowing_light",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:flowing_light",
+              "label": "Flowing Light"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "color_painting",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:color_painting",
+              "label": "Color Painting"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "meteor",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:meteor",
+              "label": "Meteor"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "windmill",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:windmill",
+              "label": "Windmill"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "splash",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:splash",
+              "label": "Splash"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spring",
+                "model": "H66A0",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spring",
+              "label": "Spring"
+            },
+            {
+              "category": "video",
+              "content": {
+                "blank_screen": false,
+                "full_screen": null,
+                "kind": "video_profile",
+                "mode": "movie",
+                "model": "H66A0",
+                "relative_brightness": {
+                  "bottom": 100,
+                  "left": 100,
+                  "right": 100,
+                  "strip_left": 100,
+                  "strip_right": 100,
+                  "top": 100
+                },
+                "saturation": 50,
+                "sound_effects": false,
+                "sound_effects_softness": 50,
+                "white_balance_position": null,
+                "white_balance_value": 50
+              },
+              "id": "template:video:movie",
+              "label": "Movie"
+            },
+            {
+              "category": "video",
+              "content": {
+                "blank_screen": false,
+                "full_screen": null,
+                "kind": "video_profile",
+                "mode": "game",
+                "model": "H66A0",
+                "relative_brightness": {
+                  "bottom": 100,
+                  "left": 100,
+                  "right": 100,
+                  "strip_left": 100,
+                  "strip_right": 100,
+                  "top": 100
+                },
+                "saturation": 50,
+                "sound_effects": false,
+                "sound_effects_softness": 50,
+                "white_balance_position": null,
+                "white_balance_value": 50
+              },
+              "id": "template:video:game",
+              "label": "Game"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [
+              "left",
+              "top",
+              "right",
+              "bottom",
+              "strip_left",
+              "strip_right"
+            ],
+            "white_balance": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 0,
+              "representation": "scalar"
+            }
+          },
+          "video_modes": [
+            {
+              "id": "movie",
+              "label": "Movie"
+            }
+          ],
+          "video_settings": [
+            "saturation",
+            "sound_effects",
+            "white_balance",
+            "relative_brightness",
+            "blank_screen"
+          ],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_palette",
+              "id": "edited_palette_scenes",
+              "label": "Edited palette scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Multi"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "video_profile",
+              "id": "video",
+              "label": "Video"
+            }
+          ],
+          "workshop_templates": []
         }
       },
       "music_modes": [
@@ -4072,6 +6891,118 @@
       },
       {
         "active_state": null,
+        "config_entry_id": "h1a42-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "supported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "unsupported"
+        },
+        "display_name": "Govee LED Strip Light 2 (H1A42)",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive"
+        ],
+        "light_entity_id": null,
+        "model": "H1A42",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h1a42-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "unsupported"
+        },
+        "readback": "none",
+        "segment_count": 5
+      },
+      {
+        "active_state": null,
+        "config_entry_id": "h61f5-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "supported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "unsupported"
+        },
+        "display_name": "Govee Strip Light 2 Pro (H61F5)",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive"
+        ],
+        "light_entity_id": null,
+        "model": "H61F5",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h61f5-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "unsupported"
+        },
+        "readback": "none",
+        "segment_count": 5
+      },
+      {
+        "active_state": null,
+        "config_entry_id": "h66a0-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "supported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "unsupported"
+        },
+        "display_name": "Govee TV Backlight 3 Pro (H66A0)",
+        "effect_categories": [
+          "video",
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive"
+        ],
+        "light_entity_id": null,
+        "model": "H66A0",
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h66a0-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "supported"
+        },
+        "readback": "none",
+        "segment_count": 14
+      },
+      {
+        "active_state": null,
         "config_entry_id": "h6199-main",
         "custom_effects": {
           "advanced": "supported",
@@ -4110,7 +7041,7 @@
       }
     ],
     "editor_info": {
-      "api_version": 14,
+      "api_version": 15,
       "compiler_version": 5,
       "effect_schema_version": 2,
       "limits": {
@@ -4228,6 +7159,43 @@
       "write_disposition": "unknown"
     },
     "scene_catalogues": {
+      "H1A42": {
+        "categories": [
+          {
+            "id": 1153,
+            "name": "Natural"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "Natural",
+            "category_id": 1153,
+            "display_name": "Forest",
+            "effect_id": 21861,
+            "name": "Forest",
+            "parameter_kind": "layers",
+            "scene_id": 13214,
+            "scene_type": 2,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 1153,
+            "display_name": "Rainbow",
+            "effect_id": 21882,
+            "name": "Rainbow",
+            "parameter_kind": "none",
+            "scene_id": 13235,
+            "scene_type": 0,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H1A42"
+      },
       "H617A": {
         "categories": [
           {
@@ -4397,6 +7365,88 @@
         ],
         "schema_version": 1,
         "sku": "H6199"
+      },
+      "H61F5": {
+        "categories": [
+          {
+            "id": 2525,
+            "name": "House of the Dragon"
+          },
+          {
+            "id": 1169,
+            "name": "Natural"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "House of the Dragon",
+            "category_id": 2525,
+            "display_name": "Dracarys",
+            "effect_id": 41602,
+            "name": "Dracarys",
+            "parameter_kind": "layers",
+            "scene_id": 29887,
+            "scene_type": 2,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 1169,
+            "display_name": "Rainbow",
+            "effect_id": 21956,
+            "name": "Rainbow",
+            "parameter_kind": "none",
+            "scene_id": 13309,
+            "scene_type": 0,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H61F5"
+      },
+      "H66A0": {
+        "categories": [
+          {
+            "id": 2533,
+            "name": "House of the Dragon"
+          },
+          {
+            "id": 1763,
+            "name": "Natural"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "House of the Dragon",
+            "category_id": 2533,
+            "display_name": "Dracarys",
+            "effect_id": 43263,
+            "name": "Dracarys",
+            "parameter_kind": "layers",
+            "scene_id": 31090,
+            "scene_type": 2,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 1763,
+            "display_name": "Rainbow",
+            "effect_id": 31689,
+            "name": "Rainbow",
+            "parameter_kind": "none",
+            "scene_id": 21203,
+            "scene_type": 0,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H66A0"
       }
     },
     "scene_details": {

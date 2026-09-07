@@ -143,13 +143,18 @@ def _model_scene_catalogue(sku: str) -> tuple[dict[str, SceneEntry], dict[str, s
     entries = SCENE_ENTRIES[sku]
     keys = [" ".join(entry.display_name.split()).casefold() for entry in entries]
     duplicates = {key for key, count in Counter(keys).items() if count > 1}
+    category_keys = [(key, entry.category.casefold()) for entry, key in zip(entries, keys, strict=True)]
+    duplicate_categories = {key for key, count in Counter(category_keys).items() if count > 1}
     scenes: dict[str, SceneEntry] = {}
     labels: dict[str, str] = {}
     for entry, key in zip(entries, keys, strict=True):
         label = entry.display_name
         if key in duplicates:
-            key = f"{key} [{entry.category.lower()}]"
-            label = f"{label} [{entry.category}]"
+            suffix = entry.category
+            if (key, entry.category.casefold()) in duplicate_categories:
+                suffix = f"{suffix} {entry.scene_id}"
+            key = f"{key} [{suffix.casefold()}]"
+            label = f"{label} [{suffix}]"
         scenes[key] = entry
         labels[key] = label
     return scenes, labels

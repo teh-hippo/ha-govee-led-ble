@@ -100,6 +100,19 @@ def test_h617e_has_exact_release_capability_records():
     assert all(capability.model == "H617E" for capability in h617e)
 
 
+@pytest.mark.parametrize("model", ["H1A42", "H61F5", "H66A0"])
+def test_new_model_catalogues_keep_exact_identity(model: str) -> None:
+    catalogue = MODEL_EFFECT_CATALOGUES[model]
+    templates = catalogue.templates
+
+    assert catalogue.sku == model
+    assert catalogue.painted_effects == ()
+    assert catalogue.effects == H617A_TYPE04_FAMILIES
+    assert {template.content.model for template in templates if isinstance(template.content, MusicProfile)} == {model}
+    assert bool(catalogue.video_modes) is (model == "H66A0")
+    assert release_capabilities_for_model(model)
+
+
 def test_h617a_model_catalogue_preserves_type04_and_painted_contracts() -> None:
     models = cast(
         dict[str, dict[str, JsonValue]],

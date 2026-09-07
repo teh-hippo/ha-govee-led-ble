@@ -300,6 +300,24 @@ MUSIC_MODE_IDS_REFUSED_BY_H61F5: tuple[int, ...] = (0x53, 0x55, 0x65, 0x78)
 # Every mode here was written to this device by the vendor app and is in the capture.  Two more
 # ids appear there -- 7 and 81 -- which the registry cannot name, so they stay unexposed rather
 # than being given invented slugs.
+_H61F5_MUSIC_MODES = (
+    "energetic",
+    "rhythm",
+    "spectrum",
+    "rolling",
+    "separation",
+    "hopping",
+    "piano_keys",
+    "fountain",
+    "day_and_night",
+    "bloom",
+    "shiny",
+    "splash",
+    "spring",
+    "ripple",
+    "orbit",
+)
+
 _H1A42_MUSIC_MODES = (
     "energetic",
     "rhythm",
@@ -450,6 +468,44 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         whole_device_mask=0x007F,
         scene_catalogue_sku="H6076",
     ),
+    "H61F5": ModelProfile(
+        "Govee Strip Light 2 Pro (H61F5)",
+        support_quality=SupportQuality.COMPATIBLE,
+        wire_model="H617A",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.SEGMENTS,
+                ReadDomain.IC_SEGMENT_COUNT,
+            }
+        ),
+        setup_required_read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+            }
+        ),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_scenes=True,
+        music_modes=_H61F5_MUSIC_MODES,
+        supports_music_color=True,
+        whole_device_mask=0x7FFF,
+        segment_count=5,
+        segment_group_size=4,
+        segment_count_from_ic_probe=True,
+        supports_segment_writes=True,
+        scene_catalogue_sku="H61F5",
+    ),
     "H1A42": ModelProfile(
         "Govee LED Strip Light 2 (H1A42)",
         support_quality=SupportQuality.COMPATIBLE,
@@ -525,6 +581,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_scenes=True,
         supports_video_mode=True,
         video_modes=("movie", "game"),
+        supports_video_saturation=True,
         supports_video_sound_effects=True,
         supports_relative_brightness=True,
         video_brightness_zones=("left", "top", "right", "bottom", "strip_left", "strip_right"),

@@ -79,6 +79,15 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert {"flash [emotion]", "flash [zootopia 2]"} <= MODEL_SCENES["H6199"].keys()
 
 
+def test_exact_catalogues_preserve_duplicate_names_within_one_category():
+    sleep = {(key, entry.scene_id) for key, entry in MODEL_SCENES["H1A42"].items() if entry.display_name == "Sleep"}
+
+    assert sleep == {
+        ("sleep [life 13258]", 13258),
+        ("sleep [life 14772]", 14772),
+    }
+
+
 def test_h617e_uses_its_exact_catalogue_with_the_shared_wire_adapter():
     selector = next(scene for scene in SCENE_ENTRIES["H617E"] if scene.scene_type == 0)
     uploaded = next(scene for scene in SCENE_ENTRIES["H617E"] if scene.scene_type == 2)
