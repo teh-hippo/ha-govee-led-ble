@@ -36,6 +36,7 @@ from .coordinator import GoveeBLECoordinator, clear_availability_log_state
 from .editor import EDITOR_PANEL_PATH, async_register_editor_panel, editor_url
 from .effect_setup import async_setup_effects, get_effect_backend
 from .light_services import async_register_light_services
+from .light_services_registration import async_register_extra_services
 
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
@@ -90,6 +91,7 @@ def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_light_services(hass)
+    async_register_extra_services(hass)
     await async_setup_effects(hass)
     await _async_update_editor_panel(hass)
     return True

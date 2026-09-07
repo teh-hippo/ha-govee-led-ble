@@ -22,3 +22,207 @@ apply_custom_effect:
       selector: {text:}
     effect_id:
       selector: {text:}
+
+set_video_settings:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    game_mode: {selector: {boolean:}}
+    picture_preset: {selector: {select: {options: ["solid", "vivid", "smooth", "delicate"]}}}
+    saturation: {selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+    sound_effects: {selector: {boolean:}}
+    sound_effects_softness: {selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+
+set_video_blank_screen:
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    enabled: {required: true, selector: {boolean:}}
+
+get_dreamview_candidates:
+  # Response-only: mirrors the app's "choose devices" list. We have no cloud account to enumerate,
+  # so the local equivalent is the other Govee devices configured in this Home Assistant.
+  target:
+    entity:
+      domain: light
+      integration: ha_govee_led_ble
+
+identify_dreamview_members:
+  name: Identify DreamView members
+  description: >-
+    Work out which device sits in each DreamView slot and remember it. The sync centre never
+    reports its members' addresses, so this finds out by observation: it disconnects one slot at
+    a time and sees which device starts advertising, then reconnects it. Group membership, Area
+    Config and every per-member setting are left untouched. Expect the member lights to drop out
+    and return, one at a time. The result is stored on the config entry, so this only needs
+    running once - or again if you change who is in the group.
+  target:
+    entity:
+      integration: ha_govee_led_ble
+      domain: light
+  fields:
+    settle:
+      name: Settle time
+      description: >-
+        Seconds to wait for a disconnected sub-device to start advertising before giving up on
+        that slot. A slot that never resolves is reported unresolved rather than guessed.
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: s
+
+read_dreamview_group:
+  # Reports the group this device holds: how many sub-device slots are occupied, how each is
+  # connecting, and the group's settings. It CANNOT report which devices they are -- the sync
+  # centre never sends their addresses, so a group created in the vendor app is visible here but
+  # its members stay anonymous.
+  target:
+    entity:
+      domain: light
+      integration: ha_govee_led_ble
+
+set_dreamview_group:
+  # Replaces the whole membership. A member listed with enabled: false is left out of the upload,
+  # which is what the app's per-device toggle does.
+  #
+  # NOT READ-BACKABLE: no query returns group membership, so this cannot be verified afterwards
+  # and a previous group cannot be recovered. delete_dreamview_group is the way back out.
+  #
+  # `zones` is REQUIRED for every enabled member: one entry per DreamView zone, in zone order.
+  # Each entry is 1-10 for the screen region that zone samples, 0 for "assigned to nothing", or
+  # null to switch the zone off. Read the values off the app's Area Config page.
+  #
+  # A ZONE COUNT IS NOT A SEGMENT COUNT. DreamView's areaNum is how a strip is divided for video
+  # sampling; it is unrelated to how many addressable LED segments the strip has, and it is never
+  # reported over BLE. Measured 2026-08-31: an H1A42 and an H61F5 that both report 5 segments
+  # each carry 6 DreamView zones. This service therefore refuses to guess the count.
+  #
+  # The app's Area Config page shows TWENTY cells around the screen, but Constant.getIndex4Portocol
+  # folds 1-10 and 11-20 onto the same ten protocol regions before the byte reaches the wire, so
+  # cell 11 is identical to cell 1 on the device. Give either; the device sees 1-10.
+  target:
+    entity:
+      domain: light
+      integration: ha_govee_led_ble
+  fields:
+    members:
+      required: true
+      example: |
+        - address: "AA:BB:CC:DD:EE:FF"
+          enabled: true
+          zones: [9, 9, 8, 7, 6, 6]
+        - address: "11:22:33:44:55:66"
+          enabled: false
+      selector:
+        object:
+
+release_all_ble:
+  # Release EVERY configured Govee device's Bluetooth link for a while.
+  #
+  # Use this rather than release_ble when the devices may already be unavailable — which is the
+  # normal case, because the usual reason to release them is that the Govee phone app has taken
+  # them, and a device the app holds stops advertising and reads `unavailable` here.
+  #
+  # release_ble is an ENTITY service, and Home Assistant filters unavailable entities out of an
+  # entity-service call before the handler runs, so it is silently skipped exactly when it is
+  # most needed. This one is a DOMAIN service and is not filtered. Nothing about the hold needs
+  # the radio: it is a deadline stored on the coordinator, so the device does not have to be
+  # reachable, present or even powered on.
+  #
+  # seconds: 0 clears any hold and hands the devices straight back to Home Assistant.
+  fields:
+    seconds:
+      default: 120
+      selector: {number: {min: 0, max: 86400, mode: box, unit_of_measurement: s}}
+
+release_ble:
+  # Drop this device's BLE link and stay off it for a while.
+  #
+  # Call this on the SUB-DEVICES immediately before set_dreamview_group. A Govee device accepts
+  # one central at a time, so while Home Assistant holds a strip's link the sync centre cannot
+  # complete the handover -- the group reports that member as 1 (connecting) instead of 2
+  # (connected). Measured 2026-08-31: ~90s stuck that way, because this integration polls every
+  # 30s and kept retaking the link.
+  #
+  # A plain disconnect does not help for the same reason; the hold is the point. Give it a window
+  # comfortably longer than the handover needs.
+  #
+  # The device is not touched during the hold. Its entities keep reporting their last known state
+  # and polling resumes on its own.
+  target:
+    entity:
+      domain: light
+      integration: ha_govee_led_ble
+  fields:
+    seconds:
+      # Up to 24h. A DreamView hold must cover the whole session: once Home Assistant retakes a
+      # sub-device's link the sync centre does not retry, and that member stays at "connecting".
+      default: 120
+      selector: {number: {min: 0, max: 86400, mode: box, unit_of_measurement: s}}
+
+set_dreamview_switch:
+  # Turn the DreamView group on or off (33 60 01). This is NOT the same as creating the group
+  # and NOT the same as video mode: a group can exist and hold its members' BLE links while
+  # being switched off. A freshly uploaded group was observed in exactly that state on
+  # 2026-08-31, so an activate sequence needs this as well as set_dreamview_group.
+  # Reads back as `is_on` from read_dreamview_group.
+  target:
+    entity:
+      domain: light
+      integration: ha_govee_led_ble
+  # Field is `enabled`, not `on`: YAML 1.1 reads a bare `on:` key as the boolean True, which
+  # made this file fail to parse entirely ("expected str @ data[...][True]").
+  fields:
+    enabled:
+      required: true
+      selector: {boolean:}
+
+set_dreamview_member_brightness:
+  # One group member's brightness, by slot index (33 60 03). Index is the position the member
+  # was uploaded in: 0 is the first entry of set_dreamview_group's `members`.
+  #
+  # Only has a visible effect while Same Brightness is OFF -- with it on, the device drives
+  # every member from one level and these writes do nothing. Set set_dreamview_same_brightness
+  # to false first if you want members to differ.
+  target:
+    entity:
+      domain: light
+      integration: ha_govee_led_ble
+  fields:
+    index:
+      required: true
+      selector: {number: {min: 0, max: 5, step: 1}}
+    brightness:
+      required: true
+      selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}
+
+set_dreamview_same_brightness:
+  # The app's "Same Brightness" (33 60 04): drive every member from one level, or let
+  # per-member levels apply. This GATES set_dreamview_member_brightness.
+  target:
+    entity:
+      domain: light
+      integration: ha_govee_led_ble
+  fields:
+    enabled:
+      required: true
+      selector: {boolean:}
+
+set_dreamview_sound_effects:
+  # Sound effects for the GROUP, not for this one device. `set_video_settings` carries the
+  # per-device pair; this is `33 60 0b`, which the sync centre applies to the group it drives.
+  #
+  # Both fields ride in one frame, so omitting softness does NOT mean "leave it alone" on the
+  # wire — the coordinator reads the group's current value back and re-sends it, so a plain
+  # on/off toggle cannot silently reset softness to zero.
+  target: {entity: {integration: ha_govee_led_ble}}
+  fields:
+    enabled: {required: true, selector: {boolean:}}
+    softness: {selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}}
+
+delete_dreamview_group:
+  # Removes the group this device holds, which frees its sub-devices to be reached directly again.
+  target:
+    entity:
+      domain: light
+      integration: ha_govee_led_ble

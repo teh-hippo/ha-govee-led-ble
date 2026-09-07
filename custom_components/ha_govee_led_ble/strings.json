@@ -132,6 +132,142 @@
           "description": "Stable ID of the saved custom effect. Use either Effect or Effect ID."
         }
       }
+    },
+    "set_video_settings": {
+      "name": "Set video settings",
+      "description": "Write the video sheet as one frame: capture mode, picture preset, saturation and sound effects. Anything left out keeps the device's current value. Camera models only.",
+      "fields": {
+        "game_mode": {
+          "name": "Game mode",
+          "description": "On for Game, off for Movie."
+        },
+        "picture_preset": {
+          "name": "Picture preset",
+          "description": "The app's picture preset for video mode."
+        },
+        "saturation": {
+          "name": "Saturation",
+          "description": "Colour saturation, 0-100."
+        },
+        "sound_effects": {
+          "name": "Sound effects",
+          "description": "React to sound as well as picture."
+        },
+        "sound_effects_softness": {
+          "name": "Sound effects softness",
+          "description": "How smoothly sound effects move, 0-100."
+        }
+      }
+    },
+    "set_video_blank_screen": {
+      "name": "Set blank-screen detection",
+      "description": "Turn blank-screen detection on or off, keeping the device's own durations.",
+      "fields": {
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether blank-screen detection is on."
+        }
+      }
+    },
+    "get_dreamview_candidates": {
+      "name": "List DreamView candidates",
+      "description": "List the Govee devices configured here that could join this sync centre's DreamView group."
+    },
+    "read_dreamview_group": {
+      "name": "Read DreamView group",
+      "description": "Read the DreamView group this device is holding: whether it is on, how many members it has, and each member's connection state."
+    },
+    "identify_dreamview_members": {
+      "name": "Identify DreamView members",
+      "description": "Work out which device sits in each DreamView slot and remember it. The sync centre never reports its members' addresses, so this finds out by observation: it disconnects one slot at a time and sees which device starts advertising, then reconnects it. Group membership and Area Config are left untouched.",
+      "fields": {
+        "settle": {
+          "name": "Settle time",
+          "description": "Seconds to watch for a disconnected member to start advertising."
+        }
+      }
+    },
+    "set_dreamview_group": {
+      "name": "Set DreamView group",
+      "description": "Replace this sync centre's DreamView group. NOT READ-BACKABLE: no query returns group membership, so the previous group cannot be recovered afterwards.",
+      "fields": {
+        "members": {
+          "name": "Members",
+          "description": "Each member's address, and optionally its per-zone Area Config."
+        }
+      }
+    },
+    "set_dreamview_switch": {
+      "name": "Turn DreamView on or off",
+      "description": "Start or stop the DreamView group this device is holding.",
+      "fields": {
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the group is running."
+        }
+      }
+    },
+    "set_dreamview_member_brightness": {
+      "name": "Set DreamView member brightness",
+      "description": "Set one member's brightness. Requires same-brightness to be off, which otherwise drives every member from one level.",
+      "fields": {
+        "index": {
+          "name": "Member index",
+          "description": "Zero-based position of the member in the group."
+        },
+        "brightness": {
+          "name": "Brightness",
+          "description": "Brightness for that member, 0-100."
+        }
+      }
+    },
+    "set_dreamview_same_brightness": {
+      "name": "Set DreamView same brightness",
+      "description": "Drive every member from one brightness level, or let per-member levels apply.",
+      "fields": {
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether all members share one brightness."
+        }
+      }
+    },
+    "set_dreamview_sound_effects": {
+      "name": "Set DreamView sound effects",
+      "description": "Turn sound effects on or off for the DreamView group, and optionally set their softness.",
+      "fields": {
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the group reacts to sound."
+        },
+        "softness": {
+          "name": "Softness",
+          "description": "How soft the sound reaction is, 0-100. Both values share one command, so leaving this out keeps the group's current softness rather than resetting it."
+        }
+      }
+    },
+    "delete_dreamview_group": {
+      "name": "Delete DreamView group",
+      "description": "Remove the group this device is holding, freeing its sub-devices to be reached directly. NOT UNDOABLE: membership cannot be read back, so the group cannot be rebuilt from here."
+    },
+    "release_ble": {
+      "name": "Release Bluetooth",
+      "description": "Drop this device's Bluetooth link and stay off it, so the Govee app or a DreamView sync centre can take it. Use a window covering the whole session: a sync centre that loses the race does not retry.",
+      "fields": {
+        "seconds": {
+          "name": "Seconds",
+          "description": "How long to stay off the link. 0 clears an existing hold."
+        }
+      }
+    },
+    "release_all_ble": {
+      "name": "Release Bluetooth on every device",
+      "description": "The same hold, applied to every configured Govee device. Works while a device is unavailable, which an entity service cannot.",
+      "fields": {
+        "seconds": {
+          "name": "Seconds",
+          "description": "How long to stay off the links. 0 clears existing holds."
+        }
+      }
     }
   },
   "options": {
