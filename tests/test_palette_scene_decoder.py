@@ -111,7 +111,12 @@ def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
     for model, entries in SCENE_ENTRIES.items():
         if not get_profile(model).supports_scenes:
             continue
-        entry = next(scene for scene in entries if scene.scene_type == 1)
+        # Not every catalogue contains a palette scene.  A model whose published catalogue
+        # holds only type 0 and type 2 entries has nothing to assert here, and should not
+        # fail the test for it.
+        entry = next((scene for scene in entries if scene.scene_type == 1), None)
+        if entry is None:
+            continue
         decoded = decode_catalogue_palette_scene(model, entry)
         assert decoded is not None
 
