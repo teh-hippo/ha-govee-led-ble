@@ -826,7 +826,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if type(group) is not int or not 1 <= group <= self._segment_group_count:
             raise ValueError("invalid segment group for model")
         offset = (group - 1) * group_size
-        expected_count = min(group_size, self.profile.segment_count - offset)
+        expected_count = min(group_size, self.segment_count - offset)
         if type(count) is not int or count != expected_count or not isinstance(records, list) or len(records) != count:
             raise ValueError("segment record count does not match model page")
         # Convert the entire page before touching an in-progress observation.
