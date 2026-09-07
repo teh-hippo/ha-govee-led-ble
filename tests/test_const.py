@@ -286,3 +286,27 @@ def test_h66a0_reads_the_domains_its_capabilities_require():
     assert ReadDomain.DISPLAY_SETTING in profile.read_domains
     assert ReadDomain.RELATIVE_BRIGHTNESS in profile.read_domains
     assert profile.setup_required_read_domains <= profile.read_domains
+
+
+def test_h1a42_profile_is_a_cut_strip_without_video():
+    profile = MODEL_PROFILES["H1A42"]
+    assert profile.support_quality is SupportQuality.COMPATIBLE
+    assert wire_model("H1A42") == "H617A"
+    assert protocol_model("H1A42") == "H1A42"
+
+    assert profile.state_readable and profile.supports_color_mode_readback
+    assert profile.supports_scenes and profile.supports_custom_effects
+    assert profile.supports_music_mode
+
+    # A strip light has none of the television surface.
+    assert not profile.supports_video_mode
+    assert not profile.supports_video_sound_effects
+    assert not profile.supports_relative_brightness
+    assert ReadDomain.DISPLAY_SETTING not in profile.read_domains
+
+    assert profile.supports_segments and profile.segment_count == 5
+    assert profile.segment_count_from_ic_probe
+    assert profile.scene_catalogue_sku == "H1A42"
+    # No pact is claimed, so the generic dialect applies and no video body is implied.
+    assert profile.pact == "generic"
+    assert not profile.uses_h6199_video_body

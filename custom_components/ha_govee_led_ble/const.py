@@ -297,6 +297,25 @@ MUSIC_MODE_IDS_ACCEPTED_BY_H61F5: tuple[int, ...] = (
     0x03, 0x04, 0x05, 0x06, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37, 0x84, 0x85, 0x92, 0xA3,
 )  # fmt: skip
 MUSIC_MODE_IDS_REFUSED_BY_H61F5: tuple[int, ...] = (0x53, 0x55, 0x65, 0x78)
+# Every mode here was written to this device by the vendor app and is in the capture.  Two more
+# ids appear there -- 7 and 81 -- which the registry cannot name, so they stay unexposed rather
+# than being given invented slugs.
+_H1A42_MUSIC_MODES = (
+    "energetic",
+    "rhythm",
+    "spectrum",
+    "rolling",
+    "separation",
+    "hopping",
+    "fountain",
+    "day_and_night",
+    "bloom",
+    "shiny",
+    "splash",
+    "spring",
+    "ripple",
+    "orbit",
+)
 
 _H66A0_MUSIC_MODES = (
     "energetic",
@@ -430,6 +449,45 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         max_color_temp_kelvin=6500,
         whole_device_mask=0x007F,
         scene_catalogue_sku="H6076",
+    ),
+    "H1A42": ModelProfile(
+        "Govee LED Strip Light 2 (H1A42)",
+        support_quality=SupportQuality.COMPATIBLE,
+        wire_model="H617A",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.SEGMENTS,
+                ReadDomain.IC_SEGMENT_COUNT,
+            }
+        ),
+        setup_required_read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+            }
+        ),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_scenes=True,
+        music_modes=_H1A42_MUSIC_MODES,
+        whole_device_mask=0x7FFF,
+        # Five segments describes a strip that has been cut; the probe reports the installed
+        # length, which is what the colour paths must use.
+        segment_count=5,
+        segment_group_size=4,
+        segment_count_from_ic_probe=True,
+        supports_segment_writes=True,
+        scene_catalogue_sku="H1A42",
     ),
     "H66A0": ModelProfile(
         "Govee TV Backlight 3 Pro (H66A0)",
