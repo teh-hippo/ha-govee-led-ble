@@ -823,7 +823,7 @@ async def test_four_slot_profile_observes_every_declared_domain(hass, monkeypatc
     assert output.to_byte_array() == nonzero_final
 
     # A synthetic exact model reuses outbound H617A bytes and independently selects
-    # the speculative layout. Neither the real H66A0 nor H617A changes support.
+    # the speculative layout. H617A remains strict while H66A0 owns its promoted exact root.
     model = "H7000"
     status_grammar = "test-four-slot-pages"
     profile = ModelProfile(
@@ -853,15 +853,9 @@ async def test_four_slot_profile_observes_every_declared_domain(hass, monkeypatc
         generated_protocol_adapter.parse_status_result(first, "H617A").rejection
         is ProtocolParseRejection.SCHEMA_REJECTED
     )
-    assert get_profile("H66A0") is UNSUPPORTED_PROFILE
-    assert (
-        generated_protocol_adapter.parse_status_result(first, "H66A0").rejection
-        is ProtocolParseRejection.UNSUPPORTED_MODEL
-    )
-    assert (
-        generated_protocol_adapter.parse_command_result(command, "H66A0").rejection
-        is ProtocolParseRejection.UNSUPPORTED_MODEL
-    )
+    assert get_profile("H66A0") is not UNSUPPORTED_PROFILE
+    assert generated_protocol_adapter.parse_status_result(first, "H66A0").parsed is not None
+    assert generated_protocol_adapter.parse_command_result(command, "H66A0").parsed is not None
 
     for frame in (final, first, first, third):
         coordinator._notify_callback(None, bytearray(frame))
@@ -1056,3 +1050,60 @@ REJECTED_ROOTS = (
 def test_critical_invalid_shapes_are_rejected(root_type: type[Any], raw_hex: str) -> None:
     with pytest.raises(KaitaiStructError):
         _parse(root_type, bytes.fromhex(raw_hex))
+
+
+# Frames captured from the Govee app driving an H66A0.  Raw hex is the replay input, so a
+# schema correction is checked against what the vendor actually sent rather than against a
+# frame this repository built for itself.
+H66A0_BLACK_BORDER_ON = bytes.fromhex("33a90b0101000000000000000000000000000091")
+H66A0_BLACK_BORDER_OFF = bytes.fromhex("33a90b0100000000000000000000000000000090")
+H66A0_BLACK_SCREEN_ON = bytes.fromhex("33a90a0601022c01cc0600000000000000000072")
+H66A0_BLACK_SCREEN_OFF = bytes.fromhex("33a90a060001f000cc06000000000000000000ad")
+H66A0_SEGMENT_PAGE_FULL = bytes.fromhex("aaa50164e5444464ffae5464ffae5464cf2e2e24")
+H66A0_SEGMENT_PAGE_PARTIAL = bytes.fromhex("aaa50464dc3b3b64e54444000000000000000032")
+
+
+@pytest.mark.parametrize(
+    ("frame", "expected"),
+    [
+        pytest.param(H66A0_BLACK_BORDER_ON, 1, id="black border on"),
+        pytest.param(H66A0_BLACK_BORDER_OFF, 0, id="black border off"),
+    ],
+)
+def test_captured_black_border_writes_parse(frame: bytes, expected: int) -> None:
+    command = _parse(CommandWrite, frame)
+    assert command.opcode.name == "display_setting"
+    assert command.body.setting == 0x0B
+    assert command.body.payload.is_on == expected
+
+
+@pytest.mark.parametrize(
+    ("frame", "expected"),
+    [
+        pytest.param(H66A0_BLACK_SCREEN_ON, 1, id="black screen on"),
+        pytest.param(H66A0_BLACK_SCREEN_OFF, 0, id="black screen off"),
+    ],
+)
+def test_captured_black_screen_writes_parse(frame: bytes, expected: int) -> None:
+    command = _parse(CommandWrite, frame)
+    assert command.opcode.name == "display_setting"
+    assert command.body.setting == 0x0A
+    assert command.body.payload.is_on == expected
+
+
+def test_h66a0_segment_pages_preserve_only_the_modelled_records() -> None:
+    full = generated_protocol_adapter.parse_status_result(H66A0_SEGMENT_PAGE_FULL, "H66A0").parsed
+    assert full is not None
+    assert full.body.group == 1
+    assert [(s.colour.red, s.colour.green, s.colour.blue) for s in full.body.segments] == [
+        (0xE5, 0x44, 0x44),
+        (0xFF, 0xAE, 0x54),
+        (0xFF, 0xAE, 0x54),
+        (0xCF, 0x2E, 0x2E),
+    ]
+
+    partial = generated_protocol_adapter.parse_status_result(H66A0_SEGMENT_PAGE_PARTIAL, "H66A0").parsed
+    assert partial is not None
+    assert partial.body.group == 4
+    assert len(partial.body.segments) == 2
+    assert partial.body.unused == [0] * 8

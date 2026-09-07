@@ -85,7 +85,9 @@ def test_production_three_record_status_contract(model: str) -> None:
         assert decode_status_frame_result(bytes(frame), model).rejection is ProtocolParseRejection.SCHEMA_REJECTED
     issue_frame = H("aaa50164e5444464ffae5464ffae5464cf2e2e24")
     assert decode_status_frame_result(issue_frame, model).rejection is ProtocolParseRejection.SCHEMA_REJECTED
-    assert decode_status_frame_result(issue_frame, "H66A0").rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
+    h66a0 = decode_status_frame_result(issue_frame, "H66A0")
+    assert h66a0.parsed is not None and h66a0.rejection is None
+    assert h66a0.parsed.generated.body.num_segments == 4
 
 
 def test_h617a_colour_modes_preserve_scene_diy_and_music_semantics() -> None:

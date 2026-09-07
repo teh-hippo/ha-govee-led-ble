@@ -471,7 +471,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H61F5": ModelProfile(
         "Govee Strip Light 2 Pro (H61F5)",
         support_quality=SupportQuality.COMPATIBLE,
-        wire_model="H617A",
+        command_grammar="H617A",
+        status_grammar="H61F5",
+        effect_grammar="H617A",
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -498,6 +500,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_multi_layered_effects=True,
         supports_scenes=True,
         music_modes=_H61F5_MUSIC_MODES,
+        music_variants=H617A_MUSIC_VARIANTS,
         supports_music_color=True,
         whole_device_mask=0x7FFF,
         segment_count=5,
@@ -509,7 +512,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H1A42": ModelProfile(
         "Govee LED Strip Light 2 (H1A42)",
         support_quality=SupportQuality.COMPATIBLE,
-        wire_model="H617A",
+        command_grammar="H617A",
+        status_grammar="H61F5",
+        effect_grammar="H617A",
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -536,6 +541,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_multi_layered_effects=True,
         supports_scenes=True,
         music_modes=_H1A42_MUSIC_MODES,
+        music_variants=H617A_MUSIC_VARIANTS,
         whole_device_mask=0x7FFF,
         # Five segments describes a strip that has been cut; the probe reports the installed
         # length, which is what the colour paths must use.
