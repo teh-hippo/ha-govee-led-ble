@@ -24,6 +24,7 @@ from .const import (
     DOMAIN,
     MODEL_PROFILES,
     default_effect_categories,
+    get_profile,
     model_from_ble_name,
     resolve_model,
     supported_effect_categories,
@@ -39,6 +40,23 @@ def _normalize_manual_address(address: str) -> str:
     if not _MANUAL_ADDRESS_PATTERN.fullmatch(compact):
         raise ValueError("invalid BLE address")
     return ":".join(compact[index : index + 2] for index in range(0, 12, 2))
+
+
+def _entry_title(model: str) -> str:
+    """The vendor's own product name for this device, where the profile names THIS SKU.
+
+    Govee Home calls the H1A42 "Govee LED Strip Light 2", and that is the name its owner will
+    recognise in a device list sitting beside every other integration.  The SKU stays in
+    parentheses because Govee ships several products under one name, and someone with two of
+    them has to tell the entries apart.
+
+    Falls back to `Govee <SKU>` when the profile name does not identify this SKU on its own: a
+    profile shared by two models names both, and a card for one must not claim the other.
+    Existing entries are unaffected -- this titles NEW ones, and retitling on upgrade would
+    rename devices under people who named them deliberately.
+    """
+    profile = get_profile(model)
+    return profile.name if f"({model})" in profile.name else f"Govee {model}"
 
 
 class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -59,15 +77,17 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
         self._discovered = {CONF_MODEL: model}
         # Model only, never the BLE name/MAC (no PII).
-        self.context["title_placeholders"] = {"name": model}
+        self.context["title_placeholders"] = {"name": _entry_title(model)}
         return await self.async_step_bluetooth_confirm()
 
     async def async_step_bluetooth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         model = self._discovered[CONF_MODEL]
         if user_input is None:
             self._set_confirm_only()
-            return self.async_show_form(step_id="bluetooth_confirm", description_placeholders={"model": model})
-        return self.async_create_entry(title=f"Govee {model}", data=self._discovered)
+            return self.async_show_form(
+                step_id="bluetooth_confirm", description_placeholders={"model": _entry_title(model)}
+            )
+        return self.async_create_entry(title=_entry_title(model), data=self._discovered)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
@@ -90,7 +110,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error validating a Govee BLE device")
                 return self._show_user_form(errors={"base": "unknown"})
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=f"Govee {selected_model}", data={CONF_MODEL: selected_model})
+            return self.async_create_entry(title=_entry_title(selected_model), data={CONF_MODEL: selected_model})
         return self._show_user_form()
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -115,7 +135,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             }
             return self.async_update_reload_and_abort(
                 entry,
-                title=f"Govee {selected_model}",
+                title=_entry_title(selected_model),
                 data_updates={CONF_MODEL: selected_model},
                 options=options,
             )

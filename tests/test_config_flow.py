@@ -52,7 +52,7 @@ async def _confirm(hass, result):
 async def test_bluetooth_discovery(hass: HomeAssistant, mock_manual_validation):
     r = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
     assert r["type"] == FlowResultType.FORM and r["step_id"] == "bluetooth_confirm"
-    assert r["description_placeholders"] == {"model": "H617A"}
+    assert r["description_placeholders"] == {"model": "Govee H617A"}
     r2 = await _confirm(hass, r)
     assert r2["type"] == FlowResultType.CREATE_ENTRY and r2["title"] == "Govee H617A"
     assert r2["data"][CONF_MODEL] == "H617A"
@@ -146,8 +146,10 @@ async def test_user_step_rechecks_duplicate_after_connection_validation(hass: Ho
 async def test_bluetooth_discovery_exposes_no_pii(hass: HomeAssistant):
     r = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
     context = hass.config_entries.flow.async_progress()[0]["context"]
-    assert r["description_placeholders"] == {"model": "H617A"}
-    assert context["title_placeholders"] == {"name": "H617A"}
+    assert r["description_placeholders"] == {"model": "Govee H617A"}
+    # The card names the product, falling back to "Govee <SKU>" where the profile is shared
+    # by more than one model and so cannot identify this one.
+    assert context["title_placeholders"] == {"name": "Govee H617A"}
     r2 = await _confirm(hass, r)
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     assert r2["title"] == entry.title == "Govee H617A" and entry.data == {CONF_MODEL: "H617A"}
