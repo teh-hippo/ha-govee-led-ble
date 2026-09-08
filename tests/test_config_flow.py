@@ -24,6 +24,7 @@ SVC = BluetoothServiceInfo("ihoment_H617A_ABCD", "AA:BB:CC:DD:EE:FF", -60, {}, {
 SVC_LOWER = BluetoothServiceInfo("ihoment_H617A_ABCD", "aa:bb:cc:dd:ee:ff", -60, {}, {}, [], "local")
 SVC_H617E = BluetoothServiceInfo("Govee_H617E_ABCD", "22:33:44:55:66:77", -60, {}, {}, [], "local")
 SVC_H6076 = BluetoothServiceInfo("Govee_H6076_ABCD", "33:44:55:66:77:88", -60, {}, {}, [], "local")
+SVC_H6179 = BluetoothServiceInfo("Govee_H6179_ABCD", "44:55:66:77:88:99", -60, {}, {}, [], "local")
 SVC_UNSUPPORTED = BluetoothServiceInfo("SomeOtherDevice", "11:22:33:44:55:66", -60, {}, {}, [], "local")
 
 
@@ -65,6 +66,15 @@ async def test_bluetooth_discovery_h6076(hass: HomeAssistant, mock_manual_valida
     created = await _confirm(hass, result)
     assert created["type"] is FlowResultType.CREATE_ENTRY
     assert created["data"] == {CONF_MODEL: "H6076"}
+    mock_manual_validation.assert_not_awaited()
+
+
+async def test_bluetooth_discovery_h6179(hass: HomeAssistant, mock_manual_validation):
+    result = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_H6179)
+    assert result["type"] is FlowResultType.FORM
+    created = await _confirm(hass, result)
+    assert created["type"] is FlowResultType.CREATE_ENTRY
+    assert created["data"] == {CONF_MODEL: "H6179"}
     mock_manual_validation.assert_not_awaited()
 
 
@@ -258,6 +268,10 @@ _EM += [
     ("GVH_H6076_ABCD", "H6076"),
     ("Govee_H60760_ABCD", None),
     ("Govee_H6076X_ABCD", None),
+    ("ihoment_H6179_ABCD", "H6179"),
+    ("Govee_H6179_ABCD", "H6179"),
+    ("GBK_H6179_ABCD", "H6179"),
+    ("GVH_H6179_ABCD", "H6179"),
 ]
 
 

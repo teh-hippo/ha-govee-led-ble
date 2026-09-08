@@ -19,6 +19,7 @@ from .effect_domain import (
     MAX_PALETTE_COLOURS,
     EffectContent,
     EffectValidationError,
+    H6179SingleDiyEffect,
     JsonValue,
     MusicProfile,
     PaintedEffect,
@@ -32,7 +33,7 @@ from .effect_domain import (
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 from .layered_scene_decoder import decode_workshop_effect
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 8
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 9
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # H617A Type04 uploads are selected with DIY code 24.
@@ -338,11 +339,44 @@ def _native_music_modes(model: str) -> tuple[NativeModeOption, ...]:
 H617A_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617A")
 H617A_WORKSHOP_APPLY_CODE: Final = 401
 H617A_WORKSHOP_SCENE_TYPE: Final = 2
+H6179_DIY_SOURCE_REFERENCE: Final = "tools/ble/kaitai/speculative/h6179_diy_body.ksy"
 H6199_DIY_SOURCE_REFERENCE: Final = "tools/ble/kaitai/h6199_effect_upload.ksy"
 H6199_PALETTE_DIY_APPLY_CODE: Final = 401
 H6199_PALETTE_DIY_APPLY_MUSIC_CODE: Final = 2
 H6199_WORKSHOP_APPLY_CODE: Final = 402
 H6199_WORKSHOP_APPLY_MUSIC_CODE: Final = 0
+
+H6179_DIY_FAMILIES: Final = (
+    DiyEffectFamily(
+        "fade",
+        "Fade",
+        0,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference=H6179_DIY_SOURCE_REFERENCE,
+    ),
+    DiyEffectFamily(
+        "jumping",
+        "Jumping",
+        1,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference=H6179_DIY_SOURCE_REFERENCE,
+    ),
+    DiyEffectFamily(
+        "twinkle",
+        "Twinkle",
+        2,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        source_reference=H6179_DIY_SOURCE_REFERENCE,
+    ),
+)
+
+H6179_NATIVE_MUSIC_MODES: Final = (
+    NativeModeOption("mode_0", "Mode 1"),
+    NativeModeOption("mode_1", "Mode 2"),
+)
 
 H6199_DIY_EFFECTS: Final = (
     DiyEffectTemplate(
@@ -490,6 +524,14 @@ def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
             speed=50,
             palette=DEFAULT_PALETTE,
         )
+    elif model == "H6179":
+        content = H6179SingleDiyEffect(
+            model=model,
+            family=family.family,
+            variant=variation.variant,
+            speed=50,
+            palette=DEFAULT_PALETTE,
+        )
     else:
         content = PaletteDiyEffect(
             model=model,
@@ -566,6 +608,11 @@ def _h617a_catalogue_templates(
 H617A_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617A", H617A_NATIVE_MUSIC_MODES)
 H617E_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617E")
 H617E_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617E", H617E_NATIVE_MUSIC_MODES)
+
+H6179_CATALOGUE_TEMPLATES: Final = (
+    *(_single_template("H6179", family) for family in H6179_DIY_FAMILIES),
+    *(_music_template("H6179", mode) for mode in H6179_NATIVE_MUSIC_MODES),
+)
 
 H6199_CATALOGUE_TEMPLATES: Final = (
     *(_single_template("H6199", family) for family in H6199_PALETTE_DIY_FAMILIES),
@@ -669,6 +716,27 @@ MODEL_EFFECT_CATALOGUES: Final = {
             workshop=studio_apply_capability_state("H617E", CapabilityWorkflow.WORKSHOP),
         ),
     ),
+    "H6179": ModelEffectCatalogue(
+        sku="H6179",
+        painted_effects=(),
+        effects=H6179_DIY_FAMILIES,
+        music_modes=H6179_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=H6179_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6179", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6179", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6179", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H6179", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6179", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6179", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6179", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6179", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
     "H6199": ModelEffectCatalogue(
         sku="H6199",
         painted_effects=(),
@@ -716,6 +784,9 @@ def validate_catalogue_template_identity(
         or isinstance(canonical, SingleEffect)
         and isinstance(content, SingleEffect)
         and (content.family, content.variant) == (canonical.family, canonical.variant)
+        or isinstance(canonical, H6179SingleDiyEffect)
+        and isinstance(content, H6179SingleDiyEffect)
+        and (content.model, content.family, content.variant) == (canonical.model, canonical.family, canonical.variant)
         or isinstance(canonical, PaletteDiyEffect)
         and isinstance(content, PaletteDiyEffect)
         and (content.model, content.family, content.variant) == (canonical.model, canonical.family, canonical.variant)

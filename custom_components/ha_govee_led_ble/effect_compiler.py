@@ -9,7 +9,7 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import Any, assert_never
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, get_profile, protocol_model
+from .const import MODEL_PROFILES, get_profile, protocol_model
 from .coordinator_modes import (
     MUSIC_STYLE_SLUGS,
     music_mode_has_parameter_write,
@@ -30,12 +30,21 @@ from .effect_commands import (
     build_h617a_diy_multi,
     build_h617a_diy_painted,
     build_h617a_diy_single,
+    build_h6179_diy,
+    build_h6179_diy_activation,
     build_h6199_palette_diy,
     build_h6199_palette_diy_activation,
 )
-from .effect_contracts import EFFECT_COMPILER_VERSION
+from .effect_contracts import (
+    EFFECT_COMPILER_VERSION,
+    CapabilityState,
+    CapabilityWorkflow,
+    workflow_capability_state,
+)
 from .effect_domain import (
     BuiltinScene,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
     LayeredEffect,
     LayeredScene,
     LibraryItem,
@@ -53,13 +62,15 @@ from .generated_protocol_adapter import (
     H6199EffectUpload,
     SceneBody,
     build_h617a_scene,
+    build_h6179_scene,
     build_h6199_scene,
 )
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
+from .music_protocol import music_code_for
 from .native_scenes import apply_scene_speed, build_native_scene_packets
 from .palette_scene_decoder import encode_palette_scene
-from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity
+from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity, scene_selector_code
 from .transport import fragment_a3
 
 
@@ -94,6 +105,7 @@ class CompiledEffect:
     artifact_sha256: str
     evidence_codes: tuple[str, ...] = ()
     compiler_version: int = EFFECT_COMPILER_VERSION
+    upload_transport: str = "a3"
 
     @property
     def packets(self) -> tuple[bytes, ...]:
@@ -121,7 +133,8 @@ class CompiledMusicProfile:
 
     @property
     def progress_total(self) -> int:
-        return 1 + int(music_mode_has_parameter_write(MUSIC_MODE_SLUGS[self.mode]))
+        mode_code = music_code_for(self.model, self.mode)
+        return 1 + int(music_mode_has_parameter_write(mode_code, self.model))
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,11 +187,23 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 (f"{model} video-profile application is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
+    if isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        if model != "H6179" or content.model != model:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} cannot apply H6179 DIY content",),
+            )
+        return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, WorkshopEffect):
         if content.model != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"Workshop effect targets {content.model}, not {model}",),
+            )
+        if workflow_capability_state(model, CapabilityWorkflow.WORKSHOP) is not CapabilityState.SUPPORTED:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} Workshop application is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
@@ -262,6 +287,10 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
     result = compatibility(item, model)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
+    if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        if diy_code is None:
+            raise ValueError("H6179 DIY application requires an approved disposable DIY code")
+        return compile_h6179(item, diy_code)
     if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
         if diy_code is None:
             raise ValueError("H617A custom-effect compilation requires a DIY code")
@@ -392,7 +421,7 @@ def compile_scene_effect(item: LibraryItem, model: str) -> CompiledEffect:
         item_version=item.version,
         model=model,
         content_kind=content_kind,
-        diy_code=entry.code,
+        diy_code=scene_selector_code(model, entry),
         activation_mode=ActivationMode.SCENE,
         expected_effect=scene_key,
         upload_packets=upload,
@@ -448,6 +477,31 @@ def compile_h617a(item: LibraryItem, diy_code: int, *, model: str = "H617A") -> 
         upload_packets=tuple(upload),
         activation_packet=activation,
         artifact_sha256=digest,
+    )
+
+
+def compile_h6179(item: LibraryItem, diy_code: int) -> CompiledEffect:
+    result = compatibility(item, "H6179")
+    if result.state is not CompatibilityState.COMPATIBLE:
+        raise ValueError("; ".join(result.reasons))
+    content = item.content
+    if not isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        raise ValueError("unsupported H6179 DIY content")
+    upload = tuple(build_h6179_diy(content))
+    activation = build_h6179_diy_activation(diy_code)
+    return CompiledEffect(
+        item_id=str(item.id),
+        item_version=item.version,
+        model="H6179",
+        content_kind="h6179_single_diy" if isinstance(content, H6179SingleDiyEffect) else "h6179_mixed_diy",
+        diy_code=diy_code,
+        activation_mode=ActivationMode.CUSTOM,
+        expected_effect=None,
+        upload_packets=upload,
+        activation_packet=activation,
+        artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
+        evidence_codes=("effect_content_readback_unavailable",),
+        upload_transport="h6179_a1_02",
     )
 
 
@@ -547,6 +601,8 @@ def _apply_speed(payload: bytes, entry: SceneEntry, speed_index: int | None) -> 
 
 
 def _scene_activation(model: str, entry: SceneEntry) -> bytes:
+    if model == "H6179":
+        return build_h6179_scene(scene_selector_code(model, entry))
     if model == "H6199":
         return build_h6199_scene(entry.code, entry.music_code)
     return build_h617a_scene(entry.code)
@@ -557,7 +613,12 @@ def compile_application(item: LibraryItem, model: str, *, diy_code: int | None =
         return compile_music_profile(item, model)
     if isinstance(item.content, VideoProfile):
         return compile_video_profile(item, model)
-    if isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
+    if isinstance(item.content, H6179SingleDiyEffect | H6179MixedDiyEffect):
+        if model != "H6179":
+            raise ValueError(f"{model} custom-effect upload is not supported")
+        if diy_code is None:
+            raise ValueError("H6179 custom-effect application requires an approved disposable DIY code")
+    elif isinstance(item.content, PaintedEffect | SingleEffect | MultiEffect):
         if protocol_model(model) != "H617A":
             raise ValueError(f"{model} custom-effect upload is not supported")
         if diy_code is None:
@@ -578,8 +639,8 @@ def compile_music_profile(item: LibraryItem, model: str) -> CompiledMusicProfile
     if content.calm is not None and content.mode not in MUSIC_STYLE_SLUGS:
         raise ValueError(f"music mode {content.mode} does not support a style setting")
 
-    mode_code = MUSIC_MODE_SLUGS[content.mode]
-    parameters = _compile_music_parameters(content.parameters, mode_code)
+    mode_code = music_code_for(model, content.mode)
+    parameters = _compile_music_parameters(content.parameters, mode_code, model)
     payload = {
         "kind": "music_profile",
         "model": model,
@@ -642,8 +703,9 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
 def _compile_music_parameters(
     raw: Mapping[str, Any],
     mode_code: int,
+    model: str,
 ) -> dict[str, int | bool | str]:
-    relevant = music_params_for_mode(mode_code)
+    relevant = music_params_for_mode(mode_code, model)
     unsupported = sorted(set(raw).difference(spec.profile_key for spec in relevant))
     if unsupported:
         raise ValueError(f"music mode does not support parameter {unsupported[0]}")

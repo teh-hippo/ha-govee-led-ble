@@ -14,6 +14,8 @@ import {
 import type {
   DiyEffectFamily,
   EffectPair,
+  H6179MixedDiyContent,
+  H6179SingleDiyContent,
   ModelEffectCatalogue,
   MultiContent,
   PaletteDiyEffectContent,
@@ -25,7 +27,48 @@ import { clonePalette } from "./ui-utils";
 type PaletteContent =
   | SingleContent
   | MultiContent
+  | H6179SingleDiyContent
+  | H6179MixedDiyContent
   | PaletteDiyEffectContent;
+type SinglePaletteContent =
+  | SingleContent
+  | H6179SingleDiyContent
+  | PaletteDiyEffectContent;
+type MixedPaletteContent = MultiContent | H6179MixedDiyContent;
+
+function isSinglePaletteContent(
+  content: PaletteContent | undefined,
+): content is SinglePaletteContent {
+  return (
+    content?.kind === "h617a_single" ||
+    content?.kind === "h6179_single_diy" ||
+    content?.kind === "palette_diy"
+  );
+}
+
+function isMixedPaletteContent(
+  content: PaletteContent | undefined,
+): content is MixedPaletteContent {
+  return (
+    content?.kind === "h617a_multi" ||
+    content?.kind === "h6179_mixed_diy"
+  );
+}
+
+function mixedPairs(content: MixedPaletteContent): EffectPair[] {
+  return content.kind === "h6179_mixed_diy"
+    ? content.components
+    : content.effects;
+}
+
+function withMixedPairs(
+  content: MixedPaletteContent,
+  pairs: EffectPair[],
+): MixedPaletteContent {
+  return content.kind === "h6179_mixed_diy"
+    ? { ...content, components: pairs }
+    : { ...content, effects: pairs };
+}
 
 export class GoveeCustomEffectEditor extends LitElement {
   @property({ attribute: false })
@@ -75,8 +118,8 @@ export class GoveeCustomEffectEditor extends LitElement {
     if (
       changed.has("content") &&
       this.openRowMenuIndex !== undefined &&
-      (this.content?.kind !== "h617a_multi" ||
-        this.openRowMenuIndex >= this.content.effects.length)
+      (!isMixedPaletteContent(this.content) ||
+        this.openRowMenuIndex >= mixedPairs(this.content).length)
     ) {
       this.openRowMenuIndex = undefined;
     }
@@ -86,10 +129,7 @@ export class GoveeCustomEffectEditor extends LitElement {
     if (!this.content) {
       return;
     }
-    if (
-      this.content.kind === "h617a_single" ||
-      this.content.kind === "palette_diy"
-    ) {
+    if (isSinglePaletteContent(this.content)) {
       const variation = this.shadowRoot?.querySelector<HTMLSelectElement>(
         "select[data-single-variation]",
       );
@@ -98,7 +138,7 @@ export class GoveeCustomEffectEditor extends LitElement {
       }
       return;
     }
-    this.content.effects.forEach((pair, index) => {
+    mixedPairs(this.content).forEach((pair, index) => {
       const family = this.effectFamily(pair, true);
       const effect = this.shadowRoot?.querySelector<HTMLSelectElement>(
         `select[data-effect-index="${index}"]`,
@@ -120,17 +160,20 @@ export class GoveeCustomEffectEditor extends LitElement {
       return nothing;
     }
     const rateLabel =
-      (this.content.kind === "h617a_single" ||
-        this.content.kind === "palette_diy") &&
+      isSinglePaletteContent(this.content) &&
       this.effectFamily(this.content)?.rate === "sensitivity"
         ? "Sensitivity"
         : "Speed";
 
     return html`
-      ${this.content.kind === "h617a_multi"
+      ${isMixedPaletteContent(this.content)
         ? html`
             <section class="card effect-card">
-              <h3 class="section-title">Effect Layers</h3>
+              <h3 class="section-title">
+                ${this.content.kind === "h6179_mixed_diy"
+                  ? "Effect Components"
+                  : "Effect Layers"}
+              </h3>
               ${this.renderSequence(this.content)}
             </section>
           `
@@ -163,8 +206,7 @@ export class GoveeCustomEffectEditor extends LitElement {
   private renderSingleVariation() {
     if (
       !this.content ||
-      (this.content.kind !== "h617a_single" &&
-        this.content.kind !== "palette_diy")
+      !isSinglePaletteContent(this.content)
     ) {
       return nothing;
     }
@@ -184,11 +226,14 @@ export class GoveeCustomEffectEditor extends LitElement {
           aria-label="Variation"
           data-single-variation
           ?disabled=${this.disabled}
-          @change=${(event: Event) =>
-            this.emitContent({
-              ...content,
-              variant: Number((event.target as HTMLSelectElement).value),
-            })}
+          @change=${(event: Event) => {
+            const variant = Number(
+              (event.target as HTMLSelectElement).value,
+            );
+            this.emitContent(
+              { ...content, variant },
+            );
+          }}
         >
           ${knownVariation
             ? nothing
@@ -212,9 +257,9 @@ export class GoveeCustomEffectEditor extends LitElement {
     `;
   }
 
-  private renderSequence(content: MultiContent) {
+  private renderSequence(content: MixedPaletteContent) {
     const atCapacity =
-      content.effects.length >= this.catalogue!.limits.multi_max;
+      mixedPairs(content).length >= this.catalogue!.limits.multi_max;
     return html`
       <div class="sequence-table">
         <div class="sequence-header" aria-hidden="true">
@@ -224,7 +269,7 @@ export class GoveeCustomEffectEditor extends LitElement {
           <span></span>
         </div>
         <ol class="sequence">
-          ${content.effects.map((pair, index) => this.effectRow(pair, index))}
+          ${mixedPairs(content).map((pair, index) => this.effectRow(pair, index))}
         </ol>
       </div>
       ${atCapacity
@@ -349,7 +394,8 @@ export class GoveeCustomEffectEditor extends LitElement {
             )}
           </select>
         </label>
-        ${(this.content as MultiContent).effects.length > 1
+        ${isMixedPaletteContent(this.content) &&
+        mixedPairs(this.content).length > 1
           ? this.disabled
             ? html`
                 <button
@@ -432,10 +478,10 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   private effectVariationChanged(index: number, variant: number): void {
-    if (!this.content || this.content.kind !== "h617a_multi") {
+    if (!isMixedPaletteContent(this.content)) {
       return;
     }
-    const current = this.content.effects[index];
+    const current = mixedPairs(this.content)[index];
     if (!current) {
       return;
     }
@@ -443,46 +489,45 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   private replaceEffect(index: number, pair: EffectPair): void {
-    if (!this.content || this.content.kind !== "h617a_multi") {
+    if (!isMixedPaletteContent(this.content)) {
       return;
     }
-    const effects = this.content.effects.map((effect, effectIndex) =>
+    const effects = mixedPairs(this.content).map((effect, effectIndex) =>
       effectIndex === index ? pair : effect,
     );
-    this.emitContent({ ...this.content, effects });
+    this.emitContent(withMixedPairs(this.content, effects));
   }
 
   private addEffect(): void {
     if (
       this.disabled ||
-      !this.content ||
-      this.content.kind !== "h617a_multi" ||
-      this.content.effects.length >= this.catalogue!.limits.multi_max
+      !isMixedPaletteContent(this.content) ||
+      mixedPairs(this.content).length >= this.catalogue!.limits.multi_max
     ) {
       return;
     }
     const next =
-      this.multiFamilies[this.content.effects.length] ??
+      this.multiFamilies[mixedPairs(this.content).length] ??
       this.multiFamilies[0];
     const variation = next?.variations[0];
     if (!next || !variation) {
       return;
     }
     const effects = [
-      ...this.content.effects,
+      ...mixedPairs(this.content),
       { family: next.family, variant: variation.variant },
     ];
-    this.emitContent({ ...this.content, effects });
+    this.emitContent(withMixedPairs(this.content, effects));
   }
 
   private removeEffect(index: number): void {
-    if (!this.content || this.content.kind !== "h617a_multi") {
+    if (!isMixedPaletteContent(this.content)) {
       return;
     }
-    const effects = this.content.effects.filter(
+    const effects = mixedPairs(this.content).filter(
       (_effect, effectIndex) => effectIndex !== index,
     );
-    this.emitContent({ ...this.content, effects });
+    this.emitContent(withMixedPairs(this.content, effects));
     const focusIndex = Math.min(index, effects.length - 1);
     void this.updateComplete.then(() => {
       requestAnimationFrame(() => {
@@ -498,16 +543,15 @@ export class GoveeCustomEffectEditor extends LitElement {
   private reorderEffect(from: number, to: number): void {
     if (
       this.disabled ||
-      !this.content ||
-      this.content.kind !== "h617a_multi" ||
+      !isMixedPaletteContent(this.content) ||
       from === to
     ) {
       return;
     }
-    const effects = [...this.content.effects];
+    const effects = [...mixedPairs(this.content)];
     const [moving] = effects.splice(from, 1);
     effects.splice(to, 0, moving);
-    this.emitContent({ ...this.content, effects });
+    this.emitContent(withMixedPairs(this.content, effects));
   }
 
   private effectDragStarted(index: number, event: DragEvent): void {
@@ -653,9 +697,9 @@ export class GoveeCustomEffectEditor extends LitElement {
     const target = index + (event.key === "ArrowUp" ? -1 : 1);
     if (
       !this.content ||
-      this.content.kind !== "h617a_multi" ||
+      !isMixedPaletteContent(this.content) ||
       target < 0 ||
-      target >= this.content.effects.length
+      target >= mixedPairs(this.content).length
     ) {
       return;
     }

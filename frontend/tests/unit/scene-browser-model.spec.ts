@@ -32,6 +32,7 @@ const scene: SceneSummary = {
   variant: "",
   display_name: "Glacier",
   scene_type: 2,
+  selector_only: false,
   parameter_kind: "layers",
   speed: { option_count: 3, default_index: 2 },
 };
@@ -98,6 +99,7 @@ test("native default actions use the shared Save, Reset, and Save As model", () 
     { id: "edit", label: "Edit", style: "secondary" },
   ]);
   expect(nativeSceneActions(true, true, false).some((action) => action.label.includes("Saving"))).toBe(false);
+  expect(nativeSceneActions(false, false, false, false, false, false, true)).toEqual([]);
 });
 
 test("palette inspection data does not create a parameter surface", () => {

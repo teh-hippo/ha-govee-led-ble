@@ -26,6 +26,7 @@ from custom_components.ha_govee_led_ble.scenes import (
     SceneEntry,
     ScenePage,
     SceneSpeed,
+    scene_selector_code,
 )
 from custom_components.ha_govee_led_ble.transport import fragment_a3
 
@@ -68,6 +69,7 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert len(SCENE_ENTRIES["H617A"]) == 83
     assert len(SCENE_ENTRIES["H617E"]) == 240
     assert len(SCENE_ENTRIES["H6076"]) == 110
+    assert len(SCENE_ENTRIES["H6179"]) == 83
     assert len(SCENE_ENTRIES["H6199"]) == 240
     assert SCENE_ENTRIES["H617E"] is not SCENE_ENTRIES["H617A"]
     assert len(MODEL_SCENES["H617E"]) == 247
@@ -77,6 +79,15 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert MODEL_SCENES["H6199"]["green reign"].code == 16183
     assert MODEL_SCENES["H6199"]["fire & blood"].code == 16184
     assert {"flash [emotion]", "flash [zootopia 2]"} <= MODEL_SCENES["H6199"].keys()
+
+
+def test_h6179_scene_catalogue_uses_unique_one_byte_selectors() -> None:
+    entries = SCENE_ENTRIES["H6179"]
+    selectors = [scene_selector_code("H6179", scene) for scene in entries]
+
+    assert len(selectors) == len(set(selectors)) == 83
+    assert all(scene.selector_only for scene in entries)
+    assert all(len(build_native_scene_packets("H6179", scene)) == 1 for scene in entries)
 
 
 def test_h617e_uses_its_exact_catalogue_with_the_shared_wire_adapter():

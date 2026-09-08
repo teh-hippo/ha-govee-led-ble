@@ -98,6 +98,7 @@ export class PanelModel {
   public savedSceneSelection?: LibraryItem;
   public name = "";
   public content: EffectContent = blankPainted();
+  public h6179ApprovedDiyCode?: number;
   public paintColour: RGB = [255, 69, 58];
   public paintBrushOff = false;
   public saving = false;
@@ -237,6 +238,50 @@ export class PanelModel {
 
   public get selectedModel(): ModelSku | undefined {
     return this.selectedDevice?.model;
+  }
+
+  public get experimentalSupport(): boolean {
+    return (
+      this.selectedDevice?.support_quality === "experimental" &&
+      (this.modelCatalogue?.workflows.length ?? 0) > 0
+    );
+  }
+
+  public get h6179DiyCodeRequired(): boolean {
+    return (
+      (this.content.kind === "h6179_single_diy" ||
+        this.content.kind === "h6179_mixed_diy") &&
+      this.content.model === this.selectedModel &&
+      this.modelCatalogue?.workflows.some(
+        (workflow) => workflow.content_kind === this.content.kind,
+      ) === true
+    );
+  }
+
+  public get h6179DiyCode(): number | undefined {
+    const observed = this.h6179ObservedDiyCode;
+    return observed !== undefined && this.h6179ApprovedDiyCode === observed
+      ? observed
+      : undefined;
+  }
+
+  public get h6179ObservedDiyCode(): number | undefined {
+    if (!this.h6179DiyCodeRequired) {
+      return undefined;
+    }
+    const code = this.selectedDevice?.active_state?.diy_code;
+    return typeof code === "number" &&
+      Number.isSafeInteger(code) &&
+      code >= 0 &&
+      code <= 0xffff
+      ? code
+      : undefined;
+  }
+
+  public get h6179DiyApprovalMessage(): string {
+    return this.h6179ObservedDiyCode === undefined
+      ? "Select a disposable H6179 DIY item in the Govee app, then refresh or return to Effect Studio before applying or enabling Live preview."
+      : "Use the currently observed disposable H6179 DIY item before applying or enabling Live preview.";
   }
 
   public get showDeviceSelector(): boolean {
@@ -413,7 +458,9 @@ export class PanelModel {
         canApply:
           isEditableEffectContent(this.content) &&
           this.isAdmin &&
-          !this.stateUpdatesUnavailable,
+          !this.stateUpdatesUnavailable &&
+          (!this.h6179DiyCodeRequired ||
+            this.h6179DiyCode !== undefined),
         canSave: this.canSaveCurrentDraft,
         canMutate: this.isAdmin && !this.stateUpdatesUnavailable,
         busy: this.saving || this.applying || this.deletingCurrentItem,
@@ -463,6 +510,10 @@ export class PanelModel {
         return device.custom_effects.single;
       case "h617a_multi":
         return device.custom_effects.multi;
+      case "h6179_single_diy":
+        return device.custom_effects.single;
+      case "h6179_mixed_diy":
+        return device.custom_effects.multi;
       case "palette_diy":
         return device.custom_effects.palette_diy;
       case "advanced":
@@ -487,6 +538,7 @@ export class PanelModel {
   public get selectedSingleEffectFamily(): DiyEffectFamily | undefined {
     if (
       this.content.kind !== "h617a_single" &&
+      this.content.kind !== "h6179_single_diy" &&
       this.content.kind !== "palette_diy"
     ) {
       return undefined;

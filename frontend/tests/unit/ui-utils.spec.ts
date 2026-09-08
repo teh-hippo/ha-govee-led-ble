@@ -25,6 +25,7 @@ function device(lightEntityId: string | null): DeviceCapabilities {
     config_entry_id: "entry-a",
     light_entity_id: lightEntityId,
     model: "H617A",
+    support_quality: "supported",
     display_name: "Test Light",
     segment_count: 15,
     custom_effects: {

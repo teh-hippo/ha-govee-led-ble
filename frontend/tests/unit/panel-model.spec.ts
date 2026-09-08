@@ -42,6 +42,7 @@ function device(
     config_entry_id: id,
     light_entity_id: `light.${id}`,
     model,
+    support_quality: "supported",
     display_name: id,
     segment_count: 15,
     custom_effects: {
@@ -215,7 +216,7 @@ function installH6199Catalogue(model: PanelModel): void {
   const catalogue = h6199Catalogue();
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 8,
+    schema_version: 9,
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },
@@ -240,7 +241,7 @@ function installFutureCatalogue(
   }
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 8,
+    schema_version: 9,
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },

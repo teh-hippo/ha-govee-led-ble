@@ -122,6 +122,7 @@ LAYER_LABELS = vol.All(
 )
 SCENE_ID = vol.All(strict_int, vol.Range(min=0, max=0xFFFF))
 SPEED_INDEX = vol.All(strict_int, vol.Range(min=0, max=0xFF))
+DIY_CODE = vol.All(strict_int, vol.Range(min=0, max=0xFFFF))
 EFFECT_CONTENT = vol.All(dict, _bounded_effect_content)
 NAVIGATION = vol.All(dict, _bounded_navigation)
 STRICT_BOOL = vol.All(_strict_bool)

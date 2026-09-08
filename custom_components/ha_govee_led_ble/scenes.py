@@ -66,6 +66,7 @@ class SceneEntry:
     name: str = ""
     variant: str = ""
     music_code: int = 0
+    selector_only: bool = False
 
     @property
     def display_name(self) -> str:
@@ -103,6 +104,7 @@ def _load_catalogue(sku: str) -> tuple[SceneEntry, ...]:
         raise ValueError(f"Invalid scene catalogue metadata in {path}")
 
     categories = {int(category["id"]): str(category["name"]) for category in data["categories"]}
+    profile = MODEL_PROFILES[sku]
     entries = tuple(
         SceneEntry(
             code=int(effect["code"]),
@@ -116,6 +118,7 @@ def _load_catalogue(sku: str) -> tuple[SceneEntry, ...]:
             name=str(effect["name"]),
             variant=str(effect.get("variant", "")),
             music_code=int(effect.get("music_code", 0)),
+            selector_only=profile.selector_only_scene_bits is not None,
         )
         for effect in data["effects"]
     )
@@ -143,15 +146,21 @@ def _model_scene_catalogue(sku: str) -> tuple[dict[str, SceneEntry], dict[str, s
     entries = SCENE_ENTRIES[sku]
     keys = [" ".join(entry.display_name.split()).casefold() for entry in entries]
     duplicates = {key for key, count in Counter(keys).items() if count > 1}
+    category_counts = Counter((key, entry.category.casefold()) for key, entry in zip(keys, entries, strict=True))
     scenes: dict[str, SceneEntry] = {}
     labels: dict[str, str] = {}
     for entry, key in zip(entries, keys, strict=True):
         label = entry.display_name
         if key in duplicates:
-            key = f"{key} [{entry.category.lower()}]"
-            label = f"{label} [{entry.category}]"
+            qualifier = entry.category
+            if category_counts[key, entry.category.casefold()] > 1:
+                qualifier = f"{qualifier}, {entry.scene_id}:{entry.effect_id}"
+            key = f"{key} [{qualifier.casefold()}]"
+            label = f"{label} [{qualifier}]"
         scenes[key] = entry
         labels[key] = label
+    if len(scenes) != len(entries):
+        raise ValueError(f"Duplicate scene selector key in {sku} catalogue")
     return scenes, labels
 
 
@@ -164,6 +173,35 @@ MODEL_SCENE_LABELS: dict[str, dict[str, str]] = {
     sku: dict(catalogue[1]) for sku, catalogue in _MODEL_CATALOGUES.items()
 }
 MODEL_SCENE_ALIASES: dict[str, dict[str, str]] = {}
+
+
+def scene_selector_code(model: str, scene: SceneEntry) -> int:
+    bits = MODEL_PROFILES[model].selector_only_scene_bits
+    if bits is None:
+        return scene.code
+    if not isinstance(scene.code, int) or isinstance(scene.code, bool) or scene.code < 0:
+        raise ValueError(f"{model} catalogue scene code must be a non-negative integer")
+    return scene.code & ((1 << bits) - 1)
+
+
+def _build_scene_keys_by_code(model: str, scenes: dict[str, SceneEntry]) -> dict[int, str]:
+    selectors: dict[int, str] = {}
+    for key, scene in scenes.items():
+        selector = scene_selector_code(model, scene)
+        if selector in selectors:
+            raise ValueError(f"{model} scenes {selectors[selector]!r} and {key!r} share selector {selector}")
+        selectors[selector] = key
+    return selectors
+
+
+_MODEL_SCENE_KEYS_BY_CODE = {
+    model: _build_scene_keys_by_code(model, scenes) for model, scenes in OFFICIAL_MODEL_SCENES.items()
+}
+
+
+def scene_key_for_code(model: str, code: int) -> str | None:
+    return _MODEL_SCENE_KEYS_BY_CODE.get(model, {}).get(code)
+
 
 # H617A protocol and service lookups use the legacy unhyphenated variant names.
 SCENES: dict[str, SceneEntry] = {_legacy_h617a_key(entry): entry for entry in SCENE_ENTRIES["H617A"]}
@@ -233,7 +271,11 @@ def resolve_scene_code(
             return canonical_key, canonical
 
     resolved = next(
-        ((key, entry) for key, entry in MODEL_SCENES.get(model, {}).items() if entry.code == scene_code),
+        (
+            (key, entry)
+            for key, entry in MODEL_SCENES.get(model, {}).items()
+            if scene_selector_code(model, entry) == scene_code
+        ),
         None,
     )
     if resolved is not None:
@@ -245,7 +287,11 @@ def resolve_scene_code(
 
 
 def scene_code_is_ambiguous(model: str, scene_code: int) -> bool:
-    exact_keys = {key for key, entry in OFFICIAL_MODEL_SCENES.get(model, {}).items() if entry.code == scene_code}
+    exact_keys = {
+        key
+        for key, entry in OFFICIAL_MODEL_SCENES.get(model, {}).items()
+        if scene_selector_code(model, entry) == scene_code
+    }
     legacy_model = MODEL_PROFILES[model].legacy_scene_catalogue_sku
     legacy_keys = {
         MODEL_SCENE_ALIASES.get(model, {}).get(key, key)

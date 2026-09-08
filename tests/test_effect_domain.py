@@ -647,6 +647,17 @@ def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
         compile_effect(workshop, "H6199")
 
 
+@pytest.mark.parametrize("model", ["H6076", "H6179"])
+def test_workshop_compatibility_rejects_models_without_a_workshop_grammar(model: str) -> None:
+    content = replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model=model)
+    item = LibraryItem.new("Workshop", content)
+
+    result = compatibility(item, model)
+
+    assert result.state is CompatibilityState.INCOMPATIBLE
+    assert result.reasons == (f"{model} Workshop application is not supported",)
+
+
 def test_editor_contract_reports_first_slice_boundaries() -> None:
     api = EditorApiInfo().to_dict()
     h617a = device_effect_capabilities("entry-a", "H617A", "Test Light", 15)

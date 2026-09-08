@@ -27,13 +27,15 @@ from .generated_protocol_adapter import (
     SceneType1Body,
     parse_a3_effect_envelope,
 )
+from .h6179_effect_codec import decode_h6179_effect
 from .layered_scene_decoder import decode_workshop_effect
-from .transport import reassemble_a3
+from .transport import reassemble_a3, reassemble_h6179_a1_02
 
 __all__ = [
     "UnsupportedA3EffectError",
     "decode_a3_effect",
     "decode_a3_effect_frames",
+    "decode_effect_frames",
 ]
 
 
@@ -48,6 +50,21 @@ def decode_a3_effect_frames(
     """Reassemble and decode locally generated A3 frames through Kaitai."""
     envelope = reassemble_a3(frames)
     return decode_a3_effect(parse_a3_effect_envelope(envelope, model), model)
+
+
+def decode_effect_frames(
+    frames: tuple[bytes, ...],
+    model: str,
+    transport: str,
+) -> EffectContent:
+    """Decode locally generated upload frames using their explicit transport."""
+    if transport == "a3":
+        return decode_a3_effect_frames(frames, model)
+    if transport == "h6179_a1_02":
+        if (protocol_model(model) or model) != "H6179":
+            raise ValueError(f"{model} cannot decode H6179 A1 02 effect frames")
+        return decode_h6179_effect(reassemble_h6179_a1_02(frames))
+    raise ValueError(f"unsupported effect upload transport {transport!r}")
 
 
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:

@@ -23,6 +23,11 @@ def _parse_colour(frame: str, model: str = "H617A") -> ParsedColorModeResponse:
     return parse_color_mode(decoded.generated, model)
 
 
+def _h6179_status(domain: int, body: bytes) -> bytes:
+    frame = bytes((0xAA, domain)) + body.ljust(17, b"\0")
+    return frame + bytes((xor_checksum(frame),))
+
+
 def test_status_envelope_rejects_invalid_frames() -> None:
     assert decode_status_frame(b"") is None
     assert decode_status_frame(H("3301010000000000000000000000000000000033")) is None
@@ -90,6 +95,24 @@ def test_h617e_scene_readback_uses_its_exact_catalogue() -> None:
     assert decoded is not None
     parsed = parse_color_mode(decoded.generated, "H617E")
     assert parsed.effect == name
+
+
+def test_h6179_status_uses_typed_domains_and_model_music_codes() -> None:
+    static = decode_status_frame(_h6179_status(0x05, bytes.fromhex("0d1234560000000000")), "H6179")
+    music = decode_status_frame(_h6179_status(0x05, bytes.fromhex("0e013201123456")), "H6179")
+    diy = decode_status_frame(_h6179_status(0x05, bytes.fromhex("0a3412")), "H6179")
+
+    assert static is not None and static.domain is StatusDomain.MODE
+    assert parse_color_mode(static.generated, "H6179").rgb_color == (0x12, 0x34, 0x56)
+    assert music is not None
+    parsed_music = parse_color_mode(music.generated, "H6179")
+    assert (parsed_music.mode, parsed_music.music_mode, parsed_music.music_sensitivity) == (
+        ParsedMode.MUSIC,
+        "mode_1",
+        50,
+    )
+    assert parsed_music.music_color == (0x12, 0x34, 0x56)
+    assert diy is not None and parse_color_mode(diy.generated, "H6179").diy_code == 0x1234
 
 
 def test_h6199_video_and_music_fields_decode() -> None:

@@ -81,9 +81,35 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert protocol_model("H6076") == "H6076"
 
 
+def test_h6179_profile_uses_exact_experimental_capabilities():
+    profile = MODEL_PROFILES["H6179"]
+
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.read_domains == {
+        ReadDomain.POWER,
+        ReadDomain.BRIGHTNESS,
+        ReadDomain.MODE,
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+    }
+    assert profile.setup_required_read_domains == {
+        ReadDomain.POWER,
+        ReadDomain.BRIGHTNESS,
+        ReadDomain.MODE,
+    }
+    assert profile.supports_rgb and profile.supports_color_temperature
+    assert profile.supports_scenes and profile.scene_catalogue_sku == "H6179"
+    assert profile.supports_custom_effects and profile.supports_multi_layered_effects
+    assert profile.music_modes == ("mode_0", "mode_1")
+    assert profile.selector_only_scene_bits == 8
+    assert wire_model("H6179") == protocol_model("H6179") == "H6179"
+
+
 def test_setup_required_domains_must_be_readable():
     with pytest.raises(ValueError, match="setup-required"):
         ModelProfile("x", setup_required_read_domains=frozenset({ReadDomain.POWER}))
+    with pytest.raises(ValueError, match="selector-only scene width"):
+        ModelProfile("x", selector_only_scene_bits=17)
 
 
 def test_unknown_models_fail_closed():

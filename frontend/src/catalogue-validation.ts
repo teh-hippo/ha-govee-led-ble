@@ -263,6 +263,7 @@ function decodeCatalogueTemplates(
       if (
         content.kind !== "h617a_painted" &&
         content.kind !== "h617a_single" &&
+        content.kind !== "h6179_single_diy" &&
         content.kind !== "palette_diy" &&
         content.kind !== "music_profile" &&
         content.kind !== "video_profile"

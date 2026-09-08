@@ -21,6 +21,7 @@ const device = (
   config_entry_id: id,
   light_entity_id: `light.${id}`,
   model: "H617A",
+  support_quality: "supported",
   display_name: id,
   segment_count: 15,
   custom_effects: {

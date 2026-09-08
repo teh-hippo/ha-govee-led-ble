@@ -130,6 +130,10 @@
         "effect_id": {
           "name": "Effect ID",
           "description": "Stable ID of the saved custom effect. Use either Effect or Effect ID."
+        },
+        "diy_code": {
+          "name": "Disposable DIY code",
+          "description": "Code of the currently selected disposable DIY item. Required for H6179 DIY effects."
         }
       }
     }

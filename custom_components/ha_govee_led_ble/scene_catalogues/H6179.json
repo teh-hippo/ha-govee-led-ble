@@ -1,0 +1,764 @@
+{
+  "schema_version": 1,
+  "sku": "H6179",
+  "categories": [
+    {
+      "id": 1,
+      "name": "Natural"
+    },
+    {
+      "id": 2,
+      "name": "Festival"
+    },
+    {
+      "id": 3,
+      "name": "Life"
+    },
+    {
+      "id": 4,
+      "name": "Emotion"
+    }
+  ],
+  "effects": [
+    {
+      "category_id": 1,
+      "scene_id": 49,
+      "effect_id": 46,
+      "name": "Sunrise",
+      "code": 0,
+      "scene_type": 0
+    },
+    {
+      "category_id": 1,
+      "scene_id": 50,
+      "effect_id": 47,
+      "name": "Sunset",
+      "code": 1,
+      "scene_type": 0
+    },
+    {
+      "category_id": 1,
+      "scene_id": 51,
+      "effect_id": 48,
+      "name": "Dusk",
+      "code": 123,
+      "scene_type": 1,
+      "param": "gwH/yP8oAAL/AAD/fwA="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 52,
+      "effect_id": 49,
+      "name": "Sunset Glow",
+      "code": 124,
+      "scene_type": 1,
+      "param": "gwH/yP8oAAP/MmT/AAD/lgA="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 53,
+      "effect_id": 50,
+      "name": "Star",
+      "code": 101,
+      "scene_type": 1,
+      "param": "gwf/5jIFAP/htBkA/9cKFAD/5v8CAP/wyA8A/+v/GQD/5hQFAAP//5b//////8g="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 54,
+      "effect_id": 51,
+      "name": "Lightning",
+      "code": 103,
+      "scene_type": 1,
+      "param": "kwj///8EAP//////AAQA////////BAD//////wAEAP///////wQA//////8ABAD/////6/8FAP//////ACgA////"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 55,
+      "effect_id": 52,
+      "name": "Starry Sky",
+      "code": 106,
+      "scene_type": 1,
+      "param": "gwP/3DwBAP/c/wEA/9w8AQAEAEbIAP/IFFDwZMj/"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 56,
+      "effect_id": 53,
+      "name": "Universe",
+      "code": 116,
+      "scene_type": 1,
+      "param": "kwT/4SgBAAAA///c/zIASwD//+EoAQAAAP//3P8BAP///w=="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 57,
+      "effect_id": 54,
+      "name": "Aurora",
+      "code": 104,
+      "scene_type": 1,
+      "param": "gwH/lv8oAAQy/zIA//8AZP+Wlv8="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 58,
+      "effect_id": 55,
+      "name": "Rainbow",
+      "code": 117,
+      "scene_type": 1,
+      "param": "gwH/5v8PAAf/AAD/fwD//wAA/wAAAP8A//+LAP8="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 59,
+      "effect_id": 56,
+      "name": "Sky",
+      "code": 118,
+      "scene_type": 1,
+      "param": "kwL/5igBAP/////p/wEAAJb/"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 60,
+      "effect_id": 57,
+      "name": "Fire",
+      "code": 105,
+      "scene_type": 1,
+      "param": "kwj/1woyAP8KAP/x3AEA/zIA/+FQCgDIMgD/8dwyAP8yAP/mUAoAyDIA/+r/MgD/CgD/4VABAMhLAP/X3DIA/zIA"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 61,
+      "effect_id": 58,
+      "name": "Forest",
+      "code": 100,
+      "scene_type": 1,
+      "param": "gwb/4zIFAP/kuggA/9UpBgD/5+cKAP/z/wUA/+3/CAADAP8Arv8A//8A"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 62,
+      "effect_id": 59,
+      "name": "Wave",
+      "code": 157,
+      "scene_type": 1,
+      "param": "kwb///8yAACW///xZAEAGZb//+P/RgAADP//7f8UABnIyP/r/0YAAAD//8iWHgAZlv8="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 63,
+      "effect_id": 60,
+      "name": "River",
+      "code": 121,
+      "scene_type": 1,
+      "param": "kwL/8CgUAAAA///I/xQAAP/I"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 64,
+      "effect_id": 61,
+      "name": "Grassland",
+      "code": 119,
+      "scene_type": 1,
+      "param": "gwH/0v8oAAIA/wAA/8g="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 65,
+      "effect_id": 62,
+      "name": "Clear lake",
+      "code": 120,
+      "scene_type": 1,
+      "param": "kwL/8CgUAAD/AP/I/xQAAP/I"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 66,
+      "effect_id": 63,
+      "name": "Desert",
+      "code": 122,
+      "scene_type": 1,
+      "param": "gwH/0v8oAAL/yAD/fwA="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 67,
+      "effect_id": 64,
+      "name": "Spring",
+      "code": 125,
+      "scene_type": 1,
+      "param": "gwL/yP8oAP/IKCgAAgD/FAD/yA=="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 68,
+      "effect_id": 65,
+      "name": "Summer",
+      "code": 126,
+      "scene_type": 1,
+      "param": "gwL/yP8oAP/IKCgAAv//ZP+CFA=="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 69,
+      "effect_id": 66,
+      "name": "Winter",
+      "code": 127,
+      "scene_type": 1,
+      "param": "gwL/yP8oAP/IKCgAAgD//wAy/w=="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 70,
+      "effect_id": 67,
+      "name": "Fall",
+      "code": 128,
+      "scene_type": 1,
+      "param": "gwL/yP8oAP/IKCgAAv8UAMjIAA=="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 234,
+      "effect_id": 214,
+      "name": "Karst Cave",
+      "code": 1019,
+      "scene_type": 1,
+      "param": "lQj/8B4UAAAA/wAA//D/CgAA//8AAP///woAAAD//////x8KAAAA//////8eCgCLAP//////HgoA/38A/////x4KAAD/AP////8eCgD//wD//w=="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 235,
+      "effect_id": 215,
+      "name": "Glacier",
+      "code": 1050,
+      "scene_type": 1,
+      "param": "lQP/8GQeAAAA/wAA//D/CgAAX/8AAP/wMh4A////AAA="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 236,
+      "effect_id": 216,
+      "name": "Canyon",
+      "code": 1051,
+      "scene_type": 1,
+      "param": "lQT/8B4eAP8AAAAA//D/BQD/AAAAAP/wHh4A/wAAAAD/8P8FAP8HAAAA"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 237,
+      "effect_id": 217,
+      "name": "Moonlight",
+      "code": 1052,
+      "scene_type": 1,
+      "param": "kwL/8JYyAAAytP/wFBQAAF3/"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 238,
+      "effect_id": 218,
+      "name": "Cornfield",
+      "code": 1053,
+      "scene_type": 1,
+      "param": "EwP/8P8yAP8PAP/wHgoA/w8A////MgD/DwA="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 239,
+      "effect_id": 219,
+      "name": "Flower Field",
+      "code": 1054,
+      "scene_type": 1,
+      "param": "gwH/8P8KAAb/HgD/fwD//wAA/wAA//+LAP8="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 240,
+      "effect_id": 220,
+      "name": "Solar Halo",
+      "code": 1055,
+      "scene_type": 1,
+      "param": "lQT///8UAP///wAA/+soMgD///8AAP/6/xQA/0MA/////y4FAP8rAP//"
+    },
+    {
+      "category_id": 1,
+      "scene_id": 241,
+      "effect_id": 221,
+      "name": "Solar flare",
+      "code": 1056,
+      "scene_type": 1,
+      "param": "kwn///8KAP8AAP/wKDwA/wAA//X/AgD/AAD//zICAP8AAP/1/wIA/wAA//8yAgD/AAD/9f8CAP8AAP//MgIA/wAA//X/AgD/AAA="
+    },
+    {
+      "category_id": 1,
+      "scene_id": 1670,
+      "effect_id": 1763,
+      "name": "Downpour",
+      "code": 1215,
+      "scene_type": 1,
+      "param": "kwv/1v8KAP//////LwEAl5f///8iAQCXl////xgBAJeX/////xQA////////FAD///////8UAP///////xQA//////8bFACXl////wgUAJeX////HBQAl5f/"
+    },
+    {
+      "category_id": 2,
+      "scene_id": 71,
+      "effect_id": 68,
+      "name": "Party",
+      "code": 151,
+      "scene_type": 1,
+      "param": "gwL/+igUAP/6/xQAB/8AAP9/AP//AAD/AAAA/wD//4sA/w=="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 72,
+      "effect_id": 69,
+      "name": "Candlelight",
+      "code": 9,
+      "scene_type": 0
+    },
+    {
+      "category_id": 2,
+      "scene_id": 73,
+      "effect_id": 70,
+      "name": "Christmas",
+      "code": 109,
+      "scene_type": 1,
+      "param": "kwr///8yAP8AAP///zIAAP8A////MgD/AAD///8yAAD/AP///zIA//8A////GQD/AAD///8ZAAD/AP///xkA/wAA////GQAA/wD///8ZAP//AA=="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 74,
+      "effect_id": 71,
+      "name": "Halloween",
+      "code": 110,
+      "scene_type": 1,
+      "param": "gwf/9QABAP///xQA//8AAQD///8UAP//AAEA////FAD//wABAAL/HgD/WgA="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 75,
+      "effect_id": 72,
+      "name": "Ghost",
+      "code": 164,
+      "scene_type": 1,
+      "param": "kwb/+v/IAP8AAP/6/xQA//////r/ZAD/AAD/+v8BAP/////6/wEA/wAA//r/AQD///8="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 76,
+      "effect_id": 73,
+      "name": "Valentine's Day",
+      "code": 153,
+      "scene_type": 1,
+      "param": "gwL/1ygKAP/I/ygAAf8yMg=="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 77,
+      "effect_id": 74,
+      "name": "Mother's Day",
+      "code": 154,
+      "scene_type": 1,
+      "param": "gwL/1ygKAP/I/xQAAf8yyA=="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 78,
+      "effect_id": 75,
+      "name": "Father's Day",
+      "code": 155,
+      "scene_type": 1,
+      "param": "gwL/1ygKAP/I/ygAAQBk/w=="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 79,
+      "effect_id": 76,
+      "name": "Thanksgiving",
+      "code": 156,
+      "scene_type": 1,
+      "param": "gwL/1ygKAP/I/ygAAf9kAA=="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 80,
+      "effect_id": 77,
+      "name": "Dance Party",
+      "code": 158,
+      "scene_type": 1,
+      "param": "gwH///8oAAWLAP//AAAA//8AAP8A/wA="
+    },
+    {
+      "category_id": 2,
+      "scene_id": 81,
+      "effect_id": 78,
+      "name": "Disco",
+      "code": 132,
+      "scene_type": 1,
+      "param": "gwL/9v8CAP/2AAIABYsA//8AAAD//wAA/wD/AA=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 82,
+      "effect_id": 79,
+      "name": "Sweet",
+      "code": 107,
+      "scene_type": 1,
+      "param": "gwH/tP8yAATwAB7qACu8AP/jAP8="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 83,
+      "effect_id": 80,
+      "name": "Dating",
+      "code": 5,
+      "scene_type": 0
+    },
+    {
+      "category_id": 3,
+      "scene_id": 84,
+      "effect_id": 81,
+      "name": "Romantic",
+      "code": 7,
+      "scene_type": 0
+    },
+    {
+      "category_id": 3,
+      "scene_id": 85,
+      "effect_id": 82,
+      "name": "Twinkle",
+      "code": 8,
+      "scene_type": 0
+    },
+    {
+      "category_id": 3,
+      "scene_id": 86,
+      "effect_id": 83,
+      "name": "Siren",
+      "code": 108,
+      "scene_type": 1,
+      "param": "gwf/9wAAAP/3/wAA//cAAAD/9/8AAP/3AAAA//f/AAD/9wAAAAL/AAAAAP8="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 87,
+      "effect_id": 84,
+      "name": "Fight",
+      "code": 133,
+      "scene_type": 1,
+      "param": "kwb/9QACAP8AAP/1/wIA/wAA//UAAgD/AAD/9f8CAP8AAP/1AAIA/wAA//D/CgAAAP8="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 88,
+      "effect_id": 85,
+      "name": "Sports",
+      "code": 129,
+      "scene_type": 1,
+      "param": "gwj/9f8CAP/1AAIA//X/AgD/9QACAP/1/wIA//UAAgD/9f8CAP/1AAIAAwAA/wD/AP8AAA=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 89,
+      "effect_id": 86,
+      "name": "Game",
+      "code": 130,
+      "scene_type": 1,
+      "param": "gwL/8CgKAP/w/xQAAzIy//8AAJYA/w=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 90,
+      "effect_id": 87,
+      "name": "Movie",
+      "code": 4,
+      "scene_type": 0
+    },
+    {
+      "category_id": 3,
+      "scene_id": 91,
+      "effect_id": 88,
+      "name": "Study",
+      "code": 137,
+      "scene_type": 1,
+      "param": "gwL/0v8oAP/SPCgAAf///w=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 92,
+      "effect_id": 89,
+      "name": "Business",
+      "code": 138,
+      "scene_type": 1,
+      "param": "gwL/0v8oAP/SPCgAAf+MFA=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 93,
+      "effect_id": 90,
+      "name": "Work",
+      "code": 159,
+      "scene_type": 1,
+      "param": "gwH/AP8AAAH///8="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 94,
+      "effect_id": 91,
+      "name": "Reading",
+      "code": 160,
+      "scene_type": 1,
+      "param": "gwH/AP8AAAH/lmQ="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 95,
+      "effect_id": 92,
+      "name": "Afternoon",
+      "code": 134,
+      "scene_type": 1,
+      "param": "gwL/1ygKAP/I/xQAAf+WMg=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 96,
+      "effect_id": 93,
+      "name": "Morning",
+      "code": 135,
+      "scene_type": 1,
+      "param": "gwb/1ygKAP/r/wEA/+soAQD/6/8BAP/SKAEA/9f/FAABAP9k"
+    },
+    {
+      "category_id": 3,
+      "scene_id": 97,
+      "effect_id": 94,
+      "name": "Night",
+      "code": 136,
+      "scene_type": 1,
+      "param": "gwL/1ygKAP/I/xQAATIA/w=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 98,
+      "effect_id": 95,
+      "name": "Sleep",
+      "code": 161,
+      "scene_type": 1,
+      "param": "AwH/AAoAAAH/jDI="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 99,
+      "effect_id": 96,
+      "name": "Night Light",
+      "code": 162,
+      "scene_type": 1,
+      "param": "AwH/ACgAAAH/jBQ="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 242,
+      "effect_id": 222,
+      "name": "Leisure",
+      "code": 1057,
+      "scene_type": 1,
+      "variant": "A",
+      "param": "gwL/8CgUAP/r/xQAAv8PAP8eAA=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 242,
+      "effect_id": 404,
+      "name": "Leisure",
+      "code": 1065,
+      "scene_type": 1,
+      "variant": "B",
+      "param": "EwP/8P8eAAD/AP/wMh4AAMP///D/HgBQ//8="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 243,
+      "effect_id": 223,
+      "name": "Meditation",
+      "code": 1058,
+      "scene_type": 1,
+      "param": "gwL/6/8yAP/rMjIAAQAA/w=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 244,
+      "effect_id": 224,
+      "name": "Care",
+      "code": 1059,
+      "scene_type": 1,
+      "param": "kwP/8B4UAP8AAP/w/woA/wAF//AeCgD/AAo="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 245,
+      "effect_id": 225,
+      "name": "Sweet",
+      "code": 1060,
+      "scene_type": 1,
+      "param": "kwP/8B4eAP8ACv/w/x4A/wAU//BkHgD/AB4="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 246,
+      "effect_id": 226,
+      "name": "Fantasy",
+      "code": 1061,
+      "scene_type": 1,
+      "param": "kwP/8B4eAAAA///w/x4AAJT///BkHgAA//8="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 248,
+      "effect_id": 228,
+      "name": "Tension",
+      "code": 1063,
+      "scene_type": 1,
+      "param": "kwf///8GAP8AAP//AAYA/wAA////BgD/AAD//wAGAP8AAP///wYA/wAA//8ABgD/AAD///8yAP8AAA=="
+    },
+    {
+      "category_id": 3,
+      "scene_id": 249,
+      "effect_id": 229,
+      "name": "Flash",
+      "code": 1064,
+      "scene_type": 1,
+      "param": "gwL//wAoAP///woAB///AAD/AAAA/wD//4sA//8AAP9/AA=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 100,
+      "effect_id": 97,
+      "name": "Breathe",
+      "code": 10,
+      "scene_type": 0
+    },
+    {
+      "category_id": 4,
+      "scene_id": 101,
+      "effect_id": 98,
+      "name": "Energetic",
+      "code": 16,
+      "scene_type": 0
+    },
+    {
+      "category_id": 4,
+      "scene_id": 102,
+      "effect_id": 99,
+      "name": "Happy",
+      "code": 140,
+      "scene_type": 1,
+      "param": "gwL/7SgUAP/t/xQAAf8ZMg=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 103,
+      "effect_id": 100,
+      "name": "Enthusiastic",
+      "code": 142,
+      "scene_type": 1,
+      "param": "gwL/9CgUAP/0/xQAAv8AAKgAsQ=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 104,
+      "effect_id": 101,
+      "name": "Excited",
+      "code": 150,
+      "scene_type": 1,
+      "param": "gwP/9QABAP/0/xQA//oAAQAD/wAA//8AAP8A"
+    },
+    {
+      "category_id": 4,
+      "scene_id": 105,
+      "effect_id": 102,
+      "name": "Active",
+      "code": 145,
+      "scene_type": 1,
+      "param": "gwL/7SgKAP/t/woAAgD/AAD//w=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 106,
+      "effect_id": 103,
+      "name": "Warm",
+      "code": 143,
+      "scene_type": 1,
+      "param": "gwL/yCgoAP/I/ygAAf8yAA=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 107,
+      "effect_id": 104,
+      "name": "Quiet",
+      "code": 139,
+      "scene_type": 1,
+      "param": "gwL/yCgoAP/I/ygAAQD/AA=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 108,
+      "effect_id": 105,
+      "name": "Profound",
+      "code": 163,
+      "scene_type": 1,
+      "param": "gwL/yCgoAP/I/ygAAQAA/w=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 109,
+      "effect_id": 106,
+      "name": "Longing",
+      "code": 146,
+      "scene_type": 1,
+      "param": "gwL/tP9kAP+0KGQAAosA/wAA/w=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 110,
+      "effect_id": 107,
+      "name": "Dreamland",
+      "code": 147,
+      "scene_type": 1,
+      "param": "gwH/tP9kAAMA//8AAP+LAP8="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 111,
+      "effect_id": 108,
+      "name": "Relax",
+      "code": 148,
+      "scene_type": 1,
+      "param": "gwL/yCgoAP/I/ygAAQD//w=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 112,
+      "effect_id": 109,
+      "name": "Retro",
+      "code": 149,
+      "scene_type": 1,
+      "param": "gwL/yCgoAP/I/ygAAf//Mg=="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 1671,
+      "effect_id": 1764,
+      "name": "Crazy",
+      "code": 1216,
+      "scene_type": 1,
+      "param": "kwP/6sIUAP8AF/+AdxQAAP8H/+MiFAAYAP8="
+    },
+    {
+      "category_id": 4,
+      "scene_id": 1672,
+      "effect_id": 1778,
+      "name": "Heartbeat",
+      "code": 1217,
+      "scene_type": 1,
+      "param": "kwT///8KAP8IDf///woA/xVh////CgD/CA3///8KAP8VYQ=="
+    }
+  ]
+}
