@@ -236,6 +236,7 @@ class VideoProfile:
     white_balance_position: int
     relative_brightness: RelativeBrightness
     blank_screen: bool
+    black_border: bool = False
 
     def __post_init__(self) -> None:
         _validate_identifier(self.model, "model")
@@ -246,10 +247,11 @@ class VideoProfile:
         _validate_percent(self.saturation, "saturation")
         _validate_bool(self.sound_effects, "sound_effects")
         _validate_range(self.sound_effects_softness, "sound_effects_softness", minimum=1, maximum=100)
-        _validate_range(self.white_balance_position, "white_balance_position", minimum=1, maximum=20)
+        _validate_range(self.white_balance_position, "white_balance_position", minimum=1, maximum=100)
         if not isinstance(self.relative_brightness, RelativeBrightness):
             raise EffectValidationError("relative_brightness must be a relative-brightness mapping")
         _validate_bool(self.blank_screen, "blank_screen")
+        _validate_bool(self.black_border, "black_border")
 
 
 @dataclass(frozen=True, slots=True)
@@ -631,6 +633,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "white_balance_position": content.white_balance_position,
             "relative_brightness": _relative_brightness_to_dict(content.relative_brightness),
             "blank_screen": content.blank_screen,
+            "black_border": content.black_border,
         }
     if isinstance(content, MultiEffect):
         return {
@@ -724,6 +727,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             white_balance_position=_required_int(raw, "white_balance_position"),
             relative_brightness=_relative_brightness_from_dict(_required_mapping(raw, "relative_brightness")),
             blank_screen=_required_bool(raw, "blank_screen"),
+            black_border=_required_bool(raw, "black_border") if "black_border" in raw else False,
         )
     if kind == "h617a_multi":
         return MultiEffect(

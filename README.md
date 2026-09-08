@@ -15,6 +15,7 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio |
 | **H617E** | Compatible | H617A-compatible controls, effects and music modes with its exact 240-scene catalogue and retained legacy scene-name compatibility; exact-model protocol documentation remains incomplete |
 | **H6076** | Partial | Power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable |
+| **H6099** | Experimental | Power, brightness, RGB, colour temperature, 14 segments, 240 scenes, 11 music modes, video controls, advanced effects and Effect Studio; awaiting owner qualification |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded and evidence-backed Kaitai coverage for every enabled wire path.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, speculative-schema, prerelease and promotion process.
 

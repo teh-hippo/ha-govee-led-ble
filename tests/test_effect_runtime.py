@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -195,11 +196,11 @@ def test_scene_activation_rejects_ambiguous_code_with_a_different_label() -> Non
     assert _activation_matches(coordinator, record)
 
 
-def _video_item() -> LibraryItem:
+def _video_item(model: str = "H6199") -> LibraryItem:
     return LibraryItem.new(
         "Movie",
         VideoProfile(
-            "H6199",
+            model,
             "movie",
             False,
             63,
@@ -208,6 +209,7 @@ def _video_item() -> LibraryItem:
             10,
             RelativeBrightness(20, 30, 40, 50),
             True,
+            black_border=get_profile(model).supports_black_border,
         ),
     )
 
@@ -259,20 +261,14 @@ def _coordinator(*, readable: bool = True):
 def _profile_coordinator(model: str):
     coordinator = _coordinator()
     coordinator.model = model
-    coordinator.profile = SimpleNamespace(
-        state_readable=True,
-        supports_video_mode=model == "H6199",
-        supports_video_sound_effects=model == "H6199",
-        supports_white_balance=model == "H6199",
-        supports_relative_brightness=model == "H6199",
-        supports_blank_screen=model == "H6199",
-    )
+    coordinator.profile = get_profile(model)
     coordinator.video_full_screen = True
     coordinator.video_saturation = 88
     coordinator.video_sound_effects = False
     coordinator.video_sound_effects_softness = 50
     coordinator.white_balance_red = 16
     coordinator.white_balance_blue = 3
+    coordinator.white_balance_position = 50
     coordinator.relative_brightness = 75
     coordinator.relative_brightness_left = 75
     coordinator.relative_brightness_top = 75
@@ -282,6 +278,7 @@ def _profile_coordinator(model: str):
     coordinator.blank_screen_detection = 2
     coordinator.blank_screen_low_brightness_duration_seconds = 10
     coordinator.blank_screen_same_tone_duration_seconds = 120
+    coordinator.black_border = False
     coordinator.music_separation_point = 1
     coordinator.music_separation_gradient = True
     coordinator.music_hopping_brightness = 50
@@ -1672,12 +1669,14 @@ async def test_music_profile_retries_the_complete_writer_before_confirmation(
     assert events == ["install", "select", "parameters", "install", "select", "parameters"]
 
 
-async def test_h6199_video_profile_uses_native_writers_in_profile_order(
+@pytest.mark.parametrize("model", ["H6099", "H6199"])
+async def test_video_profile_uses_native_writers_in_profile_order(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
+    model: str,
 ) -> None:
     repository, cache = await _repositories(hass)
-    coordinator = _profile_coordinator("H6199")
+    coordinator = _profile_coordinator(model)
     events: list[str] = []
     monkeypatch.setattr(
         "custom_components.ha_govee_led_ble.effect_runtime.apply_active_video_mode",
@@ -1695,19 +1694,26 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
         "custom_components.ha_govee_led_ble.effect_runtime.apply_blank_screen",
         AsyncMock(side_effect=lambda _coordinator: events.append("blank_screen")),
     )
+    monkeypatch.setattr(
+        "custom_components.ha_govee_led_ble.effect_runtime.apply_black_border",
+        AsyncMock(side_effect=lambda _coordinator: events.append("black_border")),
+    )
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
-        _video_item(),
+        _video_item(model),
         config_entry_id="entry-a",
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert events == ["video", "white_balance", "relative_brightness", "blank_screen"]
+    expected_events = ["video", "white_balance", "relative_brightness", "blank_screen"]
+    if coordinator.profile.supports_black_border:
+        expected_events.append("black_border")
+    assert events == expected_events
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.content_kind == "video_profile"
     assert result.diy_code is None
-    assert result.progress_current == result.progress_total == 4
+    assert result.progress_current == result.progress_total == len(expected_events)
     assert result.verification_confidence is ObservationConfidence.SETTINGS_MATCH
     assert result.prior_state is not None
     assert result.prior_state.relative_brightness_left == 75

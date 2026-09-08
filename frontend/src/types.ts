@@ -187,6 +187,7 @@ export interface VideoProfileContent {
   white_balance_position: number;
   relative_brightness: RelativeBrightness;
   blank_screen: boolean;
+  black_border?: boolean;
 }
 
 export type BrightnessOrder = 0 | 1 | 2 | 3;
@@ -331,6 +332,7 @@ export interface ModelEffectCatalogue {
     multi: CapabilityState;
     advanced: CapabilityState;
     workshop: CapabilityState;
+    black_border?: boolean;
   };
   limits: {
     palette_min: number;
@@ -338,6 +340,8 @@ export interface ModelEffectCatalogue {
     multi_max: number;
     music_sensitivity_min: number;
     music_sensitivity_max: number;
+    video_white_balance_min?: number;
+    video_white_balance_max?: number;
   };
   apply: {
     painted: CapabilityState;

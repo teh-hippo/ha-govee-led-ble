@@ -26,14 +26,20 @@ from .effect_catalogue import (
 )
 from .effect_commands import (
     DiyPaintGroup,
+    build_camera_palette_diy_activation,
     build_h617a_diy_activation,
     build_h617a_diy_multi,
     build_h617a_diy_painted,
     build_h617a_diy_single,
     build_h6199_palette_diy,
-    build_h6199_palette_diy_activation,
 )
-from .effect_contracts import EFFECT_COMPILER_VERSION
+from .effect_contracts import (
+    EFFECT_COMPILER_VERSION,
+    CapabilityState,
+    CapabilityWorkflow,
+    studio_apply_capability_state,
+    workflow_capability_state,
+)
 from .effect_domain import (
     BuiltinScene,
     LayeredEffect,
@@ -52,8 +58,8 @@ from .effect_domain import (
 from .generated_protocol_adapter import (
     H6199EffectUpload,
     SceneBody,
+    build_camera_scene,
     build_h617a_scene,
-    build_h6199_scene,
 )
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
@@ -137,6 +143,7 @@ class CompiledVideoProfile:
     white_balance_position: int
     relative_brightness: tuple[int, int, int, int]
     blank_screen: bool
+    black_border: bool
     artifact_sha256: str
     compiler_version: int = EFFECT_COMPILER_VERSION
     content_kind: str = "video_profile"
@@ -168,10 +175,24 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, VideoProfile):
-        if model != "H6199" or content.model != model:
+        profile = MODEL_PROFILES.get(model)
+        if profile is None or not profile.supports_video_mode or content.model != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"{model} video-profile application is not supported",),
+            )
+        if not profile.video_white_balance_min <= content.white_balance_position <= profile.video_white_balance_max:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (
+                    f"{model} white-balance position must be from "
+                    f"{profile.video_white_balance_min} to {profile.video_white_balance_max}",
+                ),
+            )
+        if content.black_border and not profile.supports_black_border:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} black-border removal is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, WorkshopEffect):
@@ -179,6 +200,16 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"Workshop effect targets {content.model}, not {model}",),
+            )
+        if workflow_capability_state(model, CapabilityWorkflow.WORKSHOP) is CapabilityState.EVIDENCE_GAP:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} Workshop activation is not documented",),
+            )
+        if studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP) is not CapabilityState.SUPPORTED:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} Workshop application is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
@@ -203,21 +234,21 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, PaletteDiyEffect):
-        if model != "H6199":
-            return CompatibilityResult(
-                CompatibilityState.INCOMPATIBLE,
-                (f"H6199 palette DIY definitions are not supported on {model}",),
-            )
         if content.model != model:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"palette DIY targets {content.model}, not {model}",),
             )
+        if studio_apply_capability_state(model, CapabilityWorkflow.PALETTE_DIY) is not CapabilityState.SUPPORTED:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"palette DIY definitions are not supported on {model}",),
+            )
         supported = {(effect.family, effect.variant) for effect in H6199_DIY_EFFECTS}
         if (content.family, content.variant) not in supported:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
-                (f"H6199 palette DIY family {content.family} variation {content.variant} is not supported",),
+                (f"{model} palette DIY family {content.family} variation {content.variant} is not supported",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect):
@@ -270,6 +301,7 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
         return compile_h6199(
             item,
             H6199_PALETTE_DIY_APPLY_CODE if diy_code is None else diy_code,
+            model=model,
         )
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene | LayeredEffect):
         return compile_scene_effect(item, model)
@@ -300,7 +332,7 @@ def _compile_workshop_effect(
 
     if model == "H6199":
         diy_code = H6199_WORKSHOP_APPLY_CODE
-        activation = build_h6199_scene(diy_code, H6199_WORKSHOP_APPLY_MUSIC_CODE)
+        activation = build_camera_scene(model, diy_code, H6199_WORKSHOP_APPLY_MUSIC_CODE)
     else:
         diy_code = H617A_WORKSHOP_APPLY_CODE
         activation = build_h617a_scene(diy_code, scene_type=H617A_WORKSHOP_SCENE_TYPE)
@@ -465,23 +497,26 @@ def _paint_groups(segments: tuple[tuple[int, int, int] | None, ...]) -> tuple[Di
 def compile_h6199(
     item: LibraryItem,
     diy_code: int = H6199_PALETTE_DIY_APPLY_CODE,
+    *,
+    model: str = "H6199",
 ) -> CompiledEffect:
-    result = compatibility(item, "H6199")
+    result = compatibility(item, model)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
     if diy_code != H6199_PALETTE_DIY_APPLY_CODE:
-        raise ValueError(f"H6199 DIY activation is only evidenced for slot {H6199_PALETTE_DIY_APPLY_CODE}")
+        raise ValueError(f"{model} DIY activation is only modelled for slot {H6199_PALETTE_DIY_APPLY_CODE}")
 
     content = item.content
     if not isinstance(content, PaletteDiyEffect):
-        raise ValueError("unsupported H6199 DIY content")
+        raise ValueError(f"unsupported {model} DIY content")
     upload = build_h6199_palette_diy(
         content.family,
         content.variant,
         content.speed,
         content.palette,
     )
-    activation = build_h6199_palette_diy_activation(
+    activation = build_camera_palette_diy_activation(
+        model,
         H6199_PALETTE_DIY_APPLY_CODE,
         H6199_PALETTE_DIY_APPLY_MUSIC_CODE,
     )
@@ -489,7 +524,7 @@ def compile_h6199(
     return CompiledEffect(
         item_id=str(item.id),
         item_version=item.version,
-        model="H6199",
+        model=model,
         content_kind="palette_diy",
         diy_code=H6199_PALETTE_DIY_APPLY_CODE,
         activation_mode=ActivationMode.CUSTOM,
@@ -547,9 +582,9 @@ def _apply_speed(payload: bytes, entry: SceneEntry, speed_index: int | None) -> 
 
 
 def _scene_activation(model: str, entry: SceneEntry) -> bytes:
-    if model == "H6199":
-        return build_h6199_scene(entry.code, entry.music_code)
-    return build_h617a_scene(entry.code)
+    if protocol_model(model) == "H617A":
+        return build_h617a_scene(entry.code)
+    return build_camera_scene(model, entry.code, entry.music_code)
 
 
 def compile_application(item: LibraryItem, model: str, *, diy_code: int | None = None) -> CompiledApplication:
@@ -622,6 +657,7 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
         "white_balance_position": content.white_balance_position,
         "relative_brightness": relative_brightness,
         "blank_screen": content.blank_screen,
+        "black_border": content.black_border,
     }
     return CompiledVideoProfile(
         item_id=str(item.id),
@@ -635,7 +671,9 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
         white_balance_position=content.white_balance_position,
         relative_brightness=relative_brightness,
         blank_screen=content.blank_screen,
+        black_border=content.black_border,
         artifact_sha256=_semantic_digest(payload),
+        progress_total=5 if MODEL_PROFILES[model].supports_black_border else 4,
     )
 
 

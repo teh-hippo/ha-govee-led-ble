@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from .generated_protocol_adapter import (
     DIY_PAINTED_EFFECTS,
+    build_camera_scene,
     build_h617a_diy_multi_body,
     build_h617a_diy_painted_body,
     build_h617a_diy_single_body,
@@ -108,6 +109,10 @@ def build_h6199_palette_diy_activation(scene_code: int, music_code: int) -> byte
     if not isinstance(music_code, int) or not 0 <= music_code <= 0xFFFF:
         raise ValueError("music code must be an integer from 0 to 65535")
     return build_h6199_scene(scene_code, music_code)
+
+
+def build_camera_palette_diy_activation(model: str, scene_code: int, music_code: int) -> bytes:
+    return build_camera_scene(model, scene_code, music_code)
 
 
 def build_h617a_diy_single(

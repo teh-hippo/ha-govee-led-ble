@@ -80,6 +80,15 @@ export class GoveeVideoProfileEditor extends LitElement {
   @property({ type: Boolean })
   public disabled = false;
 
+  @property({ type: Number })
+  public whiteBalanceMinimum = 1;
+
+  @property({ type: Number })
+  public whiteBalanceMaximum = 20;
+
+  @property({ type: Boolean })
+  public supportsBlackBorder = false;
+
   private interaction: LivePreviewInteraction = "committed";
 
   protected render() {
@@ -166,6 +175,16 @@ export class GoveeVideoProfileEditor extends LitElement {
                   content.blank_screen = checked;
                 }),
             )}
+            ${this.supportsBlackBorder
+              ? this.renderCheckboxField(
+                  "Remove black bars",
+                  this.content.black_border ?? false,
+                  (checked) =>
+                    this.updateContent((content) => {
+                      content.black_border = checked;
+                    }),
+                )
+              : nothing}
           </div>
         </section>
 
@@ -182,7 +201,11 @@ export class GoveeVideoProfileEditor extends LitElement {
                   content.saturation = clampInteger(value, 0, 100);
                 }),
             )}
-            ${this.renderWhiteBalanceField(this.content.white_balance_position)}
+            ${this.renderWhiteBalanceField(
+              this.content.white_balance_position,
+              this.whiteBalanceMinimum,
+              this.whiteBalanceMaximum,
+            )}
           </div>
         </section>
 
@@ -293,16 +316,20 @@ export class GoveeVideoProfileEditor extends LitElement {
     `;
   }
 
-  private renderWhiteBalanceField(value: number) {
+  private renderWhiteBalanceField(
+    value: number,
+    minimum: number,
+    maximum: number,
+  ) {
     return html`
       <label class="range-field white-balance-field">
         <span class="parameter-label">White balance</span>
         <div class="slider-with-endpoints">
           <input
             type="range"
-            min="1"
-            max="20"
-            .value=${String(clampInteger(value, 1, 20))}
+            min=${String(minimum)}
+            max=${String(maximum)}
+            .value=${String(clampInteger(value, minimum, maximum))}
             aria-label="White balance"
             ?disabled=${this.disabled}
             @input=${(event: Event) =>
@@ -310,8 +337,8 @@ export class GoveeVideoProfileEditor extends LitElement {
                 (content) => {
                   content.white_balance_position = clampInteger(
                     Number((event.target as HTMLInputElement).value),
-                    1,
-                    20,
+                    minimum,
+                    maximum,
                   );
                 },
                 "changing",
