@@ -677,12 +677,22 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._segment_query_brightness = None
 
     def _apply_segment_group(self, generated: Any) -> tuple[str, ...]:
-        group = int(generated.body.group)
-        records = generated.body.segments
+        group = getattr(generated.body, "group", None)
+        records = getattr(generated.body, "segments", None)
+        count = getattr(generated.body, "num_segments", None)
         group_size = self.profile.segment_group_size
+        if type(group) is not int or not 1 <= group <= self._segment_group_count:
+            raise ValueError("invalid segment group for model")
         offset = (group - 1) * group_size
-        if offset < 0 or offset + len(records) > self.profile.segment_count:
-            raise ValueError("segment group exceeds model segment count")
+        expected_count = min(group_size, self.profile.segment_count - offset)
+        if type(count) is not int or count != expected_count or not isinstance(records, list) or len(records) != count:
+            raise ValueError("segment record count does not match model page")
+        # Convert the entire page before touching an in-progress observation.
+        try:
+            page_colours = [(int(r.colour.red), int(r.colour.green), int(r.colour.blue)) for r in records]
+            page_brightness = [int(r.brightness) for r in records]
+        except (AttributeError, TypeError, ValueError) as err:
+            raise ValueError("malformed segment record") from err
         colours = self._segment_query_colors
         brightness = self._segment_query_brightness
         if colours is None or brightness is None:
@@ -690,14 +700,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             brightness = list(self.segment_brightness)
             self._segment_query_colors = colours
             self._segment_query_brightness = brightness
-        for index, record in enumerate(records, start=offset):
-            level = int(record.brightness_percent) if self.model == "H6199" else int(record.brightness)
-            colours[index] = (
-                int(record.colour.red),
-                int(record.colour.green),
-                int(record.colour.blue),
-            )
-            brightness[index] = level
+        colours[offset : offset + count] = page_colours
+        brightness[offset : offset + count] = page_brightness
         self._segment_groups_observed.add(group)
         if len(self._segment_groups_observed) != self._segment_group_count:
             return ()
@@ -705,6 +709,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.segment_brightness = brightness
         self._segment_query_colors = None
         self._segment_query_brightness = None
+        self._segment_groups_observed.clear()
         self.segment_state_source = "observed"
         self.segment_state_observed_at = datetime.now().astimezone().isoformat()
         observed = ["segment_colors", "segment_brightness"]
@@ -1587,11 +1592,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         publish segment state after writes, so the complete segment query verifies the
         optimistic state without resending or rolling back a completed write.
         """
-        if not self.profile.supports_segments:
-            raise ValueError(f"{self.model} does not support per-segment control")
         resolved: list[SegmentColorGroup] = [(list(segments), rgb) for segments, rgb in groups]
-        if not resolved or any(not segments for segments, _rgb in resolved):
-            raise ValueError("at least one non-empty segment group is required")
+        packets = build_segment_paint(resolved, self.model, profile=self.profile)
         previous = list(self.segment_colors)
         previous_source = self.segment_state_source
         previous_observed_at = self.segment_state_observed_at
@@ -1602,11 +1604,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         try:
             for segments, rgb in resolved:
                 for segment in segments:
-                    if not 1 <= segment <= self.profile.segment_count:
-                        raise ValueError(f"segment {segment} out of range 1..{self.profile.segment_count}")
                     updated[segment - 1] = rgb
             self.mark_segment_state_optimistic(colours=updated)
-            for packet in build_segment_paint(resolved, self.model):
+            for packet in packets:
                 await self.send_command(packet)
         except Exception:
             self.segment_colors = previous
@@ -1621,17 +1621,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.async_set_updated_data(self.data or {})
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
-        if not self.profile.supports_segments:
-            raise ValueError(f"{self.model} does not support per-segment control")
-        if not segments:
-            raise ValueError("at least one segment is required")
+        segments = list(segments)
         value = max(0, min(100, brightness))
+        packet = build_segment_brightness(segments, value, self.model, profile=self.profile)
         updated = list(self.segment_brightness)
         for segment in segments:
-            if not 1 <= segment <= self.profile.segment_count:
-                raise ValueError(f"segment {segment} out of range 1..{self.profile.segment_count}")
             updated[segment - 1] = value
-        packet = build_segment_brightness(segments, value, self.model)
         await self.send_command(packet)
         self.mark_segment_state_optimistic(brightness=updated)
         self._enter_static_mode()

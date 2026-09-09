@@ -33,7 +33,12 @@ from .effect_commands import (
     build_h6199_palette_diy,
     build_h6199_palette_diy_activation,
 )
-from .effect_contracts import EFFECT_COMPILER_VERSION
+from .effect_contracts import (
+    EFFECT_COMPILER_VERSION,
+    CapabilityState,
+    CapabilityWorkflow,
+    studio_apply_capability_state,
+)
 from .effect_domain import (
     BuiltinScene,
     LayeredEffect,
@@ -180,6 +185,10 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 CompatibilityState.INCOMPATIBLE,
                 (f"Workshop effect targets {content.model}, not {model}",),
             )
+        try:
+            workshop_apply_code(model)
+        except ValueError as error:
+            return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, BuiltinScene):
         if not get_profile(model).supports_scenes:
@@ -274,17 +283,31 @@ def compile_effect(item: LibraryItem, model: str, *, diy_code: int | None = None
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene | LayeredEffect):
         return compile_scene_effect(item, model)
     if isinstance(item.content, WorkshopEffect):
-        expected_code = H6199_WORKSHOP_APPLY_CODE if model == "H6199" else H617A_WORKSHOP_APPLY_CODE
+        expected_code = workshop_apply_code(model)
         if diy_code is not None and diy_code != expected_code:
             raise ValueError("Workshop has no evidenced activation packet for the requested slot")
         return _compile_workshop_effect(item, model)
     raise ValueError("unsupported effect content")
 
 
+def workshop_apply_code(model: str) -> int:
+    """Require Workshop authorization and an evidenced grammar/activation pair."""
+    if studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP) is not CapabilityState.SUPPORTED:
+        raise ValueError(f"{model} Workshop application is not supported")
+    profile = get_profile(model)
+    if profile.effect_grammar == "H617A" and profile.wire_model == "H617A":
+        return H617A_WORKSHOP_APPLY_CODE
+    if profile.effect_grammar == "H6199" and profile.wire_model == "H6199":
+        return H6199_WORKSHOP_APPLY_CODE
+    raise ValueError(f"{model} has no supported Workshop grammar and activation route")
+
+
 def _compile_workshop_effect(
     item: LibraryItem,
     model: str,
 ) -> CompiledEffect:
+    diy_code = workshop_apply_code(model)
+    grammar = get_profile(model).effect_grammar
     content = item.content
     if isinstance(content, WorkshopEffect):
         payload = encode_workshop_effect(
@@ -292,17 +315,15 @@ def _compile_workshop_effect(
             content.effect,
             trailing_padding=content.trailing_padding,
         )
-        body_kind = int(H6199EffectUpload.BodyKind.scene) if model == "H6199" else int(SceneBody.SceneType.scene_v2)
+        body_kind = int(H6199EffectUpload.BodyKind.scene) if grammar == "H6199" else int(SceneBody.SceneType.scene_v2)
         upload = tuple(fragment_a3(body_kind, payload))
         content_kind = "workshop"
     else:
         raise ValueError("content is not an upload-only effect")
 
-    if model == "H6199":
-        diy_code = H6199_WORKSHOP_APPLY_CODE
+    if grammar == "H6199":
         activation = build_h6199_scene(diy_code, H6199_WORKSHOP_APPLY_MUSIC_CODE)
     else:
-        diy_code = H617A_WORKSHOP_APPLY_CODE
         activation = build_h617a_scene(diy_code, scene_type=H617A_WORKSHOP_SCENE_TYPE)
     packets = (*upload, activation)
     return CompiledEffect(

@@ -5,11 +5,17 @@ from __future__ import annotations
 import io
 import os
 import sys
+from dataclasses import replace
 from importlib import import_module
 from typing import Any
 
 import pytest
 from kaitaistruct import KaitaiStream, KaitaiStructError
+
+from custom_components.ha_govee_led_ble import generated_protocol_adapter
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 _GENERATED_DIR = os.environ.get("KAITAI_GENERATED_DIR")
 if _GENERATED_DIR:
@@ -132,6 +138,94 @@ def test_command_and_status_fields_are_meaningful() -> None:
     h6199_query = _parse(H6199StatusQuery, H6199_SEGMENT_QUERY)
     assert (h617a_query.domain.name, h617a_query.body.group) == ("segments", 5)
     assert (h6199_query.domain.name, h6199_query.body.group) == ("segments", 4)
+
+
+@pytest.mark.parametrize("group", [1, 2, 3, 4])
+def test_h6199_segment_pages_preserve_opaque_tail(group: int) -> None:
+    records = bytes.fromhex("00000000 64010203 32112233 27abcdef")
+    frame = bytes((0xAA, 0xA5, group)) + records
+    frame += bytes((xor_checksum(frame),))
+    parsed = _parse(H6199StatusReply, frame)
+    expected_count = 3 if group == 4 else 4
+    assert parsed.body.num_segments == len(parsed.body.segments) == expected_count
+    assert parsed.body.segments[0].brightness == 0
+    assert parsed.body.unused == (list(records[-4:]) if group == 4 else [])
+    parsed._fetch_instances()
+    parsed._check()
+    output = KaitaiStream(io.BytesIO(bytes(20)))
+    parsed._write(output)
+    assert output.to_byte_array() == frame
+
+
+@pytest.mark.skipif(not _GENERATED_DIR, reason="H66A0 is an all-schema fixture, not a runtime root")
+def test_h66a0_four_slot_pages_reach_semantic_observation(hass, monkeypatch) -> None:
+    root = _generated("h66a0_status_reply", "H66a0StatusReply")
+    first = bytes.fromhex("aaa50164e5444464ffae5464ffae5464cf2e2e24")
+    final = bytes.fromhex("aaa50464dc3b3b64e54444000000000000000032")
+    # Pages 2/3 are synthetic, including a meaningful black/off segment.
+    second = bytes.fromhex("aaa502 00000000 01010203 02040506 03070809")
+    second += bytes((xor_checksum(second),))
+    third = bytes.fromhex("aaa503 040a0b0c 050d0e0f 06101112 07131415")
+    third += bytes((xor_checksum(third),))
+    for frame, count in ((first, 4), (second, 4), (third, 4), (final, 2)):
+        parsed = _parse(root, frame)
+        assert parsed.body.num_segments == len(parsed.body.segments) == count
+        assert len(parsed.body.segments) * 4 + len(parsed.body.unused) == 16
+        parsed._fetch_instances()
+        parsed._check()
+        output = KaitaiStream(io.BytesIO(bytes(20)))
+        parsed._write(output)
+        assert output.to_byte_array() == frame
+
+    # Unused slots are opaque, not a zero constraint or extra semantic records.
+    nonzero_final = final[:11] + bytes.fromhex("deadbeef 12345678")
+    nonzero_final += bytes((xor_checksum(nonzero_final),))
+    parsed = _parse(root, nonzero_final)
+    assert parsed.body.unused == list(bytes.fromhex("deadbeef12345678"))
+    parsed._fetch_instances()
+    parsed._check()
+    output = KaitaiStream(io.BytesIO(bytes(20)))
+    parsed._write(output)
+    assert output.to_byte_array() == nonzero_final
+
+    # Test-only layout selection exercises real decode/notify/observation without
+    # registering H66A0 or changing the production status dispatcher.
+    profile = replace(MODEL_PROFILES["H617A"], segment_count=14, segment_group_size=4)
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.get_profile", lambda _: profile)
+    monkeypatch.setitem(generated_protocol_adapter._STATUS_ROOTS, "H617A", ("h66a0_status_reply", root))
+    coordinator = GoveeBLECoordinator(
+        hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="homeassistant://ha-govee-led-ble/editor/test"
+    )
+    for frame in (final, first, first, third):
+        coordinator._notify_callback(None, bytearray(frame))
+        assert coordinator.segment_state_source == "initial"
+        assert coordinator._field_revisions.get("segment_colors", 0) == 0
+    coordinator._notify_callback(None, bytearray(second))
+    assert coordinator.segment_state_source == "observed"
+    assert coordinator.segment_state_observed_at is not None
+    assert coordinator._field_revisions["segment_colors"] == 1
+    assert coordinator.segment_brightness == [100] * 4 + list(range(8)) + [100, 100]
+    assert coordinator.segment_colors == [
+        (229, 68, 68),
+        (255, 174, 84),
+        (255, 174, 84),
+        (207, 46, 46),
+        (0, 0, 0),
+        (1, 2, 3),
+        (4, 5, 6),
+        (7, 8, 9),
+        (10, 11, 12),
+        (13, 14, 15),
+        (16, 17, 18),
+        (19, 20, 21),
+        (220, 59, 59),
+        (229, 68, 68),
+    ]
+    for frame in (nonzero_final, first, second, third):
+        coordinator._notify_callback(None, bytearray(frame))
+    assert coordinator._field_revisions["segment_colors"] == 2
+    assert len(coordinator.segment_colors) == len(coordinator.segment_brightness) == 14
+    assert coordinator.segment_colors[-2:] == [(220, 59, 59), (229, 68, 68)]
 
 
 def test_diy_shapes_expose_painted_flat_and_combo_fields() -> None:

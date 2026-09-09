@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .const import protocol_model
+from .const import get_profile
 from .effect_catalogue import (
     H617A_PAINTED_EFFECTS,
     H617A_TYPE04_FAMILIES,
@@ -52,8 +52,8 @@ def decode_a3_effect_frames(
 
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
-    model = protocol_model(model) or model
-    if model == "H617A":
+    grammar = get_profile(model).effect_grammar
+    if grammar == "H617A":
         if isinstance(tree, DiyType03):
             return _decode_h617a_painted(tree)
         if isinstance(tree, DiyType04):
@@ -66,11 +66,11 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
             )
         raise TypeError("tree is not a generated H617A A3 effect root")
 
-    if model == "H6199":
+    if grammar == "H6199":
         if not isinstance(tree, H6199EffectUpload):
             raise TypeError("tree is not a generated H6199 A3 effect root")
         if tree.kind == H6199EffectUpload.BodyKind.diy:
-            return _decode_h6199_palette_diy(tree)
+            return _decode_h6199_palette_diy(tree, model)
         if tree.kind == H6199EffectUpload.BodyKind.scene:
             return _decode_layered_tree(tree, model)
         if tree.kind == H6199EffectUpload.BodyKind.builtin_parameters:
@@ -140,7 +140,7 @@ def _decode_h617a_type04(tree: Any) -> SingleEffect | MultiEffect:
     return MultiEffect(effects=effects, speed=body.speed, palette=palette)
 
 
-def _decode_h6199_palette_diy(tree: Any) -> PaletteDiyEffect:
+def _decode_h6199_palette_diy(tree: Any, model: str) -> PaletteDiyEffect:
     if tree.chunk_count != tree.diy_chunk_count:
         raise UnsupportedA3EffectError(
             f"H6199 palette DIY requires {tree.diy_chunk_count} chunks, received {tree.chunk_count}"
@@ -156,7 +156,7 @@ def _decode_h6199_palette_diy(tree: Any) -> PaletteDiyEffect:
         raise UnsupportedA3EffectError("H6199 palette DIY length does not match its generated tree")
     _require_zero_padding(content.padding, "H6199 palette DIY")
     return PaletteDiyEffect(
-        model="H6199",
+        model=model,
         family=family,
         variant=content.variant,
         speed=content.speed,

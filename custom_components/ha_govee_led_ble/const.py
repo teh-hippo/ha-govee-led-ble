@@ -77,6 +77,8 @@ class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
     wire_model: str | None = None
+    # Effect semantics require evidence independent of basic command compatibility.
+    effect_grammar: str | None = None
     read_domains: frozenset[ReadDomain] = frozenset()
     setup_required_read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
@@ -165,6 +167,7 @@ _H617A_PROFILE = ModelProfile(
     "H617A LED Strip",
     support_quality=SupportQuality.SUPPORTED,
     wire_model="H617A",
+    effect_grammar="H617A",
     read_domains=frozenset(
         {
             ReadDomain.POWER,
@@ -186,7 +189,19 @@ _H617A_PROFILE = ModelProfile(
     supports_color_temperature=True,
     supports_custom_effects=True,
     supports_scenes=True,
-    music_modes=tuple(MUSIC_MODE_SLUGS),
+    music_modes=(
+        "energetic",
+        "rhythm",
+        "spectrum",
+        "rolling",
+        "separation",
+        "hopping",
+        "piano_keys",
+        "fountain",
+        "day_and_night",
+        "bloom",
+        "shiny",
+    ),
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
@@ -213,6 +228,20 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         _H617A_PROFILE,
         name="H617E LED Strip",
         support_quality=SupportQuality.COMPATIBLE,
+        effect_grammar="H617A",
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
         scene_catalogue_sku="H617E",
         legacy_scene_catalogue_sku="H617A",
         advanced_scene_carrier=(29884, 41599),
@@ -241,6 +270,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6199 DreamView T1",
         support_quality=SupportQuality.SUPPORTED,
         wire_model="H6199",
+        effect_grammar="H6199",
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -308,6 +338,7 @@ def model_from_ble_name(name: str) -> str | None:
 
 
 def protocol_model(model: str) -> str | None:
+    """Resolve legacy runtime policy identity, not effect-grammar compatibility."""
     resolved = resolve_model(model)
     return "H617A" if resolved in {"H617A", "H617E"} else resolved
 

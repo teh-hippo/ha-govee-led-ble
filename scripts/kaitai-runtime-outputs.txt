@@ -3,6 +3,7 @@ command_write.py
 diy_type03.py
 diy_type04.py
 govee_common.py
+govee_segment_page.py
 govee_shared.py
 h6199_command_write.py
 h6199_effect_upload.py

@@ -1,5 +1,12 @@
+import ast
+import sys
+from pathlib import Path
+from types import ModuleType
+from unittest.mock import AsyncMock
+
 import pytest
 
+from custom_components.ha_govee_led_ble import const, effect_catalogue
 from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_FAMILIES,
@@ -18,6 +25,10 @@ from custom_components.ha_govee_led_ble.const import (
     resolve_model,
     wire_model,
 )
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityState, compatibility, compile_music_profile
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
+from custom_components.ha_govee_led_ble.effect_selector import MUSIC_EFFECTS, effect_selector_entries
 
 
 def test_segment_count_and_supports_segments():
@@ -56,6 +67,7 @@ def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
     assert resolve_model("H617E") == "H617E"
     assert protocol_model("H617E") == "H617A"
     assert wire_model("H617E") == "H617A"
+    assert h617e.effect_grammar == h617a.effect_grammar == "H617A"
 
 
 def test_h6076_profile_is_basic_and_fail_closed():
@@ -79,6 +91,7 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert profile.whole_device_mask == 0x007F
     assert wire_model("H6076") == "H617A"
     assert protocol_model("H6076") == "H6076"
+    assert profile.effect_grammar is None
 
 
 def test_setup_required_domains_must_be_readable():
@@ -93,6 +106,7 @@ def test_unknown_models_fail_closed():
     assert resolve_model("H617A-extra") is None
     assert resolve_model("H9999") is None
     assert wire_model("H9999") is None
+    assert UNSUPPORTED_PROFILE.effect_grammar is None
 
 
 def test_effect_family_defaults_and_options():
@@ -126,6 +140,8 @@ def test_model_specific_music_capabilities():
         "shiny",
     )
     assert MODEL_PROFILES["H6199"].music_modes == ("energetic", "rhythm", "spectrum", "rolling")
+    assert MODEL_PROFILES["H617E"].music_modes == MODEL_PROFILES["H617A"].music_modes
+    assert MODEL_PROFILES["H6199"].effect_grammar == "H6199"
     assert MODEL_PROFILES["H617A"].supports_music_color
     assert MODEL_PROFILES["H6199"].supports_music_color
     assert (MODEL_PROFILES["H617A"].music_sensitivity_min, MODEL_PROFILES["H617A"].music_sensitivity_max) == (0, 99)
@@ -133,3 +149,43 @@ def test_model_specific_music_capabilities():
     assert not MODEL_PROFILES["H6199"].supports_white_brightness
     assert not MODEL_PROFILES["H6199"].static_readback_echoes_color
     assert MODEL_PROFILES["H6199"].supports_video_sound_effects
+
+
+async def test_new_encoding_metadata_does_not_enable_music_before_profile_construction(monkeypatch):
+    # Inject after the registry assignment, before profiles are built, in an isolated module.
+    tree = ast.parse(Path(const.__file__).read_text())
+    assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "MUSIC_MODE_SLUGS"
+    )
+    tree.body.insert(tree.body.index(assignment) + 1, ast.parse('MUSIC_MODE_SLUGS["future_mode"] = 5').body[0])
+    namespace = ModuleType("_music_profile_regression")
+    monkeypatch.setitem(sys.modules, namespace.__name__, namespace)
+    exec(compile(ast.fix_missing_locations(tree), const.__file__, "exec"), namespace.__dict__)  # noqa: S102
+    monkeypatch.setitem(const.MUSIC_MODE_SLUGS, "future_mode", 5)
+    monkeypatch.setitem(MUSIC_EFFECTS, "Music: Future Mode", "future_mode")
+
+    for model in ("H617A", "H617E", "H6199"):
+        profile = namespace.MODEL_PROFILES[model]
+        assert profile.music_modes == MODEL_PROFILES[model].music_modes
+        assert "future_mode" not in profile.music_modes
+        monkeypatch.setitem(MODEL_PROFILES, model, profile)
+        assert "future_mode" not in {mode.id for mode in effect_catalogue._native_music_modes(model)}
+        entries = effect_selector_entries(
+            model, frozenset({const.EFFECT_CATEGORY_REACTIVE}), (), prefix_effect_names=False
+        )
+        assert {entry.value for entry in entries} == set(profile.music_modes)
+        item = LibraryItem.new("Unenabled", MusicProfile(model, "future_mode", 50))
+        assert compatibility(item, model).state is CompatibilityState.INCOMPATIBLE
+        with pytest.raises(ValueError, match="does not support music mode"):
+            compile_music_profile(item, model)
+        coordinator = GoveeBLECoordinator.__new__(GoveeBLECoordinator)
+        coordinator.model = model
+        coordinator.profile = profile
+        coordinator.send_command = AsyncMock()
+        with pytest.raises(ValueError, match="music mode"):
+            await coordinator.async_select_music_slug("future_mode")
+        coordinator.send_command.assert_not_awaited()

@@ -1805,6 +1805,66 @@ def test_segment_colors_empty_for_unsupported(hass):
     assert c.segment_colors == [] and c.profile.segment_count == 0
 
 
+@pytest.mark.parametrize("buffered", [False, True])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"num_segments": None},
+        {"num_segments": "3"},
+        {"num_segments": 3.0},
+        {"num_segments": True},
+        {"num_segments": 0},
+        {"num_segments": 2},
+        {"num_segments": 4},
+        {"group": 0},
+        {"group": 6},
+        {"group": True},
+        {"group": "1"},
+        {"segments": []},
+        {"segments": None},
+        {"segments": [SimpleNamespace(), SimpleNamespace(), SimpleNamespace()]},
+    ],
+)
+def test_segment_page_rejected_before_buffer_mutation(coord, buffered, bad):
+    parsed = parse_status(bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010"))
+    assert parsed is not None
+    if buffered:
+        assert coord._apply_segment_group(parsed) == ()
+    colours = coord._segment_query_colors
+    brightness = coord._segment_query_brightness
+    before_colours = list(colours) if colours is not None else None
+    before_brightness = list(brightness) if brightness is not None else None
+    before_groups = set(coord._segment_groups_observed)
+    body = SimpleNamespace(group=1, segments=parsed.body.segments, num_segments=3)
+    vars(body).update(bad)
+    # None also exercises an absent generated cardinality declaration.
+    if bad.get("num_segments", 3) is None:
+        del body.num_segments
+    with pytest.raises(ValueError):
+        coord._apply_segment_group(SimpleNamespace(body=body))
+    assert coord._segment_query_colors is colours
+    assert coord._segment_query_brightness is brightness
+    assert coord._segment_query_colors == before_colours
+    assert coord._segment_query_brightness == before_brightness
+    assert coord._segment_groups_observed == before_groups
+    assert coord.segment_state_source == "initial"
+    assert coord.segment_colors == [(255, 255, 255)] * 15
+
+
+def test_duplicate_segment_pages_require_fresh_complete_coverage(coord):
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+    observed_at = coord.segment_state_observed_at
+    revision = coord._field_revisions["segment_colors"]
+    for group in (1, 1, 2, 3, 4, 4):
+        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [group, *([50, 1, 2, 3] * 3)])))
+    assert coord._field_revisions["segment_colors"] == revision
+    assert coord.segment_state_observed_at == observed_at
+    assert coord.segment_colors == [(10, 20, 30)] * 15
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [5, *([50, 1, 2, 3] * 3)])))
+    assert coord._field_revisions["segment_colors"] == revision + 1
+    assert coord.segment_colors == [(1, 2, 3)] * 15
+
+
 def test_h6199_static_reply_reports_mode_only(h6199):
     h6199.segment_colors = [(1, 2, 3)] * 15
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
@@ -1889,16 +1949,16 @@ def test_segment_query_replies_replace_restored_state(
 
 
 async def test_async_paint_segments_updates_slots_and_sends(coord):
-    groups = [([1, 2], (255, 0, 0)), ([3], (0, 0, 255))]
+    groups = [([1, 2, 2], (255, 0, 0)), ([2, 3], (0, 0, 255))]
     with (
         patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
         patch.object(coord, "async_refresh_segments", new_callable=AsyncMock, return_value=True) as refresh,
         patch.object(coord, "async_set_updated_data") as pushed,
     ):
-        await coord.async_paint_segments(groups)
+        await coord.async_paint_segments((iter(segments), rgb) for segments, rgb in groups)
     assert [call.args[0] for call in sc.await_args_list] == proto.build_segment_paint(groups)
     assert sc.await_count == 2
-    assert coord.segment_colors[:4] == [(255, 0, 0), (255, 0, 0), (0, 0, 255), (255, 255, 255)]
+    assert coord.segment_colors[:4] == [(255, 0, 0), (0, 0, 255), (0, 0, 255), (255, 255, 255)]
     assert coord.segment_state_source == "optimistic"
     refresh.assert_awaited_once_with()
     pushed.assert_called_once()
@@ -1916,11 +1976,15 @@ async def test_async_paint_segments_rolls_back_on_failure(coord):
 
 
 async def test_async_set_segment_brightness_verifies_complete_state(coord):
+    def write(_packet):
+        assert coord.segment_brightness == [100] * 15
+        assert coord.segment_state_source == "initial"
+
     with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "send_command", new=AsyncMock(side_effect=write)) as send,
         patch.object(coord, "async_refresh_segments", new_callable=AsyncMock, return_value=True) as refresh,
     ):
-        await coord.async_set_segment_brightness([2, 4], 60)
+        await coord.async_set_segment_brightness(iter([2, 4, 4]), 60)
 
     send.assert_awaited_once_with(build_segment_brightness([2, 4], 60))
     assert coord.segment_brightness[:5] == [100, 60, 100, 60, 100]
@@ -1938,7 +2002,7 @@ async def test_async_paint_segments_rejects_unsupported(coord):
     sc.assert_not_awaited()
 
 
-@pytest.mark.parametrize("bad", [[0], [16], []])
+@pytest.mark.parametrize("bad", [[0], [16], [], [1, True], [1, 1.0], [1.5]])
 async def test_async_paint_segments_rejects_invalid_segments(coord, bad):
     before = list(coord.segment_colors)
     with (
@@ -1948,6 +2012,49 @@ async def test_async_paint_segments_rejects_invalid_segments(coord, bad):
         await coord.async_paint_segments([(bad, (1, 2, 3))])
     sc.assert_not_awaited()
     assert coord.segment_colors == before
+
+
+@pytest.mark.parametrize("count", [5, 14])
+async def test_segment_writes_use_effective_profile(coord, count):
+    coord.profile = replace(coord.profile, segment_count=count)
+    coord.segment_colors = coord.segment_colors[:count]
+    coord.segment_brightness = coord.segment_brightness[:count]
+    with (
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "async_refresh_segments", new_callable=AsyncMock),
+    ):
+        await coord.async_paint_segments([([count], (1, 2, 3))])
+        await coord.async_set_segment_brightness([count], 50)
+        assert send.await_count == 2
+        send.reset_mock()
+        with patch.object(coord, "mark_segment_state_optimistic") as optimistic:
+            with pytest.raises(ValueError):
+                await coord.async_paint_segments([([1], (4, 5, 6)), ([count + 1], (1, 2, 3))])
+            with pytest.raises(ValueError):
+                await coord.async_set_segment_brightness([count + 1], 50)
+        optimistic.assert_not_called()
+        send.assert_not_awaited()
+    assert coord.segment_colors == [(255, 255, 255)] * (count - 1) + [(1, 2, 3)]
+    assert coord.segment_brightness == [100] * (count - 1) + [50]
+
+
+async def test_paint_serialization_failure_precedes_optimistic_state(coord):
+    before = list(coord.segment_colors)
+    with (
+        patch(
+            "custom_components.ha_govee_led_ble.generated_protocol_adapter._serialize_xor",
+            side_effect=[b"first packet", ValueError("serialization failed")],
+        ) as serialize,
+        patch.object(coord, "mark_segment_state_optimistic") as optimistic,
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        pytest.raises(ValueError, match="serialization failed"),
+    ):
+        await coord.async_paint_segments([([1], (1, 2, 3)), ([2], (4, 5, 6))])
+    assert serialize.call_count == 2
+    optimistic.assert_not_called()
+    send.assert_not_awaited()
+    assert coord.segment_colors == before
+    assert coord.segment_state_source == "initial"
 
 
 async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):

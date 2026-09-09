@@ -4,7 +4,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .const import get_profile
+from .const import ModelProfile, get_profile
 from .generated_protocol_adapter import (
     build_colour_temperature,
     build_segment_colour,
@@ -25,16 +25,20 @@ def _clamp(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 
 
-def segments_to_mask(segments: Iterable[int]) -> int:
-    """Map one-based segment numbers to the device's 15-bit segment mask."""
-    selected = set(segments)
-    if not selected:
-        raise ValueError("no segments selected")
+def segments_to_mask(segments: Iterable[int], profile: ModelProfile | None = None) -> int:
+    """Validate one-based indices, optionally for a target, and build a 15-bit mask."""
+    if profile is not None and not profile.supports_segments:
+        raise ValueError(f"{profile.name} does not support per-segment control")
+    count = SEGMENT_COUNT if profile is None else min(SEGMENT_COUNT, profile.segment_count)
     mask = 0
-    for segment in selected:
-        if not 1 <= segment <= SEGMENT_COUNT:
-            raise ValueError(f"segment {segment} out of range 1..{SEGMENT_COUNT}")
+    for segment in segments:
+        if not isinstance(segment, int) or isinstance(segment, bool):
+            raise ValueError("segment indices must be integers")
+        if not 1 <= segment <= count:
+            raise ValueError(f"segment {segment} out of range 1..{count}")
         mask |= 1 << (segment - 1)
+    if not mask:
+        raise ValueError("no segments selected")
     return mask
 
 
@@ -44,24 +48,36 @@ def build_segment_color(
     green: int,
     blue: int,
     model: str = "H617A",
+    *,
+    profile: ModelProfile | None = None,
 ) -> bytes:
-    return build_segment_colour(segments_to_mask(segments), red, green, blue, model)
+    return build_segment_colour(segments_to_mask(segments, profile or get_profile(model)), red, green, blue, model)
 
 
 def build_segment_brightness(
     segments: Iterable[int],
     percent: int,
     model: str = "H617A",
+    *,
+    profile: ModelProfile | None = None,
 ) -> bytes:
-    return build_segment_brightness_mask(segments_to_mask(segments), percent, model)
+    return build_segment_brightness_mask(segments_to_mask(segments, profile or get_profile(model)), percent, model)
 
 
 def build_segment_paint(
     groups: Iterable[SegmentColorGroup],
     model: str = "H617A",
+    *,
+    profile: ModelProfile | None = None,
 ) -> list[bytes]:
     """Build one packet for each group because distinct colours require distinct writes."""
-    return [build_segment_color(segments, red, green, blue, model) for segments, (red, green, blue) in groups]
+    packets = [
+        build_segment_color(segments, red, green, blue, model, profile=profile)
+        for segments, (red, green, blue) in groups
+    ]
+    if not packets:
+        raise ValueError("at least one non-empty segment group is required")
+    return packets
 
 
 def build_color_rgb(red: int, green: int, blue: int, model: str = "H617A") -> bytes:
@@ -87,7 +103,7 @@ def build_color_temp(kelvin: int, model: str = "H617A") -> bytes:
 
 
 def build_white_brightness(percent: int, model: str = "H617A") -> bytes:
-    return build_segment_brightness(ALL_SEGMENTS, percent, model)
+    return build_segment_brightness_mask(get_profile(model).whole_device_mask, percent, model)
 
 
 @dataclass(frozen=True)

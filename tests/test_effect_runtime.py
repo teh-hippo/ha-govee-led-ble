@@ -1387,7 +1387,7 @@ async def test_h6199_uncertain_result_emits_structured_evidence_gap(
     }
 
 
-@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("model", ["H617A", "H617E", "H6199"])
 async def test_workshop_uses_evidenced_model_application(
     hass: HomeAssistant,
     model: str,
@@ -1415,15 +1415,22 @@ async def test_workshop_uses_evidenced_model_application(
     assert cache.get("entry-a").diy_code == workshop_code
 
 
-async def test_cross_model_workshop_is_rejected_before_any_write(
+@pytest.mark.parametrize(
+    ("target", "source", "reason"),
+    [("H6199", "H617A", "targets H617A"), ("H6076", "H6076", "Workshop application is not supported")],
+)
+async def test_incompatible_workshop_is_rejected_before_any_write(
     hass: HomeAssistant,
+    target: str,
+    source: str,
+    reason: str,
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
-    coordinator.model = "H6199"
-    item = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"))
+    coordinator.model = target
+    item = LibraryItem.new("Workshop", replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model=source))
 
-    with pytest.raises(ValueError, match="targets H617A"):
+    with pytest.raises(ValueError, match=reason):
         await EffectDeploymentEngine(repository, cache).async_apply_saved(
             coordinator,
             item,

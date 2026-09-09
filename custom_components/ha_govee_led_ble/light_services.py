@@ -17,14 +17,25 @@ from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .generated_protocol_adapter import build_h6199_video, build_power
-from .light_commands import SegmentColorGroup
+from .light_commands import SegmentColorGroup, build_segment_brightness, build_segment_paint, segments_to_mask
 from .native_profile_controls import apply_active_video_mode
 
 __all__ = ("apply_active_video_mode", "async_register_light_services")
 
+
+def _segment(value: int | str) -> int:
+    """Keep integer-string service inputs without truncating fractional indices."""
+    try:
+        if isinstance(value, str):
+            value = int(value)
+        segments_to_mask((value,))
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid(str(err)) from err
+    return value
+
+
 _PERCENTAGE = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
-_SEGMENT = vol.All(vol.Coerce(int), vol.Range(min=1, max=15))
-_SEGMENTS = vol.All([_SEGMENT], vol.Length(min=1))
+_SEGMENTS = vol.All([_segment], vol.Length(min=1))
 _RGB = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
 _PAINT_SEGMENTS_SCHEMA: VolDictType = {
     vol.Required("groups"): vol.All(
@@ -150,61 +161,51 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
-        await self._async_supersede_preview()
-        async with async_control_intent(
-            self.coordinator,
-            ControlIntent.USER,
-        ):
-            self._require_support("paint_segments", supported=self.coordinator.profile.supports_segments)
-            if not groups or any(not group.get("segments") for group in groups):
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="invalid_segments",
-                )
-            resolved: list[SegmentColorGroup] = [(group["segments"], group["rgb_color"]) for group in groups]
-            try:
+        self._require_support("paint_segments", supported=self.coordinator.profile.supports_segments)
+        try:
+            resolved: list[SegmentColorGroup] = [
+                (list(group.get("segments", [])), group["rgb_color"]) for group in groups
+            ]
+            # Preflight serialization before disturbing an active preview or claiming user control.
+            build_segment_paint(resolved, self.coordinator.model, profile=self.coordinator.profile)
+            await self._async_supersede_preview()
+            async with async_control_intent(self.coordinator, ControlIntent.USER):
                 await self.coordinator.async_paint_segments(resolved)
-            except (TypeError, ValueError) as err:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="invalid_segments",
-                ) from err
-            except HomeAssistantError:
-                raise
-            except Exception as err:
-                raise HomeAssistantError(
-                    translation_domain=DOMAIN,
-                    translation_key="device_command_failed",
-                ) from err
+        except (TypeError, ValueError) as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_segments",
+            ) from err
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="device_command_failed",
+            ) from err
 
     async def async_set_segment_color(self, segments: list[int], color: tuple[int, int, int]) -> None:
         group: dict[str, Any] = {"segments": segments, "rgb_color": color}
         await self.async_paint_segments([group])
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
-        await self._async_supersede_preview()
-        async with async_control_intent(
-            self.coordinator,
-            ControlIntent.USER,
-        ):
-            self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
-            if not segments:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="invalid_segments",
-                )
-            try:
+        self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
+        try:
+            segments = list(segments)
+            build_segment_brightness(segments, brightness, self.coordinator.model, profile=self.coordinator.profile)
+            await self._async_supersede_preview()
+            async with async_control_intent(self.coordinator, ControlIntent.USER):
                 await self.coordinator.async_set_segment_brightness(segments, brightness)
-            except (TypeError, ValueError) as err:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="invalid_segments",
-                ) from err
-            except HomeAssistantError:
-                raise
-            except Exception as err:
-                raise HomeAssistantError(
-                    translation_domain=DOMAIN,
-                    translation_key="device_command_failed",
-                ) from err
-            self._notify_state_changed()
+                self._notify_state_changed()
+        except (TypeError, ValueError) as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_segments",
+            ) from err
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="device_command_failed",
+            ) from err
