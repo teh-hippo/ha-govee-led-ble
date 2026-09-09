@@ -18,9 +18,7 @@ from .effect_active_workspace import (
 )
 from .effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
-    H617A_WORKSHOP_APPLY_CODE,
     H6199_PALETTE_DIY_APPLY_CODE,
-    H6199_WORKSHOP_APPLY_CODE,
 )
 from .effect_compiler import (
     ActivationMode,
@@ -29,6 +27,7 @@ from .effect_compiler import (
     CompiledMusicProfile,
     CompiledVideoProfile,
     compile_application,
+    workshop_apply_code,
 )
 from .effect_deployments import (
     DeploymentPhase,
@@ -1142,11 +1141,10 @@ def resolve_diy_code(
             raise ValueError("profiles do not use a DIY code")
         return None
     if isinstance(content, WorkshopEffect):
-        if requested is not None:
-            expected = H6199_WORKSHOP_APPLY_CODE if content.model == "H6199" else H617A_WORKSHOP_APPLY_CODE
-            if requested != expected:
-                raise ValueError("Workshop activation slot does not match the evidenced model slot")
-        return H6199_WORKSHOP_APPLY_CODE if content.model == "H6199" else H617A_WORKSHOP_APPLY_CODE
+        expected = workshop_apply_code(content.model)
+        if requested is not None and requested != expected:
+            raise ValueError("Workshop activation slot does not match the evidenced model slot")
+        return expected
     if isinstance(content, PaintedEffect):
         return 800 if requested is None else requested
     if isinstance(content, SingleEffect | MultiEffect):

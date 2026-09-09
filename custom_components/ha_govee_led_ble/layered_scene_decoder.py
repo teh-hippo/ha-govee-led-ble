@@ -6,7 +6,7 @@ import base64
 from collections.abc import Callable
 from typing import Any
 
-from .const import protocol_model
+from .const import get_profile
 from .generated_protocol_adapter import (
     GoveeShared,
     H6199EffectUpload,
@@ -104,11 +104,11 @@ def decode_workshop_effect(
     raw_param: bytes,
 ) -> tuple[LayeredEffect, int]:
     """Decode a Workshop parameter through its model-specific generated structure."""
-    model = protocol_model(model) or model
-    if model == "H617A":
+    grammar = get_profile(model).effect_grammar
+    if grammar == "H617A":
         parsed, trailing_padding = parse_workshop_body(raw_param)
         records = parsed.layers
-    elif model == "H6199":
+    elif grammar == "H6199":
         parsed, trailing_padding = parse_h6199_workshop_content(raw_param)
         records = parsed.blocks
     else:
@@ -123,9 +123,9 @@ def encode_workshop_effect(
     trailing_padding: int = 0,
 ) -> bytes:
     """Serialize Workshop layers through the model-specific generated structure."""
-    model = protocol_model(model) or model
+    grammar = get_profile(model).effect_grammar
     serializer: Callable[[Any], bytes]
-    if model == "H617A":
+    if grammar == "H617A":
         root = WorkshopBody()
         root.a3_type = b"\x02"
         root.num_layers = len(effect.layers)
@@ -133,7 +133,7 @@ def encode_workshop_effect(
         root.padding = [0] * trailing_padding
         serializer = serialize_workshop_body_param
         value = root
-    elif model == "H6199":
+    elif grammar == "H6199":
         root = H6199EffectUpload()
         content = new_child(H6199EffectUpload.SceneContent, root)
         content.num_blocks = len(effect.layers)

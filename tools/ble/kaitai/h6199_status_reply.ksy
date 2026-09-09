@@ -4,8 +4,10 @@ meta:
   endian: le
   imports:
     - govee_shared
+    - govee_segment_page
 doc: |
   H6199 20-byte status reply. The final byte is the XOR of bytes 0 through 18.
+  Segment groups carry 4+4+4+3 records; the final four bytes remain opaque.
 seq:
   - id: header
     contents: [0xaa]
@@ -26,7 +28,7 @@ seq:
         'status_domain::colour_mode': colour_mode_body
         'status_domain::display_setting': display_setting_body
         'status_domain::relative_brightness': relative_brightness_body
-        'status_domain::segments': segment_group_body
+        'status_domain::segments': govee_segment_page(15, 4, false)
   - id: checksum
     type: u1
 enums:
@@ -179,26 +181,6 @@ types:
     seq:
       - id: percent
         type: u1
-  segment_record:
-    seq:
-      - id: brightness_percent
-        type: u1
-      - id: colour
-        type: govee_shared::rgb
-  segment_group_body:
-    doc: Groups 1 through 3 carry four records; group 4 carries three records followed by four unparsed bytes.
-    seq:
-      - id: group
-        type: u1
-        valid:
-          min: 1
-          max: 4
-      - id: segments
-        type: segment_record
-        repeat: expr
-        repeat-expr: 'group == 4 ? 3 : 4'
-      - size: 4
-        if: group == 4
   version_body:
     seq:
       - id: text

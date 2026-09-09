@@ -3,10 +3,11 @@ meta:
   title: Govee H617A "aa" status-reply envelope (decode-only)
   endian: le
   imports:
-    - govee_shared
+    - govee_segment_page
     - govee_common
 doc: |
   H617A 20-byte status reply. The final byte is the XOR of bytes 0 through 18.
+  Segment replies have five groups of three records and four validated-zero bytes.
 seq:
   - id: header
     contents: [0xaa]
@@ -23,7 +24,7 @@ seq:
         'aa_domain::colormode': colormode_body
         'aa_domain::fw_version': version_body
         'aa_domain::hw_version': hw_version_body
-        'aa_domain::segments': segments_body
+        'aa_domain::segments': govee_segment_page(15, 3, true)
         'aa_domain::multi_effect': multi_effect_body
   - id: checksum
     type: u1
@@ -120,26 +121,3 @@ types:
         type: u1
         valid: 0
         repeat: eos
-  segments_body:
-    doc: Five query-backed groups of three segment brightness and colour records.
-    seq:
-      - id: group
-        type: u1
-        valid:
-          min: 1
-          max: 5
-      - id: segments
-        type: segment
-        repeat: expr
-        repeat-expr: 3
-        if: group >= 1 and group <= 5
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
-  segment:
-    seq:
-      - id: brightness
-        type: u1
-      - id: colour
-        type: govee_shared::rgb

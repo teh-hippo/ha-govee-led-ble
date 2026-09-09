@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+import voluptuous as vol
 from bleak import BleakError
 from homeassistant.components.light import ColorMode
 from homeassistant.core import HomeAssistant
@@ -66,7 +67,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     kelvin_to_rgb,
 )
-from custom_components.ha_govee_led_ble.light_services import async_register_light_services
+from custom_components.ha_govee_led_ble.light_services import _SEGMENTS, async_register_light_services
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENES
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -1267,6 +1268,14 @@ def test_registers_segment_services_during_integration_setup():
     }
 
 
+def test_segment_service_schema_preserves_integer_strings_only():
+    schema = vol.Schema(_SEGMENTS)
+    assert schema(["1", "15", 2, "2"]) == [1, 15, 2, 2]
+    for invalid in ([], [0], [16], [True], [False], [1.5], [1.0], ["1.5"]):
+        with pytest.raises(vol.Invalid):
+            schema(invalid)
+
+
 async def test_setup_entry_adds_light(mock_coordinator):
     entry = MagicMock(runtime_data=mock_coordinator)
     added: list = []
@@ -1284,9 +1293,72 @@ async def test_setup_entry_adds_light(mock_coordinator):
     ],
 )
 async def test_segment_services_reject_empty_selections(light, mock_coordinator, method, kwargs):
-    with pytest.raises(ServiceValidationError) as exc:
+    with (
+        patch.object(light, "_async_supersede_preview", new_callable=AsyncMock) as preview,
+        patch("custom_components.ha_govee_led_ble.light_services.async_control_intent") as intent,
+        pytest.raises(ServiceValidationError) as exc,
+    ):
         await getattr(light, method)(**kwargs)
     assert exc.value.translation_key == "invalid_segments"
+    preview.assert_not_awaited()
+    intent.assert_not_called()
+    mock_coordinator.send_command.assert_not_awaited()
+
+
+@pytest.mark.parametrize("count", [5, 14])
+@pytest.mark.parametrize("method", ["async_paint_segments", "async_set_segment_color", "async_set_segment_brightness"])
+async def test_segment_service_preflight_uses_effective_profile(light, mock_coordinator, count, method):
+    mock_coordinator.profile = replace(mock_coordinator.profile, segment_count=count)
+    for index in (count, count + 1, True, 1.5):
+        if method == "async_paint_segments":
+            kwargs = {
+                "groups": [{"segments": [1], "rgb_color": (4, 5, 6)}, {"segments": [index], "rgb_color": (1, 2, 3)}]
+            }
+        elif method == "async_set_segment_color":
+            kwargs = {"segments": [index], "color": (1, 2, 3)}
+        else:
+            kwargs = {"segments": [index], "brightness": 50}
+        if index == count:
+            await getattr(light, method)(**kwargs)
+            mock_coordinator.async_paint_segments.reset_mock()
+            mock_coordinator.async_set_segment_brightness.reset_mock()
+            continue
+        with (
+            patch.object(light, "_async_supersede_preview", new_callable=AsyncMock) as preview,
+            patch("custom_components.ha_govee_led_ble.light_services.async_control_intent") as intent,
+            pytest.raises(ServiceValidationError) as exc,
+        ):
+            await getattr(light, method)(**kwargs)
+        assert exc.value.translation_key == "invalid_segments"
+        preview.assert_not_awaited()
+        intent.assert_not_called()
+        mock_coordinator.async_paint_segments.assert_not_awaited()
+        mock_coordinator.async_set_segment_brightness.assert_not_awaited()
+        mock_coordinator.mark_segment_state_optimistic.assert_not_called()
+        mock_coordinator.send_command.assert_not_awaited()
+
+
+async def test_paint_service_serialization_failure_preserves_preview(light, mock_coordinator):
+    with (
+        patch(
+            "custom_components.ha_govee_led_ble.generated_protocol_adapter._serialize_xor",
+            side_effect=[b"first packet", ValueError("serialization failed")],
+        ) as serialize,
+        patch.object(light, "_async_supersede_preview", new_callable=AsyncMock) as preview,
+        patch("custom_components.ha_govee_led_ble.light_services.async_control_intent") as intent,
+        pytest.raises(ServiceValidationError),
+    ):
+        await light.async_paint_segments(
+            [
+                {"segments": [1], "rgb_color": (1, 2, 3)},
+                {"segments": [2], "rgb_color": (4, 5, 6)},
+            ]
+        )
+    assert serialize.call_count == 2
+    preview.assert_not_awaited()
+    intent.assert_not_called()
+    mock_coordinator.async_paint_segments.assert_not_awaited()
+    mock_coordinator.mark_segment_state_optimistic.assert_not_called()
     mock_coordinator.send_command.assert_not_awaited()
 
 
@@ -1317,6 +1389,12 @@ async def test_segment_colour_services_normalise_groups(
     kwargs,
     expected,
 ):
+    if method == "async_paint_segments":
+        kwargs["groups"] = (
+            {"segments": iter(group["segments"]), "rgb_color": group["rgb_color"]} for group in kwargs["groups"]
+        )
+    else:
+        kwargs["segments"] = iter(kwargs["segments"])
     await getattr(light, method)(**kwargs)
 
     mock_coordinator.async_paint_segments.assert_awaited_once_with(expected)
@@ -1342,7 +1420,7 @@ async def test_segment_service_wraps_transport_failure(light, mock_coordinator):
 
 async def test_set_segment_brightness_sends_packet(light, mock_coordinator):
     light.async_write_ha_state = MagicMock()
-    await light.async_set_segment_brightness(segments=[2, 4], brightness=60)
+    await light.async_set_segment_brightness(segments=iter([2, 4]), brightness=60)
     mock_coordinator.async_set_segment_brightness.assert_awaited_once_with([2, 4], 60)
     light.async_write_ha_state.assert_called_once_with()
 

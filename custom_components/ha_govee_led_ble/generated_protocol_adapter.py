@@ -11,7 +11,7 @@ from typing import Any, cast
 
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
-from .const import protocol_model, wire_model
+from .const import get_profile, wire_model
 from .transport import A3_CHUNK_SIZE, xor_checksum
 
 CommandWrite = cast(
@@ -228,8 +228,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
     if envelope[1] != len(envelope) // A3_CHUNK_SIZE:
         raise ValueError("A3 effect envelope does not match its chunk count")
 
-    model = protocol_model(model) or model
-    if model == "H617A":
+    grammar = get_profile(model).effect_grammar
+    if grammar == "H617A":
         root_type = {
             0x01: SceneType1Body,
             0x02: SceneBody,
@@ -238,7 +238,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
         }.get(envelope[2])
         if root_type is None:
             raise ValueError(f"H617A A3 body type 0x{envelope[2]:02x} is not supported")
-    elif model == "H6199":
+    elif grammar == "H6199":
         root_type = H6199EffectUpload
     else:
         raise ValueError(f"{model} has no generated A3 effect grammar")

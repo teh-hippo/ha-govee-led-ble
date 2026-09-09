@@ -66,6 +66,25 @@ def test_identity_versions_decode_for_both_models() -> None:
     assert h6199_hardware is not None and h6199_hardware.generated.body.text == "3.02.01"
 
 
+@pytest.mark.parametrize("model", ["H617A", "H617E"])
+def test_production_three_record_status_contract(model: str) -> None:
+    frame = bytearray(H("aaa50164ff880d64ff880d64ff880d0000000010"))
+    for group in range(1, 6):
+        frame[2] = group
+        frame[-1] = xor_checksum(frame[:-1])
+        decoded = decode_status_frame(bytes(frame), model)
+        assert decoded is not None
+        assert decoded.generated.body.num_segments == len(decoded.generated.body.segments) == 3
+        assert decoded.generated.body.unused == [0] * 4
+    for group in (0, 6):
+        frame[2] = group
+        frame[-1] = xor_checksum(frame[:-1])
+        assert decode_status_frame_result(bytes(frame), model).rejection is ProtocolParseRejection.SCHEMA_REJECTED
+    issue_frame = H("aaa50164e5444464ffae5464ffae5464cf2e2e24")
+    assert decode_status_frame_result(issue_frame, model).rejection is ProtocolParseRejection.SCHEMA_REJECTED
+    assert decode_status_frame_result(issue_frame, "H66A0").rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
+
+
 def test_h617a_colour_modes_preserve_scene_diy_and_music_semantics() -> None:
     scene = _parse_colour("aa05049d0800000000000000000000000000003e")
     assert scene.mode is ParsedMode.SCENE and scene.effect == "candy"

@@ -25,6 +25,15 @@ Do not post the Bluetooth address, serial number, account details, or other uniq
 
 Every exact SKU has its own profile, support quality, catalogue identity, and product capability data.  Compatible models may share a Kaitai wire adapter, but do not share whole profiles or exact-SKU metadata.
 
+### Reusing device protocol support
+
+- Declare `effect_grammar` independently of basic `wire_model` compatibility. It selects A3 and Workshop codecs, including their canonical semantics; it does not authorize effect application, catalogue reuse, activation, or readback policy. Workshop application also requires the exact-model capability contract and an implemented activation route.
+- Declare each model's `music_modes` explicitly. The shared slug-to-wire-ID registry records encoding knowledge, not product support.
+- Pass the effective device profile to semantic segment builders. Construct and validate the entire request before cancelling previews, acquiring user control, changing optimistic state, or writing to BLE. Whole-device masks remain separate from individually selectable segments.
+- Reuse `govee_segment_page` in status KSY with the evidenced segment count, page size, and unused-byte rule. Its fixed page body has four wire slots; only the declared meaningful records contribute to observed state. Keep profile counts consistent with the selected schema, and preserve uncertain unused bytes rather than treating zero-valued records as absent.
+
+Extension tests should demonstrate reuse through declarations without unrelated exact-model codec allowlist edits. Synthetic profiles and speculative fixtures establish these software boundaries, not physical device compatibility.
+
 ## Planning support for a new model
 
 Use the same short structure for human and agent plans:

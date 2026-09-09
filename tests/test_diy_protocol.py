@@ -1,11 +1,14 @@
 """Round-trip tests for H617A DIY body encoders."""
 
 import io
+from dataclasses import replace
 
 import pytest
 from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import effect_commands as proto
+from custom_components.ha_govee_led_ble import effect_contracts
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H6199_DIY_EFFECTS,
@@ -13,9 +16,16 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     WORKSHOP_PROTOCOL_FIXTURES,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import (
+    CompatibilityState,
+    compatibility,
     compile_effect,
     compile_h617a,
     compile_h6199,
+)
+from custom_components.ha_govee_led_ble.effect_contracts import (
+    ApplicationRoute,
+    CapabilityWorkflow,
+    release_capability,
 )
 from custom_components.ha_govee_led_ble.effect_domain import (
     EffectPair,
@@ -29,6 +39,7 @@ from custom_components.ha_govee_led_ble.effect_protocol_decoder import (
     UnsupportedA3EffectError,
     decode_a3_effect,
 )
+from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type04 import DiyType04
 from custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload import H6199EffectUpload
@@ -37,7 +48,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_a3_effect_envelope,
     parse_command,
 )
-from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect, encode_workshop_effect
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 
 H = bytes.fromhex
 
@@ -259,7 +271,7 @@ def test_basic_effect_decoder_rejects_uncatalogued_and_reserved_values() -> None
         decode_a3_effect(h6199, "H6199")
 
 
-@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("model", ["H617A", "H617E", "H6199"])
 def test_workshop_upload_tree_reuses_lossless_layered_decoder(model: str) -> None:
     workshop = WORKSHOP_PROTOCOL_FIXTURES[0].content(model)
     compiled = compile_effect(LibraryItem.new("Workshop", workshop), model)
@@ -268,6 +280,126 @@ def test_workshop_upload_tree_reuses_lossless_layered_decoder(model: str) -> Non
     parsed = parse_a3_effect_envelope(envelope, model)
 
     assert decode_a3_effect(parsed, model) == workshop.effect
+
+
+@pytest.mark.parametrize("grammar", ["H617A", "H6199"])
+def test_profile_effect_grammar_enables_codecs_without_authorizing_application(monkeypatch, grammar) -> None:
+    model = "H9999"
+    monkeypatch.setitem(MODEL_PROFILES, model, ModelProfile("Synthetic", effect_grammar=grammar))
+    workshop = WORKSHOP_PROTOCOL_FIXTURES[0].content(grammar)
+    payload = encode_workshop_effect(model, workshop.effect, trailing_padding=workshop.trailing_padding)
+    assert payload == workshop.raw_param
+    assert decode_workshop_effect(model, payload) == (workshop.effect, workshop.trailing_padding)
+    envelope = reassemble_a3(fragment_a3(2, payload))
+    parsed = parse_a3_effect_envelope(envelope, model)
+    assert decode_a3_effect(parsed, model) == workshop.effect
+
+    item = LibraryItem.new("Synthetic", replace(workshop, model=model))
+    assert compatibility(item, model).state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError, match="Workshop application is not supported"):
+        compile_effect(item, model)
+    with pytest.raises(ValueError, match="Workshop application is not supported"):
+        resolve_diy_code(item)
+
+    # Existing workflow authorization and the matching command route are separate evidence.
+    capability = release_capability(grammar, CapabilityWorkflow.WORKSHOP)
+    assert capability is not None
+    monkeypatch.setattr(
+        effect_contracts,
+        "RELEASE_CAPABILITY_CONTRACT",
+        (*effect_contracts.RELEASE_CAPABILITY_CONTRACT, replace(capability, model=model)),
+    )
+    with pytest.raises(ValueError, match="activation route"):
+        compile_effect(item, model)
+    monkeypatch.setitem(MODEL_PROFILES, model, replace(MODEL_PROFILES[model], wire_model=grammar))
+    compiled = compile_effect(item, model)
+    reference = compile_effect(LibraryItem.new("Reference", workshop), grammar)
+    assert compiled.model == model
+    assert compiled.packets == reference.packets
+    assert resolve_diy_code(item) == reference.diy_code
+
+
+@pytest.mark.parametrize("model", ["H6076", "H9999"])
+def test_basic_wire_alias_does_not_supply_effect_grammar(monkeypatch, model) -> None:
+    if model == "H9999":
+        monkeypatch.setitem(MODEL_PROFILES, model, ModelProfile("Synthetic", wire_model="H617A"))
+    workshop = WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A")
+    envelope = reassemble_a3(fragment_a3(2, workshop.raw_param))
+    parsed = parse_a3_effect_envelope(envelope, "H617A")
+    with pytest.raises(ValueError, match="no generated A3 effect grammar"):
+        parse_a3_effect_envelope(envelope, model)
+    with pytest.raises(ValueError, match="no canonical A3 effect decoder"):
+        decode_a3_effect(parsed, model)
+    with pytest.raises(ValueError, match="no Workshop grammar"):
+        decode_workshop_effect(model, workshop.raw_param)
+    with pytest.raises(ValueError, match="no Workshop grammar"):
+        encode_workshop_effect(model, workshop.effect)
+    item = LibraryItem.new("Unsupported", replace(workshop, model=model))
+    assert compatibility(item, model).state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError, match="Workshop application is not supported"):
+        compile_effect(item, model)
+    with pytest.raises(ValueError, match="Workshop application is not supported"):
+        resolve_diy_code(item)
+
+
+@pytest.mark.parametrize("grammar", [None, "unknown"])
+def test_workshop_authorization_without_supported_grammar_is_rejected(monkeypatch, grammar) -> None:
+    item = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"))
+    monkeypatch.setitem(MODEL_PROFILES, "H617A", replace(MODEL_PROFILES["H617A"], effect_grammar=grammar))
+    assert compatibility(item, "H617A").state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError, match="activation route"):
+        compile_effect(item, "H617A")
+    with pytest.raises(ValueError, match="activation route"):
+        resolve_diy_code(item)
+
+
+def test_workshop_grammar_cannot_bypass_disabled_workflow(monkeypatch) -> None:
+    item = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"))
+    monkeypatch.setattr(
+        effect_contracts,
+        "RELEASE_CAPABILITY_CONTRACT",
+        tuple(
+            replace(capability, application_route=ApplicationRoute.NONE)
+            if capability.workflow is CapabilityWorkflow.WORKSHOP
+            else capability
+            for capability in effect_contracts.RELEASE_CAPABILITY_CONTRACT
+        ),
+    )
+    assert compatibility(item, "H617A").state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError, match="Workshop application is not supported"):
+        compile_effect(item, "H617A")
+    with pytest.raises(ValueError, match="Workshop application is not supported"):
+        resolve_diy_code(item)
+
+
+def test_h617e_workshop_preserves_exact_identity_and_h617a_bytes() -> None:
+    workshop = WORKSHOP_PROTOCOL_FIXTURES[0].content("H617E")
+    item = LibraryItem.new("H617E", workshop)
+    compiled = compile_effect(item, "H617E")
+    reference = compile_effect(LibraryItem.new("H617A", replace(workshop, model="H617A")), "H617A")
+    assert workshop.model == compiled.model == "H617E"
+    assert compiled.packets == reference.packets
+    assert resolve_diy_code(item) == reference.diy_code
+    with pytest.raises(ValueError, match="targets H617E"):
+        compile_effect(item, "H617A")
+
+
+@pytest.mark.parametrize(
+    ("grammar", "content"),
+    [("H617A", PAINTED_CONTENT), ("H617A", SINGLE_CONTENT), ("H617A", MULTI_CONTENT), ("H6199", H6199_CONTENT)],
+)
+def test_profile_grammar_selects_basic_canonical_semantics(monkeypatch, grammar, content) -> None:
+    monkeypatch.setitem(MODEL_PROFILES, "H9999", ModelProfile("Synthetic", effect_grammar=grammar))
+    item = LibraryItem.new("Reference", content)
+    compiled = compile_effect(item, grammar, diy_code=800 if grammar == "H617A" else None)
+    envelope = reassemble_a3(compiled.upload_packets)
+    for model in ("H9999", "H617E") if grammar == "H617A" else ("H9999",):
+        expected = replace(content, model=model) if isinstance(content, PaletteDiyEffect) else content
+        assert decode_a3_effect(parse_a3_effect_envelope(envelope, model), model) == expected
+        if model == "H9999":
+            assert compatibility(LibraryItem.new("Decoded", expected), model).state is CompatibilityState.INCOMPATIBLE
+    if grammar == "H617A":
+        assert compile_effect(item, "H617E", diy_code=800).packets == compiled.packets
 
 
 @pytest.mark.parametrize("effect", ["", "unknown", "Clockwise"])
