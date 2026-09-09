@@ -180,14 +180,22 @@ export interface VideoProfileContent {
   kind: "video_profile";
   model: ModelSku;
   mode: string;
-  full_screen: boolean;
-  saturation: number;
-  sound_effects: boolean;
-  sound_effects_softness: number;
-  white_balance_position: number;
-  relative_brightness: RelativeBrightness;
-  blank_screen: boolean;
+  full_screen: boolean | null;
+  saturation: number | null;
+  sound_effects: boolean | null;
+  sound_effects_softness: number | null;
+  white_balance_position: number | null;
+  relative_brightness: RelativeBrightness | null;
+  blank_screen: boolean | null;
 }
+
+export type VideoProfileSetting =
+  | "capture_region"
+  | "saturation"
+  | "sound_effects"
+  | "white_balance"
+  | "relative_brightness"
+  | "blank_screen";
 
 export type BrightnessOrder = 0 | 1 | 2 | 3;
 
@@ -324,6 +332,7 @@ export interface ModelEffectCatalogue {
   effects: PaletteDiyFamily[];
   music_modes: EffectStudioModeOption[];
   video_modes: EffectStudioModeOption[];
+  video_settings: VideoProfileSetting[];
   templates?: CatalogueTemplate[];
   workshop_templates: WorkshopTemplate[];
   workflows: ReleaseWorkflowCapability[];
@@ -349,7 +358,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 8;
+  schema_version: 9;
   sku: ModelSku;
   models: Record<ModelSku, ModelEffectCatalogue>;
 }

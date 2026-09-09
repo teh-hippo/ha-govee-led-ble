@@ -6,11 +6,11 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from .generated_protocol_adapter import (
-    build_h6199_blank_screen,
-    build_h6199_relative_brightness,
-    build_h6199_video,
-    build_h6199_white_balance,
+    build_blank_screen,
     build_power,
+    build_relative_brightness,
+    build_video_mode,
+    build_white_balance,
 )
 
 if TYPE_CHECKING:
@@ -20,18 +20,18 @@ if TYPE_CHECKING:
 async def apply_video_mode_from_state(
     coordinator: GoveeBLECoordinator,
     *,
-    game_mode: bool,
     writer: Callable[[bytes], Awaitable[None]] | None = None,
 ) -> None:
     sound_effects = coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects
     send = coordinator.send_command if writer is None else writer
     await send(
-        build_h6199_video(
+        build_video_mode(
+            coordinator.video_mode,
             coordinator.video_full_screen,
-            game_mode,
             coordinator.video_saturation,
             sound_effects,
             coordinator.video_sound_effects_softness,
+            coordinator.model,
         )
     )
     if not coordinator.profile.supports_video_sound_effects:
@@ -53,7 +53,6 @@ async def apply_active_video_mode(
             coordinator.is_on = True
         await apply_video_mode_from_state(
             coordinator,
-            game_mode=coordinator.video_mode == "game",
             writer=send,
         )
         if not verify:
@@ -61,10 +60,18 @@ async def apply_active_video_mode(
         if await coordinator.refresh_state(
             expected_on=True,
             expected_video_mode=coordinator.video_mode,
-            expected_video_full_screen=coordinator.video_full_screen,
-            expected_video_saturation=coordinator.video_saturation,
-            expected_video_sound_effects=coordinator.video_sound_effects,
-            expected_video_sound_effects_softness=coordinator.video_sound_effects_softness,
+            expected_video_full_screen=(
+                coordinator.video_full_screen if coordinator.profile.supports_video_capture_region else None
+            ),
+            expected_video_saturation=(
+                coordinator.video_saturation if coordinator.profile.supports_video_saturation else None
+            ),
+            expected_video_sound_effects=(
+                coordinator.video_sound_effects if coordinator.profile.supports_video_sound_effects else None
+            ),
+            expected_video_sound_effects_softness=(
+                coordinator.video_sound_effects_softness if coordinator.profile.supports_video_sound_effects else None
+            ),
         ):
             return True
     raise RuntimeError("Video-mode write was not confirmed by the device")
@@ -82,7 +89,7 @@ async def apply_white_balance(
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values(fields)
-        await send(build_h6199_white_balance(*expected))
+        await send(build_white_balance(*expected, coordinator.model))
         if not verify:
             return True
         if await coordinator.refresh_state(expected_white_balance=expected):
@@ -114,7 +121,7 @@ async def apply_relative_brightness(
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values(fields)
-        await send(build_h6199_relative_brightness(*expected))
+        await send(build_relative_brightness(*expected, coordinator.model))
         if not verify:
             return True
         if await coordinator.refresh_state(expected_relative_brightness=expected):
@@ -138,7 +145,7 @@ async def apply_blank_screen(
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values({"blank_screen": expected})
-        await send(build_h6199_blank_screen(expected, detection, low_duration, same_duration))
+        await send(build_blank_screen(expected, coordinator.model, detection, low_duration, same_duration))
         if not verify:
             return True
         if await coordinator.refresh_state(expected_blank_screen=expected):

@@ -24,6 +24,7 @@ import type {
   PaletteDiyFamily,
   ReleaseWorkflowCapability,
   ReleaseWorkflowId,
+  VideoProfileSetting,
   WorkshopTemplate,
 } from "./types";
 import {
@@ -52,6 +53,14 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
   "studio",
   "home_assistant",
   "planned",
+] as const;
+const VIDEO_PROFILE_SETTINGS = [
+  "capture_region",
+  "saturation",
+  "sound_effects",
+  "white_balance",
+  "relative_brightness",
+  "blank_screen",
 ] as const;
 export function decodeCustomCataloguePayload(
   value: unknown,
@@ -179,6 +188,10 @@ function decodeModelEffectCatalogue(
       catalogue.video_modes,
       `${name} video modes`,
     ),
+    video_settings: decodeVideoSettings(
+      catalogue.video_settings,
+      `${name} video settings`,
+    ),
     templates: decodeCatalogueTemplates(
       catalogue.templates,
       `${name} catalogue templates`,
@@ -249,6 +262,24 @@ function decodeModelEffectCatalogue(
     },
   };
 }
+
+
+function decodeVideoSettings(
+  value: unknown,
+  name: string,
+): VideoProfileSetting[] {
+  const settings = arrayValue(value, name, VIDEO_PROFILE_SETTINGS.length).map(
+    (setting, index) =>
+      enumString(
+        setting,
+        VIDEO_PROFILE_SETTINGS,
+        `${name}[${index}]`,
+      ) as VideoProfileSetting,
+  );
+  requireUnique(settings, (setting) => setting, name);
+  return settings;
+}
+
 
 function decodeCatalogueTemplates(
   value: unknown,

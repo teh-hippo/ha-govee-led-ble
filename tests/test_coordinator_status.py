@@ -1,7 +1,10 @@
 """Coordinator status parsing tests."""
 
+from dataclasses import replace
+
 import pytest
 
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.coordinator_status import (
     ParsedColorModeResponse,
     ParsedMode,
@@ -119,6 +122,34 @@ def test_h6199_video_and_music_fields_decode() -> None:
     music = _parse_colour("aa0513044d0001010203000000000000000000f4", "H6199")
     assert music.mode is ParsedMode.MUSIC and music.music_mode == "spectrum"
     assert music.music_sensitivity == 77 and music.music_color == (1, 2, 3)
+
+
+def test_compatible_video_grammar_reuses_readback_without_exact_model_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = "H7000"
+    monkeypatch.setitem(
+        MODEL_PROFILES,
+        model,
+        replace(
+            MODEL_PROFILES["H6199"],
+            name="Synthetic video device",
+            supports_video_capture_region=False,
+            supports_video_saturation=False,
+            supports_video_sound_effects=False,
+            supports_white_balance=False,
+            supports_relative_brightness=False,
+            supports_blank_screen=False,
+        ),
+    )
+
+    video = _parse_colour("aa050000012a01370000000000000000000000b2", model)
+
+    assert video.mode is ParsedMode.VIDEO
+    assert video.video_mode == "game"
+    assert video.video_full_screen is None
+    assert video.video_saturation is None
+    assert video.video_sound_effects is None
 
 
 @pytest.mark.parametrize("offset", [3, 4])

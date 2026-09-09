@@ -35,7 +35,10 @@ export function cloneVideoProfileContent(
 ): VideoProfileContent {
   return {
     ...content,
-    relative_brightness: { ...content.relative_brightness },
+    relative_brightness:
+      content.relative_brightness === null
+        ? null
+        : { ...content.relative_brightness },
   };
 }
 

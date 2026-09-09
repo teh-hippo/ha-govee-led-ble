@@ -135,18 +135,28 @@ class CompiledVideoProfile:
     item_version: int
     model: str
     mode: str
-    full_screen: bool
-    saturation: int
-    sound_effects: bool
-    sound_effects_softness: int
-    white_balance_position: int
-    relative_brightness: tuple[int, int, int, int]
-    blank_screen: bool
+    full_screen: bool | None
+    saturation: int | None
+    sound_effects: bool | None
+    sound_effects_softness: int | None
+    white_balance_position: int | None
+    relative_brightness: tuple[int, int, int, int] | None
+    blank_screen: bool | None
     artifact_sha256: str
     compiler_version: int = EFFECT_COMPILER_VERSION
     content_kind: str = "video_profile"
     diy_code: None = None
-    progress_total: int = 4
+
+    @property
+    def progress_total(self) -> int:
+        profile = get_profile(self.model)
+        return 1 + sum(
+            (
+                profile.supports_white_balance,
+                profile.supports_relative_brightness,
+                profile.supports_blank_screen,
+            )
+        )
 
 
 CompiledApplication = CompiledEffect | CompiledMusicProfile | CompiledVideoProfile
@@ -173,10 +183,16 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, VideoProfile):
-        if model != "H6199" or content.model != model:
+        profile = get_profile(model)
+        if content.model != model or not profile.supports_video_mode or profile.video_grammar is None:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
                 (f"{model} video-profile application is not supported",),
+            )
+        if content.mode not in profile.video_modes:
+            return CompatibilityResult(
+                CompatibilityState.INCOMPATIBLE,
+                (f"{model} does not support video mode {content.mode}",),
             )
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, WorkshopEffect):
@@ -631,7 +647,9 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
     if not isinstance(content, VideoProfile):
         raise ValueError("content is not a video profile")
     brightness = content.relative_brightness
-    relative_brightness = brightness.left, brightness.top, brightness.right, brightness.bottom
+    relative_brightness = (
+        None if brightness is None else (brightness.left, brightness.top, brightness.right, brightness.bottom)
+    )
     payload = {
         "kind": "video_profile",
         "model": model,

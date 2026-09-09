@@ -897,37 +897,37 @@ export function decodeEffectContent(value: unknown): EffectContent {
           "video profile mode",
           MAX_IDENTIFIER_LENGTH,
         ),
-        full_screen: booleanValue(
+        full_screen: nullableBooleanValue(
           content.full_screen,
           "video profile full-screen flag",
         ),
-        saturation: integerValue(
+        saturation: nullableInteger(
           content.saturation,
           "video profile saturation",
           0,
           100,
         ),
-        sound_effects: booleanValue(
+        sound_effects: nullableBooleanValue(
           content.sound_effects,
           "video profile sound-effects flag",
         ),
-        sound_effects_softness: integerValue(
+        sound_effects_softness: nullableInteger(
           content.sound_effects_softness,
           "video profile sound-effects softness",
           1,
           100,
         ),
-        white_balance_position: integerValue(
+        white_balance_position: nullableInteger(
           content.white_balance_position,
           "video profile white-balance position",
           1,
           20,
         ),
-        relative_brightness: relativeBrightnessValue(
+        relative_brightness: nullableRelativeBrightnessValue(
           content.relative_brightness,
           "video profile relative brightness",
         ),
-        blank_screen: booleanValue(
+        blank_screen: nullableBooleanValue(
           content.blank_screen,
           "video profile blank-screen flag",
         ),
@@ -1403,6 +1403,14 @@ function contentHash(value: unknown, name: string): string {
     invalid(`${name} must contain 64 hexadecimal characters`);
   }
   return hash;
+}
+
+
+function nullableRelativeBrightnessValue(
+  value: unknown,
+  name: string,
+): RelativeBrightness | null {
+  return value === null ? null : relativeBrightnessValue(value, name);
 }
 
 

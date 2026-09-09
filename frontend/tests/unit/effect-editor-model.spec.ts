@@ -58,6 +58,7 @@ const catalogue = {
   ],
   music_modes: [],
   video_modes: [],
+  video_settings: [],
   workshop_templates: [],
   workflows: [],
   supports: {

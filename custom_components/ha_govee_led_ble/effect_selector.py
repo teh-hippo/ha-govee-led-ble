@@ -29,10 +29,6 @@ from .scenes import MODEL_SCENE_LABELS, scene_aliases
 
 _EFFECT_QUOTE_CHARS = "\"'“”‘’"
 
-VIDEO_EFFECTS: dict[str, str] = {
-    "Video: Movie": "movie",
-    "Video: Game": "game",
-}
 MUSIC_EFFECTS: dict[str, str] = {f"Music: {slug.replace('_', ' ').title()}": slug for slug in MUSIC_MODE_SLUGS}
 
 EffectSelectorSource = Literal["scene", "video", "music", "saved"]
@@ -260,11 +256,11 @@ def _selector_candidates(
             _SelectorCandidate(
                 source="video",
                 category=EFFECT_CATEGORY_VIDEO,
-                base_label=_native_base_label(label),
+                base_label=mode.replace("_", " ").title(),
                 value=mode,
-                aliases=(label,),
+                aliases=(f"Video: {mode.replace('_', ' ').title()}",),
             )
-            for label, mode in VIDEO_EFFECTS.items()
+            for mode in profile.video_modes
         )
     if EFFECT_CATEGORY_REACTIVE in native:
         candidates.extend(

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .const import MUSIC_MODE_SLUGS
+from .const import MUSIC_MODE_SLUGS, get_profile, wire_model
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import parse_command
 from .light_commands import parse_static_write
@@ -38,7 +38,7 @@ def expectations_from_packet(
         static_echoes_color=static_echoes_color,
     ):
         expectations["color_mode"] = color_mode
-    if model == "H6199":
+    if wire_model(model) == "H6199":
         if operation != "mode":
             return expectations
         mode = getattr(generated.body.sub_mode, "name", None)
@@ -56,15 +56,17 @@ def expectations_from_packet(
             )
             return expectations
         if mode == "video":
-            expectations.update(
-                {
-                    "video_mode": detail.source.name,
-                    "video_full_screen": detail.region.name == "all",
-                    "video_saturation": int(detail.saturation),
-                    "video_sound_effects": bool(detail.sound_effects),
-                    "video_sound_effects_softness": int(detail.softness),
-                }
-            )
+            profile = get_profile(model)
+            if profile.video_grammar != "H6199":
+                return expectations
+            expectations["video_mode"] = detail.source.name
+            if profile.supports_video_capture_region:
+                expectations["video_full_screen"] = detail.region.name == "all"
+            if profile.supports_video_saturation:
+                expectations["video_saturation"] = int(detail.saturation)
+            if profile.supports_video_sound_effects:
+                expectations["video_sound_effects"] = bool(detail.sound_effects)
+                expectations["video_sound_effects_softness"] = int(detail.softness)
             return expectations
         if mode == "scene":
             scene_code = int(detail.scene_id)
@@ -107,7 +109,7 @@ def _expected_color_mode(
     *,
     static_echoes_color: bool,
 ) -> tuple[ParsedMode, int | None] | None:
-    if model == "H6199":
+    if wire_model(model) == "H6199":
         if generated.opcode.name != "mode":
             return None
         mode = getattr(generated.body.sub_mode, "name", None)
@@ -115,7 +117,7 @@ def _expected_color_mode(
         if mode == "music":
             return ParsedMode.MUSIC, None
         if mode == "video":
-            return ParsedMode.VIDEO, None
+            return (ParsedMode.VIDEO, None) if get_profile(model).video_grammar == "H6199" else None
         if mode == "scene":
             return ParsedMode.SCENE, None
         if mode == "static_colour":

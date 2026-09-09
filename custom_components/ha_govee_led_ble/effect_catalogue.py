@@ -6,7 +6,7 @@ import base64
 from dataclasses import dataclass
 from typing import Final
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, protocol_model
+from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, ModelProfile, protocol_model
 from .effect_contracts import (
     CapabilityState,
     CapabilityWorkflow,
@@ -32,7 +32,7 @@ from .effect_domain import (
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 from .layered_scene_decoder import decode_workshop_effect
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 8
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 9
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # H617A Type04 uploads are selected with DIY code 24.
@@ -206,6 +206,7 @@ class ModelEffectCatalogue:
             "effects": [effect.to_dict() for effect in self.effects],
             "music_modes": [mode.to_dict() for mode in self.music_modes],
             "video_modes": [mode.to_dict() for mode in self.video_modes],
+            "video_settings": list(_video_profile_settings(profile)),
             "templates": [template.to_dict() for template in self.templates],
             "workshop_templates": [template.to_dict(self.sku) for template in self.workshop_templates],
             "workflows": frontend_release_capabilities(self.sku),
@@ -474,10 +475,27 @@ H6199_PALETTE_DIY_FAMILIES: Final = (
 
 H6199_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6199")
 
-H6199_VIDEO_MODES: Final = (
-    NativeModeOption("movie", "Movie"),
-    NativeModeOption("game", "Game"),
-)
+
+def _native_video_modes(model: str) -> tuple[NativeModeOption, ...]:
+    return tuple(NativeModeOption(mode, mode.replace("_", " ").title()) for mode in MODEL_PROFILES[model].video_modes)
+
+
+def _video_profile_settings(profile: ModelProfile) -> tuple[str, ...]:
+    return tuple(
+        name
+        for name, supported in (
+            ("capture_region", profile.supports_video_capture_region),
+            ("saturation", profile.supports_video_saturation),
+            ("sound_effects", profile.supports_video_sound_effects),
+            ("white_balance", profile.supports_white_balance),
+            ("relative_brightness", profile.supports_relative_brightness),
+            ("blank_screen", profile.supports_blank_screen),
+        )
+        if supported
+    )
+
+
+H6199_VIDEO_MODES: Final = _native_video_modes("H6199")
 
 
 def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
@@ -524,6 +542,7 @@ def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
 
 
 def _video_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
+    profile = MODEL_PROFILES[model]
     return CatalogueTemplate(
         id=f"template:video:{mode.id}",
         label=mode.label,
@@ -531,13 +550,15 @@ def _video_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
         content=VideoProfile(
             model=model,
             mode=mode.id,
-            full_screen=True,
-            saturation=50,
-            sound_effects=False,
-            sound_effects_softness=50,
-            white_balance_position=MODEL_PROFILES[model].video_white_balance_default,
-            relative_brightness=RelativeBrightness(100, 100, 100, 100),
-            blank_screen=False,
+            full_screen=True if profile.supports_video_capture_region else None,
+            saturation=50 if profile.supports_video_saturation else None,
+            sound_effects=False if profile.supports_video_sound_effects else None,
+            sound_effects_softness=50 if profile.supports_video_sound_effects else None,
+            white_balance_position=profile.video_white_balance_default if profile.supports_white_balance else None,
+            relative_brightness=(
+                RelativeBrightness(100, 100, 100, 100) if profile.supports_relative_brightness else None
+            ),
+            blank_screen=False if profile.supports_blank_screen else None,
         ),
     )
 

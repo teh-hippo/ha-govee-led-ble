@@ -16,7 +16,11 @@ import {
   videoCaptureAreaFullScreen,
   videoCaptureAreaValue,
 } from "./profile-model";
-import type { RelativeBrightness, VideoProfileContent } from "./types";
+import type {
+  RelativeBrightness,
+  VideoProfileContent,
+  VideoProfileSetting,
+} from "./types";
 import { clampInteger } from "./ui-utils";
 
 const BRIGHTNESS_EDGE_OPTIONS = [
@@ -77,6 +81,9 @@ export class GoveeVideoProfileEditor extends LitElement {
   @property({ attribute: false })
   public content?: VideoProfileContent;
 
+  @property({ attribute: false })
+  public settings: readonly VideoProfileSetting[] = [];
+
   @property({ type: Boolean })
   public disabled = false;
 
@@ -94,16 +101,43 @@ export class GoveeVideoProfileEditor extends LitElement {
       `;
     }
 
-    const brightness = this.content.relative_brightness;
+    const captureRegion =
+      this.settings.includes("capture_region") &&
+      this.content.full_screen !== null;
+    const saturation =
+      this.settings.includes("saturation") &&
+      this.content.saturation !== null;
+    const soundEffects =
+      this.settings.includes("sound_effects") &&
+      this.content.sound_effects !== null &&
+      this.content.sound_effects_softness !== null;
+    const whiteBalance =
+      this.settings.includes("white_balance") &&
+      this.content.white_balance_position !== null;
+    const blankScreen =
+      this.settings.includes("blank_screen") &&
+      this.content.blank_screen !== null;
+    const relativeBrightness =
+      this.settings.includes("relative_brightness") &&
+      this.content.relative_brightness !== null;
+    const brightness = this.content.relative_brightness ?? {
+      left: 100,
+      top: 100,
+      right: 100,
+      bottom: 100,
+    };
     const mixedBrightness =
       uniformRelativeBrightnessValue(brightness) === undefined;
     const uniformBrightness = uniformBrightnessControlValue(brightness);
 
     return html`
       <div class="editor-grid">
-        <section class="card">
+        <section
+          class="card"
+          ?hidden=${!captureRegion && !soundEffects && !blankScreen}
+        >
           <div class="parameter-stack">
-            <label class="field">
+            <label class="field" ?hidden=${!captureRegion}>
               <span>Capture area</span>
               <select
                 aria-label="Capture area"
@@ -119,7 +153,7 @@ export class GoveeVideoProfileEditor extends LitElement {
                 <option
                   value="full"
                   .selected=${videoCaptureAreaValue(
-                    this.content.full_screen,
+                    this.content.full_screen ?? true,
                   ) === "full"}
                 >
                   Full screen
@@ -127,25 +161,27 @@ export class GoveeVideoProfileEditor extends LitElement {
                 <option
                   value="part"
                   .selected=${videoCaptureAreaValue(
-                    this.content.full_screen,
+                    this.content.full_screen ?? true,
                   ) === "part"}
                 >
                   Part screen
                 </option>
               </select>
             </label>
-            ${this.renderCheckboxField(
-              "Sound effects",
-              this.content.sound_effects,
-              (checked) =>
-                this.updateContent((content) => {
-                  content.sound_effects = checked;
-                }),
-            )}
-            ${this.content.sound_effects
+            ${soundEffects
+              ? this.renderCheckboxField(
+                  "Sound effects",
+                  this.content.sound_effects ?? false,
+                  (checked) =>
+                    this.updateContent((content) => {
+                      content.sound_effects = checked;
+                    }),
+                )
+              : nothing}
+            ${soundEffects && this.content.sound_effects
               ? this.renderRangeField(
                   "Softness",
-                  this.content.sound_effects_softness,
+                  this.content.sound_effects_softness ?? 50,
                   1,
                   100,
                   (value) =>
@@ -158,35 +194,46 @@ export class GoveeVideoProfileEditor extends LitElement {
                     }),
                 )
               : nothing}
-            ${this.renderCheckboxField(
-              "Blank screen",
-              this.content.blank_screen,
-              (checked) =>
-                this.updateContent((content) => {
-                  content.blank_screen = checked;
-                }),
-            )}
+            ${blankScreen
+              ? this.renderCheckboxField(
+                  "Blank screen",
+                  this.content.blank_screen ?? false,
+                  (checked) =>
+                    this.updateContent((content) => {
+                      content.blank_screen = checked;
+                    }),
+                )
+              : nothing}
           </div>
         </section>
 
-        <section class="card">
+        <section class="card" ?hidden=${!saturation && !whiteBalance}>
           <h3 class="section-title">Image</h3>
           <div class="parameter-stack">
-            ${this.renderRangeField(
-              "Saturation",
-              this.content.saturation,
-              0,
-              100,
-              (value) =>
-                this.updateContent((content) => {
-                  content.saturation = clampInteger(value, 0, 100);
-                }),
-            )}
-            ${this.renderWhiteBalanceField(this.content.white_balance_position)}
+            ${saturation
+              ? this.renderRangeField(
+                  "Saturation",
+                  this.content.saturation ?? 50,
+                  0,
+                  100,
+                  (value) =>
+                    this.updateContent((content) => {
+                      content.saturation = clampInteger(value, 0, 100);
+                    }),
+                )
+              : nothing}
+            ${whiteBalance
+              ? this.renderWhiteBalanceField(
+                  this.content.white_balance_position ?? 17,
+                )
+              : nothing}
           </div>
         </section>
 
-        <section class="card brightness-card">
+        <section
+          class="card brightness-card"
+          ?hidden=${!relativeBrightness}
+        >
           <div class="card-heading">
             <h3 class="section-title">Relative brightness</h3>
             ${mixedBrightness
@@ -357,7 +404,9 @@ export class GoveeVideoProfileEditor extends LitElement {
   ): void {
     this.updateContent(
       (content) => {
-        content.relative_brightness[edge] = clampInteger(value, 1, 100);
+        if (content.relative_brightness !== null) {
+          content.relative_brightness[edge] = clampInteger(value, 1, 100);
+        }
       },
       "changing",
     );

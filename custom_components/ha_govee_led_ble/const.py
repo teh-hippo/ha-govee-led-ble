@@ -79,6 +79,7 @@ class ModelProfile:
     wire_model: str | None = None
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
+    video_grammar: str | None = None
     read_domains: frozenset[ReadDomain] = frozenset()
     setup_required_read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
@@ -88,6 +89,9 @@ class ModelProfile:
     supports_custom_effects: bool = False
     supports_scenes: bool = False
     supports_video_mode: bool = False
+    video_modes: tuple[str, ...] = ()
+    supports_video_capture_region: bool = False
+    supports_video_saturation: bool = False
     supports_video_sound_effects: bool = False
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
@@ -115,6 +119,19 @@ class ModelProfile:
     def __post_init__(self) -> None:
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
+        if self.video_modes and self.video_grammar is None:
+            raise ValueError("video modes require a grammar")
+        if self.supports_video_mode and not self.video_modes:
+            raise ValueError("video support requires explicit modes")
+        if (
+            self.supports_video_capture_region
+            or self.supports_video_saturation
+            or self.supports_video_sound_effects
+            or self.supports_white_balance
+            or self.supports_relative_brightness
+            or self.supports_blank_screen
+        ) and not self.supports_video_mode:
+            raise ValueError("video settings require video-mode support")
 
     def can_read(self, domain: ReadDomain) -> bool:
         return domain in self.read_domains
@@ -271,6 +288,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         support_quality=SupportQuality.SUPPORTED,
         wire_model="H6199",
         effect_grammar="H6199",
+        video_grammar="H6199",
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -299,6 +317,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_custom_effects=True,
         supports_scenes=True,
         supports_video_mode=True,
+        video_modes=("movie", "game"),
+        supports_video_capture_region=True,
+        supports_video_saturation=True,
         supports_video_sound_effects=True,
         # These independently captured video registers have byte-exact builders.
         supports_white_balance=True,

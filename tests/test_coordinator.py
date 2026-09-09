@@ -32,23 +32,24 @@ from custom_components.ha_govee_led_ble.effect_deployments import PriorControlSt
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     H6199StatusReply,
     StatusReply,
+    build_blank_screen,
+    build_blank_screen_query,
     build_brightness,
     build_brightness_query,
     build_colour_mode_query,
     build_firmware_query,
     build_h617a_scene,
-    build_h6199_blank_screen,
-    build_h6199_blank_screen_query,
-    build_h6199_relative_brightness_query,
     build_h6199_subordinate_query,
     build_h6199_video,
-    build_h6199_white_balance,
-    build_h6199_white_balance_query,
     build_hardware_query,
     build_music_mode,
     build_power,
     build_power_query,
+    build_relative_brightness_query,
     build_segment_query,
+    build_video_mode,
+    build_white_balance,
+    build_white_balance_query,
     parse_command,
     parse_status,
 )
@@ -975,6 +976,24 @@ def test_notify_callback_records_command_echoes_without_applying_status(coord, h
         assert coordinator.packet_log[-1]["raw"] == frame.hex()
 
 
+@pytest.mark.parametrize(
+    "frame",
+    [
+        bytes.fromhex("3301000000000000000000000000000000000032"),
+        bytes.fromhex("3305000000000000000000000000000000000036"),
+        bytes.fromhex("33a900000000000000000000000000000000009a"),
+        bytes.fromhex("33ae00000000000000000000000000000000009d"),
+    ],
+)
+def test_notify_callback_records_h6199_generic_acknowledgements(h6199, frame: bytes):
+    h6199._notify_callback(None, bytearray(frame))
+
+    assert h6199.packet_log[-1]["outcome"] == "parsed"
+    assert h6199.packet_log[-1]["reason"] == "command_ack_parsed"
+    assert h6199.packet_log[-1]["parser"] == "h6199_command_ack"
+    assert h6199.packet_log[-1]["raw"] == frame.hex()
+
+
 def test_h6199_subordinate_versions_are_retained_without_querying_identity(h6199):
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x20, list(b"1.03.00"))))
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x21, list(b"1.00.33"))))
@@ -1194,11 +1213,25 @@ async def test_send_state_queries_include_h6199_display_state(h6199):
         build_power_query("H6199"),
         build_brightness_query("H6199"),
         build_colour_mode_query("H6199"),
-        build_h6199_white_balance_query(),
-        build_h6199_blank_screen_query(),
-        build_h6199_relative_brightness_query(),
+        build_white_balance_query("H6199"),
+        build_blank_screen_query("H6199"),
+        build_relative_brightness_query("H6199"),
         *(build_segment_query(group, "H6199") for group in range(1, 5)),
     ]
+
+
+def test_video_grammar_owns_writers_independently_of_basic_wire_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = "H7000"
+    monkeypatch.setitem(
+        MODEL_PROFILES,
+        model,
+        replace(MODEL_PROFILES["H6199"], name="Synthetic video device", wire_model="H617A"),
+    )
+
+    assert build_video_mode("game", False, 42, True, 55, model) == build_h6199_video(False, True, 42, True, 55)
+    assert build_white_balance_query(model) == build_white_balance_query("H6199")
 
 
 async def test_send_state_queries_include_h617a_core_state(coord):
@@ -2778,12 +2811,13 @@ def test_white_balance_fills_the_untouched_axis_with_the_apps_own_neutral(coord)
     assert coord.white_balance == (21, proto.WHITE_BALANCE_RESET[1])
     coord.white_balance_blue = 5
     assert coord.white_balance == (21, 5)
-    assert build_h6199_white_balance(*coord.white_balance) == build_h6199_white_balance(21, 5)
+    assert build_white_balance(*coord.white_balance, "H6199") == build_white_balance(21, 5, "H6199")
 
 
 def test_h6199_blank_screen_builder_clamps_durations() -> None:
-    assert build_h6199_blank_screen(
+    assert build_blank_screen(
         True,
+        "H6199",
         detection=2,
         low_brightness_duration_seconds=-1,
         same_tone_duration_seconds=0x10000,

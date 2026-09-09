@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, cast
 
-from .const import MUSIC_MODE_SLUGS, ReadDomain
+from .const import MUSIC_MODE_SLUGS, ReadDomain, get_profile, wire_model
 from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
 from .scenes import MODEL_SCENES
 
@@ -99,8 +99,11 @@ class ParsedColorModeResponse:
 def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
-    if model == "H6199":
+    if wire_model(model) == "H6199":
         if mode_name == "video":
+            profile = get_profile(model)
+            if profile.video_grammar != "H6199":
+                return ParsedColorModeResponse()
             detail = body.detail
             source_name = getattr(detail.source, "name", None)
             region_name = getattr(detail.region, "name", None)
@@ -109,10 +112,10 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             return ParsedColorModeResponse(
                 mode=ParsedMode.VIDEO,
                 video_mode=source_name,
-                video_full_screen=region_name == "all",
-                video_saturation=int(detail.saturation),
-                video_sound_effects=bool(detail.sound_effects),
-                video_sound_effects_softness=int(detail.softness),
+                video_full_screen=region_name == "all" if profile.supports_video_capture_region else None,
+                video_saturation=int(detail.saturation) if profile.supports_video_saturation else None,
+                video_sound_effects=bool(detail.sound_effects) if profile.supports_video_sound_effects else None,
+                video_sound_effects_softness=int(detail.softness) if profile.supports_video_sound_effects else None,
             )
         if mode_name == "music":
             detail = body.detail
