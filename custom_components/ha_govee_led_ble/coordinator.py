@@ -46,6 +46,7 @@ from .generated_protocol_adapter import (
     build_relative_brightness_query,
     build_segment_query,
     build_white_balance_query,
+    parse_command_ack_result,
     parse_command_result,
 )
 from .h6199_calibration import WHITE_BALANCE_RESET
@@ -866,9 +867,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         frame = bytes(data)
         self._last_rx_monotonic = time.monotonic()
         if frame[:1] == b"\x33":
-            command = parse_command_result(frame, self.model)
+            command = parse_command_ack_result(frame, self.model)
+            reason = "command_ack_parsed"
+            if command.parsed is None:
+                command = parse_command_result(frame, self.model)
+                reason = "command_echo_parsed"
             outcome = "parsed" if command.parsed is not None else "rejected"
-            reason = "command_echo_parsed" if command.rejection is None else command.rejection.value
+            if command.rejection is not None:
+                reason = command.rejection.value
             self._record_packet(
                 "rx",
                 frame,
@@ -877,7 +883,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 parser=command.parser,
             )
             _LOGGER.debug(
-                "rx %s command echo parser=%s outcome=%s raw=%s",
+                "rx %s command response parser=%s outcome=%s raw=%s",
                 self.model,
                 command.parser,
                 outcome,

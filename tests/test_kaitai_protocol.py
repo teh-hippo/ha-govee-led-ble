@@ -33,6 +33,7 @@ StatusReply = _generated("status_reply", "StatusReply")
 StatusQuery = _generated("status_query", "StatusQuery")
 H6199StatusQuery = _generated("h6199_status_query", "H6199StatusQuery")
 H6199StatusReply = _generated("h6199_status_reply", "H6199StatusReply")
+H6199CommandAck = _generated("h6199_command_ack", "H6199CommandAck")
 DiyType03 = _generated("diy_type03", "DiyType03")
 DiyType04 = _generated("diy_type04", "DiyType04")
 H6199EffectUpload = _generated("h6199_effect_upload", "H6199EffectUpload")
@@ -49,6 +50,8 @@ COMMAND_STATIC = bytes.fromhex("330515010000000e10ffcb8dff7f000000000005")
 STATUS_SEGMENTS = bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010")
 H617A_SEGMENT_QUERY = bytes.fromhex("aaa505000000000000000000000000000000000a")
 H6199_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
+H6199_DISPLAY_ACK = bytes.fromhex("33a900000000000000000000000000000000009a")
+H6199_RELATIVE_BRIGHTNESS_ACK = bytes.fromhex("33ae00000000000000000000000000000000009d")
 TYPE03_PAINTED = bytes.fromhex(
     "0105030900640101010f01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff000701eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
 )
@@ -87,6 +90,7 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(StatusReply, STATUS_SEGMENTS, id="H617A status"),
     pytest.param(StatusQuery, H617A_SEGMENT_QUERY, id="H617A segment query"),
     pytest.param(H6199StatusQuery, H6199_SEGMENT_QUERY, id="H6199 segment query"),
+    pytest.param(H6199CommandAck, H6199_DISPLAY_ACK, id="H6199 command acknowledgement"),
     pytest.param(DiyType03, TYPE03_PAINTED, id="Type03 painted"),
     pytest.param(DiyType04, TYPE04_FLAT, id="Type04 flat"),
     pytest.param(DiyType04, TYPE04_COMBO, id="Type04 combo"),
@@ -112,6 +116,22 @@ def test_representative_roots_round_trip_and_consume_input(root_type: type[Any],
     parsed._write(output)
 
     assert output.to_byte_array() == data
+
+
+@pytest.mark.parametrize(
+    ("frame", "opcode"),
+    [
+        (H6199_DISPLAY_ACK, "display_setting"),
+        (H6199_RELATIVE_BRIGHTNESS_ACK, "relative_brightness"),
+    ],
+)
+def test_h6199_generic_command_acknowledgements_are_distinct_from_writes(frame: bytes, opcode: str) -> None:
+    parsed = _parse(H6199CommandAck, frame)
+
+    assert parsed.opcode.name == opcode
+    assert parsed.status == 0
+    assert generated_protocol_adapter.parse_command_ack_result(frame, "H6199").parsed is not None
+    assert generated_protocol_adapter.parse_command_result(frame, "H6199").parsed is None
 
 
 def test_command_and_status_fields_are_meaningful() -> None:

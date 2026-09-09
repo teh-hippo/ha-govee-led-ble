@@ -22,6 +22,10 @@ H6199CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
 )
+H6199CommandAck = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_ack").H6199CommandAck,
+)
 H6199EffectUpload = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload").H6199EffectUpload,
@@ -175,6 +179,9 @@ _COMMAND_ROOTS = {
     "H617A": ("command_write", CommandWrite),
     "H6199": ("h6199_command_write", H6199CommandWrite),
 }
+_COMMAND_ACK_ROOTS = {
+    "H6199": ("h6199_command_ack", H6199CommandAck),
+}
 
 
 def _parse_xor_frame(
@@ -211,6 +218,13 @@ def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
 
 def parse_command_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
     return _parse_xor_frame(frame, model, _COMMAND_ROOTS)
+
+
+def parse_command_ack_result(frame: bytes, model: str) -> ProtocolParseResult:
+    grammar = get_profile(model).video_grammar
+    if grammar is None:
+        return ProtocolParseResult(None, None, ProtocolParseRejection.UNSUPPORTED_MODEL)
+    return _parse_xor_frame(frame, grammar, _COMMAND_ACK_ROOTS)
 
 
 def parse_command(frame: bytes, model: str = "H617A") -> Any | None:

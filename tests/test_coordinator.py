@@ -976,6 +976,22 @@ def test_notify_callback_records_command_echoes_without_applying_status(coord, h
         assert coordinator.packet_log[-1]["raw"] == frame.hex()
 
 
+@pytest.mark.parametrize(
+    "frame",
+    [
+        bytes.fromhex("33a900000000000000000000000000000000009a"),
+        bytes.fromhex("33ae00000000000000000000000000000000009d"),
+    ],
+)
+def test_notify_callback_records_h6199_generic_acknowledgements(h6199, frame: bytes):
+    h6199._notify_callback(None, bytearray(frame))
+
+    assert h6199.packet_log[-1]["outcome"] == "parsed"
+    assert h6199.packet_log[-1]["reason"] == "command_ack_parsed"
+    assert h6199.packet_log[-1]["parser"] == "h6199_command_ack"
+    assert h6199.packet_log[-1]["raw"] == frame.hex()
+
+
 def test_h6199_subordinate_versions_are_retained_without_querying_identity(h6199):
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x20, list(b"1.03.00"))))
     h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x21, list(b"1.00.33"))))

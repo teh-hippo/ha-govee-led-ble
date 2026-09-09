@@ -6,6 +6,7 @@ govee_common.py
 govee_segment_page.py
 govee_shared.py
 h6199_command_write.py
+h6199_command_ack.py
 h6199_effect_upload.py
 h6199_status_query.py
 h6199_status_reply.py

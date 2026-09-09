@@ -2,6 +2,7 @@ command_write
 diy_type03
 diy_type04
 h6199_command_write
+h6199_command_ack
 h6199_effect_upload
 h6199_status_query
 h6199_status_reply
