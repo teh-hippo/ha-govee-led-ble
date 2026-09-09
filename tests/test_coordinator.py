@@ -979,6 +979,8 @@ def test_notify_callback_records_command_echoes_without_applying_status(coord, h
 @pytest.mark.parametrize(
     "frame",
     [
+        bytes.fromhex("3301000000000000000000000000000000000032"),
+        bytes.fromhex("3305000000000000000000000000000000000036"),
         bytes.fromhex("33a900000000000000000000000000000000009a"),
         bytes.fromhex("33ae00000000000000000000000000000000009d"),
     ],

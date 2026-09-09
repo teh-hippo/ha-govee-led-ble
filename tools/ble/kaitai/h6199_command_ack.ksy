@@ -12,6 +12,12 @@ seq:
   - id: opcode
     type: u1
     enum: command_op
+    valid:
+      any-of:
+        - command_op::power
+        - command_op::mode
+        - command_op::display_setting
+        - command_op::relative_brightness
   - id: status
     type: u1
     valid: 0
@@ -21,5 +27,7 @@ seq:
     type: u1
 enums:
   command_op:
+    0x01: power
+    0x05: mode
     0xa9: display_setting
     0xae: relative_brightness

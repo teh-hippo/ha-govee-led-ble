@@ -50,6 +50,8 @@ COMMAND_STATIC = bytes.fromhex("330515010000000e10ffcb8dff7f000000000005")
 STATUS_SEGMENTS = bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010")
 H617A_SEGMENT_QUERY = bytes.fromhex("aaa505000000000000000000000000000000000a")
 H6199_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
+H6199_POWER_ACK = bytes.fromhex("3301000000000000000000000000000000000032")
+H6199_MODE_ACK = bytes.fromhex("3305000000000000000000000000000000000036")
 H6199_DISPLAY_ACK = bytes.fromhex("33a900000000000000000000000000000000009a")
 H6199_RELATIVE_BRIGHTNESS_ACK = bytes.fromhex("33ae00000000000000000000000000000000009d")
 TYPE03_PAINTED = bytes.fromhex(
@@ -121,6 +123,8 @@ def test_representative_roots_round_trip_and_consume_input(root_type: type[Any],
 @pytest.mark.parametrize(
     ("frame", "opcode"),
     [
+        (H6199_POWER_ACK, "power"),
+        (H6199_MODE_ACK, "mode"),
         (H6199_DISPLAY_ACK, "display_setting"),
         (H6199_RELATIVE_BRIGHTNESS_ACK, "relative_brightness"),
     ],
@@ -131,7 +135,16 @@ def test_h6199_generic_command_acknowledgements_are_distinct_from_writes(frame: 
     assert parsed.opcode.name == opcode
     assert parsed.status == 0
     assert generated_protocol_adapter.parse_command_ack_result(frame, "H6199").parsed is not None
-    assert generated_protocol_adapter.parse_command_result(frame, "H6199").parsed is None
+    if opcode in {"display_setting", "relative_brightness"}:
+        assert generated_protocol_adapter.parse_command_result(frame, "H6199").parsed is None
+
+
+def test_h6199_command_acknowledgement_rejects_unobserved_opcodes() -> None:
+    frame = bytearray(H6199_DISPLAY_ACK)
+    frame[1] = 0x99
+    frame[-1] = xor_checksum(frame[:-1])
+
+    assert generated_protocol_adapter.parse_command_ack_result(bytes(frame), "H6199").parsed is None
 
 
 def test_command_and_status_fields_are_meaningful() -> None:
