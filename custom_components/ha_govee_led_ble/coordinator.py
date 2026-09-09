@@ -563,7 +563,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             try:
                 await self._start_notify()
                 await self._send_identity_queries()
-            except BleakError:
+            except BleakError, ValueError:
                 await self._disconnect_locked()
                 raise
         self._log_availability_transition()
@@ -1011,6 +1011,18 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 frame.hex(),
             )
 
+    async def _async_write_packet(self, client: BleakClient, packet: bytes, *, arm_expected: bool = False) -> None:
+        """Write on the caller's connection without changing its transaction policy."""
+        wire_packet = packet
+        if (transform := self.profile.outbound_transform) is not None:
+            wire_packet = transform(packet)
+            if not isinstance(wire_packet, bytes) or not wire_packet:
+                raise ValueError("Outbound transform must return non-empty bytes")
+        if arm_expected:
+            self._arm_expected(packet)
+        await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
+        self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
+
     async def _send_state_queries(
         self,
         *,
@@ -1022,7 +1034,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         query_relative_brightness: bool | None = None,
         query_segments: bool | None = None,
     ) -> bool:
-        if not self._client or not self._client.is_connected:
+        client = self._client
+        if client is None or not client.is_connected:
             return False
         try:
             queries: list[bytes] = []
@@ -1063,8 +1076,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     build_segment_query(group, self.model) for group in range(1, self._segment_group_count + 1)
                 )
             for query in queries:
-                await self._client.write_gatt_char(WRITE_UUID, query, response=False)
-                self._record_packet("tx", query, outcome="sent", reason="write_succeeded")
+                await self._async_write_packet(client, query)
             return True
         except BleakError:
             return False
@@ -1075,7 +1087,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         Replies can be missed right after connect while notifications are starting, so the
         keep-alive loop retries unknown values up to ``IDENTITY_RETRY_TICKS``.
         """
-        if not self._client or not self._client.is_connected:
+        client = self._client
+        if client is None or not client.is_connected:
             return
         candidates: list[tuple[bytes, str | None]] = []
         if self.profile.can_read(ReadDomain.HARDWARE):
@@ -1089,8 +1102,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         queries = [q for q, value in candidates if value is None]
         try:
             for query in queries:
-                await self._client.write_gatt_char(WRITE_UUID, query, response=False)
-                self._record_packet("tx", query, outcome="sent", reason="write_succeeded")
+                await self._async_write_packet(client, query)
         except BleakError:
             _LOGGER.debug("Identity query failed for %s", self.address)
 
@@ -1382,9 +1394,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 client = self._client
                 if client is None or not client.is_connected:
                     raise BleakError(f"Device {self.address} disconnected during preview")
-                self._arm_expected(packet)
-                await client.write_gatt_char(WRITE_UUID, packet, response=False)
-                self._record_packet("tx", packet, outcome="sent", reason="write_succeeded")
+                await self._async_write_packet(client, packet, arm_expected=True)
                 self._renew_foreground_lease()
 
     async def async_write_effect_sequence(
@@ -1412,13 +1422,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         if before_write is not None:
                             await before_write()
                         for index, packet in enumerate(packets, start=1):
-                            self._arm_expected(packet)
-                            await client.write_gatt_char(
-                                WRITE_UUID,
-                                packet,
-                                response=False,
-                            )
-                            self._record_packet("tx", packet, outcome="sent", reason="write_succeeded")
+                            await self._async_write_packet(client, packet, arm_expected=True)
                             self._renew_foreground_lease()
                             if progress is not None:
                                 await progress(index)
@@ -1572,14 +1576,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 for attempt in range(3):
                     try:
                         client = await self._ensure_connected()
-                        self._arm_expected(packet)
-                        await client.write_gatt_char(WRITE_UUID, packet, response=False)
-                        self._record_packet(
-                            "tx",
-                            packet,
-                            outcome="sent",
-                            reason="write_succeeded",
-                        )
+                        await self._async_write_packet(client, packet, arm_expected=True)
                         self._renew_foreground_lease()
                         return
                     except BleakError as err:

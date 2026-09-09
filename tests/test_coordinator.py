@@ -163,6 +163,10 @@ def _c(**kw):
     return MagicMock(is_connected=True, **kw)
 
 
+def _transform_packet(packet: bytes) -> bytes:
+    return b"\xfe" + packet
+
+
 def _resolution(
     device=None,
     client_class=BleakClient,
@@ -601,29 +605,110 @@ async def test_restore_effect_control_state_uses_legacy_identity_to_disambiguate
     assert coordinator.effect == "aurora"
 
 
-async def test_send_command(coord):
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("workflow", ["state", "identity", "command", "preview", "sequence"])
+async def test_outbound_workflows_share_profile_transform(coord, h6199, model, workflow):
+    coordinator = coord if model == "H617A" else h6199
+    transform = MagicMock(side_effect=_transform_packet)
+    coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    coordinator._arm_expected_values({"is_on": False})
+    previous_expectations = dict(coordinator._expected_state)
+    control = workflow in {"command", "preview", "sequence"}
+    packets = [build_power(True, model)]
+    if workflow == "state":
+        packets = [build_power_query(model)]
+    elif workflow == "identity":
+        coordinator.fw_version = coordinator.subordinate_20_version = coordinator.subordinate_21_version = "known"
+        packets = [build_hardware_query(model)]
+    elif workflow == "sequence":
+        packets.extend(build_native_scene_packets(model, MODEL_SCENES[model]["glacier"]))
+
+    async def write(_uuid, _packet, **_kwargs):
+        assert coordinator._expected_state["is_on"][0] is control
+
+    client = _c(write_gatt_char=AsyncMock(side_effect=write))
+    coordinator._client = client
+    with (
+        patch.object(coordinator, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coordinator, "_arm_expected", wraps=coordinator._arm_expected) as arm,
+        patch.object(coordinator, "_reset_disconnect_timer") as renew,
+    ):
+        if workflow == "state":
+            assert await coordinator._send_state_queries(query_brightness=False, query_color_mode=False)
+        elif workflow == "identity":
+            await coordinator._send_identity_queries()
+        elif workflow == "command":
+            await coordinator.send_command(packets[0])
+        elif workflow == "preview":
+            await coordinator.async_preview_write(packets[0])
+        else:
+            await coordinator.async_write_effect_sequence(packets, intent=ControlIntent.APPLY)
+
+    assert transform.call_args_list == [call(packet) for packet in packets]
+    assert client.write_gatt_char.await_args_list == [
+        call(WRITE_UUID, _transform_packet(packet), response=False) for packet in packets
+    ]
+    assert [(entry["raw"], entry["outcome"], entry["reason"]) for entry in coordinator.packet_log] == [
+        (_transform_packet(packet).hex(), "sent", "write_succeeded") for packet in packets
+    ]
+    assert arm.call_args_list == ([call(packet) for packet in packets] if control else [])
+    assert renew.call_count == (len(packets) if control else 0)
+    if not control:
+        assert coordinator._expected_state == previous_expectations
+
+
+@pytest.mark.parametrize("result", [ValueError("Cannot transform packet"), b"", None, bytearray(b"wire")])
+async def test_outbound_transform_rejection_does_not_write_or_arm_state(coord, result):
+    transform = MagicMock(side_effect=[result])
+    coord.profile = replace(coord.profile, outbound_transform=transform)
+    coord._arm_expected_values({"is_on": False})
+    previous_expectations = dict(coord._expected_state)
+    client = _c(write_gatt_char=AsyncMock())
+    packet = build_power(True)
+
+    with pytest.raises(ValueError):
+        await coord._async_write_packet(client, packet, arm_expected=True)
+
+    transform.assert_called_once_with(packet)
+    client.write_gatt_char.assert_not_awaited()
+    assert coord.packet_log == []
+    assert coord._expected_state == previous_expectations
+
+
+@pytest.mark.parametrize("transform", [None, _transform_packet])
+async def test_send_command(coord, transform):
+    transform_mock = MagicMock(side_effect=transform) if transform is not None else None
+    coord.profile = replace(coord.profile, outbound_transform=transform_mock)
     packet = proto.build_power(True)
+    wire_packet = packet if transform is None else transform(packet)
     c = _c(write_gatt_char=AsyncMock(side_effect=[BleakError("f"), BleakError("f"), None]))
     with patch.object(coord, "_ensure_connected", return_value=c):
         await coord.send_command(packet)
-    assert c.write_gatt_char.call_count == 3
+    assert c.write_gatt_char.await_args_list == [call(WRITE_UUID, wire_packet, response=False)] * 3
     assert coord.packet_log[-1]["outcome"] == "sent"
     assert coord.packet_log[-1]["reason"] == "write_succeeded"
-    assert coord.packet_log[-1]["raw"] == packet.hex()
+    assert coord.packet_log[-1]["raw"] == wire_packet.hex()
     c2 = _c(write_gatt_char=AsyncMock(side_effect=BleakError("f")))
     with patch.object(coord, "_ensure_connected", return_value=c2), pytest.raises(BleakError):
         await coord.send_command(packet)
-    assert c2.write_gatt_char.call_count == 3 and coord._client is None
+    assert c2.write_gatt_char.await_args_list == [call(WRITE_UUID, wire_packet, response=False)] * 3
+    assert coord._client is None
     assert len(coord.packet_log) == 1
+    if transform_mock is not None:
+        assert transform_mock.call_args_list == [call(packet)] * 6
 
 
-async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord):
+@pytest.mark.parametrize("transform", [None, _transform_packet])
+async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord, transform):
+    transform_mock = MagicMock(side_effect=transform) if transform is not None else None
+    coord.profile = replace(coord.profile, outbound_transform=transform_mock)
     packets = [b"first", b"second", b"activation"]
+    wire_packets = packets if transform is None else [transform(packet) for packet in packets]
     attempted: list[bytes] = []
 
     async def first_write(_uuid, packet, **_kwargs):
         attempted.append(packet)
-        if packet == b"second":
+        if packet == wire_packets[1]:
             raise BleakError("connection dropped")
 
     async def replacement_write(_uuid, packet, **_kwargs):
@@ -652,15 +737,12 @@ async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord):
             progress=note_progress,
         )
 
-    assert attempted == [
-        b"first",
-        b"second",
-        b"first",
-        b"second",
-        b"activation",
-    ]
+    assert attempted == [*wire_packets[:2], *wire_packets]
+    assert [entry["raw"] for entry in coord.packet_log] == [packet.hex() for packet in (wire_packets[0], *wire_packets)]
     assert attempts == [1, 2]
     assert progress == [1, 1, 2, 3]
+    if transform_mock is not None:
+        assert transform_mock.call_args_list == [call(packet) for packet in (*packets[:2], *packets)]
 
 
 async def test_effect_sequence_does_not_reconnect_during_shutdown(coord):
@@ -1111,16 +1193,32 @@ async def test_start_notify(coord, h6199):
     assert h6199._notify_started_monotonic is None
 
 
-async def test_ensure_connected_cleans_up_notify_failure(coord):
-    client = _c(start_notify=AsyncMock(side_effect=BleakError("notify failed")), disconnect=AsyncMock())
+@pytest.mark.parametrize("failure", ["notify", "identity_transform"])
+async def test_ensure_connected_cleans_up_setup_failure(coord, failure):
+    error = BleakError("notify failed") if failure == "notify" else ValueError("Cannot transform identity query")
+    client = _c(
+        start_notify=AsyncMock(side_effect=error if failure == "notify" else None),
+        write_gatt_char=AsyncMock(),
+        disconnect=AsyncMock(),
+    )
+    if failure == "identity_transform":
+        coord.profile = replace(coord.profile, outbound_transform=MagicMock(side_effect=error))
     with (
         patch(f"{M}.BLEDeviceResolver.async_resolve", new_callable=AsyncMock, return_value=_resolution()),
-        patch(f"{M}.establish_connection", return_value=client),
-        pytest.raises(BleakError, match="notify failed"),
+        patch(f"{M}.establish_connection", return_value=client) as connect,
+        pytest.raises(type(error), match=str(error)),
     ):
-        await coord._ensure_connected()
+        if failure == "identity_transform":
+            await coord.send_command(build_power(True))
+        else:
+            await coord._ensure_connected()
+    connect.assert_awaited_once()
     client.disconnect.assert_awaited_once()
+    client.write_gatt_char.assert_not_awaited()
+    assert coord.packet_log == []
     assert coord._client is None
+    assert coord._keep_alive_task is None
+    assert coord._cancel_disconnect is None
 
 
 async def test_background_refresh_disconnects_replacement_connection(coord):
