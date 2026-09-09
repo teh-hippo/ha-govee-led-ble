@@ -35,6 +35,19 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
 
 Extension tests should demonstrate reuse through declarations without unrelated exact-model codec allowlist edits. Synthetic profiles and speculative fixtures establish these software boundaries, not physical device compatibility.
 
+### Outbound transmission
+
+All outgoing BLE packets pass through `GoveeBLECoordinator._async_write_packet`.
+Callers retain connection, locking, priority, retry, transaction ordering, progress, and idle-lease policy.
+The shared writer must not reconnect or acquire locks: connection setup itself sends identity queries through it.
+
+An exact-model profile may declare a synchronous, stateless `outbound_transform` from logical packet bytes to non-empty wire bytes.
+The default sends the logical packet unchanged.  Transforms reject invalid input with `ValueError`; rejection never falls back to plaintext.
+Each physical attempt transforms the original logical packet, including retries.
+Command expectations are derived from logical bytes after successful transformation and before writing; queries do not arm command expectations.
+Diagnostics record the actual wire bytes only after a successful write.  A successful write does not prove device state or effect activation.
+This hook does not establish encrypted-device support or replace Kaitai ownership of wire structures.
+
 ## Planning support for a new model
 
 Use the same short structure for human and agent plans:
@@ -160,3 +173,25 @@ Keep Conventional Commit merge parsing enabled in semantic-release so release-be
 For live qualification, distinguish optimistic entity state from fresh BLE readback.
 Use `homeassistant.update_entity` when verifying state outside the command's confirmation queries.
 H617A static RGB is confirmed through complete segment replies, not the colour-mode reply.
+
+### Maintainer release-candidate qualification
+
+Use a published RC installed through HACS for live qualification, not SSH deployment or direct file copying.
+When release and live testing are authorised, follow this established route without asking the owner to choose a deployment mechanism again.
+
+1. Run the final `make check`, commit the reviewed candidate, and push its feature branch.
+   Use the [prerelease workflow](.github/workflows/prerelease.yml) with that branch selected, its exact full commit SHA as `target_sha`,
+   a fresh `version` in `MAJOR.MINOR.PATCH-rc.N.SUFFIX` form, and `publish=true`.
+   Review release notes before publishing.  The workflow stamps the packaged manifest; do not bump source versions for the RC.
+   Require a successful run and verify the tag's target SHA and the package checksum.
+2. Before deployment, capture the installed release and the test devices' restorable state, including hidden mode/settings when a light is off.
+   If a state cannot be safely restored, resolve that before changing it.
+3. Discover the integration's HACS `update` entity through Home Assistant.
+   Refresh it with `homeassistant.update_entity`, then call `update.install` with the exact RC tag as `version`; do not rely on `latest_version`.
+   Confirm the installed tag, then restart Home Assistant with `homeassistant.restart` to load the new Python code.
+4. Wait for Home Assistant and the target config entries to load, then confirm the runtime manifest version in diagnostics matches the RC.
+   HACS installation metadata alone proves downloaded files, not running code.
+   Exercise the affected workflows through the normal REST/WebSocket interfaces and require fresh BLE readback rather than optimistic entity state.
+5. Clean up temporary previews and restore each device's captured state even if a test fails, then verify restoration through fresh readback.
+   Keep diagnostics private and bounded.  Report the exact RC, observed results and any unverified behaviour.
+   Publish another exact-SHA RC for subsequent source fixes rather than hotpatching the installation or reusing a tag.

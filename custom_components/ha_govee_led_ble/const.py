@@ -1,7 +1,7 @@
 """Constants for HA Govee LED BLE."""
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
@@ -77,6 +77,7 @@ class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
     wire_model: str | None = None
+    outbound_transform: Callable[[bytes], bytes] | None = None
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
     video_grammar: str | None = None
