@@ -15,6 +15,14 @@ test("canonical backend catalogue decodes through the production catalogue valid
   );
   expect(decoded.sku).toBe("H617A");
   expect(Object.keys(decoded.models)).toEqual(["H617A", "H617E", "H6199"]);
+  expect(decoded.models.H6199.video_settings).toEqual([
+    "capture_region",
+    "saturation",
+    "sound_effects",
+    "white_balance",
+    "relative_brightness",
+    "blank_screen",
+  ]);
 });
 
 test("catalogue families require variations and the single-layer category", () => {
@@ -46,6 +54,16 @@ test("release workflows remain bounded and unique without model-specific lists",
   );
   expect(() => decodeCatalogue(payload)).toThrow(
     "release workflows IDs must be unique",
+  );
+});
+
+test("video setting capabilities are bounded and unique", () => {
+  const duplicate = structuredClone(
+    backendContracts.responses.custom_catalogue,
+  );
+  duplicate.models.H6199.video_settings[5] = "capture_region";
+  expect(() => decodeCatalogue(duplicate)).toThrow(
+    "video settings must be unique",
   );
 });
 

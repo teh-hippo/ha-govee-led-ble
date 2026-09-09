@@ -10,6 +10,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble import effect_commands
 from custom_components.ha_govee_led_ble import layered_scene as layered_scene_module
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_WORKSHOP_APPLY_CODE,
     H617A_WORKSHOP_SCENE_TYPE,
@@ -145,6 +146,34 @@ def _video_profile() -> VideoProfile:
         RelativeBrightness(80, 60, 55, 45),
         False,
     )
+
+
+def test_reduced_video_profile_round_trips_without_h6199_only_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = "H7000"
+    monkeypatch.setitem(
+        MODEL_PROFILES,
+        model,
+        replace(
+            MODEL_PROFILES["H6199"],
+            name="Synthetic video device",
+            supports_video_capture_region=False,
+            supports_video_saturation=False,
+            supports_video_sound_effects=False,
+            supports_white_balance=False,
+            supports_relative_brightness=False,
+            supports_blank_screen=False,
+        ),
+    )
+    content = VideoProfile(model, "movie", None, None, None, None, None, None, None)
+
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+    compiled = compile_video_profile(LibraryItem.new("Movie", content), model)
+    assert compiled.progress_total == 1
+    assert compiled.relative_brightness is None
+    with pytest.raises(EffectValidationError, match="full_screen is not supported"):
+        replace(content, full_screen=True)
 
 
 def _painted_segments(

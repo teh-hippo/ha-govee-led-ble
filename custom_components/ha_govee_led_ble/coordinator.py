@@ -34,18 +34,18 @@ from .coordinator_status import ParsedMode, StatusDomain, decode_status_frame_re
 from .effect_commands import build_h617a_diy_activation
 from .effect_deployments import PriorControlState
 from .generated_protocol_adapter import (
+    build_blank_screen_query,
     build_brightness,
     build_brightness_query,
     build_colour_mode_query,
     build_firmware_query,
-    build_h6199_blank_screen_query,
-    build_h6199_relative_brightness_query,
     build_h6199_subordinate_query,
-    build_h6199_white_balance_query,
     build_hardware_query,
     build_power,
     build_power_query,
+    build_relative_brightness_query,
     build_segment_query,
+    build_white_balance_query,
     parse_command_result,
 )
 from .h6199_calibration import WHITE_BALANCE_RESET
@@ -1032,19 +1032,19 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 and self.profile.supports_white_balance
                 and (query_white_balance if query_white_balance is not None else full_query)
             ):
-                queries.append(build_h6199_white_balance_query())
+                queries.append(build_white_balance_query(self.model))
             if (
                 self.profile.can_read(ReadDomain.DISPLAY_SETTING)
                 and self.profile.supports_blank_screen
                 and (query_blank_screen if query_blank_screen is not None else full_query)
             ):
-                queries.append(build_h6199_blank_screen_query())
+                queries.append(build_blank_screen_query(self.model))
             if (
                 self.profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS)
                 and self.profile.supports_relative_brightness
                 and (query_relative_brightness if query_relative_brightness is not None else full_query)
             ):
-                queries.append(build_h6199_relative_brightness_query())
+                queries.append(build_relative_brightness_query(self.model))
             if (
                 self.profile.can_read(ReadDomain.SEGMENTS)
                 and self.profile.supports_segments

@@ -50,6 +50,9 @@ test("profile clones isolate nested colour, parameter, and brightness state", ()
     throw new Error("Expected nested profile parameters.");
   }
   nested.value = 2;
+  if (videoClone.relative_brightness === null) {
+    throw new Error("Expected relative brightness.");
+  }
   videoClone.relative_brightness.left = 20;
 
   expect(music.colour).toEqual([1, 2, 3]);

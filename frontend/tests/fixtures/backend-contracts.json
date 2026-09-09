@@ -1370,6 +1370,7 @@
             }
           ],
           "video_modes": [],
+          "video_settings": [],
           "workflows": [
             {
               "application": "studio",
@@ -2057,6 +2058,7 @@
             }
           ],
           "video_modes": [],
+          "video_settings": [],
           "workflows": [
             {
               "application": "studio",
@@ -2660,6 +2662,14 @@
               "label": "Movie"
             }
           ],
+          "video_settings": [
+            "capture_region",
+            "saturation",
+            "sound_effects",
+            "white_balance",
+            "relative_brightness",
+            "blank_screen"
+          ],
           "workflows": [
             {
               "application": "studio",
@@ -2725,7 +2735,7 @@
           "label": "Cycle"
         }
       ],
-      "schema_version": 8,
+      "schema_version": 9,
       "sku": "H617A",
       "supports": {
         "advanced": "supported",
@@ -3301,6 +3311,7 @@
         }
       ],
       "video_modes": [],
+      "video_settings": [],
       "workflows": [
         {
           "application": "studio",
@@ -3499,7 +3510,7 @@
     ],
     "editor_info": {
       "api_version": 14,
-      "compiler_version": 4,
+      "compiler_version": 5,
       "effect_schema_version": 2,
       "limits": {
         "deployment_records": 128,

@@ -63,7 +63,6 @@ MAX_MULTI_EFFECTS = 4
 H617A_SEGMENT_COUNT = 15
 
 PALETTE_CONFIG_RESERVED_MASK = 0x08
-VIDEO_PROFILE_MODES = frozenset({"movie", "game"})
 
 type RGB = tuple[int, int, int]
 type JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
@@ -211,6 +210,13 @@ def _validate_supported_model(value: str, feature: str) -> None:
         raise EffectValidationError(f"unsupported {feature} model {value!r}")
 
 
+def _validate_video_setting(value: object | None, name: str, *, supported: bool) -> None:
+    if supported and value is None:
+        raise EffectValidationError(f"{name} is required for this model")
+    if not supported and value is not None:
+        raise EffectValidationError(f"{name} is not supported for this model")
+
+
 @dataclass(frozen=True, slots=True)
 class RelativeBrightness:
     left: int
@@ -229,27 +235,46 @@ class RelativeBrightness:
 class VideoProfile:
     model: str
     mode: str
-    full_screen: bool
-    saturation: int
-    sound_effects: bool
-    sound_effects_softness: int
-    white_balance_position: int
-    relative_brightness: RelativeBrightness
-    blank_screen: bool
+    full_screen: bool | None
+    saturation: int | None
+    sound_effects: bool | None
+    sound_effects_softness: int | None
+    white_balance_position: int | None
+    relative_brightness: RelativeBrightness | None
+    blank_screen: bool | None
 
     def __post_init__(self) -> None:
         _validate_identifier(self.model, "model")
         _validate_identifier(self.mode, "mode")
-        if self.mode not in VIDEO_PROFILE_MODES:
-            raise EffectValidationError("mode must be 'movie' or 'game'")
-        _validate_bool(self.full_screen, "full_screen")
-        _validate_percent(self.saturation, "saturation")
-        _validate_bool(self.sound_effects, "sound_effects")
-        _validate_range(self.sound_effects_softness, "sound_effects_softness", minimum=1, maximum=100)
-        _validate_range(self.white_balance_position, "white_balance_position", minimum=1, maximum=20)
-        if not isinstance(self.relative_brightness, RelativeBrightness):
+        profile = MODEL_PROFILES.get(self.model)
+        if profile is None or not profile.supports_video_mode:
+            raise EffectValidationError(f"unsupported video-profile model {self.model!r}")
+        if self.mode not in profile.video_modes:
+            raise EffectValidationError(f"{self.model} does not support video mode {self.mode}")
+        for value, name, supported in (
+            (self.full_screen, "full_screen", profile.supports_video_capture_region),
+            (self.saturation, "saturation", profile.supports_video_saturation),
+            (self.sound_effects, "sound_effects", profile.supports_video_sound_effects),
+            (self.sound_effects_softness, "sound_effects_softness", profile.supports_video_sound_effects),
+            (self.white_balance_position, "white_balance_position", profile.supports_white_balance),
+            (self.relative_brightness, "relative_brightness", profile.supports_relative_brightness),
+            (self.blank_screen, "blank_screen", profile.supports_blank_screen),
+        ):
+            _validate_video_setting(value, name, supported=supported)
+        if self.full_screen is not None:
+            _validate_bool(self.full_screen, "full_screen")
+        if self.saturation is not None:
+            _validate_percent(self.saturation, "saturation")
+        if self.sound_effects is not None:
+            _validate_bool(self.sound_effects, "sound_effects")
+        if self.sound_effects_softness is not None:
+            _validate_range(self.sound_effects_softness, "sound_effects_softness", minimum=1, maximum=100)
+        if self.white_balance_position is not None:
+            _validate_range(self.white_balance_position, "white_balance_position", minimum=1, maximum=20)
+        if self.relative_brightness is not None and not isinstance(self.relative_brightness, RelativeBrightness):
             raise EffectValidationError("relative_brightness must be a relative-brightness mapping")
-        _validate_bool(self.blank_screen, "blank_screen")
+        if self.blank_screen is not None:
+            _validate_bool(self.blank_screen, "blank_screen")
 
 
 @dataclass(frozen=True, slots=True)
@@ -629,7 +654,11 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "sound_effects": content.sound_effects,
             "sound_effects_softness": content.sound_effects_softness,
             "white_balance_position": content.white_balance_position,
-            "relative_brightness": _relative_brightness_to_dict(content.relative_brightness),
+            "relative_brightness": (
+                None
+                if content.relative_brightness is None
+                else _relative_brightness_to_dict(content.relative_brightness)
+            ),
             "blank_screen": content.blank_screen,
         }
     if isinstance(content, MultiEffect):
@@ -717,13 +746,13 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
         return VideoProfile(
             model=_required_str(raw, "model"),
             mode=_required_str(raw, "mode"),
-            full_screen=_required_bool(raw, "full_screen"),
-            saturation=_required_int(raw, "saturation"),
-            sound_effects=_required_bool(raw, "sound_effects"),
-            sound_effects_softness=_required_int(raw, "sound_effects_softness"),
-            white_balance_position=_required_int(raw, "white_balance_position"),
-            relative_brightness=_relative_brightness_from_dict(_required_mapping(raw, "relative_brightness")),
-            blank_screen=_required_bool(raw, "blank_screen"),
+            full_screen=_optional_bool(raw, "full_screen"),
+            saturation=_optional_int(raw, "saturation"),
+            sound_effects=_optional_bool(raw, "sound_effects"),
+            sound_effects_softness=_optional_int(raw, "sound_effects_softness"),
+            white_balance_position=_optional_int(raw, "white_balance_position"),
+            relative_brightness=_optional_relative_brightness(raw, "relative_brightness"),
+            blank_screen=_optional_bool(raw, "blank_screen"),
         )
     if kind == "h617a_multi":
         return MultiEffect(
@@ -796,6 +825,20 @@ def _relative_brightness_from_dict(raw: Mapping[str, Any]) -> RelativeBrightness
         right=_required_int(raw, "right"),
         bottom=_required_int(raw, "bottom"),
     )
+
+
+def _optional_bool(raw: Mapping[str, Any], key: str) -> bool | None:
+    value = raw.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise EffectValidationError(f"{key} must be a boolean or null")
+    return value
+
+
+def _optional_relative_brightness(raw: Mapping[str, Any], key: str) -> RelativeBrightness | None:
+    value = raw.get(key)
+    return None if value is None else _relative_brightness_from_dict(_as_mapping(value, key))
 
 
 def _scene_step_from_dict(raw: Mapping[str, Any]) -> SceneStep:

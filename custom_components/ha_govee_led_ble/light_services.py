@@ -16,7 +16,7 @@ from homeassistant.helpers.typing import VolDictType
 from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
-from .generated_protocol_adapter import build_h6199_video, build_power
+from .generated_protocol_adapter import build_power, build_video_mode
 from .light_commands import SegmentColorGroup, build_segment_brightness, build_segment_paint, segments_to_mask
 from .native_profile_controls import apply_active_video_mode
 
@@ -125,15 +125,23 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             )
         with self._rollback():
             c = self.coordinator
-            resolved_fs = full_screen if capture_region is None else capture_region == "full"
+            requested_fs = full_screen if capture_region is None else capture_region == "full"
+            resolved_fs = requested_fs if c.profile.supports_video_capture_region else c.video_full_screen
+            resolved_saturation = saturation if c.profile.supports_video_saturation else c.video_saturation
             supports_sound = c.profile.supports_video_sound_effects
             resolved_sound = sound_effects and supports_sound
             resolved_softness = (
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
-            # fmt: off
-            packet = build_h6199_video(resolved_fs, mode == "game", saturation, resolved_sound, resolved_softness)
-            # fmt: on
+            packet = build_video_mode(
+                mode,
+                resolved_fs,
+                resolved_saturation,
+                resolved_sound,
+                resolved_softness,
+                c.model,
+            )
+
             async def apply() -> None:
                 await self.coordinator.send_command(
                     build_power(True, self.coordinator.model)
@@ -145,8 +153,8 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             await self._refresh_with_retry(
                 expected_on=True,
                 expected_video_mode=mode,
-                expected_video_full_screen=resolved_fs,
-                expected_video_saturation=saturation,
+                expected_video_full_screen=resolved_fs if c.profile.supports_video_capture_region else None,
+                expected_video_saturation=resolved_saturation if c.profile.supports_video_saturation else None,
                 expected_video_sound_effects=resolved_sound if supports_sound else None,
                 expected_video_sound_effects_softness=resolved_softness if resolved_sound else None,
                 retry_command=apply,
@@ -154,7 +162,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             c.video_mode, c.effect = mode, None
             c.music_mode = "off"
             c.diy_code = None
-            c.video_saturation, c.video_full_screen = saturation, resolved_fs
+            c.video_saturation, c.video_full_screen = resolved_saturation, resolved_fs
             c.video_sound_effects = resolved_sound
             if supports_sound:
                 c.video_sound_effects_softness = resolved_softness

@@ -331,16 +331,38 @@ def build_hardware_query(model: str = "H617A") -> bytes:
     return _build_status_query("hardware", model)
 
 
-def build_h6199_white_balance_query() -> bytes:
-    return _build_status_query("display_setting", "H6199", display_setting="white_balance")
+def _video_grammar(model: str) -> str:
+    profile = get_profile(model)
+    if not profile.supports_video_mode or profile.video_grammar is None:
+        raise ValueError(f"{model} does not support video mode")
+    return profile.video_grammar
 
 
-def build_h6199_blank_screen_query() -> bytes:
-    return _build_status_query("display_setting", "H6199", display_setting="blank_screen")
+def build_white_balance_query(model: str) -> bytes:
+    profile = get_profile(model)
+    if not profile.supports_white_balance:
+        raise ValueError(f"{model} does not support white balance")
+    if _video_grammar(model) == "H6199":
+        return _build_status_query("display_setting", "H6199", display_setting="white_balance")
+    raise ValueError(f"{model} has no generated white-balance query grammar")
 
 
-def build_h6199_relative_brightness_query() -> bytes:
-    return _build_status_query("relative_brightness", "H6199")
+def build_blank_screen_query(model: str) -> bytes:
+    profile = get_profile(model)
+    if not profile.supports_blank_screen:
+        raise ValueError(f"{model} does not support blank-screen detection")
+    if _video_grammar(model) == "H6199":
+        return _build_status_query("display_setting", "H6199", display_setting="blank_screen")
+    raise ValueError(f"{model} has no generated blank-screen query grammar")
+
+
+def build_relative_brightness_query(model: str) -> bytes:
+    profile = get_profile(model)
+    if not profile.supports_relative_brightness:
+        raise ValueError(f"{model} does not support relative brightness")
+    if _video_grammar(model) == "H6199":
+        return _build_status_query("relative_brightness", "H6199")
+    raise ValueError(f"{model} has no generated relative-brightness query grammar")
 
 
 def build_h6199_subordinate_query(domain: int) -> bytes:
@@ -810,13 +832,21 @@ def build_h617a_diy_activation(diy_code: int) -> bytes:
     return _serialize_xor(root)
 
 
-def build_h6199_video(
+def build_video_mode(
+    video_mode: str,
     full_screen: bool,
-    game_mode: bool,
     saturation: int,
     sound_effects: bool,
     softness: int,
+    model: str,
 ) -> bytes:
+    profile = get_profile(model)
+    if video_mode not in profile.video_modes:
+        raise ValueError(f"{model} does not support video mode {video_mode}")
+    if _video_grammar(model) != "H6199":
+        raise ValueError(f"{model} has no generated video-mode grammar")
+    if video_mode not in {"movie", "game"}:
+        raise ValueError(f"{model} video mode {video_mode} is not supported by the H6199 grammar")
     root = H6199CommandWrite()
     root.header = b"\x33"
     root.opcode = H6199CommandWrite.CommandOp.mode
@@ -824,7 +854,7 @@ def build_h6199_video(
     mode.sub_mode = H6199CommandWrite.ModeSel.video
     detail = _child(H6199CommandWrite.VideoBody, mode)
     detail.region = H6199CommandWrite.VideoRegion.all if full_screen else H6199CommandWrite.VideoRegion.part
-    detail.source = H6199CommandWrite.VideoSource.game if game_mode else H6199CommandWrite.VideoSource.movie
+    detail.source = H6199CommandWrite.VideoSource.game if video_mode == "game" else H6199CommandWrite.VideoSource.movie
     detail.saturation = max(0, min(100, saturation))
     detail.sound_effects = int(sound_effects)
     detail.softness = max(1, min(100, softness))
@@ -834,7 +864,22 @@ def build_h6199_video(
     return _serialize_xor(root)
 
 
-def build_h6199_white_balance(red: int, blue: int) -> bytes:
+def build_h6199_video(
+    full_screen: bool,
+    game_mode: bool,
+    saturation: int,
+    sound_effects: bool,
+    softness: int,
+) -> bytes:
+    return build_video_mode("game" if game_mode else "movie", full_screen, saturation, sound_effects, softness, "H6199")
+
+
+def build_white_balance(red: int, blue: int, model: str) -> bytes:
+    profile = get_profile(model)
+    if not profile.supports_white_balance:
+        raise ValueError(f"{model} does not support white balance")
+    if _video_grammar(model) != "H6199":
+        raise ValueError(f"{model} has no generated white-balance grammar")
     root = H6199CommandWrite()
     root.header = b"\x33"
     root.opcode = H6199CommandWrite.CommandOp.display_setting
@@ -850,12 +895,18 @@ def build_h6199_white_balance(red: int, blue: int) -> bytes:
     return _serialize_xor(root)
 
 
-def build_h6199_blank_screen(
+def build_blank_screen(
     enabled: bool,
+    model: str,
     detection: int = 2,
     low_brightness_duration_seconds: int = _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS,
     same_tone_duration_seconds: int = _BLANK_SCREEN_SAME_TONE_SECONDS,
 ) -> bytes:
+    profile = get_profile(model)
+    if not profile.supports_blank_screen:
+        raise ValueError(f"{model} does not support blank-screen detection")
+    if _video_grammar(model) != "H6199":
+        raise ValueError(f"{model} has no generated blank-screen grammar")
     root = H6199CommandWrite()
     root.header = b"\x33"
     root.opcode = H6199CommandWrite.CommandOp.display_setting
@@ -872,12 +923,18 @@ def build_h6199_blank_screen(
     return _serialize_xor(root)
 
 
-def build_h6199_relative_brightness(
+def build_relative_brightness(
     left: int,
     top: int,
     right: int,
     bottom: int,
+    model: str,
 ) -> bytes:
+    profile = get_profile(model)
+    if not profile.supports_relative_brightness:
+        raise ValueError(f"{model} does not support relative brightness")
+    if _video_grammar(model) != "H6199":
+        raise ValueError(f"{model} has no generated relative-brightness grammar")
     root = H6199CommandWrite()
     root.header = b"\x33"
     root.opcode = H6199CommandWrite.CommandOp.relative_brightness

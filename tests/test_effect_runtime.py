@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -47,7 +48,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     _activation_matches,
 )
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h6199_video, build_power
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -262,6 +263,8 @@ def _profile_coordinator(model: str):
     coordinator.profile = SimpleNamespace(
         state_readable=True,
         supports_video_mode=model == "H6199",
+        supports_video_capture_region=model == "H6199",
+        supports_video_saturation=model == "H6199",
         supports_video_sound_effects=model == "H6199",
         supports_white_balance=model == "H6199",
         supports_relative_brightness=model == "H6199",
@@ -1718,6 +1721,60 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
     assert result.verification_confidence is ObservationConfidence.SETTINGS_MATCH
     assert result.prior_state is not None
     assert result.prior_state.relative_brightness_left == 75
+
+
+async def test_reduced_video_profile_skips_unsupported_companion_workflows(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = "H7000"
+    profile = replace(
+        MODEL_PROFILES["H6199"],
+        name="Synthetic video device",
+        supports_video_capture_region=False,
+        supports_video_saturation=False,
+        supports_video_sound_effects=False,
+        supports_white_balance=False,
+        supports_relative_brightness=False,
+        supports_blank_screen=False,
+    )
+    monkeypatch.setitem(MODEL_PROFILES, model, profile)
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator(model)
+    coordinator.profile = profile
+    apply_white = AsyncMock()
+    apply_brightness = AsyncMock()
+    apply_blank = AsyncMock()
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.effect_runtime.apply_white_balance", apply_white)
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.effect_runtime.apply_relative_brightness", apply_brightness)
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.effect_runtime.apply_blank_screen", apply_blank)
+    item = LibraryItem.new("Movie", VideoProfile(model, "movie", None, None, None, None, None, None, None))
+
+    result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    coordinator.send_command.assert_awaited_once_with(build_h6199_video(True, False, 88, False, 50))
+    assert (
+        call(
+            expected_on=True,
+            expected_video_mode="movie",
+            expected_video_full_screen=None,
+            expected_video_saturation=None,
+            expected_video_sound_effects=None,
+            expected_video_sound_effects_softness=None,
+        )
+        in coordinator.refresh_state.await_args_list
+    )
+    apply_white.assert_not_awaited()
+    apply_brightness.assert_not_awaited()
+    apply_blank.assert_not_awaited()
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.progress_current == result.progress_total == 1
+    assert result.verification_confidence is ObservationConfidence.MODE_MATCH
 
 
 async def test_video_profile_requires_complete_prior_display_state(

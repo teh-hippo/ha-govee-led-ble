@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 
-from .const import DOMAIN, protocol_model
+from .const import DOMAIN, get_profile, protocol_model
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
@@ -1736,24 +1736,36 @@ def _verification_expectations(
                 expectations["music_calm"] = compiled.calm
         return expectations
     if isinstance(compiled, CompiledVideoProfile):
-        red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
-        left, top, right, bottom = compiled.relative_brightness
-        return {
+        profile = get_profile(compiled.model)
+        video_expectations: dict[str, Any] = {
             "is_on": True,
             "video_mode": compiled.mode,
-            "video_full_screen": compiled.full_screen,
-            "video_saturation": compiled.saturation,
-            "video_sound_effects": compiled.sound_effects,
-            "video_sound_effects_softness": compiled.sound_effects_softness,
-            "white_balance_red": red,
-            "white_balance_blue": blue,
-            "relative_brightness": left if len(set(compiled.relative_brightness)) == 1 else None,
-            "relative_brightness_left": left,
-            "relative_brightness_top": top,
-            "relative_brightness_right": right,
-            "relative_brightness_bottom": bottom,
-            "blank_screen": compiled.blank_screen,
         }
+        if profile.supports_video_capture_region:
+            video_expectations["video_full_screen"] = compiled.full_screen
+        if profile.supports_video_saturation:
+            video_expectations["video_saturation"] = compiled.saturation
+        if profile.supports_video_sound_effects:
+            video_expectations["video_sound_effects"] = compiled.sound_effects
+            video_expectations["video_sound_effects_softness"] = compiled.sound_effects_softness
+        if profile.supports_white_balance:
+            if compiled.white_balance_position is None:
+                raise ValueError("video profile is missing white balance")
+            red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
+            video_expectations["white_balance_red"] = red
+            video_expectations["white_balance_blue"] = blue
+        if profile.supports_relative_brightness:
+            if compiled.relative_brightness is None:
+                raise ValueError("video profile is missing relative brightness")
+            left, top, right, bottom = compiled.relative_brightness
+            video_expectations["relative_brightness"] = left if len(set(compiled.relative_brightness)) == 1 else None
+            video_expectations["relative_brightness_left"] = left
+            video_expectations["relative_brightness_top"] = top
+            video_expectations["relative_brightness_right"] = right
+            video_expectations["relative_brightness_bottom"] = bottom
+        if profile.supports_blank_screen:
+            video_expectations["blank_screen"] = compiled.blank_screen
+        return video_expectations
     return None
 
 

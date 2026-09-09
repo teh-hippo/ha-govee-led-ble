@@ -173,6 +173,14 @@ function h6199Catalogue(): ModelEffectCatalogue {
       { id: "movie", label: "Movie" },
       { id: "game", label: "Game" },
     ],
+    video_settings: [
+      "capture_region",
+      "saturation",
+      "sound_effects",
+      "white_balance",
+      "relative_brightness",
+      "blank_screen",
+    ],
     templates: [
       {
         id: "template:video:movie",
@@ -215,7 +223,7 @@ function installH6199Catalogue(model: PanelModel): void {
   const catalogue = h6199Catalogue();
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 8,
+    schema_version: 9,
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },
@@ -240,7 +248,7 @@ function installFutureCatalogue(
   }
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 8,
+    schema_version: 9,
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },

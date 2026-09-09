@@ -142,6 +142,10 @@ def test_model_specific_music_capabilities():
     assert MODEL_PROFILES["H6199"].music_modes == ("energetic", "rhythm", "spectrum", "rolling")
     assert MODEL_PROFILES["H617E"].music_modes == MODEL_PROFILES["H617A"].music_modes
     assert MODEL_PROFILES["H6199"].effect_grammar == "H6199"
+    assert MODEL_PROFILES["H6199"].video_grammar == "H6199"
+    assert MODEL_PROFILES["H6199"].video_modes == ("movie", "game")
+    assert MODEL_PROFILES["H6199"].supports_video_capture_region
+    assert MODEL_PROFILES["H6199"].supports_video_saturation
     assert MODEL_PROFILES["H617A"].supports_music_color
     assert MODEL_PROFILES["H6199"].supports_music_color
     assert (MODEL_PROFILES["H617A"].music_sensitivity_min, MODEL_PROFILES["H617A"].music_sensitivity_max) == (0, 99)
