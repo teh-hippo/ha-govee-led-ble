@@ -23,7 +23,6 @@ from custom_components.ha_govee_led_ble.const import (
     prefix_effect_names_from_options,
     protocol_model,
     resolve_model,
-    wire_model,
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityState, compatibility, compile_music_profile
@@ -46,6 +45,16 @@ def test_segment_count_and_supports_segments():
 def test_supports_segments_defaults_false():
     assert ModelProfile("x").segment_count == 0
     assert not ModelProfile("x").supports_segments
+    assert ModelProfile("x").command_grammar is None
+    assert ModelProfile("x").status_grammar is None
+
+
+@pytest.mark.parametrize(
+    ("model", "grammar"), [("H617A", "H617A"), ("H617E", "H617A"), ("H6076", "H617A"), ("H6199", "H6199")]
+)
+def test_existing_profiles_preserve_both_directional_grammars(model, grammar):
+    assert get_profile(model).command_grammar == grammar
+    assert get_profile(model).status_grammar == grammar
 
 
 def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
@@ -66,7 +75,7 @@ def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
     assert h617e.connection_idle_timeout == 3.0
     assert resolve_model("H617E") == "H617E"
     assert protocol_model("H617E") == "H617A"
-    assert wire_model("H617E") == "H617A"
+    assert h617e.command_grammar == h617e.status_grammar == "H617A"
     assert h617e.effect_grammar == h617a.effect_grammar == "H617A"
 
 
@@ -89,7 +98,7 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert not profile.supports_music_mode
     assert not profile.supports_segments
     assert profile.whole_device_mask == 0x007F
-    assert wire_model("H6076") == "H617A"
+    assert profile.command_grammar == profile.status_grammar == "H617A"
     assert protocol_model("H6076") == "H6076"
     assert profile.effect_grammar is None
 
@@ -105,7 +114,8 @@ def test_unknown_models_fail_closed():
     assert not UNSUPPORTED_PROFILE.supports_music_mode
     assert resolve_model("H617A-extra") is None
     assert resolve_model("H9999") is None
-    assert wire_model("H9999") is None
+    assert get_profile("H9999").command_grammar is None
+    assert get_profile("H9999").status_grammar is None
     assert UNSUPPORTED_PROFILE.effect_grammar is None
 
 

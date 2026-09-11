@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .const import MUSIC_MODE_SLUGS, get_profile, wire_model
+from .const import MUSIC_MODE_SLUGS, get_profile
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import parse_command
 from .light_commands import parse_static_write
@@ -38,7 +38,7 @@ def expectations_from_packet(
         static_echoes_color=static_echoes_color,
     ):
         expectations["color_mode"] = color_mode
-    if wire_model(model) == "H6199":
+    if get_profile(model).command_grammar == "H6199":
         if operation != "mode":
             return expectations
         mode = getattr(generated.body.sub_mode, "name", None)
@@ -109,7 +109,7 @@ def _expected_color_mode(
     *,
     static_echoes_color: bool,
 ) -> tuple[ParsedMode, int | None] | None:
-    if wire_model(model) == "H6199":
+    if get_profile(model).command_grammar == "H6199":
         if generated.opcode.name != "mode":
             return None
         mode = getattr(generated.body.sub_mode, "name", None)

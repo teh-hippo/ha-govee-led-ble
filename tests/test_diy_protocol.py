@@ -311,7 +311,7 @@ def test_profile_effect_grammar_enables_codecs_without_authorizing_application(m
     )
     with pytest.raises(ValueError, match="activation route"):
         compile_effect(item, model)
-    monkeypatch.setitem(MODEL_PROFILES, model, replace(MODEL_PROFILES[model], wire_model=grammar))
+    monkeypatch.setitem(MODEL_PROFILES, model, replace(MODEL_PROFILES[model], command_grammar=grammar))
     compiled = compile_effect(item, model)
     reference = compile_effect(LibraryItem.new("Reference", workshop), grammar)
     assert compiled.model == model
@@ -320,9 +320,11 @@ def test_profile_effect_grammar_enables_codecs_without_authorizing_application(m
 
 
 @pytest.mark.parametrize("model", ["H6076", "H9999"])
-def test_basic_wire_alias_does_not_supply_effect_grammar(monkeypatch, model) -> None:
+def test_basic_grammars_do_not_supply_effect_grammar(monkeypatch, model) -> None:
     if model == "H9999":
-        monkeypatch.setitem(MODEL_PROFILES, model, ModelProfile("Synthetic", wire_model="H617A"))
+        monkeypatch.setitem(
+            MODEL_PROFILES, model, ModelProfile("Synthetic", command_grammar="H617A", status_grammar="H617A")
+        )
     workshop = WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A")
     envelope = reassemble_a3(fragment_a3(2, workshop.raw_param))
     parsed = parse_a3_effect_envelope(envelope, "H617A")

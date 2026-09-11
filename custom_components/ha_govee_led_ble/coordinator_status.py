@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, cast
 
-from .const import MUSIC_MODE_SLUGS, ReadDomain, get_profile, wire_model
+from .const import MUSIC_MODE_SLUGS, ReadDomain, get_profile
 from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
 from .scenes import MODEL_SCENES
 
@@ -99,7 +99,7 @@ class ParsedColorModeResponse:
 def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
-    if wire_model(model) == "H6199":
+    if get_profile(model).status_grammar == "H6199":
         if mode_name == "video":
             profile = get_profile(model)
             if profile.video_grammar != "H6199":

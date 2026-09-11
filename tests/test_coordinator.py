@@ -51,6 +51,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance,
     build_white_balance_query,
     parse_command,
+    parse_command_ack_result,
     parse_status,
 )
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
@@ -1318,18 +1319,96 @@ async def test_send_state_queries_include_h6199_display_state(h6199):
     ]
 
 
-def test_video_grammar_owns_writers_independently_of_basic_wire_model(
+def test_video_grammar_owns_writers_and_ack_independently_of_basic_grammars(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = "H7000"
     monkeypatch.setitem(
         MODEL_PROFILES,
         model,
-        replace(MODEL_PROFILES["H6199"], name="Synthetic video device", wire_model="H617A"),
+        replace(
+            MODEL_PROFILES["H6199"],
+            name="Synthetic video device",
+            command_grammar="H617A",
+            status_grammar=None,
+        ),
     )
 
     assert build_video_mode("game", False, 42, True, 55, model) == build_h6199_video(False, True, 42, True, 55)
-    assert build_white_balance_query(model) == build_white_balance_query("H6199")
+    queries = (build_white_balance_query, build_blank_screen_query, build_relative_brightness_query)
+    expected_queries = [build("H6199") for build in queries]
+    # Video grammar keys must not be resolved through the H6199 model profile.
+    monkeypatch.setitem(
+        MODEL_PROFILES, "H6199", replace(MODEL_PROFILES["H6199"], command_grammar=None, status_grammar="unknown")
+    )
+    assert [build(model) for build in queries] == expected_queries
+    ack = parse_command_ack_result(bytes.fromhex("33a900000000000000000000000000000000009a"), model)
+    assert ack.parser == "h6199_command_ack" and ack.rejection is None
+    assert ack.parsed is not None and ack.parsed.opcode.name == "display_setting"
+
+
+@pytest.mark.parametrize(("command_grammar", "status_grammar"), [("H617A", "H6199"), ("H6199", "H617A")])
+def test_mixed_grammars_route_command_expectations_and_status_semantics(
+    hass, monkeypatch, command_grammar, status_grammar
+):
+    model = "H7000"
+    monkeypatch.setitem(
+        MODEL_PROFILES,
+        model,
+        replace(
+            MODEL_PROFILES[status_grammar],
+            name="Synthetic mixed-grammar device",
+            command_grammar=command_grammar,
+            status_grammar=status_grammar,
+        ),
+    )
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=_CONFIGURATION_URL)
+    brightness = build_brightness(37, model)
+    assert brightness == build_brightness(37, command_grammar)
+    assert expectations_from_packet(brightness, model) == {"brightness_pct": 37}
+    for build, args, field, expected in (
+        (build_color_rgb, (10, 20, 30), "rgb_color", (10, 20, 30)),
+        (build_color_temp, (4000,), "color_temp_kelvin", 4000),
+        (build_white_brightness, (80,), "white_brightness", 80),
+    ):
+        packet = build(*args, model=model)
+        assert packet == build(*args, model=command_grammar)
+        expectations = expectations_from_packet(packet, model, static_echoes_color=True)
+        assert expectations[field] == expected
+        assert expectations["color_mode"] == (ParsedMode.COLOUR, 2 if field == "white_brightness" else 1)
+
+    music = build_music_mode(MUSIC_MODE_SLUGS["rhythm"], 50, (10, 20, 30), True, model)
+    assert music == build_music_mode(MUSIC_MODE_SLUGS["rhythm"], 50, (10, 20, 30), True, command_grammar)
+    assert expectations_from_packet(music, model) == {
+        "color_mode": (ParsedMode.MUSIC, None),
+        "music_mode": "rhythm",
+        "music_sensitivity": 50,
+        "music_calm": True,
+        "music_color": (10, 20, 30),
+    }
+
+    # Group 5 distinguishes outbound query grammars even with the opposite reply layout.
+    assert build_brightness_query(model) == build_brightness_query(command_grammar)
+    if command_grammar == "H617A":
+        assert build_segment_query(5, model) == build_segment_query(5, "H617A")
+    else:
+        assert build_segment_query(4, model) == build_segment_query(4, "H6199")
+        with pytest.raises(ValueError, match="1 to 4"):
+            build_segment_query(5, model)
+
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x04, [37])))
+    assert coordinator.brightness_pct == 37
+    assert coordinator._field_revisions["brightness_pct"] == 1
+    music_reply = {
+        "H617A": "aa051303580100000000000000000000000000e6",
+        "H6199": "aa0513044d0001010203000000000000000000f4",
+    }[status_grammar]
+    coordinator._notify_callback(None, bytearray.fromhex(music_reply))
+    assert coordinator.color_mode is ParsedMode.MUSIC
+    assert coordinator.music_mode == ("rhythm" if status_grammar == "H617A" else "spectrum")
+    assert coordinator.music_sensitivity == (88 if status_grammar == "H617A" else 77)
+    assert coordinator.music_color == (None if status_grammar == "H617A" else (1, 2, 3))
+    assert coordinator._field_revisions["color_mode"] == 1
 
 
 async def test_send_state_queries_include_h617a_core_state(coord):

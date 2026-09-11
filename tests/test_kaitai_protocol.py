@@ -13,8 +13,10 @@ import pytest
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from custom_components.ha_govee_led_ble import generated_protocol_adapter
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, UNSUPPORTED_PROFILE, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 _GENERATED_DIR = os.environ.get("KAITAI_GENERATED_DIR")
@@ -147,6 +149,32 @@ def test_h6199_command_acknowledgement_rejects_unobserved_opcodes() -> None:
     assert generated_protocol_adapter.parse_command_ack_result(bytes(frame), "H6199").parsed is None
 
 
+@pytest.mark.parametrize("grammar", [None, "unknown"])
+@pytest.mark.parametrize("direction", ["command", "status"])
+def test_missing_or_unknown_grammar_fails_closed_only_in_its_direction(monkeypatch, grammar, direction) -> None:
+    monkeypatch.setitem(MODEL_PROFILES, "H617A", replace(MODEL_PROFILES["H617A"], **{f"{direction}_grammar": grammar}))
+    command = generated_protocol_adapter.parse_command_result(COMMAND_STATIC)
+    status = generated_protocol_adapter.parse_status_result(STATUS_SEGMENTS)
+    rejected, accepted = (command, status) if direction == "command" else (status, command)
+    assert rejected.parsed is None and rejected.parser is None
+    assert rejected.rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
+    assert accepted.parsed is not None and accepted.rejection is None
+
+    if direction == "command":
+        assert expectations_from_packet(COMMAND_STATIC) == {}
+        for build, args in (
+            (generated_protocol_adapter.build_power, (True,)),
+            (generated_protocol_adapter.build_brightness_query, ()),
+            (generated_protocol_adapter.build_segment_query, (1,)),
+            (generated_protocol_adapter.build_segment_colour, (1, 10, 20, 30)),
+        ):
+            with pytest.raises(ValueError, match="grammar"):
+                build(*args)
+    else:
+        assert generated_protocol_adapter.build_power(True) == bytes.fromhex("3301010000000000000000000000000000000033")
+        assert generated_protocol_adapter.build_segment_query(5) == H617A_SEGMENT_QUERY
+
+
 def test_command_and_status_fields_are_meaningful() -> None:
     command = _parse(CommandWrite, COMMAND_STATIC)
     assert command.opcode.name == "multi"
@@ -221,18 +249,78 @@ def test_h66a0_four_slot_pages_reach_semantic_observation(hass, monkeypatch) -> 
     parsed._write(output)
     assert output.to_byte_array() == nonzero_final
 
-    # Test-only layout selection exercises real decode/notify/observation without
-    # registering H66A0 or changing the production status dispatcher.
-    profile = replace(MODEL_PROFILES["H617A"], segment_count=14, segment_group_size=4)
-    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.get_profile", lambda _: profile)
-    monkeypatch.setitem(generated_protocol_adapter._STATUS_ROOTS, "H617A", ("h66a0_status_reply", root))
-    coordinator = GoveeBLECoordinator(
-        hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="homeassistant://ha-govee-led-ble/editor/test"
+    # A synthetic exact model reuses outbound H617A bytes and independently selects
+    # the speculative layout. Neither the real H66A0 nor H617A changes support.
+    model = "H7000"
+    status_grammar = "test-h66a0-pages"
+    profile = replace(
+        MODEL_PROFILES["H617A"],
+        name="Synthetic 14-segment device",
+        command_grammar="H617A",
+        status_grammar=status_grammar,
+        segment_count=14,
+        segment_group_size=4,
     )
+    monkeypatch.setitem(MODEL_PROFILES, model, profile)
+    monkeypatch.setitem(generated_protocol_adapter._STATUS_ROOTS, status_grammar, ("h66a0_status_reply", root))
+    coordinator = GoveeBLECoordinator(
+        hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="homeassistant://ha-govee-led-ble/editor/test"
+    )
+    assert coordinator.profile is profile
+    command = generated_protocol_adapter.build_colour_temperature(3600, (255, 203, 141), 0x7FFF, model)
+    assert command == COMMAND_STATIC
+    parsed_command = generated_protocol_adapter.parse_command_result(command, model)
+    assert parsed_command.parser == "command_write" and parsed_command.parsed is not None
+    assert parsed_command.parsed.body.sub_body.static_body.kelvin == 3600
+    assert generated_protocol_adapter.build_segment_query(5, model) == H617A_SEGMENT_QUERY
+    assert generated_protocol_adapter.parse_status_result(first, model).parser == "h66a0_status_reply"
+    assert generated_protocol_adapter.parse_status_result(STATUS_SEGMENTS, "H617A").parsed is not None
+    assert (
+        generated_protocol_adapter.parse_status_result(first, "H617A").rejection
+        is ProtocolParseRejection.SCHEMA_REJECTED
+    )
+    assert get_profile("H66A0") is UNSUPPORTED_PROFILE
+    assert (
+        generated_protocol_adapter.parse_status_result(first, "H66A0").rejection
+        is ProtocolParseRejection.UNSUPPORTED_MODEL
+    )
+    assert (
+        generated_protocol_adapter.parse_command_result(command, "H66A0").rejection
+        is ProtocolParseRejection.UNSUPPORTED_MODEL
+    )
+
     for frame in (final, first, first, third):
         coordinator._notify_callback(None, bytearray(frame))
         assert coordinator.segment_state_source == "initial"
         assert coordinator._field_revisions.get("segment_colors", 0) == 0
+
+    # Reject malformed frames without corrupting the pending four-page observation.
+    before = coordinator._state_snapshot()
+    revisions = dict(coordinator._field_revisions)
+    domains = dict(coordinator._domain_revisions)
+    assert coordinator._segment_query_colors is not None
+    assert coordinator._segment_query_brightness is not None
+    colours = list(coordinator._segment_query_colors)
+    brightness = list(coordinator._segment_query_brightness)
+    invalid_group = first[:2] + b"\x05" + first[3:-1]
+    invalid_group += bytes((xor_checksum(invalid_group),))
+    for frame, rejection in (
+        (first[:-1], ProtocolParseRejection.INVALID_LENGTH),
+        (first[:-1] + bytes((first[-1] ^ 1,)), ProtocolParseRejection.INVALID_CHECKSUM),
+        (invalid_group, ProtocolParseRejection.SCHEMA_REJECTED),
+    ):
+        assert generated_protocol_adapter.parse_status_result(frame, model).rejection is rejection
+        coordinator._notify_callback(None, bytearray(frame))
+        assert coordinator._state_snapshot() == before
+        assert coordinator._field_revisions == revisions
+        assert coordinator._domain_revisions == domains
+        assert coordinator._segment_query_colors == colours
+        assert coordinator._segment_query_brightness == brightness
+        assert coordinator._segment_groups_observed == {1, 3, 4}
+        assert coordinator.segment_colors == [(255, 255, 255)] * 14
+        assert coordinator.segment_brightness == [100] * 14
+        assert coordinator.segment_state_source == "initial"
+        assert coordinator.segment_state_observed_at is None
     coordinator._notify_callback(None, bytearray(second))
     assert coordinator.segment_state_source == "observed"
     assert coordinator.segment_state_observed_at is not None
