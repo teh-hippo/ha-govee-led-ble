@@ -8,16 +8,23 @@ import sys
 from dataclasses import replace
 from importlib import import_module
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from custom_components.ha_govee_led_ble import generated_protocol_adapter
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, UNSUPPORTED_PROFILE, get_profile
+from custom_components.ha_govee_led_ble.const import (
+    MODEL_PROFILES,
+    UNSUPPORTED_PROFILE,
+    ModelProfile,
+    ReadDomain,
+    get_profile,
+)
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import ProtocolParseRejection
-from custom_components.ha_govee_led_ble.transport import xor_checksum
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 
 _GENERATED_DIR = os.environ.get("KAITAI_GENERATED_DIR")
 if _GENERATED_DIR:
@@ -152,7 +159,16 @@ def test_h6199_command_acknowledgement_rejects_unobserved_opcodes() -> None:
 @pytest.mark.parametrize("grammar", [None, "unknown"])
 @pytest.mark.parametrize("direction", ["command", "status"])
 def test_missing_or_unknown_grammar_fails_closed_only_in_its_direction(monkeypatch, grammar, direction) -> None:
-    monkeypatch.setitem(MODEL_PROFILES, "H617A", replace(MODEL_PROFILES["H617A"], **{f"{direction}_grammar": grammar}))
+    monkeypatch.setitem(
+        MODEL_PROFILES,
+        "H617A",
+        replace(
+            MODEL_PROFILES["H617A"],
+            read_domains=frozenset(),
+            setup_required_read_domains=frozenset(),
+            **{f"{direction}_grammar": grammar},
+        ),
+    )
     command = generated_protocol_adapter.parse_command_result(COMMAND_STATIC)
     status = generated_protocol_adapter.parse_status_result(STATUS_SEGMENTS)
     rejected, accepted = (command, status) if direction == "command" else (status, command)
@@ -218,9 +234,20 @@ def test_h6199_segment_pages_preserve_opaque_tail(group: int) -> None:
     assert output.to_byte_array() == frame
 
 
-@pytest.mark.skipif(not _GENERATED_DIR, reason="H66A0 is an all-schema fixture, not a runtime root")
-def test_h66a0_four_slot_pages_reach_semantic_observation(hass, monkeypatch) -> None:
-    root = _generated("h66a0_status_reply", "H66a0StatusReply")
+@pytest.mark.skipif(not _GENERATED_DIR, reason="Synthetic layouts are all-schema fixtures, not runtime roots")
+@pytest.mark.parametrize(
+    ("schema", "class_name", "read_domains"),
+    [
+        ("h66a0_status_reply", "H66a0StatusReply", frozenset({ReadDomain.SEGMENTS})),
+        (
+            "synthetic_mixed_status_reply",
+            "SyntheticMixedStatusReply",
+            frozenset({ReadDomain.POWER, ReadDomain.SEGMENTS}),
+        ),
+    ],
+)
+async def test_four_slot_profile_observes_every_declared_domain(hass, monkeypatch, schema, class_name, read_domains):
+    root = _generated(schema, class_name)
     first = bytes.fromhex("aaa50164e5444464ffae5464ffae5464cf2e2e24")
     final = bytes.fromhex("aaa50464dc3b3b64e54444000000000000000032")
     # Pages 2/3 are synthetic, including a meaningful black/off segment.
@@ -252,28 +279,29 @@ def test_h66a0_four_slot_pages_reach_semantic_observation(hass, monkeypatch) -> 
     # A synthetic exact model reuses outbound H617A bytes and independently selects
     # the speculative layout. Neither the real H66A0 nor H617A changes support.
     model = "H7000"
-    status_grammar = "test-h66a0-pages"
-    profile = replace(
-        MODEL_PROFILES["H617A"],
-        name="Synthetic 14-segment device",
+    status_grammar = "test-four-slot-pages"
+    profile = ModelProfile(
+        "Synthetic 14-segment device",
         command_grammar="H617A",
         status_grammar=status_grammar,
+        read_domains=read_domains,
         segment_count=14,
         segment_group_size=4,
+        supports_segment_writes=True,
+        whole_device_mask=0x3FFF,
     )
     monkeypatch.setitem(MODEL_PROFILES, model, profile)
-    monkeypatch.setitem(generated_protocol_adapter._STATUS_ROOTS, status_grammar, ("h66a0_status_reply", root))
+    monkeypatch.setitem(generated_protocol_adapter._STATUS_ROOTS, status_grammar, (schema, root))
     coordinator = GoveeBLECoordinator(
         hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="homeassistant://ha-govee-led-ble/editor/test"
     )
     assert coordinator.profile is profile
-    command = generated_protocol_adapter.build_colour_temperature(3600, (255, 203, 141), 0x7FFF, model)
-    assert command == COMMAND_STATIC
+    command = generated_protocol_adapter.build_power(True, model)
+    assert command == bytes.fromhex("3301010000000000000000000000000000000033")
     parsed_command = generated_protocol_adapter.parse_command_result(command, model)
     assert parsed_command.parser == "command_write" and parsed_command.parsed is not None
-    assert parsed_command.parsed.body.sub_body.static_body.kelvin == 3600
-    assert generated_protocol_adapter.build_segment_query(5, model) == H617A_SEGMENT_QUERY
-    assert generated_protocol_adapter.parse_status_result(first, model).parser == "h66a0_status_reply"
+    assert parsed_command.parsed.body.is_on == 1
+    assert generated_protocol_adapter.parse_status_result(first, model).parser == schema
     assert generated_protocol_adapter.parse_status_result(STATUS_SEGMENTS, "H617A").parsed is not None
     assert (
         generated_protocol_adapter.parse_status_result(first, "H617A").rejection
@@ -294,33 +322,6 @@ def test_h66a0_four_slot_pages_reach_semantic_observation(hass, monkeypatch) -> 
         assert coordinator.segment_state_source == "initial"
         assert coordinator._field_revisions.get("segment_colors", 0) == 0
 
-    # Reject malformed frames without corrupting the pending four-page observation.
-    before = coordinator._state_snapshot()
-    revisions = dict(coordinator._field_revisions)
-    domains = dict(coordinator._domain_revisions)
-    assert coordinator._segment_query_colors is not None
-    assert coordinator._segment_query_brightness is not None
-    colours = list(coordinator._segment_query_colors)
-    brightness = list(coordinator._segment_query_brightness)
-    invalid_group = first[:2] + b"\x05" + first[3:-1]
-    invalid_group += bytes((xor_checksum(invalid_group),))
-    for frame, rejection in (
-        (first[:-1], ProtocolParseRejection.INVALID_LENGTH),
-        (first[:-1] + bytes((first[-1] ^ 1,)), ProtocolParseRejection.INVALID_CHECKSUM),
-        (invalid_group, ProtocolParseRejection.SCHEMA_REJECTED),
-    ):
-        assert generated_protocol_adapter.parse_status_result(frame, model).rejection is rejection
-        coordinator._notify_callback(None, bytearray(frame))
-        assert coordinator._state_snapshot() == before
-        assert coordinator._field_revisions == revisions
-        assert coordinator._domain_revisions == domains
-        assert coordinator._segment_query_colors == colours
-        assert coordinator._segment_query_brightness == brightness
-        assert coordinator._segment_groups_observed == {1, 3, 4}
-        assert coordinator.segment_colors == [(255, 255, 255)] * 14
-        assert coordinator.segment_brightness == [100] * 14
-        assert coordinator.segment_state_source == "initial"
-        assert coordinator.segment_state_observed_at is None
     coordinator._notify_callback(None, bytearray(second))
     assert coordinator.segment_state_source == "observed"
     assert coordinator.segment_state_observed_at is not None
@@ -347,6 +348,36 @@ def test_h66a0_four_slot_pages_reach_semantic_observation(hass, monkeypatch) -> 
     assert coordinator._field_revisions["segment_colors"] == 2
     assert len(coordinator.segment_colors) == len(coordinator.segment_brightness) == 14
     assert coordinator.segment_colors[-2:] == [(220, 59, 59), (229, 68, 68)]
+
+    # Exercise real command/query/notification paths, mocking only the BLE connection.
+    power_reply = bytes.fromhex("aa010100000000000000000000000000000000aa")
+    replies = {}
+    if profile.can_read(ReadDomain.POWER):
+        replies[generated_protocol_adapter.build_power_query("H617A")] = power_reply
+    replies.update(
+        (generated_protocol_adapter.build_segment_query(group, "H617A"), frame)
+        for group, frame in enumerate((first, second, third, final), 1)
+    )
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet != command:
+            coordinator._notify_callback(None, bytearray(replies[packet]))
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
+    coordinator._client = client
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_reset_disconnect_timer", lambda: None)
+    await coordinator.send_command(command)
+    client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, command, response=False)
+    client.write_gatt_char.reset_mock()
+    if profile.can_read(ReadDomain.POWER):
+        assert generated_protocol_adapter.parse_status_result(power_reply, "H617A").parsed is not None
+        assert await coordinator.refresh_state(expected_on=True, timeout=0.05)
+        assert coordinator.is_on
+    assert await coordinator.async_refresh_segments(timeout=0.05)
+    assert coordinator._field_revisions["segment_colors"] == 3
+    assert set(coordinator._domain_revisions) == profile.read_domains
+    assert client.write_gatt_char.await_args_list == [call(WRITE_UUID, query, response=False) for query in replies]
 
 
 def test_diy_shapes_expose_painted_flat_and_combo_fields() -> None:

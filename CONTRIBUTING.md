@@ -27,7 +27,8 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
 
 ### Reusing device protocol support
 
-- Declare `command_grammar` and `status_grammar` explicitly, even when they select the same grammar. Commands, outgoing status queries, command echoes, and optimistic command expectations use `command_grammar`; incoming status frames and their semantic interpretation use `status_grammar`. Missing or unknown grammar keys fail closed, without falling back to another direction or exact model.
+- Declare `command_grammar` and `status_grammar` explicitly, even when they select the same grammar. Basic commands, outgoing basic status queries, command echoes, and optimistic command expectations use `command_grammar`; incoming status frames and their semantic interpretation use `status_grammar`. Missing or unknown grammar keys fail closed, without falling back to another direction or exact model.
+- Any declared read domain requires `status_grammar`; power, brightness, colour mode, mode, firmware, hardware, and segment reads also require `command_grammar`. The selected complete status root must cover every declared read domain, proven by an exact-profile integration test. Do not add fallback or per-domain status routing, or a Python grammar-metadata registry.
 - Declare `effect_grammar` independently of basic command and status compatibility. It selects A3 and Workshop codecs, including their canonical semantics; it does not authorize effect application, catalogue reuse, activation, or readback policy. Workshop application also requires the exact-model capability contract and an implemented activation route.
 - Declare video modes and setting capabilities on the exact-model profile. `video_grammar` selects compatible mode, query, writer, readback, and command-ACK semantics independently of the basic grammars; it does not authorize a model or imply support for every companion setting. Grammar keys select codecs directly, not another model's profile.
 - Declare each model's `music_modes` explicitly. The shared slug-to-wire-ID registry records encoding knowledge, not product support.
@@ -35,6 +36,8 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
 - Reuse `govee_segment_page` in status KSY with the evidenced segment count, page size, and unused-byte rule. Its fixed page body has four wire slots; only the declared meaningful records contribute to observed state. Keep profile counts consistent with the selected schema, and preserve uncertain unused bytes rather than treating zero-valued records as absent.
 
 Extension tests should demonstrate reuse through declarations without unrelated exact-model codec allowlist edits. Register a test-only exact-model profile and an independent status-root key rather than replacing an existing root or mocking profile lookup. Synthetic profiles and speculative fixtures establish these software boundaries, not physical device compatibility; the H66A0 fixture does not enable real H66A0 runtime support.
+
+Partial fixtures must declare only the minimal capabilities and read domains they exercise, rather than inherit a full device's contract.
 
 ### Outbound transmission
 

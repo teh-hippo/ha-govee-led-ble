@@ -108,6 +108,44 @@ def test_setup_required_domains_must_be_readable():
         ModelProfile("x", setup_required_read_domains=frozenset({ReadDomain.POWER}))
 
 
+@pytest.mark.parametrize("domain", list(ReadDomain))
+def test_read_domains_require_status_grammar(domain):
+    with pytest.raises(ValueError, match="read domains require a status grammar"):
+        ModelProfile("x", command_grammar="H6199", status_grammar=None, read_domains=frozenset({domain}))
+
+
+@pytest.mark.parametrize(
+    "domain",
+    [
+        ReadDomain.POWER,
+        ReadDomain.BRIGHTNESS,
+        ReadDomain.COLOUR_MODE,
+        ReadDomain.MODE,
+        ReadDomain.FIRMWARE,
+        ReadDomain.HARDWARE,
+        ReadDomain.SEGMENTS,
+    ],
+)
+def test_basic_read_domains_require_command_grammar(domain):
+    with pytest.raises(ValueError, match="basic read domains require a command grammar"):
+        ModelProfile("x", command_grammar=None, status_grammar="H6199", read_domains=frozenset({domain}))
+
+
+@pytest.mark.parametrize(
+    "domain",
+    [
+        ReadDomain.SUBORDINATE_20,
+        ReadDomain.SUBORDINATE_21,
+        ReadDomain.DISPLAY_SETTING,
+        ReadDomain.RELATIVE_BRIGHTNESS,
+        ReadDomain.OTHER,
+    ],
+)
+def test_non_basic_read_domains_do_not_require_command_grammar(domain):
+    profile = ModelProfile("x", command_grammar=None, status_grammar="H6199", read_domains=frozenset({domain}))
+    assert profile.can_read(domain)
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments
