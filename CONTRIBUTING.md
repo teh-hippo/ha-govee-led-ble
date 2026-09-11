@@ -15,7 +15,7 @@ Do not post the Bluetooth address, serial number, account details, or other uniq
 
 ## Project structure
 
-- `custom_components/ha_govee_led_ble/const.py` owns the exact-model `ModelProfile` registry.  Profiles declare product capabilities and runtime policy; `wire_model` may reuse another model's protocol only where the bytes are compatible.
+- `custom_components/ha_govee_led_ble/const.py` owns the exact-model `ModelProfile` registry.  Profiles declare product capabilities and runtime policy; `command_grammar` and `status_grammar` independently select compatible outbound and inbound protocols.
 - `tools/ble/kaitai/**/*.ksy` is the only BLE wire-structure source.  Generated modules under `generated_protocol/` are build outputs and are never edited manually.
 - `generated_protocol_adapter.py` connects generated structures to semantic builders and parsers.  Handwritten protocol code is limited to semantic transforms, checksums, and transport framing.
 - `coordinator*.py` owns connection lifecycle, queries, notifications, state, verification, and diagnostics.
@@ -27,13 +27,14 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
 
 ### Reusing device protocol support
 
-- Declare `effect_grammar` independently of basic `wire_model` compatibility. It selects A3 and Workshop codecs, including their canonical semantics; it does not authorize effect application, catalogue reuse, activation, or readback policy. Workshop application also requires the exact-model capability contract and an implemented activation route.
-- Declare video modes and setting capabilities on the exact-model profile. `video_grammar` selects compatible mode, query, writer, and readback semantics; it does not authorize a model or imply support for every companion setting.
+- Declare `command_grammar` and `status_grammar` explicitly, even when they select the same grammar. Commands, outgoing status queries, command echoes, and optimistic command expectations use `command_grammar`; incoming status frames and their semantic interpretation use `status_grammar`. Missing or unknown grammar keys fail closed, without falling back to another direction or exact model.
+- Declare `effect_grammar` independently of basic command and status compatibility. It selects A3 and Workshop codecs, including their canonical semantics; it does not authorize effect application, catalogue reuse, activation, or readback policy. Workshop application also requires the exact-model capability contract and an implemented activation route.
+- Declare video modes and setting capabilities on the exact-model profile. `video_grammar` selects compatible mode, query, writer, readback, and command-ACK semantics independently of the basic grammars; it does not authorize a model or imply support for every companion setting. Grammar keys select codecs directly, not another model's profile.
 - Declare each model's `music_modes` explicitly. The shared slug-to-wire-ID registry records encoding knowledge, not product support.
 - Pass the effective device profile to semantic segment builders. Construct and validate the entire request before cancelling previews, acquiring user control, changing optimistic state, or writing to BLE. Whole-device masks remain separate from individually selectable segments.
 - Reuse `govee_segment_page` in status KSY with the evidenced segment count, page size, and unused-byte rule. Its fixed page body has four wire slots; only the declared meaningful records contribute to observed state. Keep profile counts consistent with the selected schema, and preserve uncertain unused bytes rather than treating zero-valued records as absent.
 
-Extension tests should demonstrate reuse through declarations without unrelated exact-model codec allowlist edits. Synthetic profiles and speculative fixtures establish these software boundaries, not physical device compatibility.
+Extension tests should demonstrate reuse through declarations without unrelated exact-model codec allowlist edits. Register a test-only exact-model profile and an independent status-root key rather than replacing an existing root or mocking profile lookup. Synthetic profiles and speculative fixtures establish these software boundaries, not physical device compatibility; the H66A0 fixture does not enable real H66A0 runtime support.
 
 ### Outbound transmission
 

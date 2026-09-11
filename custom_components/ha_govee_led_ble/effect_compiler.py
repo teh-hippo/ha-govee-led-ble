@@ -311,9 +311,9 @@ def workshop_apply_code(model: str) -> int:
     if studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP) is not CapabilityState.SUPPORTED:
         raise ValueError(f"{model} Workshop application is not supported")
     profile = get_profile(model)
-    if profile.effect_grammar == "H617A" and profile.wire_model == "H617A":
+    if profile.effect_grammar == "H617A" and profile.command_grammar == "H617A":
         return H617A_WORKSHOP_APPLY_CODE
-    if profile.effect_grammar == "H6199" and profile.wire_model == "H6199":
+    if profile.effect_grammar == "H6199" and profile.command_grammar == "H6199":
         return H6199_WORKSHOP_APPLY_CODE
     raise ValueError(f"{model} has no supported Workshop grammar and activation route")
 

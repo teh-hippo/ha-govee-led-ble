@@ -11,7 +11,7 @@ from typing import Any, cast
 
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
-from .const import get_profile, wire_model
+from .const import get_profile
 from .transport import A3_CHUNK_SIZE, xor_checksum
 
 CommandWrite = cast(
@@ -186,17 +186,16 @@ _COMMAND_ACK_ROOTS = {
 
 def _parse_xor_frame(
     frame: bytes,
-    model: str,
+    grammar: str | None,
     roots: dict[str, tuple[str, Any]],
 ) -> ProtocolParseResult:
     if len(frame) != 20:
         return ProtocolParseResult(None, None, ProtocolParseRejection.INVALID_LENGTH)
     if xor_checksum(frame[:-1]) != frame[-1]:
         return ProtocolParseResult(None, None, ProtocolParseRejection.INVALID_CHECKSUM)
-    resolved = wire_model(model)
-    if resolved is None:
+    if grammar is None:
         return ProtocolParseResult(None, None, ProtocolParseRejection.UNSUPPORTED_MODEL)
-    root = roots.get(resolved)
+    root = roots.get(grammar)
     if root is None:
         return ProtocolParseResult(None, None, ProtocolParseRejection.UNSUPPORTED_MODEL)
     parser, root_type = root
@@ -209,7 +208,7 @@ def _parse_xor_frame(
 
 
 def parse_status_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
-    return _parse_xor_frame(frame, model, _STATUS_ROOTS)
+    return _parse_xor_frame(frame, get_profile(model).status_grammar, _STATUS_ROOTS)
 
 
 def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
@@ -217,7 +216,7 @@ def parse_status(frame: bytes, model: str = "H617A") -> Any | None:
 
 
 def parse_command_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
-    return _parse_xor_frame(frame, model, _COMMAND_ROOTS)
+    return _parse_xor_frame(frame, get_profile(model).command_grammar, _COMMAND_ROOTS)
 
 
 def parse_command_ack_result(frame: bytes, model: str) -> ProtocolParseResult:
@@ -268,7 +267,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str) -> Any:
 
 
 def _command_types(model: str) -> tuple[Any, Any, Any]:
-    resolved = wire_model(model)
+    resolved = get_profile(model).command_grammar
     if resolved == "H6199":
         return (
             H6199CommandWrite,
@@ -290,15 +289,14 @@ _child = new_child
 
 def _build_status_query(
     domain: str,
-    model: str = "H617A",
+    grammar: str | None,
     *,
     display_setting: str | None = None,
     segment_group: int | None = None,
 ) -> bytes:
-    resolved = wire_model(model)
-    if resolved is None:
-        raise ValueError(f"{model} has no generated status-query grammar")
-    root_type = H6199StatusQuery if resolved == "H6199" else StatusQuery
+    if grammar not in {"H617A", "H6199"}:
+        raise ValueError(f"{grammar} has no generated status-query grammar")
+    root_type = H6199StatusQuery if grammar == "H6199" else StatusQuery
     root = root_type()
     root.header = b"\xaa"
     root.domain = getattr(root_type.QueryDomain, domain)
@@ -326,23 +324,23 @@ def _build_status_query(
 
 
 def build_power_query(model: str = "H617A") -> bytes:
-    return _build_status_query("power", model)
+    return _build_status_query("power", get_profile(model).command_grammar)
 
 
 def build_brightness_query(model: str = "H617A") -> bytes:
-    return _build_status_query("brightness", model)
+    return _build_status_query("brightness", get_profile(model).command_grammar)
 
 
 def build_colour_mode_query(model: str = "H617A") -> bytes:
-    return _build_status_query("colour_mode", model)
+    return _build_status_query("colour_mode", get_profile(model).command_grammar)
 
 
 def build_firmware_query(model: str = "H617A") -> bytes:
-    return _build_status_query("firmware", model)
+    return _build_status_query("firmware", get_profile(model).command_grammar)
 
 
 def build_hardware_query(model: str = "H617A") -> bytes:
-    return _build_status_query("hardware", model)
+    return _build_status_query("hardware", get_profile(model).command_grammar)
 
 
 def _video_grammar(model: str) -> str:
@@ -386,13 +384,13 @@ def build_h6199_subordinate_query(domain: int) -> bytes:
 
 
 def build_segment_query(group: int, model: str = "H617A") -> bytes:
-    resolved = wire_model(model)
-    if resolved is None:
+    resolved = get_profile(model).command_grammar
+    if resolved not in {"H617A", "H6199"}:
         raise ValueError(f"{model} has no generated segment-query grammar")
     maximum = 4 if resolved == "H6199" else 5
     if not 1 <= group <= maximum:
         raise ValueError(f"segment query group must be from 1 to {maximum}")
-    return _build_status_query("segments", model, segment_group=group)
+    return _build_status_query("segments", resolved, segment_group=group)
 
 
 def _rgb(parent: Any, red: int, green: int, blue: int) -> Any:
@@ -698,7 +696,7 @@ def build_segment_colour(
     blue: int,
     model: str = "H617A",
 ) -> bytes:
-    resolved = wire_model(model)
+    resolved = get_profile(model).command_grammar
     if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"
@@ -734,7 +732,7 @@ def build_colour_temperature(
     model: str = "H617A",
 ) -> bytes:
     value = max(2000, min(9000, kelvin))
-    resolved = wire_model(model)
+    resolved = get_profile(model).command_grammar
     if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"
@@ -769,7 +767,7 @@ def build_segment_brightness(
     model: str = "H617A",
 ) -> bytes:
     value = max(0, min(100, percent))
-    resolved = wire_model(model)
+    resolved = get_profile(model).command_grammar
     if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"
@@ -972,7 +970,7 @@ def build_music_mode(
     calm: bool,
     model: str = "H617A",
 ) -> bytes:
-    resolved = wire_model(model)
+    resolved = get_profile(model).command_grammar
     if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"

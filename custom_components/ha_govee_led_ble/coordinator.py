@@ -930,7 +930,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     observed = ("is_on",)
             elif domain is StatusDomain.BRIGHTNESS:
                 brightness_value = (
-                    int(generated.body.percent) if self.model == "H6199" else int(generated.body.brightness_pct)
+                    int(generated.body.percent)
+                    if self.profile.status_grammar == "H6199"
+                    else int(generated.body.brightness_pct)
                 )
                 if self._accept_expected("brightness_pct", brightness_value):
                     self.brightness_pct = brightness_value

@@ -129,7 +129,7 @@ def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite
     if generated is None:
         return None
     whole_device_mask = get_profile(model).whole_device_mask
-    if model == "H6199":
+    if get_profile(model).command_grammar == "H6199":
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
             return None
         detail = generated.body.detail

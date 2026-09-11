@@ -76,7 +76,8 @@ _IDENTITY_READ_DOMAINS = frozenset(
 class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
-    wire_model: str | None = None
+    command_grammar: str | None = None
+    status_grammar: str | None = None
     outbound_transform: Callable[[bytes], bytes] | None = None
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
@@ -184,7 +185,8 @@ _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 _H617A_PROFILE = ModelProfile(
     "H617A LED Strip",
     support_quality=SupportQuality.SUPPORTED,
-    wire_model="H617A",
+    command_grammar="H617A",
+    status_grammar="H617A",
     effect_grammar="H617A",
     read_domains=frozenset(
         {
@@ -267,7 +269,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6076": ModelProfile(
         "H6076 Lyra Floor Lamp",
         support_quality=SupportQuality.PARTIAL,
-        wire_model="H617A",
+        command_grammar="H617A",
+        status_grammar="H617A",
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -287,7 +290,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         support_quality=SupportQuality.SUPPORTED,
-        wire_model="H6199",
+        command_grammar="H6199",
+        status_grammar="H6199",
         effect_grammar="H6199",
         video_grammar="H6199",
         read_domains=frozenset(
@@ -363,11 +367,6 @@ def protocol_model(model: str) -> str | None:
     """Resolve legacy runtime policy identity, not effect-grammar compatibility."""
     resolved = resolve_model(model)
     return "H617A" if resolved in {"H617A", "H617E"} else resolved
-
-
-def wire_model(model: str) -> str | None:
-    resolved = resolve_model(model)
-    return MODEL_PROFILES[resolved].wire_model if resolved is not None else None
 
 
 def get_profile(model: str) -> ModelProfile:
