@@ -1331,6 +1331,8 @@ def test_video_grammar_owns_writers_and_ack_independently_of_basic_grammars(
             name="Synthetic video device",
             command_grammar="H617A",
             status_grammar=None,
+            read_domains=frozenset(),
+            setup_required_read_domains=frozenset(),
         ),
     )
 
@@ -1339,7 +1341,15 @@ def test_video_grammar_owns_writers_and_ack_independently_of_basic_grammars(
     expected_queries = [build("H6199") for build in queries]
     # Video grammar keys must not be resolved through the H6199 model profile.
     monkeypatch.setitem(
-        MODEL_PROFILES, "H6199", replace(MODEL_PROFILES["H6199"], command_grammar=None, status_grammar="unknown")
+        MODEL_PROFILES,
+        "H6199",
+        replace(
+            MODEL_PROFILES["H6199"],
+            command_grammar=None,
+            status_grammar="unknown",
+            read_domains=frozenset(),
+            setup_required_read_domains=frozenset(),
+        ),
     )
     assert [build(model) for build in queries] == expected_queries
     ack = parse_command_ack_result(bytes.fromhex("33a900000000000000000000000000000000009a"), model)

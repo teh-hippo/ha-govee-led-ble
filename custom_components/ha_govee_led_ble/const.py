@@ -121,6 +121,22 @@ class ModelProfile:
     def __post_init__(self) -> None:
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
+        if self.read_domains and self.status_grammar is None:
+            raise ValueError("read domains require a status grammar")
+        if (
+            self.read_domains
+            & {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+            and self.command_grammar is None
+        ):
+            raise ValueError("basic read domains require a command grammar")
         if self.video_modes and self.video_grammar is None:
             raise ValueError("video modes require a grammar")
         if self.supports_video_mode and not self.video_modes:
