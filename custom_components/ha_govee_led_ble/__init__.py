@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from copy import deepcopy
 from typing import Any
 
 from homeassistant.components import bluetooth, frontend
@@ -209,7 +210,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         prefix_effect_names=prefix_effect_names_from_options(entry.options),
         always_include_custom_effects=always_include_custom_effects_from_options(entry.options),
     )
-    await coordinator.async_config_entry_first_refresh()
+    setup_diagnostics = hass.data.setdefault(DOMAIN, {}).setdefault("setup_diagnostics", {})
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    finally:
+        setup_diagnostics[entry.entry_id] = deepcopy(coordinator.setup_diagnostics)
+    setup_diagnostics.pop(entry.entry_id, None)
     entry.runtime_data = coordinator
     if effect_backend := get_effect_backend(hass):
         await effect_backend.preview.async_load_device(entry.entry_id)
@@ -280,6 +286,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
+    hass.data.get(DOMAIN, {}).get("setup_diagnostics", {}).pop(entry.entry_id, None)
     effect_backend = get_effect_backend(hass)
     if effect_backend is not None:
         await asyncio.gather(

@@ -8,6 +8,7 @@ doc: |
 
   The structure is derived from the official app's H6099 product path and remains
   speculative until exact-model owner qualification.
+  Active-detail ControllerMode.b uses the default payload 01 for the mode query.
 seq:
   - id: header
     contents: [0xaa]
@@ -21,7 +22,7 @@ seq:
       cases:
         'query_domain::power': zero_body
         'query_domain::brightness': zero_body
-        'query_domain::colour_mode': zero_body
+        'query_domain::colour_mode': colour_mode_query_body
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
         'query_domain::display_setting': display_setting_query_body
@@ -54,6 +55,14 @@ types:
     seq:
       - id: selector
         contents: [0x03]
+      - id: zeros
+        type: u1
+        valid: 0
+        repeat: eos
+  colour_mode_query_body:
+    seq:
+      - id: selector
+        contents: [0x01]
       - id: zeros
         type: u1
         valid: 0

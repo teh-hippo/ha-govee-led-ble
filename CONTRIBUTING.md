@@ -67,8 +67,22 @@ The first prerelease request should stay short: provide the release link, explai
 Use a targeted follow-up checklist only when a result needs clarification.  Ask for the action, expected and observed result, Home Assistant state, restoration result, exact prerelease, and immediate diagnostics.  Device owners are not expected to build the repository or run its developer test suite.
 
 If the config entry never loads, enable debug logging for
-`custom_components.ha_govee_led_ble` and copy only the address-free protocol
-rejection lines.  Do not attach a complete unredacted Home Assistant log.
+`custom_components.ha_govee_led_ble` and copy the address-free `Govee setup attempt:`
+summary. It includes capability evidence, locally completed writes, raw/valid reply
+counts, missing required domains, and the failure phase. A completed write does
+not prove that the device received it. The last failed attempt is also retained
+for diagnostics without a loaded coordinator.
+
+Setup has a 45-second work budget, followed by bounded disconnect/stale-connection
+cleanup (up to 10 seconds each). The optional connection-information read has a
+three-second budget. Explicit encryption capability stops plaintext queries;
+this branch does not yet negotiate an encrypted session. Unknown or absent
+capability information is not evidence that encryption is unsupported.
+
+Do not attach a complete unredacted Home Assistant log. Bleak's own debug logging
+can include raw connection-information values and identifiers even though the
+setup summary excludes them. Redact addresses (including underscore-form BlueZ
+paths), identifying device-name suffixes, and raw identifying payloads.
 
 ## Protocol evidence and speculative schemas
 

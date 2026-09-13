@@ -1,13 +1,31 @@
 """BLE transport framing shared by commands and effect uploads."""
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 WRITE_UUID = "00010203-0405-0607-0809-0a0b0c0d2b11"
 READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
+INFO_UUID = "00010203-0405-0607-0809-0a0b0c0d2b12"
 
 _A3_FRAME_PREFIX = 0xA3
 A3_CHUNK_SIZE = 17
+
+
+def advertisement_encryption(manufacturer_data: Mapping[int, bytes]) -> bool | None:
+    """Govee app BleUtil.parseBleBroadcastPact: flags followed by 88 EC magic."""
+    for company_id, payload in manufacturer_data.items():
+        if not 0 <= company_id <= 0xFFFF:
+            continue
+        # Bleak separates the first two manufacturer bytes into the company ID.
+        wire = company_id.to_bytes(2, "little") + payload
+        if len(wire) >= 6 and wire[1:3] == b"\x88\xec":
+            return bool(wire[0] & 0x40)
+    return None
+
+
+def connection_info_encryption(value: bytes | bytearray) -> int | None:
+    """Govee app BgcInfoReader: formats 1 and 2 share the encryption-version byte."""
+    return value[1] if len(value) >= 2 and value[0] in (1, 2) else None
 
 
 def xor_checksum(data: bytes | bytearray) -> int:

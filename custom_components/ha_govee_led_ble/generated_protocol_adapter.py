@@ -329,6 +329,10 @@ def _build_status_query(
         body = _child(root_type.RelativeBrightnessQueryBody, root)
         body.selector = b"\x01"
         body.zeros = [0] * 16
+    elif domain == "colour_mode" and resolved == "H6099":
+        body = _child(root_type.ColourModeQueryBody, root)
+        body.selector = b"\x01"
+        body.zeros = [0] * 16
     else:
         body = _child(root_type.ZeroBody, root)
         body.zeros = [0] * 17

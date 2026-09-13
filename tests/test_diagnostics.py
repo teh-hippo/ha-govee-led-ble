@@ -21,6 +21,7 @@ REDACTED = "**REDACTED**"
 
 
 def _prep(coord, *, packet_log=None, segment_colors=None):
+    coord.setup_diagnostics = {}
     coord.packet_log = [] if packet_log is None else packet_log
     coord.segment_colors = [(1, 2, 3)] * coord.profile.segment_count if segment_colors is None else segment_colors
     coord._client = MagicMock(is_connected=True)
@@ -58,6 +59,45 @@ async def test_surfaces_segment_fields(mock_h6199_coordinator):
     assert coord["effect_categories"] == ["advanced", "effects", "reactive", "scenes", "video"]
     assert coord["prefix_effect_names"] is False
     assert coord["always_include_custom_effects"] is False
+
+
+@pytest.mark.parametrize("snapshot", [None, {"outcome": "failed", "missing_required_domains": ["power"]}])
+async def test_diagnostics_without_runtime_data(hass, snapshot):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="AA:BB:CC:DD:EE:FF",
+        data={CONF_MODEL: "H6199", "address": "AA:BB:CC:DD:EE:FF"},
+        options={"nested": {"unique_id": "AA:BB:CC:DD:EE:FF"}},
+    )
+    assert not hasattr(entry, "runtime_data")
+    if snapshot is not None:
+        hass.data[DOMAIN] = {"setup_diagnostics": {entry.entry_id: snapshot, "other-entry": {"other": True}}}
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["entry"] == {
+        "entry_id": entry.entry_id,
+        "unique_id": REDACTED,
+        "data": {CONF_MODEL: "H6199", "address": REDACTED},
+        "options": {"nested": {"unique_id": REDACTED}},
+    }
+    assert diagnostics["setup_attempt"] == (snapshot or {})
+    assert diagnostics["coordinator"] is None
+    assert diagnostics["active_effect_state"] is None
+    assert diagnostics["effect_deployment_diagnostics"]["events"] == []
+    assert "AA:BB:CC:DD:EE:FF" not in str(diagnostics)
+
+
+async def test_setup_attempt_uses_live_coordinator_and_redacts(hass, mock_h6199_coordinator):
+    entry = _entry()
+    coord = _prep(mock_h6199_coordinator)
+    coord.setup_diagnostics = {"outcome": "success", "nested": {"address": coord.address}}
+    hass.data[DOMAIN] = {"setup_diagnostics": {entry.entry_id: {"outcome": "failed"}}}
+
+    diagnostics = await _run(coord, entry, hass)
+
+    assert diagnostics["setup_attempt"] == {"outcome": "success", "nested": {"address": REDACTED}}
+    assert coord.setup_diagnostics["nested"]["address"] == coord.address
 
 
 async def test_surfaces_release_capability_evidence_without_hiding_planned_workflows(
@@ -257,8 +297,10 @@ async def test_diagnostics_truncate_oversized_raw_packet_data(
     assert packet["truncated"] is True
 
 
+@pytest.mark.parametrize("loaded", [True, False])
 async def test_surfaces_only_bounded_deployment_diagnostics_for_this_entry(
     mock_h6199_coordinator,
+    loaded,
 ) -> None:
     entry = _entry()
     history = EffectDiagnosticHistory(maximum_events=2)
@@ -274,23 +316,31 @@ async def test_surfaces_only_bounded_deployment_diagnostics_for_this_entry(
         config_entry_id="other-entry",
         details={"capability": "workshop"},
     )
+    state = {"config_entry_id": entry.entry_id, "active_effect": None}
+    cache = MagicMock()
+    cache.get.return_value.to_public_dict.return_value = state
     hass = SimpleNamespace(
         data={
             DOMAIN: {
                 EFFECT_BACKEND_DATA_KEY: SimpleNamespace(
                     diagnostics=history,
+                    device_cache=cache,
                 )
             }
         }
     )
 
-    diag = await _run(_prep(mock_h6199_coordinator), entry, hass)
+    if loaded:
+        entry.runtime_data = _prep(mock_h6199_coordinator)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
     deployment = diag["effect_deployment_diagnostics"]
 
     assert deployment["schema_version"] == 1
     assert deployment["limits"]["event_count"] == 2
     assert len(deployment["events"]) == 1
     assert deployment["events"][0]["details"]["password"] == REDACTED
+    assert diag["active_effect_state"] == state
+    cache.get.assert_called_once_with(entry.entry_id)
     assert "never-visible" not in str(diag)
 
 

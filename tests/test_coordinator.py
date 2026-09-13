@@ -70,7 +70,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
-from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
+from custom_components.ha_govee_led_ble.transport import INFO_UUID, WRITE_UUID, xor_checksum
 
 M = "custom_components.ha_govee_led_ble.coordinator"
 _CONFIGURATION_URL = "homeassistant://ha-govee-led-ble/editor/test-entry"
@@ -2579,6 +2579,180 @@ async def test_first_refresh_reports_update_failed_then_degrades_silently(coord)
         with pytest.raises(UpdateFailed):
             await coord._async_update_data()
         assert await coord._async_update_data() == coord._state_snapshot()
+
+
+@pytest.mark.parametrize(
+    ("info_value", "manufacturer_data", "expected", "blocked"),
+    [
+        (None, {}, "absent", False),
+        (b"\x01\x00", {}, "recognized", False),
+        (b"\x01\x01", {}, "recognized", True),
+        (b"\x02\x02", {}, "recognized", True),
+        (b"\x02\x03", {}, "recognized", True),
+        (b"\x01", {}, "unrecognized", False),
+        (b"\x03\x01", {}, "unrecognized", False),
+        (None, {0x8843: b"\xec\x00\x01\x01"}, "absent", True),
+        (None, {0x8803: b"\xec\x00\x01\x01"}, "absent", False),
+        (None, {0x8843: b"\x00\x00\x01\x01"}, "absent", False),
+    ],
+)
+async def test_setup_capability_evidence(h6099, info_value, manufacturer_data, expected, blocked):
+    h6099.setup_diagnostics = {"advertisement_encryption": None}
+    h6099._client = client = _c(read_gatt_char=AsyncMock(return_value=info_value))
+    client.services.get_characteristic.return_value = None if info_value is None else MagicMock()
+    info = SimpleNamespace(rssi=-75, manufacturer_data=manufacturer_data)
+    with patch(f"{M}.bluetooth.async_last_service_info", return_value=info):
+        if blocked:
+            with pytest.raises(BleakError, match="plaintext queries withheld"):
+                await h6099._read_setup_capabilities()
+            assert h6099.setup_diagnostics["failure"] == "encrypted_session_required"
+        else:
+            await h6099._read_setup_capabilities()
+    client.services.get_characteristic.assert_called_once_with(INFO_UUID)
+    assert h6099.setup_diagnostics["info_read"] == expected
+    assert h6099.setup_diagnostics["rssi"] == -75
+    assert "raw" not in h6099.setup_diagnostics
+
+
+@pytest.mark.parametrize("error", [BleakError("private address"), TimeoutError()])
+async def test_setup_capability_read_error_is_sanitized(h6099, error):
+    h6099.setup_diagnostics = {"advertisement_encryption": None}
+    h6099._client = _c(read_gatt_char=AsyncMock(side_effect=error))
+    with patch(f"{M}.bluetooth.async_last_service_info", return_value=None):
+        await h6099._read_setup_capabilities()
+    assert h6099.setup_diagnostics["info_read"] in {"failed", "timeout"}
+    assert "private address" not in str(h6099.setup_diagnostics)
+
+
+@pytest.mark.parametrize("encrypted", [False, True])
+async def test_setup_silence_and_encryption_diagnostics(h6099, encrypted, caplog):
+    client = _c(
+        start_notify=AsyncMock(),
+        read_gatt_char=AsyncMock(return_value=bytes([1, int(encrypted)])),
+        write_gatt_char=AsyncMock(),
+        disconnect=AsyncMock(),
+    )
+    with (
+        patch(f"{M}.async_establish_ble_connection", return_value=client),
+        patch(f"{M}.bluetooth.async_last_service_info", return_value=None),
+        patch.object(h6099, "_start_keep_alive"),
+        patch.object(h6099, "_wait_for_revisions", return_value=False),
+        caplog.at_level(logging.DEBUG, logger=M),
+        pytest.raises(UpdateFailed, match="encrypted_session_required" if encrypted else "no_status_replies"),
+    ):
+        await h6099._async_update_data()
+    summary = h6099.setup_diagnostics
+    assert summary["outcome"] == "failed"
+    assert summary["connected"] is summary["subscribed"] is True
+    assert summary["tx_count"] == (0 if encrypted else 24)
+    assert summary["raw_rx_count"] == summary["status_rx_count"] == 0
+    assert summary["observed_domains"] == []
+    assert len(summary["missing_required_domains"]) == 5
+    assert summary["disconnect"] == "intentional"
+    assert h6099.address not in str(summary)
+    assert "Govee setup attempt:" in caplog.text
+    assert h6099._client is None
+    client.disconnect.assert_awaited_once()
+    if encrypted:
+        client.write_gatt_char.assert_not_awaited()
+
+
+async def test_setup_counts_raw_rejected_and_valid_replies(coord):
+    coord._client = client = _c(disconnect=AsyncMock())
+
+    async def refresh(**_kwargs):
+        coord._notify_callback(None, bytearray())
+        coord._notify_callback(None, bytearray(b"bad frame"))
+        coord._notify_callback(None, bytearray(build_power(True)))
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
+        return False
+
+    with patch.object(coord, "refresh_state", side_effect=refresh), pytest.raises(UpdateFailed):
+        await coord._async_update_data()
+    summary = coord.setup_diagnostics
+    assert summary["raw_rx_count"] == 4
+    assert summary["rejected_rx_count"] == 2
+    assert summary["status_rx_count"] == 1
+    assert summary["observed_domains"] == ["power"]
+    assert "power" not in summary["missing_required_domains"]
+    assert summary["failure"] == "incomplete_status_replies"
+    client.disconnect.assert_awaited_once()
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_setup_timeout_or_cancellation_cleans_client(coord, cancelled):
+    coord._client = client = _c(disconnect=AsyncMock())
+
+    async def stall(**_kwargs):
+        if cancelled:
+            raise asyncio.CancelledError
+        await asyncio.Event().wait()
+
+    with (
+        patch.object(coord, "refresh_state", side_effect=stall),
+        patch(f"{M}.SETUP_TIMEOUT", 0.01),
+        pytest.raises(asyncio.CancelledError if cancelled else UpdateFailed),
+    ):
+        await coord._async_update_data()
+    assert coord._client is None
+    assert coord.setup_diagnostics["outcome"] == ("cancelled" if cancelled else "failed")
+    if not cancelled:
+        assert coord.setup_diagnostics["failure"] == "setup_timeout"
+    client.disconnect.assert_awaited_once()
+
+
+async def test_disconnect_is_bounded(coord):
+    coord._client = _c(disconnect=AsyncMock(side_effect=lambda: None))
+
+    async def stall():
+        await asyncio.Event().wait()
+
+    coord._client.disconnect.side_effect = stall
+    with (
+        patch(f"{M}.VALIDATION_DISCONNECT_TIMEOUT", 0.01),
+        patch(f"{M}.close_stale_connections_by_address", new_callable=AsyncMock) as cleanup,
+    ):
+        await coord.disconnect()
+    assert coord._client is None
+    cleanup.assert_awaited_once_with(coord.address)
+
+
+async def test_disconnect_cleanup_failure_is_recorded(coord):
+    coord.setup_diagnostics = {"outcome": "failed"}
+    coord._client = _c(disconnect=AsyncMock(side_effect=BleakError("failed")))
+    with patch(f"{M}.close_stale_connections_by_address", side_effect=BleakError("private address")):
+        await coord.disconnect()
+    assert coord.setup_diagnostics["cleanup"] == "failed"
+    assert coord._client is None
+
+
+async def test_disconnect_during_subscription_is_retryable(h6099):
+    client = _c(disconnect=AsyncMock(), write_gatt_char=AsyncMock())
+
+    async def subscribe(*_args):
+        h6099._disconnected_callback(client)
+
+    client.start_notify = AsyncMock(side_effect=subscribe)
+    with (
+        patch(f"{M}.async_establish_ble_connection", return_value=client),
+        patch.object(h6099, "_start_keep_alive"),
+        pytest.raises(UpdateFailed, match="disconnected"),
+    ):
+        await h6099._async_update_data()
+    assert h6099.setup_diagnostics["outcome"] == "failed"
+    assert h6099.setup_diagnostics["disconnect"] == "unexpected"
+    client.write_gatt_char.assert_not_awaited()
+
+
+async def test_notifications_from_retired_connection_are_ignored(coord):
+    coord._client = client = _c(start_notify=AsyncMock())
+    with patch.object(coord, "_start_keep_alive"):
+        await coord._start_notify()
+    notify = client.start_notify.call_args.args[1]
+    coord._client = _c()
+    notify(None, bytearray(_packet(0xAA, 0x01, [1])))
+    assert coord._domain_revisions == {}
+    assert coord.packet_log == []
 
 
 async def test_first_refresh_non_readable_requires_presence(hass):

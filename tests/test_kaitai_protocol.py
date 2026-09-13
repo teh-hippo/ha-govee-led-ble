@@ -54,6 +54,7 @@ H6099_WHITE_BALANCE_STATUS = bytes.fromhex("aaa906013200000000000000000000000000
 H6099_BLACK_BORDER_STATUS = bytes.fromhex("aaa90b0101000000000000000000000000000008")
 H6099_SEGMENT_STATUS = bytes.fromhex("aaa504640102036404050600000000000000000c")
 H6099_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
+H6099_MODE_QUERY = bytes.fromhex("aa050100000000000000000000000000000000ae")
 TYPE03_PAINTED = bytes.fromhex(
     "0105030900640101010f01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff000701eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
 )
@@ -100,6 +101,7 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(H6099StatusReply, H6099_BLACK_BORDER_STATUS, id="H6099 black-border status"),
     pytest.param(H6099StatusReply, H6099_SEGMENT_STATUS, id="H6099 segment status"),
     pytest.param(H6099StatusQuery, H6099_SEGMENT_QUERY, id="H6099 segment query"),
+    pytest.param(H6099StatusQuery, H6099_MODE_QUERY, id="H6099 mode query"),
     pytest.param(DiyType03, TYPE03_PAINTED, id="Type03 painted"),
     pytest.param(DiyType04, TYPE04_FLAT, id="Type04 flat"),
     pytest.param(DiyType04, TYPE04_COMBO, id="Type04 combo"),
@@ -125,6 +127,24 @@ def test_representative_roots_round_trip_and_consume_input(root_type: type[Any],
     parsed._write(output)
 
     assert output.to_byte_array() == data
+
+
+@pytest.mark.parametrize(
+    ("model", "root_type", "expected"),
+    [
+        ("H6099", H6099StatusQuery, H6099_MODE_QUERY),
+        ("H617A", StatusQuery, bytes.fromhex("aa050000000000000000000000000000000000af")),
+        ("H6199", H6199StatusQuery, bytes.fromhex("aa050000000000000000000000000000000000af")),
+    ],
+)
+def test_mode_query_exact_bytes(model: str, root_type: type[Any], expected: bytes) -> None:
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_colour_mode_query
+
+    assert build_colour_mode_query(model) == expected
+    parsed = _parse(root_type, expected)
+    assert parsed.domain.name == "colour_mode"
+    if model == "H6099":
+        assert parsed.body.selector == b"\x01"
 
 
 def test_command_and_status_fields_are_meaningful() -> None:
@@ -244,6 +264,7 @@ def test_music_and_wifi_result_fields_preserve_semantics() -> None:
     [
         pytest.param(COMMAND_STATIC, id="command XOR"),
         pytest.param(STATUS_SEGMENTS, id="status XOR"),
+        pytest.param(H6099_MODE_QUERY, id="H6099 mode query XOR"),
         pytest.param(WIFI_RESULT_SUCCESS, id="Wi-Fi result XOR"),
     ],
 )
@@ -259,6 +280,16 @@ def test_sum8_checksum_family() -> None:
 
 
 REJECTED_ROOTS = (
+    pytest.param(
+        H6099StatusQuery,
+        "aa050000000000000000000000000000000000af",
+        id="invalid H6099 mode query selector",
+    ),
+    pytest.param(
+        H6099StatusQuery,
+        "aa050101000000000000000000000000000000af",
+        id="nonzero H6099 mode query padding",
+    ),
     pytest.param(
         DiyType04,
         "010204010064048b00ff000000000000000000000000000000000000000000000000",

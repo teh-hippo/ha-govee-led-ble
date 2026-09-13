@@ -7,6 +7,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
+from .const import DOMAIN
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
@@ -19,7 +20,29 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: GoveeBLEConfigEntry,
 ) -> dict[str, Any]:
-    coordinator = entry.runtime_data
+    coordinator = getattr(entry, "runtime_data", None)
+    diagnostics = {
+        "entry": async_redact_data(
+            {
+                "entry_id": entry.entry_id,
+                "unique_id": entry.unique_id,
+                "data": dict(entry.data),
+                "options": dict(entry.options),
+            },
+            REDACT_KEYS,
+        ),
+        "setup_attempt": async_redact_data(
+            coordinator.setup_diagnostics
+            if coordinator is not None
+            else hass.data.get(DOMAIN, {}).get("setup_diagnostics", {}).get(entry.entry_id, {}),
+            REDACT_KEYS,
+        ),
+        "coordinator": None,
+        "active_effect_state": _active_effect_state(hass, entry.entry_id),
+        "effect_deployment_diagnostics": _effect_deployment_diagnostics(hass, entry.entry_id),
+    }
+    if coordinator is None:
+        return diagnostics
     packet_log = [_bounded_packet_entry(entry) for entry in coordinator.packet_log[-PACKET_LOG_LIMIT:]]
     last_rx_aa05_raw = next(
         (
@@ -127,20 +150,8 @@ async def async_get_config_entry_diagnostics(
         "packet_log": packet_log,
         "last_rx_aa05_raw": last_rx_aa05_raw,
     }
-    return {
-        "entry": async_redact_data(
-            {
-                "entry_id": entry.entry_id,
-                "unique_id": entry.unique_id,
-                "data": dict(entry.data),
-                "options": dict(entry.options),
-            },
-            REDACT_KEYS,
-        ),
-        "coordinator": async_redact_data(coordinator_data, REDACT_KEYS),
-        "active_effect_state": _active_effect_state(hass, entry.entry_id),
-        "effect_deployment_diagnostics": _effect_deployment_diagnostics(hass, entry.entry_id),
-    }
+    diagnostics["coordinator"] = async_redact_data(coordinator_data, REDACT_KEYS)
+    return diagnostics
 
 
 def _bounded_packet_entry(entry: dict[str, Any]) -> dict[str, Any]:

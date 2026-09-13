@@ -1,9 +1,12 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import issue_registry as ir
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import (
     _async_cleanup_legacy_entities,
@@ -20,6 +23,7 @@ from custom_components.ha_govee_led_ble.const import (
     MODEL_PROFILES,
 )
 from custom_components.ha_govee_led_ble.coordinator import AVAILABILITY_UNAVAILABLE_DATA_KEY
+from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.ha_govee_led_ble.editor import (
     EDITOR_PANEL_PATH,
     EDITOR_ROUTE_SEGMENT,
@@ -57,6 +61,7 @@ async def test_setup_entry(hass: HomeAssistant):
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock) as fwd,
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.setup_diagnostics = {}
         cls.return_value.profile = MODEL_PROFILES["H617A"]
         assert await async_setup_entry(hass, entry) is True
     cls.assert_called_once_with(
@@ -86,6 +91,7 @@ async def test_setup_entry_omits_editor_link_for_h6076(hass: HomeAssistant):
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.setup_diagnostics = {}
         cls.return_value.profile = MODEL_PROFILES["H6076"]
 
         assert await async_setup_entry(hass, entry) is True
@@ -106,6 +112,7 @@ async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass:
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.setup_diagnostics = {}
         cls.return_value.profile = MODEL_PROFILES["H617A"]
 
         assert await async_setup_entry(hass, entry) is True
@@ -115,6 +122,66 @@ async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass:
     assert backend.engine.reconcile_current.call_args.args == (cls.return_value,)
     assert backend.engine.reconcile_current.call_args.kwargs["config_entry_id"] == entry.entry_id
     assert backend.engine.reconcile_current.call_args.kwargs["refreshed"] is True
+
+
+@pytest.mark.parametrize("failure", [ConfigEntryNotReady, asyncio.CancelledError])
+@pytest.mark.parametrize("finish", ["success", "removal"])
+async def test_setup_failure_snapshot_lifecycle(hass: HomeAssistant, failure, finish):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H617A"})
+    entry.add_to_hass(hass)
+    assert not hasattr(entry, "runtime_data")
+    other_snapshot = {"outcome": "other"}
+    hass.data.setdefault(DOMAIN, {})["setup_diagnostics"] = {"other-entry": other_snapshot}
+    retained = hass.data[DOMAIN]["setup_diagnostics"]
+
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock) as forward,
+    ):
+        for missing in (["power", "brightness"], ["brightness"]):
+            coordinator = MagicMock(setup_diagnostics={})
+            cls.return_value = coordinator
+            snapshot = {"outcome": "failed", "missing_required_domains": missing}
+
+            async def first_refresh(coordinator=coordinator, snapshot=snapshot):
+                assert not hasattr(entry, "runtime_data")
+                coordinator.setup_diagnostics = snapshot
+                raise failure("private error AA:BB:CC:DD:EE:FF")
+
+            coordinator.async_config_entry_first_refresh = AsyncMock(side_effect=first_refresh)
+            with pytest.raises(failure):
+                await async_setup_entry(hass, entry)
+
+            assert not hasattr(entry, "runtime_data")
+            assert retained == {"other-entry": other_snapshot, entry.entry_id: snapshot}
+            assert retained[entry.entry_id] is not snapshot
+            snapshot["missing_required_domains"].append("mutated")
+            assert "mutated" not in retained[entry.entry_id]["missing_required_domains"]
+            diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+            assert diagnostics["coordinator"] is None
+            assert diagnostics["setup_attempt"] == retained[entry.entry_id]
+            assert "AA:BB:CC:DD:EE:FF" not in str(diagnostics)
+            assert "private error" not in str(diagnostics)
+        forward.assert_not_awaited()
+
+        if finish == "success":
+            coordinator = MagicMock(setup_diagnostics={"outcome": "success"})
+            cls.return_value = coordinator
+
+            async def successful_refresh():
+                assert not hasattr(entry, "runtime_data")
+
+            coordinator.async_config_entry_first_refresh = AsyncMock(side_effect=successful_refresh)
+            assert await async_setup_entry(hass, entry)
+            assert entry.runtime_data is coordinator
+            forward.assert_awaited_once()
+        else:
+            await async_remove_entry(hass, entry)
+            assert not hasattr(entry, "runtime_data")
+
+    assert retained == {"other-entry": other_snapshot}
 
 
 @pytest.mark.parametrize("data", [{}, {CONF_MODEL: "H9999"}])

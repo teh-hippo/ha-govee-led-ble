@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any, cast
 
 from bleak import BleakClient, BleakError  # type: ignore[attr-defined]
-from bleak_retry_connector import establish_connection
+from bleak_retry_connector import close_stale_connections_by_address, establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
@@ -16,7 +16,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from .ble_connection import RETRY_BACKOFF_SECONDS, async_establish_ble_connection
+from .ble_connection import RETRY_BACKOFF_SECONDS, VALIDATION_DISCONNECT_TIMEOUT, async_establish_ble_connection
 from .ble_device_resolver import BLEDeviceResolver
 from .const import (
     DOMAIN,
@@ -67,7 +67,7 @@ from .native_profile_controls import (
 )
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, canonical_scene_key, resolve_scene_code
-from .transport import READ_UUID, WRITE_UUID
+from .transport import INFO_UUID, READ_UUID, WRITE_UUID, advertisement_encryption, connection_info_encryption
 
 EFFECT_SEQUENCE_ATTEMPTS = 3
 EFFECT_SEQUENCE_CONNECT_TIMEOUT = 8.0
@@ -83,6 +83,8 @@ PACKET_LOG_LIMIT = 50
 PACKET_LOG_RAW_BYTES_LIMIT = 512
 EXPECTED_STATE_TTL = 2.0
 AVAILABILITY_UNAVAILABLE_DATA_KEY = "availability_unavailable"
+SETUP_TIMEOUT = 45.0
+CAPABILITY_READ_TIMEOUT = 3.0
 
 _CORE_STATE_FIELDS = (
     "is_on",
@@ -213,6 +215,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.music_daynight_speed = 10
         self.music_daynight_gradient = False
         self.packet_log: list[dict[str, Any]] = []
+        self.setup_diagnostics: dict[str, Any] = {}
         self._expected_state: dict[str, tuple[Any, float]] = {}
         self._notify_started_monotonic: float | None = None
         self._last_rx_monotonic: float | None = None
@@ -518,6 +521,61 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self._cancel_disconnect = None
 
     async def _async_update_data(self) -> dict[str, Any]:
+        if self._first_refresh_done or self.hass.is_stopping:
+            return await self._async_refresh_data()
+        started = time.monotonic()
+        baselines = dict(self._domain_revisions)
+        self.setup_diagnostics = {
+            "model": self.model,
+            "outcome": "running",
+            "phase": "connecting",
+            "connected": False,
+            "subscribed": False,
+            "tx_count": 0,
+            "raw_rx_count": 0,
+            "status_rx_count": 0,
+            "rejected_rx_count": 0,
+            "advertisement_encryption": None,
+            "info_read": "not_attempted",
+        }
+        try:
+            async with asyncio.timeout(SETUP_TIMEOUT):
+                result = await self._async_refresh_data()
+            self.setup_diagnostics["outcome"] = "success"
+            return result
+        except (UpdateFailed, TimeoutError) as err:
+            self.setup_diagnostics["outcome"] = "failed"
+            if isinstance(err, TimeoutError):
+                self.setup_diagnostics["failure"] = "setup_timeout"
+            else:
+                self.setup_diagnostics.setdefault("failure", "connection_failed")
+            if self._client is not None:
+                self.setup_diagnostics.setdefault("disconnect", "intentional")
+            await self._disconnect_locked()
+            raise UpdateFailed(
+                f"Govee {self.model} setup failed: {self.setup_diagnostics['failure']} "
+                f"(phase={self.setup_diagnostics['phase']})"
+            ) from None
+        except asyncio.CancelledError:
+            self.setup_diagnostics["outcome"] = "cancelled"
+            if self._client is not None:
+                self.setup_diagnostics.setdefault("disconnect", "intentional")
+            await self._disconnect_locked()
+            raise
+        finally:
+            self.setup_diagnostics["elapsed_seconds"] = round(time.monotonic() - started, 3)
+            observed = {
+                domain.value
+                for domain, revision in self._domain_revisions.items()
+                if revision > baselines.get(domain, 0)
+            }
+            self.setup_diagnostics["observed_domains"] = sorted(observed)
+            self.setup_diagnostics["missing_required_domains"] = sorted(
+                domain.value for domain in self.profile.setup_required_read_domains if domain.value not in observed
+            )
+            _LOGGER.debug("Govee setup attempt: %s", self.setup_diagnostics)
+
+    async def _async_refresh_data(self) -> dict[str, Any]:
         first_refresh = not self._first_refresh_done
         self._first_refresh_done = True
         if self.hass.is_stopping:
@@ -536,7 +594,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     if not refreshed or client is None:
                         if client is not None:
                             await self._disconnect_if_current_locked(client)
-                        raise BleakError(f"State query failed for {self.address}")
+                        if first_refresh:
+                            self.setup_diagnostics.setdefault(
+                                "failure",
+                                "no_status_replies"
+                                if not self.setup_diagnostics.get("status_rx_count")
+                                else "incomplete_status_replies",
+                            )
+                        raise BleakError("State query failed")
                     if client is not previous_client:
                         await self._disconnect_if_current_locked(client)
             except BleakError as err:
@@ -544,11 +609,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 # and presence-driven availability tracks the running state.
                 self._log_availability_transition()
                 if first_refresh:
-                    raise UpdateFailed(f"{self.address} unreachable at setup") from err
+                    raise UpdateFailed(f"Govee {self.model} initial refresh failed") from err
                 _LOGGER.debug("State refresh skipped for %s", self.address)
         elif first_refresh and not self._present:
             self._log_availability_transition()
-            raise UpdateFailed(f"{self.address} not advertising at setup")
+            self.setup_diagnostics["failure"] = "not_advertising"
+            raise UpdateFailed(f"Govee {self.model} not advertising at setup")
         return self._state_snapshot()
 
     def _state_snapshot(self) -> dict[str, Any]:
@@ -570,15 +636,56 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             disconnected_callback=self._disconnected_callback,
         )
         self._reset_disconnect_timer()
+        diagnosing = self.setup_diagnostics.get("outcome") == "running"
+        if diagnosing:
+            self.setup_diagnostics.update(connected=True, phase="subscribing")
         if self.profile.requires_notifications:
             try:
                 await self._start_notify()
+                if diagnosing:
+                    self.setup_diagnostics.update(subscribed=True, phase="capability_read")
+                    await self._read_setup_capabilities()
+                    self.setup_diagnostics["phase"] = "status_readback"
                 await self._send_identity_queries()
             except BleakError:
+                if diagnosing:
+                    self.setup_diagnostics.setdefault("failure", "notification_or_gatt_failed")
                 await self._disconnect_locked()
                 raise
         self._log_availability_transition()
         return self._client
+
+    async def _read_setup_capabilities(self) -> None:
+        """Keep only capability fields in diagnostics; never probe session keys."""
+        client = self._client
+        if client is None or not client.is_connected:
+            raise BleakError("Disconnected before capability read")
+        info = bluetooth.async_last_service_info(self.hass, self.address, connectable=True)
+        if info is not None:
+            self.setup_diagnostics["rssi"] = info.rssi
+            self.setup_diagnostics["advertisement_encryption"] = advertisement_encryption(info.manufacturer_data)
+        characteristic = client.services.get_characteristic(INFO_UUID)
+        if characteristic is None:
+            self.setup_diagnostics["info_read"] = "absent"
+        else:
+            try:
+                async with asyncio.timeout(CAPABILITY_READ_TIMEOUT):
+                    value = await client.read_gatt_char(characteristic)
+            except (BleakError, TimeoutError) as err:
+                self.setup_diagnostics["info_read"] = "timeout" if isinstance(err, TimeoutError) else "failed"
+            else:
+                self.setup_diagnostics["info_read"] = "unrecognized"
+                if (version := connection_info_encryption(value)) is not None:
+                    self.setup_diagnostics.update(
+                        info_read="recognized",
+                        encryption_version=version,
+                    )
+        if (
+            self.setup_diagnostics["advertisement_encryption"] is True
+            or self.setup_diagnostics.get("encryption_version", 0) != 0
+        ):
+            self.setup_diagnostics["failure"] = "encrypted_session_required"
+            raise BleakError("Encrypted session capability reported; plaintext queries withheld")
 
     def _renew_foreground_lease(self) -> None:
         if self._control_arbiter.current_task_intent is not ControlIntent.BACKGROUND:
@@ -617,6 +724,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     def _disconnected_callback(self, client: BleakClient) -> None:
         if self._client is not client or self._intentional_disconnect_client is client:
             return
+        if self.setup_diagnostics.get("outcome") == "running":
+            self.setup_diagnostics["disconnect"] = "unexpected"
+            self.setup_diagnostics.setdefault("failure", "disconnected")
         self._clear_client_state(client)
         self._log_availability_transition()
         self.async_update_listeners()
@@ -637,7 +747,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     async def _start_notify(self) -> None:
         if not (self._client and self._client.is_connected):
             return
-        await self._client.start_notify(READ_UUID, self._notify_callback)
+        client = self._client
+
+        def on_notify(sender: Any, data: bytearray) -> None:
+            if self._client is client:
+                self._notify_callback(sender, data)
+
+        await client.start_notify(READ_UUID, on_notify)
         self._notify_started_monotonic = time.monotonic()
         self._last_rx_monotonic = None
         if self.profile.state_readable:
@@ -650,6 +766,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         return baseline is not None and time.monotonic() - baseline >= RX_STALE_TIMEOUT
 
     def _mark_received(self, domain: StatusDomain, *fields: str) -> None:
+        if self.setup_diagnostics.get("outcome") == "running":
+            self.setup_diagnostics["status_rx_count"] += 1
         self._domain_revisions[domain] = self._domain_revisions.get(domain, 0) + 1
         for field in fields:
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
@@ -870,6 +988,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         return tuple(observed)
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
+        if self.setup_diagnostics.get("outcome") == "running":
+            self.setup_diagnostics["raw_rx_count"] += 1
         frame = bytes(data)
         self._last_rx_monotonic = time.monotonic()
         if frame[:1] == b"\x33":
@@ -1016,6 +1136,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self._mark_received(domain, *observed)
             self.async_set_updated_data(self.data or {})
         except IndexError, ValueError:
+            if self.setup_diagnostics.get("outcome") == "running":
+                self.setup_diagnostics["rejected_rx_count"] += 1
             packet_entry["outcome"] = "rejected"
             packet_entry["reason"] = "semantic_rejected"
             _LOGGER.debug(
@@ -1721,6 +1843,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         parser: str | None = None,
         domain: int | None = None,
     ) -> dict[str, Any]:
+        if self.setup_diagnostics.get("outcome") == "running":
+            if direction == "tx" and outcome == "sent":
+                self.setup_diagnostics["tx_count"] += 1
+            elif direction == "rx" and outcome == "rejected":
+                self.setup_diagnostics["rejected_rx_count"] += 1
         if not data:
             return {}
         header = data[0]
@@ -1759,9 +1886,21 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._intentional_disconnect_client = client
         try:
             if client and client.is_connected:
-                await client.disconnect()
+                if self.setup_diagnostics.get("outcome") == "running":
+                    self.setup_diagnostics.setdefault("disconnect", "intentional")
+                async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
+                    await client.disconnect()
         except BleakError, TimeoutError:
             _LOGGER.debug("Error disconnecting from %s", self.address)
+            try:
+                async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
+                    await close_stale_connections_by_address(self.address)
+            except BleakError, TimeoutError:
+                if self.setup_diagnostics:
+                    self.setup_diagnostics["cleanup"] = "failed"
+            else:
+                if self.setup_diagnostics:
+                    self.setup_diagnostics["cleanup"] = "stale_connection_cleanup_completed"
         finally:
             self._clear_client_state(client)
             if self._intentional_disconnect_client is client:
