@@ -82,6 +82,8 @@ function device(
 test("live video conditions reject requested settings without stripping persisted content", () => {
   const model = new PanelModel(() => undefined);
   const target = device("video", "H6199");
+  installH6199Catalogue(model);
+  target.custom_effects.palette_diy = "supported";
   target.profiles.video = "supported";
   target.video_control_states = {white_balance: "evidence_gap"};
   model.devices = [target];
@@ -93,7 +95,10 @@ test("live video conditions reject requested settings without stripping persiste
   expect(model.previewCapability).toBe("unsupported");
   model.content = {...model.content, white_balance_position: null};
   expect(model.previewCapability).toBe("supported");
-  model.content = painted();
+  model.content = {
+    kind: "palette_diy", model: "H6199", family: 1, variant: 0,
+    speed: 50, palette: [[255, 0, 0]],
+  };
   expect(model.previewCapability).toBe("supported");
 });
 

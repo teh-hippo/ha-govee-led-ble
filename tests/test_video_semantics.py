@@ -88,7 +88,9 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
     coordinator.is_on = True
     packets: list[bytes] = []
 
-    async def write(packet: bytes) -> None:
+    async def write(packet: bytes, *, write_guard=None) -> None:
+        if write_guard is not None:
+            write_guard()
         packets.append(packet)
 
     await async_apply_compiled_profile(coordinator, compiled, writer=write, verify=False)
@@ -138,6 +140,8 @@ async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant
     raw = effect_content_to_dict(content)
     assert "white_balance_value" not in raw
     item = LibraryItem.new("Legacy", content)
+    # Pinned using origin/master efa74aac's effect_domain.py, before video semantics changes.
+    assert item.content_hash == "56dae67324f6b4cd54f586dae7607684721fefb0b6cf5b80769c4f05e59e3999"
     assert LibraryItem.new("Legacy", effect_content_from_dict(raw)).content_hash == item.content_hash
     compiled = compile_video_profile(item, "H6199")
     assert compiled.white_balance_wire == WHITE_BALANCE_POSITIONS[16]

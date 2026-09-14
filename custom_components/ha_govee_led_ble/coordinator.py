@@ -59,7 +59,7 @@ from .light_commands import (
     kelvin_to_rgb,
 )
 from .music_commands import prepare_music_request
-from .music_semantics import music_params_for_mode, music_variant
+from .music_semantics import capture_music_parameters, music_params_for_mode, music_variant
 from .native_profile_controls import (
     apply_active_video_mode,
     apply_blank_screen,
@@ -256,6 +256,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             diy_code=self.diy_code,
             music_mode=self.music_mode,
             music_model=self.model,
+            music_parameters=capture_music_parameters(self, self.profile, self.music_mode),
             video_mode=self.video_mode,
             music_sensitivity=self.music_sensitivity,
             music_calm=self.music_calm,
@@ -306,10 +307,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             # Legacy snapshots retain style across modes even when the active selector
             # has no style byte semantics. Do not reinterpret that retained value.
             music_calm = state.music_calm if variant and variant.supports_style else False
-            music_parameters = {
-                spec.profile_key: getattr(state, spec.key)
-                for spec in music_params_for_mode(MUSIC_MODE_SLUGS[state.music_mode], self.profile)
-            }
+            music_parameters = (
+                dict(state.music_parameters)
+                if state.music_parameters is not None
+                else capture_music_parameters(state, self.profile, state.music_mode) or {}
+            )
             music_packets = prepare_music_request(
                 self.model,
                 state.music_mode,
@@ -1144,13 +1146,22 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 frame.hex(),
             )
 
-    async def _async_write_packet(self, client: BleakClient, packet: bytes, *, arm_expected: bool = False) -> None:
+    async def _async_write_packet(
+        self,
+        client: BleakClient,
+        packet: bytes,
+        *,
+        arm_expected: bool = False,
+        before_write: Callable[[], None] | None = None,
+    ) -> None:
         """Write on the caller's connection without changing its transaction policy."""
         wire_packet = packet
         if (transform := self.profile.outbound_transform) is not None:
             wire_packet = transform(packet)
             if not isinstance(wire_packet, bytes) or not wire_packet:
                 raise ValueError("Outbound transform must return non-empty bytes")
+        if before_write is not None:
+            before_write()
         if arm_expected:
             self._arm_expected(packet)
         await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
@@ -1260,17 +1271,20 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         expectations: Mapping[str, Any] | None = None,
     ) -> bool:
         def received() -> bool:
+            # Segment RGB revisions update presentation, not direct static readback.
+            fresh_fields = {
+                field
+                for field, baseline in field_baselines.items()
+                if self._field_revisions.get(field, 0) > baseline
+                and (field not in {"rgb_color", "color_temp_kelvin"} or getattr(self, f"{field}_source") == "observed")
+            }
             if expectations is not None and any(
-                field != "effect"
-                and self._field_revisions.get(field, 0) > field_baselines[field]
-                and getattr(self, field) != expected
+                field != "effect" and field in fresh_fields and getattr(self, field) != expected
                 for field, expected in expectations.items()
             ):
                 return True
             if field_baselines:
-                return all(
-                    self._field_revisions.get(field, 0) > baseline for field, baseline in field_baselines.items()
-                )
+                return fresh_fields == field_baselines.keys()
             return all(
                 self._domain_revisions.get(domain, 0) > baseline for domain, baseline in domain_baselines.items()
             )
@@ -1311,7 +1325,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         expected_white_balance: tuple[int, ...] | None = None,
         expected_blank_screen: bool | None = None,
         expected_relative_brightness: tuple[int, ...] | None = None,
-        refresh_display_settings: bool = False,
+        refresh_display_settings: bool | frozenset[str] = False,
         refresh_relative_brightness: bool = False,
         refresh_all: bool = False,
         required_domains: frozenset[ReadDomain] | None = None,
@@ -1389,8 +1403,17 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         query_color = self.profile.supports_color_mode_readback and (
             expected_music_auto_color or any(value is not None for value in color_expectations)
         )
-        query_white_balance = expected_white_balance is not None or refresh_display_settings
-        query_blank_screen = expected_blank_screen is not None or refresh_display_settings
+        display_settings = (
+            frozenset({"white_balance", "blank_screen"})
+            if refresh_display_settings is True
+            else frozenset()
+            if refresh_display_settings is False
+            else refresh_display_settings
+        )
+        if not display_settings <= {"white_balance", "blank_screen"}:
+            raise ValueError("unknown display setting requested for refresh")
+        query_white_balance = expected_white_balance is not None or "white_balance" in display_settings
+        query_blank_screen = expected_blank_screen is not None or "blank_screen" in display_settings
         query_relative_brightness = expected_relative_brightness is not None or refresh_relative_brightness
         if refresh_all:
             query_power = query_brightness = True
@@ -1433,13 +1456,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
                 if refresh_display_settings:
                     display_fields: list[str] = []
-                    if self.profile.supports_white_balance:
+                    if self.profile.supports_white_balance and "white_balance" in display_settings:
                         display_fields.extend(
                             ("white_balance_scalar",)
                             if self.profile.video_white_balance_representation == "scalar"
                             else ("white_balance_red", "white_balance_blue")
                         )
-                    if self.profile.supports_blank_screen:
+                    if self.profile.supports_blank_screen and "blank_screen" in display_settings:
                         display_fields.extend(
                             (
                                 "blank_screen",
@@ -1563,7 +1586,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     await asyncio.sleep(min(0.05, remaining))
             return False
 
-    async def async_preview_write(self, packet: bytes) -> None:
+    async def async_preview_write(self, packet: bytes, *, before_write: Callable[[], None] | None = None) -> None:
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
         async with async_control_intent(self, ControlIntent.PREVIEW):
@@ -1571,7 +1594,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 client = self._client
                 if client is None or not client.is_connected:
                     raise BleakError(f"Device {self.address} disconnected during preview")
-                await self._async_write_packet(client, packet, arm_expected=True)
+                await self._async_write_packet(client, packet, arm_expected=True, before_write=before_write)
                 self._renew_foreground_lease()
 
     async def async_write_effect_sequence(
@@ -1580,6 +1603,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         *,
         intent: ControlIntent,
         before_write: Callable[[], Awaitable[None]] | None = None,
+        write_guard: Callable[[], None] | None = None,
         attempt_started: Callable[[int], Awaitable[None]] | None = None,
         progress: Callable[[int], Awaitable[None]] | None = None,
     ) -> None:
@@ -1599,7 +1623,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         if before_write is not None:
                             await before_write()
                         for index, packet in enumerate(packets, start=1):
-                            await self._async_write_packet(client, packet, arm_expected=True)
+                            await self._async_write_packet(client, packet, arm_expected=True, before_write=write_guard)
                             self._renew_foreground_lease()
                             if progress is not None:
                                 await progress(index)
@@ -1710,6 +1734,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if any(
             field != "effect"
             and self._field_revisions.get(field, 0) > field_baselines[field]
+            and (field not in {"rgb_color", "color_temp_kelvin"} or getattr(self, f"{field}_source") == "observed")
             and getattr(self, field) != expected
             for field, expected in expectations.items()
         ):
@@ -1815,6 +1840,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         previous = list(self.segment_colors)
         previous_source = self.segment_state_source
         previous_static_sources = self.rgb_color_source, self.color_temp_kelvin_source
+        previous_static_revisions = {
+            field: self._field_revisions.get(field, 0) for field in ("rgb_color", "color_temp_kelvin")
+        }
         previous_observed_at = self.segment_state_observed_at
         previous_groups = set(self._segment_groups_observed)
         previous_query_colors = self._segment_query_colors
@@ -1830,7 +1858,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         except Exception:
             self.segment_colors = previous
             self.segment_state_source = previous_source
-            self.rgb_color_source, self.color_temp_kelvin_source = previous_static_sources
+            if all(
+                self._field_revisions.get(field, 0) == revision for field, revision in previous_static_revisions.items()
+            ):
+                self.rgb_color_source, self.color_temp_kelvin_source = previous_static_sources
             self.segment_state_observed_at = previous_observed_at
             self._segment_groups_observed = previous_groups
             self._segment_query_colors = previous_query_colors

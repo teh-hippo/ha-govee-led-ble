@@ -21,3 +21,9 @@ editor.content = {
   colour: null, calm: null, parameters: {},
 };
 editor.modeSelectionEnabled = true;
+if (new URLSearchParams(location.search).has("fountain")) {
+  catalogue.music_settings.fountain.parameters.speed = {
+    kind: "number", default: 80, min: 16, max: 80, options: [],
+  };
+  editor.content = {...editor.content, mode: "fountain"};
+}

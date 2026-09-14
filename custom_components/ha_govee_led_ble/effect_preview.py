@@ -27,6 +27,7 @@ from .effect_catalogue import (
 from .effect_compiler import (
     CompiledApplication,
     CompiledEffect,
+    CompiledVideoProfile,
     compile_application,
 )
 from .effect_contracts import CapabilityWorkflow, require_effect_route
@@ -272,11 +273,24 @@ class _PreviewWriter:
             await self._manager._async_begin_transmission(self._request)
             self.started = True
 
-    async def __call__(self, packet: bytes) -> None:
+    async def __call__(self, packet: bytes, *, write_guard: Callable[[], None] | None = None) -> None:
         await self.begin()
         if self._manager._stopping or self._manager._hass.is_stopping:
             raise PreviewShutdownError("Home Assistant is stopping")
-        await self._coordinator.async_preview_write(packet)
+        if isinstance(self._request.compiled, CompiledVideoProfile) or write_guard is not None:
+
+            def check() -> None:
+                if isinstance(self._request.compiled, CompiledVideoProfile):
+                    validate_video_request(self._coordinator, _required_item(self._request).content)
+                if write_guard is not None:
+                    write_guard()
+
+            await self._coordinator.async_preview_write(
+                packet,
+                before_write=check,
+            )
+        else:
+            await self._coordinator.async_preview_write(packet)
 
 
 class EffectPreviewManager:

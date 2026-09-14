@@ -260,6 +260,7 @@ def test_capture_effect_control_state(coord):
     assert state == PriorControlState(
         mode="colour",
         music_model="H617A",
+        music_parameters={},
         is_on=True,
         brightness_pct=72,
         rgb_color=(1, 2, 3),

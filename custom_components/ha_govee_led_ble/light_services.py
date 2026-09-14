@@ -18,8 +18,8 @@ from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .generated_protocol_adapter import build_power, build_video_mode
 from .light_commands import SegmentColorGroup, build_segment_brightness, build_segment_paint, segments_to_mask
-from .native_profile_controls import apply_active_video_mode
-from .video_applicability import require_video_controls
+from .native_profile_controls import _send_video_setting, apply_active_video_mode
+from .video_applicability import require_video_controls, video_control_states
 
 __all__ = ("apply_active_video_mode", "async_register_light_services")
 
@@ -134,14 +134,15 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             resolved_softness = (
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
-            require_video_controls(c.profile, c, {
+            controls = frozenset(
                 control for control, changed in (
                     ("capture_region", resolved_fs != c.video_full_screen),
                     ("saturation", resolved_saturation != c.video_saturation),
                     ("sound_effects", resolved_sound != c.video_sound_effects
                      or resolved_softness != c.video_sound_effects_softness),
                 ) if changed
-            })
+            )
+            require_video_controls(c.profile, c, controls)
             packet = build_video_mode(
                 mode,
                 resolved_fs,
@@ -151,21 +152,34 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 c.model,
             )
 
+            def check_retained() -> None:
+                require_video_controls(c.profile, c, controls | {
+                    control for control, changed in (
+                        ("capture_region", resolved_fs != c.video_full_screen),
+                        ("saturation", resolved_saturation != c.video_saturation),
+                        ("sound_effects", resolved_sound != c.video_sound_effects
+                         or resolved_softness != c.video_sound_effects_softness),
+                    ) if changed
+                })
+
             async def apply() -> None:
+                require_video_controls(c.profile, c, controls)
                 await self.coordinator.send_command(
                     build_power(True, self.coordinator.model)
                 )
                 self.coordinator.is_on = True
-                await self.coordinator.send_command(packet)
+                await _send_video_setting(c, packet, controls, writer=None, write_guard=check_retained)
 
             await apply()
+            observable = video_control_states(c.profile, c)
             await self._refresh_with_retry(
                 expected_on=True,
                 expected_video_mode=mode,
-                expected_video_full_screen=resolved_fs if c.profile.supports_video_capture_region else None,
-                expected_video_saturation=resolved_saturation if c.profile.supports_video_saturation else None,
-                expected_video_sound_effects=resolved_sound if supports_sound else None,
-                expected_video_sound_effects_softness=resolved_softness if resolved_sound else None,
+                expected_video_full_screen=resolved_fs if observable["capture_region"] == "supported" else None,
+                expected_video_saturation=resolved_saturation if observable["saturation"] == "supported" else None,
+                expected_video_sound_effects=resolved_sound if observable["sound_effects"] == "supported" else None,
+                expected_video_sound_effects_softness=resolved_softness if resolved_sound
+                    and observable["sound_effects"] == "supported" else None,
                 retry_command=apply,
             )
             c.video_mode, c.effect = mode, None

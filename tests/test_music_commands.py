@@ -1,6 +1,7 @@
 """Capture-backed music parameter tests."""
 
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -9,13 +10,23 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfil
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, NativeModeOption
 from custom_components.ha_govee_led_ble.effect_compiler import compile_music_profile
-from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence, PriorControlState
+from custom_components.ha_govee_led_ble.effect_deployments import (
+    EffectDeploymentRepository,
+    ObservationConfidence,
+    PriorControlState,
+)
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
-from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile, compiled_observation
+from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectStorageError
+from custom_components.ha_govee_led_ble.effect_runtime import (
+    EffectDeploymentEngine,
+    async_apply_compiled_profile,
+    compiled_observation,
+)
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import MusicBody
 from custom_components.ha_govee_led_ble.music_commands import build_music_params, prepare_music_request
-from custom_components.ha_govee_led_ble.music_semantics import MusicParamSpec, MusicVariant
+from custom_components.ha_govee_led_ble.music_semantics import MusicParamSpec, MusicVariant, music_variant
 from custom_components.ha_govee_led_ble.transport import xor_checksum
+from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 H = bytes.fromhex
 
@@ -204,3 +215,189 @@ def test_parameter_validation_does_not_coerce(parameters):
 def test_selector_validation_does_not_coerce(sensitivity, calm):
     with pytest.raises(ValueError):
         prepare_music_request("H617A", "rhythm", sensitivity, None, calm, {})
+
+
+async def test_new_fountain_parameter_survives_application_capture_and_recovery(hass, monkeypatch):
+    fountain = music_variant(get_profile("H617A"), 0x35)
+    assert fountain is not None
+    variant = replace(
+        fountain,
+        evidence="TEST ONLY issue #286 Fountain speed; no new hardware qualification",
+        parameters=(
+            *fountain.parameters,
+            MusicParamSpec("music_fountain_speed", "speed", "speed", "number", 80, 16, 80),
+        ),
+    )
+    profile = ModelProfile(
+        "Synthetic Fountain", command_grammar="H617A", music_modes=("fountain",), music_variants=(variant,)
+    )
+    monkeypatch.setitem(MODEL_PROFILES, "TEST-FOUNTAIN", profile)
+    catalogue = replace(
+        MODEL_EFFECT_CATALOGUES["H617A"], sku="TEST-FOUNTAIN", music_modes=(NativeModeOption("fountain", "Fountain"),)
+    )
+    assert catalogue.to_dict()["music_settings"]["fountain"]["parameters"]["speed"] == {
+        "kind": "number",
+        "default": 80,
+        "min": 16,
+        "max": 80,
+        "options": [],
+    }
+    compiled = compile_music_profile(
+        LibraryItem.new(
+            "Fountain", MusicProfile("TEST-FOUNTAIN", "fountain", 50, parameters={"speed": 16, "direction": "two_way"})
+        ),
+        "TEST-FOUNTAIN",
+    )
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-FOUNTAIN", configuration_url="test")
+    with patch.object(coordinator, "send_command", new_callable=AsyncMock) as send:
+        await async_apply_compiled_profile(coordinator, compiled)
+        packets = [call.args[0] for call in send.await_args_list]
+        body = MusicBody.from_bytes(_assemble(packets[2:]))
+        body._read()
+        assert body.tail.speed == 16 and body.tail.piece_num == 3
+        raw = coordinator.capture_effect_control_state().to_dict()
+        assert raw["music_parameters"] == {"speed": 16, "direction": "two_way"}
+        # The mapping is authoritative even if the retained legacy field disagrees.
+        raw["music_fountain_direction"] = "clockwise"
+        state = PriorControlState.from_dict(raw)
+        coordinator.install_music_profile_state(mode="fountain", sensitivity=50, colour=None, calm=False, parameters={})
+        send.reset_mock()
+        assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert [call.args[0] for call in send.await_args_list] == packets
+        assert coordinator.music_fountain_speed == 16
+
+        # Explicit empty mapping uses variant defaults, not the legacy fields.
+        empty = PriorControlState.from_dict({**raw, "music_parameters": {}})
+        await coordinator.async_restore_effect_control_state(empty, overwritten_diy_code=None)
+        assert coordinator.music_fountain_speed == 80
+        assert coordinator.music_fountain_direction == "clockwise"
+
+        # Older snapshots lack the mapping: retain named values and default only new fields.
+        del raw["music_parameters"]
+        raw["music_fountain_direction"] = "two_way"
+        legacy = PriorControlState.from_dict(raw)
+        assert "music_parameters" not in legacy.to_dict()
+        await coordinator.async_restore_effect_control_state(legacy, overwritten_diy_code=None)
+        assert coordinator.music_fountain_direction == "two_way"
+        assert coordinator.music_fountain_speed == 80
+        for invalid in ({"speed": True}, {"speed": 15}, {"unknown": 16}):
+            send.reset_mock()
+            with pytest.raises(ValueError):
+                await coordinator.async_restore_effect_control_state(
+                    replace(state, music_parameters=invalid), overwritten_diy_code=None
+                )
+            send.assert_not_awaited()
+
+    fallback = SimpleNamespace(
+        model="TEST-FOUNTAIN",
+        profile=profile,
+        music_mode="fountain",
+        music_fountain_speed=16,
+        music_fountain_direction="two_way",
+        diy_code=None,
+    )
+    engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
+    captured = engine._capture_prior_state(fallback, config_entry_id="test")
+    assert captured.music_parameters == {"speed": 16, "direction": "two_way"}
+    assert (
+        "speed"
+        not in compile_music_profile(
+            LibraryItem.new("Legacy", MusicProfile("H617A", "fountain", 50)),
+            "H617A",
+        ).parameters
+    )
+
+
+@pytest.mark.parametrize("parameters", [None, [], {"speed": []}, {"speed": 1.5}, {"": 16}])
+def test_music_recovery_mapping_rejects_malformed_persisted_data(parameters):
+    raw = PriorControlState(mode="music", is_on=True, brightness_pct=50, rgb_color=(1, 2, 3)).to_dict()
+    with pytest.raises(EffectStorageError):
+        PriorControlState.from_dict({**raw, "music_parameters": parameters})
+
+
+@pytest.mark.parametrize("next_mode", ["off", "rhythm"])
+async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, monkeypatch, next_mode):
+    fountain = music_variant(get_profile("H617A"), 0x35)
+    assert fountain is not None
+    variant = replace(
+        fountain,
+        evidence="TEST ONLY alternate Fountain direction; no hardware qualification",
+        parameters=(replace(fountain.parameters[0], default="alternate", options=("alternate",)),),
+        direction_values=(("alternate", 1, 3),),
+    )
+    profile = ModelProfile(
+        "Synthetic Fountain", command_grammar="H617A", music_modes=("fountain", "rhythm"), music_variants=(variant,)
+    )
+    monkeypatch.setitem(MODEL_PROFILES, "TEST-FOUNTAIN", profile)
+    compiled = compile_music_profile(
+        LibraryItem.new("Fountain", MusicProfile("TEST-FOUNTAIN", "fountain", 50)), "TEST-FOUNTAIN"
+    )
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-FOUNTAIN", configuration_url="test")
+    with patch.object(coordinator, "send_command", new_callable=AsyncMock) as send:
+        await async_apply_compiled_profile(coordinator, compiled)
+        packets = [call.args[0] for call in send.await_args_list]
+        raw = coordinator.capture_effect_control_state().to_dict()
+        assert raw["music_fountain_direction"] == "alternate"
+        assert raw["music_parameters"] == {"direction": "alternate"}
+        state = PriorControlState.from_dict(raw)
+        coordinator.music_fountain_direction = "clockwise"
+        send.reset_mock()
+        assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert coordinator.music_fountain_direction == "alternate"
+        assert [call.args[0] for call in send.await_args_list] == packets
+        body = MusicBody.from_bytes(_assemble(packets[2:]))
+        body._read()
+        assert (body.tail.start_point, body.tail.piece_num) == (1, 3)
+        await coordinator.async_select_music_slug(next_mode)
+        assert coordinator.music_fountain_direction == "alternate"
+        inactive_raw = coordinator.capture_effect_control_state().to_dict()
+        assert inactive_raw["music_parameters"] == {}
+        inactive = PriorControlState.from_dict(inactive_raw)
+        assert inactive.mode == ("colour" if next_mode == "off" else "music")
+        # Recovery must restore the selected mode, not replay retained Fountain parameters.
+        await async_apply_compiled_profile(coordinator, compiled)
+        send.reset_mock()
+        assert not await coordinator.async_restore_effect_control_state(inactive, overwritten_diy_code=None)
+        assert coordinator.music_mode == next_mode
+        assert all(call.args[0][0] != 0xA3 for call in send.await_args_list)
+        assert PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict()).music_parameters == {}
+        coordinator.is_on = False
+        powered_off = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
+        assert powered_off.mode == "off" and powered_off.music_parameters == {}
+        send.reset_mock()
+        assert not await coordinator.async_restore_effect_control_state(powered_off, overwritten_diy_code=None)
+        assert send.await_count == 1
+    del raw["music_parameters"]
+    with pytest.raises(EffectStorageError, match="prior fountain direction is invalid"):
+        PriorControlState.from_dict(raw)
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("music_separation_point", "alternate"),
+        ("music_hopping_brightness", 256),
+        ("music_piano_key_count", True),
+        ("music_daynight_segments", -1),
+        ("music_daynight_speed", "slow"),
+        ("music_separation_gradient", 1),
+        ("music_daynight_gradient", "alternate"),
+        ("music_fountain_direction", "alternate"),
+    ],
+)
+def test_authoritative_mapping_bypasses_only_redundant_legacy_parameter_validation(key, value):
+    state = PriorControlState(mode="music", is_on=True, brightness_pct=50, rgb_color=(1, 2, 3))
+    with pytest.raises(EffectStorageError):
+        replace(state, **{key: value})
+    with pytest.raises(EffectStorageError):
+        PriorControlState.from_dict({**state.to_dict(), key: value})
+    authoritative = replace(state, music_parameters={}, **{key: value})
+    assert PriorControlState.from_dict(authoritative.to_dict()) == authoritative
+
+
+@pytest.mark.parametrize("changes", [{"music_sensitivity": True}, {"music_calm": 1}, {"music_color": (256, 0, 0)}])
+def test_authoritative_parameters_do_not_bypass_selector_validation(changes):
+    with pytest.raises(EffectStorageError):
+        PriorControlState(
+            mode="music", is_on=True, brightness_pct=50, rgb_color=(1, 2, 3), music_parameters={}, **changes
+        )

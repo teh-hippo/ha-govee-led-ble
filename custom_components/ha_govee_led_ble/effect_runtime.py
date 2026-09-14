@@ -56,7 +56,9 @@ from .generated_protocol_adapter import (
     build_white_balance,
 )
 from .music_commands import prepare_music_request
+from .music_semantics import capture_music_parameters
 from .native_profile_controls import (
+    ProfileWriter,
     apply_active_video_mode,
     apply_blank_screen,
     apply_relative_brightness,
@@ -75,7 +77,7 @@ async def async_apply_compiled_profile(
     coordinator: GoveeBLECoordinator,
     compiled: CompiledMusicProfile | CompiledVideoProfile,
     *,
-    writer: Callable[[bytes], Awaitable[None]] | None = None,
+    writer: ProfileWriter | None = None,
     verify: bool = True,
     progress: Callable[[int], Awaitable[None]] | None = None,
 ) -> None:
@@ -194,7 +196,7 @@ async def async_apply_compiled_profile(
     elif writer is None and verify:
         await apply_active_video_mode(coordinator)
     else:
-        await apply_active_video_mode(coordinator, writer=writer, verify=verify)
+        await apply_active_video_mode(coordinator, writer=writer, verify=verify, requested_fields=mode_fields)
     completed = 1
     if progress is not None:
         await progress(completed)
@@ -855,7 +857,14 @@ class EffectDeploymentEngine:
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed
         profile = coordinator.profile
-        refresh_display_settings = compiled.white_balance_wire is not None or compiled.blank_screen is not None
+        refresh_display_settings = frozenset(
+            setting
+            for setting, requested in (
+                ("white_balance", compiled.white_balance_wire is not None),
+                ("blank_screen", compiled.blank_screen is not None),
+            )
+            if requested
+        )
         refresh_relative_brightness = compiled.relative_brightness is not None
         if not refresh_display_settings and not refresh_relative_brightness:
             return refreshed
@@ -920,6 +929,11 @@ class EffectDeploymentEngine:
             diy_code=coordinator.diy_code,
             music_mode=getattr(coordinator, "music_mode", "off"),
             music_model=coordinator.model,
+            music_parameters=capture_music_parameters(
+                coordinator,
+                coordinator.profile,
+                getattr(coordinator, "music_mode", "off"),
+            ),
             video_mode=getattr(coordinator, "video_mode", "off"),
             music_sensitivity=getattr(coordinator, "music_sensitivity", 100),
             music_calm=getattr(coordinator, "music_calm", False),

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
+from .control_arbiter import ControlIntent
 from .generated_protocol_adapter import (
     build_blank_screen,
     build_power,
@@ -18,37 +19,43 @@ if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
 
 
+class ProfileWriter(Protocol):
+    """A custom writer must run the guard at its final physical-write boundary."""
+
+    def __call__(self, packet: bytes, *, write_guard: Callable[[], None] | None = None) -> Awaitable[None]: ...
+
+
 async def apply_video_mode_from_state(
     coordinator: GoveeBLECoordinator,
     *,
-    writer: Callable[[bytes], Awaitable[None]] | None = None,
+    writer: ProfileWriter | None = None,
+    requested_fields: frozenset[str] | None = None,
 ) -> None:
-    sound_effects = coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects
-    send = coordinator.send_command if writer is None else writer
-    await send(
-        build_video_mode(
-            coordinator.video_mode,
-            coordinator.video_full_screen,
-            coordinator.video_saturation,
-            sound_effects,
-            coordinator.video_sound_effects_softness,
-            coordinator.model,
+    fields = (
+        requested_fields
+        if requested_fields is not None
+        else frozenset(
+            field
+            for field, supported in (
+                ("full_screen", coordinator.profile.supports_video_capture_region),
+                ("saturation", coordinator.profile.supports_video_saturation),
+                ("sound_effects", coordinator.profile.supports_video_sound_effects),
+                ("sound_effects_softness", coordinator.profile.supports_video_sound_effects),
+            )
+            if supported
         )
     )
-    if not coordinator.profile.supports_video_sound_effects:
-        coordinator.video_sound_effects = False
+    controls = frozenset(
+        "capture_region" if field == "full_screen" else "sound_effects" if field == "sound_effects_softness" else field
+        for field in fields
+    )
+    retained = {
+        field: getattr(coordinator, f"video_{field}")
+        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
+        if field not in fields
+    }
 
-
-async def apply_active_video_mode(
-    coordinator: GoveeBLECoordinator,
-    *,
-    writer: Callable[[bytes], Awaitable[None]] | None = None,
-    verify: bool = True,
-    requested_fields: frozenset[str] | None = None,
-) -> bool:
-    if coordinator.video_mode not in ("movie", "game"):
-        return False
-    if requested_fields is not None:
+    def check_retained() -> None:
         require_video_controls(
             coordinator.profile,
             coordinator,
@@ -58,17 +65,64 @@ async def apply_active_video_mode(
                 else "sound_effects"
                 if field == "sound_effects_softness"
                 else field
-                for field in requested_fields
+                for field, value in retained.items()
+                if getattr(coordinator, f"video_{field}") != value
             },
         )
+
+    sound_effects = coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects
+    await _send_video_setting(
+        coordinator,
+        build_video_mode(
+            coordinator.video_mode,
+            coordinator.video_full_screen,
+            coordinator.video_saturation,
+            sound_effects,
+            coordinator.video_sound_effects_softness,
+            coordinator.model,
+        ),
+        controls,
+        writer=writer,
+        write_guard=check_retained if retained else None,
+    )
+    if not coordinator.profile.supports_video_sound_effects:
+        coordinator.video_sound_effects = False
+
+
+async def apply_active_video_mode(
+    coordinator: GoveeBLECoordinator,
+    *,
+    writer: ProfileWriter | None = None,
+    verify: bool = True,
+    requested_fields: frozenset[str] | None = None,
+) -> bool:
+    if coordinator.video_mode not in ("movie", "game"):
+        return False
+    if requested_fields is None:
+        requested_fields = frozenset(
+            field
+            for field, supported in (
+                ("full_screen", coordinator.profile.supports_video_capture_region),
+                ("saturation", coordinator.profile.supports_video_saturation),
+                ("sound_effects", coordinator.profile.supports_video_sound_effects),
+                ("sound_effects_softness", coordinator.profile.supports_video_sound_effects),
+            )
+            if supported
+        )
+    controls = {
+        "capture_region" if field == "full_screen" else "sound_effects" if field == "sound_effects_softness" else field
+        for field in requested_fields
+    }
     send = coordinator.send_command if writer is None else writer
     for _ in range(2 if verify else 1):
+        require_video_controls(coordinator.profile, coordinator, controls)
         if not coordinator.is_on:
             await send(build_power(True, coordinator.model))
             coordinator.is_on = True
         await apply_video_mode_from_state(
             coordinator,
-            writer=send,
+            writer=writer,
+            requested_fields=requested_fields,
         )
         if not verify:
             return True
@@ -104,10 +158,44 @@ async def apply_active_video_mode(
     raise RuntimeError("Video-mode write was not confirmed by the device")
 
 
+async def _send_video_setting(
+    coordinator: GoveeBLECoordinator,
+    packet: bytes,
+    controls: frozenset[str],
+    *,
+    writer: ProfileWriter | None,
+    write_guard: Callable[[], None] | None = None,
+) -> None:
+    def check() -> None:
+        require_video_controls(coordinator.profile, coordinator, controls)
+        if write_guard is not None:
+            write_guard()
+
+    check()
+    if (
+        writer is None
+        and coordinator.profile.video_firmware_conditions
+        and (
+            write_guard is not None
+            or any(condition.control in controls for condition in coordinator.profile.video_firmware_conditions)
+        )
+    ):
+        # The sequence callback runs under the transport lock after every reconnect.
+        await coordinator.async_write_effect_sequence(
+            (packet,),
+            intent=coordinator._control_arbiter.current_task_intent or ControlIntent.USER,
+            write_guard=check,
+        )
+    elif writer is not None:
+        await writer(packet, write_guard=check)
+    else:
+        await coordinator.send_command(packet)
+
+
 async def apply_white_balance(
     coordinator: GoveeBLECoordinator,
     *,
-    writer: Callable[[bytes], Awaitable[None]] | None = None,
+    writer: ProfileWriter | None = None,
     verify: bool = True,
 ) -> bool:
     require_video_controls(coordinator.profile, coordinator, ("white_balance",))
@@ -124,11 +212,10 @@ async def apply_white_balance(
         zip(("white_balance_scalar",) if scalar else ("white_balance_red", "white_balance_blue"), expected, strict=True)
     )
     packet = build_white_balance(expected[0], expected[-1] if len(expected) == 2 else None, coordinator.model)
-    send = coordinator.send_command if writer is None else writer
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values(fields)
-        await send(packet)
+        await _send_video_setting(coordinator, packet, frozenset({"white_balance"}), writer=writer)
         if not verify:
             return True
         if await coordinator.refresh_state(expected_white_balance=expected):
@@ -139,7 +226,7 @@ async def apply_white_balance(
 async def apply_relative_brightness(
     coordinator: GoveeBLECoordinator,
     *,
-    writer: Callable[[bytes], Awaitable[None]] | None = None,
+    writer: ProfileWriter | None = None,
     verify: bool = True,
 ) -> bool:
     require_video_controls(coordinator.profile, coordinator, ("relative_brightness",))
@@ -161,11 +248,10 @@ async def apply_relative_brightness(
         expected[4] if len(expected) == 6 else None,
         expected[5] if len(expected) == 6 else None,
     )
-    send = coordinator.send_command if writer is None else writer
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values(fields)
-        await send(packet)
+        await _send_video_setting(coordinator, packet, frozenset({"relative_brightness"}), writer=writer)
         if not verify:
             return True
         if await coordinator.refresh_state(expected_relative_brightness=expected):
@@ -176,7 +262,7 @@ async def apply_relative_brightness(
 async def apply_blank_screen(
     coordinator: GoveeBLECoordinator,
     *,
-    writer: Callable[[bytes], Awaitable[None]] | None = None,
+    writer: ProfileWriter | None = None,
     verify: bool = True,
 ) -> bool:
     require_video_controls(coordinator.profile, coordinator, ("blank_screen",))
@@ -186,11 +272,15 @@ async def apply_blank_screen(
     same_duration = coordinator.blank_screen_same_tone_duration_seconds
     if detection is None or low_duration is None or same_duration is None:
         raise ValueError("Blank-screen policy state has not been read; refresh the device first")
-    send = coordinator.send_command if writer is None else writer
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values({"blank_screen": expected})
-        await send(build_blank_screen(expected, coordinator.model, detection, low_duration, same_duration))
+        await _send_video_setting(
+            coordinator,
+            build_blank_screen(expected, coordinator.model, detection, low_duration, same_duration),
+            frozenset({"blank_screen"}),
+            writer=writer,
+        )
         if not verify:
             return True
         if await coordinator.refresh_state(expected_blank_screen=expected):

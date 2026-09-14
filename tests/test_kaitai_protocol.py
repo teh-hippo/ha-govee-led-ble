@@ -331,6 +331,28 @@ async def test_static_verification_uses_actual_colour_query(static_coordinator):
     assert await coord.async_observe_effect({"rgb_color": (1, 2, 3), "color_temp_kelvin": 4200}) is True
 
 
+@pytest.mark.parametrize("method", ["refresh", "observe"])
+@pytest.mark.parametrize("segment_rgb", [(1, 2, 3), (4, 5, 6)])
+async def test_direct_rgb_verification_rejects_segment_only_evidence(static_coordinator, method, segment_rgb):
+    coord = static_coordinator
+    coord.install_static_color(rgb=(1, 2, 3))
+
+    async def write(_uuid, packet, **_kwargs):
+        assert packet == generated_protocol_adapter.build_colour_mode_query(coord.model)
+        coord._notify_callback(None, _static_reply())
+        _static_segments(coord, segment_rgb)
+
+    coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
+    coord._ensure_connected = AsyncMock(return_value=coord._client)
+    if method == "refresh":
+        assert await coord.refresh_state(expected_rgb_color=(1, 2, 3), timeout=0.01) is False
+    else:
+        assert await coord.async_observe_effect({"rgb_color": (1, 2, 3)}, timeout=0.01) is None
+    assert coord.rgb_color == segment_rgb and coord.rgb_color_source == "segment"
+    assert coord._field_revisions["rgb_color"] > 0
+    assert coord._field_revisions["segment_colors"] > 0
+
+
 def test_static_readback_requires_qualified_fields_and_valid_kelvin(static_coordinator):
     coord = static_coordinator
     coord._notify_callback(None, _static_reply(kelvin=0))
@@ -365,6 +387,26 @@ def test_static_segment_write_releases_direct_precedence(static_coordinator):
     _static_segments(coord, (4, 5, 6))
     assert coord.rgb_color == (4, 5, 6) and coord.rgb_color_source == "segment"
     assert coord.color_temp_kelvin is None and coord._field_revisions["color_temp_kelvin"] == 1
+
+
+@pytest.mark.parametrize("kelvin", [None, 4200])
+async def test_failed_segment_write_preserves_fresh_static_provenance(static_coordinator, kelvin):
+    coord = static_coordinator
+    coord.install_static_color(rgb=(9, 8, 7))
+
+    async def send(_packet):
+        coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=kelvin))
+        raise RuntimeError("segment write failed after notification")
+
+    coord.send_command = AsyncMock(side_effect=send)
+    with pytest.raises(RuntimeError, match="segment write failed"):
+        await coord.async_paint_segments([([1], (4, 5, 6))])
+    assert coord.rgb_color_source == "observed"
+    if kelvin is not None:
+        assert coord.color_temp_kelvin_source == "observed"
+    _static_segments(coord, (4, 5, 6))
+    assert coord.rgb_color == (1, 2, 3) and coord.color_temp_kelvin == kelvin
+    assert coord.rgb_color_source == "observed"
 
 
 @pytest.mark.parametrize("extra", [False, True])

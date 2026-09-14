@@ -201,6 +201,141 @@ async def test_preview_rejects_before_admission_and_rechecks_execution(
     await manager.async_shutdown()
 
 
+@pytest.mark.parametrize("change_at", ["begin", "transport_lock", "transform"])
+async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, change_at):
+    import asyncio
+
+    from tests.test_effect_preview import _manager, _open
+
+    gated(monkeypatch)
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
+    coordinator.subordinate_21_version = "9.08.07"
+    coordinator.is_on = True
+    write = AsyncMock()
+    coordinator._client = MagicMock(is_connected=True, write_gatt_char=write)
+    monkeypatch.setattr(coordinator, "async_preview_preflight", AsyncMock())
+    manager, _ = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    statuses = []
+    session = _open(manager, owner, statuses)
+    begin = manager._async_begin_transmission
+    reached = asyncio.Event()
+
+    async def delayed_begin(request):
+        await begin(request)
+        if change_at == "begin":
+            await asyncio.sleep(0)
+            coordinator.subordinate_21_version = "9.08.06"
+        reached.set()
+
+    monkeypatch.setattr(manager, "_async_begin_transmission", delayed_begin)
+    if change_at == "transport_lock":
+        await coordinator._lock.acquire()
+    if change_at == "transform":
+
+        def transform(packet):
+            coordinator.subordinate_21_version = "9.08.06"
+            return packet
+
+        coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    content = VideoProfile("H7000", "movie", None, None, None, None, None, None, None, white_balance_value=1)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-09-14T00:00:00Z",
+            item=LibraryItem.new("Gated preview", content),
+        )
+        await asyncio.wait_for(reached.wait(), timeout=1)
+        if change_at == "transport_lock":
+            coordinator.subordinate_21_version = "9.08.06"
+            coordinator._lock.release()
+        await manager.async_wait_idle("entry-a")
+        write.assert_not_awaited()
+        assert not coordinator._expected_state
+        assert statuses[-1].phase is PreviewPhase.FAILED
+    finally:
+        if coordinator._lock.locked():
+            coordinator._lock.release()
+        await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("change_at", ["begin", "transport_lock", "transform", "unchanged"])
+async def test_preview_forwards_retained_field_guard_to_physical_write(hass, monkeypatch, change_at):
+    import asyncio
+
+    from tests.test_effect_preview import _manager, _open
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator.profile = replace(
+        coordinator.profile,
+        video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
+    )
+    coordinator.is_on = True
+    coordinator.video_saturation = 31
+    physical = AsyncMock()
+    coordinator._client = MagicMock(is_connected=True, write_gatt_char=physical)
+    monkeypatch.setattr(coordinator, "async_preview_preflight", AsyncMock())
+
+    async def fresh(**kwargs):
+        coordinator._field_revisions["video_saturation"] = coordinator._field_revisions.get("video_saturation", 0) + 1
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", fresh)
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
+    manager, _ = await _manager(hass, monkeypatch, coordinator)
+    owner = object()
+    statuses = []
+    session = _open(manager, owner, statuses)
+    begin = manager._async_begin_transmission
+    reached = asyncio.Event()
+
+    async def delayed_begin(request):
+        await begin(request)
+        if change_at == "begin":
+            await asyncio.sleep(0)
+            coordinator.video_saturation = 50
+        reached.set()
+
+    monkeypatch.setattr(manager, "_async_begin_transmission", delayed_begin)
+    if change_at == "transport_lock":
+        await coordinator._lock.acquire()
+    if change_at == "transform":
+
+        def transform(packet):
+            coordinator.video_saturation = 50
+            return packet
+
+        coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    content = VideoProfile("H6199", "movie", True, None, False, 50, None, None, None)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-09-14T00:00:00Z",
+            item=LibraryItem.new("Retained preview", content),
+        )
+        await asyncio.wait_for(reached.wait(), timeout=1)
+        if change_at == "transport_lock":
+            coordinator.video_saturation = 50
+            coordinator._lock.release()
+        await manager.async_wait_idle("entry-a")
+        if change_at == "unchanged":
+            physical.assert_awaited_once()
+        else:
+            physical.assert_not_awaited()
+            assert not coordinator._expected_state
+            assert statuses[-1].phase is PreviewPhase.FAILED
+    finally:
+        if coordinator._lock.locked():
+            coordinator._lock.release()
+        await manager.async_shutdown()
+
+
 async def test_stale_omitted_compound_field_rejects_without_writes(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ):
@@ -311,3 +446,238 @@ async def test_display_refresh_cannot_reuse_stale_sibling_fields(hass: HomeAssis
     assert not await coordinator.refresh_state(
         refresh_display_settings=True, timeout=0.001, required_domains=frozenset()
     )
+
+
+@pytest.mark.parametrize("change_at", ["unknown", "power", "connect", "retry", "verify", "transform"])
+async def test_mode_applicability_rechecked_before_each_write(hass, monkeypatch, change_at):
+    from bleak import BleakError
+
+    from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode
+
+    profile = replace(
+        MODEL_PROFILES["H6199"],
+        video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
+    )
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator.profile = profile
+    coordinator.subordinate_21_version = None if change_at == "unknown" else "9.08.07"
+    coordinator.is_on = change_at != "power"
+    coordinator.video_mode = "movie"
+    if change_at == "transform":
+
+        def transform(packet):
+            coordinator.subordinate_21_version = "9.08.06"
+            return packet
+
+        coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    writes = []
+
+    async def power(packet):
+        writes.append(packet)
+        coordinator.subordinate_21_version = "9.08.06"
+
+    async def transmit(_uuid, packet, **kwargs):
+        writes.append(packet)
+        if change_at == "retry":
+            coordinator.subordinate_21_version = "9.08.06"
+            raise BleakError("retry")
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
+
+    async def connect():
+        if change_at == "connect":
+            coordinator.subordinate_21_version = "9.08.06"
+        return client
+
+    async def verify(**kwargs):
+        coordinator.subordinate_21_version = "9.08.06"
+        return False
+
+    monkeypatch.setattr(coordinator, "send_command", power)
+    monkeypatch.setattr(coordinator, "_ensure_connected", connect)
+    monkeypatch.setattr(coordinator, "_disconnect_locked", AsyncMock())
+    monkeypatch.setattr(coordinator, "refresh_state", verify)
+    with pytest.raises(ValueError, match="saturation is (unsupported|evidence_gap)"):
+        if change_at == "power":
+            content = VideoProfile("H6199", "movie", True, 50, False, 50, None, None, None)
+            compiled = compile_video_profile(LibraryItem.new("Complete mode", content), "H6199")
+            await async_apply_compiled_profile(coordinator, compiled)
+        else:
+            await apply_active_video_mode(coordinator)
+    assert len(writes) == int(change_at in {"power", "retry", "verify"})
+
+
+@pytest.mark.parametrize("during", ["supersession", "power", "retained_power", "transform", "retained"])
+async def test_native_selector_without_default_guards_physical_write(hass, monkeypatch, during):
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+    from custom_components.ha_govee_led_ble.light import GoveeBLELight
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator.profile = replace(
+        coordinator.profile,
+        video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
+    )
+    coordinator.subordinate_21_version = "9.08.06" if during == "retained" else "9.08.07"
+    coordinator.is_on = True
+    coordinator.video_saturation = 31
+    backend = await EffectBackend.async_create(hass)
+    entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+    monkeypatch.setattr(entity, "async_write_ha_state", MagicMock())
+    assert backend.template_defaults.get("entry-a", "template:video:movie") is None
+
+    async def supersede(*args, **kwargs):
+        if during not in {"retained", "retained_power"}:
+            coordinator.video_saturation = 50
+        if during == "supersession":
+            coordinator.subordinate_21_version = "9.08.06"
+
+    monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
+    writes = []
+
+    async def send(packet):
+        writes.append(packet)
+        if during in {"power", "retained_power"}:
+            coordinator.video_saturation = 50
+            coordinator.subordinate_21_version = "9.08.06"
+
+    monkeypatch.setattr(coordinator, "send_command", send)
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+    physical = AsyncMock()
+    client = MagicMock(is_connected=True, write_gatt_char=physical)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    if during == "transform":
+
+        def transform(packet):
+            coordinator.subordinate_21_version = "9.08.06"
+            return packet
+
+        coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    if during == "retained":
+        await entity.async_turn_on(effect="Video: Movie")
+        physical.assert_awaited_once()
+        assert coordinator.video_saturation == 31
+    else:
+        with pytest.raises(HomeAssistantError) as error:
+            await entity.async_turn_on(effect="Video: Movie")
+        assert "saturation is unsupported" in str(error.value.__cause__)
+        physical.assert_not_awaited()
+        assert all(packet[1] == 1 for packet in writes)
+
+
+async def test_recovery_rechecks_firmware_after_transform(hass, monkeypatch):
+    gated(monkeypatch)
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
+    coordinator.subordinate_21_version = "9.08.07"
+    coordinator.white_balance_scalar = 90
+    prior = replace(
+        coordinator.capture_effect_control_state(), white_balance_scalar=100, video_restore_controls=("white_balance",)
+    )
+
+    def transform(packet):
+        coordinator.subordinate_21_version = "9.08.06"
+        return packet
+
+    coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    physical = AsyncMock()
+    client = MagicMock(is_connected=True, write_gatt_char=physical)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    with pytest.raises(ValueError, match="white_balance is unsupported"):
+        await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+    physical.assert_not_awaited()
+
+
+async def test_preserved_mode_fields_do_not_request_unavailable_controls(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator.profile = replace(
+        coordinator.profile,
+        video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
+    )
+    coordinator.video_mode = "movie"
+    coordinator.is_on = True
+    coordinator.video_saturation = 31
+    writer = AsyncMock()
+    refresh = AsyncMock(return_value=True)
+    monkeypatch.setattr(coordinator, "refresh_state", refresh)
+    assert await apply_active_video_mode(coordinator, writer=writer, requested_fields=frozenset({"full_screen"}))
+    writer.assert_awaited_once()
+    assert coordinator.video_saturation == 31
+    assert refresh.await_args.kwargs["expected_video_saturation"] is None
+
+
+async def test_retained_native_field_changed_during_transform_is_guarded(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator.video_mode = "movie"
+    coordinator.is_on = True
+    coordinator.video_saturation = 31
+
+    def transform(packet):
+        coordinator.video_saturation = 50
+        return packet
+
+    coordinator.profile = replace(
+        coordinator.profile,
+        outbound_transform=transform,
+        video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
+    )
+    physical = AsyncMock()
+    monkeypatch.setattr(
+        coordinator, "_ensure_connected", AsyncMock(return_value=MagicMock(is_connected=True, write_gatt_char=physical))
+    )
+    with pytest.raises(ValueError, match="saturation is evidence_gap"):
+        await apply_active_video_mode(coordinator, verify=False, requested_fields=frozenset({"full_screen"}))
+    physical.assert_not_awaited()
+
+
+@pytest.mark.parametrize("setting", ["white_balance", "blank_screen"])
+async def test_prior_refresh_requires_only_requested_register(hass, monkeypatch, setting):
+    from custom_components.ha_govee_led_ble.transport import xor_checksum
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    omitted = "blank_screen" if setting == "white_balance" else "white_balance"
+    coordinator.profile = replace(
+        coordinator.profile,
+        video_firmware_conditions=(VideoFirmwareCondition(omitted, "subordinate_21_version", "9.08.07"),),
+    )
+    client = MagicMock(is_connected=True)
+    coordinator._client = client
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    queries = []
+
+    async def respond(**kwargs):
+        queries.append(kwargs)
+        bodies = ["aa0101", "aa05000100320032"]
+        if kwargs.get(f"query_{setting}"):
+            bodies.append("aaa90006011003011003" if setting == "white_balance" else "aaa90a0600020a007800")
+        for body in bodies:
+            frame = bytearray.fromhex(body)
+            frame.extend(bytes(19 - len(frame)))
+            frame.append(xor_checksum(frame))
+            coordinator._notify_callback(None, frame)
+        return True
+
+    monkeypatch.setattr(coordinator, "_send_state_queries", respond)
+    content = VideoProfile(
+        "H6199",
+        "movie",
+        True,
+        50,
+        False,
+        50,
+        17 if setting == "white_balance" else None,
+        None,
+        False if setting == "blank_screen" else None,
+    )
+    compiled = compile_video_profile(LibraryItem.new("One register", content), "H6199")
+    engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
+    assert await engine._async_prepare_prior_state(coordinator, compiled)
+    assert queries[-1][f"query_{setting}"] is True
+    assert queries[-1][f"query_{omitted}"] is False
+    if setting == "blank_screen":
+        assert coordinator.blank_screen_low_brightness_duration_seconds == 10
+        assert coordinator.blank_screen_same_tone_duration_seconds == 120

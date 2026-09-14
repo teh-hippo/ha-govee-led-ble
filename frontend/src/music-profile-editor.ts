@@ -26,30 +26,9 @@ import type {
   JsonObject,
   ModelEffectCatalogue,
   MusicProfileContent,
-  MusicParameterSpec,
   RGB,
 } from "./types";
 import { clampInteger, cloneRgb } from "./ui-utils";
-
-type OwnedMusicParameterKey =
-  | "point"
-  | "gradient"
-  | "relative_brightness"
-  | "key_count"
-  | "direction"
-  | "segment_count"
-  | "speed";
-
-type FountainDirection = "clockwise" | "two_way" | "counterclockwise";
-
-const FOUNTAIN_DIRECTIONS: ReadonlyArray<{
-  id: FountainDirection;
-  label: string;
-}> = [
-  { id: "clockwise", label: "Clockwise" },
-  { id: "two_way", label: "Two-way" },
-  { id: "counterclockwise", label: "Counterclockwise" },
-];
 
 export interface MusicModeChange {
   mode: string;
@@ -197,7 +176,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     value: number,
     min: number,
     max: number,
-    parameter: OwnedMusicParameterKey | undefined,
+    parameter: string | undefined,
     commit: (value: number) => void,
   ) {
     return html`
@@ -259,94 +238,42 @@ export class GoveeMusicProfileEditor extends LitElement {
   }
 
   private renderModeParameters(content: MusicProfileContent) {
-    switch (content.mode) {
-      case "separation":
-        return this.renderSeparationParameters(content.parameters);
-      case "hopping":
-        return this.renderHoppingParameters(content.parameters);
-      case "piano_keys":
-        return this.renderPianoKeysParameters(content.parameters);
-      case "fountain":
-        return this.renderFountainParameters(content.parameters);
-      case "day_and_night":
-        return this.renderDayAndNightParameters(content.parameters);
-      default:
-        return nothing;
-    }
+    return Object.entries(this.settings?.parameters ?? {}).map(([key, spec]) => {
+      const label = parameterLabel(key);
+      if (spec.kind === "number") {
+        return this.renderRangeField(
+          label, numberParameter(content.parameters, key, spec.default as number, spec.min, spec.max),
+          spec.min, spec.max, key, (value) => this.updateParameter(key, value),
+        );
+      }
+      if (spec.kind === "switch") {
+        return this.renderCheckboxField(
+          label, booleanParameter(content.parameters, key, spec.default as boolean),
+          (checked) => this.updateParameter(key, checked),
+        );
+      }
+      const raw = content.parameters[key];
+      const selected = typeof raw === "string" && spec.options.includes(raw) ? raw : spec.default as string;
+      return html`
+        <label class="field">
+          <span class="parameter-label">${label}</span>
+          <select
+            aria-label=${label}
+            .value=${live(selected)}
+            ?disabled=${this.disabled}
+            @change=${(event: Event) => this.updateParameter(key, (event.target as HTMLSelectElement).value)}
+          >
+            ${spec.options.map((option) => html`
+              <option value=${option} .selected=${option === selected}>${parameterLabel(option)}</option>
+            `)}
+          </select>
+        </label>
+      `;
+    });
   }
 
   private get settings() {
     return this.content ? this.catalogue?.music_settings[this.content.mode] : undefined;
-  }
-
-  private renderNumberParameter(label: string, key: OwnedMusicParameterKey, parameters: JsonObject) {
-    const spec = this.settings?.parameters[key];
-    if (!spec || spec.kind !== "number") return nothing;
-    return this.renderRangeField(label, numberParameter(parameters, key, spec.default as number, spec.min, spec.max),
-      spec.min, spec.max, key, (value) => this.updateParameter(key, value));
-  }
-
-  private renderGradient(parameters: JsonObject) {
-    const spec = this.settings?.parameters.gradient;
-    if (!spec || spec.kind !== "switch") return nothing;
-    return this.renderCheckboxField("Gradient", booleanParameter(parameters, "gradient", spec.default as boolean),
-      (checked) => this.updateParameter("gradient", checked));
-  }
-
-  private renderSeparationParameters(parameters: JsonObject) {
-    return html`
-      ${this.renderNumberParameter("Point", "point", parameters)}
-      ${this.renderGradient(parameters)}
-    `;
-  }
-
-  private renderHoppingParameters(parameters: JsonObject) {
-    return this.renderNumberParameter("Relative brightness", "relative_brightness", parameters);
-  }
-
-  private renderPianoKeysParameters(parameters: JsonObject) {
-    return this.renderNumberParameter("Key count", "key_count", parameters);
-  }
-
-  private renderFountainParameters(parameters: JsonObject) {
-    const spec = this.settings?.parameters.direction;
-    if (!spec || spec.kind !== "select") return nothing;
-    const direction = directionParameter(parameters, "direction", spec);
-
-    return html`
-      <label class="field">
-        <span class="parameter-label">Direction</span>
-        <select
-          aria-label="Direction"
-          .value=${live(direction)}
-          ?disabled=${this.disabled}
-          @change=${(event: Event) =>
-            this.updateParameter(
-              "direction",
-              (event.target as HTMLSelectElement).value as FountainDirection,
-            )}
-        >
-          ${FOUNTAIN_DIRECTIONS.filter((option) => spec.options.includes(option.id)).map(
-            (option) => html`
-              <option
-                value=${option.id}
-                .selected=${option.id === direction}
-              >
-                ${option.label}
-              </option>
-            `,
-          )}
-        </select>
-      </label>
-    `;
-  }
-
-  private renderDayAndNightParameters(parameters: JsonObject) {
-    return html`
-      ${this.renderNumberParameter("Segment count", "segment_count", parameters)}
-      ${this.renderNumberParameter("Speed", "speed", parameters)}
-      ${this.renderGradient(parameters)}
-    `;
   }
 
   private renderCheckboxField(
@@ -402,8 +329,8 @@ export class GoveeMusicProfileEditor extends LitElement {
   }
 
   private updateParameter(
-    key: OwnedMusicParameterKey,
-    value: boolean | number | FountainDirection,
+    key: string,
+    value: boolean | number | string,
   ): void {
     this.updateContent((content) => {
       const parameters = structuredClone(content.parameters);
@@ -480,15 +407,9 @@ function booleanParameter(
   return typeof parameters[key] === "boolean" ? (parameters[key] as boolean) : fallback;
 }
 
-function directionParameter(
-  parameters: JsonObject,
-  key: string,
-  spec: MusicParameterSpec,
-): FountainDirection {
-  const value = parameters[key];
-  return typeof value === "string" && spec.options.includes(value)
-    ? (value as FountainDirection)
-    : spec.default as FountainDirection;
+function parameterLabel(key: string): string {
+  if (key === "two_way") return "Two-way";
+  return key.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
 declare global {

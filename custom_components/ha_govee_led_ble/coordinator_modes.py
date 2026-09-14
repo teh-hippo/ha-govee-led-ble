@@ -16,7 +16,7 @@ from .light_commands import (
     build_white_brightness,
 )
 from .music_commands import build_music_params, prepare_music_request
-from .music_semantics import compile_music_parameters, music_params_for_mode, music_variant
+from .music_semantics import music_params_for_mode, music_variant
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key
 
@@ -224,14 +224,12 @@ class _ActiveModeMixin(_CoordinatorBase):
         calm: bool,
         parameters: Mapping[str, int | bool | str],
     ) -> None:
-        parameters = compile_music_parameters(parameters, MUSIC_MODE_SLUGS[mode], self.profile)
         prepare_music_request(self.model, mode, sensitivity, colour, calm, parameters)
         self.music_sensitivity = sensitivity
         self.music_color = colour
         self.music_calm = calm
         for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], self.profile):
-            if spec.profile_key in parameters:
-                setattr(self, spec.key, parameters[spec.profile_key])
+            setattr(self, spec.key, parameters.get(spec.profile_key, spec.default))
 
     async def async_apply_music_params(
         self,
