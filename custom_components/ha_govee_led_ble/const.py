@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
+from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .music_semantics import H617A_MUSIC_VARIANTS, MusicVariant
 
 DOMAIN = "ha_govee_led_ble"
@@ -101,6 +102,11 @@ class ModelProfile:
     supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
     video_white_balance_default: int = 17
+    video_white_balance_representation: str = "position"
+    video_white_balance_min: int = 1
+    video_white_balance_max: int = 20
+    video_white_balance_calibration: tuple[tuple[int, ...], ...] = ()
+    video_brightness_zones: tuple[str, ...] = ()
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
     music_modes: tuple[str, ...] = ()
@@ -160,6 +166,27 @@ class ModelProfile:
             or self.supports_blank_screen
         ) and not self.supports_video_mode:
             raise ValueError("video settings require video-mode support")
+        if self.supports_white_balance:
+            if self.video_white_balance_representation not in {"position", "scalar"}:
+                raise ValueError("unknown white-balance representation")
+            if not self.video_white_balance_min <= self.video_white_balance_default <= self.video_white_balance_max:
+                raise ValueError("white-balance default is outside its range")
+            if (
+                len(self.video_white_balance_calibration)
+                != self.video_white_balance_max - self.video_white_balance_min + 1
+            ):
+                raise ValueError("white-balance calibration must cover its range")
+            width = 2 if self.video_white_balance_representation == "position" else 1
+            if any(
+                len(row) != width or any(type(value) is not int or not 0 <= value <= 255 for value in row)
+                for row in self.video_white_balance_calibration
+            ):
+                raise ValueError("invalid white-balance calibration")
+        if self.supports_relative_brightness and self.video_brightness_zones not in {
+            ("left", "top", "right", "bottom"),
+            ("left", "top", "right", "bottom", "strip_left", "strip_right"),
+        }:
+            raise ValueError("relative brightness requires an evidenced ordered topology")
 
     def can_read(self, domain: ReadDomain) -> bool:
         return domain in self.read_domains
@@ -359,6 +386,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_video_sound_effects=True,
         # These independently captured video registers have byte-exact builders.
         supports_white_balance=True,
+        video_white_balance_calibration=WHITE_BALANCE_POSITIONS,
+        video_brightness_zones=("left", "top", "right", "bottom"),
         supports_relative_brightness=True,
         supports_blank_screen=True,
         music_modes=_H6199_MUSIC_MODES,

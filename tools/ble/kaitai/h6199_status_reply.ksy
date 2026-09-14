@@ -45,6 +45,7 @@ enums:
     0xae: relative_brightness
   display_setting:
     0x00: white_balance
+    0x06: scalar_white_balance
     0x0a: blank_screen
   blank_screen_detection:
     0x01: low_brightness
@@ -74,11 +75,17 @@ types:
           switch-on: setting
           cases:
             'display_setting::white_balance': white_balance_state
+            'display_setting::scalar_white_balance': scalar_white_balance_state
             'display_setting::blank_screen': blank_screen_state
       - id: padding
         type: u1
         valid: 0
         repeat: eos
+  scalar_white_balance_state:
+    doc: Govee Android 7.6.01 Controller4WhiteBalance.parse reads the scalar after selector and length.
+    seq:
+      - id: value
+        type: u1
   white_balance_state:
     seq:
       - id: reset_flag
@@ -117,7 +124,8 @@ types:
         contents: [0x01]
       - id: edge_count
         type: u1
-        valid: 0x04
+        valid:
+          any-of: [4, 6]
       - id: left_percent
         type: u1
       - id: top_percent

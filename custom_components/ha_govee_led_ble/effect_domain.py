@@ -211,8 +211,6 @@ def _validate_supported_model(value: str, feature: str) -> None:
 
 
 def _validate_video_setting(value: object | None, name: str, *, supported: bool) -> None:
-    if supported and value is None:
-        raise EffectValidationError(f"{name} is required for this model")
     if not supported and value is not None:
         raise EffectValidationError(f"{name} is not supported for this model")
 
@@ -223,12 +221,17 @@ class RelativeBrightness:
     top: int
     right: int
     bottom: int
+    strip_left: int | None = None
+    strip_right: int | None = None
 
     def __post_init__(self) -> None:
         _validate_range(self.left, "left", minimum=1, maximum=100)
         _validate_range(self.top, "top", minimum=1, maximum=100)
         _validate_range(self.right, "right", minimum=1, maximum=100)
         _validate_range(self.bottom, "bottom", minimum=1, maximum=100)
+        for value in (self.strip_left, self.strip_right):
+            if value is not None:
+                _validate_range(value, "strip brightness", minimum=1, maximum=100)
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +245,7 @@ class VideoProfile:
     white_balance_position: int | None
     relative_brightness: RelativeBrightness | None
     blank_screen: bool | None
+    white_balance_value: int | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier(self.model, "model")
@@ -257,6 +261,7 @@ class VideoProfile:
             (self.sound_effects, "sound_effects", profile.supports_video_sound_effects),
             (self.sound_effects_softness, "sound_effects_softness", profile.supports_video_sound_effects),
             (self.white_balance_position, "white_balance_position", profile.supports_white_balance),
+            (self.white_balance_value, "white_balance_value", profile.supports_white_balance),
             (self.relative_brightness, "relative_brightness", profile.supports_relative_brightness),
             (self.blank_screen, "blank_screen", profile.supports_blank_screen),
         ):
@@ -270,9 +275,29 @@ class VideoProfile:
         if self.sound_effects_softness is not None:
             _validate_range(self.sound_effects_softness, "sound_effects_softness", minimum=1, maximum=100)
         if self.white_balance_position is not None:
-            _validate_range(self.white_balance_position, "white_balance_position", minimum=1, maximum=20)
+            if profile.video_white_balance_representation != "position":
+                raise EffectValidationError("white_balance_position requires position calibration")
+            _validate_range(
+                self.white_balance_position,
+                "white_balance_position",
+                minimum=profile.video_white_balance_min,
+                maximum=profile.video_white_balance_max,
+            )
+        if self.white_balance_value is not None:
+            if profile.video_white_balance_representation != "scalar":
+                raise EffectValidationError("white_balance_value requires scalar calibration")
+            _validate_range(
+                self.white_balance_value,
+                "white_balance_value",
+                minimum=profile.video_white_balance_min,
+                maximum=profile.video_white_balance_max,
+            )
         if self.relative_brightness is not None and not isinstance(self.relative_brightness, RelativeBrightness):
             raise EffectValidationError("relative_brightness must be a relative-brightness mapping")
+        if self.relative_brightness is not None:
+            for zone in ("left", "top", "right", "bottom", "strip_left", "strip_right"):
+                if (getattr(self.relative_brightness, zone) is not None) != (zone in profile.video_brightness_zones):
+                    raise EffectValidationError("relative brightness must match the model topology")
         if self.blank_screen is not None:
             _validate_bool(self.blank_screen, "blank_screen")
 
@@ -654,6 +679,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
             "sound_effects": content.sound_effects,
             "sound_effects_softness": content.sound_effects_softness,
             "white_balance_position": content.white_balance_position,
+            **({"white_balance_value": content.white_balance_value} if content.white_balance_value is not None else {}),
             "relative_brightness": (
                 None
                 if content.relative_brightness is None
@@ -751,6 +777,7 @@ def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
             sound_effects=_optional_bool(raw, "sound_effects"),
             sound_effects_softness=_optional_int(raw, "sound_effects_softness"),
             white_balance_position=_optional_int(raw, "white_balance_position"),
+            white_balance_value=_optional_int(raw, "white_balance_value"),
             relative_brightness=_optional_relative_brightness(raw, "relative_brightness"),
             blank_screen=_optional_bool(raw, "blank_screen"),
         )
@@ -815,6 +842,11 @@ def _relative_brightness_to_dict(relative_brightness: RelativeBrightness) -> dic
         "top": relative_brightness.top,
         "right": relative_brightness.right,
         "bottom": relative_brightness.bottom,
+        **(
+            {"strip_left": relative_brightness.strip_left, "strip_right": relative_brightness.strip_right}
+            if relative_brightness.strip_left is not None
+            else {}
+        ),
     }
 
 
@@ -824,6 +856,8 @@ def _relative_brightness_from_dict(raw: Mapping[str, Any]) -> RelativeBrightness
         top=_required_int(raw, "top"),
         right=_required_int(raw, "right"),
         bottom=_required_int(raw, "bottom"),
+        strip_left=_optional_int(raw, "strip_left"),
+        strip_right=_optional_int(raw, "strip_right"),
     )
 
 

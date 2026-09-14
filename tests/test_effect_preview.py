@@ -1153,6 +1153,9 @@ async def test_snapshot_profile_previews_use_preview_transport(
         model,
         configuration_url="homeassistant://ha-govee-led-ble/editor/entry-a",
     )
+    coordinator.blank_screen_detection = 2
+    coordinator.blank_screen_low_brightness_duration_seconds = 10
+    coordinator.blank_screen_same_tone_duration_seconds = 120
     coordinator.async_preview_preflight = AsyncMock()  # type: ignore[method-assign]
     coordinator.async_preview_write = AsyncMock()  # type: ignore[method-assign]
     coordinator.async_observe_effect = AsyncMock(return_value=True)  # type: ignore[method-assign]

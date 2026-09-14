@@ -242,6 +242,15 @@ class ModelEffectCatalogue:
             },
             "video_modes": [mode.to_dict() for mode in self.video_modes],
             "video_settings": list(_video_profile_settings(profile)),
+            "video_controls": {
+                "white_balance": {
+                    "representation": profile.video_white_balance_representation,
+                    "minimum": profile.video_white_balance_min,
+                    "maximum": profile.video_white_balance_max,
+                    "default": profile.video_white_balance_default,
+                },
+                "brightness_zones": list(profile.video_brightness_zones),
+            },
             "templates": [template.to_dict() for template in self.templates],
             "workshop_templates": [template.to_dict(self.sku) for template in self.workshop_templates],
             "workflows": frontend_release_capabilities(self.sku),
@@ -597,9 +606,20 @@ def _video_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
             saturation=50 if profile.supports_video_saturation else None,
             sound_effects=False if profile.supports_video_sound_effects else None,
             sound_effects_softness=50 if profile.supports_video_sound_effects else None,
-            white_balance_position=profile.video_white_balance_default if profile.supports_white_balance else None,
+            white_balance_position=(
+                profile.video_white_balance_default
+                if profile.supports_white_balance and profile.video_white_balance_representation == "position"
+                else None
+            ),
+            white_balance_value=(
+                profile.video_white_balance_default
+                if profile.supports_white_balance and profile.video_white_balance_representation == "scalar"
+                else None
+            ),
             relative_brightness=(
-                RelativeBrightness(100, 100, 100, 100) if profile.supports_relative_brightness else None
+                RelativeBrightness(**dict.fromkeys(profile.video_brightness_zones, 100))
+                if profile.supports_relative_brightness
+                else None
             ),
             blank_screen=False if profile.supports_blank_screen else None,
         ),

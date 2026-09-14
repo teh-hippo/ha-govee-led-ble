@@ -113,7 +113,9 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             color_temp_kelvin=int(kelvin) if kelvin is not None else None,
             multi_effect_flag=getattr(detail, "sub", None),
         )
-    if get_profile(model).status_grammar == "H6199":
+    if get_profile(model).status_grammar == "H6199" or (
+        mode_name == "video" and get_profile(model).video_grammar == "H6199"
+    ):
         if mode_name == "video":
             profile = get_profile(model)
             if profile.video_grammar != "H6199":

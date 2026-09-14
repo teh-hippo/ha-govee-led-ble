@@ -26,6 +26,7 @@ import type {
   ReleaseWorkflowCapability,
   ReleaseWorkflowId,
   VideoProfileSetting,
+  VideoControls,
   WorkshopTemplate,
 } from "./types";
 import {
@@ -55,6 +56,21 @@ const RELEASE_WORKFLOW_APPLICATIONS = [
   "home_assistant",
   "planned",
 ] as const;
+function decodeVideoControls(value: unknown): VideoControls {
+  const controls = objectValue(value, "video controls");
+  const white = objectValue(controls.white_balance, "white balance control");
+  return {
+    white_balance: {
+      representation: enumString(white.representation, ["position", "scalar"] as const, "white balance representation"),
+      minimum: integerValue(white.minimum, "white balance minimum", 0, 255),
+      maximum: integerValue(white.maximum, "white balance maximum", 0, 255),
+      default: integerValue(white.default, "white balance default", 0, 255),
+    },
+    brightness_zones: arrayValue(controls.brightness_zones, "brightness zones", 6).map(zone =>
+      enumString(zone, ["left", "top", "right", "bottom", "strip_left", "strip_right"] as const, "brightness zone")),
+  };
+}
+
 const VIDEO_PROFILE_SETTINGS = [
   "capture_region",
   "saturation",
@@ -199,6 +215,7 @@ function decodeModelEffectCatalogue(
       catalogue.video_settings,
       `${name} video settings`,
     ),
+    ...(catalogue.video_controls === undefined ? {} : {video_controls: decodeVideoControls(catalogue.video_controls)}),
     templates: decodeCatalogueTemplates(
       catalogue.templates,
       `${name} catalogue templates`,

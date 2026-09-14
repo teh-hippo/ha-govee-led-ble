@@ -174,6 +174,18 @@ export interface RelativeBrightness {
   top: number;
   right: number;
   bottom: number;
+  strip_left?: number;
+  strip_right?: number;
+}
+
+export interface VideoControls {
+  white_balance: {
+    representation: "position" | "scalar";
+    minimum: number;
+    maximum: number;
+    default: number;
+  };
+  brightness_zones: (keyof RelativeBrightness)[];
 }
 
 export interface VideoProfileContent {
@@ -185,6 +197,7 @@ export interface VideoProfileContent {
   sound_effects: boolean | null;
   sound_effects_softness: number | null;
   white_balance_position: number | null;
+  white_balance_value?: number;
   relative_brightness: RelativeBrightness | null;
   blank_screen: boolean | null;
 }
@@ -353,6 +366,7 @@ export interface ModelEffectCatalogue {
   music_settings: Record<string, MusicSettings>;
   video_modes: EffectStudioModeOption[];
   video_settings: VideoProfileSetting[];
+  video_controls?: VideoControls;
   templates?: CatalogueTemplate[];
   workshop_templates: WorkshopTemplate[];
   workflows: ReleaseWorkflowCapability[];

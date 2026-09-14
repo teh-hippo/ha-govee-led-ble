@@ -147,21 +147,21 @@ class CompiledVideoProfile:
     sound_effects: bool | None
     sound_effects_softness: int | None
     white_balance_position: int | None
-    relative_brightness: tuple[int, int, int, int] | None
+    relative_brightness: tuple[int, ...] | None
     blank_screen: bool | None
     artifact_sha256: str
+    white_balance_wire: tuple[int, ...] | None = None
     compiler_version: int = EFFECT_COMPILER_VERSION
     content_kind: str = "video_profile"
     diy_code: None = None
 
     @property
     def progress_total(self) -> int:
-        profile = get_profile(self.model)
         return 1 + sum(
             (
-                profile.supports_white_balance,
-                profile.supports_relative_brightness,
-                profile.supports_blank_screen,
+                self.white_balance_wire is not None,
+                self.relative_brightness is not None,
+                self.blank_screen is not None,
             )
         )
 
@@ -191,6 +191,10 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, VideoProfile):
         profile = get_profile(model)
+        try:
+            content.__post_init__()
+        except ValueError as error:
+            return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         if content.model != model or not profile.supports_video_mode or profile.video_grammar is None:
             return CompatibilityResult(
                 CompatibilityState.INCOMPATIBLE,
@@ -675,8 +679,15 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
     if not isinstance(content, VideoProfile):
         raise ValueError("content is not a video profile")
     brightness = content.relative_brightness
+    profile = get_profile(model)
     relative_brightness = (
-        None if brightness is None else (brightness.left, brightness.top, brightness.right, brightness.bottom)
+        None if brightness is None else tuple(getattr(brightness, zone) for zone in profile.video_brightness_zones)
+    )
+    value = (
+        content.white_balance_position if content.white_balance_position is not None else content.white_balance_value
+    )
+    white_balance_wire = (
+        None if value is None else profile.video_white_balance_calibration[value - profile.video_white_balance_min]
     )
     payload = {
         "kind": "video_profile",
@@ -687,6 +698,7 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
         "sound_effects": content.sound_effects,
         "sound_effects_softness": content.sound_effects_softness,
         "white_balance_position": content.white_balance_position,
+        **({"white_balance_value": content.white_balance_value} if content.white_balance_value is not None else {}),
         "relative_brightness": relative_brightness,
         "blank_screen": content.blank_screen,
     }
@@ -700,6 +712,7 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
         sound_effects=content.sound_effects,
         sound_effects_softness=content.sound_effects_softness,
         white_balance_position=content.white_balance_position,
+        white_balance_wire=white_balance_wire,
         relative_brightness=relative_brightness,
         blank_screen=content.blank_screen,
         artifact_sha256=_semantic_digest(payload),

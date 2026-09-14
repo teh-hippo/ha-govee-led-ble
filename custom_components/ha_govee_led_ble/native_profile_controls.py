@@ -43,6 +43,7 @@ async def apply_active_video_mode(
     *,
     writer: Callable[[bytes], Awaitable[None]] | None = None,
     verify: bool = True,
+    requested_fields: frozenset[str] | None = None,
 ) -> bool:
     if coordinator.video_mode not in ("movie", "game"):
         return False
@@ -61,16 +62,28 @@ async def apply_active_video_mode(
             expected_on=True,
             expected_video_mode=coordinator.video_mode,
             expected_video_full_screen=(
-                coordinator.video_full_screen if coordinator.profile.supports_video_capture_region else None
+                coordinator.video_full_screen
+                if coordinator.profile.supports_video_capture_region
+                and (requested_fields is None or "full_screen" in requested_fields)
+                else None
             ),
             expected_video_saturation=(
-                coordinator.video_saturation if coordinator.profile.supports_video_saturation else None
+                coordinator.video_saturation
+                if coordinator.profile.supports_video_saturation
+                and (requested_fields is None or "saturation" in requested_fields)
+                else None
             ),
             expected_video_sound_effects=(
-                coordinator.video_sound_effects if coordinator.profile.supports_video_sound_effects else None
+                coordinator.video_sound_effects
+                if coordinator.profile.supports_video_sound_effects
+                and (requested_fields is None or "sound_effects" in requested_fields)
+                else None
             ),
             expected_video_sound_effects_softness=(
-                coordinator.video_sound_effects_softness if coordinator.profile.supports_video_sound_effects else None
+                coordinator.video_sound_effects_softness
+                if coordinator.profile.supports_video_sound_effects
+                and (requested_fields is None or "sound_effects_softness" in requested_fields)
+                else None
             ),
         ):
             return True
@@ -83,13 +96,24 @@ async def apply_white_balance(
     writer: Callable[[bytes], Awaitable[None]] | None = None,
     verify: bool = True,
 ) -> bool:
-    expected = coordinator.white_balance
-    fields = {"white_balance_red": expected[0], "white_balance_blue": expected[1]}
+    scalar = coordinator.profile.video_white_balance_representation == "scalar"
+    if scalar and coordinator.white_balance_scalar is None:
+        raise ValueError("Scalar white balance has not been read")
+    expected: tuple[int, ...]
+    if scalar:
+        assert coordinator.white_balance_scalar is not None
+        expected = (coordinator.white_balance_scalar,)
+    else:
+        expected = coordinator.white_balance
+    fields = dict(
+        zip(("white_balance_scalar",) if scalar else ("white_balance_red", "white_balance_blue"), expected, strict=True)
+    )
+    packet = build_white_balance(expected[0], expected[-1] if len(expected) == 2 else None, coordinator.model)
     send = coordinator.send_command if writer is None else writer
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values(fields)
-        await send(build_white_balance(*expected, coordinator.model))
+        await send(packet)
         if not verify:
             return True
         if await coordinator.refresh_state(expected_white_balance=expected):
@@ -103,25 +127,29 @@ async def apply_relative_brightness(
     writer: Callable[[bytes], Awaitable[None]] | None = None,
     verify: bool = True,
 ) -> bool:
-    values = tuple(getattr(coordinator, f"relative_brightness_{edge}") for edge in ("left", "top", "right", "bottom"))
+    zones = coordinator.profile.video_brightness_zones
+    values = tuple(getattr(coordinator, f"relative_brightness_{edge}") for edge in zones)
     if any(value is None for value in values):
         raise ValueError("Relative-brightness edge state has not been read; set all edges first")
-    left, top, right, bottom = values
-    assert left is not None and top is not None and right is not None and bottom is not None
-    expected = left, top, right, bottom
-    aggregate = left if len(set(expected)) == 1 else None
-    fields = {
-        "relative_brightness": aggregate,
-        "relative_brightness_left": left,
-        "relative_brightness_top": top,
-        "relative_brightness_right": right,
-        "relative_brightness_bottom": bottom,
+    expected = tuple(int(value) for value in values)
+    fields: dict[str, int | None] = {
+        f"relative_brightness_{zone}": value for zone, value in zip(zones, expected, strict=True)
     }
+    fields["relative_brightness"] = expected[0] if len(set(expected)) == 1 else None
+    packet = build_relative_brightness(
+        expected[0],
+        expected[1],
+        expected[2],
+        expected[3],
+        coordinator.model,
+        expected[4] if len(expected) == 6 else None,
+        expected[5] if len(expected) == 6 else None,
+    )
     send = coordinator.send_command if writer is None else writer
     for _ in range(2 if verify else 1):
         if verify:
             coordinator._arm_expected_values(fields)
-        await send(build_relative_brightness(*expected, coordinator.model))
+        await send(packet)
         if not verify:
             return True
         if await coordinator.refresh_state(expected_relative_brightness=expected):

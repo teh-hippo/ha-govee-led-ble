@@ -194,11 +194,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         # H6199 display settings and edge brightness. None means the first read has not landed.
         self.white_balance_red: int | None = None
         self.white_balance_blue: int | None = None
+        self.white_balance_scalar: int | None = None
         self.relative_brightness: int | None = None
         self.relative_brightness_left: int | None = None
         self.relative_brightness_top: int | None = None
         self.relative_brightness_right: int | None = None
         self.relative_brightness_bottom: int | None = None
+        self.relative_brightness_strip_left: int | None = None
+        self.relative_brightness_strip_right: int | None = None
         self.blank_screen: bool | None = None
         self.blank_screen_detection: int | None = None
         self.blank_screen_low_brightness_duration_seconds: int | None = None
@@ -269,11 +272,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             video_sound_effects_softness=self.video_sound_effects_softness,
             white_balance_red=self.white_balance_red,
             white_balance_blue=self.white_balance_blue,
+            white_balance_scalar=self.white_balance_scalar,
             relative_brightness=self.relative_brightness,
             relative_brightness_left=self.relative_brightness_left,
             relative_brightness_top=self.relative_brightness_top,
             relative_brightness_right=self.relative_brightness_right,
             relative_brightness_bottom=self.relative_brightness_bottom,
+            relative_brightness_strip_left=self.relative_brightness_strip_left,
+            relative_brightness_strip_right=self.relative_brightness_strip_right,
             blank_screen=self.blank_screen,
             blank_screen_detection=self.blank_screen_detection,
             blank_screen_low_brightness_duration_seconds=self.blank_screen_low_brightness_duration_seconds,
@@ -310,6 +316,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 music_calm,
                 music_parameters,
             )
+        if self.profile.supports_white_balance and state.white_balance_scalar is not None:
+            self.white_balance_scalar = state.white_balance_scalar
+            await apply_white_balance(self)
         if (
             self.profile.supports_white_balance
             and state.white_balance_red is not None
@@ -330,6 +339,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.relative_brightness_top = state.relative_brightness_top
             self.relative_brightness_right = state.relative_brightness_right
             self.relative_brightness_bottom = state.relative_brightness_bottom
+            self.relative_brightness_strip_left = state.relative_brightness_strip_left
+            self.relative_brightness_strip_right = state.relative_brightness_strip_right
             await apply_relative_brightness(self)
         if self.profile.supports_blank_screen and state.blank_screen is not None:
             self.blank_screen = state.blank_screen
@@ -996,8 +1007,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     return
                 observed = self._apply_color_mode_payload(generated)
             elif domain is StatusDomain.DISPLAY_SETTING:
+                if generated.body.setting == 6 and self.profile.video_white_balance_representation == "scalar":
+                    scalar_value = int(generated.body.payload.value)
+                    if self._accept_expected("white_balance_scalar", scalar_value):
+                        self.white_balance_scalar = scalar_value
+                        observed = ("white_balance_scalar",)
                 current_white_balance: tuple[int, int] | None
-                if generated.body.setting == 0:
+                if generated.body.setting == 0 and self.profile.video_white_balance_representation == "position":
                     red = int(generated.body.payload.current_red)
                     blue = int(generated.body.payload.current_blue)
                     current_white_balance = (red, blue)
@@ -1020,28 +1036,18 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                             self.blank_screen = blank_screen
                             observed = ("blank_screen",)
             elif domain is StatusDomain.RELATIVE_BRIGHTNESS:
-                edges = (
-                    generated.body.left_percent,
-                    generated.body.top_percent,
-                    generated.body.right_percent,
-                    generated.body.bottom_percent,
-                )
+                zones = self.profile.video_brightness_zones
+                if generated.body.edge_count != len(zones):
+                    raise ValueError("relative-brightness topology mismatch")
+                edges = tuple(int(getattr(generated.body, f"{zone}_percent")) for zone in zones)
                 aggregate = edges[0] if len(set(edges)) == 1 else None
                 edge_values: dict[str, Any] = {
                     "relative_brightness": aggregate,
-                    "relative_brightness_left": edges[0],
-                    "relative_brightness_top": edges[1],
-                    "relative_brightness_right": edges[2],
-                    "relative_brightness_bottom": edges[3],
+                    **{f"relative_brightness_{zone}": value for zone, value in zip(zones, edges, strict=True)},
                 }
                 if self._accept_expected_values(edge_values):
-                    self.relative_brightness = aggregate
-                    (
-                        self.relative_brightness_left,
-                        self.relative_brightness_top,
-                        self.relative_brightness_right,
-                        self.relative_brightness_bottom,
-                    ) = edges
+                    for field, value in edge_values.items():
+                        setattr(self, field, value)
                     observed = tuple(edge_values)
             elif domain is StatusDomain.SEGMENTS:
                 if not self.profile.supports_segments:
@@ -1231,9 +1237,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         expected_video_sound_effects: bool | None = None,
         expected_video_sound_effects_softness: int | None = None,
         expected_white_brightness: int | None = None,
-        expected_white_balance: tuple[int, int] | None = None,
+        expected_white_balance: tuple[int, ...] | None = None,
         expected_blank_screen: bool | None = None,
-        expected_relative_brightness: tuple[int, int, int, int] | None = None,
+        expected_relative_brightness: tuple[int, ...] | None = None,
         refresh_display_settings: bool = False,
         refresh_relative_brightness: bool = False,
         refresh_all: bool = False,
@@ -1271,19 +1277,21 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if expected_music_auto_color:
             expectations["music_color"] = None
         if expected_white_balance is not None:
-            expectations["white_balance_red"], expectations["white_balance_blue"] = expected_white_balance
+            fields = (
+                ("white_balance_scalar",)
+                if self.profile.video_white_balance_representation == "scalar"
+                else ("white_balance_red", "white_balance_blue")
+            )
+            expectations.update(zip(fields, expected_white_balance, strict=True))
         if expected_blank_screen is not None:
             expectations["blank_screen"] = expected_blank_screen
         if expected_relative_brightness is not None:
-            left, top, right, bottom = expected_relative_brightness
+            expectations["relative_brightness"] = (
+                expected_relative_brightness[0] if len(set(expected_relative_brightness)) == 1 else None
+            )
             expectations.update(
-                {
-                    "relative_brightness": left if len(set(expected_relative_brightness)) == 1 else None,
-                    "relative_brightness_left": left,
-                    "relative_brightness_top": top,
-                    "relative_brightness_right": right,
-                    "relative_brightness_bottom": bottom,
-                }
+                (f"relative_brightness_{zone}", value)
+                for zone, value in zip(self.profile.video_brightness_zones, expected_relative_brightness, strict=True)
             )
         color_expectations = (
             expected_rgb_color,
@@ -1562,7 +1570,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 }
             )
         )
-        query_white_balance = bool(set(expectations).intersection({"white_balance_red", "white_balance_blue"}))
+        query_white_balance = bool(
+            set(expectations).intersection({"white_balance_red", "white_balance_blue", "white_balance_scalar"})
+        )
         query_blank_screen = "blank_screen" in expectations
         query_relative_brightness = bool(
             set(expectations).intersection(
@@ -1572,6 +1582,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     "relative_brightness_top",
                     "relative_brightness_right",
                     "relative_brightness_bottom",
+                    "relative_brightness_strip_left",
+                    "relative_brightness_strip_right",
                 }
             )
         )

@@ -1536,6 +1536,15 @@
               "label": "Shiny"
             }
           ],
+          "video_controls": {
+            "brightness_zones": [],
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
           "video_modes": [],
           "video_settings": [],
           "workflows": [
@@ -2385,6 +2394,15 @@
               "label": "Shiny"
             }
           ],
+          "video_controls": {
+            "brightness_zones": [],
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
           "video_modes": [],
           "video_settings": [],
           "workflows": [
@@ -3024,6 +3042,20 @@
               "label": "Game"
             }
           ],
+          "video_controls": {
+            "brightness_zones": [
+              "left",
+              "top",
+              "right",
+              "bottom"
+            ],
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
           "video_modes": [
             {
               "id": "movie",
@@ -3833,6 +3865,15 @@
           "label": "Shiny"
         }
       ],
+      "video_controls": {
+        "brightness_zones": [],
+        "white_balance": {
+          "default": 17,
+          "maximum": 20,
+          "minimum": 1,
+          "representation": "position"
+        }
+      },
       "video_modes": [],
       "video_settings": [],
       "workflows": [

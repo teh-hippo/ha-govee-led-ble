@@ -923,6 +923,9 @@ export function decodeEffectContent(value: unknown): EffectContent {
           1,
           20,
         ),
+        ...(content.white_balance_value === undefined ? {} : {
+          white_balance_value: integerValue(content.white_balance_value, "video white balance", 0, 255),
+        }),
         relative_brightness: nullableRelativeBrightnessValue(
           content.relative_brightness,
           "video profile relative brightness",
@@ -1366,6 +1369,10 @@ function relativeBrightnessValue(
     top: integerValue(brightness.top, `${name}.top`, 1, 100),
     right: integerValue(brightness.right, `${name}.right`, 1, 100),
     bottom: integerValue(brightness.bottom, `${name}.bottom`, 1, 100),
+    ...(brightness.strip_left === undefined && brightness.strip_right === undefined ? {} : {
+      strip_left: integerValue(brightness.strip_left, `${name}.strip_left`, 1, 100),
+      strip_right: integerValue(brightness.strip_right, `${name}.strip_right`, 1, 100),
+    }),
   };
 }
 

@@ -48,8 +48,13 @@ from .effect_protocol_decoder import (
     UnsupportedA3EffectError,
     decode_a3_effect_frames,
 )
-from .generated_protocol_adapter import build_power
-from .h6199_calibration import WHITE_BALANCE_POSITIONS
+from .generated_protocol_adapter import (
+    build_blank_screen,
+    build_power,
+    build_relative_brightness,
+    build_video_mode,
+    build_white_balance,
+)
 from .music_commands import prepare_music_request
 from .native_profile_controls import (
     apply_active_video_mode,
@@ -107,6 +112,45 @@ async def async_apply_compiled_profile(
         return
 
     profile = coordinator.profile
+    # Validate every packet before changing state or sending the first command.
+    build_video_mode(
+        compiled.mode,
+        coordinator.video_full_screen if compiled.full_screen is None else compiled.full_screen,
+        coordinator.video_saturation if compiled.saturation is None else compiled.saturation,
+        coordinator.video_sound_effects if compiled.sound_effects is None else compiled.sound_effects,
+        coordinator.video_sound_effects_softness
+        if compiled.sound_effects_softness is None
+        else compiled.sound_effects_softness,
+        coordinator.model,
+    )
+    if compiled.white_balance_wire is not None:
+        build_white_balance(
+            compiled.white_balance_wire[0],
+            compiled.white_balance_wire[1] if len(compiled.white_balance_wire) == 2 else None,
+            coordinator.model,
+        )
+    if compiled.relative_brightness is not None:
+        values = compiled.relative_brightness
+        build_relative_brightness(
+            values[0],
+            values[1],
+            values[2],
+            values[3],
+            coordinator.model,
+            values[4] if len(values) == 6 else None,
+            values[5] if len(values) == 6 else None,
+        )
+    if compiled.blank_screen is not None:
+        if any(
+            value is None
+            for value in (
+                coordinator.blank_screen_detection,
+                coordinator.blank_screen_low_brightness_duration_seconds,
+                coordinator.blank_screen_same_tone_duration_seconds,
+            )
+        ):
+            raise ValueError("Blank-screen policy state has not been read; refresh the device first")
+        build_blank_screen(compiled.blank_screen, coordinator.model)
     coordinator.video_mode = compiled.mode
     if compiled.full_screen is not None:
         coordinator.video_full_screen = compiled.full_screen
@@ -119,7 +163,14 @@ async def async_apply_compiled_profile(
     coordinator.effect = None
     coordinator.music_mode = "off"
     coordinator.diy_code = None
-    if writer is None and verify:
+    mode_fields = frozenset(
+        field
+        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
+        if getattr(compiled, field) is not None
+    )
+    if len(mode_fields) < 4:
+        await apply_active_video_mode(coordinator, writer=writer, verify=verify, requested_fields=mode_fields)
+    elif writer is None and verify:
         await apply_active_video_mode(coordinator)
     else:
         await apply_active_video_mode(coordinator, writer=writer, verify=verify)
@@ -127,12 +178,11 @@ async def async_apply_compiled_profile(
     if progress is not None:
         await progress(completed)
 
-    if profile.supports_white_balance:
-        if compiled.white_balance_position is None:
-            raise ValueError("video profile is missing white balance")
-        red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
-        coordinator.white_balance_red = red
-        coordinator.white_balance_blue = blue
+    if compiled.white_balance_wire is not None:
+        if profile.video_white_balance_representation == "scalar":
+            coordinator.white_balance_scalar = compiled.white_balance_wire[0]
+        else:
+            coordinator.white_balance_red, coordinator.white_balance_blue = compiled.white_balance_wire
         if writer is None and verify:
             await apply_white_balance(coordinator)
         else:
@@ -141,15 +191,12 @@ async def async_apply_compiled_profile(
         if progress is not None:
             await progress(completed)
 
-    if profile.supports_relative_brightness:
-        if compiled.relative_brightness is None:
-            raise ValueError("video profile is missing relative brightness")
-        left, top, right, bottom = compiled.relative_brightness
-        coordinator.relative_brightness = left if len(set(compiled.relative_brightness)) == 1 else None
-        coordinator.relative_brightness_left = left
-        coordinator.relative_brightness_top = top
-        coordinator.relative_brightness_right = right
-        coordinator.relative_brightness_bottom = bottom
+    if compiled.relative_brightness is not None:
+        coordinator.relative_brightness = (
+            compiled.relative_brightness[0] if len(set(compiled.relative_brightness)) == 1 else None
+        )
+        for zone, value in zip(profile.video_brightness_zones, compiled.relative_brightness, strict=True):
+            setattr(coordinator, f"relative_brightness_{zone}", value)
         if writer is None and verify:
             await apply_relative_brightness(coordinator)
         else:
@@ -158,9 +205,7 @@ async def async_apply_compiled_profile(
         if progress is not None:
             await progress(completed)
 
-    if profile.supports_blank_screen:
-        if compiled.blank_screen is None:
-            raise ValueError("video profile is missing blank-screen state")
+    if compiled.blank_screen is not None:
         coordinator.blank_screen = compiled.blank_screen
         if writer is None and verify:
             await apply_blank_screen(coordinator)
@@ -782,8 +827,8 @@ class EffectDeploymentEngine:
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed
         profile = coordinator.profile
-        refresh_display_settings = profile.supports_white_balance or profile.supports_blank_screen
-        refresh_relative_brightness = profile.supports_relative_brightness
+        refresh_display_settings = compiled.white_balance_wire is not None or compiled.blank_screen is not None
+        refresh_relative_brightness = compiled.relative_brightness is not None
         if not refresh_display_settings and not refresh_relative_brightness:
             return refreshed
         if not refreshed or not await coordinator.refresh_state(
@@ -792,18 +837,17 @@ class EffectDeploymentEngine:
         ):
             raise RuntimeError("Could not read the current video settings before applying the profile")
         required: list[object | None] = []
-        if profile.supports_white_balance:
-            required.extend((coordinator.white_balance_red, coordinator.white_balance_blue))
-        if profile.supports_relative_brightness:
+        if compiled.white_balance_wire is not None:
             required.extend(
-                (
-                    coordinator.relative_brightness_left,
-                    coordinator.relative_brightness_top,
-                    coordinator.relative_brightness_right,
-                    coordinator.relative_brightness_bottom,
-                )
+                (coordinator.white_balance_scalar,)
+                if profile.video_white_balance_representation == "scalar"
+                else (coordinator.white_balance_red, coordinator.white_balance_blue)
             )
-        if profile.supports_blank_screen:
+        if compiled.relative_brightness is not None:
+            required.extend(
+                getattr(coordinator, f"relative_brightness_{zone}") for zone in profile.video_brightness_zones
+            )
+        if compiled.blank_screen is not None:
             required.extend(
                 (
                     coordinator.blank_screen,
@@ -866,11 +910,14 @@ class EffectDeploymentEngine:
             video_sound_effects_softness=getattr(coordinator, "video_sound_effects_softness", 100),
             white_balance_red=getattr(coordinator, "white_balance_red", None),
             white_balance_blue=getattr(coordinator, "white_balance_blue", None),
+            white_balance_scalar=getattr(coordinator, "white_balance_scalar", None),
             relative_brightness=getattr(coordinator, "relative_brightness", None),
             relative_brightness_left=getattr(coordinator, "relative_brightness_left", None),
             relative_brightness_top=getattr(coordinator, "relative_brightness_top", None),
             relative_brightness_right=getattr(coordinator, "relative_brightness_right", None),
             relative_brightness_bottom=getattr(coordinator, "relative_brightness_bottom", None),
+            relative_brightness_strip_left=getattr(coordinator, "relative_brightness_strip_left", None),
+            relative_brightness_strip_right=getattr(coordinator, "relative_brightness_strip_right", None),
             blank_screen=getattr(coordinator, "blank_screen", None),
             blank_screen_detection=getattr(coordinator, "blank_screen_detection", None),
             blank_screen_low_brightness_duration_seconds=getattr(
@@ -1189,31 +1236,40 @@ def compiled_observation(
                 expectations["music_calm"] = compiled.calm
     else:
         expectations["video_mode"] = compiled.mode
-        if profile.status_grammar == "H6199":
-            if profile.supports_video_capture_region:
-                expectations["video_full_screen"] = compiled.full_screen
-            if profile.supports_video_saturation:
-                expectations["video_saturation"] = compiled.saturation
-            if profile.supports_video_sound_effects:
-                expectations["video_sound_effects"] = compiled.sound_effects
-                expectations["video_sound_effects_softness"] = compiled.sound_effects_softness
-            if profile.supports_white_balance and profile.can_read(ReadDomain.DISPLAY_SETTING):
-                if compiled.white_balance_position is None:
-                    raise ValueError("video profile is missing white balance")
-                red, blue = WHITE_BALANCE_POSITIONS[compiled.white_balance_position - 1]
-                expectations["white_balance_red"] = red
-                expectations["white_balance_blue"] = blue
-            if profile.supports_blank_screen and profile.can_read(ReadDomain.DISPLAY_SETTING):
+        if profile.video_grammar != "H6199":
+            return None, ObservationConfidence.UNKNOWN
+        complete = True
+        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness"):
+            if (value := getattr(compiled, field)) is not None:
+                expectations[f"video_{field}"] = value
+        if compiled.white_balance_wire is not None:
+            if profile.can_read(ReadDomain.DISPLAY_SETTING):
+                fields = (
+                    ("white_balance_scalar",)
+                    if profile.video_white_balance_representation == "scalar"
+                    else ("white_balance_red", "white_balance_blue")
+                )
+                expectations.update(zip(fields, compiled.white_balance_wire, strict=True))
+            else:
+                complete = False
+        if compiled.blank_screen is not None:
+            if profile.can_read(ReadDomain.DISPLAY_SETTING):
                 expectations["blank_screen"] = compiled.blank_screen
-            if profile.supports_relative_brightness and profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS):
-                if compiled.relative_brightness is None:
-                    raise ValueError("video profile is missing relative brightness")
-                left, top, right, bottom = compiled.relative_brightness
-                expectations["relative_brightness"] = left if len(set(compiled.relative_brightness)) == 1 else None
-                expectations["relative_brightness_left"] = left
-                expectations["relative_brightness_top"] = top
-                expectations["relative_brightness_right"] = right
-                expectations["relative_brightness_bottom"] = bottom
+            else:
+                complete = False
+        if compiled.relative_brightness is not None:
+            if profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS):
+                expectations.update(
+                    (f"relative_brightness_{zone}", value)
+                    for zone, value in zip(profile.video_brightness_zones, compiled.relative_brightness, strict=True)
+                )
+                expectations["relative_brightness"] = (
+                    compiled.relative_brightness[0] if len(set(compiled.relative_brightness)) == 1 else None
+                )
+            else:
+                complete = False
+        if not complete:
+            return expectations, ObservationConfidence.MODE_MATCH
     confidence = ObservationConfidence.SETTINGS_MATCH if len(expectations) > 2 else ObservationConfidence.MODE_MATCH
     return expectations, confidence
 

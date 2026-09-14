@@ -43,6 +43,7 @@ enums:
     0xa5: segments
   display_setting:
     0x00: white_balance
+    0x06: scalar_white_balance
     0x0a: blank_screen
 types:
   zero_body:

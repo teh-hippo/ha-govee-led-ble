@@ -44,6 +44,7 @@ enums:
     0x01: all
   display_setting:
     0x00: white_balance
+    0x06: scalar_white_balance
     0x0a: blank_screen
   blank_screen_detection:
     0x01: low_brightness
@@ -114,7 +115,8 @@ types:
         contents: [0x01]
       - id: edge_count
         type: u1
-        valid: 0x04
+        valid:
+          any-of: [4, 6]
       - id: left_percent
         type: u1
       - id: top_percent
@@ -125,10 +127,8 @@ types:
         type: u1
       - id: strip_left_percent
         type: u1
-        valid: 0
       - id: strip_right_percent
         type: u1
-        valid: 0
   display_setting_body:
     seq:
       - id: setting
@@ -142,7 +142,15 @@ types:
           switch-on: setting
           cases:
             'display_setting::white_balance': white_balance_payload
+            'display_setting::scalar_white_balance': scalar_white_balance_payload
             'display_setting::blank_screen': blank_screen_payload
+  scalar_white_balance_payload:
+    doc: |
+      Govee Android 7.6.01 pact_h6099/ble/controller/Controller4WhiteBalance.java
+      writes A9 selector 6, length 1. Encoding knowledge only, not H6099 qualification.
+    seq:
+      - id: value
+        type: u1
   white_balance_payload:
     seq:
       - id: manual

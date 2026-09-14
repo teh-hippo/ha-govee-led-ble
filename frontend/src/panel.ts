@@ -866,6 +866,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-video-profile-editor
         .content=${this.content}
         .settings=${this.model.modelCatalogue?.video_settings ?? []}
+        .controls=${this.model.modelCatalogue?.video_controls}
         .disabled=${this.editorDisabled}
         @content-changed=${(
           event: CustomEvent<{

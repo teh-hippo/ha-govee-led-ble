@@ -21,3 +21,16 @@ editor.content = {
   relative_brightness: null,
   blank_screen: null,
 };
+
+if (new URLSearchParams(location.search).has("alternate")) {
+  editor.settings = ["white_balance", "relative_brightness"];
+  editor.controls = {
+    white_balance: {representation: "scalar", minimum: 0, maximum: 2, default: 1},
+    brightness_zones: ["left", "top", "right", "bottom", "strip_left", "strip_right"],
+  };
+  editor.content = {...editor.content, saturation: null, white_balance_value: 1,
+    relative_brightness: {left: 10, top: 20, right: 30, bottom: 40, strip_left: 50, strip_right: 60}};
+  editor.addEventListener("content-changed", event => {
+    editor.content = (event as CustomEvent).detail.content;
+  });
+}

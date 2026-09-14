@@ -357,7 +357,8 @@ def build_white_balance_query(model: str) -> bytes:
     if not profile.supports_white_balance:
         raise ValueError(f"{model} does not support white balance")
     if _video_grammar(model) == "H6199":
-        return _build_status_query("display_setting", "H6199", display_setting="white_balance")
+        setting = "scalar_white_balance" if profile.video_white_balance_representation == "scalar" else "white_balance"
+        return _build_status_query("display_setting", "H6199", display_setting=setting)
     raise ValueError(f"{model} has no generated white-balance query grammar")
 
 
@@ -904,7 +905,7 @@ def build_h6199_video(
     return build_video_mode("game" if game_mode else "movie", full_screen, saturation, sound_effects, softness, "H6199")
 
 
-def build_white_balance(red: int, blue: int, model: str) -> bytes:
+def build_white_balance(red: int, blue: int | None, model: str) -> bytes:
     profile = get_profile(model)
     if not profile.supports_white_balance:
         raise ValueError(f"{model} does not support white balance")
@@ -914,12 +915,22 @@ def build_white_balance(red: int, blue: int, model: str) -> bytes:
     root.header = b"\x33"
     root.opcode = H6199CommandWrite.CommandOp.display_setting
     body = _child(H6199CommandWrite.DisplaySettingBody, root)
-    body.setting = H6199CommandWrite.DisplaySetting.white_balance
-    body.len = 3
-    payload = _child(H6199CommandWrite.WhiteBalancePayload, body)
-    payload.manual = 1
-    payload.red = max(0, min(255, red))
-    payload.blue = max(0, min(255, blue))
+    if profile.video_white_balance_representation == "scalar":
+        if blue is not None or type(red) is not int or not 0 <= red <= 255:
+            raise ValueError("scalar white balance requires one byte")
+        body.setting = H6199CommandWrite.DisplaySetting.scalar_white_balance
+        body.len = 1
+        payload = _child(H6199CommandWrite.ScalarWhiteBalancePayload, body)
+        payload.value = red
+    else:
+        if blue is None:
+            raise ValueError("position white balance requires red and blue")
+        body.setting = H6199CommandWrite.DisplaySetting.white_balance
+        body.len = 3
+        payload = _child(H6199CommandWrite.WhiteBalancePayload, body)
+        payload.manual = 1
+        payload.red = max(0, min(255, red))
+        payload.blue = max(0, min(255, blue))
     body.payload = payload
     root.body = body
     return _serialize_xor(root)
@@ -959,6 +970,8 @@ def build_relative_brightness(
     right: int,
     bottom: int,
     model: str,
+    strip_left: int | None = None,
+    strip_right: int | None = None,
 ) -> bytes:
     profile = get_profile(model)
     if not profile.supports_relative_brightness:
@@ -970,13 +983,15 @@ def build_relative_brightness(
     root.opcode = H6199CommandWrite.CommandOp.relative_brightness
     body = _child(H6199CommandWrite.RelativeBrightnessBody, root)
     body.selector = b"\x01"
-    body.edge_count = 4
+    body.edge_count = len(profile.video_brightness_zones)
+    if (strip_left is not None and strip_right is not None) != (body.edge_count == 6):
+        raise ValueError("brightness values must match the model topology")
     body.left_percent = max(0, min(100, left))
     body.top_percent = max(0, min(100, top))
     body.right_percent = max(0, min(100, right))
     body.bottom_percent = max(0, min(100, bottom))
-    body.strip_left_percent = 0
-    body.strip_right_percent = 0
+    body.strip_left_percent = 0 if strip_left is None else max(0, min(100, strip_left))
+    body.strip_right_percent = 0 if strip_right is None else max(0, min(100, strip_right))
     root.body = body
     return _serialize_xor(root)
 

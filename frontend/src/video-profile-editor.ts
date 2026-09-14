@@ -20,6 +20,7 @@ import type {
   RelativeBrightness,
   VideoProfileContent,
   VideoProfileSetting,
+  VideoControls,
 } from "./types";
 import { clampInteger } from "./ui-utils";
 
@@ -38,12 +39,7 @@ type RelativeBrightnessEdge = keyof RelativeBrightness;
 function uniformRelativeBrightnessValue(
   relativeBrightness: RelativeBrightness,
 ): number | undefined {
-  const values = [
-    relativeBrightness.left,
-    relativeBrightness.top,
-    relativeBrightness.right,
-    relativeBrightness.bottom,
-  ];
+  const values = Object.values(relativeBrightness);
   return values.every((value) => value === values[0]) ? values[0] : undefined;
 }
 
@@ -55,11 +51,8 @@ function uniformBrightnessControlValue(
     return uniform;
   }
   return clampInteger(
-    (relativeBrightness.left +
-      relativeBrightness.top +
-      relativeBrightness.right +
-      relativeBrightness.bottom) /
-      4,
+    Object.values(relativeBrightness).reduce((sum, value) => sum + value, 0) /
+      Object.values(relativeBrightness).length,
     1,
     100,
   );
@@ -67,6 +60,7 @@ function uniformBrightnessControlValue(
 
 function applyUniformRelativeBrightness(
   value: number,
+  current: RelativeBrightness,
 ): RelativeBrightness {
   const next = clampInteger(value, 1, 100);
   return {
@@ -74,6 +68,7 @@ function applyUniformRelativeBrightness(
     top: next,
     right: next,
     bottom: next,
+    ...(current.strip_left === undefined ? {} : {strip_left: next, strip_right: next}),
   };
 }
 
@@ -83,6 +78,9 @@ export class GoveeVideoProfileEditor extends LitElement {
 
   @property({ attribute: false })
   public settings: readonly VideoProfileSetting[] = [];
+
+  @property({ attribute: false })
+  public controls?: VideoControls;
 
   @property({ type: Boolean })
   public disabled = false;
@@ -113,7 +111,7 @@ export class GoveeVideoProfileEditor extends LitElement {
       this.content.sound_effects_softness !== null;
     const whiteBalance =
       this.settings.includes("white_balance") &&
-      this.content.white_balance_position !== null;
+      (this.content.white_balance_position !== null || this.content.white_balance_value !== undefined);
     const blankScreen =
       this.settings.includes("blank_screen") &&
       this.content.blank_screen !== null;
@@ -224,7 +222,7 @@ export class GoveeVideoProfileEditor extends LitElement {
               : nothing}
             ${whiteBalance
               ? this.renderWhiteBalanceField(
-                  this.content.white_balance_position ?? 17,
+                  this.content.white_balance_value ?? this.content.white_balance_position ?? this.controls?.white_balance.default ?? 17,
                 )
               : nothing}
           </div>
@@ -249,15 +247,15 @@ export class GoveeVideoProfileEditor extends LitElement {
               (value) =>
                 this.updateContent((content) => {
                   content.relative_brightness =
-                    applyUniformRelativeBrightness(value);
+                    applyUniformRelativeBrightness(value, brightness);
                 }),
               mixedBrightness ? "relative-brightness-note" : undefined,
             )}
             ${mixedBrightness
               ? html`
                   <p class="section-note muted" id="relative-brightness-note">
-                    Edges differ.  Adjust Uniform brightness to align all four
-                    sides, or adjust them around the screen.
+                    Zones differ. Adjust Uniform brightness to align all zones,
+                    or adjust them individually.
                   </p>
                 `
               : nothing}
@@ -293,6 +291,9 @@ export class GoveeVideoProfileEditor extends LitElement {
                 brightness.bottom,
               )}
             </div>
+            ${(this.controls?.brightness_zones ?? []).filter(zone => zone === "strip_left" || zone === "strip_right").map(zone =>
+              this.renderRangeField(zone === "strip_left" ? "Strip left" : "Strip right", brightness[zone] ?? 100, 1, 100,
+                value => this.updateRelativeBrightnessEdge(zone, value)))}
           </div>
         </section>
       </div>
@@ -341,25 +342,32 @@ export class GoveeVideoProfileEditor extends LitElement {
   }
 
   private renderWhiteBalanceField(value: number) {
+    const minimum = this.controls?.white_balance.minimum ?? 1;
+    const maximum = this.controls?.white_balance.maximum ?? 20;
     return html`
       <label class="range-field white-balance-field">
         <span class="parameter-label">White balance</span>
         <div class="slider-with-endpoints">
           <input
             type="range"
-            min="1"
-            max="20"
-            .value=${String(clampInteger(value, 1, 20))}
+            min=${minimum}
+            max=${maximum}
+            .value=${String(clampInteger(value, minimum, maximum))}
             aria-label="White balance"
             ?disabled=${this.disabled}
             @input=${(event: Event) =>
               this.updateContent(
                 (content) => {
-                  content.white_balance_position = clampInteger(
+                  const next = clampInteger(
                     Number((event.target as HTMLInputElement).value),
-                    1,
-                    20,
+                    minimum,
+                    maximum,
                   );
+                  if (this.controls?.white_balance.representation === "scalar") {
+                    content.white_balance_value = next;
+                  } else {
+                    content.white_balance_position = next;
+                  }
                 },
                 "changing",
               )}

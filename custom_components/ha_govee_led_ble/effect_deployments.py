@@ -110,11 +110,14 @@ class PriorControlState:
     video_sound_effects_softness: int = 100
     white_balance_red: int | None = None
     white_balance_blue: int | None = None
+    white_balance_scalar: int | None = None
     relative_brightness: int | None = None
     relative_brightness_left: int | None = None
     relative_brightness_top: int | None = None
     relative_brightness_right: int | None = None
     relative_brightness_bottom: int | None = None
+    relative_brightness_strip_left: int | None = None
+    relative_brightness_strip_right: int | None = None
     blank_screen: bool | None = None
     blank_screen_detection: int | None = None
     blank_screen_low_brightness_duration_seconds: int | None = None
@@ -199,6 +202,9 @@ class PriorControlState:
         optional_numeric_values: tuple[tuple[int | None, str, int, int], ...] = (
             (self.white_balance_red, "prior white-balance red", 0, 255),
             (self.white_balance_blue, "prior white-balance blue", 0, 255),
+            (self.white_balance_scalar, "prior scalar white balance", 0, 255),
+            (self.relative_brightness_strip_left, "prior strip-left brightness", 1, 100),
+            (self.relative_brightness_strip_right, "prior strip-right brightness", 1, 100),
             (self.relative_brightness, "prior relative brightness", 1, 100),
             (self.relative_brightness_left, "prior left relative brightness", 1, 100),
             (self.relative_brightness_top, "prior top relative brightness", 1, 100),
@@ -258,6 +264,15 @@ class PriorControlState:
             "video_sound_effects_softness": self.video_sound_effects_softness,
             "white_balance_red": self.white_balance_red,
             "white_balance_blue": self.white_balance_blue,
+            **({"white_balance_scalar": self.white_balance_scalar} if self.white_balance_scalar is not None else {}),
+            **(
+                {
+                    "relative_brightness_strip_left": self.relative_brightness_strip_left,
+                    "relative_brightness_strip_right": self.relative_brightness_strip_right,
+                }
+                if self.relative_brightness_strip_left is not None
+                else {}
+            ),
             "relative_brightness": self.relative_brightness,
             "relative_brightness_left": self.relative_brightness_left,
             "relative_brightness_top": self.relative_brightness_top,
@@ -313,6 +328,9 @@ class PriorControlState:
             video_sound_effects_softness=_optional_int(raw, "video_sound_effects_softness", default=100),
             white_balance_red=_optional_int(raw, "white_balance_red"),
             white_balance_blue=_optional_int(raw, "white_balance_blue"),
+            white_balance_scalar=_optional_int(raw, "white_balance_scalar"),
+            relative_brightness_strip_left=_optional_int(raw, "relative_brightness_strip_left"),
+            relative_brightness_strip_right=_optional_int(raw, "relative_brightness_strip_right"),
             relative_brightness=_optional_int(raw, "relative_brightness"),
             relative_brightness_left=_optional_int(raw, "relative_brightness_left"),
             relative_brightness_top=_optional_int(raw, "relative_brightness_top"),
