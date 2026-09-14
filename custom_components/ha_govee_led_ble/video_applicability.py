@@ -9,6 +9,12 @@ from .effect_contracts import CapabilityState
 from .effect_domain import VideoProfile
 
 
+def identity_version(value: object) -> int | None:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]{1,3}\.[0-9]{2}\.[0-9]{2}", value) is None:
+        return None
+    return int(value.replace(".", ""))
+
+
 def video_control_states(profile: ModelProfile, identity: object) -> dict[str, CapabilityState]:
     states = {
         control: CapabilityState.SUPPORTED if profile.supports_video_mode and supported else CapabilityState.UNSUPPORTED
@@ -24,10 +30,10 @@ def video_control_states(profile: ModelProfile, identity: object) -> dict[str, C
     for condition in profile.video_firmware_conditions:
         if states[condition.control] is not CapabilityState.SUPPORTED:
             continue
-        version = getattr(identity, condition.identity_field, None)
-        if not isinstance(version, str) or re.fullmatch(r"[0-9]{1,3}\.[0-9]{2}\.[0-9]{2}", version) is None:
+        version = identity_version(getattr(identity, condition.identity_field, None))
+        if version is None:
             states[condition.control] = CapabilityState.EVIDENCE_GAP
-        elif int(version.replace(".", "")) < int(condition.minimum.replace(".", "")):
+        elif version < int(condition.minimum.replace(".", "")):
             states[condition.control] = CapabilityState.UNSUPPORTED
     return states
 

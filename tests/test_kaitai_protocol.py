@@ -150,6 +150,192 @@ def _static_segments(coordinator, rgb):
         coordinator._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
 
 
+def _static_scene_reply():
+    payload = bytes.fromhex("aa0504e8fd").ljust(19, b"\x00")
+    return bytearray(payload + bytes((xor_checksum(payload),)))
+
+
+@pytest.mark.parametrize("method", ["refresh", "observe"])
+@pytest.mark.parametrize("kelvin", [None, 4200])
+@pytest.mark.parametrize("return_static", [False, True])
+async def test_static_verification_rejects_newer_mode(static_coordinator, method, kelvin, return_static):
+    coord = static_coordinator
+    field = "rgb_color" if kelvin is None else "color_temp_kelvin"
+    value = (1, 2, 3) if kelvin is None else kelvin
+
+    async def write(_uuid, _packet, **_kwargs):
+        coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=kelvin))
+        coord._notify_callback(None, _static_scene_reply())
+        if return_static:
+            coord._notify_callback(None, _static_reply())
+
+    coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
+    coord._ensure_connected = AsyncMock(return_value=coord._client)
+    if method == "refresh":
+        assert await coord.refresh_state(**{f"expected_{field}": value}, timeout=0.01) is False
+    else:
+        assert await coord.async_observe_effect({field: value}, timeout=0.01) is not True
+    assert not coord._expected_state
+    assert coord.color_mode is (ParsedMode.COLOUR if return_static else ParsedMode.SCENE)
+
+    async def current_write(_uuid, _packet, **_kwargs):
+        coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=kelvin))
+
+    coord._client.write_gatt_char.side_effect = current_write
+    if method == "refresh":
+        assert await coord.refresh_state(**{f"expected_{field}": value}, timeout=0.01) is True
+    else:
+        assert await coord.async_observe_effect({field: value}, timeout=0.01) is True
+
+
+@pytest.mark.parametrize("rgb", [(1, 2, 3), kelvin_to_rgb(4200)])
+def test_static_mode_roundtrip_releases_historical_authority(static_coordinator, rgb):
+    coord = static_coordinator
+    light = GoveeBLELight(coord)
+    coord._notify_callback(None, _static_reply(kelvin=4200))
+    coord._notify_callback(None, _static_scene_reply())
+    assert coord.color_temp_kelvin == 4200 and coord.color_temp_kelvin_source == "retained"
+    coord._notify_callback(None, _static_reply())
+    _static_segments(coord, rgb)
+    assert coord.rgb_color == rgb and coord.rgb_color_source == "segment"
+    assert coord._field_revisions["color_temp_kelvin"] == 1
+    assert light.color_mode is (ColorMode.COLOR_TEMP if rgb == kelvin_to_rgb(4200) else ColorMode.RGB)
+
+
+def test_static_mode_only_repeat_keeps_current_direct_precedence(static_coordinator):
+    coord = static_coordinator
+    coord._notify_callback(None, _static_reply(kelvin=4200))
+    coord._notify_callback(None, _static_reply())
+    _static_segments(coord, (1, 2, 3))
+    assert coord.color_temp_kelvin == 4200 and coord.color_temp_kelvin_source == "observed"
+    assert coord._field_revisions["color_temp_kelvin"] == 1
+
+
+@pytest.mark.parametrize(
+    ("model", "frame"),
+    [
+        ("H617A", "aa05049d0800000000000000000000000000003e"),
+        ("H617A", "aa050a2003000000000000000000000000000086"),
+        ("H617A", "aa051303580100000000000000000000000000e6"),
+        ("H6199", "aa050000012a01370000000000000000000000b2"),
+    ],
+)
+def test_every_nonstatic_notification_demotes_direct_authority(static_coordinator, model, frame):
+    coord = static_coordinator
+    coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=4200))
+    coord.model, coord.profile = model, MODEL_PROFILES[model]
+    coord._notify_callback(None, bytearray.fromhex(frame))
+    assert coord.color_mode is not ParsedMode.COLOUR
+    assert coord.rgb_color_source == coord.color_temp_kelvin_source == "retained"
+    assert coord.rgb_color == (1, 2, 3) and coord.color_temp_kelvin == 4200
+    assert coord._field_revisions["rgb_color"] == coord._field_revisions["color_temp_kelvin"] == 1
+
+
+def test_local_mode_command_releases_direct_authority(static_coordinator):
+    coord = static_coordinator
+    coord._notify_callback(None, _static_reply(kelvin=4200))
+    coord._arm_expected(generated_protocol_adapter.build_h617a_scene(65000))
+    assert coord.color_temp_kelvin_source == "retained" and coord.color_temp_kelvin == 4200
+    coord._expected_state.clear()
+    coord._notify_callback(None, _static_reply())
+    _static_segments(coord, (1, 2, 3))
+    assert coord.color_temp_kelvin is None and coord.rgb_color == (1, 2, 3)
+
+
+@pytest.mark.parametrize(
+    ("model", "frame"),
+    [
+        ("H617A", "aa05049d0800000000000000000000000000003e"),
+        ("H617A", "aa051303580100000000000000000000000000e6"),
+        ("H6199", "aa050000012a01370000000000000000000000b2"),
+    ],
+)
+async def test_static_failure_never_restores_stale_mode_siblings(hass, model, frame):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    coord.is_on = True
+    coord._notify_callback(None, bytearray.fromhex(frame))
+    assert coord.active_mode != "colour"
+
+    async def send(_packet):
+        coord._notify_callback(None, bytearray.fromhex("aa051501000000000000000000000000000000bb"))
+        raise RuntimeError("failed with fresh static mode")
+
+    coord.send_command = AsyncMock(side_effect=send)
+    with pytest.raises(HomeAssistantError):
+        await GoveeBLELight(coord).async_turn_on(rgb_color=(1, 2, 3))
+    assert coord.active_mode == "colour" and coord.color_mode is ParsedMode.COLOUR
+    assert coord.effect is None and coord.scene_code is None and coord.diy_code is None
+    assert coord.music_mode == coord.video_mode == "off"
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_clear_effect_preserves_newer_scene_notification(static_coordinator, fail):
+    coord = static_coordinator
+    coord.is_on = True
+    light = GoveeBLELight(coord)
+
+    async def send(_packet):
+        coord._notify_callback(None, _static_scene_reply())
+        if fail:
+            raise RuntimeError("effect-off write failed")
+
+    coord.send_command = AsyncMock(side_effect=send)
+    if fail:
+        with pytest.raises(HomeAssistantError), light._rollback():
+            await light._async_clear_effect()
+    else:
+        await light._async_clear_effect()
+    assert coord.color_mode is ParsedMode.SCENE and coord.scene_code == 65000
+    assert coord.active_mode == "scene"
+
+
+@pytest.mark.parametrize("model", ["H617A", "H7001"])
+@pytest.mark.parametrize("kelvin", [None, 4200])
+@pytest.mark.parametrize("new_reply", ["none", "static", "scene", "segments", "partial_segments"])
+async def test_static_failure_rolls_back_coherent_state(static_coordinator, model, kelvin, new_reply):
+    coord = static_coordinator
+    coord.model, coord.profile = model, MODEL_PROFILES[model]
+    coord.is_on = True
+    coord._notify_callback(None, _static_scene_reply())
+    _static_segments(coord, (9, 8, 7))
+    coord._segment_groups_observed.add(1)
+    coord._segment_query_colors = list(coord.segment_colors)
+    coord._segment_query_brightness = list(coord.segment_brightness)
+    before = (coord.segment_state_observed_at, set(coord._segment_groups_observed), list(coord._segment_query_colors))
+    light = GoveeBLELight(coord)
+
+    async def send(_packet):
+        if new_reply == "static":
+            coord._notify_callback(None, _static_reply(rgb=(1, 2, 3)) if model == "H7001" else _static_reply())
+        elif new_reply == "scene":
+            coord._notify_callback(None, _static_scene_reply())
+        elif new_reply == "segments":
+            _static_segments(coord, (4, 5, 6))
+        elif new_reply == "partial_segments":
+            coord._notify_callback(None, bytearray.fromhex("aaa50164ff880d64ff880d64ff880d0000000010"))
+        raise RuntimeError("static write failed")
+
+    coord.send_command = AsyncMock(side_effect=send)
+    with pytest.raises(HomeAssistantError):
+        await light.async_turn_on(**({"rgb_color": (1, 2, 3)} if kelvin is None else {"color_temp_kelvin": kelvin}))
+    if new_reply == "none":
+        assert coord.active_mode == "scene" and coord.color_mode is ParsedMode.SCENE and coord.scene_code == 65000
+        assert coord.segment_state_source == "observed" and coord.segment_colors == [(9, 8, 7)] * 15
+        assert (coord.segment_state_observed_at, coord._segment_groups_observed, coord._segment_query_colors) == before
+    elif new_reply in {"scene", "segments", "partial_segments"}:
+        assert coord.active_mode == "scene" and coord.scene_code == 65000
+        if new_reply == "segments":
+            assert coord.segment_colors == [(4, 5, 6)] * 15 and coord.segment_state_source == "observed"
+        elif new_reply == "partial_segments":
+            assert coord.segment_colors == [(9, 8, 7)] * 15 and coord.segment_state_source == "observed"
+            assert coord.segment_state_observed_at == before[0]
+            assert coord._segment_groups_observed == {1}
+            assert coord._segment_query_colors[:3] == [(255, 136, 13)] * 3
+    else:
+        assert coord.active_mode == "colour" and coord.color_mode is ParsedMode.COLOUR and coord.scene_code is None
+        assert coord.effect is None and coord.music_mode == coord.video_mode == "off"
+
+
 def test_static_direct_notification_provenance_and_projection(static_coordinator):
     coord = static_coordinator
     coord.is_on = True

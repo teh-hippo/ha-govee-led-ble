@@ -4,12 +4,14 @@ meta:
   endian: le
   imports:
     - /govee_segment_page
+    - /status_reply
 doc: |
   SPECULATIVE test-only layout for issue #286, not a device protocol claim.
   H7001 is a synthetic exact profile, not a supported product. Flags, RGB and
   Kelvin fields here are invented solely to exercise optional observation;
   no physical device is assumed to use these bytes. Segment pages reuse the
-  existing three-slot layout. This root is never enabled in runtime builds.
+  existing three-slot layout; scene selectors reuse the evidenced H617A layout
+  for transition tests. This root is never enabled in runtime builds.
 seq:
   - id: header
     contents: [0xaa]
@@ -32,7 +34,11 @@ types:
         type: u1
         enum: colour_mode
       - id: mode_body
-        type: static_body
+        type:
+          switch-on: mode
+          cases:
+            'colour_mode::static': static_body
+            'colour_mode::scene': status_reply::cm_scene
   static_body:
     instances:
       sub:
@@ -62,3 +68,4 @@ enums:
     0xa5: segments
   colour_mode:
     0x15: static
+    0x04: scene

@@ -126,9 +126,13 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
     coordinator.relative_brightness_strip_right = 10
     send = AsyncMock()
     monkeypatch.setattr(coordinator, "send_command", send)
+    physical = AsyncMock()
+    client = MagicMock(is_connected=True, write_gatt_char=physical)
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
     await coordinator.async_restore_effect_control_state(replace(prior, is_on=False), overwritten_diy_code=None)
     writes = [call.args[0] for call in send.await_args_list]
+    writes.extend(call.args[1] for call in physical.await_args_list)
     assert packets[1] in writes and packets[2] in writes
     unavailable = replace(profile, read_domains=frozenset({ReadDomain.POWER, ReadDomain.COLOUR_MODE}))
     assert compiled_observation(compiled, profile=unavailable)[1] is ObservationConfidence.MODE_MATCH

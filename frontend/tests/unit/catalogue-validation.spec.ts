@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import backendContracts from "../fixtures/backend-contracts.json";
 import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
 import { decodeEffectContent } from "../../src/validation";
+import { effectContentEligible } from "../../src/effect-editor-model";
 import type { WorkshopTemplate } from "../../src/types";
 
 function decodeCatalogue(value: unknown) {
@@ -28,7 +29,7 @@ test("canonical backend catalogue decodes through the production catalogue valid
 test("target catalogue limits reject inverted ranges and wire overflows", () => {
   for (const limits of [
     { palette_min: 3, palette_max: 2 },
-    { palette_max: 9 },
+    { palette_max: 86 },
     { multi_max: 5 },
     { speed_min: 61, speed_max: 60 },
     { brightness_min: 61, brightness_max: 60 },
@@ -41,6 +42,26 @@ test("target catalogue limits reject inverted ranges and wire overflows", () => 
   payload.models.H6199.effects[0].rate_min = 61;
   payload.models.H6199.effects[0].rate_max = 60;
   expect(() => decodeCatalogue(payload)).toThrow("rate limits are inverted");
+});
+
+test("structural nine-colour imports and future catalogues do not widen shipped permission", () => {
+  const payload = structuredClone(backendContracts.responses.custom_catalogue);
+  const future = { ...structuredClone(payload.models.H6199), sku: "H9909", templates: [],
+    limits: { ...payload.models.H6199.limits, palette_max: 9 } };
+  const decoded = decodeCatalogue({ ...payload, models: { ...payload.models, H9909: future } });
+  const raw = { kind: "palette_diy", model: "H6199", family: 0, variant: 0, speed: 50,
+    palette: Array.from({ length: 9 }, () => [1, 2, 3]) };
+  const imported = decodeEffectContent(raw);
+  expect(imported).toEqual(raw);
+  expect(effectContentEligible(imported, decoded.models.H6199, "H6199", 15)).toBe(false);
+  expect(effectContentEligible(decodeEffectContent({ ...raw, model: "H9909" }), decoded.models.H9909, "H9909", 15)).toBe(true);
+  for (const sku of ["H617A", "H617E", "H6199"]) expect(decoded.models[sku].limits.palette_max).toBe(8);
+  for (const kind of ["h617a_single", "h617a_multi", "palette_diy"]) {
+    expect(() => decodeEffectContent({ ...raw, kind, effects: [{ family: 0, variant: 0 }],
+      palette: Array.from({ length: 85 }, () => [1, 2, 3]) })).not.toThrow();
+    expect(() => decodeEffectContent({ ...raw, kind, effects: [{ family: 0, variant: 0 }],
+      palette: Array.from({ length: 86 }, () => [1, 2, 3]) })).toThrow();
+  }
 });
 
 test("catalogue families require variations and the single-layer category", () => {

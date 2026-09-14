@@ -46,8 +46,8 @@ def _validate_rgb(value: RGB, name: str) -> None:
 
 
 def _validate_palette(palette: Sequence[RGB]) -> None:
-    if not 1 <= len(palette) <= 8:
-        raise ValueError("palette must contain 1 to 8 colours")
+    if not 1 <= len(palette) <= 0xFF // 3:
+        raise ValueError("palette must contain 1 to 85 colours")
     for colour in palette:
         _validate_rgb(colour, "palette colour")
 

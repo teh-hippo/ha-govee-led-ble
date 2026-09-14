@@ -59,6 +59,7 @@ from .music_commands import prepare_music_request
 from .music_semantics import capture_music_parameters
 from .native_profile_controls import (
     ProfileWriter,
+    _send_video_setting,
     apply_active_video_mode,
     apply_blank_screen,
     apply_relative_brightness,
@@ -116,6 +117,16 @@ async def async_apply_compiled_profile(
 
     profile = coordinator.profile
     require_video_controls(profile, coordinator, requested_video_controls(compiled))
+    underlying_writer = writer
+    requested_controls = requested_video_controls(compiled)
+
+    async def guarded_writer(packet: bytes, *, write_guard: Callable[[], None] | None = None) -> None:
+        await _send_video_setting(
+            coordinator, packet, requested_controls, writer=underlying_writer, write_guard=write_guard
+        )
+
+    if any(condition.control in requested_controls for condition in profile.video_firmware_conditions):
+        writer = guarded_writer
     omitted_mode_fields = tuple(
         field
         for field, supported in (
@@ -459,6 +470,14 @@ class EffectDeploymentEngine:
                 ControlIntent.APPLY,
             ):
                 lock_acquired = True
+                # APPLY excludes other control owners; queries never increment this counter.
+                write_baseline = getattr(coordinator, "control_write_attempts", None)
+
+                def writes_attempted() -> bool | None:
+                    if type(write_baseline) is not int:
+                        return None
+                    return coordinator.control_write_attempts != write_baseline
+
                 try:
                     if isinstance(compiled, CompiledVideoProfile):
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
@@ -546,6 +565,7 @@ class EffectDeploymentEngine:
                             coordinator,
                             current,
                             error_code="device_state_unconfirmed",
+                            writes_attempted=writes_attempted(),
                         )
                     completed = replace(
                         current,
@@ -568,6 +588,7 @@ class EffectDeploymentEngine:
                         coordinator,
                         current,
                         error_code="operation_cancelled",
+                        writes_attempted=writes_attempted(),
                     )
                     raise
                 except Exception as exc:
@@ -576,6 +597,7 @@ class EffectDeploymentEngine:
                         coordinator,
                         current,
                         error_code=type(exc).__name__,
+                        writes_attempted=writes_attempted(),
                     )
                     raise
         except asyncio.CancelledError:
@@ -725,6 +747,7 @@ class EffectDeploymentEngine:
         record: DeploymentRecord,
         *,
         error_code: str,
+        writes_attempted: bool | None = None,
     ) -> DeploymentRecord:
         writes_may_have_started = record.phase in {
             DeploymentPhase.UPLOADING,
@@ -732,7 +755,7 @@ class EffectDeploymentEngine:
             DeploymentPhase.VERIFYING,
             DeploymentPhase.RECOVERING,
         }
-        if not writes_may_have_started:
+        if writes_attempted is False or not writes_may_have_started:
             failed = replace(
                 record,
                 phase=DeploymentPhase.FAILED,
@@ -819,12 +842,14 @@ class EffectDeploymentEngine:
         record: DeploymentRecord,
         *,
         error_code: str,
+        writes_attempted: bool | None = None,
     ) -> None:
         try:
             await self._async_finish_failure(
                 coordinator,
                 record,
                 error_code=error_code,
+                writes_attempted=writes_attempted,
             )
         except Exception:
             _LOGGER.exception(

@@ -9,7 +9,7 @@ import pytest
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, NativeModeOption
-from custom_components.ha_govee_led_ble.effect_compiler import compile_music_profile
+from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityState, compatibility, compile_music_profile
 from custom_components.ha_govee_led_ble.effect_deployments import (
     EffectDeploymentRepository,
     ObservationConfidence,
@@ -22,6 +22,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     async_apply_compiled_profile,
     compiled_observation,
 )
+from custom_components.ha_govee_led_ble.effect_selector import compatible_saved_effects
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import MusicBody
 from custom_components.ha_govee_led_ble.music_commands import build_music_params, prepare_music_request
 from custom_components.ha_govee_led_ble.music_semantics import MusicParamSpec, MusicVariant, music_variant
@@ -401,3 +402,91 @@ def test_authoritative_parameters_do_not_bypass_selector_validation(changes):
         PriorControlState(
             mode="music", is_on=True, brightness_pct=50, rgb_color=(1, 2, 3), music_parameters={}, **changes
         )
+
+
+@pytest.mark.parametrize("style,calm_default", [(False, False), (True, True)])
+async def test_native_and_compiled_music_defaults_use_variant_style(hass, monkeypatch, style, calm_default):
+    bloom = music_variant(get_profile("H617A"), 0x30)
+    assert bloom is not None
+    variant = replace(
+        bloom,
+        evidence="TEST ONLY Bloom defaults",
+        supports_style=style,
+        calm_default=calm_default,
+        style_companions=bloom.style_companions if style else None,
+    )
+    profile = ModelProfile(
+        "Synthetic Bloom", command_grammar="H617A", music_modes=("bloom",), music_variants=(variant,)
+    )
+    monkeypatch.setitem(MODEL_PROFILES, "TEST-BLOOM", profile)
+    compiled = compile_music_profile(LibraryItem.new("Bloom", MusicProfile("TEST-BLOOM", "bloom", 99)), "TEST-BLOOM")
+    assert compiled.calm is calm_default
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-BLOOM", configuration_url="test")
+    with patch.object(coordinator, "send_command", new_callable=AsyncMock) as send:
+        await coordinator.async_select_music_slug("bloom")
+        native = [call.args[0] for call in send.await_args_list]
+        send.reset_mock()
+        await async_apply_compiled_profile(coordinator, compiled)
+        authored = [call.args[0] for call in send.await_args_list]
+        assert native[:2] == authored[:2]
+        if style:
+            assert native == authored
+            coordinator.music_calm = False
+            send.reset_mock()
+            await coordinator.async_select_music_slug("bloom")
+            assert send.await_args_list[1].args[0] != native[1]
+    if not style:
+        invalid = LibraryItem.new("Hidden style", MusicProfile("TEST-BLOOM", "bloom", 99, calm=False))
+        assert compatibility(invalid, "TEST-BLOOM").state is CompatibilityState.INCOMPATIBLE
+
+
+@pytest.mark.parametrize(
+    "mode,calm,parameters",
+    [
+        ("separation", None, {"point": 6}),
+        ("separation", None, {"point": True}),
+        ("separation", None, {"gradient": 1}),
+        ("rhythm", False, {"point": 1}),
+        ("fountain", None, {"direction": "alternate"}),
+        ("rolling", False, {}),
+    ],
+)
+def test_music_eligibility_and_compilation_reject_the_same_content(mode, calm, parameters):
+    item = LibraryItem.new("Retained", MusicProfile("H617A", mode, 50, calm=calm, parameters=parameters))
+    result = compatibility(item, "H617A")
+    assert result.state is CompatibilityState.INCOMPATIBLE
+    assert compatible_saved_effects((item,), "H617A") == ()
+    with pytest.raises(ValueError) as error:
+        compile_music_profile(item, "H617A")
+    assert result.reasons == (str(error.value),)
+
+
+@pytest.mark.parametrize("problem", ["layout", "palette", "hardware", "colour"])
+def test_music_target_eligibility_covers_variant_wire_and_hardware(alternative, monkeypatch, problem):
+    variant = alternative.music_variants[0]
+    colour = None
+    parameters = {}
+    if problem == "layout":
+        variant = replace(variant, layout="unknown")
+    elif problem == "palette":
+        variant = replace(variant, template=b"\x32\xff")
+    elif problem == "hardware":
+        variant = replace(variant, requires_physical_ic_count=True)
+        parameters = {"point": 8}
+    else:
+        colour = (1, 2, 3)
+    monkeypatch.setitem(MODEL_PROFILES, "TEST-MUSIC", replace(alternative, music_variants=(variant,)))
+    item = LibraryItem.new(
+        "Retained", MusicProfile("TEST-MUSIC", "separation", 50, colour=colour, parameters=parameters)
+    )
+    assert compatibility(item, "TEST-MUSIC").state is CompatibilityState.INCOMPATIBLE
+    with pytest.raises(ValueError):
+        compile_music_profile(item, "TEST-MUSIC")
+    catalogue = replace(
+        MODEL_EFFECT_CATALOGUES["H617A"], sku="TEST-MUSIC", music_modes=(NativeModeOption("separation", "Separation"),)
+    )
+    assert catalogue.to_dict()["music_settings"]["separation"]["available"] is (problem in {"hardware", "colour"})
+    if problem == "hardware":
+        selector = LibraryItem.new("Selector", MusicProfile("TEST-MUSIC", "separation", 50))
+        assert compatibility(selector, "TEST-MUSIC").state is CompatibilityState.COMPATIBLE
+        assert compile_music_profile(selector, "TEST-MUSIC").parameters == {}

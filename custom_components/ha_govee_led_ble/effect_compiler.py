@@ -9,7 +9,7 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import Any, Literal, assert_never
 
-from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, get_profile
+from .const import get_profile
 from .effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H617A_WORKSHOP_APPLY_CODE,
@@ -55,8 +55,7 @@ from .generated_protocol_adapter import (
 )
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
-from .music_commands import prepare_music_request
-from .music_semantics import compile_music_parameters, music_variant
+from .music_commands import prepare_music_request, resolve_music_profile
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body
 from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity
 from .transport import fragment_a3
@@ -182,12 +181,17 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 CompatibilityState.INCOMPATIBLE,
                 (f"music profile targets {content.model}, not {model}",),
             )
-        profile = MODEL_PROFILES.get(model)
-        if profile is None or content.mode not in profile.music_modes:
-            return CompatibilityResult(
-                CompatibilityState.INCOMPATIBLE,
-                (f"{model} does not support music mode {content.mode}",),
+        try:
+            resolve_music_profile(
+                model,
+                content.mode,
+                content.sensitivity,
+                content.colour,
+                content.calm,
+                content.parameters,
             )
+        except ValueError as error:
+            return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
     if isinstance(content, VideoProfile):
         profile = get_profile(model)
@@ -631,23 +635,19 @@ def compile_application(item: LibraryItem, model: str, *, diy_code: int | None =
 
 
 def compile_music_profile(item: LibraryItem, model: str) -> CompiledMusicProfile:
-    result = compatibility(item, model)
-    if result.state is not CompatibilityState.COMPATIBLE:
-        raise ValueError("; ".join(result.reasons))
     content = item.content
     if not isinstance(content, MusicProfile):
         raise ValueError("content is not a music profile")
-    profile = MODEL_PROFILES[model]
-    if content.colour is not None and not profile.supports_music_color:
-        raise ValueError(f"{model} does not support a fixed music colour")
-    variant = music_variant(profile, MUSIC_MODE_SLUGS[content.mode])
-    if content.calm is not None and (variant is None or not variant.supports_style):
-        raise ValueError(f"music mode {content.mode} does not support a style setting")
-
-    mode_code = MUSIC_MODE_SLUGS[content.mode]
-    parameters = compile_music_parameters(content.parameters, mode_code, profile)
-    calm = content.calm if content.calm is not None else variant.calm_default if variant is not None else False
-    packets = prepare_music_request(model, content.mode, content.sensitivity, content.colour, calm, parameters)
+    if content.model != model:
+        raise ValueError(f"music profile targets {content.model}, not {model}")
+    calm, parameters, packets = resolve_music_profile(
+        model,
+        content.mode,
+        content.sensitivity,
+        content.colour,
+        content.calm,
+        content.parameters,
+    )
     payload = {
         "kind": "music_profile",
         "model": model,
@@ -698,6 +698,7 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
         "sound_effects": content.sound_effects,
         "sound_effects_softness": content.sound_effects_softness,
         "white_balance_position": content.white_balance_position,
+        "white_balance_wire": white_balance_wire,
         **({"white_balance_value": content.white_balance_value} if content.white_balance_value is not None else {}),
         "relative_brightness": relative_brightness,
         "blank_screen": content.blank_screen,

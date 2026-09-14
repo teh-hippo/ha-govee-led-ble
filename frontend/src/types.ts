@@ -351,6 +351,7 @@ export interface MusicParameterSpec {
 }
 
 export interface MusicSettings {
+  available: boolean;
   style: boolean;
   calm_default: boolean;
   colour: boolean;

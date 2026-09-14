@@ -109,6 +109,11 @@ def _make_coord(**ov) -> MagicMock:
         rgb_color_source="initial",
         color_temp_kelvin_source="initial",
         _field_revisions={},
+        _domain_revisions={},
+        _scene_code=None,
+        _segment_groups_observed=set(),
+        _segment_query_colors=None,
+        _segment_query_brightness=None,
         video_saturation=100,
         white_brightness=100,
         video_full_screen=True,
@@ -183,11 +188,14 @@ def _make_coord(**ov) -> MagicMock:
     c.mark_segment_state_optimistic = MagicMock(side_effect=mark_segment_state_optimistic)
     c.mark_segment_state_restored = MagicMock(side_effect=mark_segment_state_restored)
     c._control_lock = asyncio.Lock()
+    c._control_arbiter = MagicMock(current_task_intent=None)
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None
 
     async def write_effect_sequence(packets, **_kwargs) -> None:
         for packet in packets:
+            if (guard := _kwargs.get("write_guard")) is not None:
+                guard()
             await c.send_command(packet)
 
     c.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)

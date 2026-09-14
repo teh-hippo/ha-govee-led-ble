@@ -252,13 +252,13 @@ function decodeModelEffectCatalogue(
         limits.palette_min,
         `${name} minimum palette`,
         1,
-        8,
+        85,
       ),
       palette_max: integerValue(
         limits.palette_max,
         `${name} maximum palette`,
         1,
-        8,
+        85,
       ),
       multi_max: integerValue(
         limits.multi_max,
@@ -297,6 +297,7 @@ function decodeMusicSettings(value: unknown): Record<string, MusicSettings> {
     const settings = objectValue(raw, "music mode settings");
     const parameters = objectValue(settings.parameters, "music parameters");
     return [mode, {
+      available: booleanValue(settings.available, "music availability"),
       style: booleanValue(settings.style, "music style"),
       calm_default: booleanValue(settings.calm_default, "music default style"),
       colour: booleanValue(settings.colour, "music colour"),

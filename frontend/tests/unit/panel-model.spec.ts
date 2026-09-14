@@ -15,6 +15,7 @@ import {
   synchroniseDeviceSelect,
 } from "../../src/studio-navigation";
 import {
+  blankCustomEffect,
   blankPainted,
   serialiseEditable,
 } from "../../src/effect-editor-model";
@@ -190,7 +191,10 @@ function h6199Catalogue(): ModelEffectCatalogue {
         category: "single_layer",
       },
     ],
-    music_settings: {},
+    music_settings: {
+      energetic: {available: true, style: false, calm_default: false, colour: true, evidence: "fixture", palette_size: 0, parameters: {}},
+      rhythm: {available: true, style: true, calm_default: false, colour: true, evidence: "fixture", palette_size: 0, parameters: {}},
+    },
     music_modes: [
       { id: "energetic", label: "Energetic" },
       { id: "rhythm", label: "Rhythm" },
@@ -329,6 +333,61 @@ function editor(model: PanelModel): PanelEditorController {
     contentCommitted: () => undefined,
   });
 }
+
+test("actual paint and single controller paths use target defaults on open, reset and mode changes", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  const target = device("restricted", "H9908");
+  target.custom_effects.single = "supported";
+  model.devices = [target];
+  model.selectedDeviceId = target.config_entry_id;
+  installFutureCatalogue(model, target.model, 100);
+  const catalogue = model.modelCatalogue!;
+  catalogue.apply.painted = catalogue.apply.single = "supported";
+  catalogue.painted_effects = [{ id: "clockwise", label: "Clockwise" }];
+  catalogue.limits = { ...catalogue.limits, brightness_max: 60, speed_min: 30, speed_max: 60,
+    palette_min: 2, palette_max: 2 };
+  catalogue.effects = [
+    { ...catalogue.effects[0], id: "slow", family: 0, rate_min: 0, rate_max: 10 },
+    { ...catalogue.effects[0], id: "fast", family: 1, rate_min: 80, rate_max: 90 },
+  ];
+  const controller = editor(model);
+  const paintEntry = { kind: "paint", key: "template:paint", label: "Paint", category: "single-layer" } as const;
+  const singleEntry = { kind: "single", key: "template:single:1:0", label: "Fast", category: "single-layer", family: 1, variant: 0 } as const;
+  for (const entry of [paintEntry, singleEntry]) {
+    controller.selectCustomEffectEntry(entry);
+    expect(model.previewCapability).toBe("supported");
+    expect(model.content).toMatchObject(entry.kind === "paint" ? { brightness: 60 } : { family: 1, speed: 80 });
+    const initial = structuredClone(model.content);
+    expect(controller.openActiveWorkspace({ kind: "workspace", section: "custom", category: "single-layer",
+      label: entry.label, origin: { kind: "catalogue_template", source_id: entry.key },
+      content: { ...initial, speed: 99 } as typeof initial }, model.editorTransitionEpoch)).toBe(true);
+    controller.resetContent();
+    expect(model.content).toEqual(initial);
+    expect(model.previewCapability).toBe("supported");
+  }
+  controller.openDefaultAvailableTemplate("single-layer", model.editorTransitionEpoch);
+  expect(model.content).toMatchObject({ kind: "h617a_painted", brightness: 60 });
+  catalogue.apply.painted = "unsupported";
+  controller.openDefaultAvailableTemplate("single-layer", model.editorTransitionEpoch);
+  expect(model.content).toMatchObject({ kind: "h617a_single", family: 0, speed: 10 });
+  catalogue.apply.painted = "supported";
+  controller.newEffect("h617a_painted");
+  expect(model.previewCapability).toBe("supported");
+  controller.updatePaintedContent({ brightness: 59 });
+  controller.resetContent();
+  expect(model.content).toMatchObject({ brightness: 60 });
+  controller.selectSingleEffect("fast");
+  expect(model.content).toMatchObject({ kind: "h617a_single", family: 1, speed: 80 });
+  expect(model.previewCapability).toBe("supported");
+  controller.selectSingleEffect("slow");
+  expect(model.content).toMatchObject({ family: 0, speed: 10 });
+  expect(model.previewCapability).toBe("supported");
+  controller.selectSingleEffect("paint");
+  expect(model.content).toMatchObject({ kind: "h617a_painted", brightness: 60, speed: 30 });
+  expect(model.previewCapability).toBe("supported");
+});
 
 function flowWorkspaceDevice(id: string): DeviceCapabilities {
   const selected = device(id, "H6199");
@@ -1336,6 +1395,76 @@ test("explicit template selection previews once while automatic opening only pop
   expect(committed).toHaveBeenCalledWith("committed");
 });
 
+test.each([false, true])("actual music controller uses Bloom variant style %s through open/create/reset/mode change", (style) => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const selected = device("entry-a", "H6199");
+  selected.profiles.music = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.customEffectCategory = "music";
+  installH6199Catalogue(model);
+  const catalogue = model.modelCatalogue!;
+  catalogue.music_modes.unshift({id: "bloom", label: "Bloom"});
+  catalogue.music_settings.bloom = {
+    available: true, style, calm_default: true, colour: true, evidence: "synthetic", palette_size: 7, parameters: {},
+  };
+  const preview = new PanelPreviewController(model);
+  vi.spyOn(preview, "scheduleEdited");
+  const modal = new PanelModalController(model, {
+    updateComplete: async () => undefined, root: () => null, canMutate: () => true,
+  });
+  const controller = new PanelEditorController(model, preview, modal, {
+    apiReady: () => true, selectItem: () => undefined, editorTransitionStarted: () => undefined,
+    contentCommitted: () => undefined,
+  });
+  controller.openMusicTemplate("bloom", "Bloom");
+  expect(model.content).toMatchObject({mode: "bloom", calm: style ? true : null});
+  expect(model.previewCapability).toBe("supported");
+  controller.newCustomEffect("music");
+  expect(model.content).toMatchObject({mode: "bloom", calm: style ? true : null});
+  controller.musicModeChanged("rhythm");
+  expect(model.content).toMatchObject({mode: "rhythm", calm: false});
+  controller.resetContent();
+  expect(model.content).toMatchObject({mode: "bloom", calm: style ? true : null});
+  controller.musicModeChanged("rhythm");
+  controller.musicModeChanged("bloom");
+  expect(model.content).toMatchObject({mode: "bloom", calm: style ? true : null});
+  expect(model.previewCapability).toBe("supported");
+});
+
+test("music eligibility rejects retained invalid parameters without changing the draft", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  const selected = device("entry-a", "H6199");
+  selected.profiles.music = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  installH6199Catalogue(model);
+  const catalogue = model.modelCatalogue!;
+  catalogue.music_modes.push({id: "separation", label: "Separation"});
+  catalogue.music_settings.separation = {
+    available: true, style: false, calm_default: false, colour: false, evidence: "synthetic", palette_size: 5,
+    parameters: {point: {kind: "number", default: 1, min: 1, max: 5, options: []}},
+  };
+  const valid: MusicProfileContent = {kind: "music_profile", model: "H6199", mode: "separation", sensitivity: 50, colour: null, calm: null, parameters: {}};
+  model.content = valid;
+  expect(model.previewCapability).toBe("supported");
+  const changesToReject: Partial<MusicProfileContent>[] = [
+    {parameters: {point: 6}}, {parameters: {point: true}}, {parameters: {unknown: 1}},
+    {calm: false}, {colour: [1, 2, 3] as [number, number, number]}, {sensitivity: 101},
+  ];
+  for (const changes of changesToReject) {
+    const retained = {...valid, ...changes};
+    model.content = retained;
+    expect(model.previewCapability).toBe("unsupported");
+    expect(model.content).toEqual(retained);
+  }
+  model.content = valid;
+  catalogue.music_settings.separation.available = false;
+  expect(model.previewCapability).toBe("unsupported");
+});
+
 test("Reactive Reset restores its baseline immediately and previews only once", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
@@ -2155,7 +2284,7 @@ test("painted workspace restoration keeps variation content under the fixed Pain
   expect(model.catalogueSourceLabel).toBe("Paint");
   expect(model.name).toBe("Paint");
   expect(model.content).toEqual(workspaceContent);
-  expect(model.resetBaseline).toEqual(blankPainted());
+  expect(model.resetBaseline).toEqual(blankCustomEffect("h617a_painted", model.modelCatalogue!));
 });
 
 test("active workspace does not open a category disabled by options", async () => {

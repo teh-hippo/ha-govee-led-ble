@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Protocol
+from collections.abc import Awaitable, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Protocol
 
 from .control_arbiter import ControlIntent
 from .generated_protocol_adapter import (
@@ -51,24 +51,18 @@ async def apply_video_mode_from_state(
     )
     retained = {
         field: getattr(coordinator, f"video_{field}")
-        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
-        if field not in fields
+        for field, supported in (
+            ("full_screen", coordinator.profile.supports_video_capture_region),
+            ("saturation", coordinator.profile.supports_video_saturation),
+            ("sound_effects", coordinator.profile.supports_video_sound_effects),
+            ("sound_effects_softness", coordinator.profile.supports_video_sound_effects),
+        )
+        if field not in fields and supported
     }
 
     def check_retained() -> None:
-        require_video_controls(
-            coordinator.profile,
-            coordinator,
-            {
-                "capture_region"
-                if field == "full_screen"
-                else "sound_effects"
-                if field == "sound_effects_softness"
-                else field
-                for field, value in retained.items()
-                if getattr(coordinator, f"video_{field}") != value
-            },
-        )
+        if any(getattr(coordinator, f"video_{field}") != value for field, value in retained.items()):
+            raise ValueError("Retained video settings changed before write; refresh and retry")
 
     sound_effects = coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects
     await _send_video_setting(
@@ -109,15 +103,14 @@ async def apply_active_video_mode(
             )
             if supported
         )
-    controls = {
+    controls = frozenset(
         "capture_region" if field == "full_screen" else "sound_effects" if field == "sound_effects_softness" else field
         for field in requested_fields
-    }
-    send = coordinator.send_command if writer is None else writer
+    )
     for _ in range(2 if verify else 1):
         require_video_controls(coordinator.profile, coordinator, controls)
         if not coordinator.is_on:
-            await send(build_power(True, coordinator.model))
+            await _send_video_setting(coordinator, build_power(True, coordinator.model), controls, writer=writer)
             coordinator.is_on = True
         await apply_video_mode_from_state(
             coordinator,
@@ -165,6 +158,7 @@ async def _send_video_setting(
     *,
     writer: ProfileWriter | None,
     write_guard: Callable[[], None] | None = None,
+    expected_values: Mapping[str, Any] | None = None,
 ) -> None:
     def check() -> None:
         require_video_controls(coordinator.profile, coordinator, controls)
@@ -172,22 +166,25 @@ async def _send_video_setting(
             write_guard()
 
     check()
-    if (
-        writer is None
-        and coordinator.profile.video_firmware_conditions
-        and (
-            write_guard is not None
-            or any(condition.control in controls for condition in coordinator.profile.video_firmware_conditions)
-        )
+
+    def before_write() -> None:
+        check()
+        if expected_values is not None:
+            coordinator._arm_expected_values(dict(expected_values))
+
+    if writer is None and (
+        write_guard is not None
+        or expected_values is not None
+        or any(condition.control in controls for condition in coordinator.profile.video_firmware_conditions)
     ):
         # The sequence callback runs under the transport lock after every reconnect.
         await coordinator.async_write_effect_sequence(
             (packet,),
             intent=coordinator._control_arbiter.current_task_intent or ControlIntent.USER,
-            write_guard=check,
+            write_guard=before_write,
         )
     elif writer is not None:
-        await writer(packet, write_guard=check)
+        await writer(packet, write_guard=before_write)
     else:
         await coordinator.send_command(packet)
 
@@ -213,9 +210,9 @@ async def apply_white_balance(
     )
     packet = build_white_balance(expected[0], expected[-1] if len(expected) == 2 else None, coordinator.model)
     for _ in range(2 if verify else 1):
-        if verify:
-            coordinator._arm_expected_values(fields)
-        await _send_video_setting(coordinator, packet, frozenset({"white_balance"}), writer=writer)
+        await _send_video_setting(
+            coordinator, packet, frozenset({"white_balance"}), writer=writer, expected_values=fields if verify else None
+        )
         if not verify:
             return True
         if await coordinator.refresh_state(expected_white_balance=expected):
@@ -249,9 +246,13 @@ async def apply_relative_brightness(
         expected[5] if len(expected) == 6 else None,
     )
     for _ in range(2 if verify else 1):
-        if verify:
-            coordinator._arm_expected_values(fields)
-        await _send_video_setting(coordinator, packet, frozenset({"relative_brightness"}), writer=writer)
+        await _send_video_setting(
+            coordinator,
+            packet,
+            frozenset({"relative_brightness"}),
+            writer=writer,
+            expected_values=fields if verify else None,
+        )
         if not verify:
             return True
         if await coordinator.refresh_state(expected_relative_brightness=expected):
@@ -273,13 +274,12 @@ async def apply_blank_screen(
     if detection is None or low_duration is None or same_duration is None:
         raise ValueError("Blank-screen policy state has not been read; refresh the device first")
     for _ in range(2 if verify else 1):
-        if verify:
-            coordinator._arm_expected_values({"blank_screen": expected})
         await _send_video_setting(
             coordinator,
             build_blank_screen(expected, coordinator.model, detection, low_duration, same_duration),
             frozenset({"blank_screen"}),
             writer=writer,
+            expected_values={"blank_screen": expected} if verify else None,
         )
         if not verify:
             return True

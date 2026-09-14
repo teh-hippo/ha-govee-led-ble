@@ -344,8 +344,28 @@ def test_layer_palette_preserves_more_than_diy_authoring_limit() -> None:
     content = LayeredEffect((replace(_layered_effect().layers[0], palette=palette),))
 
     assert effect_content_from_dict(effect_content_to_dict(content)) == content
-    with pytest.raises(EffectValidationError, match="1 to 8"):
-        SingleEffect(0, 0, 50, palette)
+    single = SingleEffect(0, 0, 50, palette)
+    assert effect_content_from_dict(effect_content_to_dict(single)) == single
+    assert compatibility(LibraryItem.new("Imported", single), "H617A").state is CompatibilityState.INCOMPATIBLE
+
+
+@pytest.mark.parametrize("kind", ["h617a_single", "h617a_multi", "palette_diy"])
+def test_diy_palette_import_is_bounded_by_byte_length(kind):
+    document = {
+        "kind": kind,
+        "model": "H6199",
+        "family": 0,
+        "variant": 0,
+        "effects": [{"family": 0, "variant": 0}],
+        "speed": 50,
+        "palette": [[1, 2, 3]] * 85,
+    }
+    content = effect_content_from_dict(document)
+    assert isinstance(content, SingleEffect | MultiEffect | PaletteDiyEffect)
+    assert len(content.palette) == 85
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+    with pytest.raises(EffectValidationError, match="1 to 85"):
+        effect_content_from_dict({**document, "palette": [[1, 2, 3]] * 86})
 
 
 @pytest.mark.parametrize("count", [0, 255])
@@ -739,7 +759,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
                 "speed": 50,
                 "palette": [],
             },
-            "palette must contain 1 to 8 colours",
+            "palette must contain 1 to 85 colours",
         ),
         (
             {

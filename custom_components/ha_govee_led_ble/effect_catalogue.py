@@ -16,7 +16,6 @@ from .effect_contracts import (
 )
 from .effect_domain import (
     MAX_MULTI_EFFECTS,
-    MAX_PALETTE_COLOURS,
     EffectContent,
     EffectValidationError,
     JsonValue,
@@ -32,6 +31,7 @@ from .effect_domain import (
 )
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 from .layered_scene_decoder import decode_workshop_effect
+from .music_commands import music_default_available
 from .music_semantics import music_params_for_mode, music_variant
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 10
@@ -204,7 +204,7 @@ class ModelEffectCatalogue:
     supports: CatalogueSupport
     apply: ApplySupport
     palette_min: int = 1
-    palette_max: int = MAX_PALETTE_COLOURS
+    palette_max: int = 8
     multi_max: int = MAX_MULTI_EFFECTS
     speed_min: int = 0
     speed_max: int = 100
@@ -220,6 +220,7 @@ class ModelEffectCatalogue:
             "music_modes": [mode.to_dict() for mode in self.music_modes],
             "music_settings": {
                 mode.id: {
+                    "available": music_default_available(self.sku, mode.id),
                     "style": bool(
                         (variant := music_variant(profile, MUSIC_MODE_SLUGS[mode.id])) and variant.supports_style
                     ),

@@ -153,19 +153,21 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             )
 
             def check_retained() -> None:
-                require_video_controls(c.profile, c, controls | {
+                changed_controls = {
                     control for control, changed in (
                         ("capture_region", resolved_fs != c.video_full_screen),
                         ("saturation", resolved_saturation != c.video_saturation),
                         ("sound_effects", resolved_sound != c.video_sound_effects
                          or resolved_softness != c.video_sound_effects_softness),
                     ) if changed
-                })
+                }
+                if changed_controls - controls:
+                    raise ValueError("Retained video settings changed before write; refresh and retry")
 
             async def apply() -> None:
                 require_video_controls(c.profile, c, controls)
-                await self.coordinator.send_command(
-                    build_power(True, self.coordinator.model)
+                await _send_video_setting(
+                    c, build_power(True, c.model), controls, writer=None, write_guard=check_retained
                 )
                 self.coordinator.is_on = True
                 await _send_video_setting(c, packet, controls, writer=None, write_guard=check_retained)

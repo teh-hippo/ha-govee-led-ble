@@ -102,9 +102,11 @@ export class PanelEditorController {
     } else if (entry.kind === "music") {
       this.openMusicTemplate(entry.mode, entry.label, true);
     } else if (entry.kind === "paint") {
+      const catalogue = this.model.modelCatalogue;
+      if (!catalogue) return;
       this.openEditableTemplate(
         entry.label,
-        blankPainted(),
+        blankCustomEffect("h617a_painted", catalogue),
         entry.key,
         { section: "custom", category: entry.category },
         true,
@@ -113,10 +115,9 @@ export class PanelEditorController {
       const catalogue = this.model.modelCatalogue;
       if (!catalogue) return;
       if (this.model.customEffectKindAvailable("h617a_single")) {
-        const content = blankCustomEffect("h617a_single", catalogue);
         this.openEditableTemplate(
           entry.label,
-          { ...content, family: entry.family, variant: entry.variant },
+          blankCustomEffect("h617a_single", catalogue, entry.family, entry.variant),
           entry.key,
           { section: "custom", category: entry.category },
           true,
@@ -310,10 +311,10 @@ export class PanelEditorController {
       this.clearSelection(existingTransitionEpoch);
       return;
     }
-    if (this.model.customEffectKindAvailable("h617a_painted")) {
+    if (catalogue && this.model.customEffectKindAvailable("h617a_painted")) {
       this.openEditableTemplate(
         "Paint",
-        blankPainted(),
+        blankCustomEffect("h617a_painted", catalogue),
         "template:paint",
         { section: "custom", category },
         false,
@@ -330,14 +331,9 @@ export class PanelEditorController {
       family
     ) {
       const variation = family.variations[0];
-      const content = blankCustomEffect("h617a_single", catalogue);
       this.openEditableTemplate(
         family.label,
-        {
-          ...content,
-          family: family.family,
-          variant: variation.variant,
-        },
+        blankCustomEffect("h617a_single", catalogue, family.family, variation.variant),
         `template:single:${family.family}:${variation.variant}`,
         { section: "custom", category },
         false,
@@ -629,6 +625,7 @@ export class PanelEditorController {
       ...this.model.content,
       family: family.family,
       variant: variation.variant,
+      speed: Math.max(family.rate_min, Math.min(this.model.content.speed, family.rate_max)),
     };
     this.installEditedContent(selectedContent);
     this.model.update((model) => {
@@ -692,8 +689,9 @@ export class PanelEditorController {
   }
 
   private switchCustomMode(kind: CustomEffectContent["kind"], schedulePreview = true): void {
+    const catalogue = this.model.modelCatalogue;
     if (
-      !this.model.isAdmin || !this.model.customCatalogue || !isCustomEffectContent(this.model.content) ||
+      !this.model.isAdmin || !catalogue || !isCustomEffectContent(this.model.content) ||
       this.model.content.kind === kind
     ) return;
     const current = this.model.content;
@@ -706,15 +704,28 @@ export class PanelEditorController {
           : [47, 111, 237];
       }
       this.model.paintBrushOff = false;
-      next = { ...blankPainted(), speed: current.speed };
+      next = {
+        ...blankCustomEffect("h617a_painted", catalogue),
+        speed: Math.max(catalogue.limits.speed_min, Math.min(current.speed, catalogue.limits.speed_max)),
+      };
     } else if (current.kind === "h617a_painted") {
       const paintedPalette = uniquePaintedPalette(current);
       if (kind === "h617a_single") {
-        const blank = blankCustomEffect(kind, this.model.customCatalogue);
-        next = { ...blank, speed: current.speed, palette: paintedPalette.length ? paintedPalette : blank.palette };
+        const blank = blankCustomEffect(kind, catalogue);
+        const family = catalogue.effects.find((family) => family.family === blank.family)!;
+        next = {
+          ...blank,
+          speed: Math.max(family.rate_min, Math.min(current.speed, family.rate_max)),
+          palette: paintedPalette.length >= catalogue.limits.palette_min
+            ? paintedPalette.slice(0, catalogue.limits.palette_max) : blank.palette,
+        };
       } else {
-        const blank = blankCustomEffect("h617a_multi", this.model.customCatalogue);
-        next = { ...blank, speed: current.speed, palette: paintedPalette.length ? paintedPalette : blank.palette };
+        const blank = blankCustomEffect("h617a_multi", catalogue);
+        next = {
+          ...blank,
+          palette: paintedPalette.length >= catalogue.limits.palette_min
+            ? paintedPalette.slice(0, catalogue.limits.palette_max) : blank.palette,
+        };
       }
     } else if (kind === "h617a_multi" && current.kind === "h617a_single") {
       next = {
@@ -799,7 +810,7 @@ export class PanelEditorController {
       mode,
       sensitivity: catalogue.limits.music_sensitivity_max,
       colour: null,
-      calm: ["rhythm", "bloom", "shiny"].includes(mode) ? false : null,
+      calm: catalogue.music_settings[mode]?.style ? catalogue.music_settings[mode].calm_default : null,
       parameters: {},
     };
   }
@@ -833,7 +844,7 @@ export class PanelEditorController {
       return {
         selectionIdentity: "template:paint",
         label: "Paint",
-        resetContent: blankPainted(),
+        resetContent: blankCustomEffect("h617a_painted", catalogue),
       };
     }
     if (
@@ -856,11 +867,7 @@ export class PanelEditorController {
       const [{ family, variation }] = matches;
       const resetContent =
         content.kind === "h617a_single"
-          ? {
-              ...blankCustomEffect("h617a_single", catalogue),
-              family: family.family,
-              variant: variation.variant,
-            }
+          ? blankCustomEffect("h617a_single", catalogue, family.family, variation.variant)
           : blankPaletteDiy(
               catalogue,
               selectedModel,

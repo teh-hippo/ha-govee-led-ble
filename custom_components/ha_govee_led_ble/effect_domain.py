@@ -58,7 +58,7 @@ from .layered_scene import (
 )
 
 EFFECT_SCHEMA_VERSION = 2
-MAX_PALETTE_COLOURS = 8
+MAX_PALETTE_COLOURS = 0xFF // 3  # DIY palettes encode their RGB byte length in one byte.
 MAX_MULTI_EFFECTS = 4
 H617A_SEGMENT_COUNT = 15
 

@@ -15,7 +15,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.restore_state import RestoredExtraData
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -71,6 +72,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
     kelvin_to_rgb,
 )
 from custom_components.ha_govee_led_ble.light_services import _SEGMENTS, async_register_light_services
+from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
+from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENE_ENTRIES, SCENES
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -2003,3 +2006,45 @@ async def test_control_lock_keeps_failed_rollback_before_newer_colour(light, moc
 
     assert sent == [red, blue]
     assert mock_coordinator.rgb_color == (0, 0, 255)
+
+
+async def test_failed_rgb_keeps_unset_music_style_for_native_bloom(hass, monkeypatch):
+    bloom = music_variant(MODEL_PROFILES["H617A"], 0x30)
+    assert bloom is not None
+    profile = ModelProfile(
+        "Synthetic Bloom default",
+        command_grammar="H617A",
+        supports_rgb=True,
+        whole_device_mask=0x7FFF,
+        music_modes=("bloom",),
+        music_variants=(replace(bloom, calm_default=True),),
+    )
+    monkeypatch.setitem(MODEL_PROFILES, "TEST-BLOOM-ROLLBACK", profile)
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-BLOOM-ROLLBACK", configuration_url=None)
+    coord.is_on = True
+    assert coord._music_calm is None
+    coord.send_command = AsyncMock(side_effect=RuntimeError("failed RGB"))
+    with pytest.raises(HomeAssistantError):
+        await GoveeBLELight(coord).async_turn_on(rgb_color=(1, 2, 3))
+    assert coord._music_calm is None
+    coord.send_command = AsyncMock()
+    await coord.async_select_music_slug("bloom")
+    assert [call.args[0] for call in coord.send_command.await_args_list] == list(
+        prepare_music_request(coord.model, "bloom", 99, None, True, {})
+    )
+
+
+async def test_failed_rgb_preserves_newer_observed_music_style(hass):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    coord.is_on = True
+    assert coord._music_calm is None
+
+    async def send(_packet):
+        coord._notify_callback(None, bytearray.fromhex("aa051303580100000000000000000000000000e6"))
+        raise RuntimeError("failed RGB after music notification")
+
+    coord.send_command = AsyncMock(side_effect=send)
+    with pytest.raises(HomeAssistantError):
+        await GoveeBLELight(coord).async_turn_on(rgb_color=(1, 2, 3))
+    assert coord.active_mode == "music" and coord.music_mode == "rhythm"
+    assert coord._music_calm is True and coord.music_sensitivity == 88

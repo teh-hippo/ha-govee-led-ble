@@ -832,7 +832,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
         family: integerValue(content.family, "Single family", 0, 254),
         variant: integerValue(content.variant, "Single variant", 0, 255),
         speed: integerValue(content.speed, "Single speed", 0, 100),
-        palette: paletteValue(content.palette, "Single palette", 8),
+        palette: paletteValue(content.palette, "Single palette", 85),
       };
     case "h617a_multi":
       return {
@@ -847,7 +847,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
           },
         ),
         speed: integerValue(content.speed, "Multi speed", 0, 100),
-        palette: paletteValue(content.palette, "Multi palette", 8),
+        palette: paletteValue(content.palette, "Multi palette", 85),
       };
     case "palette_diy":
       return {
@@ -860,7 +860,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
         family: integerValue(content.family, "palette DIY family", 0, 255),
         variant: integerValue(content.variant, "palette DIY variant", 0, 255),
         speed: integerValue(content.speed, "palette DIY speed", 0, 100),
-        palette: paletteValue(content.palette, "palette DIY palette", 8),
+        palette: paletteValue(content.palette, "palette DIY palette", 85),
       } satisfies PaletteDiyEffectContent;
     case "music_profile":
       return {

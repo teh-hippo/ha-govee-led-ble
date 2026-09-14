@@ -47,6 +47,18 @@ class _ActiveModeMixin(_CoordinatorBase):
     music_daynight_speed: int
     music_daynight_gradient: bool
     _scene_code: int | None
+    _music_calm: bool | None = None
+
+    @property
+    def music_calm(self) -> bool:
+        if self._music_calm is not None:
+            return self._music_calm
+        variant = music_variant(self.profile, MUSIC_MODE_SLUGS.get(self.music_mode, -1))
+        return variant.calm_default if variant and variant.supports_style else False
+
+    @music_calm.setter
+    def music_calm(self, value: bool) -> None:
+        self._music_calm = value
 
     @property
     def scene_name_set(self) -> frozenset[str]:
@@ -192,7 +204,11 @@ class _ActiveModeMixin(_CoordinatorBase):
             raise ValueError(f"{self.model} does not support music mode {slug}")
         mode_id = MUSIC_MODE_SLUGS[slug]
         variant = music_variant(self.profile, mode_id)
-        calm = self.music_calm if variant is not None and variant.supports_style else False
+        calm = (
+            (self._music_calm if self._music_calm is not None else variant.calm_default)
+            if variant is not None and variant.supports_style
+            else False
+        )
         color = self.music_color if self.profile.supports_music_color else None
         # Native selection historically sends only style companions; authored profiles
         # and recovery explicitly request all parameter packets.

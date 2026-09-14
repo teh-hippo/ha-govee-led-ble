@@ -69,7 +69,7 @@ from .native_profile_controls import (
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, canonical_scene_key, resolve_scene_code, scene_code_is_ambiguous
 from .transport import READ_UUID, WRITE_UUID
-from .video_applicability import video_control_states
+from .video_applicability import identity_version, video_control_states
 
 EFFECT_SEQUENCE_ATTEMPTS = 3
 EFFECT_SEQUENCE_CONNECT_TIMEOUT = 8.0
@@ -189,12 +189,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self._segment_query_brightness: list[int] | None = None
         self.video_saturation = self.white_brightness = 100
         self.music_sensitivity = 99
-        self.music_calm = False
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
         self.music_color: tuple[int, int, int] | None = None
         # H6199 display settings and edge brightness. None means the first read has not landed.
         self.white_balance_red: int | None = None
+        self.control_write_attempts = 0
         self.white_balance_blue: int | None = None
         self.white_balance_scalar: int | None = None
         self.relative_brightness: int | None = None
@@ -487,6 +487,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return False
         await self.send_command(build_power(True, self.model))
         await self.send_command(build_brightness(state.brightness_pct, self.model))
+        # Durable recovery stores values, not their original observation provenance.
         self.install_static_color(rgb=state.rgb_color, kelvin=state.color_temp_kelvin)
         if state.color_temp_kelvin is not None:
             await self.send_command(build_color_temp(state.color_temp_kelvin, self.model))
@@ -658,6 +659,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 self._renew_foreground_lease()
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
+        # Invalidate authorization before reconnect can yield; unrelated display identity stays cached.
+        for condition in self.profile.video_firmware_conditions:
+            setattr(self, condition.identity_field, None)
+        if self._client and self._client.is_connected:
             await self._disconnect_locked()
         self._client = await async_establish_ble_connection(
             self.hass,
@@ -855,6 +860,11 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             static_echoes_color=self.profile.static_readback_echoes_color,
         )
         if "color_mode" in expectations:
+            if expectations["color_mode"][0] is not ParsedMode.COLOUR:
+                if self.rgb_color_source == "observed":
+                    self.rgb_color_source = "retained"
+                if self.color_temp_kelvin_source == "observed":
+                    self.color_temp_kelvin_source = "retained"
             for field in _COLOR_EXPECTATION_FIELDS:
                 self._expected_state.pop(field, None)
         self._arm_expected_values(expectations)
@@ -902,6 +912,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         observed_color_mode = parsed.mode, mode_detail
         if not self._accept_expected("color_mode", observed_color_mode):
             return ()
+        if parsed.mode is not ParsedMode.COLOUR or self.color_mode is not ParsedMode.COLOUR:
+            # Direct authority belongs to one uninterrupted static-mode interval.
+            # Keep the values as last-known knowledge, not current readback evidence.
+            if self.rgb_color_source == "observed":
+                self.rgb_color_source = "retained"
+            if self.color_temp_kelvin_source == "observed":
+                self.color_temp_kelvin_source = "retained"
         self.color_mode = parsed.mode
         # Track the device's scene independently from Home Assistant's configured effect-list projection.
         scene_effect = parsed.effect if parsed.effect in self.scene_name_set else None
@@ -1164,6 +1181,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             before_write()
         if arm_expected:
             self._arm_expected(packet)
+            self.control_write_attempts += 1
         await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
         self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
 
@@ -1226,7 +1244,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return False
 
     async def _send_identity_queries(self) -> None:
-        """Query firmware and hardware for DeviceInfo, sending only unknowns.
+        """Query missing identity and invalid condition-bearing versions.
 
         Replies can be missed right after connect while notifications are starting, so the
         keep-alive loop retries unknown values up to ``IDENTITY_RETRY_TICKS``.
@@ -1234,30 +1252,37 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         client = self._client
         if client is None or not client.is_connected:
             return
-        candidates: list[tuple[bytes, str | None]] = []
+        candidates: list[tuple[bytes, str]] = []
         if self.profile.can_read(ReadDomain.HARDWARE):
-            candidates.append((build_hardware_query(self.model), self.hw_version))
+            candidates.append((build_hardware_query(self.model), "hw_version"))
         if self.profile.can_read(ReadDomain.FIRMWARE):
-            candidates.append((build_firmware_query(self.model), self.fw_version))
+            candidates.append((build_firmware_query(self.model), "fw_version"))
         if self.profile.can_read(ReadDomain.SUBORDINATE_20):
-            candidates.append((build_h6199_subordinate_query(0x20), self.subordinate_20_version))
+            candidates.append((build_h6199_subordinate_query(0x20), "subordinate_20_version"))
         if self.profile.can_read(ReadDomain.SUBORDINATE_21):
-            candidates.append((build_h6199_subordinate_query(0x21), self.subordinate_21_version))
-        queries = [q for q, value in candidates if value is None]
+            candidates.append((build_h6199_subordinate_query(0x21), "subordinate_21_version"))
+        queries = [q for q, field in candidates if self._identity_field_incomplete(field)]
         try:
             for query in queries:
                 await self._async_write_packet(client, query)
         except BleakError:
             _LOGGER.debug("Identity query failed for %s", self.address)
 
+    def _identity_field_incomplete(self, field: str) -> bool:
+        value = getattr(self, field)
+        return value is None or (
+            any(condition.identity_field == field for condition in self.profile.video_firmware_conditions)
+            and identity_version(value) is None
+        )
+
     def _identity_incomplete(self) -> bool:
         return any(
-            value is None
-            for domain, value in (
-                (ReadDomain.FIRMWARE, self.fw_version),
-                (ReadDomain.HARDWARE, self.hw_version),
-                (ReadDomain.SUBORDINATE_20, self.subordinate_20_version),
-                (ReadDomain.SUBORDINATE_21, self.subordinate_21_version),
+            self._identity_field_incomplete(field)
+            for domain, field in (
+                (ReadDomain.FIRMWARE, "fw_version"),
+                (ReadDomain.HARDWARE, "hw_version"),
+                (ReadDomain.SUBORDINATE_20, "subordinate_20_version"),
+                (ReadDomain.SUBORDINATE_21, "subordinate_21_version"),
             )
             if self.profile.can_read(domain)
         )
@@ -1276,7 +1301,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 field
                 for field, baseline in field_baselines.items()
                 if self._field_revisions.get(field, 0) > baseline
-                and (field not in {"rgb_color", "color_temp_kelvin"} or getattr(self, f"{field}_source") == "observed")
+                and (
+                    field not in {"rgb_color", "color_temp_kelvin"}
+                    or (self.color_mode is ParsedMode.COLOUR and getattr(self, f"{field}_source") == "observed")
+                )
             }
             if expectations is not None and any(
                 field != "effect" and field in fresh_fields and getattr(self, field) != expected
@@ -1361,6 +1389,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         }
         if expected_music_auto_color:
             expectations["music_color"] = None
+        if expected_rgb_color is not None or expected_color_temp_kelvin is not None:
+            expectations["color_mode"] = ParsedMode.COLOUR
         if expected_white_balance is not None:
             fields = (
                 ("white_balance_scalar",)
@@ -1653,6 +1683,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if {"rgb_color", "color_temp_kelvin"} & expectations.keys() and not self.profile.supports_color_mode_readback:
             return None
         expectations = dict(expectations)
+        if {"rgb_color", "color_temp_kelvin"} & expectations.keys():
+            expectations["color_mode"] = ParsedMode.COLOUR
         for field, mode in (
             ("diy_code", ParsedMode.DIY),
             ("scene_code", ParsedMode.SCENE),
@@ -1734,7 +1766,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if any(
             field != "effect"
             and self._field_revisions.get(field, 0) > field_baselines[field]
-            and (field not in {"rgb_color", "color_temp_kelvin"} or getattr(self, f"{field}_source") == "observed")
+            and (
+                field not in {"rgb_color", "color_temp_kelvin"}
+                or (self.color_mode is ParsedMode.COLOUR and getattr(self, f"{field}_source") == "observed")
+            )
             and getattr(self, field) != expected
             for field, expected in expectations.items()
         ):

@@ -234,7 +234,7 @@ def test_h6199_activation_encoder_uses_workshop_slot() -> None:
     assert proto.build_h6199_palette_diy_activation(401, 2) == expected
 
 
-def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palette() -> None:
+def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palette(monkeypatch) -> None:
     envelope = build_h6199_palette_diy_envelope(
         0,
         0,
@@ -247,6 +247,30 @@ def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palet
     assert len(envelope) == 34
     assert len(parsed.content.palette) == 9
     assert parsed.content.padding == []
+    content = decode_a3_effect(parsed, "H6199")
+    assert isinstance(content, PaletteDiyEffect)
+    assert len(content.palette) == 9
+    assert effect_content_from_dict(effect_content_to_dict(content)) == content
+    with pytest.raises(ValueError, match="palette"):
+        compile_h6199(LibraryItem.new("Imported nine colours", content))
+    for model in ("H617A", "H617E", "H6199"):
+        assert MODEL_EFFECT_CATALOGUES[model].palette_max == 8
+    model = "H9909"
+    monkeypatch.setitem(
+        MODEL_PROFILES, model, ModelProfile("Synthetic", command_grammar="H6199", effect_grammar="H6199")
+    )
+    capability = release_capability("H6199", CapabilityWorkflow.PALETTE_DIY)
+    assert capability is not None
+    monkeypatch.setattr(
+        effect_contracts,
+        "RELEASE_CAPABILITY_CONTRACT",
+        (*effect_contracts.RELEASE_CAPABILITY_CONTRACT, replace(capability, model=model)),
+    )
+    monkeypatch.setitem(
+        MODEL_EFFECT_CATALOGUES, model, replace(MODEL_EFFECT_CATALOGUES["H6199"], sku=model, palette_max=9)
+    )
+    item = LibraryItem.new("Qualified nine colours", replace(content, model=model))
+    assert reassemble_a3(compile_h6199(item, model=model).upload_packets) == envelope
 
 
 def test_h6199_fixed_diy_envelope_rejects_palette_overflow_before_writing() -> None:
@@ -257,6 +281,8 @@ def test_h6199_fixed_diy_envelope_rejects_palette_overflow_before_writing() -> N
             50,
             tuple((index, index + 1, index + 2) for index in range(10)),
         )
+    with pytest.raises(ValueError, match="does not fit the fixed two-chunk envelope"):
+        proto.build_h6199_palette_diy(0, 0, 50, ((1, 2, 3),) * 10)
 
 
 @pytest.mark.parametrize(
@@ -617,7 +643,7 @@ def test_single_encoder_rejects_invalid_family(family: int) -> None:
         proto.build_h617a_diy_single(family, 0, 50, [(255, 0, 0)])
 
 
-@pytest.mark.parametrize("palette", [[], [(255, 0, 0)] * 9, [(256, 0, 0)], [[255, 0, 0]]])
+@pytest.mark.parametrize("palette", [[], [(255, 0, 0)] * 86, [(256, 0, 0)], [[255, 0, 0]]])
 def test_single_encoder_rejects_invalid_palette(palette) -> None:
     with pytest.raises(ValueError):
         proto.build_h617a_diy_single(0, 0, 50, palette)

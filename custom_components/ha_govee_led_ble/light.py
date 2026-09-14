@@ -4,6 +4,7 @@
 import logging
 from collections.abc import Awaitable, Callable, Generator, Mapping
 from contextlib import contextmanager
+from copy import copy
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -38,6 +39,7 @@ from .const import (
     EFFECT_FAMILY_VIDEO,
     MUSIC_MODE_SLUGS,
     ModelProfile,
+    ReadDomain,
     effect_category_for_content_kind,
 )
 from .control_arbiter import ControlIntent, async_control_intent
@@ -48,7 +50,7 @@ from .effect_compiler import CompiledMusicProfile, CompiledVideoProfile, compile
 from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import DeploymentRecord
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
-from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
+from .effect_domain import EffectValidationError, LibraryItem, VideoProfile, effect_content_to_dict
 from .effect_runtime import (
     active_workspace_matches,
     async_apply_compiled_profile,
@@ -75,10 +77,11 @@ from .light_services import (
 )
 from .music_commands import prepare_music_request
 from .music_semantics import music_variant
+from .native_profile_controls import _send_video_setting
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
-from .video_applicability import validate_video_request
+from .video_applicability import requested_video_controls, require_video_controls, validate_video_request
 
 # fmt: on
 
@@ -180,7 +183,9 @@ _STATE_FIELDS = (
     "rgb_color_source color_temp_kelvin_source "
     "segment_colors video_full_screen video_sound_effects video_sound_effects_softness "
     "white_brightness music_sensitivity "
-    "music_calm music_color diy_code music_mode video_mode"
+    "_music_calm music_color diy_code music_mode video_mode"
+    " color_mode _scene_code segment_brightness segment_state_source segment_state_observed_at"
+    " _segment_groups_observed _segment_query_colors _segment_query_brightness"
 ).split()
 
 
@@ -238,21 +243,36 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     @contextmanager
     def _rollback(self) -> Generator[None]:
-        snap = {f: getattr(self.coordinator, f) for f in _STATE_FIELDS}
+        snap = {f: copy(getattr(self.coordinator, f)) for f in _STATE_FIELDS}
         revisions = dict(self.coordinator._field_revisions)
+        segment_revision = self.coordinator._domain_revisions.get(ReadDomain.SEGMENTS, 0)
         mode_snap = self._attr_color_mode
         try:
             yield
         except Exception as err:
+            mode_updated = self.coordinator._field_revisions.get("color_mode", 0) != revisions.get("color_mode", 0)
+            segments_updated = self.coordinator._field_revisions.get("segment_colors", 0) != revisions.get(
+                "segment_colors", 0
+            )
+            segment_page_received = self.coordinator._domain_revisions.get(ReadDomain.SEGMENTS, 0) != segment_revision
             for f, v in snap.items():
-                field = f.removesuffix("_source")
-                if field in {"rgb_color", "color_temp_kelvin"} and any(
-                    self.coordinator._field_revisions.get(key, 0) != revisions.get(key, 0)
-                    for key in ("rgb_color", "color_temp_kelvin")
-                ):
+                # Segment pages prove neither mode nor a failed command's optimistic state.
+                if f.startswith("_segment_"):
+                    if segment_page_received:
+                        continue
+                elif f.startswith("segment_"):
+                    if segments_updated:
+                        continue
+                elif f not in {"is_on", "brightness_pct"} and mode_updated:
+                    continue
+                field = "music_calm" if f == "_music_calm" else f
+                if field in {"is_on", "brightness_pct", "music_calm"} and self.coordinator._field_revisions.get(
+                    field, 0
+                ) != revisions.get(field, 0):
                     continue
                 setattr(self.coordinator, f, v)
-            self._attr_color_mode = mode_snap
+            if not mode_updated:
+                self._attr_color_mode = mode_snap
             if isinstance(err, HomeAssistantError):
                 raise
             raise HomeAssistantError(
@@ -596,7 +616,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             raise RuntimeError("native selector template default did not compile to a native profile")
         return compiled
 
-    def _prepare_effect(self, effect_name: str) -> Callable[[], Awaitable[None]]:
+    def _prepare_effect(
+        self, effect_name: str, *, video_guards: list[Callable[[], None]] | None = None
+    ) -> Callable[[], Awaitable[None]]:
         key = normalise_effect_name(effect_name)
         coordinator = self.coordinator
         if key == EFFECT_OFF:
@@ -642,7 +664,26 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if selected is not None and selected.source == "video":
             compiled = self._compile_template_default(f"template:video:{selected.value}")
             if compiled is not None:
+                if video_guards is not None and isinstance(compiled, CompiledVideoProfile):
+                    controls = requested_video_controls(compiled)
+                    video_guards.append(lambda: require_video_controls(coordinator.profile, coordinator, controls))
                 return partial(async_apply_compiled_profile, coordinator, compiled)
+            retained = {
+                field: getattr(coordinator, f"video_{field}")
+                for field in (
+                    "full_screen",
+                    "saturation",
+                    "sound_effects",
+                    "sound_effects_softness",
+                )
+            }
+
+            def check_retained() -> None:
+                if any(getattr(coordinator, f"video_{field}") != value for field, value in retained.items()):
+                    raise ValueError("Retained video settings changed before write; refresh and retry")
+
+            if video_guards is not None:
+                video_guards.append(check_retained)
             return partial(
                 self._async_set_video_mode,
                 mode=selected.value,
@@ -684,8 +725,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self._attr_color_mode = ColorMode.RGB
             colour = coordinator.rgb_color
         coordinator.mark_segment_state_optimistic(colours=[colour] * len(coordinator.segment_colors))
-        await coordinator.send_command(packet)
         coordinator._enter_static_mode()
+        await coordinator.send_command(packet)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         active_workspace = self._matching_active_workspace()
@@ -705,7 +746,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 turn_on_kwargs=remaining,
             )
             return
-        prepared_effect = self._prepare_effect(str(kwargs[ATTR_EFFECT])) if ATTR_EFFECT in kwargs else None
+        video_guards: list[Callable[[], None]] = []
+        prepared_effect = (
+            self._prepare_effect(str(kwargs[ATTR_EFFECT]), video_guards=video_guards) if ATTR_EFFECT in kwargs else None
+        )
         await self._async_supersede_preview()
         clear_workspace = active_workspace is not None and (
             ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs or ATTR_EFFECT in kwargs
@@ -717,6 +761,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             await self._async_turn_on(
                 clear_workspace_on_success=clear_workspace,
                 prepared_effect=prepared_effect,
+                video_write_guard=video_guards[0] if video_guards else None,
                 **kwargs,
             )
 
@@ -742,7 +787,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     ControlIntent.USER,
                 ):
                     if turn_on_kwargs is not None:
-                        await self._async_turn_on(**turn_on_kwargs)
+                        await self._async_turn_on(
+                            video_write_guard=(lambda: validate_video_request(self.coordinator, current.content))
+                            if isinstance(current.content, VideoProfile)
+                            else None,
+                            **turn_on_kwargs,
+                        )
                     if operation_id is None:
                         return await self._effect_backend.engine.async_apply_saved(
                             self.coordinator,
@@ -866,10 +916,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         *,
         clear_workspace_on_success: bool = False,
         prepared_effect: Callable[[], Awaitable[None]] | None = None,
+        video_write_guard: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> None:
+        async def send(packet: bytes) -> None:
+            if video_write_guard is None:
+                await self.coordinator.send_command(packet)
+            else:
+                await _send_video_setting(
+                    self.coordinator, packet, frozenset(), writer=None, write_guard=video_write_guard
+                )
+
+        if video_write_guard is not None:
+            video_write_guard()
         power_on = partial(
-            self.coordinator.send_command,
+            send,
             build_power(True, self.coordinator.model),
         )
         with self._rollback():
@@ -881,7 +942,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
 
                 async def apply_brightness() -> None:
-                    await self.coordinator.send_command(build_brightness(pct, self.coordinator.model))
+                    await send(build_brightness(pct, self.coordinator.model))
 
                 await apply_brightness()
                 self.coordinator.brightness_pct = pct
@@ -899,11 +960,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
                 self._attr_color_mode = ColorMode.RGB
                 self.coordinator._enter_static_mode()
-                await self.coordinator.send_command(packet)
+                await send(packet)
                 if self.coordinator.profile.static_readback_echoes_color:
                     await self._refresh_with_retry(
                         expected_rgb_color=(r, g, b),
-                        retry_command=partial(self.coordinator.send_command, packet),
+                        retry_command=partial(send, packet),
                     )
             if ATTR_COLOR_TEMP_KELVIN in kwargs:
                 self._require_support(
@@ -921,11 +982,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
                 self._attr_color_mode = ColorMode.COLOR_TEMP
                 self.coordinator._enter_static_mode()
-                await self.coordinator.send_command(packet)
+                await send(packet)
                 if self.coordinator.profile.static_readback_kelvin:
                     await self._refresh_with_retry(
                         expected_color_temp_kelvin=kelvin,
-                        retry_command=partial(self.coordinator.send_command, packet),
+                        retry_command=partial(send, packet),
                     )
             if prepared_effect is not None:
                 await prepared_effect()

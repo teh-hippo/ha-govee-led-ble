@@ -115,6 +115,24 @@ export function effectContentEligible(
   model: string,
   segmentCount: number,
 ): boolean {
+  if (content.kind === "music_profile") {
+    if (!catalogue || catalogue.sku !== model || content.model !== model ||
+        !catalogue.music_modes.some((mode) => mode.id === content.mode)) return false;
+    const settings = catalogue.music_settings[content.mode];
+    if (!settings?.available || !Number.isInteger(content.sensitivity) ||
+        content.sensitivity < catalogue.limits.music_sensitivity_min ||
+        content.sensitivity > catalogue.limits.music_sensitivity_max) return false;
+    if (content.calm !== null && (!settings.style || typeof content.calm !== "boolean")) return false;
+    if (content.colour !== null && (!settings.colour || content.colour.length !== 3 ||
+        !content.colour.every((channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255))) return false;
+    if (Object.keys(content.parameters).some((key) => !Object.hasOwn(settings.parameters, key))) return false;
+    return Object.entries(settings.parameters).every(([key, spec]) => {
+      const value = Object.hasOwn(content.parameters, key) ? content.parameters[key] : spec.default;
+      if (spec.kind === "number") return typeof value === "number" && Number.isInteger(value) && value >= spec.min && value <= spec.max;
+      if (spec.kind === "switch") return typeof value === "boolean";
+      return typeof value === "string" && spec.options.includes(value);
+    });
+  }
   if (
     content.kind !== "h617a_painted" && content.kind !== "h617a_single" &&
     content.kind !== "h617a_multi" && content.kind !== "palette_diy"
@@ -163,6 +181,8 @@ export function blankCustomEffect(
 export function blankCustomEffect(
   kind: "h617a_single",
   catalogue: ModelEffectCatalogue,
+  family?: number,
+  variant?: number,
 ): Extract<CustomEffectContent, { kind: "h617a_single" }>;
 export function blankCustomEffect(
   kind: "h617a_multi",
@@ -175,9 +195,11 @@ export function blankCustomEffect(
 export function blankCustomEffect(
   kind: CustomEffectContent["kind"],
   catalogue: ModelEffectCatalogue,
+  family?: number,
+  variant?: number,
 ): CustomEffectContent {
   if (kind === "h617a_painted") {
-    const effect = catalogue.painted_effects[0];
+    const effect = catalogue.painted_effects.find((effect) => effect.id === "clockwise") ?? catalogue.painted_effects[0];
     if (!effect) throw new Error("The target catalogue has no painted effects.");
     return {
       ...blankPainted(), effect: effect.id,
@@ -201,14 +223,19 @@ export function blankCustomEffect(
           (effect) =>
             effect.supports_multi && effect.variations.length > 0,
         )
-      : catalogue.effects[0]);
+      : family === undefined
+        ? catalogue.effects[0]
+        : catalogue.effects.find((effect) => effect.family === family));
   if (!first) {
     throw new Error("The custom-effect catalogue has no compatible effects.");
   }
   const variation =
-    (kind === "h617a_multi"
-      ? first.variations.find((candidate) => candidate.id === "clockwise")
-      : undefined) ?? first.variations[0];
+    variant !== undefined
+      ? first.variations.find((candidate) => candidate.variant === variant)
+      : (kind === "h617a_multi"
+        ? first.variations.find((candidate) => candidate.id === "clockwise")
+        : undefined) ?? first.variations[0];
+  if (!variation) throw new Error("The target catalogue has no matching variation.");
   const pair = {
     family: first.family,
     variant: variation.variant,
