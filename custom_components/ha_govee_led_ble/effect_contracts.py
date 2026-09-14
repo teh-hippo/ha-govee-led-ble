@@ -59,6 +59,7 @@ class ApplicationRoute(StrEnum):
 class CompilerDeployerStrategy(StrEnum):
     NATIVE_EFFECT_SELECTION = "native_effect_selection"
     H617A_CUSTOM_ENGINE = "h617a_custom_engine"
+    H6125_CUSTOM_ENGINE = "h6125_custom_engine"
     H6199_CUSTOM_ENGINE = "h6199_custom_engine"
     MODEL_SCENE_ENGINE = "model_scene_engine"
     COORDINATOR_WRITER = "coordinator_writer"
@@ -165,6 +166,50 @@ def _capability(
 
 
 _RELEASE_CAPABILITY_BASE: Final = (
+    _capability(
+        "H6125",
+        CapabilityWorkflow.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        ApplicationRoute.STUDIO_SCENE_APPLY,
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6125",
+        CapabilityWorkflow.SINGLE,
+        "Single",
+        "h617a_single",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6125_CUSTOM_ENGINE,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6125",
+        CapabilityWorkflow.MULTI,
+        "Multi",
+        "h617a_multi",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.H6125_CUSTOM_ENGINE,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6125",
+        CapabilityWorkflow.NATIVE_MUSIC,
+        "Music",
+        "music_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
     _capability(
         "H617A",
         CapabilityWorkflow.NATIVE_SCENES,
@@ -356,6 +401,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6125"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
@@ -436,6 +482,13 @@ def studio_apply_capability_state(model: str, workflow: CapabilityWorkflow) -> C
     }:
         return CapabilityState.UNSUPPORTED
     return CapabilityState.SUPPORTED
+
+
+def supports_scene_editing(model: str) -> bool:
+    return any(
+        studio_apply_capability_state(model, workflow) is CapabilityState.SUPPORTED
+        for workflow in (CapabilityWorkflow.EDITED_PALETTE_SCENES, CapabilityWorkflow.LAYERED_SCENES)
+    )
 
 
 @dataclass(frozen=True, slots=True)

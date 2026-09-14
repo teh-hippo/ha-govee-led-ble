@@ -17,6 +17,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compatibility,
     compile_effect,
 )
+from custom_components.ha_govee_led_ble.effect_contracts import supports_scene_editing
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -104,12 +105,12 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
             assert encode_palette_scene(decoded) == raw_param
             fixtures += 1
 
-    assert fixtures == 6
+    assert fixtures == 8
 
 
 def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
     for model, entries in SCENE_ENTRIES.items():
-        if not get_profile(model).supports_scenes:
+        if not supports_scene_editing(model):
             continue
         entry = next(scene for scene in entries if scene.scene_type == 1)
         decoded = decode_catalogue_palette_scene(model, entry)
@@ -122,6 +123,15 @@ def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
         assert compiled.selector_kind == "scene"
         assert compiled.packets == tuple(expected)
         assert compiled.evidence_codes == ("scene_payload_readback_unavailable",)
+
+
+def test_h6125_palette_scene_editing_stays_disabled_until_hardware_validation() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H6125"] if scene.scene_type == 1)
+    decoded = decode_catalogue_palette_scene("H6125", entry)
+
+    assert decoded is not None
+    with pytest.raises(ValueError, match="edited_palette_scenes application is not supported"):
+        compile_effect(LibraryItem.new("Palette scene", decoded), "H6125")
 
 
 def test_edited_palette_scene_compiles_authored_definition_not_catalogue_bytes() -> None:

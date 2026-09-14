@@ -30,7 +30,7 @@ from .effect_compiler import (
     CompiledVideoProfile,
     compile_application,
 )
-from .effect_contracts import CapabilityWorkflow, require_effect_route
+from .effect_contracts import CapabilityWorkflow, require_effect_route, supports_scene_editing
 from .effect_deployments import ObservationConfidence
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
 from .effect_domain import (
@@ -536,12 +536,19 @@ class EffectPreviewManager:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
         resolved = resolve_scene(coordinator.model, scene_id, effect_id)
-        scene_default = scene_default_for(
-            self._scene_defaults,
-            config_entry_id,
-            coordinator.model,
-            resolved.key,
-            resolved.entry,
+        scene_editing = supports_scene_editing(coordinator.model)
+        if persist_default and not scene_editing:
+            raise PreviewError(f"edited native scenes are not supported on {coordinator.model}")
+        scene_default = (
+            scene_default_for(
+                self._scene_defaults,
+                config_entry_id,
+                coordinator.model,
+                resolved.key,
+                resolved.entry,
+            )
+            if scene_editing
+            else None
         )
         try:
             canonical_body, resolved_speed = resolve_scene_application_body(
@@ -1615,7 +1622,7 @@ def _active_workspace_content(
     source: EffectContent,
     compiled: CompiledApplication | None,
 ) -> EffectContent:
-    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
+    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets or compiled.model == "H6125":
         return source
     try:
         decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
@@ -1696,7 +1703,7 @@ def _verification_expectations(
     request: _PreviewRequest,
     compiled: CompiledApplication | None,
 ) -> dict[str, Any] | None:
-    if not coordinator.profile.can_read(ReadDomain.POWER) or not coordinator.profile.supports_color_mode_readback:
+    if not coordinator.profile.can_read(ReadDomain.POWER):
         return None
     if request.scene is not None:
         scene_expectations: dict[str, Any] = {
@@ -1714,7 +1721,7 @@ def _confirmed_confidence(
     compiled: CompiledApplication | None,
     coordinator: Any,
 ) -> ObservationConfidence:
-    if request.scene is not None:
+    if request.scene is not None or isinstance(compiled, CompiledEffect):
         return ObservationConfidence.ACTIVATION_MATCH
     return (
         ObservationConfidence.UNKNOWN

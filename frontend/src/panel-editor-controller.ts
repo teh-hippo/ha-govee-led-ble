@@ -558,7 +558,13 @@ export class PanelEditorController {
     const content: MusicProfileContent = {
       ...defaults,
       sensitivity: current.sensitivity,
-      colour: current.colour === null ? null : [...current.colour],
+      colour:
+        this.model.selectedModel === "H6125" &&
+        !["rhythm", "spectrum", "rolling"].includes(mode)
+          ? null
+          : current.colour === null
+            ? null
+            : [...current.colour],
     };
     if (generatedName) {
       this.model.patch({ name: `New ${selected.label} effect` });

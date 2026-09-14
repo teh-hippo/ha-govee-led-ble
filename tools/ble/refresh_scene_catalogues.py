@@ -64,6 +64,8 @@ def _resolved_effect(effect: dict[str, Any], sku: str) -> dict[str, Any]:
         resolved["scenceParam"] = special["scenceParam"]
     if special.get("scenceParamId", 0) != 0:
         resolved["scenceParamId"] = special["scenceParamId"]
+    if "speedInfo" in special:
+        resolved["speedInfo"] = special["speedInfo"]
     if special.get("sceneCode", 0) > 0 or (special.get("sceneType", 0) > 0 and special.get("scenceParam")):
         resolved["sceneType"] = special.get("sceneType", 0)
     return resolved

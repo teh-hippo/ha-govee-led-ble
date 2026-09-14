@@ -1,8 +1,10 @@
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from bleak import BleakError
 from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import issue_registry as ir
 
 from custom_components.ha_govee_led_ble import (
@@ -16,6 +18,8 @@ from custom_components.ha_govee_led_ble import (
 from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_MODEL,
+    CONF_PACT_CODE,
+    CONF_PACT_TYPE,
     DOMAIN,
     MODEL_PROFILES,
 )
@@ -91,6 +95,150 @@ async def test_setup_entry_omits_editor_link_for_h6076(hass: HomeAssistant):
         assert await async_setup_entry(hass, entry) is True
 
     assert cls.call_args.kwargs["configuration_url"] is None
+
+
+async def test_setup_entry_accepts_supported_h6125_identity(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6125", CONF_PACT_TYPE: 1, CONF_PACT_CODE: 2})
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock) as fwd,
+    ):
+        coordinator = cls.return_value
+        coordinator.async_config_entry_first_refresh = AsyncMock()
+        coordinator.async_refresh_identity = AsyncMock(return_value=True)
+        coordinator.refresh_state = AsyncMock(return_value=True)
+        coordinator.async_refresh_segments = AsyncMock(return_value=True)
+        coordinator.profile = MODEL_PROFILES["H6125"]
+        coordinator.supports_brightness = True
+        coordinator.pact_type = 1
+        coordinator.pact_code = 2
+        coordinator.fw_version = "1.07.00"
+        coordinator.hw_version = "1.00.03"
+
+        assert await async_setup_entry(hass, entry) is True
+
+    coordinator.async_refresh_identity.assert_awaited_once_with()
+    coordinator.refresh_state.assert_awaited_once_with(refresh_all=True)
+    coordinator.async_refresh_segments.assert_awaited_once_with()
+    cls.assert_called_once_with(
+        hass,
+        "AA:BB:CC:DD:EE:FF",
+        "H6125",
+        configuration_url="homeassistant://ha-govee-led-ble/editor/test_entry_id",
+        effect_families=frozenset({"scenes", "music"}),
+        effect_categories=frozenset({"scenes", "effects", "multi_layered", "reactive"}),
+        prefix_effect_names=False,
+        always_include_custom_effects=False,
+        pact_type=1,
+        pact_code=2,
+    )
+    assert entry.runtime_data is coordinator
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"unsupported_version_{entry.entry_id}") is None
+    fwd.assert_awaited_once()
+
+
+async def test_setup_entry_rejects_h6125_outside_the_rc3_variant(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6125"})
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        coordinator = cls.return_value
+        coordinator.async_config_entry_first_refresh = AsyncMock()
+        coordinator.async_refresh_identity = AsyncMock(return_value=True)
+        coordinator.refresh_state = AsyncMock(return_value=True)
+        coordinator.disconnect = AsyncMock()
+        coordinator.profile = MODEL_PROFILES["H6125"]
+        coordinator.supports_brightness = True
+        coordinator.pact_type = None
+        coordinator.pact_code = None
+        coordinator.fw_version = "1.00.11"
+        coordinator.hw_version = "1.00.01"
+
+        assert await async_setup_entry(hass, entry) is False
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"unsupported_version_{entry.entry_id}") is not None
+    coordinator.refresh_state.assert_not_awaited()
+    coordinator.disconnect.assert_awaited_once_with()
+
+
+async def test_setup_entry_retries_when_h6125_identity_is_unavailable(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6125"})
+    with patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls:
+        coordinator = cls.return_value
+        coordinator.async_config_entry_first_refresh = AsyncMock()
+        coordinator.async_refresh_identity = AsyncMock(return_value=False)
+        coordinator.refresh_state = AsyncMock()
+        coordinator.disconnect = AsyncMock()
+        coordinator.profile = MODEL_PROFILES["H6125"]
+
+        with pytest.raises(ConfigEntryNotReady, match="did not report firmware"):
+            await async_setup_entry(hass, entry)
+
+    coordinator.disconnect.assert_awaited_once_with()
+
+
+async def test_setup_entry_retries_when_h6125_identity_connection_fails(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6125"})
+    with patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls:
+        coordinator = cls.return_value
+        coordinator.async_config_entry_first_refresh = AsyncMock()
+        coordinator.async_refresh_identity = AsyncMock(side_effect=BleakError("down"))
+        coordinator.disconnect = AsyncMock()
+        coordinator.profile = MODEL_PROFILES["H6125"]
+
+        with pytest.raises(ConfigEntryNotReady, match="identity query could not connect"):
+            await async_setup_entry(hass, entry)
+
+    coordinator.disconnect.assert_awaited_once_with()
+
+
+async def test_setup_entry_retries_when_h6125_state_connection_fails(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6125", CONF_PACT_TYPE: 1, CONF_PACT_CODE: 2})
+    with patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls:
+        coordinator = cls.return_value
+        coordinator.async_config_entry_first_refresh = AsyncMock()
+        coordinator.async_refresh_identity = AsyncMock(return_value=True)
+        coordinator.refresh_state = AsyncMock(side_effect=BleakError("down"))
+        coordinator.disconnect = AsyncMock()
+        coordinator.profile = MODEL_PROFILES["H6125"]
+        coordinator.supports_brightness = True
+        coordinator.pact_type = 1
+        coordinator.pact_code = 2
+        coordinator.fw_version = "1.07.00"
+        coordinator.hw_version = "1.00.03"
+
+        with pytest.raises(ConfigEntryNotReady, match="state queries could not connect"):
+            await async_setup_entry(hass, entry)
+
+    coordinator.disconnect.assert_awaited_once_with()
+
+
+async def test_setup_entry_rejects_non_target_h6125_hardware(hass: HomeAssistant):
+    entry = _entry(data={CONF_MODEL: "H6125", CONF_PACT_TYPE: 1, CONF_PACT_CODE: 2})
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
+    ):
+        coordinator = cls.return_value
+        coordinator.async_config_entry_first_refresh = AsyncMock()
+        coordinator.async_refresh_identity = AsyncMock(return_value=True)
+        coordinator.refresh_state = AsyncMock()
+        coordinator.disconnect = AsyncMock()
+        coordinator.profile = MODEL_PROFILES["H6125"]
+        coordinator.supports_brightness = False
+        coordinator.pact_type = 1
+        coordinator.pact_code = 2
+        coordinator.fw_version = "2.06.15"
+        coordinator.hw_version = "2.01.00"
+
+        assert await async_setup_entry(hass, entry) is False
+
+    coordinator.refresh_state.assert_not_awaited()
+    coordinator.disconnect.assert_awaited_once_with()
 
 
 async def test_setup_entry_reconciles_loaded_coordinator_with_effect_cache(hass: HomeAssistant):
@@ -182,6 +330,28 @@ async def test_unload_entry_stops_preview_before_platforms_and_disconnect(hass: 
 async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssistant):
     entry = _entry()
     hass.data.setdefault(DOMAIN, {})[AVAILABILITY_UNAVAILABLE_DATA_KEY] = {entry.unique_id}
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"unsupported_model_{entry.entry_id}",
+        is_fixable=False,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="unsupported_model",
+        translation_placeholders={"model": "H6125"},
+    )
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"unsupported_version_{entry.entry_id}",
+        is_fixable=False,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="unsupported_version",
+        translation_placeholders={
+            "model": "H6125",
+            "firmware": "1.00.00",
+            "hardware": "1.00.00",
+        },
+    )
     backend = MagicMock()
     backend.scene_defaults.async_delete_device = AsyncMock()
     backend.template_defaults.async_delete_device = AsyncMock()
@@ -207,6 +377,9 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
     backend.user_state.async_clear_config_entry.assert_awaited_once_with(entry.entry_id)
     assert hass.data[DOMAIN][AVAILABILITY_UNAVAILABLE_DATA_KEY] == set()
     update_panel.assert_awaited_once_with(hass, excluding_entry_id=entry.entry_id)
+    registry = ir.async_get(hass)
+    assert registry.async_get_issue(DOMAIN, f"unsupported_model_{entry.entry_id}") is None
+    assert registry.async_get_issue(DOMAIN, f"unsupported_version_{entry.entry_id}") is None
 
 
 @pytest.mark.parametrize(

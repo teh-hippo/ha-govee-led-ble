@@ -847,6 +847,12 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
     ) -> bool:
+        if coordinator.model == "H6125":
+            if not await coordinator.refresh_state(refresh_all=True):
+                raise RuntimeError("Could not read complete H6125 state before applying the effect")
+            if _coordinator_mode(coordinator) == "colour" and not await coordinator.async_refresh_segments():
+                raise RuntimeError("Could not read complete H6125 state before applying the effect")
+            return True
         refreshed = await self._async_refresh_for_reconciliation(coordinator)
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed
@@ -918,6 +924,14 @@ class EffectDeploymentEngine:
             brightness_pct=getattr(coordinator, "brightness_pct", 100),
             rgb_color=getattr(coordinator, "rgb_color", (255, 255, 255)),
             color_temp_kelvin=getattr(coordinator, "color_temp_kelvin", None),
+            segment_colors=(
+                tuple(coordinator.segment_colors) if getattr(coordinator, "segment_colors", None) is not None else None
+            ),
+            segment_brightness=(
+                tuple(coordinator.segment_brightness)
+                if getattr(coordinator, "segment_brightness", None) is not None
+                else None
+            ),
             effect=getattr(coordinator, "effect", None),
             scene_code=getattr(coordinator, "scene_code", None),
             diy_code=coordinator.diy_code,
@@ -927,6 +941,7 @@ class EffectDeploymentEngine:
                 coordinator,
                 coordinator.profile,
                 getattr(coordinator, "music_mode", "off"),
+                coordinator.model,
             ),
             video_mode=getattr(coordinator, "video_mode", "off"),
             music_sensitivity=getattr(coordinator, "music_sensitivity", 100),
@@ -1151,7 +1166,7 @@ def _active_workspace_content(
     source: EffectContent,
     compiled: CompiledApplication,
 ) -> EffectContent:
-    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
+    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets or compiled.model == "H6125":
         return source
     try:
         decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)

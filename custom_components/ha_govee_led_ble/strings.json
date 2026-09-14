@@ -78,6 +78,10 @@
     "unsupported_model": {
       "title": "Unsupported Govee model",
       "description": "This config entry identifies model \"{model}\", which this integration cannot safely control. Reconfigure the device with a supported model."
+    },
+    "unsupported_version": {
+      "title": "Govee variant not admitted by this prerelease",
+      "description": "Govee {model} reported firmware {firmware} and hardware {hardware}. This device-specific prerelease admits only pact (1,2), firmware 1.07.00 or newer, and three-part hardware 1.x versions at 1.00.03 or newer. Other variants are intentionally excluded rather than classified as incompatible."
     }
   },
   "services": {

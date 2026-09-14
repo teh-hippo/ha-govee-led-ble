@@ -17,12 +17,15 @@ from custom_components.ha_govee_led_ble.const import (
     ReadDomain,
     SupportQuality,
     always_include_custom_effects_from_options,
+    default_effect_categories,
     default_effect_families,
     effect_families_from_options,
     get_profile,
+    h6125_rc3_variant_supported,
     prefix_effect_names_from_options,
     protocol_model,
     resolve_model,
+    supported_effect_categories,
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityState, compatibility, compile_music_profile
@@ -146,6 +149,32 @@ def test_non_basic_read_domains_do_not_require_command_grammar(domain):
     assert profile.can_read(domain)
 
 
+def test_h6125_rc3_exposes_only_the_mapped_candidate_workflows():
+    profile = MODEL_PROFILES["H6125"]
+
+    assert profile.state_readable
+    assert profile.supports_color_mode_readback
+    assert profile.supports_rgb
+    assert profile.supports_color_temperature
+    assert profile.supports_scenes
+    assert not profile.supports_scene_editing
+    assert profile.supports_custom_effects
+    assert not profile.supports_h617a_custom_effects
+    assert profile.supports_music_mode
+    assert not profile.supports_advanced_effects
+    assert profile.supports_multi_layered_effects
+    assert profile.segment_count == 15
+    assert profile.supports_segments
+    assert profile.connection_idle_timeout == 3.0
+    assert protocol_model("H6125") == "H6125"
+    assert profile.command_grammar == profile.effect_grammar == "H617A"
+    assert profile.status_grammar == "H6125"
+    assert profile.static_readback_kelvin
+    assert supported_effect_categories("H6125") == ("scenes", "effects", "multi_layered", "reactive")
+    assert default_effect_categories("H6125") == ("scenes", "effects", "multi_layered", "reactive")
+    assert default_effect_families("H6125") == frozenset({"scenes", "music"})
+
+
 def test_unknown_models_fail_closed():
     assert get_profile("nope") is UNSUPPORTED_PROFILE
     assert not UNSUPPORTED_PROFILE.supports_segments
@@ -155,6 +184,37 @@ def test_unknown_models_fail_closed():
     assert get_profile("H9999").command_grammar is None
     assert get_profile("H9999").status_grammar is None
     assert UNSUPPORTED_PROFILE.effect_grammar is None
+
+
+@pytest.mark.parametrize(
+    ("pact_type", "pact_code", "firmware", "hardware", "expected"),
+    [
+        (1, 2, "1.07.00", "1.00.03", True),
+        (1, 2, "1.06.99", "1.00.03", False),
+        (1, 2, "1.07.00", "1.00.02", False),
+        (1, 2, "1.07.00", "4.00.00", False),
+        (1, 1, "1.07.00", "1.00.03", False),
+        (10, 1, "3.01.00", "1.00.03", False),
+        (None, None, "1.07.00", "1.00.03", False),
+        (1, 2, "unknown", "1.00.03", False),
+    ],
+)
+def test_h6125_rc3_variant_support(
+    pact_type: int | None,
+    pact_code: int | None,
+    firmware: str,
+    hardware: str,
+    expected: bool,
+):
+    assert (
+        h6125_rc3_variant_supported(
+            pact_type=pact_type,
+            pact_code=pact_code,
+            firmware=firmware,
+            hardware=hardware,
+        )
+        is expected
+    )
 
 
 def test_effect_family_defaults_and_options():

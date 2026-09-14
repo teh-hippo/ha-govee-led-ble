@@ -147,7 +147,7 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
     catalogue_excess = 0
     multi_line_bodies = 0
 
-    for sku in ("H617A", "H6199"):
+    for sku in ("H6125", "H617A", "H6199"):
         entries = SCENE_ENTRIES[sku]
         for entry in entries:
             if entry.scene_type != _LAYERED_SCENE_TYPE:
@@ -184,8 +184,8 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
             layer_count += len(decoded.effect.layers)
             multi_line_bodies += parsed.header.linecount > 2
 
-    assert scene_counts == {"H617A": 72, "H6199": 226}
-    assert layer_count == 863
+    assert scene_counts == {"H6125": 226, "H617A": 72, "H6199": 226}
+    assert layer_count == 1535
     assert catalogue_unknown_flags == 0
     assert catalogue_excess == 0
     assert multi_line_bodies > 0
@@ -344,6 +344,14 @@ def test_scene_activation_builder_has_no_fallback_grammar(monkeypatch, grammar):
         build_scene_activation("H9999", 401)
     with pytest.raises(ValueError, match="scene activation grammar"):
         build_native_scene_packets("H9999", SceneEntry(code=401, scene_type=0))
+
+
+def test_h6125_layered_scene_editing_stays_disabled_until_hardware_validation() -> None:
+    entry = next(scene for scene in SCENE_ENTRIES["H6125"] if scene.scene_type == _LAYERED_SCENE_TYPE)
+    content = decode_layered_scene(_reference("H6125", entry), _raw_param(entry))
+
+    with pytest.raises(ValueError, match="layered_scenes application is not supported"):
+        compile_effect(LibraryItem.new("Layered template", content), "H6125")
 
 
 def test_saved_builtin_scenes_compile_to_native_scene_packets() -> None:

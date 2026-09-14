@@ -4,10 +4,12 @@ import asyncio
 import logging
 from typing import Any
 
+from bleak import BleakError  # type: ignore[attr-defined]
 from homeassistant.components import bluetooth, frontend
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
@@ -20,6 +22,8 @@ from .const import (
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_MODEL,
+    CONF_PACT_CODE,
+    CONF_PACT_TYPE,
     CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
     MODEL_PROFILES,
@@ -27,6 +31,7 @@ from .const import (
     default_effect_categories,
     effect_categories_from_options,
     effect_families_from_options,
+    h6125_rc3_variant_supported,
     model_from_ble_name,
     prefix_effect_names_from_options,
     resolve_model,
@@ -86,6 +91,10 @@ _LOGGER = logging.getLogger(__name__)
 
 def _unsupported_model_issue_id(entry: GoveeBLEConfigEntry) -> str:
     return f"unsupported_model_{entry.entry_id}"
+
+
+def _unsupported_version_issue_id(entry: GoveeBLEConfigEntry) -> str:
+    return f"unsupported_version_{entry.entry_id}"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -149,10 +158,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -
     if model is not None:
         data[CONF_MODEL] = model
         options.pop(CONF_EFFECT_FAMILIES, None)
-        options.setdefault(CONF_EFFECT_CATEGORIES, list(default_effect_categories(model)))
+        if entry.version < 9 and model == "H6125" and not options.get(CONF_EFFECT_CATEGORIES):
+            options[CONF_EFFECT_CATEGORIES] = list(default_effect_categories(model))
+        else:
+            options.setdefault(CONF_EFFECT_CATEGORIES, list(default_effect_categories(model)))
         options.setdefault(CONF_PREFIX_EFFECT_NAMES, False)
         options.setdefault(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS, False)
-    hass.config_entries.async_update_entry(entry, data=data, options=options, version=8)
+    hass.config_entries.async_update_entry(entry, data=data, options=options, version=9)
     return True
 
 
@@ -199,6 +211,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         )
         return False
     ir.async_delete_issue(hass, DOMAIN, issue_id)
+    coordinator_kwargs: dict[str, Any] = {}
+    pact_type = entry.data.get(CONF_PACT_TYPE)
+    pact_code = entry.data.get(CONF_PACT_CODE)
+    if isinstance(pact_type, int) and not isinstance(pact_type, bool):
+        coordinator_kwargs["pact_type"] = pact_type
+    if isinstance(pact_code, int) and not isinstance(pact_code, bool):
+        coordinator_kwargs["pact_code"] = pact_code
     coordinator = GoveeBLECoordinator(
         hass,
         entry.unique_id,
@@ -208,8 +227,61 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         effect_categories=effect_categories_from_options(model, entry.options),
         prefix_effect_names=prefix_effect_names_from_options(entry.options),
         always_include_custom_effects=always_include_custom_effects_from_options(entry.options),
+        **coordinator_kwargs,
     )
     await coordinator.async_config_entry_first_refresh()
+    version_issue_id = _unsupported_version_issue_id(entry)
+    if model == "H6125":
+        try:
+            identity_refreshed = await coordinator.async_refresh_identity()
+        except (BleakError, TimeoutError) as err:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady(f"{model} identity query could not connect") from err
+        if not identity_refreshed:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady(f"{model} did not report firmware and hardware versions")
+        if (
+            coordinator.fw_version is None
+            or coordinator.hw_version is None
+            or not h6125_rc3_variant_supported(
+                pact_type=coordinator.pact_type,
+                pact_code=coordinator.pact_code,
+                firmware=coordinator.fw_version,
+                hardware=coordinator.hw_version,
+            )
+        ):
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                version_issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key="unsupported_version",
+                translation_placeholders={
+                    "model": model,
+                    "firmware": coordinator.fw_version or "unknown",
+                    "hardware": coordinator.hw_version or "unknown",
+                },
+            )
+            await coordinator.disconnect()
+            return False
+        try:
+            state_refreshed = await coordinator.refresh_state(refresh_all=True)
+        except (BleakError, TimeoutError) as err:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady("H6125 state queries could not connect") from err
+        if not state_refreshed:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady("H6125 did not report power, brightness, and active mode")
+        try:
+            segments_refreshed = await coordinator.async_refresh_segments()
+        except (BleakError, TimeoutError) as err:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady("H6125 segment query could not connect") from err
+        if not segments_refreshed:
+            await coordinator.disconnect()
+            raise ConfigEntryNotReady("H6125 did not report all five segment groups")
+    ir.async_delete_issue(hass, DOMAIN, version_issue_id)
     entry.runtime_data = coordinator
     if effect_backend := get_effect_backend(hass):
         await effect_backend.preview.async_load_device(entry.entry_id)
@@ -280,6 +352,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
+    ir.async_delete_issue(hass, DOMAIN, _unsupported_model_issue_id(entry))
+    ir.async_delete_issue(hass, DOMAIN, _unsupported_version_issue_id(entry))
     effect_backend = get_effect_backend(hass)
     if effect_backend is not None:
         await asyncio.gather(
@@ -290,7 +364,6 @@ async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
             effect_backend.deployments.async_delete_device(entry.entry_id),
             effect_backend.user_state.async_clear_config_entry(entry.entry_id),
         )
-    ir.async_delete_issue(hass, DOMAIN, _unsupported_model_issue_id(entry))
     if entry.unique_id is not None:
         clear_availability_log_state(hass, entry.unique_id)
     await _async_update_editor_panel(hass, excluding_entry_id=entry.entry_id)

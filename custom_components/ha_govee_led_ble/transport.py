@@ -8,6 +8,8 @@ READ_UUID = "00010203-0405-0607-0809-0a0b0c0d2b10"
 
 _A3_FRAME_PREFIX = 0xA3
 A3_CHUNK_SIZE = 17
+_A1_FRAME_PREFIX = 0xA1
+A1_CHUNK_SIZE = 16
 
 
 def xor_checksum(data: bytes | bytearray) -> int:
@@ -22,6 +24,26 @@ def _a3_frame(index: int, chunk: bytes) -> bytes:
     packet = (packet + bytearray(19 - len(packet)))[:19]
     packet.append(xor_checksum(packet))
     return bytes(packet)
+
+
+def _a1_frame(command: int, index: int, chunk: bytes) -> bytes:
+    if len(chunk) > A1_CHUNK_SIZE:
+        raise ValueError("A1 chunks cannot exceed 16 bytes")
+    packet = bytearray([_A1_FRAME_PREFIX, command, index, *chunk])
+    packet.extend(bytes(19 - len(packet)))
+    packet.append(xor_checksum(packet))
+    return bytes(packet)
+
+
+def fragment_a1(command: int, body: bytes) -> list[bytes]:
+    chunks = [body[index : index + A1_CHUNK_SIZE] for index in range(0, len(body), A1_CHUNK_SIZE)]
+    if not chunks or len(chunks) > 0xFF:
+        raise ValueError("A1 body must contain 1 to 255 data chunks")
+    return [
+        _a1_frame(command, 0, bytes([len(chunks)])),
+        *(_a1_frame(command, index, chunk) for index, chunk in enumerate(chunks, start=1)),
+        _a1_frame(command, 0xFF, b""),
+    ]
 
 
 def fragment_a3(type_byte: int, body: bytes, *, terminator: bool = False) -> list[bytes]:
