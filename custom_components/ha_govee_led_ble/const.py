@@ -112,6 +112,7 @@ class ModelProfile:
     supports_music_color: bool = False
     supports_white_brightness: bool = False
     static_readback_echoes_color: bool = False
+    static_readback_kelvin: bool = False
     whole_device_mask: int = 0
     segment_count: int = 0
     segment_group_size: int = 0

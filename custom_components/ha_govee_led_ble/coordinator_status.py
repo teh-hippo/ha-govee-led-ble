@@ -92,6 +92,7 @@ class ParsedColorModeResponse:
     music_calm: bool | None = None
     music_color: tuple[int, int, int] | None = None
     rgb_color: tuple[int, int, int] | None = None
+    color_temp_kelvin: int | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
 
@@ -99,6 +100,19 @@ class ParsedColorModeResponse:
 def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
+    if mode_name in {"static", "static_colour"}:
+        detail = getattr(body, "mode_body", getattr(body, "detail", None))
+        rgb = getattr(detail, "rgb", None)
+        kelvin = getattr(detail, "kelvin", None)
+        profile = get_profile(model)
+        if kelvin is not None and not profile.min_color_temp_kelvin <= int(kelvin) <= profile.max_color_temp_kelvin:
+            raise ValueError("static Kelvin outside profile range")
+        return ParsedColorModeResponse(
+            mode=ParsedMode.COLOUR,
+            rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue)) if rgb is not None else None,
+            color_temp_kelvin=int(kelvin) if kelvin is not None else None,
+            multi_effect_flag=getattr(detail, "sub", None),
+        )
     if get_profile(model).status_grammar == "H6199":
         if mode_name == "video":
             profile = get_profile(model)
@@ -140,8 +154,6 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
                 effect=_SCENE_EFFECT_BY_MODEL_ID.get(model, {}).get(scene_code),
                 scene_code=scene_code,
             )
-        if mode_name == "static_colour":
-            return ParsedColorModeResponse(mode=ParsedMode.COLOUR)
         return ParsedColorModeResponse()
 
     if mode_name == "scene":
@@ -165,6 +177,4 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             music_calm=bool(detail.style) if int(detail.mode_id) == _RHYTHM_MODE_ID else None,
             music_color=music_color,
         )
-    if mode_name == "static":
-        return ParsedColorModeResponse(mode=ParsedMode.COLOUR, multi_effect_flag=int(body.mode_body.sub))
     return ParsedColorModeResponse()

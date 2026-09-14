@@ -106,6 +106,9 @@ def _make_coord(**ov) -> MagicMock:
         brightness_pct=100,
         rgb_color=(255, 255, 255),
         color_temp_kelvin=None,
+        rgb_color_source="initial",
+        color_temp_kelvin_source="initial",
+        _field_revisions={},
         video_saturation=100,
         white_brightness=100,
         video_full_screen=True,
@@ -153,6 +156,9 @@ def _make_coord(**ov) -> MagicMock:
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
     c.send_command = AsyncMock()
+    c.install_static_color = MagicMock(
+        side_effect=lambda **kwargs: GoveeBLECoordinator.install_static_color(c, **kwargs)
+    )
     c.async_paint_segments = AsyncMock()
     c.async_set_segment_brightness = AsyncMock()
     c.async_refresh_segments = AsyncMock(return_value=True)

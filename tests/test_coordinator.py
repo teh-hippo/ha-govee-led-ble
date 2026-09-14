@@ -2128,6 +2128,7 @@ def test_h6199_static_segment_readback_preserves_matching_kelvin_companion(h6199
 
     assert h6199.color_temp_kelvin == 2000
     assert h6199.segment_colors == [companion] * 15
+    assert "color_temp_kelvin" not in h6199._field_revisions
 
 
 def test_partial_segment_refresh_does_not_publish_mixed_snapshot(coord):

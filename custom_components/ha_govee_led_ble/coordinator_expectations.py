@@ -98,6 +98,8 @@ def expectations_from_packet(
     if (static := parse_static_write(packet, model)) and static.whole_strip:
         if static.rgb is not None:
             expectations["rgb_color"] = static.rgb
+            if get_profile(model).static_readback_kelvin:
+                expectations["color_temp_kelvin"] = None
         elif static.kelvin is not None:
             expectations["color_temp_kelvin"] = static.kelvin
         elif static.brightness_pct is not None:

@@ -34,6 +34,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     hw_version: str | None
     rgb_color: tuple[int, int, int]
     color_temp_kelvin: int | None
+    rgb_color_source: str
+    color_temp_kelvin_source: str
     white_brightness: int
     music_mode: str
     video_mode: str
@@ -45,6 +47,18 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _control_lock: BLEControlArbiter
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]
+
+    def install_static_color(
+        self, *, rgb: tuple[int, int, int] | None = None, kelvin: int | None = None, source: str = "optimistic"
+    ) -> None:
+        """Install local/restore values without advancing BLE observation revisions."""
+        if rgb is not None:
+            self.rgb_color = rgb
+            self.rgb_color_source = source
+        elif self.rgb_color_source == "observed":
+            self.rgb_color_source = "retained"
+        self.color_temp_kelvin = kelvin
+        self.color_temp_kelvin_source = source if kelvin is not None else "initial"
 
     if TYPE_CHECKING:
 

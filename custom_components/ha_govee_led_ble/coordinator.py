@@ -165,6 +165,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.brightness_pct = 100
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
+        self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.effect: str | None = None
         # Device identity from the aa 06/aa 07 handshake replies; None until first read.
         self.fw_version: str | None = None
@@ -408,16 +409,24 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             return False
         await self.send_command(build_power(True, self.model))
         await self.send_command(build_brightness(state.brightness_pct, self.model))
+        self.install_static_color(rgb=state.rgb_color, kelvin=state.color_temp_kelvin)
         if state.color_temp_kelvin is not None:
             await self.send_command(build_color_temp(state.color_temp_kelvin, self.model))
         else:
             await self.send_command(build_color_rgb(*state.rgb_color, self.model))
         self.is_on = True
         self.brightness_pct = state.brightness_pct
-        self.rgb_color = state.rgb_color
-        self.color_temp_kelvin = state.color_temp_kelvin
         self._enter_static_mode()
-        return self.profile.state_readable and await self.refresh_state() and self.active_mode == "colour"
+        static_expectations: dict[str, Any] = {}
+        if state.color_temp_kelvin is not None and self.profile.static_readback_kelvin:
+            static_expectations["expected_color_temp_kelvin"] = state.color_temp_kelvin
+        elif state.color_temp_kelvin is None and self.profile.static_readback_echoes_color:
+            static_expectations["expected_rgb_color"] = state.rgb_color
+        return (
+            self.profile.state_readable
+            and await self.refresh_state(**static_expectations)
+            and self.active_mode == "colour"
+        )
 
     @callback
     def _note_identity(self, *, fw_version: str | None = None, hw_version: str | None = None) -> None:
@@ -677,6 +686,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     ) -> None:
         if colours is not None:
             self.segment_colors = colours
+            if self.rgb_color_source == "observed":
+                self.rgb_color_source = "retained"
+            if self.color_temp_kelvin_source == "observed":
+                self.color_temp_kelvin_source = "retained"
         if brightness is not None:
             self.segment_brightness = brightness
         self.segment_state_source = "optimistic"
@@ -735,20 +748,25 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.segment_state_source = "observed"
         self.segment_state_observed_at = datetime.now().astimezone().isoformat()
         observed = ["segment_colors", "segment_brightness"]
-        if self.color_mode is ParsedMode.COLOUR and len(set(self.segment_colors)) == 1:
+        # Direct static readback outranks rendered segments; a matching white point
+        # can retain last-known Kelvin but never proves a fresh Kelvin measurement.
+        if (
+            self.color_mode is ParsedMode.COLOUR
+            and len(set(self.segment_colors)) == 1
+            and self.rgb_color_source != "observed"
+            and self.color_temp_kelvin_source != "observed"
+        ):
             rendered = self.segment_colors[0]
-            if self.color_temp_kelvin is not None and rendered == kelvin_to_rgb(self.color_temp_kelvin):
-                if self._accept_expected("color_temp_kelvin", self.color_temp_kelvin):
-                    observed.append("color_temp_kelvin")
-            else:
-                values = {
-                    "rgb_color": rendered,
-                    "color_temp_kelvin": None,
-                }
-                if self._accept_expected_values(values):
-                    self.rgb_color = rendered
+            kelvin = self.color_temp_kelvin
+            if kelvin is not None and rendered != kelvin_to_rgb(kelvin):
+                kelvin = None
+            if self._accept_expected_values({"rgb_color": rendered, "color_temp_kelvin": kelvin}):
+                self.rgb_color = rendered
+                self.rgb_color_source = "segment"
+                if kelvin is None:
                     self.color_temp_kelvin = None
-                    observed.extend(values)
+                    self.color_temp_kelvin_source = "initial"
+                observed.append("rgb_color")
         return tuple(observed)
 
     def _arm_expected(self, packet: bytes) -> None:
@@ -798,6 +816,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         parsed = parse_color_mode(generated, self.model)
         if parsed.mode is ParsedMode.DIY:
             mode_detail = parsed.diy_code
+        elif parsed.mode is ParsedMode.COLOUR and self.profile.static_readback_echoes_color:
+            mode_detail = parsed.multi_effect_flag
         else:
             mode_detail = None
         observed_color_mode = parsed.mode, mode_detail
@@ -873,15 +893,28 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     if self._accept_expected(attr, value):
                         setattr(self, attr, value)
                         observed.append(attr)
-        if parsed.rgb_color is not None:
-            # A colour-temp state reads back as its white-point RGB with no kelvin field; recognising it
-            # keeps the light in CT mode instead of clobbering kelvin and dropping to a near-white RGB.
-            if self.color_temp_kelvin is not None and parsed.rgb_color == kelvin_to_rgb(self.color_temp_kelvin):
-                return tuple(observed)
-            accept_rgb = self._accept_expected("rgb_color", parsed.rgb_color)
-            accept_kelvin = self._accept_expected("color_temp_kelvin", None)
-            if accept_rgb and accept_kelvin:
-                self.rgb_color, self.color_temp_kelvin = parsed.rgb_color, None
+        if parsed.mode is ParsedMode.COLOUR:
+            static_values: dict[str, Any] = {}
+            if parsed.rgb_color is not None and self.profile.static_readback_echoes_color:
+                static_values["rgb_color"] = parsed.rgb_color
+            if parsed.color_temp_kelvin is not None and self.profile.static_readback_kelvin:
+                static_values["color_temp_kelvin"] = parsed.color_temp_kelvin
+            accepted_values = dict(static_values)
+            if "rgb_color" in static_values and "color_temp_kelvin" not in static_values:
+                kelvin = self.color_temp_kelvin
+                if kelvin is None or static_values["rgb_color"] != kelvin_to_rgb(kelvin):
+                    accepted_values["color_temp_kelvin"] = None
+            if self._accept_expected_values(accepted_values):
+                for attr, value in accepted_values.items():
+                    setattr(self, attr, value)
+                    setattr(self, f"{attr}_source", "observed" if attr in static_values else "initial")
+                if (
+                    "rgb_color" in static_values
+                    and "color_temp_kelvin" not in static_values
+                    and self.color_temp_kelvin_source == "observed"
+                ):
+                    self.color_temp_kelvin_source = "retained"
+                observed.extend(static_values)
         return tuple(observed)
 
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
@@ -1185,6 +1218,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         expected_scene_code: int | None = None,
         expected_on: bool | None = None,
         expected_brightness: int | None = None,
+        expected_rgb_color: tuple[int, int, int] | None = None,
+        expected_color_temp_kelvin: int | None = None,
         expected_music_mode: str | None = None,
         expected_music_sensitivity: int | None = None,
         expected_music_calm: bool | None = None,
@@ -1207,6 +1242,10 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     ) -> bool:
         if not self.profile.state_readable:
             return False
+        if expected_rgb_color is not None and not self.profile.static_readback_echoes_color:
+            return False
+        if expected_color_temp_kelvin is not None and not self.profile.static_readback_kelvin:
+            return False
         expectations: dict[str, Any] = {
             field: value
             for field, value in (
@@ -1214,6 +1253,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 ("scene_code", expected_scene_code),
                 ("is_on", expected_on),
                 ("brightness_pct", expected_brightness),
+                ("rgb_color", expected_rgb_color),
+                ("color_temp_kelvin", expected_color_temp_kelvin),
                 ("music_mode", expected_music_mode),
                 ("music_sensitivity", expected_music_sensitivity),
                 ("music_calm", expected_music_calm),
@@ -1245,6 +1286,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 }
             )
         color_expectations = (
+            expected_rgb_color,
+            expected_color_temp_kelvin,
             expected_effect,
             expected_scene_code,
             expected_music_mode,
@@ -1477,6 +1520,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
     ) -> bool | None:
         if not self.profile.state_readable or not expectations:
             return None
+        if ("rgb_color" in expectations and not self.profile.static_readback_echoes_color) or (
+            "color_temp_kelvin" in expectations and not self.profile.static_readback_kelvin
+        ):
+            return None
+        if {"rgb_color", "color_temp_kelvin"} & expectations.keys() and not self.profile.supports_color_mode_readback:
+            return None
         expectations = dict(expectations)
         for field, mode in (
             ("diy_code", ParsedMode.DIY),
@@ -1494,6 +1543,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             set(expectations).intersection(
                 {
                     "color_mode",
+                    "rgb_color",
+                    "color_temp_kelvin",
                     "effect",
                     "scene_code",
                     "unknown_scene_code",
@@ -1657,6 +1708,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         packets = build_segment_paint(resolved, self.model, profile=self.profile)
         previous = list(self.segment_colors)
         previous_source = self.segment_state_source
+        previous_static_sources = self.rgb_color_source, self.color_temp_kelvin_source
         previous_observed_at = self.segment_state_observed_at
         previous_groups = set(self._segment_groups_observed)
         previous_query_colors = self._segment_query_colors
@@ -1672,6 +1724,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         except Exception:
             self.segment_colors = previous
             self.segment_state_source = previous_source
+            self.rgb_color_source, self.color_temp_kelvin_source = previous_static_sources
             self.segment_state_observed_at = previous_observed_at
             self._segment_groups_observed = previous_groups
             self._segment_query_colors = previous_query_colors
