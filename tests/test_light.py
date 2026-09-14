@@ -160,6 +160,45 @@ async def test_effect_preflight_precedes_light_side_effects(hass, mock_coordinat
     assert not mock_coordinator._control_lock.locked()
 
 
+@pytest.mark.parametrize("saved", [False, True])
+async def test_video_firmware_preflight_preserves_prepared_effect_boundary(
+    hass, mock_h6199_coordinator, monkeypatch, saved
+):
+    from custom_components.ha_govee_led_ble.const import VideoFirmwareCondition
+
+    coordinator = mock_h6199_coordinator
+    coordinator.profile = replace(
+        coordinator.profile,
+        video_firmware_conditions=(VideoFirmwareCondition("white_balance", "subordinate_21_version", "9.08.07"),),
+    )
+    backend = await EffectBackend.async_create(hass)
+    supersede = AsyncMock()
+    monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
+    content = VideoProfile("H6199", "movie", True, 50, False, 50, 17, None, None)
+    if saved:
+        await backend.library.async_create(LibraryItem.new("Gated", content))
+        selector = "Gated"
+    else:
+        await backend.template_defaults.async_set(
+            CatalogueTemplateDefault(
+                config_entry_id="entry-a",
+                model="H6199",
+                template_id="template:video:movie",
+                content=content,
+                updated_at="2026-08-27T00:00:00Z",
+            )
+        )
+        selector = "Video: Movie"
+    entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+    control = MagicMock(side_effect=AssertionError("firmware rejection must precede user control"))
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.light.async_control_intent", control)
+    with pytest.raises((HomeAssistantError, ValueError)):
+        await entity.async_turn_on(effect=selector, brightness=100)
+    supersede.assert_not_awaited()
+    control.assert_not_called()
+    coordinator.send_command.assert_not_awaited()
+
+
 async def test_h6076_exposes_only_basic_colour_controls(mock_h6076_coordinator):
     light = GoveeBLELight(mock_h6076_coordinator)
     light.async_write_ha_state = MagicMock()
@@ -1314,8 +1353,7 @@ async def test_turn_on_music_effect_uses_the_device_template_default(mock_coordi
     assert isinstance(compiled, CompiledMusicProfile)
     assert compiled.mode == "rhythm"
     assert compiled.sensitivity == 42
-    assert backend.template_defaults.get.call_count == 2
-    backend.template_defaults.get.assert_called_with("entry-a", "template:music:rhythm")
+    backend.template_defaults.get.assert_called_once_with("entry-a", "template:music:rhythm")
     mock_coordinator.async_select_music_slug.assert_not_awaited()
 
 
@@ -1396,8 +1434,7 @@ async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_
     assert isinstance(compiled, CompiledVideoProfile)
     assert compiled.saturation == 63
     assert compiled.relative_brightness == (80, 70, 60, 50)
-    assert backend.template_defaults.get.call_count == 2
-    backend.template_defaults.get.assert_called_with("entry-a", "template:video:movie")
+    backend.template_defaults.get.assert_called_once_with("entry-a", "template:video:movie")
 
 
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):

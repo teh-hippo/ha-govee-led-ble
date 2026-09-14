@@ -345,9 +345,6 @@ async def test_apply_forwards_expected_item_version(
     monkeypatch,
 ) -> None:
     backend = await _setup_backend(hass)
-    monkeypatch.setattr(
-        EffectStudioApplication, "get_saved_effect", MagicMock(return_value=SimpleNamespace(content=None))
-    )
     monkeypatch.setattr(cast(Any, backend.preview), "async_supersede_device", AsyncMock())
     deployment = MagicMock()
     deployment.to_public_dict.return_value = {"phase": "confirmed"}
@@ -396,9 +393,6 @@ async def test_apply_surfaces_item_version_conflict(
     monkeypatch,
 ) -> None:
     backend = await _setup_backend(hass)
-    monkeypatch.setattr(
-        EffectStudioApplication, "get_saved_effect", MagicMock(return_value=SimpleNamespace(content=None))
-    )
     monkeypatch.setattr(cast(Any, backend.preview), "async_supersede_device", AsyncMock())
     mutation = await backend.application.async_create_library_item(name="Saved", content=_content())
     entry = SimpleNamespace(
