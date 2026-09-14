@@ -58,7 +58,7 @@ from .light_commands import (
     build_segment_paint,
     kelvin_to_rgb,
 )
-from .music_commands import prepare_music_request
+from .music_commands import prepare_music_profile_writes
 from .music_semantics import capture_music_parameters, music_params_for_mode, music_variant
 from .native_profile_controls import (
     apply_active_video_mode,
@@ -295,9 +295,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         *,
         overwritten_diy_code: int | None,
     ) -> bool:
-        music_parameters = {}
-        music_packets: tuple[bytes, ...] = ()
-        music_calm = False
+        music_writes: tuple[tuple[bytes, dict[str, Any]], ...] = ()
         if state.mode == "music" and state.is_on:
             if state.music_model is not None and state.music_model != self.model:
                 raise ValueError("music recovery model does not match device")
@@ -312,7 +310,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 if state.music_parameters is not None
                 else capture_music_parameters(state, self.profile, state.music_mode) or {}
             )
-            music_packets = prepare_music_request(
+            music_writes = prepare_music_profile_writes(
                 self.model,
                 state.music_mode,
                 state.music_sensitivity,
@@ -421,19 +419,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.music_mode = self.video_mode = "off"
             return self.profile.state_readable and await self.refresh_state(expected_scene_code=scene.code) and complete
         if state.mode == "music" and state.music_mode in self.profile.music_modes:
-            self.install_music_profile_state(
-                mode=state.music_mode,
-                sensitivity=state.music_sensitivity,
-                colour=state.music_color,
-                calm=music_calm,
-                parameters=music_parameters,
-            )
-            for packet in music_packets:
-                await self.send_command(packet)
-            self.is_on = True
-            self.music_mode, self.video_mode = state.music_mode, "off"
-            self.effect = None
-            self.diy_code = None
+            for packet, state_values in music_writes:
+                await self.send_command(packet, state_values=state_values)
             return (
                 self.profile.state_readable
                 and await self.refresh_state(expected_music_mode=state.music_mode)
@@ -1856,7 +1843,13 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if self._client is client:
             await self._disconnect_locked()
 
-    async def send_command(self, packet: bytes) -> None:
+    async def send_command(
+        self,
+        packet: bytes,
+        *,
+        write_guard: Callable[[], None] | None = None,
+        state_values: Mapping[str, Any] | None = None,
+    ) -> None:
         if self.hass.is_stopping:
             _LOGGER.debug("Ignoring command during shutdown for %s", self.address)
             return
@@ -1867,7 +1860,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 for attempt in range(3):
                     try:
                         client = await self._ensure_connected()
-                        await self._async_write_packet(client, packet, arm_expected=True)
+                        await self._async_write_packet(
+                            client, packet, arm_expected=True, before_write=write_guard, state_values=state_values
+                        )
                         self._renew_foreground_lease()
                         return
                     except BleakError as err:

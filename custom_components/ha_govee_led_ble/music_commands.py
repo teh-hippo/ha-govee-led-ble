@@ -7,7 +7,7 @@ from kaitaistruct import KaitaiStructError
 
 from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile
 from .generated_protocol_adapter import build_music_mode, build_power, encode_music_parameters
-from .music_semantics import compile_music_parameters, music_parameters_available, music_variant
+from .music_semantics import compile_music_parameters, music_parameters_available, music_params_for_mode, music_variant
 from .transport import fragment_a3
 
 
@@ -79,6 +79,36 @@ def resolve_music_profile(
     compiled = compile_music_parameters(parameters, MUSIC_MODE_SLUGS[mode], profile)
     packets = prepare_music_request(model, mode, sensitivity, colour, resolved_calm, compiled)
     return resolved_calm, compiled, packets
+
+
+def prepare_music_profile_writes(
+    model: str,
+    mode: str,
+    sensitivity: int,
+    colour: tuple[int, int, int] | None,
+    calm: bool,
+    parameters: Mapping[str, Any],
+) -> tuple[tuple[bytes, dict[str, Any]], ...]:
+    """Pair validated packets with retained state installed at their physical attempt."""
+    packets = prepare_music_request(model, mode, sensitivity, colour, calm, parameters)
+    states: list[dict[str, Any]] = [{} for _ in packets]
+    states[0] = {"is_on": True}
+    states[1] = {
+        "music_sensitivity": sensitivity,
+        "music_color": colour,
+        "music_calm": calm,
+        "music_mode": mode,
+        "video_mode": "off",
+        "effect": None,
+        "diy_code": None,
+    }
+    if len(packets) > 2:
+        # Earlier fragments cannot complete the companion; a final attempt may.
+        states[-1] = {
+            spec.key: parameters.get(spec.profile_key, spec.default)
+            for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], get_profile(model))
+        }
+    return tuple(zip(packets, states, strict=True))
 
 
 def music_default_available(model: str, mode: str) -> bool:

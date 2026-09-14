@@ -55,7 +55,7 @@ from .generated_protocol_adapter import (
     build_video_mode,
     build_white_balance,
 )
-from .music_commands import prepare_music_request
+from .music_commands import prepare_music_profile_writes
 from .music_semantics import capture_music_parameters
 from .native_profile_controls import (
     ProfileWriter,
@@ -85,7 +85,7 @@ async def async_apply_compiled_profile(
     if isinstance(compiled, CompiledMusicProfile):
         if coordinator.model != compiled.model:
             raise ValueError("music profile target does not match coordinator")
-        packets = prepare_music_request(
+        writes = prepare_music_profile_writes(
             compiled.model,
             compiled.mode,
             compiled.sensitivity,
@@ -93,25 +93,17 @@ async def async_apply_compiled_profile(
             compiled.calm,
             compiled.parameters,
         )
-        coordinator.install_music_profile_state(
-            mode=compiled.mode,
-            sensitivity=compiled.sensitivity,
-            colour=compiled.colour,
-            calm=compiled.calm,
-            parameters=compiled.parameters,
-        )
-        if coordinator.active_mode == "colour":
-            coordinator._pre_mode_snapshot = coordinator._capture_static_state()
+
+        def capture_static() -> None:
+            if coordinator.active_mode == "colour":
+                coordinator._pre_mode_snapshot = coordinator._capture_static_state()
+
         send = coordinator.send_command if writer is None else writer
-        for packet in packets:
-            await send(packet)
-        coordinator.is_on = True
-        coordinator.music_mode, coordinator.video_mode = compiled.mode, "off"
-        coordinator.effect = None
-        coordinator.diy_code = None
+        for index, (packet, state_values) in enumerate(writes):
+            await send(packet, state_values=state_values, write_guard=capture_static if index == 1 else None)
         if progress is not None:
             await progress(1)
-            if len(packets) > 2:
+            if len(writes) > 2:
                 await progress(2)
         return
 

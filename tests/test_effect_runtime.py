@@ -13,6 +13,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -60,7 +61,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h6199_video, build_power
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
-from custom_components.ha_govee_led_ble.transport import WRITE_UUID
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -356,7 +357,14 @@ def _coordinator(*, readable: bool = True):
 def _profile_coordinator(model: str):
     coordinator = _coordinator()
     coordinator.active_mode = None
-    coordinator.send_command = AsyncMock()
+
+    async def send_command(_packet, *, write_guard=None, state_values=None):
+        if write_guard is not None:
+            write_guard()
+        for field, value in (state_values or {}).items():
+            setattr(coordinator, field, value)
+
+    coordinator.send_command = AsyncMock(side_effect=send_command)
     coordinator.model = model
     coordinator.profile = get_profile(model)
     coordinator.video_full_screen = True
@@ -1011,6 +1019,116 @@ async def test_video_deployment_cancellation_recovers_only_after_physical_attemp
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+        unsubscribe()
+
+
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
+@pytest.mark.parametrize("cancelled", [False, True], ids=["connection-failure", "cancel-before-first-control"])
+async def test_music_deployment_before_first_control_preserves_native_selection(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    cancelled: bool,
+) -> None:
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    for body in ("aa0101", "aa051303140000000000"):
+        frame = bytearray(bytes.fromhex(body).ljust(19, b"\x00"))
+        frame.append(xor_checksum(frame))
+        coordinator._notify_callback(None, frame)
+    before = coordinator.capture_effect_control_state()
+    assert (before.mode, before.music_mode, before.music_sensitivity, before.music_calm, before.music_color) == (
+        "music",
+        "rhythm",
+        20,
+        False,
+        None,
+    )
+    field_revisions = dict(coordinator._field_revisions)
+    domain_revisions = dict(coordinator._domain_revisions)
+    expected = dict(coordinator._expected_state)
+    published: list[PriorControlState] = []
+    unsubscribe = coordinator.async_add_listener(lambda: published.append(coordinator.capture_effect_control_state()))
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+    restore = AsyncMock(return_value=False)
+    monkeypatch.setattr(coordinator, "async_restore_effect_control_state", restore)
+    physical = AsyncMock()
+    client = MagicMock(is_connected=True, write_gatt_char=physical)
+    reached = asyncio.Event()
+    release_user = asyncio.Event()
+
+    async def connect():
+        reached.set()
+        if cancelled:
+            await asyncio.Event().wait()
+        raise RuntimeError("connection unavailable")
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", connect)
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    operation_id = uuid4()
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+    task = asyncio.create_task(
+        apply(
+            coordinator,
+            LibraryItem.new("Calm red", MusicProfile("H6199", "rhythm", 80, (255, 0, 0), True)),
+            config_entry_id="entry-a",
+            updated_at="2026-09-14T00:00:00Z",
+            operation_id=operation_id,
+        )
+    )
+
+    async def native_selection():
+        async with async_control_intent(coordinator, ControlIntent.USER):
+            await release_user.wait()
+            await coordinator.async_select_music_slug("rhythm")
+
+    user_task = None
+    try:
+        await asyncio.wait_for(reached.wait(), timeout=5)
+        if cancelled:
+            assert coordinator._control_lock.locked() and coordinator._lock.locked()
+            user_task = asyncio.create_task(native_selection())
+            await asyncio.sleep(0)
+            assert not user_task.done()
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError if cancelled else RuntimeError):
+            await asyncio.wait_for(task, timeout=5)
+
+        failed = repository.get(operation_id)
+        assert failed.phase is DeploymentPhase.FAILED
+        assert failed.verification_confidence is ObservationConfidence.UNKNOWN
+        assert failed.error_code == ("operation_cancelled" if cancelled else "RuntimeError")
+        assert failed.progress_current == 0
+        assert failed.prior_state == before
+        assert coordinator.control_write_attempts == 0
+        physical.assert_not_awaited()
+        restore.assert_not_awaited()
+        assert coordinator.capture_effect_control_state() == before
+        assert coordinator._field_revisions == field_revisions
+        assert coordinator._domain_revisions == domain_revisions
+        assert coordinator._expected_state == expected
+        assert published and all(state == before for state in published)
+        assert not coordinator._lock.locked()
+        assert not engine._operation_locks and not engine._operation_lock_users
+
+        monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+        if user_task is None:
+            user_task = asyncio.create_task(native_selection())
+        release_user.set()
+        await asyncio.wait_for(user_task, timeout=5)
+        assert physical.await_args_list == [
+            call(WRITE_UUID, build_power(True, "H6199"), response=False),
+            call(WRITE_UUID, bytes.fromhex("3305130314000000000000000000000000000032"), response=False),
+        ]
+        assert coordinator.control_write_attempts == 2
+        assert not coordinator._control_lock.locked()
+        restore.assert_not_awaited()
+    finally:
+        tasks = [task] if user_task is None else [task, user_task]
+        for pending in tasks:
+            pending.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         unsubscribe()
 
 
@@ -1757,24 +1875,6 @@ async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confid
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H617A")
-    events: list[str] = []
-
-    def install_music_profile_state(**values) -> None:
-        events.append(f"install:{values['mode']}")
-        coordinator.music_sensitivity = values["sensitivity"]
-        coordinator.music_color = values["colour"]
-        coordinator.music_calm = values["calm"]
-
-    async def select_music(mode: str, *, include_parameters: bool) -> None:
-        events.append(f"select:{mode}:{include_parameters}")
-        coordinator.music_mode = mode
-
-    async def apply_parameters(mode_code: int) -> None:
-        events.append(f"parameters:{mode_code}")
-
-    coordinator.install_music_profile_state = install_music_profile_state
-    coordinator.async_select_music_slug = select_music
-    coordinator.async_apply_music_params = apply_parameters
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
@@ -1783,7 +1883,8 @@ async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confid
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert events == ["install:separation"]
+    assert coordinator.music_separation_point == 5
+    assert coordinator.music_separation_gradient is False
     assert coordinator.send_command.await_count == 4
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.diy_code is None
@@ -1801,18 +1902,6 @@ async def test_h617a_music_profile_applies_style_companion_parameters(
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H617A")
-    events: list[str] = []
-    coordinator.install_music_profile_state = lambda **values: None
-
-    async def select_music(mode: str, *, include_parameters: bool) -> None:
-        events.append(f"select:{mode}:{include_parameters}")
-        coordinator.music_mode = mode
-
-    async def apply_parameters(mode_code: int) -> None:
-        events.append(f"parameters:{mode_code}")
-
-    coordinator.async_select_music_slug = select_music
-    coordinator.async_apply_music_params = apply_parameters
     item = LibraryItem.new(
         "Bloom",
         MusicProfile("H617A", "bloom", 50, None, True, {}),
@@ -1825,7 +1914,7 @@ async def test_h617a_music_profile_applies_style_companion_parameters(
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert events == []
+    assert coordinator.music_calm is True
     assert coordinator.send_command.await_count == 4
     assert result.progress_current == result.progress_total == 2
     assert result.verification_confidence is ObservationConfidence.MODE_MATCH
@@ -1876,18 +1965,6 @@ async def test_h6199_music_profile_confirms_all_written_settings(
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H6199")
 
-    def install_music(**values):
-        coordinator.music_sensitivity = values["sensitivity"]
-        coordinator.music_color = values["colour"]
-
-    coordinator.install_music_profile_state = install_music
-
-    async def select_music(mode: str, *, include_parameters: bool) -> None:
-        coordinator.music_mode = mode
-
-    coordinator.async_select_music_slug = select_music
-    coordinator.async_apply_music_params = AsyncMock()
-
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
         _music_item("H6199"),
@@ -1897,7 +1974,7 @@ async def test_h6199_music_profile_confirms_all_written_settings(
 
     assert result.progress_current == result.progress_total == 1
     assert result.verification_confidence is ObservationConfidence.SETTINGS_MATCH
-    coordinator.async_apply_music_params.assert_not_awaited()
+    assert coordinator.send_command.await_count == 2
 
 
 async def test_unsaved_music_profile_persists_the_applied_snapshot(
@@ -1905,18 +1982,6 @@ async def test_unsaved_music_profile_persists_the_applied_snapshot(
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H6199")
-
-    def install_music(**values):
-        coordinator.music_sensitivity = values["sensitivity"]
-        coordinator.music_color = values["colour"]
-
-    coordinator.install_music_profile_state = install_music
-
-    async def select_music(mode: str, *, include_parameters: bool) -> None:
-        coordinator.music_mode = mode
-
-    coordinator.async_select_music_slug = select_music
-    coordinator.async_apply_music_params = AsyncMock()
     item = _music_item("H6199")
     active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
     await active_workspaces.async_load()
@@ -1956,21 +2021,6 @@ async def test_music_profile_retries_the_complete_writer_before_confirmation(
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H617A")
-    events: list[str] = []
-
-    def install_music_profile_state(**values) -> None:
-        events.append("install")
-
-    async def select_music(mode: str, *, include_parameters: bool) -> None:
-        events.append("select")
-        coordinator.music_mode = mode
-
-    async def apply_parameters(mode_code: int) -> None:
-        events.append("parameters")
-
-    coordinator.install_music_profile_state = install_music_profile_state
-    coordinator.async_select_music_slug = select_music
-    coordinator.async_apply_music_params = apply_parameters
     coordinator.refresh_state.side_effect = [True, False, True]
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
@@ -1981,7 +2031,6 @@ async def test_music_profile_retries_the_complete_writer_before_confirmation(
     )
 
     assert result.phase is DeploymentPhase.CONFIRMED
-    assert events == ["install", "install"]
     packets = [call.args[0] for call in coordinator.send_command.await_args_list]
     assert len(packets) == 8 and packets[:4] == packets[4:]
 

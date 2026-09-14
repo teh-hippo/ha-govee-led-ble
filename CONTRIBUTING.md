@@ -52,6 +52,7 @@ The default sends the logical packet unchanged.  Transforms reject invalid input
 Each physical attempt transforms the original logical packet, including retries.
 Command expectations are derived from logical bytes after successful transformation and before writing; queries do not arm command expectations.
 Diagnostics record the actual wire bytes only after a successful write.  A successful write does not prove device state or effect activation.
+Prepare requested settings without replacing retained control state. Install packet-specific optimistic state only at its physical-write boundary, after transformation and guards; a failed request with no control-write attempts must not change later command construction. Do not advance observation revisions for these assignments or overwrite fresh notifications after awaiting a write.
 This hook does not establish encrypted-device support or replace Kaitai ownership of wire structures.
 
 ## Planning support for a new model

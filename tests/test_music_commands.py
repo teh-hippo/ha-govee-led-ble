@@ -1,13 +1,18 @@
 """Capture-backed music parameter tests."""
 
+import asyncio
+from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from bleak import BleakError
+from homeassistant.core import CoreState
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, NativeModeOption
 from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityState, compatibility, compile_music_profile
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -24,9 +29,13 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
 )
 from custom_components.ha_govee_led_ble.effect_selector import compatible_saved_effects
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import MusicBody
-from custom_components.ha_govee_led_ble.music_commands import build_music_params, prepare_music_request
+from custom_components.ha_govee_led_ble.music_commands import (
+    build_music_params,
+    prepare_music_profile_writes,
+    prepare_music_request,
+)
 from custom_components.ha_govee_led_ble.music_semantics import MusicParamSpec, MusicVariant, music_variant
-from custom_components.ha_govee_led_ble.transport import xor_checksum
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 H = bytes.fromhex
@@ -49,6 +58,336 @@ def _assemble(frames: list[bytes]) -> bytes:
     for frame in frames:
         assert len(frame) == 20 and xor_checksum(frame[:19]) == frame[19]
     return b"".join(frame[2:19] for frame in frames)
+
+
+@contextmanager
+def _music_transport(coordinator):
+    client = SimpleNamespace(is_connected=True, write_gatt_char=AsyncMock())
+    with (
+        patch.object(coordinator, "_client", client),
+        patch.object(coordinator, "_ensure_connected", new_callable=AsyncMock, return_value=client),
+        patch.object(coordinator, "_disconnect_locked", new_callable=AsyncMock),
+        patch.object(coordinator, "_renew_foreground_lease"),
+        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=False),
+    ):
+        yield client.write_gatt_char
+
+
+def _notify(coordinator, payload: bytes) -> None:
+    frame = bytearray(payload.ljust(19, b"\x00"))
+    frame.append(xor_checksum(frame))
+    coordinator._notify_callback(None, frame)
+
+
+@pytest.mark.parametrize("mode,parameters", [("rhythm", {}), ("separation", {"point": 4, "gradient": False})])
+def test_music_profile_preparation_scopes_state_to_packets(mode, parameters):
+    writes = prepare_music_profile_writes("H617A", mode, 50, None, False, parameters)
+    assert isinstance(writes, tuple)
+    assert tuple(packet for packet, _ in writes) == prepare_music_request("H617A", mode, 50, None, False, parameters)
+    assert writes[0][1] == {"is_on": True}
+    assert writes[1][1] == {
+        "music_mode": mode,
+        "music_sensitivity": 50,
+        "music_color": None,
+        "music_calm": False,
+        "video_mode": "off",
+        "effect": None,
+        "diy_code": None,
+    }
+    if mode == "rhythm":
+        assert len(writes) == 2
+    else:
+        assert len(writes) == 4
+        assert writes[2][1] == {}
+        assert writes[3][1] == {"music_separation_point": 4, "music_separation_gradient": False}
+
+
+@pytest.mark.parametrize("fresh_notification", [False, True])
+async def test_music_recovery_connection_failure_never_installs_state(hass, fresh_notification):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
+    state = replace(
+        coordinator.capture_effect_control_state(),
+        mode="music",
+        is_on=True,
+        music_mode="separation",
+        music_sensitivity=50,
+        music_parameters={"point": 4, "gradient": False},
+    )
+    before = coordinator.capture_effect_control_state()
+    fields = dict(coordinator._field_revisions)
+    domains = dict(coordinator._domain_revisions)
+    snapshot = coordinator._pre_mode_snapshot
+
+    async def connect():
+        nonlocal before, fields, domains
+        assert coordinator.capture_effect_control_state() == before
+        if fresh_notification:
+            _notify(coordinator, H("aa0513035801"))
+            assert (coordinator.music_mode, coordinator.music_sensitivity, coordinator.music_calm) == (
+                "rhythm",
+                88,
+                True,
+            )
+            before = coordinator.capture_effect_control_state()
+            fields = dict(coordinator._field_revisions)
+            domains = dict(coordinator._domain_revisions)
+        raise BleakError("connection unavailable")
+
+    with _music_transport(coordinator) as physical:
+        coordinator._ensure_connected.side_effect = connect
+        with pytest.raises(BleakError, match="connection unavailable"):
+            await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert coordinator._ensure_connected.await_count == 3
+        physical.assert_not_awaited()
+        coordinator.refresh_state.assert_not_awaited()
+    assert coordinator.capture_effect_control_state() == before
+    assert coordinator._field_revisions == fields
+    assert coordinator._domain_revisions == domains
+    assert coordinator._pre_mode_snapshot is snapshot
+    assert coordinator.control_write_attempts == 0
+    assert coordinator._expected_state == {}
+
+
+@pytest.mark.parametrize("failed_index", range(5), ids=["power", "selector", "a3-first", "a3-middle", "a3-final"])
+async def test_music_apply_partial_failure_installs_only_attempted_packet_state(hass, failed_index):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
+    coordinator.rgb_color = (10, 20, 30)
+    coordinator.music_mode = "rhythm"
+    coordinator.music_sensitivity = 20
+    coordinator.music_calm = True
+    coordinator.music_color = (1, 2, 3)
+    coordinator.video_mode = "movie"
+    coordinator.effect = "retained"
+    coordinator.diy_code = 7
+    coordinator.music_hopping_brightness = 99
+    before = coordinator.capture_effect_control_state()
+    snapshot = coordinator._pre_mode_snapshot
+    compiled = compile_music_profile(
+        LibraryItem.new("Hopping", MusicProfile("H617A", "hopping", 50, parameters={"relative_brightness": 0})),
+        "H617A",
+    )
+    packets = prepare_music_request("H617A", "hopping", 50, None, False, compiled.parameters)
+    assert len(packets) == 5
+    attempted_state = {"is_on": True}
+    if failed_index >= 1:
+        attempted_state.update(
+            music_mode="hopping",
+            music_sensitivity=50,
+            music_calm=False,
+            music_color=None,
+            video_mode="off",
+            effect=None,
+            diy_code=None,
+        )
+    if failed_index == 4:
+        attempted_state["music_hopping_brightness"] = 0
+
+    async def transmit(uuid, packet, *, response):
+        assert uuid == WRITE_UUID and response is False
+        if packet == packets[failed_index]:
+            # The physical write may reach the device even when its await fails.
+            assert all(getattr(coordinator, key) == value for key, value in attempted_state.items())
+            raise BleakError("write failed")
+
+    with _music_transport(coordinator) as physical:
+        physical.side_effect = transmit
+        with pytest.raises(BleakError, match="write failed"):
+            await async_apply_compiled_profile(coordinator, compiled)
+        assert [call.args[1] for call in physical.await_args_list] == [
+            *packets[:failed_index],
+            *([packets[failed_index]] * 3),
+        ]
+    for key in (
+        "is_on",
+        "music_mode",
+        "music_sensitivity",
+        "music_calm",
+        "music_color",
+        "video_mode",
+        "effect",
+        "diy_code",
+        "music_hopping_brightness",
+        "music_separation_point",
+        "brightness_pct",
+        "rgb_color",
+    ):
+        assert getattr(coordinator, key) == attempted_state.get(key, getattr(before, key)), key
+    assert coordinator.control_write_attempts == failed_index + 3
+    assert coordinator._field_revisions == coordinator._domain_revisions == {}
+    assert coordinator._pre_mode_snapshot is snapshot
+    assert "music_hopping_brightness" not in coordinator._expected_state
+
+
+@pytest.mark.parametrize("operation", ["apply", "recovery"])
+async def test_music_notification_during_write_survives_return(hass, operation):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
+    compiled = compile_music_profile(LibraryItem.new("Music", MusicProfile("H617A", "separation", 50)), "H617A")
+    packets = prepare_music_request("H617A", "separation", 50, None, False, compiled.parameters)
+    state = replace(
+        coordinator.capture_effect_control_state(),
+        mode="music",
+        is_on=True,
+        music_mode="separation",
+        music_sensitivity=50,
+        music_parameters=dict(compiled.parameters),
+    )
+    fields, domains = {}, {}
+
+    async def transmit(_uuid, packet, *, response):
+        nonlocal fields, domains
+        if packet == packets[1]:
+            assert coordinator.music_mode == "separation"
+            # A reply after the stale-reply window is fresh, even before the write await returns.
+            coordinator._expected_state = {key: (value, 0) for key, (value, _) in coordinator._expected_state.items()}
+            await asyncio.sleep(0)
+            _notify(coordinator, H("aa0513035801"))
+            fields = dict(coordinator._field_revisions)
+            domains = dict(coordinator._domain_revisions)
+
+    with _music_transport(coordinator) as physical:
+        physical.side_effect = transmit
+        if operation == "apply":
+            await async_apply_compiled_profile(coordinator, compiled)
+        else:
+            assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+    assert (coordinator.music_mode, coordinator.music_sensitivity, coordinator.music_calm) == ("rhythm", 88, True)
+    assert fields["music_mode"] == fields["music_sensitivity"] == 1
+    assert coordinator._field_revisions == fields
+    assert coordinator._domain_revisions == domains
+
+
+@pytest.mark.parametrize("fail_at", [None, "power", "selector"])
+async def test_music_static_snapshot_is_captured_at_selector_attempt(hass, fail_at):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
+    coordinator.is_on = True
+    coordinator.color_mode = ParsedMode.COLOUR
+    coordinator.rgb_color = (1, 2, 3)
+    snapshot = coordinator._pre_mode_snapshot
+    compiled = compile_music_profile(LibraryItem.new("Music", MusicProfile("H617A", "separation", 50)), "H617A")
+    packets = prepare_music_request("H617A", "separation", 50, None, False, compiled.parameters)
+    connections = 0
+
+    async def connect():
+        nonlocal connections
+        connections += 1
+        if connections == 2:
+            assert coordinator._pre_mode_snapshot is snapshot
+            for group in range(1, 6):
+                _notify(coordinator, bytes([0xAA, 0xA5, group, *([100, 10, 20, 30] * 3)]))
+            assert coordinator.rgb_color == (10, 20, 30)
+        return coordinator._client
+
+    async def transmit(_uuid, packet, *, response):
+        if packet == packets[0]:
+            assert coordinator._pre_mode_snapshot is snapshot
+            if fail_at == "power":
+                raise RuntimeError("power failed")
+        if packet == packets[1]:
+            assert coordinator._pre_mode_snapshot.rgb == (10, 20, 30)
+            assert coordinator.music_mode == "separation"
+            if fail_at == "selector":
+                raise RuntimeError("selector failed")
+
+    with _music_transport(coordinator) as physical:
+        coordinator._ensure_connected.side_effect = connect
+        physical.side_effect = transmit
+        if fail_at:
+            with pytest.raises(RuntimeError, match=f"{fail_at} failed"):
+                await async_apply_compiled_profile(coordinator, compiled)
+        else:
+            await async_apply_compiled_profile(coordinator, compiled)
+    if fail_at == "power":
+        assert coordinator._pre_mode_snapshot is snapshot
+    else:
+        assert coordinator._pre_mode_snapshot.kind == "rgb"
+        assert coordinator._pre_mode_snapshot.rgb == (10, 20, 30)
+
+
+async def test_music_preview_guard_failure_does_not_install_selector_state(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
+    compiled = compile_music_profile(LibraryItem.new("Music", MusicProfile("H617A", "separation", 50)), "H617A")
+    packets = prepare_music_request("H617A", "separation", 50, None, False, compiled.parameters)
+    before = coordinator.capture_effect_control_state()
+    snapshot = coordinator._pre_mode_snapshot
+
+    async def writer(packet, *, state_values=None, write_guard=None, expected_values=None):
+        def check():
+            if write_guard is not None:
+                raise ValueError("preview guard rejected selector")
+
+        await coordinator.async_preview_write(packet, before_write=check, state_values=state_values)
+
+    with _music_transport(coordinator) as physical:
+        with pytest.raises(ValueError, match="preview guard rejected selector"):
+            await async_apply_compiled_profile(coordinator, compiled, writer=writer)
+        physical.assert_awaited_once_with(WRITE_UUID, packets[0], response=False)
+        coordinator._ensure_connected.assert_not_awaited()
+    assert coordinator.capture_effect_control_state() == replace(before, is_on=True, mode="colour")
+    assert coordinator._pre_mode_snapshot is snapshot
+    assert coordinator.control_write_attempts == 1
+    assert set(coordinator._expected_state) == {"is_on"}
+    assert coordinator._field_revisions == coordinator._domain_revisions == {}
+
+
+@pytest.mark.parametrize("phase", ["connect", "write"])
+async def test_music_recovery_cancellation_respects_physical_boundary(hass, phase):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
+    state = replace(
+        coordinator.capture_effect_control_state(),
+        mode="music",
+        is_on=True,
+        music_mode="separation",
+        music_sensitivity=50,
+        music_parameters={"point": 4, "gradient": False},
+    )
+    before = coordinator.capture_effect_control_state()
+    reached = asyncio.Event()
+
+    async def suspend(*_args, **_kwargs):
+        reached.set()
+        await asyncio.Event().wait()
+
+    with _music_transport(coordinator) as physical:
+        if phase == "connect":
+            coordinator._ensure_connected.side_effect = suspend
+        else:
+            physical.side_effect = suspend
+        task = asyncio.create_task(coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None))
+        try:
+            await asyncio.wait_for(reached.wait(), timeout=5)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        assert physical.await_count == (phase == "write")
+        coordinator.refresh_state.assert_not_awaited()
+    expected = replace(before, is_on=True, mode="colour") if phase == "write" else before
+    assert coordinator.capture_effect_control_state() == expected
+    assert coordinator.control_write_attempts == (phase == "write")
+    assert coordinator._field_revisions == coordinator._domain_revisions == {}
+    assert not coordinator._lock.locked() and not coordinator._control_lock.locked()
+
+
+@pytest.mark.parametrize("operation", ["apply", "recovery"])
+async def test_music_shutdown_no_write_does_not_install_state(hass, operation):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
+    compiled = compile_music_profile(LibraryItem.new("Music", MusicProfile("H617A", "separation", 50)), "H617A")
+    before = coordinator.capture_effect_control_state()
+    snapshot = coordinator._pre_mode_snapshot
+    with _music_transport(coordinator) as physical, patch.object(hass, "state", CoreState.stopping):
+        if operation == "apply":
+            await async_apply_compiled_profile(coordinator, compiled)
+        else:
+            state = replace(before, mode="music", is_on=True, music_mode="separation", music_parameters={"point": 4})
+            assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        physical.assert_not_awaited()
+        coordinator._ensure_connected.assert_not_awaited()
+    assert coordinator.capture_effect_control_state() == before
+    assert coordinator._pre_mode_snapshot is snapshot
+    assert coordinator.control_write_attempts == 0
+    assert coordinator._expected_state == coordinator._field_revisions == coordinator._domain_revisions == {}
 
 
 @pytest.mark.parametrize("model", ["H617A", "H617E"])
@@ -128,9 +467,9 @@ async def test_variant_encoding_application_and_restoration(hass, alternative):
         build_music_params(0x32, {"point": 8}, profile=get_profile("H617A"))
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-MUSIC", configuration_url="test")
     assert coordinator.music_separation_point == 8
-    with patch.object(coordinator, "send_command", new_callable=AsyncMock) as send:
+    with _music_transport(coordinator) as send:
         await async_apply_compiled_profile(coordinator, compiled)
-        assert [call.args[0] for call in send.await_args_list] == list(packets)
+        assert [call.args[1] for call in send.await_args_list] == list(packets)
         state = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
         omitted = state.to_dict()
         del omitted["music_separation_point"]
@@ -140,7 +479,7 @@ async def test_variant_encoding_application_and_restoration(hass, alternative):
         coordinator.music_separation_point = 12
         send.reset_mock()
         assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
-        assert [call.args[0] for call in send.await_args_list] == list(packets)
+        assert [call.args[1] for call in send.await_args_list] == list(packets)
         assert coordinator.music_separation_point == 8
     assert compiled_observation(compiled) == (None, ObservationConfidence.UNKNOWN)
     assert build_music_params(0x32, {}, profile=get_profile("H617A")) == original
@@ -165,15 +504,20 @@ async def test_invalid_recovery_fails_before_any_write(hass, alternative):
 
 async def test_restored_parameters_are_not_device_observations(hass):
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
-    compiled = compile_music_profile(LibraryItem.new("Music", MusicProfile("H617A", "separation", 50)), "H617A")
-    coordinator.install_music_profile_state(
-        mode="separation", sensitivity=50, colour=None, calm=False, parameters={"point": 4, "gradient": False}
+    compiled = compile_music_profile(
+        LibraryItem.new("Music", MusicProfile("H617A", "separation", 50, parameters={"point": 4})), "H617A"
     )
+    with _music_transport(coordinator):
+        await async_apply_compiled_profile(coordinator, compiled)
+        state = coordinator.capture_effect_control_state()
+        coordinator.music_separation_point = 1
+        assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
     assert compiled_observation(compiled) == (
         {"is_on": True, "music_mode": "separation"},
         ObservationConfidence.MODE_MATCH,
     )
     assert coordinator.music_separation_point == 4
+    assert coordinator._field_revisions == coordinator._domain_revisions == {}
 
 
 @pytest.mark.parametrize("unknown", ["hardware", "layout"])
@@ -188,8 +532,8 @@ async def test_unknown_semantics_never_write_or_install_state(hass, alternative,
     with patch.object(coordinator, "send_command", new_callable=AsyncMock) as send:
         before = coordinator.capture_effect_control_state()
         with pytest.raises(ValueError):
-            coordinator.install_music_profile_state(
-                mode="separation", sensitivity=40, colour=None, calm=False, parameters={"point": 8}
+            prepare_music_profile_writes(
+                "TEST-MUSIC", mode="separation", sensitivity=40, colour=None, calm=False, parameters={"point": 8}
             )
         assert coordinator.capture_effect_control_state() == before
         send.assert_not_awaited()
@@ -250,9 +594,9 @@ async def test_new_fountain_parameter_survives_application_capture_and_recovery(
         "TEST-FOUNTAIN",
     )
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-FOUNTAIN", configuration_url="test")
-    with patch.object(coordinator, "send_command", new_callable=AsyncMock) as send:
+    with _music_transport(coordinator) as send:
         await async_apply_compiled_profile(coordinator, compiled)
-        packets = [call.args[0] for call in send.await_args_list]
+        packets = [call.args[1] for call in send.await_args_list]
         body = MusicBody.from_bytes(_assemble(packets[2:]))
         body._read()
         assert body.tail.speed == 16 and body.tail.piece_num == 3
@@ -261,10 +605,11 @@ async def test_new_fountain_parameter_survives_application_capture_and_recovery(
         # The mapping is authoritative even if the retained legacy field disagrees.
         raw["music_fountain_direction"] = "clockwise"
         state = PriorControlState.from_dict(raw)
-        coordinator.install_music_profile_state(mode="fountain", sensitivity=50, colour=None, calm=False, parameters={})
+        coordinator.music_fountain_speed = 80
+        coordinator.music_fountain_direction = "clockwise"
         send.reset_mock()
         assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
-        assert [call.args[0] for call in send.await_args_list] == packets
+        assert [call.args[1] for call in send.await_args_list] == packets
         assert coordinator.music_fountain_speed == 16
 
         # Explicit empty mapping uses variant defaults, not the legacy fields.
@@ -334,9 +679,9 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         LibraryItem.new("Fountain", MusicProfile("TEST-FOUNTAIN", "fountain", 50)), "TEST-FOUNTAIN"
     )
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-FOUNTAIN", configuration_url="test")
-    with patch.object(coordinator, "send_command", new_callable=AsyncMock) as send:
+    with _music_transport(coordinator) as send:
         await async_apply_compiled_profile(coordinator, compiled)
-        packets = [call.args[0] for call in send.await_args_list]
+        packets = [call.args[1] for call in send.await_args_list]
         raw = coordinator.capture_effect_control_state().to_dict()
         assert raw["music_fountain_direction"] == "alternate"
         assert raw["music_parameters"] == {"direction": "alternate"}
@@ -345,7 +690,7 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         send.reset_mock()
         assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
         assert coordinator.music_fountain_direction == "alternate"
-        assert [call.args[0] for call in send.await_args_list] == packets
+        assert [call.args[1] for call in send.await_args_list] == packets
         body = MusicBody.from_bytes(_assemble(packets[2:]))
         body._read()
         assert (body.tail.start_point, body.tail.piece_num) == (1, 3)
@@ -360,7 +705,7 @@ async def test_alternate_fountain_direction_survives_capture_and_recovery(hass, 
         send.reset_mock()
         assert not await coordinator.async_restore_effect_control_state(inactive, overwritten_diy_code=None)
         assert coordinator.music_mode == next_mode
-        assert all(call.args[0][0] != 0xA3 for call in send.await_args_list)
+        assert all(call.args[1][0] != 0xA3 for call in send.await_args_list)
         assert PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict()).music_parameters == {}
         coordinator.is_on = False
         powered_off = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
@@ -422,19 +767,19 @@ async def test_native_and_compiled_music_defaults_use_variant_style(hass, monkey
     compiled = compile_music_profile(LibraryItem.new("Bloom", MusicProfile("TEST-BLOOM", "bloom", 99)), "TEST-BLOOM")
     assert compiled.calm is calm_default
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "TEST-BLOOM", configuration_url="test")
-    with patch.object(coordinator, "send_command", new_callable=AsyncMock) as send:
+    with _music_transport(coordinator) as send:
         await coordinator.async_select_music_slug("bloom")
-        native = [call.args[0] for call in send.await_args_list]
+        native = [call.args[1] for call in send.await_args_list]
         send.reset_mock()
         await async_apply_compiled_profile(coordinator, compiled)
-        authored = [call.args[0] for call in send.await_args_list]
+        authored = [call.args[1] for call in send.await_args_list]
         assert native[:2] == authored[:2]
         if style:
             assert native == authored
             coordinator.music_calm = False
             send.reset_mock()
             await coordinator.async_select_music_slug("bloom")
-            assert send.await_args_list[1].args[0] != native[1]
+            assert send.await_args_list[1].args[1] != native[1]
     if not style:
         invalid = LibraryItem.new("Hidden style", MusicProfile("TEST-BLOOM", "bloom", 99, calm=False))
         assert compatibility(invalid, "TEST-BLOOM").state is CompatibilityState.INCOMPATIBLE

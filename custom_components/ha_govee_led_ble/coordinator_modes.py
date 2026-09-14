@@ -1,6 +1,6 @@
 """Active-mode derivation and mode-switching for the Govee BLE coordinator."""
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -230,22 +230,6 @@ class _ActiveModeMixin(_CoordinatorBase):
         self.music_mode, self.video_mode = slug, "off"
         self.effect = None
         self.diy_code = None
-
-    def install_music_profile_state(
-        self,
-        *,
-        mode: str,
-        sensitivity: int,
-        colour: tuple[int, int, int] | None,
-        calm: bool,
-        parameters: Mapping[str, int | bool | str],
-    ) -> None:
-        prepare_music_request(self.model, mode, sensitivity, colour, calm, parameters)
-        self.music_sensitivity = sensitivity
-        self.music_color = colour
-        self.music_calm = calm
-        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], self.profile):
-            setattr(self, spec.key, parameters.get(spec.profile_key, spec.default))
 
     async def async_apply_music_params(
         self,
