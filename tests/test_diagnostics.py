@@ -4,10 +4,11 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN
+from custom_components.ha_govee_led_ble.const import CONF_H6102_APP_FIRMWARE, CONF_MODEL, DOMAIN
 from custom_components.ha_govee_led_ble.coordinator import (
     PACKET_LOG_LIMIT,
     PACKET_LOG_RAW_BYTES_LIMIT,
+    GoveeBLECoordinator,
 )
 from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.ha_govee_led_ble.effect_diagnostics import (
@@ -47,6 +48,18 @@ async def test_surfaces_segment_fields(mock_h6199_coordinator):
     assert coord["support_quality"] == "supported"
     assert coord["supports_segments"] is True
     assert coord["segment_count"] == 15
+    assert coord["read_domains"] == [
+        "brightness",
+        "colour_mode",
+        "display_setting",
+        "firmware",
+        "hardware",
+        "power",
+        "relative_brightness",
+        "segments",
+        "subordinate_20",
+        "subordinate_21",
+    ]
     assert coord["segment_colors"] == colors
     assert coord["segment_brightness"] == [100] * 15
     assert coord["segment_state_source"] == "initial"
@@ -103,6 +116,115 @@ async def test_h6076_diagnostics_expose_basic_capability_boundary(mock_h6076_coo
     assert coord["release_capabilities"]["capabilities"] == []
 
 
+@pytest.mark.parametrize(
+    ("firmware", "classified_variant", "rgb_enabled", "reason"),
+    [
+        pytest.param(None, None, False, "firmware_unknown", id="unknown"),
+        pytest.param("1.03.00", "legacy", False, "legacy_capture_required", id="legacy"),
+        pytest.param("1.03.01", "extended", True, None, id="extended"),
+    ],
+)
+async def test_h6102_diagnostics_expose_resolved_capabilities_without_implying_identity(
+    hass,
+    firmware,
+    classified_variant,
+    rgb_enabled,
+    reason,
+):
+    entry_data = {CONF_MODEL: "H6102"}
+    if firmware is not None:
+        entry_data[CONF_H6102_APP_FIRMWARE] = firmware
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="44:55:66:77:88:99",
+        data=entry_data,
+    )
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "44:55:66:77:88:99",
+        "H6102",
+        configuration_url=None,
+        h6102_firmware=firmware,
+        h6102_firmware_source="configured" if firmware is not None else None,
+    )
+
+    diag = await _run(_prep(coordinator), entry, hass)
+    resolution = diag["coordinator"]["capability_resolution"]
+
+    assert resolution == {
+        "configured_app_firmware": firmware,
+        "resolved_profile": "H6102 LED Strip",
+        "firmware_source": "configured" if firmware is not None else None,
+        "classified_rgb_variant": classified_variant,
+        "rgb_enabled": rgb_enabled,
+        "capability_resolution_reason": reason,
+        "read_domains": [],
+        "surface_capabilities": {
+            "color_temperature": False,
+            "regions": False,
+            "music": False,
+            "scenes": False,
+            "diy": False,
+            "studio": False,
+        },
+    }
+    assert "observed_firmware" not in resolution
+    assert "observed_hardware" not in resolution
+    assert "power_state_source" not in resolution
+    assert "brightness_state_source" not in resolution
+    assert "44:55:66:77:88:99" not in str(resolution)
+    assert "44:55:66:77:88:99" not in str(diag)
+    coord = diag["coordinator"]
+    assert coord["supports_rgb"] is rgb_enabled
+    assert coord["supports_color_temperature"] is False
+    assert coord["supports_color_mode_readback"] is False
+    assert coord["supports_custom_effects"] is False
+    assert coord["supports_video_mode"] is False
+    assert coord["supports_video_sound_effects"] is False
+    assert coord["supports_white_balance"] is False
+    assert coord["supports_relative_brightness"] is False
+    assert coord["supports_blank_screen"] is False
+    assert coord["supports_music_mode"] is False
+    assert coord["music_modes"] == []
+    assert coord["supports_music_color"] is False
+    assert coord["supports_white_brightness"] is False
+    assert coord["supports_segments"] is False
+    assert coord["segment_count"] == 0
+    assert coord["release_capabilities"]["capabilities"] == []
+    assert coord["fw_version"] is None
+    assert coord["hw_version"] is None
+
+
+async def test_h6102_diagnostics_keep_configured_and_observed_firmware_distinct(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="44:55:66:77:88:99",
+        data={
+            CONF_MODEL: "H6102",
+            CONF_H6102_APP_FIRMWARE: "1.03.00",
+        },
+    )
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "44:55:66:77:88:99",
+        "H6102",
+        configuration_url=None,
+        h6102_firmware="1.03.01",
+        h6102_firmware_source="ble",
+    )
+    coordinator.fw_version = "1.03.01"
+    coordinator.hw_version = "1.00.03"
+
+    diag = await _run(_prep(coordinator), entry, hass)
+    resolution = diag["coordinator"]["capability_resolution"]
+
+    assert resolution["configured_app_firmware"] == "1.03.00"
+    assert resolution["observed_firmware"] == "1.03.01"
+    assert resolution["observed_hardware"] == "1.00.03"
+    assert resolution["firmware_source"] == "ble"
+    assert resolution["classified_rgb_variant"] == "extended"
+
+
 async def test_stale_experimental_option_ignored(mock_h6199_coordinator):
     """A leftover experimental option loads without error and drives no computed block."""
     entry = _entry(options={"experimental": {"timers": True, "diy": False}})
@@ -119,6 +241,11 @@ async def test_redacts_unique_id(mock_h6199_coordinator):
     assert diag["entry"]["data"] == {CONF_MODEL: "H6199"}
     assert diag["entry"]["options"] == {"experimental": {"timers": True}}
     assert diag["coordinator"]["address"] == "**REDACTED**"
+
+
+async def test_non_h6102_diagnostics_shape_has_no_capability_resolution(mock_h6199_coordinator):
+    diag = await _run(_prep(mock_h6199_coordinator))
+    assert "capability_resolution" not in diag["coordinator"]
 
 
 @pytest.mark.parametrize(

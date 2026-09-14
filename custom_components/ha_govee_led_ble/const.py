@@ -11,6 +11,7 @@ from .music_semantics import H617A_MUSIC_VARIANTS, MusicVariant
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
+CONF_H6102_APP_FIRMWARE = "h6102_app_firmware"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
@@ -372,6 +373,13 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         whole_device_mask=0x007F,
         scene_catalogue_sku="H6076",
     ),
+    "H6102": ModelProfile(
+        "H6102 LED Strip",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        command_grammar="H6102",
+        connection_idle_timeout=3.0,
+        scene_catalogue_sku="H6102",
+    ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
         support_quality=SupportQuality.SUPPORTED,
@@ -438,6 +446,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
+BLE_DISCOVERABLE_MODELS = frozenset({"H6076", "H617A", "H617E", "H6199"})
+
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
 
@@ -448,7 +458,8 @@ def resolve_model(model: str) -> str | None:
 
 def model_from_ble_name(name: str) -> str | None:
     match = _BLE_MODEL_PATTERN.search(name)
-    return resolve_model(match.group(1)) if match else None
+    model = resolve_model(match.group(1)) if match else None
+    return model if model in BLE_DISCOVERABLE_MODELS else None
 
 
 def protocol_model(model: str) -> str | None:
