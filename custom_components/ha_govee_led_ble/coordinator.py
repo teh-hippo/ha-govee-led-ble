@@ -340,15 +340,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     "relative_brightness",
                     tuple(f"relative_brightness_{zone}" for zone in self.profile.video_brightness_zones),
                 ),
-                (
-                    "blank_screen",
-                    (
-                        "blank_screen",
-                        "blank_screen_detection",
-                        "blank_screen_low_brightness_duration_seconds",
-                        "blank_screen_same_tone_duration_seconds",
-                    ),
-                ),
+                ("blank_screen", ("blank_screen",)),
             )
             if (state.video_restore_controls is None or control in state.video_restore_controls)
             and any(
@@ -361,17 +353,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             and state.white_balance_scalar is not None
             and self.profile.video_white_balance_representation == "scalar"
         ):
-            self.white_balance_scalar = state.white_balance_scalar
-            await apply_white_balance(self)
+            await apply_white_balance(self, (state.white_balance_scalar,))
         if (
             "white_balance" in permitted & needed
             and self.profile.video_white_balance_representation == "position"
             and state.white_balance_red is not None
             and state.white_balance_blue is not None
         ):
-            self.white_balance_red = state.white_balance_red
-            self.white_balance_blue = state.white_balance_blue
-            await apply_white_balance(self)
+            await apply_white_balance(self, (state.white_balance_red, state.white_balance_blue))
         if (
             "relative_brightness" in permitted & needed
             and state.relative_brightness_left is not None
@@ -379,20 +368,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             and state.relative_brightness_right is not None
             and state.relative_brightness_bottom is not None
         ):
-            self.relative_brightness = state.relative_brightness
-            self.relative_brightness_left = state.relative_brightness_left
-            self.relative_brightness_top = state.relative_brightness_top
-            self.relative_brightness_right = state.relative_brightness_right
-            self.relative_brightness_bottom = state.relative_brightness_bottom
-            self.relative_brightness_strip_left = state.relative_brightness_strip_left
-            self.relative_brightness_strip_right = state.relative_brightness_strip_right
-            await apply_relative_brightness(self)
+            await apply_relative_brightness(
+                self,
+                tuple(getattr(state, f"relative_brightness_{zone}") for zone in self.profile.video_brightness_zones),
+            )
         if "blank_screen" in permitted & needed and state.blank_screen is not None:
-            self.blank_screen = state.blank_screen
-            self.blank_screen_detection = state.blank_screen_detection
-            self.blank_screen_low_brightness_duration_seconds = state.blank_screen_low_brightness_duration_seconds
-            self.blank_screen_same_tone_duration_seconds = state.blank_screen_same_tone_duration_seconds
-            await apply_blank_screen(self)
+            await apply_blank_screen(self, state.blank_screen)
         if not state.is_on:
             await self.send_command(build_power(False, self.model))
             self.is_on = False
@@ -469,7 +450,6 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     state.video_restore_controls is None or control in state.video_restore_controls
                 ) and control not in permitted:
                     complete = complete and getattr(self, f"video_{field}") == getattr(state, f"video_{field}")
-            self.video_mode = state.video_mode
             restored = frozenset(
                 field
                 for field, control in (
@@ -480,9 +460,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 )
                 if control in permitted
             )
-            for field in restored:
-                setattr(self, f"video_{field}", getattr(state, f"video_{field}"))
-            return await apply_active_video_mode(self, requested_fields=restored) and complete
+            return (
+                await apply_active_video_mode(
+                    self,
+                    mode=state.video_mode,
+                    requested_values={field: getattr(state, f"video_{field}") for field in restored},
+                )
+                and complete
+            )
         if state.mode != "colour":
             return False
         await self.send_command(build_power(True, self.model))
@@ -1170,6 +1155,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         *,
         arm_expected: bool = False,
         before_write: Callable[[], None] | None = None,
+        state_values: Mapping[str, Any] | None = None,
+        expected_values: Mapping[str, Any] | None = None,
     ) -> None:
         """Write on the caller's connection without changing its transaction policy."""
         wire_packet = packet
@@ -1179,8 +1166,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 raise ValueError("Outbound transform must return non-empty bytes")
         if before_write is not None:
             before_write()
+        if state_values is not None:
+            for field, value in state_values.items():
+                setattr(self, field, value)
         if arm_expected:
             self._arm_expected(packet)
+        if expected_values is not None:
+            self._arm_expected_values(dict(expected_values))
+        if arm_expected:
             self.control_write_attempts += 1
         await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
         self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
@@ -1616,7 +1609,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                     await asyncio.sleep(min(0.05, remaining))
             return False
 
-    async def async_preview_write(self, packet: bytes, *, before_write: Callable[[], None] | None = None) -> None:
+    async def async_preview_write(
+        self,
+        packet: bytes,
+        *,
+        before_write: Callable[[], None] | None = None,
+        state_values: Mapping[str, Any] | None = None,
+        expected_values: Mapping[str, Any] | None = None,
+    ) -> None:
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
         async with async_control_intent(self, ControlIntent.PREVIEW):
@@ -1624,7 +1624,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 client = self._client
                 if client is None or not client.is_connected:
                     raise BleakError(f"Device {self.address} disconnected during preview")
-                await self._async_write_packet(client, packet, arm_expected=True, before_write=before_write)
+                await self._async_write_packet(
+                    client,
+                    packet,
+                    arm_expected=True,
+                    before_write=before_write,
+                    state_values=state_values,
+                    expected_values=expected_values,
+                )
                 self._renew_foreground_lease()
 
     async def async_write_effect_sequence(
@@ -1634,6 +1641,8 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         intent: ControlIntent,
         before_write: Callable[[], Awaitable[None]] | None = None,
         write_guard: Callable[[], None] | None = None,
+        state_values: Mapping[str, Any] | None = None,
+        expected_values: Mapping[str, Any] | None = None,
         attempt_started: Callable[[int], Awaitable[None]] | None = None,
         progress: Callable[[int], Awaitable[None]] | None = None,
     ) -> None:
@@ -1653,7 +1662,14 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         if before_write is not None:
                             await before_write()
                         for index, packet in enumerate(packets, start=1):
-                            await self._async_write_packet(client, packet, arm_expected=True, before_write=write_guard)
+                            await self._async_write_packet(
+                                client,
+                                packet,
+                                arm_expected=True,
+                                before_write=write_guard,
+                                state_values=state_values,
+                                expected_values=expected_values,
+                            )
                             self._renew_foreground_lease()
                             if progress is not None:
                                 await progress(index)

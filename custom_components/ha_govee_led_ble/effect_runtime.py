@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import Any
@@ -120,13 +120,24 @@ async def async_apply_compiled_profile(
     underlying_writer = writer
     requested_controls = requested_video_controls(compiled)
 
-    async def guarded_writer(packet: bytes, *, write_guard: Callable[[], None] | None = None) -> None:
+    async def guarded_writer(
+        packet: bytes,
+        *,
+        write_guard: Callable[[], None] | None = None,
+        state_values: Mapping[str, Any] | None = None,
+        expected_values: Mapping[str, Any] | None = None,
+    ) -> None:
         await _send_video_setting(
-            coordinator, packet, requested_controls, writer=underlying_writer, write_guard=write_guard
+            coordinator,
+            packet,
+            requested_controls,
+            writer=underlying_writer,
+            write_guard=write_guard,
+            state_values=state_values,
+            expected_values=expected_values,
         )
 
-    if any(condition.control in requested_controls for condition in profile.video_firmware_conditions):
-        writer = guarded_writer
+    writer = guarded_writer
     omitted_mode_fields = tuple(
         field
         for field, supported in (
@@ -175,76 +186,42 @@ async def async_apply_compiled_profile(
             values[5] if len(values) == 6 else None,
         )
     if compiled.blank_screen is not None:
-        if any(
-            value is None
-            for value in (
-                coordinator.blank_screen_detection,
-                coordinator.blank_screen_low_brightness_duration_seconds,
-                coordinator.blank_screen_same_tone_duration_seconds,
-            )
-        ):
+        detection = coordinator.blank_screen_detection
+        low_duration = coordinator.blank_screen_low_brightness_duration_seconds
+        same_duration = coordinator.blank_screen_same_tone_duration_seconds
+        if detection is None or low_duration is None or same_duration is None:
             raise ValueError("Blank-screen policy state has not been read; refresh the device first")
-        build_blank_screen(compiled.blank_screen, coordinator.model)
-    coordinator.video_mode = compiled.mode
-    if compiled.full_screen is not None:
-        coordinator.video_full_screen = compiled.full_screen
-    if compiled.saturation is not None:
-        coordinator.video_saturation = compiled.saturation
-    if compiled.sound_effects is not None:
-        coordinator.video_sound_effects = compiled.sound_effects
-    if compiled.sound_effects_softness is not None:
-        coordinator.video_sound_effects_softness = compiled.sound_effects_softness
-    coordinator.effect = None
-    coordinator.music_mode = "off"
-    coordinator.diy_code = None
-    mode_fields = frozenset(
-        field
+        build_blank_screen(compiled.blank_screen, coordinator.model, detection, low_duration, same_duration)
+    mode_values = {
+        field: getattr(compiled, field)
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
         if getattr(compiled, field) is not None
+    }
+    await apply_active_video_mode(
+        coordinator,
+        mode=compiled.mode,
+        requested_values=mode_values,
+        writer=writer,
+        verify=verify,
     )
-    if len(mode_fields) < 4:
-        await apply_active_video_mode(coordinator, writer=writer, verify=verify, requested_fields=mode_fields)
-    elif writer is None and verify:
-        await apply_active_video_mode(coordinator)
-    else:
-        await apply_active_video_mode(coordinator, writer=writer, verify=verify, requested_fields=mode_fields)
     completed = 1
     if progress is not None:
         await progress(completed)
 
     if compiled.white_balance_wire is not None:
-        if profile.video_white_balance_representation == "scalar":
-            coordinator.white_balance_scalar = compiled.white_balance_wire[0]
-        else:
-            coordinator.white_balance_red, coordinator.white_balance_blue = compiled.white_balance_wire
-        if writer is None and verify:
-            await apply_white_balance(coordinator)
-        else:
-            await apply_white_balance(coordinator, writer=writer, verify=verify)
+        await apply_white_balance(coordinator, compiled.white_balance_wire, writer=writer, verify=verify)
         completed += 1
         if progress is not None:
             await progress(completed)
 
     if compiled.relative_brightness is not None:
-        coordinator.relative_brightness = (
-            compiled.relative_brightness[0] if len(set(compiled.relative_brightness)) == 1 else None
-        )
-        for zone, value in zip(profile.video_brightness_zones, compiled.relative_brightness, strict=True):
-            setattr(coordinator, f"relative_brightness_{zone}", value)
-        if writer is None and verify:
-            await apply_relative_brightness(coordinator)
-        else:
-            await apply_relative_brightness(coordinator, writer=writer, verify=verify)
+        await apply_relative_brightness(coordinator, compiled.relative_brightness, writer=writer, verify=verify)
         completed += 1
         if progress is not None:
             await progress(completed)
 
     if compiled.blank_screen is not None:
-        coordinator.blank_screen = compiled.blank_screen
-        if writer is None and verify:
-            await apply_blank_screen(coordinator)
-        else:
-            await apply_blank_screen(coordinator, writer=writer, verify=verify)
+        await apply_blank_screen(coordinator, compiled.blank_screen, writer=writer, verify=verify)
         completed += 1
         if progress is not None:
             await progress(completed)

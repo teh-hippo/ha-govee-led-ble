@@ -251,6 +251,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             yield
         except Exception as err:
             mode_updated = self.coordinator._field_revisions.get("color_mode", 0) != revisions.get("color_mode", 0)
+            colour_updated = any(
+                self.coordinator._field_revisions.get(field, 0) != revisions.get(field, 0)
+                for field in ("rgb_color", "color_temp_kelvin")
+            )
             segments_updated = self.coordinator._field_revisions.get("segment_colors", 0) != revisions.get(
                 "segment_colors", 0
             )
@@ -264,6 +268,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     if segments_updated:
                         continue
                 elif f not in {"is_on", "brightness_pct"} and mode_updated:
+                    continue
+                # RGB evidence can also clear Kelvin without advancing its revision.
+                if colour_updated and f in {
+                    "rgb_color",
+                    "color_temp_kelvin",
+                    "rgb_color_source",
+                    "color_temp_kelvin_source",
+                }:
                     continue
                 field = "music_calm" if f == "_music_calm" else f
                 if field in {"is_on", "brightness_pct", "music_calm"} and self.coordinator._field_revisions.get(
@@ -715,18 +727,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     async def _async_clear_effect(self) -> None:
         coordinator = self.coordinator
-        coordinator.install_static_color(rgb=coordinator.rgb_color, kelvin=coordinator.color_temp_kelvin)
-        if coordinator.color_temp_kelvin is not None:
-            packet = build_color_temp(coordinator.color_temp_kelvin, coordinator.model)
-            self._attr_color_mode = ColorMode.COLOR_TEMP
-            colour = kelvin_to_rgb(coordinator.color_temp_kelvin)
-        else:
-            packet = build_color_rgb(*coordinator.rgb_color, coordinator.model)
-            self._attr_color_mode = ColorMode.RGB
-            colour = coordinator.rgb_color
-        coordinator.mark_segment_state_optimistic(colours=[colour] * len(coordinator.segment_colors))
-        coordinator._enter_static_mode()
-        await coordinator.send_command(packet)
+        with self._rollback():
+            coordinator.install_static_color(rgb=coordinator.rgb_color, kelvin=coordinator.color_temp_kelvin)
+            if coordinator.color_temp_kelvin is not None:
+                packet = build_color_temp(coordinator.color_temp_kelvin, coordinator.model)
+                self._attr_color_mode = ColorMode.COLOR_TEMP
+                colour = kelvin_to_rgb(coordinator.color_temp_kelvin)
+            else:
+                packet = build_color_rgb(*coordinator.rgb_color, coordinator.model)
+                self._attr_color_mode = ColorMode.RGB
+                colour = coordinator.rgb_color
+            coordinator.mark_segment_state_optimistic(colours=[colour] * len(coordinator.segment_colors))
+            coordinator._enter_static_mode()
+            await coordinator.send_command(packet)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         active_workspace = self._matching_active_workspace()
@@ -954,18 +967,20 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 self._require_support("RGB colour", supported=self.coordinator.profile.supports_rgb)
                 r, g, b = kwargs[ATTR_RGB_COLOR]
                 packet = build_color_rgb(r, g, b, self.coordinator.model)
-                self.coordinator.install_static_color(rgb=(r, g, b))
-                self.coordinator.mark_segment_state_optimistic(
-                    colours=[(r, g, b)] * len(self.coordinator.segment_colors),
-                )
-                self._attr_color_mode = ColorMode.RGB
-                self.coordinator._enter_static_mode()
-                await send(packet)
-                if self.coordinator.profile.static_readback_echoes_color:
-                    await self._refresh_with_retry(
-                        expected_rgb_color=(r, g, b),
-                        retry_command=partial(send, packet),
+                # Checkpoint observations received during earlier power/brightness writes.
+                with self._rollback():
+                    self.coordinator.install_static_color(rgb=(r, g, b))
+                    self.coordinator.mark_segment_state_optimistic(
+                        colours=[(r, g, b)] * len(self.coordinator.segment_colors),
                     )
+                    self._attr_color_mode = ColorMode.RGB
+                    self.coordinator._enter_static_mode()
+                    await send(packet)
+                    if self.coordinator.profile.static_readback_echoes_color:
+                        await self._refresh_with_retry(
+                            expected_rgb_color=(r, g, b),
+                            retry_command=partial(send, packet),
+                        )
             if ATTR_COLOR_TEMP_KELVIN in kwargs:
                 self._require_support(
                     "colour temperature",
@@ -976,18 +991,19 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     min(self.coordinator.profile.max_color_temp_kelvin, kwargs[ATTR_COLOR_TEMP_KELVIN]),
                 )
                 packet = build_color_temp(kelvin, self.coordinator.model)
-                self.coordinator.install_static_color(kelvin=kelvin)
-                self.coordinator.mark_segment_state_optimistic(
-                    colours=[kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors),
-                )
-                self._attr_color_mode = ColorMode.COLOR_TEMP
-                self.coordinator._enter_static_mode()
-                await send(packet)
-                if self.coordinator.profile.static_readback_kelvin:
-                    await self._refresh_with_retry(
-                        expected_color_temp_kelvin=kelvin,
-                        retry_command=partial(send, packet),
+                with self._rollback():
+                    self.coordinator.install_static_color(kelvin=kelvin)
+                    self.coordinator.mark_segment_state_optimistic(
+                        colours=[kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors),
                     )
+                    self._attr_color_mode = ColorMode.COLOR_TEMP
+                    self.coordinator._enter_static_mode()
+                    await send(packet)
+                    if self.coordinator.profile.static_readback_kelvin:
+                        await self._refresh_with_retry(
+                            expected_color_temp_kelvin=kelvin,
+                            retry_command=partial(send, packet),
+                        )
             if prepared_effect is not None:
                 await prepared_effect()
         if clear_workspace_on_success:

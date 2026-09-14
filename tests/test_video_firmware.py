@@ -211,6 +211,7 @@ async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, ch
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
     coordinator.subordinate_21_version = "9.08.07"
     coordinator.is_on = True
+    before = coordinator.capture_effect_control_state()
     write = AsyncMock()
     coordinator._client = MagicMock(is_connected=True, write_gatt_char=write)
     monkeypatch.setattr(coordinator, "async_preview_preflight", AsyncMock())
@@ -256,6 +257,7 @@ async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, ch
         write.assert_not_awaited()
         assert not coordinator._expected_state
         assert statuses[-1].phase is PreviewPhase.FAILED
+        assert coordinator.capture_effect_control_state() == before
     finally:
         if coordinator._lock.locked():
             coordinator._lock.release()
@@ -505,7 +507,7 @@ async def test_mode_applicability_rechecked_before_each_write(hass, monkeypatch,
             compiled = compile_video_profile(LibraryItem.new("Complete mode", content), "H6199")
             await async_apply_compiled_profile(coordinator, compiled)
         else:
-            await apply_active_video_mode(coordinator)
+            await apply_active_video_mode(coordinator, mode="movie", requested_values={"saturation": 50})
     assert len(writes) == int(change_at in {"power", "retry", "verify"})
 
 
@@ -613,10 +615,12 @@ async def test_preserved_mode_fields_do_not_request_unavailable_controls(hass, m
     writer = AsyncMock()
     refresh = AsyncMock(return_value=True)
     monkeypatch.setattr(coordinator, "refresh_state", refresh)
-    assert await apply_active_video_mode(coordinator, writer=writer, requested_fields=frozenset({"full_screen"}))
+    assert await apply_active_video_mode(
+        coordinator, mode="movie", requested_values={"full_screen": True}, writer=writer
+    )
     writer.assert_awaited_once()
     assert coordinator.video_saturation == 31
-    assert refresh.await_args.kwargs["expected_video_saturation"] is None
+    assert "expected_video_saturation" not in refresh.await_args.kwargs
 
 
 async def test_retained_native_field_changed_during_transform_is_guarded(hass, monkeypatch):
@@ -641,7 +645,7 @@ async def test_retained_native_field_changed_during_transform_is_guarded(hass, m
         coordinator, "_ensure_connected", AsyncMock(return_value=MagicMock(is_connected=True, write_gatt_char=physical))
     )
     with pytest.raises(ValueError, match="Retained video settings changed"):
-        await apply_active_video_mode(coordinator, verify=False, requested_fields=frozenset({"full_screen"}))
+        await apply_active_video_mode(coordinator, mode="movie", requested_values={"full_screen": True}, verify=False)
     physical.assert_not_awaited()
 
 
@@ -700,6 +704,7 @@ async def test_whole_profile_guard_rejects_before_first_physical_write(hass, mon
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
     coordinator.is_on = on
     coordinator.subordinate_21_version = "9.08.07"
+    before = coordinator.capture_effect_control_state()
 
     def transform(packet):
         coordinator.subordinate_21_version = "9.08.06"
@@ -717,6 +722,7 @@ async def test_whole_profile_guard_rejects_before_first_physical_write(hass, mon
         )
     physical.assert_not_awaited()
     assert not coordinator._expected_state
+    assert coordinator.capture_effect_control_state() == before
 
 
 @pytest.mark.parametrize("setting", ["white_balance", "relative_brightness", "blank_screen"])
@@ -747,10 +753,13 @@ async def test_rejected_register_does_not_arm_expectations(hass, monkeypatch, se
     monkeypatch.setattr(
         coordinator, "_ensure_connected", AsyncMock(return_value=MagicMock(is_connected=True, write_gatt_char=physical))
     )
+    before = coordinator.capture_effect_control_state()
+    requested = {"white_balance": (25, 6), "relative_brightness": (70, 70, 70, 70), "blank_screen": False}[setting]
     with pytest.raises(ValueError, match="unsupported"):
-        await getattr(controls, f"apply_{setting}")(coordinator)
+        await getattr(controls, f"apply_{setting}")(coordinator, requested)
     physical.assert_not_awaited()
     assert not coordinator._expected_state
+    assert coordinator.capture_effect_control_state() == before
     body = {
         "white_balance": "aaa90006011003011003",
         "relative_brightness": "aaae0104141414140000",
@@ -905,7 +914,8 @@ async def test_supported_omitted_setting_never_overwrites_new_notification(hass,
 
 
 @pytest.mark.parametrize("attempted", [False, True])
-async def test_public_deployment_recovers_only_after_control_attempt(hass, monkeypatch, attempted):
+@pytest.mark.parametrize("saved", [False, True])
+async def test_public_deployment_recovers_only_after_control_attempt(hass, monkeypatch, attempted, saved):
     from bleak import BleakError
 
     from custom_components.ha_govee_led_ble.transport import xor_checksum
@@ -914,10 +924,18 @@ async def test_public_deployment_recovers_only_after_control_attempt(hass, monke
     coordinator.subordinate_21_version = "9.08.07"
     controls = []
     queries = []
+    published = []
+    unsubscribe = coordinator.async_add_listener(
+        lambda: published.append((coordinator.active_mode, coordinator.video_mode, coordinator.video_saturation))
+    )
+    original_saturation = coordinator.video_saturation
 
     def transform(packet):
         if packet[0] == 0x33 and not attempted:
-            coordinator.subordinate_21_version = "9.08.06"
+            frame = bytearray(b"\xaa\x219.08.06")
+            frame.extend(bytes(19 - len(frame)))
+            frame.append(xor_checksum(frame))
+            coordinator._notify_callback(None, frame)
         return packet
 
     coordinator.profile = replace(
@@ -952,13 +970,16 @@ async def test_public_deployment_recovers_only_after_control_attempt(hass, monke
     await repository.async_load()
     item = LibraryItem.new("Guarded", VideoProfile("H6199", "movie", True, 50, False, 50, 17, None, None))
     with pytest.raises(BleakError if attempted else ValueError):
-        await EffectDeploymentEngine(repository).async_apply_snapshot(
+        engine = EffectDeploymentEngine(repository)
+        apply = engine.async_apply_saved if saved else engine.async_apply_snapshot
+        await apply(
             coordinator,
             item,
             config_entry_id="entry-a",
             updated_at="2026-09-14T00:00:00Z",
         )
     record = repository.snapshot().records[0]
+    unsubscribe()
     assert queries
     assert record.prior_state is not None and record.prior_state.mode == "colour"
     if attempted:
@@ -969,3 +990,136 @@ async def test_public_deployment_recovers_only_after_control_attempt(hass, monke
         restore.assert_not_awaited()
         assert not controls and coordinator.control_write_attempts == 0
         assert record.phase is DeploymentPhase.FAILED
+        assert published and all(state == ("colour", "off", original_saturation) for state in published)
+        assert coordinator.active_mode == "colour"
+        assert coordinator.video_mode == "off"
+        assert coordinator.video_saturation == original_saturation
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("change_at", ["connect", "transform", "retry", "verify", "preview", "unchanged"])
+async def test_blank_screen_never_replays_superseded_policy(hass, monkeypatch, enabled, change_at):
+    from bleak import BleakError
+
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_blank_screen
+    from custom_components.ha_govee_led_ble.native_profile_controls import apply_blank_screen
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator._notify_callback(None, reply(build_blank_screen(not enabled, "H6199", 2, 10, 120)))
+
+    def observe_policy():
+        coordinator._notify_callback(None, reply(build_blank_screen(not enabled, "H6199", 1, 20, 240)))
+
+    def transform(packet):
+        if change_at in {"transform", "preview"}:
+            observe_policy()
+        return packet
+
+    coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
+    writes = []
+
+    async def transmit(_uuid, packet, **kwargs):
+        writes.append(packet)
+        if change_at == "retry":
+            # Conflicting enable is protected, but the policy still updates.
+            observe_policy()
+            raise BleakError("retry")
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
+    coordinator._client = client
+
+    async def connect():
+        if change_at == "connect":
+            observe_policy()
+        return client
+
+    async def verify(**kwargs):
+        assert kwargs == {"expected_blank_screen": enabled}
+        if change_at == "verify":
+            observe_policy()
+            return False
+        coordinator._notify_callback(None, reply(build_blank_screen(enabled, "H6199", 2, 10, 120)))
+        return coordinator.blank_screen == enabled
+
+    async def preview(packet, *, write_guard=None, state_values=None, expected_values=None):
+        await coordinator.async_preview_write(
+            packet, before_write=write_guard, state_values=state_values, expected_values=expected_values
+        )
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", connect)
+    monkeypatch.setattr(coordinator, "_disconnect_locked", AsyncMock())
+    monkeypatch.setattr(coordinator, "refresh_state", verify)
+    if change_at == "unchanged":
+        assert await apply_blank_screen(coordinator, enabled)
+        assert writes == [build_blank_screen(enabled, "H6199", 2, 10, 120)]
+    else:
+        with pytest.raises(ValueError, match="Blank-screen policy changed"):
+            await apply_blank_screen(
+                coordinator, enabled, writer=preview if change_at == "preview" else None, verify=change_at != "preview"
+            )
+        assert len(writes) == int(change_at in {"retry", "verify"})
+        assert (
+            coordinator.blank_screen_detection,
+            coordinator.blank_screen_low_brightness_duration_seconds,
+            coordinator.blank_screen_same_tone_duration_seconds,
+        ) == (1, 20, 240)
+        if not writes:
+            assert coordinator.blank_screen == (not enabled)
+            assert not coordinator._expected_state
+    assert coordinator.control_write_attempts == len(writes)
+
+
+async def test_video_retry_keeps_request_and_does_not_install_rejected_companion(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_video_mode
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator.is_on = True
+    coordinator.subordinate_21_version = "9.08.07"
+    original_white = coordinator.white_balance
+    writes = []
+    published = []
+    monkeypatch.setattr(
+        coordinator,
+        "async_set_updated_data",
+        lambda _: published.append((coordinator.video_mode, coordinator.white_balance)),
+    )
+
+    def transform(packet):
+        if len(writes) == 2:
+            coordinator.subordinate_21_version = "9.08.06"
+            coordinator.async_set_updated_data({})
+        return packet
+
+    coordinator.profile = replace(
+        coordinator.profile,
+        outbound_transform=transform,
+        video_firmware_conditions=(VideoFirmwareCondition("white_balance", "subordinate_21_version", "9.08.07"),),
+    )
+
+    async def transmit(_uuid, packet, **kwargs):
+        writes.append(packet)
+        assert coordinator.video_mode == "movie"
+        assert coordinator.white_balance == original_white
+        if len(writes) == 1:
+            coordinator._expected_state.clear()
+            coordinator._notify_callback(None, reply(build_video_mode("game", True, 25, False, 50, "H6199")))
+
+    async def verify(**kwargs):
+        assert kwargs["expected_video_mode"] == "movie"
+        assert kwargs["expected_video_saturation"] == 50
+        return len(writes) == 2
+
+    monkeypatch.setattr(coordinator, "refresh_state", verify)
+    monkeypatch.setattr(
+        coordinator, "_ensure_connected", AsyncMock(return_value=MagicMock(is_connected=True, write_gatt_char=transmit))
+    )
+    content = VideoProfile("H6199", "movie", True, 50, False, 50, 17, None, None)
+    with pytest.raises(ValueError, match="white_balance is unsupported"):
+        await async_apply_compiled_profile(
+            coordinator, compile_video_profile(LibraryItem.new("Retry", content), "H6199")
+        )
+    assert writes == [build_video_mode("movie", True, 50, False, 50, "H6199")] * 2
+    assert published and all(white == original_white for _, white in published)
+    assert coordinator.white_balance == original_white
+    assert coordinator.control_write_attempts == 2
+    assert not any(field.startswith("white_balance") for field in coordinator._expected_state)

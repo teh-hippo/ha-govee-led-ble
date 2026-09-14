@@ -448,6 +448,7 @@ def test_install_music_profile_state_updates_only_the_selected_modes_parameters(
 
 
 async def test_restore_effect_control_state_reapplies_complete_video_profile(h6199):
+    initial = h6199.capture_effect_control_state()
     state = PriorControlState(
         mode="video",
         is_on=True,
@@ -482,27 +483,74 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
         )
 
     assert recovered is True
-    white_balance.assert_awaited_once_with(h6199)
-    relative_brightness.assert_awaited_once_with(h6199)
-    blank_screen.assert_awaited_once_with(h6199)
+    white_balance.assert_awaited_once_with(h6199, (21, 5))
+    relative_brightness.assert_awaited_once_with(h6199, (20, 30, 40, 50))
+    blank_screen.assert_awaited_once_with(h6199, True)
     video_mode.assert_awaited_once_with(
-        h6199, requested_fields=frozenset({"full_screen", "saturation", "sound_effects", "sound_effects_softness"})
+        h6199,
+        mode="game",
+        requested_values={"full_screen": False, "saturation": 63, "sound_effects": True, "sound_effects_softness": 27},
     )
+    assert h6199.capture_effect_control_state() == initial
+
+
+@pytest.mark.parametrize(
+    ("enabled", "policy", "change_during_restore"),
+    [
+        pytest.param(False, (1, 30, 240), False, id="restore-enable-with-live-policy"),
+        pytest.param(True, (1, 30, 240), False, id="policy-only-no-blank-write"),
+        pytest.param(False, (None, 30, 240), False, id="unknown-detection"),
+        pytest.param(False, (1, None, 240), False, id="unknown-low-duration"),
+        pytest.param(False, (1, 30, None), False, id="unknown-same-duration"),
+        pytest.param(False, (1, 30, 240), True, id="policy-changes-at-physical-boundary"),
+    ],
+)
+async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, policy, change_during_restore):
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 1, 2, 10, 0, 120, 0])))
+    state = h6199.capture_effect_control_state()
+    h6199.blank_screen = enabled
+    (
+        h6199.blank_screen_detection,
+        h6199.blank_screen_low_brightness_duration_seconds,
+        h6199.blank_screen_same_tone_duration_seconds,
+    ) = policy
+    client = _c(write_gatt_char=AsyncMock())
+
+    async def connect():
+        if not client.write_gatt_char.await_count:
+            assert h6199.blank_screen is enabled
+            assert "blank_screen" not in h6199._expected_state
+        if change_during_restore:
+            h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 0, 60, 0, 44, 1])))
+        return client
+
+    with (
+        patch.object(h6199, "_ensure_connected", new=AsyncMock(side_effect=connect)),
+        patch.object(h6199, "refresh_state", new=AsyncMock(return_value=True)) as refresh,
+    ):
+        if None in policy or change_during_restore:
+            message = "policy changed before write" if change_during_restore else "policy state has not been read"
+            with pytest.raises(ValueError, match=message):
+                await h6199.async_restore_effect_control_state(state, overwritten_diy_code=None)
+            client.write_gatt_char.assert_not_awaited()
+            refresh.assert_not_awaited()
+            assert h6199.blank_screen is enabled
+            assert "blank_screen" not in h6199._expected_state
+        else:
+            assert await h6199.async_restore_effect_control_state(state, overwritten_diy_code=None)
+            packets = ([] if enabled else [build_blank_screen(True, "H6199", *policy)]) + [build_power(False, "H6199")]
+            assert client.write_gatt_char.await_args_list == [
+                call(WRITE_UUID, packet, response=False) for packet in packets
+            ]
+            assert refresh.await_args_list == ([] if enabled else [call(expected_blank_screen=True)]) + [
+                call(expected_on=False)
+            ]
+            assert h6199.blank_screen is True
     assert (
-        h6199.video_mode,
-        h6199.video_full_screen,
-        h6199.video_saturation,
-        h6199.video_sound_effects,
-        h6199.video_sound_effects_softness,
-    ) == ("game", False, 63, True, 27)
-    assert (h6199.white_balance_red, h6199.white_balance_blue) == (21, 5)
-    assert (
-        h6199.relative_brightness_left,
-        h6199.relative_brightness_top,
-        h6199.relative_brightness_right,
-        h6199.relative_brightness_bottom,
-    ) == (20, 30, 40, 50)
-    assert h6199.blank_screen is True
+        h6199.blank_screen_detection,
+        h6199.blank_screen_low_brightness_duration_seconds,
+        h6199.blank_screen_same_tone_duration_seconds,
+    ) == ((0, 60, 300) if change_during_restore else policy)
 
 
 async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):

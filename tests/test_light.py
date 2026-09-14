@@ -76,6 +76,7 @@ from custom_components.ha_govee_led_ble.music_commands import prepare_music_requ
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENE_ENTRIES, SCENES
+from custom_components.ha_govee_led_ble.transport import xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -302,6 +303,101 @@ async def test_power_rollback(light, mock_coordinator):
         await light.async_turn_off()
     assert turn_off.value.translation_key == "device_command_failed"
     assert mock_coordinator.is_on is True
+
+
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("reply", ["partial", "rgb", "matching_kelvin"])
+async def test_failed_power_off_preserves_segment_colour_observation(hass, model, reply):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    coord.is_on = True
+    coord._notify_callback(None, bytearray.fromhex("aa051501000000000000000000000000000000bb"))
+    old_rgb = kelvin_to_rgb(4200)
+    coord.install_static_color(rgb=old_rgb, kelvin=4200, source="restored")
+    coord.mark_segment_state_restored([old_rgb] * 15, [100] * 15)
+    revisions = dict(coord._field_revisions)
+    entity = GoveeBLELight(coord)
+    rgb = old_rgb if reply == "matching_kelvin" else (10, 20, 30)
+    size = coord.profile.segment_group_size
+
+    async def send(packet):
+        assert packet == build_power(False, model)
+        groups = 1 if reply == "partial" else coord.profile.segment_group_count
+        for group in range(1, groups + 1):
+            count = min(size, 15 - (group - 1) * size)
+            payload = bytes((0xAA, 0xA5, group, *([50, *rgb] * count))).ljust(19, b"\x00")
+            coord._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
+        raise BleakError("failed power-off after segment notification")
+
+    coord.send_command = AsyncMock(side_effect=send)
+    with pytest.raises(HomeAssistantError):
+        await entity.async_turn_off()
+
+    assert coord.is_on is True
+    assert coord.color_mode is ParsedMode.COLOUR
+    assert coord._field_revisions["color_mode"] == revisions["color_mode"]
+    assert coord._field_revisions.get("color_temp_kelvin", 0) == revisions.get("color_temp_kelvin", 0)
+    assert coord.rgb_color == (old_rgb if reply == "partial" else rgb)
+    assert coord.rgb_color_source == ("restored" if reply == "partial" else "segment")
+    assert coord.color_temp_kelvin == (None if reply == "rgb" else 4200)
+    assert coord.color_temp_kelvin_source == ("initial" if reply == "rgb" else "restored")
+    assert entity.color_mode is (ColorMode.RGB if reply == "rgb" else ColorMode.COLOR_TEMP)
+    assert coord.segment_colors == [old_rgb if reply == "partial" else rgb] * 15
+    assert coord.segment_brightness == [100 if reply == "partial" else 50] * 15
+    assert coord.segment_state_source == ("restored" if reply == "partial" else "observed")
+    assert coord._field_revisions.get("rgb_color", 0) == (0 if reply == "partial" else 1)
+    if reply == "partial":
+        assert coord._segment_groups_observed == {1}
+        assert coord._segment_query_colors is not None
+        assert coord._segment_query_colors[:size] == [rgb] * size
+
+
+@pytest.mark.parametrize(
+    "colour_request", [{"rgb_color": (200, 100, 50)}, {"color_temp_kelvin": 5000}, {"effect": "off"}]
+)
+@pytest.mark.parametrize("mode_reply", [False, True])
+@pytest.mark.parametrize("observed_kelvin", [None, 4200])
+async def test_failed_colour_after_brightness_preserves_latest_observation(
+    hass, colour_request, mode_reply, observed_kelvin
+):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    coord.is_on = True
+    static_reply = bytearray.fromhex("aa051501000000000000000000000000000000bb")
+    coord._notify_callback(None, static_reply)
+    entity = GoveeBLELight(coord)
+    entity.async_get_last_state = AsyncMock(
+        return_value=SimpleNamespace(attributes={"color_mode": ColorMode.COLOR_TEMP, "color_temp_kelvin": 4200})
+    )
+    await entity._async_restore_static_color()
+    rgb = kelvin_to_rgb(4200) if observed_kelvin else (10, 20, 30)
+
+    async def refresh(**kwargs):
+        assert kwargs["expected_brightness"] == 39
+        if mode_reply:
+            coord._notify_callback(None, static_reply)
+        for group in range(1, 6):
+            payload = bytes((0xAA, 0xA5, group, *([50, *rgb] * 3))).ljust(19, b"\x00")
+            coord._notify_callback(None, bytearray(payload + bytes((xor_checksum(payload),))))
+        return True
+
+    coord.refresh_state = AsyncMock(side_effect=refresh)
+    coord.send_command = AsyncMock(side_effect=[None, BleakError("failed colour after brightness readback")])
+    with pytest.raises(HomeAssistantError):
+        await entity.async_turn_on(brightness=100, **colour_request)
+
+    assert coord.send_command.await_count == 2
+    coord.refresh_state.assert_awaited_once()
+    assert coord.rgb_color == rgb and coord.rgb_color_source == "segment"
+    assert coord.color_temp_kelvin == observed_kelvin
+    assert coord.color_temp_kelvin_source == ("restored" if observed_kelvin else "initial")
+    assert coord.segment_colors == [rgb] * 15 and coord.segment_brightness == [50] * 15
+    assert coord.segment_state_source == "observed"
+    assert coord.segment_state_observed_at is not None
+    assert coord.color_mode is ParsedMode.COLOUR
+    assert coord.effect is None and coord.music_mode == coord.video_mode == "off"
+    assert entity.color_mode is (ColorMode.COLOR_TEMP if observed_kelvin else ColorMode.RGB)
+    assert coord._field_revisions["color_mode"] == (2 if mode_reply else 1)
+    assert coord._field_revisions["rgb_color"] == 1
+    assert coord._field_revisions.get("color_temp_kelvin", 0) == 0
 
 
 def test_effect_lists(h6199_light, light, mock_coordinator, mock_h6199_coordinator):

@@ -273,11 +273,23 @@ class _PreviewWriter:
             await self._manager._async_begin_transmission(self._request)
             self.started = True
 
-    async def __call__(self, packet: bytes, *, write_guard: Callable[[], None] | None = None) -> None:
+    async def __call__(
+        self,
+        packet: bytes,
+        *,
+        write_guard: Callable[[], None] | None = None,
+        state_values: Mapping[str, Any] | None = None,
+        expected_values: Mapping[str, Any] | None = None,
+    ) -> None:
         await self.begin()
         if self._manager._stopping or self._manager._hass.is_stopping:
             raise PreviewShutdownError("Home Assistant is stopping")
-        if isinstance(self._request.compiled, CompiledVideoProfile) or write_guard is not None:
+        if (
+            isinstance(self._request.compiled, CompiledVideoProfile)
+            or write_guard is not None
+            or state_values is not None
+            or expected_values is not None
+        ):
 
             def check() -> None:
                 if isinstance(self._request.compiled, CompiledVideoProfile):
@@ -288,6 +300,8 @@ class _PreviewWriter:
             await self._coordinator.async_preview_write(
                 packet,
                 before_write=check,
+                state_values=state_values,
+                expected_values=expected_values,
             )
         else:
             await self._coordinator.async_preview_write(packet)

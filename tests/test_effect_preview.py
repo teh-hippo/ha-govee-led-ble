@@ -23,7 +23,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     WORKSHOP_PROTOCOL_FIXTURES,
     resolve_catalogue_template,
 )
-from custom_components.ha_govee_led_ble.effect_compiler import CompiledEffect, compile_application
+from custom_components.ha_govee_led_ble.effect_compiler import CompiledEffect, CompiledVideoProfile, compile_application
 from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
@@ -55,7 +55,13 @@ from custom_components.ha_govee_led_ble.effect_preview import (
 from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_blank_screen,
+    build_h6199_video,
+    build_power,
+    build_relative_brightness,
+    build_white_balance,
+)
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
@@ -1156,8 +1162,9 @@ async def test_snapshot_profile_previews_use_preview_transport(
     coordinator.blank_screen_detection = 2
     coordinator.blank_screen_low_brightness_duration_seconds = 10
     coordinator.blank_screen_same_tone_duration_seconds = 120
+    coordinator._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator.async_preview_preflight = AsyncMock()  # type: ignore[method-assign]
-    coordinator.async_preview_write = AsyncMock()  # type: ignore[method-assign]
+    coordinator.async_preview_write = AsyncMock(wraps=coordinator.async_preview_write)  # type: ignore[method-assign]
     coordinator.async_observe_effect = AsyncMock(return_value=True)  # type: ignore[method-assign]
     coordinator.send_command = AsyncMock(side_effect=AssertionError("preview must use preview transport"))  # type: ignore[method-assign]
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
@@ -1176,6 +1183,48 @@ async def test_snapshot_profile_previews_use_preview_transport(
 
     coordinator.async_preview_write.assert_awaited()
     coordinator.send_command.assert_not_awaited()
+    if model == "H6199":
+        compiled = compile_application(item, model)
+        assert isinstance(compiled, CompiledVideoProfile)
+        assert compiled.white_balance_wire is not None
+        calls = coordinator.async_preview_write.await_args_list
+        assert [entry.args[0] for entry in calls] == [
+            build_power(True, model),
+            build_h6199_video(True, False, 70, True, 40),
+            build_white_balance(compiled.white_balance_wire[0], compiled.white_balance_wire[1], model),
+            build_relative_brightness(80, 60, 55, 45, model),
+            build_blank_screen(False, model, 2, 10, 120),
+        ]
+        assert [entry.kwargs["state_values"] for entry in calls] == [
+            {"is_on": True},
+            {
+                "video_mode": "movie",
+                "video_full_screen": True,
+                "video_saturation": 70,
+                "video_sound_effects": True,
+                "video_sound_effects_softness": 40,
+                "effect": None,
+                "music_mode": "off",
+                "diy_code": None,
+            },
+            dict(zip(("white_balance_red", "white_balance_blue"), compiled.white_balance_wire, strict=True)),
+            {
+                "relative_brightness": None,
+                "relative_brightness_left": 80,
+                "relative_brightness_top": 60,
+                "relative_brightness_right": 55,
+                "relative_brightness_bottom": 45,
+            },
+            {"blank_screen": False},
+        ]
+        for entry in calls:
+            assert callable(entry.kwargs["before_write"])
+            assert entry.kwargs["expected_values"] is None
+            for field, value in entry.kwargs["state_values"].items():
+                assert getattr(coordinator, field) == value
+        assert [entry.args[1] for entry in coordinator._client.write_gatt_char.await_args_list] == [
+            entry.args[0] for entry in calls
+        ]
     await manager.async_shutdown()
 
 

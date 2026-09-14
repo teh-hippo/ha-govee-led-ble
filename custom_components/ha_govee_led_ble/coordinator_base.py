@@ -1,6 +1,6 @@
 """Shared typed base for the coordinator and its write mixins."""
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -70,6 +70,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             *,
             intent: ControlIntent,
             before_write: Callable[[], Awaitable[None]] | None = None,
+            write_guard: Callable[[], None] | None = None,
+            state_values: Mapping[str, Any] | None = None,
+            expected_values: Mapping[str, Any] | None = None,
             attempt_started: Callable[[int], Awaitable[None]] | None = None,
             progress: Callable[[int], Awaitable[None]] | None = None,
         ) -> None: ...

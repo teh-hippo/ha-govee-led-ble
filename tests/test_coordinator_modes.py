@@ -1,5 +1,5 @@
 from dataclasses import replace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble.light_services import apply_active_video
 from custom_components.ha_govee_led_ble.music_commands import build_music_params
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 
 _CONFIGURATION_URL = "homeassistant://ha-govee-led-ble/editor/test-entry"
 
@@ -237,23 +238,25 @@ async def test_fresh_off_falls_back_to_white_rgb(coord):
 
 async def test_apply_active_video_mode_noop_when_video_off(coord):
     coord.is_on, coord.video_mode = True, "off"
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
-        assert await apply_active_video_mode(coord) is False
-    assert _sent(sc) == []
+    with patch.object(coord, "async_write_effect_sequence", new_callable=AsyncMock) as write:
+        assert await apply_active_video_mode(coord, mode="off", requested_values={}) is False
+    write.assert_not_awaited()
 
 
 async def test_apply_active_video_mode_requires_readback(h6199):
-    h6199.is_on, h6199.video_mode = True, "game"
-    h6199.video_full_screen = False
-    h6199.video_saturation = 63
-    h6199.video_sound_effects = True
-    h6199.video_sound_effects_softness = 27
+    h6199.is_on = True
+    values = {"full_screen": False, "saturation": 63, "sound_effects": True, "sound_effects_softness": 27}
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     with (
-        patch.object(h6199, "send_command", new_callable=AsyncMock) as sc,
+        patch.object(h6199, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
-        assert await apply_active_video_mode(h6199) is True
-    assert _sent(sc) == [build_h6199_video(False, True, 63, True, 27)]
+        assert await apply_active_video_mode(h6199, mode="game", requested_values=values) is True
+    client.write_gatt_char.assert_awaited_once_with(
+        WRITE_UUID, build_h6199_video(False, True, 63, True, 27), response=False
+    )
+    assert h6199.video_mode == "game"
+    assert {field: getattr(h6199, f"video_{field}") for field in values} == values
     refresh.assert_awaited_once_with(
         expected_on=True,
         expected_video_mode="game",
@@ -266,16 +269,18 @@ async def test_apply_active_video_mode_requires_readback(h6199):
 
 async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
     h6199.is_on, h6199.video_mode = False, "movie"
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     with (
-        patch.object(h6199, "send_command", new_callable=AsyncMock) as send,
+        patch.object(h6199, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(h6199, "refresh_state", new_callable=AsyncMock, return_value=False) as refresh,
         pytest.raises(RuntimeError, match="Video-mode write was not confirmed"),
     ):
-        await apply_active_video_mode(h6199)
+        await apply_active_video_mode(h6199, mode="movie", requested_values={})
 
-    assert _sent(send) == [
+    assert [entry.args[1] for entry in client.write_gatt_char.await_args_list] == [
         build_power(True, "H6199"),
         build_h6199_video(True, False, 100, False, 100),
         build_h6199_video(True, False, 100, False, 100),
     ]
-    assert refresh.await_count == 2
+    assert h6199.is_on is True
+    assert refresh.await_args_list == [call(expected_on=True, expected_video_mode="movie")] * 2

@@ -6,13 +6,14 @@ import asyncio
 from dataclasses import replace
 from hashlib import sha256
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import ANY, AsyncMock, MagicMock, call
 from uuid import uuid4
 
 import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
+from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -59,6 +60,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h6199_video, build_power
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -886,6 +888,130 @@ async def test_cancelled_partial_upload_is_not_resumed(
     assert interrupted.error_code == "operation_cancelled"
     assert interrupted.progress_current == 1
     assert coordinator.send_command.await_count == 2
+
+
+@pytest.mark.parametrize("attempted", [False, True], ids=["before-first-control", "after-one-attempt"])
+async def test_video_deployment_cancellation_recovers_only_after_physical_attempt(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    attempted: bool,
+) -> None:
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+        build_relative_brightness,
+        build_white_balance,
+    )
+    from custom_components.ha_govee_led_ble.transport import xor_checksum
+    from tests.test_video_semantics import alternate, reply
+
+    alternate(monkeypatch)
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    engine = EffectDeploymentEngine(repository)
+    operation_id = uuid4()
+    reached = asyncio.Event()
+    controls: list[bytes] = []
+    published: list[PriorControlState] = []
+    unsubscribe = coordinator.async_add_listener(lambda: published.append(coordinator.capture_effect_control_state()))
+    prior_brightness = (11, 22, 33, 44, 55, 66)
+
+    async def transmit(_uuid, packet, **kwargs):
+        if packet[0] == 0x33:
+            controls.append(packet)
+            reached.set()
+            await asyncio.Event().wait()
+        elif packet[1] == 0xA9:
+            coordinator._notify_callback(None, reply(build_white_balance(90, None, "H7000")))
+        elif packet[1] == 0xAE:
+            coordinator._notify_callback(None, reply(build_relative_brightness(11, 22, 33, 44, "H7000", 55, 66)))
+        else:
+            body = bytes.fromhex("aa0101" if packet[1] == 1 else "aa05000100640064")
+            frame = bytearray(body + bytes(19 - len(body)))
+            frame.append(xor_checksum(frame))
+            coordinator._notify_callback(None, frame)
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
+    coordinator._client = client
+
+    async def connect():
+        record = repository.get_optional(operation_id)
+        if record is not None and record.prior_state is not None:
+            # Prior reads must finish before cancellation can exercise the control boundary.
+            published.clear()
+            if not attempted:
+                reached.set()
+                await asyncio.Event().wait()
+        return client
+
+    monkeypatch.setattr(coordinator, "_ensure_connected", connect)
+    restore = AsyncMock(return_value=False)
+    monkeypatch.setattr(coordinator, "async_restore_effect_control_state", restore)
+    content = VideoProfile(
+        "H7000",
+        "movie",
+        None,
+        None,
+        None,
+        None,
+        None,
+        RelativeBrightness(10, 20, 30, 40, 50, 60),
+        None,
+        white_balance_value=2,
+    )
+    task = asyncio.create_task(
+        engine.async_apply_snapshot(
+            coordinator,
+            LibraryItem.new("Cancelled video", content),
+            config_entry_id="entry-a",
+            updated_at="2026-09-14T00:00:00Z",
+            operation_id=operation_id,
+        )
+    )
+    try:
+        await asyncio.wait_for(reached.wait(), timeout=5)
+        record = repository.get(operation_id)
+        assert record.phase is DeploymentPhase.UPLOADING
+        assert record.prior_state is not None
+        assert record.prior_state.white_balance_scalar == 90
+        assert record.prior_state.relative_brightness_strip_right == 66
+        assert coordinator._control_lock.locked() and coordinator._lock.locked()
+        published.append(coordinator.capture_effect_control_state())
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+
+        interrupted = repository.get(operation_id)
+        assert interrupted.error_code == "operation_cancelled"
+        assert interrupted.prior_state == record.prior_state
+        assert coordinator.control_write_attempts == len(controls) == int(attempted)
+        assert controls == ([build_h6199_video(True, False, 100, False, 100)] if attempted else [])
+        assert restore.await_count == int(attempted)
+        if attempted:
+            restore.assert_awaited_once_with(record.prior_state, overwritten_diy_code=None)
+            assert interrupted.phase is DeploymentPhase.UNCERTAIN
+        else:
+            assert interrupted.phase is DeploymentPhase.FAILED
+            before = replace(record.prior_state, video_restore_controls=None)
+            assert coordinator.capture_effect_control_state() == before
+            assert all(state == before for state in published)
+            assert not coordinator._expected_state
+        published.append(coordinator.capture_effect_control_state())
+        assert all(state.white_balance_scalar == 90 for state in published)
+        assert all(
+            tuple(getattr(state, f"relative_brightness_{zone}") for zone in coordinator.profile.video_brightness_zones)
+            == prior_brightness
+            for state in published
+        )
+        assert not any(
+            field.startswith(("white_balance", "relative_brightness")) for field in coordinator._expected_state
+        )
+        assert not coordinator._control_lock.locked()
+        assert not coordinator._lock.locked()
+        assert not engine._operation_locks and not engine._operation_lock_users
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        unsubscribe()
 
 
 async def test_same_operation_id_does_not_repeat_uncertain_upload(
@@ -1866,23 +1992,17 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H6199")
-    events: list[str] = []
-    monkeypatch.setattr(
-        "custom_components.ha_govee_led_ble.effect_runtime.apply_active_video_mode",
-        AsyncMock(side_effect=lambda _coordinator: events.append("video")),
-    )
-    monkeypatch.setattr(
-        "custom_components.ha_govee_led_ble.effect_runtime.apply_white_balance",
-        AsyncMock(side_effect=lambda _coordinator: events.append("white_balance")),
-    )
-    monkeypatch.setattr(
-        "custom_components.ha_govee_led_ble.effect_runtime.apply_relative_brightness",
-        AsyncMock(side_effect=lambda _coordinator: events.append("relative_brightness")),
-    )
-    monkeypatch.setattr(
-        "custom_components.ha_govee_led_ble.effect_runtime.apply_blank_screen",
-        AsyncMock(side_effect=lambda _coordinator: events.append("blank_screen")),
-    )
+    initial = {
+        field: value
+        for field, value in vars(coordinator).items()
+        if field.startswith(("video_", "white_balance_", "relative_brightness", "blank_screen"))
+    }
+    writers = MagicMock()
+    for name in ("active_video_mode", "white_balance", "relative_brightness", "blank_screen"):
+        writer = AsyncMock(return_value=True)
+        writers.attach_mock(writer, name)
+        monkeypatch.setattr(f"custom_components.ha_govee_led_ble.effect_runtime.apply_{name}", writer)
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
@@ -1891,7 +2011,27 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert events == ["video", "white_balance", "relative_brightness", "blank_screen"]
+    assert writers.mock_calls == [
+        call.active_video_mode(
+            coordinator,
+            mode="movie",
+            requested_values={
+                "full_screen": False,
+                "saturation": 63,
+                "sound_effects": True,
+                "sound_effects_softness": 27,
+            },
+            writer=ANY,
+            verify=True,
+        ),
+        call.white_balance(coordinator, (13, 3), writer=ANY, verify=True),
+        call.relative_brightness(coordinator, (20, 30, 40, 50), writer=ANY, verify=True),
+        call.blank_screen(coordinator, True, writer=ANY, verify=True),
+    ]
+    assert {field: getattr(coordinator, field) for field in initial} == initial
+    coordinator.send_command.assert_not_awaited()
+    expectations, _ = compiled_observation(compile_application(_video_item(), "H6199"))
+    coordinator.async_observe_effect.assert_awaited_once_with(expectations, timeout=4.0)
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.content_kind == "video_profile"
     assert result.diy_code is None
@@ -1918,8 +2058,24 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
     )
     monkeypatch.setitem(MODEL_PROFILES, model, profile)
     repository, cache = await _repositories(hass)
-    coordinator = _profile_coordinator(model)
-    coordinator.profile = profile
+    coordinator = GoveeBLECoordinator(
+        hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="homeassistant://ha-govee-led-ble/editor/entry-a"
+    )
+    coordinator.is_on = True
+    coordinator.video_saturation = 88
+    coordinator.video_sound_effects_softness = 50
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        coordinator,
+        "async_observe_effect",
+        AsyncMock(
+            side_effect=lambda values, *, timeout: all(
+                getattr(coordinator, key) == value for key, value in values.items()
+            )
+        ),
+    )
     apply_white = AsyncMock()
     apply_brightness = AsyncMock()
     apply_blank = AsyncMock()
@@ -1935,18 +2091,12 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    coordinator.send_command.assert_awaited_once_with(build_h6199_video(True, False, 88, False, 50))
-    assert (
-        call(
-            expected_on=True,
-            expected_video_mode="movie",
-            expected_video_full_screen=None,
-            expected_video_saturation=None,
-            expected_video_sound_effects=None,
-            expected_video_sound_effects_softness=None,
-        )
-        in coordinator.refresh_state.await_args_list
+    client.write_gatt_char.assert_awaited_once_with(
+        WRITE_UUID, build_h6199_video(True, False, 88, False, 50), response=False
     )
+    assert coordinator.video_mode == "movie"
+    assert call(expected_on=True, expected_video_mode="movie") in coordinator.refresh_state.await_args_list
+    coordinator.async_observe_effect.assert_awaited_once_with({"is_on": True, "video_mode": "movie"}, timeout=4.0)
     apply_white.assert_not_awaited()
     apply_brightness.assert_not_awaited()
     apply_blank.assert_not_awaited()

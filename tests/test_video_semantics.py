@@ -88,10 +88,15 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
     coordinator.is_on = True
     packets: list[bytes] = []
 
-    async def write(packet: bytes, *, write_guard=None) -> None:
-        if write_guard is not None:
-            write_guard()
+    async def transmit(_uuid, packet: bytes, **kwargs) -> None:
         packets.append(packet)
+
+    coordinator._client = MagicMock(is_connected=True, write_gatt_char=transmit)
+
+    async def write(packet: bytes, *, write_guard=None, state_values=None, expected_values=None) -> None:
+        await coordinator.async_preview_write(
+            packet, before_write=write_guard, state_values=state_values, expected_values=expected_values
+        )
 
     await async_apply_compiled_profile(coordinator, compiled, writer=write, verify=False)
     assert packets[1] == build_white_balance(110, None, "H7000")
