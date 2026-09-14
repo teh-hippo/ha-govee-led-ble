@@ -13,11 +13,13 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H6199_DIY_EFFECTS,
     H6199_PALETTE_DIY_APPLY_CODE,
+    MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import (
     CompatibilityState,
     compatibility,
+    compile_application,
     compile_effect,
     compile_h617a,
     compile_h6199,
@@ -35,6 +37,8 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
+    effect_content_from_dict,
+    effect_content_to_dict,
 )
 from custom_components.ha_govee_led_ble.effect_protocol_decoder import (
     UnsupportedA3EffectError,
@@ -82,6 +86,76 @@ def test_activation_encoder_uses_diy_code_800() -> None:
     parsed = parse_command(expected)
     assert parsed is not None
     assert parsed.body.sub_body.code == 800
+
+
+def test_target_catalogue_limits_do_not_follow_shared_grammar(effect_catalogue_targets, monkeypatch):
+    broad, narrow = effect_catalogue_targets
+    palette = ((255, 0, 0), (0, 0, 255))
+    accepted = SingleEffect(0, 0, 50, palette)
+    item = LibraryItem.new("Accepted", accepted)
+    assert compile_effect(item, broad, diy_code=24).packets == compile_effect(item, narrow, diy_code=24).packets
+    rejected = (
+        replace(accepted, variant=1),
+        replace(accepted, palette=palette[:1]),
+        replace(accepted, palette=(*palette, (0, 255, 0))),
+        replace(accepted, speed=19),
+        replace(accepted, speed=61),
+        MultiEffect((EffectPair(0, 0), EffectPair(0, 0)), 50, palette),
+        MultiEffect((EffectPair(1, 0),), 50, palette),
+        PaintedEffect("clockwise", 50, 61, (None,) * 15),
+        PaintedEffect("clockwise", 19, 50, (None,) * 15),
+    )
+    for content in rejected:
+        item = LibraryItem.new("Rejected", content)
+        assert effect_content_from_dict(effect_content_to_dict(content)) == content
+        assert compatibility(item, broad).state is CompatibilityState.COMPATIBLE
+        assert compatibility(item, narrow).state is CompatibilityState.INCOMPATIBLE
+        for compiler in (compile_effect, compile_application):
+            with pytest.raises(ValueError):
+                compiler(item, narrow, diy_code=24)
+        with pytest.raises(ValueError):
+            compile_h617a(item, 24, model=narrow)
+    # A structurally valid, unknown pair round-trips without granting permission.
+    frames = proto.build_h617a_diy_single(42, 7, 50, palette)
+    decoded = decode_a3_effect(parse_a3_effect_envelope(reassemble_a3(frames), broad), broad)
+    assert decoded == SingleEffect(42, 7, 50, palette)
+    unknown = LibraryItem.new("Unknown", decoded)
+    for model in (broad, narrow, "H617A", "H617E"):
+        with pytest.raises(ValueError, match="family 42 variation 7"):
+            compile_effect(unknown, model, diy_code=24)
+    catalogue = MODEL_EFFECT_CATALOGUES[broad]
+    family = replace(
+        catalogue.effects[0], family=42, variations=(replace(catalogue.effects[0].variations[0], variant=7),)
+    )
+    monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, broad, replace(catalogue, effects=(*catalogue.effects, family)))
+    assert compile_effect(unknown, broad, diy_code=24).upload_packets == tuple(frames)
+    for model in (narrow, "H617A", "H617E"):
+        assert compatibility(unknown, model).state is CompatibilityState.INCOMPATIBLE
+
+
+def test_direct_compilers_cannot_bypass_target_route():
+    with pytest.raises(ValueError):
+        compile_h6199(LibraryItem.new("Single", SINGLE_CONTENT), model="H617A")
+    with pytest.raises(ValueError):
+        compile_h617a(LibraryItem.new("Palette", H6199_CONTENT), 401, model="H6199")
+
+
+def test_palette_diy_uses_target_catalogue_not_global_encoding_roster(monkeypatch):
+    catalogue = MODEL_EFFECT_CATALOGUES["H6199"]
+    content = replace(H6199_CONTENT, family=42, variant=7)
+    frames = proto.build_h6199_palette_diy(content.family, content.variant, content.speed, content.palette)
+    assert decode_a3_effect(parse_a3_effect_envelope(reassemble_a3(frames), "H6199"), "H6199") == content
+    item = LibraryItem.new("Extended", content)
+    with pytest.raises(ValueError, match="family 42 variation 7"):
+        compile_h6199(item)
+    family = replace(
+        catalogue.effects[0], family=42, variations=(replace(catalogue.effects[0].variations[0], variant=7),)
+    )
+    monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H6199", replace(catalogue, effects=(*catalogue.effects, family)))
+    assert compile_h6199(item).upload_packets == tuple(frames)
+    monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H6199", replace(catalogue, palette_max=1))
+    with pytest.raises(ValueError, match="palette"):
+        compile_h6199(LibraryItem.new("Too many colours", H6199_CONTENT))
 
 
 @pytest.mark.parametrize("diy_code", [-1, 0x10000, 1.5])
@@ -245,14 +319,15 @@ def test_compiled_basic_effect_packets_round_trip_to_canonical_content(
     assert decode_a3_effect(parsed, model) == content
 
 
-def test_basic_effect_decoder_rejects_uncatalogued_and_reserved_values() -> None:
+def test_basic_effect_decoder_preserves_uncatalogued_pairs_but_rejects_reserved_values() -> None:
     single = parse_a3_effect_envelope(
         reassemble_a3(compile_h617a(LibraryItem.new("Single", SINGLE_CONTENT), H617A_TYPE04_APPLY_CODE).upload_packets),
         "H617A",
     )
     single.family = 7
-    with pytest.raises(UnsupportedA3EffectError, match="family 7 variation 9 is not catalogued"):
-        decode_a3_effect(single, "H617A")
+    decoded = decode_a3_effect(single, "H617A")
+    assert decoded == replace(SINGLE_CONTENT, family=7)
+    assert compatibility(LibraryItem.new("Unknown", decoded), "H617A").state is CompatibilityState.INCOMPATIBLE
 
     multi = parse_a3_effect_envelope(
         reassemble_a3(compile_h617a(LibraryItem.new("Multi", MULTI_CONTENT), H617A_TYPE04_APPLY_CODE).upload_packets),
@@ -261,14 +336,23 @@ def test_basic_effect_decoder_rejects_uncatalogued_and_reserved_values() -> None
     multi.body.variant = 1
     with pytest.raises(UnsupportedA3EffectError, match="reserved variant"):
         decode_a3_effect(multi, "H617A")
+    multi.body.variant = 0
+    multi.body.pairs[0].family = 4
+    multi.body.pairs[0].variant = 8
+    decoded = decode_a3_effect(multi, "H617A")
+    assert isinstance(decoded, MultiEffect)
+    assert decoded.effects[0] == EffectPair(4, 8)
+    with pytest.raises(ValueError, match="does not support Multi"):
+        compile_h617a(LibraryItem.new("Imported Multi", decoded), 24)
 
     h6199 = parse_a3_effect_envelope(
         reassemble_a3(compile_h6199(LibraryItem.new("Palette DIY", H6199_CONTENT)).upload_packets),
         "H6199",
     )
     h6199.content.variant = 8
-    with pytest.raises(UnsupportedA3EffectError, match="family 9 variation 8 is not catalogued"):
-        decode_a3_effect(h6199, "H6199")
+    decoded = decode_a3_effect(h6199, "H6199")
+    assert decoded == replace(H6199_CONTENT, variant=8)
+    assert compatibility(LibraryItem.new("Unknown", decoded), "H6199").state is CompatibilityState.INCOMPATIBLE
 
 
 @pytest.mark.parametrize("model", ["H617A", "H617E", "H6199"])
@@ -420,7 +504,7 @@ def test_h617e_workshop_preserves_exact_identity_and_h617a_bytes() -> None:
 def test_profile_grammar_selects_basic_canonical_semantics(
     monkeypatch, grammar, content, workflow, default_code, disabled_route
 ) -> None:
-    monkeypatch.setitem(MODEL_PROFILES, "H9999", ModelProfile("Synthetic", effect_grammar=grammar))
+    monkeypatch.setitem(MODEL_PROFILES, "H9999", ModelProfile("Synthetic", effect_grammar=grammar, segment_count=15))
     item = LibraryItem.new("Reference", content)
     compiled = compile_effect(item, grammar, diy_code=800 if grammar == "H617A" else None)
     envelope = reassemble_a3(compiled.upload_packets)
@@ -447,6 +531,9 @@ def test_profile_grammar_selects_basic_canonical_semantics(
     with pytest.raises(ValueError, match="activation route"):
         compile_effect(synthetic, "H9999", diy_code=default_code)
     monkeypatch.setitem(MODEL_PROFILES, "H9999", replace(MODEL_PROFILES["H9999"], command_grammar=grammar))
+    with pytest.raises(ValueError, match="no custom-effect catalogue"):
+        compile_effect(synthetic, "H9999", diy_code=default_code)
+    monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H9999", replace(MODEL_EFFECT_CATALOGUES[grammar], sku="H9999"))
     resolved = resolve_diy_code(synthetic, model="H9999")
     qualified = compile_effect(synthetic, "H9999", diy_code=resolved)
     reference = compile_effect(item, grammar, diy_code=default_code)

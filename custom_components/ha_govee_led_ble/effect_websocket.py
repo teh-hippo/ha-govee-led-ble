@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Any, cast
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from .effect_catalogue import (
     resolve_catalogue_template,
     validate_catalogue_template_identity,
 )
+from .effect_compiler import compile_application, resolve_diy_code
 from .effect_contracts import EditorApiInfo, device_effect_capabilities
 from .effect_deployments import DeploymentSnapshot
 from .effect_domain import (
@@ -399,10 +401,6 @@ async def ws_scene_apply(
         return
     try:
         backend = _backend(hass)
-        await backend.preview.async_supersede_device(
-            entry.entry_id,
-            reason="committed_apply",
-        )
         resolved, speed_index = await async_apply_scene(
             hass,
             entry,
@@ -411,6 +409,7 @@ async def ws_scene_apply(
             speed_index=msg.get("speed_index"),
             user_id=connection.user.id,
             scene_defaults=backend.scene_defaults,
+            before_apply=partial(backend.preview.async_supersede_device, entry.entry_id, reason="committed_apply"),
         )
     except ValueError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))
@@ -1317,19 +1316,19 @@ async def ws_apply(
         connection.send_error(msg["id"], "invalid_format", str(exc))
         return
     try:
-        await backend.preview.async_supersede_device(
-            entry.entry_id,
-            reason="committed_apply",
-        )
-        result = await backend.application.async_apply_saved_effect(
-            backend.engine,
-            entry.runtime_data,
-            item_id=msg["item_id"],
-            config_entry_id=entry.entry_id,
-            updated_at=msg["updated_at"],
-            operation_id=operation_id,
+        async with backend.application.saved_effect_for_apply(
+            msg["item_id"],
+            model=entry.runtime_data.model,
             expected_version=msg["expected_version"],
-        )
+        ) as item:
+            await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
+            result = await backend.engine.async_apply_saved(
+                entry.runtime_data,
+                item,
+                config_entry_id=entry.entry_id,
+                updated_at=msg["updated_at"],
+                operation_id=operation_id,
+            )
     except EffectNotFoundError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
         return
@@ -1375,10 +1374,6 @@ async def ws_apply_snapshot(
     try:
         if "origin_id" in msg and "origin_kind" not in msg:
             raise EffectValidationError("origin ID requires an origin kind")
-        await backend.preview.async_supersede_device(
-            entry.entry_id,
-            reason="committed_apply",
-        )
         item = backend.application.new_authored_item(
             name=msg["name"],
             content=msg["content"],
@@ -1391,12 +1386,17 @@ async def ws_apply_snapshot(
                 else None
             ),
         )
+        operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
+        compile_application(
+            item, entry.runtime_data.model, diy_code=resolve_diy_code(item, model=entry.runtime_data.model)
+        )
+        await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
         result = await backend.engine.async_apply_snapshot(
             entry.runtime_data,
             item,
             config_entry_id=entry.entry_id,
             updated_at=msg["updated_at"],
-            operation_id=(UUID(msg["operation_id"]) if "operation_id" in msg else None),
+            operation_id=operation_id,
         )
     except EffectValidationError as exc:
         connection.send_error(msg["id"], "invalid_format", str(exc))

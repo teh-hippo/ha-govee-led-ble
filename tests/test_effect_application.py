@@ -439,7 +439,7 @@ async def test_hard_delete_waits_for_saved_effect_application() -> None:
         EffectDeploymentEngine,
         SimpleNamespace(async_apply_saved=apply_saved),
     )
-    coordinator = cast(GoveeBLECoordinator, SimpleNamespace())
+    coordinator = cast(GoveeBLECoordinator, SimpleNamespace(model="H617A"))
     apply_task = asyncio.create_task(
         application.async_apply_saved_effect(
             engine,
@@ -483,7 +483,7 @@ async def test_name_based_apply_rejects_a_concurrently_changed_version() -> None
     with pytest.raises(EffectVersionConflictError):
         await application.async_apply_saved_effect(
             AsyncMock(),
-            cast(GoveeBLECoordinator, SimpleNamespace()),
+            cast(GoveeBLECoordinator, SimpleNamespace(model="H617A")),
             item_id=str(created.item.id),
             config_entry_id="entry-a",
             updated_at="2026-08-17T00:00:00Z",

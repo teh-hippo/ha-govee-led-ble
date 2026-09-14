@@ -75,6 +75,10 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "palette_min": 1,
         "palette_max": 8,
         "multi_max": 4,
+        "speed_min": 0,
+        "speed_max": 100,
+        "brightness_min": 0,
+        "brightness_max": 100,
         "music_sensitivity_min": 0,
         "music_sensitivity_max": 99,
     }

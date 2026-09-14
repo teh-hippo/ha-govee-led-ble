@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import get_profile
+from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -24,7 +25,12 @@ from .effect_domain import (
 )
 from .effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
 from .layered_scene_decoder import decode_layered_scene
-from .native_scenes import apply_scene_speed, encode_authored_scene_body, resolve_native_scene_body
+from .native_scenes import (
+    apply_scene_speed,
+    build_native_scene_packets,
+    encode_authored_scene_body,
+    resolve_native_scene_body,
+)
 from .palette_scene_decoder import decode_palette_scene
 from .scenes import (
     MODEL_SCENE_LABELS,
@@ -211,6 +217,7 @@ async def async_apply_scene(
     speed_index: int | None,
     user_id: str,
     scene_defaults: NativeSceneDefaultRepository | None = None,
+    before_apply: Callable[[], Awaitable[None]] | None = None,
 ) -> tuple[ResolvedScene, int | None]:
     del hass, user_id
     coordinator = config_entry.runtime_data
@@ -232,6 +239,12 @@ async def async_apply_scene(
         speed_index=speed_index,
     )
 
+    require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES)
+    build_native_scene_packets(
+        coordinator.model, resolved.entry, speed_index=resolved_speed, canonical_body=canonical_body or None
+    )
+    if before_apply is not None:
+        await before_apply()
     await coordinator.async_apply_native_scene(
         resolved.key,
         scene_entry=resolved.entry,

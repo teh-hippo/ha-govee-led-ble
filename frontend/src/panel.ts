@@ -1425,7 +1425,7 @@ export class GoveeLedEffectStudio extends LitElement {
       return nothing;
     }
     const content = this.content;
-    const variations = this.model.customCatalogue.painted_effects;
+    const variations = this.model.modelCatalogue?.painted_effects ?? [];
     const knownVariation = variations.some(
       (variation) => variation.id === content.effect,
     );
@@ -1718,8 +1718,8 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-slider-control
         .label=${label}
         .value=${value}
-        .minimum=${0}
-        .maximum=${100}
+        .minimum=${this.model.modelCatalogue?.limits[`${key}_min`] ?? 0}
+        .maximum=${this.model.modelCatalogue?.limits[`${key}_max`] ?? 100}
         .disabled=${this.editorDisabled}
         @value-changed=${(event: CustomEvent<SliderControlChange>) =>
           this.editor.updatePaintedContent(

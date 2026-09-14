@@ -5,11 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from .const import get_profile
-from .effect_catalogue import (
-    H617A_PAINTED_EFFECTS,
-    H617A_TYPE04_FAMILIES,
-    H6199_DIY_EFFECTS,
-)
 from .effect_domain import (
     H617A_SEGMENT_COUNT,
     EffectContent,
@@ -85,9 +80,8 @@ def decode_a3_effect(tree: Any, model: str) -> EffectContent:
 
 def _decode_h617a_painted(tree: Any) -> PaintedEffect:
     effect = getattr(tree.effect, "name", None)
-    supported = {entry["id"] for entry in H617A_PAINTED_EFFECTS}
-    if not isinstance(effect, str) or effect not in supported:
-        raise UnsupportedA3EffectError(f"H617A painted effect {int(tree.effect)} is not catalogued")
+    if not isinstance(effect, str):
+        raise UnsupportedA3EffectError(f"H617A painted effect {int(tree.effect)} has no canonical name")
     if _rgb(tree.background) != (0, 0, 0):
         raise UnsupportedA3EffectError("H617A painted background cannot be represented by canonical PaintedEffect")
     if tree.num_groups != len(tree.groups):
@@ -122,7 +116,6 @@ def _decode_h617a_type04(tree: Any) -> SingleEffect | MultiEffect:
         raise UnsupportedA3EffectError("H617A type-04 palette length does not match its generated tree")
 
     if tree.family != 0xFF:
-        _require_h617a_effect(tree.family, body.variant, multi=False)
         return SingleEffect(
             family=tree.family,
             variant=body.variant,
@@ -135,8 +128,6 @@ def _decode_h617a_type04(tree: Any) -> SingleEffect | MultiEffect:
     if body.seqlen != len(body.pairs) * 2:
         raise UnsupportedA3EffectError("H617A Multi sequence length does not match its generated tree")
     effects = tuple(EffectPair(pair.family, pair.variant) for pair in body.pairs)
-    for effect in effects:
-        _require_h617a_effect(effect.family, effect.variant, multi=True)
     return MultiEffect(effects=effects, speed=body.speed, palette=palette)
 
 
@@ -147,11 +138,6 @@ def _decode_h6199_palette_diy(tree: Any, model: str) -> PaletteDiyEffect:
         )
     content = tree.content
     family = int(content.family)
-    supported = {(effect.family, effect.variant) for effect in H6199_DIY_EFFECTS}
-    if (family, content.variant) not in supported:
-        raise UnsupportedA3EffectError(
-            f"H6199 palette DIY family {family} variation {content.variant} is not catalogued"
-        )
     if content.palette_len != len(content.palette) * 3:
         raise UnsupportedA3EffectError("H6199 palette DIY length does not match its generated tree")
     _require_zero_padding(content.padding, "H6199 palette DIY")
@@ -168,18 +154,6 @@ def _decode_layered_tree(tree: Any, model: str) -> EffectContent:
     envelope = bytes(tree._io.to_byte_array())
     effect, _trailing_padding = decode_workshop_effect(model, envelope[3:])
     return effect
-
-
-def _require_h617a_effect(family: int, variant: int, *, multi: bool) -> None:
-    for entry in H617A_TYPE04_FAMILIES:
-        if entry.family != family:
-            continue
-        if not any(variation.variant == variant for variation in entry.variations):
-            break
-        if multi and not entry.supports_multi:
-            raise UnsupportedA3EffectError(f"H617A family {family} variation {variant} is not catalogued for Multi")
-        return
-    raise UnsupportedA3EffectError(f"H617A family {family} variation {variant} is not catalogued")
 
 
 def _require_zero_padding(padding: list[int], context: str) -> None:

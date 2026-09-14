@@ -125,6 +125,15 @@ export class GoveeCustomEffectEditor extends LitElement {
       this.effectFamily(this.content)?.rate === "sensitivity"
         ? "Sensitivity"
         : "Speed";
+    const pairs = this.content.kind === "h617a_multi" ? this.content.effects : [this.content];
+    const minimum = Math.max(
+      this.content.kind === "h617a_multi" ? this.catalogue.limits.speed_min : 0,
+      ...pairs.map((pair) => this.effectFamily(pair)?.rate_min ?? 0),
+    );
+    const maximum = Math.min(
+      this.content.kind === "h617a_multi" ? this.catalogue.limits.speed_max : 100,
+      ...pairs.map((pair) => this.effectFamily(pair)?.rate_max ?? 100),
+    );
 
     return html`
       ${this.content.kind === "h617a_multi"
@@ -146,9 +155,9 @@ export class GoveeCustomEffectEditor extends LitElement {
           <govee-slider-control
             .label=${rateLabel}
             .value=${this.content.speed}
-            .minimum=${0}
-            .maximum=${100}
-            .disabled=${this.disabled}
+            .minimum=${minimum}
+            .maximum=${maximum}
+            .disabled=${this.disabled || minimum > maximum}
             @value-changed=${(event: CustomEvent<SliderControlChange>) =>
               this.emitContent({
                 ...this.content!,

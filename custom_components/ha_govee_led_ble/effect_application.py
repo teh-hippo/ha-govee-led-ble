@@ -11,6 +11,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from .coordinator import GoveeBLECoordinator
+from .effect_compiler import compile_application, resolve_diy_code
 from .effect_deployments import DeploymentRecord, EffectDeploymentRepository
 from .effect_domain import (
     RGB,
@@ -97,6 +98,7 @@ class EffectStudioApplication:
     ) -> DeploymentRecord:
         async with self.saved_effect_for_apply(
             item_id,
+            model=coordinator.model,
             expected_version=expected_version,
         ) as item:
             return await engine.async_apply_saved(
@@ -112,12 +114,14 @@ class EffectStudioApplication:
         self,
         item_id: str,
         *,
+        model: str,
         expected_version: int | None = None,
     ) -> AsyncIterator[LibraryItem]:
         async with self._library_mutation_lock:
             item = self.get_saved_effect(item_id)
             if expected_version is not None and item.version != expected_version:
                 raise EffectVersionConflictError(item.version)
+            compile_application(item, model, diy_code=resolve_diy_code(item, model=model))
             yield item
 
     async def async_create_library_item(

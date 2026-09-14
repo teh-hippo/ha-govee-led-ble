@@ -290,6 +290,8 @@ export interface PaletteDiyFamily {
   variations: PaletteDiyVariation[];
   supports_multi: boolean;
   rate: "speed" | "sensitivity";
+  rate_min: number;
+  rate_max: number;
   category: "single_layer";
 }
 
@@ -345,6 +347,10 @@ export interface ModelEffectCatalogue {
     palette_min: number;
     palette_max: number;
     multi_max: number;
+    speed_min: number;
+    speed_max: number;
+    brightness_min: number;
+    brightness_max: number;
     music_sensitivity_min: number;
     music_sensitivity_max: number;
   };
@@ -358,7 +364,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 9;
+  schema_version: 10;
   sku: ModelSku;
   models: Record<ModelSku, ModelEffectCatalogue>;
 }

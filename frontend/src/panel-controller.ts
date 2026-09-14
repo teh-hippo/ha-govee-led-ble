@@ -3,7 +3,7 @@ import { AsyncRequestController, type AsyncRequestToken } from "./async-request-
 import { cloneBuiltInDefaultBaselines } from "./built-in-default-state";
 import type { CustomEffectListEntry } from "./custom-effect-list";
 import {
-  cloneEditableEffect, customEffectCategoryForKind, isEditableEffectContent,
+  cloneEditableEffect, customEffectCategoryForKind, effectContentEligible, isEditableEffectContent,
   libraryItemSyncResult, sameLibraryItemVersion, serialiseEditable, upsertSummary, type CustomEffectCategory,
   type EditableEffectContent,
 } from "./effect-editor-model";
@@ -1179,6 +1179,7 @@ export class PanelController {
       !api ||
       !device ||
       !this.model.isAdmin ||
+      this.model.previewCapability !== "supported" ||
       this.model.liveApplyEnabled ||
       this.model.stateUpdatesUnavailable ||
       this.model.applying ||
@@ -1931,6 +1932,7 @@ export class PanelController {
     if (!this.api || !device) {
       return false;
     }
+    if (!effectContentEligible(item.content, this.model.modelCatalogue, device.model, device.segment_count)) return false;
     const configEntryId = device.config_entry_id;
     if (!this.model.liveApplyEnabled) {
       return false;

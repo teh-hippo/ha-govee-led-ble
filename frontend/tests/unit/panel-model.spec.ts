@@ -162,6 +162,8 @@ function h6199Catalogue(): ModelEffectCatalogue {
         variations: [{ id: "base", label: "Base", variant: 0 }],
         supports_multi: false,
         rate: "speed",
+        rate_min: 0,
+        rate_max: 100,
         category: "single_layer",
       },
     ],
@@ -204,6 +206,10 @@ function h6199Catalogue(): ModelEffectCatalogue {
     },
     limits: {
       palette_min: 1,
+      speed_min: 0,
+      speed_max: 100,
+      brightness_min: 0,
+      brightness_max: 100,
       palette_max: 8,
       multi_max: 5,
       music_sensitivity_min: 0,
@@ -223,7 +229,7 @@ function installH6199Catalogue(model: PanelModel): void {
   const catalogue = h6199Catalogue();
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 9,
+    schema_version: 10,
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },
@@ -248,7 +254,7 @@ function installFutureCatalogue(
   }
   model.customCatalogue = {
     ...catalogue,
-    schema_version: 9,
+    schema_version: 10,
     sku: "H617A",
     models: {
       H617A: { ...catalogue, sku: "H617A" },
@@ -361,6 +367,12 @@ function installFlowCatalogue(model: PanelModel): void {
   };
 }
 
+function installPaintCatalogue(model: PanelModel): void {
+  installH6199Catalogue(model);
+  model.customCatalogue!.models.H617A.painted_effects = [{ id: "cycle", label: "Cycle" }];
+  model.customCatalogue!.models.H617A.apply.painted = "supported";
+}
+
 function panelControllerHarness(
   model: PanelModel,
   saveSceneWork?: () => Promise<boolean>,
@@ -417,6 +429,10 @@ test("derives selected-device and preview decisions from panel state", () => {
 
   expect(model.selectedDevice?.display_name).toBe("entry-a");
   expect(model.selectedModel).toBe("H617A");
+  expect(model.previewCapability).toBe("unsupported");
+  installFlowCatalogue(model);
+  model.content = { kind: "palette_diy", model: "H6199", family: 1, variant: 0, speed: 50, palette: [[255, 0, 0]] };
+  model.devices = [flowWorkspaceDevice("entry-a")];
   expect(model.previewCapability).toBe("supported");
   expect(model.showDeviceSelector).toBe(false);
 
@@ -2595,6 +2611,7 @@ test("saved item selection applies identity only while Live is enabled", async (
   model.isAdmin = true;
   model.devices = [device("entry-a", "H617A")];
   model.selectedDeviceId = "entry-a";
+  installPaintCatalogue(model);
   const preview = new PanelPreviewController(model);
   const modal = new PanelModalController(model, {
     updateComplete: async () => undefined,
@@ -2650,6 +2667,7 @@ test("enabling Live on a clean saved item applies its stable identity", async ()
   model.isAdmin = true;
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
+  installPaintCatalogue(model);
   model.liveApplyEnabled = false;
   const { controller, editorController } = panelControllerHarness(model);
   const saved = item(painted());
@@ -2826,6 +2844,7 @@ test("scene saves follow strict Live semantics", async () => {
   const model = new PanelModel(() => undefined);
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
+  installPaintCatalogue(model);
   const { controller } = panelControllerHarness(model);
   const saved = item(painted());
   const applySavedEffect = vi.fn().mockResolvedValue(undefined);
@@ -3254,6 +3273,7 @@ test("manual Apply writes the current built-in draft without saving it", async (
   model.liveApplyEnabled = false;
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
+  installPaintCatalogue(model);
   const { controller, editorController } = panelControllerHarness(model);
   editorController.openEditableTemplate(
     "Paint",
@@ -3283,6 +3303,12 @@ test("manual Apply writes the current built-in draft without saving it", async (
   );
   expect(setTemplateDefault).not.toHaveBeenCalled();
   expect(model.builtInDefaultDirty).toBe(true);
+  applySnapshot.mockClear();
+  editorController.updatePaintedContent({ effect: "twinkle" }, "committed");
+  expect(model.previewCapability).toBe("unsupported");
+  expect(model.content).toMatchObject({ effect: "twinkle" });
+  await expect(controller.applyCurrentDraft()).resolves.toBe(false);
+  expect(applySnapshot).not.toHaveBeenCalled();
 });
 
 test("Auto Save persists a built-in default without applying when Live is off", async () => {

@@ -170,7 +170,7 @@ def _open(manager: EffectPreviewManager, owner: object, events: list[PreviewStat
     return session_id
 
 
-async def test_worker_compiles_active_then_only_newest_pending_request(
+async def test_worker_preflights_all_but_writes_only_newest_pending_request(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -231,7 +231,7 @@ async def test_worker_compiles_active_then_only_newest_pending_request(
     release_first.set()
     await manager.async_wait_idle("entry-a")
 
-    assert compiled_names == ["first", "third"]
+    assert compiled_names == ["first", "second", "third"]
     assert any(
         event.sequence == 2 and event.phase is PreviewPhase.CANCELLED and event.error_code == "superseded"
         for event in events
@@ -301,7 +301,7 @@ async def test_newest_request_can_return_to_the_active_state(
     await manager.async_wait_idle("entry-a")
 
     assert acceptance.accepted
-    assert compiled_names == ["state-a", "state-a"]
+    assert compiled_names == ["state-a", "state-b", "state-a"]
     await manager.async_shutdown()
 
 
@@ -1696,18 +1696,62 @@ async def test_compilation_failure_is_reported_without_writing(
         raise ValueError("invalid")
 
     monkeypatch.setattr(effect_preview, "compile_application", compile_failure)
+    with pytest.raises(PreviewError, match="invalid"):
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-08-17T00:00:00Z",
+            item=_item("invalid"),
+        )
+    await manager.async_wait_idle("entry-a")
+
+    coordinator.async_preview_write.assert_not_awaited()
+    assert not events
+    assert not manager._devices
+    assert manager._sessions[session_id].last_sequence == 0
+    await manager.async_shutdown()
+
+
+async def test_ineligible_preview_preserves_active_admission(hass, monkeypatch, effect_catalogue_targets):
+    _broad, narrow = effect_catalogue_targets
+    coordinator = _coordinator(model=narrow)
+    coordinator.admit_preview = MagicMock()
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    events = []
+    owner = object()
+    session_id = _open(manager, owner, events)
+    content = SingleEffect(0, 0, 50, ((255, 0, 0), (0, 0, 255)))
     await manager.async_queue_snapshot(
         session_id=session_id,
         owner=owner,
         config_entry_id="entry-a",
         sequence=1,
         updated_at="2026-08-17T00:00:00Z",
-        item=_item("invalid"),
+        item=LibraryItem.new("Valid", content),
     )
-    await manager.async_wait_idle("entry-a")
-
-    coordinator.async_preview_write.assert_not_awaited()
-    assert any(event.phase is PreviewPhase.FAILED and event.error_code == "compilation_failed" for event in events)
+    pending = manager._devices["entry-a"].pending
+    for invalid in (
+        replace(content, variant=1),
+        replace(content, speed=61),
+        replace(content, palette=content.palette[:1]),
+    ):
+        with pytest.raises(PreviewError):
+            await manager.async_queue_snapshot(
+                session_id=session_id,
+                owner=owner,
+                config_entry_id="entry-a",
+                sequence=2,
+                updated_at="2026-08-17T00:00:00Z",
+                item=LibraryItem.new("Invalid", invalid),
+            )
+        assert manager._devices["entry-a"].pending is pending
+        assert manager._sessions[session_id].last_sequence == 1
+        assert not any(event.phase is PreviewPhase.CANCELLED for event in events)
+    coordinator.admit_preview.assert_called_once()
+    coordinator.async_preview_preflight.assert_not_awaited()
+    assert coordinator.is_on is False
     await manager.async_shutdown()
 
 

@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -7,6 +8,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from custom_components.ha_govee_led_ble.const import (
     DOMAIN,
     MODEL_PROFILES,
+    ModelProfile,
     default_effect_categories,
     default_effect_families,
 )
@@ -14,6 +16,76 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
+
+
+@pytest.fixture
+def effect_catalogue_targets(monkeypatch):
+    """Software-only exact models sharing a codec, not application limits."""
+    from custom_components.ha_govee_led_ble import effect_contracts
+    from custom_components.ha_govee_led_ble.effect_catalogue import (
+        MODEL_EFFECT_CATALOGUES,
+        DiyEffectFamily,
+        DiyEffectVariation,
+    )
+    from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow
+
+    workflows = {CapabilityWorkflow.PAINTED, CapabilityWorkflow.SINGLE, CapabilityWorkflow.MULTI}
+    capabilities = tuple(
+        replace(capability, model=model)
+        for model in ("H9901", "H9902")
+        for capability in effect_contracts.RELEASE_CAPABILITY_CONTRACT
+        if capability.model == "H617A" and capability.workflow in workflows
+    )
+    monkeypatch.setattr(
+        effect_contracts, "RELEASE_CAPABILITY_CONTRACT", (*effect_contracts.RELEASE_CAPABILITY_CONTRACT, *capabilities)
+    )
+    for model, narrow in (("H9901", False), ("H9902", True)):
+        monkeypatch.setitem(
+            MODEL_PROFILES,
+            model,
+            ModelProfile(
+                "Synthetic",
+                command_grammar="H617A",
+                effect_grammar="H617A",
+                segment_count=15,
+            ),
+        )
+        family = DiyEffectFamily(
+            "fade",
+            "Fade",
+            0,
+            (DiyEffectVariation("whole", "Whole", 0),)
+            if narrow
+            else (
+                DiyEffectVariation("whole", "Whole", 0),
+                DiyEffectVariation("sections", "Sections", 1),
+            ),
+            True,
+            rate_min=20 if narrow else 0,
+            rate_max=60 if narrow else 100,
+        )
+        monkeypatch.setitem(
+            MODEL_EFFECT_CATALOGUES,
+            model,
+            replace(
+                MODEL_EFFECT_CATALOGUES["H617A"],
+                sku=model,
+                effects=(family, replace(family, id="single-only", family=1, supports_multi=not narrow)),
+                painted_effects=({"id": "clockwise", "label": "Clockwise"},),
+                templates=(),
+                music_modes=(),
+                video_modes=(),
+                workshop_templates=(),
+                palette_min=2 if narrow else 1,
+                palette_max=2 if narrow else 8,
+                multi_max=1 if narrow else 4,
+                speed_min=20 if narrow else 0,
+                speed_max=60 if narrow else 100,
+                brightness_min=20 if narrow else 0,
+                brightness_max=60 if narrow else 100,
+            ),
+        )
+    return "H9901", "H9902"
 
 
 @pytest.fixture(autouse=True)

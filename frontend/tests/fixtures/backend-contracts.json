@@ -713,6 +713,8 @@
           "id": "fade",
           "label": "Fade",
           "rate": "speed",
+          "rate_max": 100,
+          "rate_min": 0,
           "supports_multi": true,
           "variations": [
             {
@@ -734,11 +736,15 @@
         }
       ],
       "limits": {
+        "brightness_max": 100,
+        "brightness_min": 0,
         "multi_max": 4,
         "music_sensitivity_max": 99,
         "music_sensitivity_min": 0,
         "palette_max": 8,
-        "palette_min": 1
+        "palette_min": 1,
+        "speed_max": 100,
+        "speed_min": 0
       },
       "models": {
         "H617A": {
@@ -756,6 +762,8 @@
               "id": "fade",
               "label": "Fade",
               "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
               "supports_multi": true,
               "variations": [
                 {
@@ -777,11 +785,15 @@
             }
           ],
           "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
             "multi_max": 4,
             "music_sensitivity_max": 99,
             "music_sensitivity_min": 0,
             "palette_max": 8,
-            "palette_min": 1
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
           },
           "music_modes": [
             {
@@ -1444,6 +1456,8 @@
               "id": "fade",
               "label": "Fade",
               "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
               "supports_multi": true,
               "variations": [
                 {
@@ -1465,11 +1479,15 @@
             }
           ],
           "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
             "multi_max": 4,
             "music_sensitivity_max": 99,
             "music_sensitivity_min": 0,
             "palette_max": 8,
-            "palette_min": 1
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
           },
           "music_modes": [
             {
@@ -2132,6 +2150,8 @@
               "id": "fade",
               "label": "Fade",
               "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
               "supports_multi": false,
               "variations": [
                 {
@@ -2143,11 +2163,15 @@
             }
           ],
           "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
             "multi_max": 4,
             "music_sensitivity_max": 100,
             "music_sensitivity_min": 1,
             "palette_max": 8,
-            "palette_min": 1
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
           },
           "music_modes": [
             {
@@ -2735,7 +2759,7 @@
           "label": "Cycle"
         }
       ],
-      "schema_version": 9,
+      "schema_version": 10,
       "sku": "H617A",
       "supports": {
         "advanced": "supported",

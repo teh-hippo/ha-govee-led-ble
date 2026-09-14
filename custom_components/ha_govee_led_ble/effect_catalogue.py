@@ -20,6 +20,7 @@ from .effect_domain import (
     EffectContent,
     EffectValidationError,
     JsonValue,
+    MultiEffect,
     MusicProfile,
     PaintedEffect,
     PaletteDiyEffect,
@@ -32,7 +33,7 @@ from .effect_domain import (
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 from .layered_scene_decoder import decode_workshop_effect
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 9
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 10
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # H617A Type04 uploads are selected with DIY code 24.
@@ -88,6 +89,8 @@ class DiyEffectFamily:
     rate: str = "speed"
     source_reference: str = "GoveeHome V7.5.30 dreamcolorlightv1.adjust.Diy"
     category: str = "single_layer"
+    rate_min: int = 0
+    rate_max: int = 100
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -98,6 +101,8 @@ class DiyEffectFamily:
             "supports_multi": self.supports_multi,
             "rate": self.rate,
             "category": self.category,
+            "rate_min": self.rate_min,
+            "rate_max": self.rate_max,
         }
 
 
@@ -197,6 +202,13 @@ class ModelEffectCatalogue:
     workshop_templates: tuple[WorkshopTemplate, ...]
     supports: CatalogueSupport
     apply: ApplySupport
+    palette_min: int = 1
+    palette_max: int = MAX_PALETTE_COLOURS
+    multi_max: int = MAX_MULTI_EFFECTS
+    speed_min: int = 0
+    speed_max: int = 100
+    brightness_min: int = 0
+    brightness_max: int = 100
 
     def to_dict(self) -> dict[str, JsonValue]:
         profile = MODEL_PROFILES[self.sku]
@@ -212,9 +224,13 @@ class ModelEffectCatalogue:
             "workflows": frontend_release_capabilities(self.sku),
             "supports": self.supports.to_dict(),
             "limits": {
-                "palette_min": 1,
-                "palette_max": MAX_PALETTE_COLOURS,
-                "multi_max": MAX_MULTI_EFFECTS,
+                "palette_min": self.palette_min,
+                "palette_max": self.palette_max,
+                "multi_max": self.multi_max,
+                "speed_min": self.speed_min,
+                "speed_max": self.speed_max,
+                "brightness_min": self.brightness_min,
+                "brightness_max": self.brightness_max,
                 "music_sensitivity_min": profile.music_sensitivity_min,
                 "music_sensitivity_max": profile.music_sensitivity_max,
             },
@@ -715,6 +731,42 @@ MODEL_EFFECT_CATALOGUES: Final = {
         ),
     ),
 }
+
+
+def validate_effect_eligibility(
+    content: PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect, model: str
+) -> None:
+    """Authorize content against the target catalogue, not its shared wire grammar."""
+    catalogue = MODEL_EFFECT_CATALOGUES.get(model)
+    if catalogue is None:
+        raise ValueError(f"{model} has no custom-effect catalogue")
+    if isinstance(content, PaintedEffect):
+        if content.effect not in {effect["id"] for effect in catalogue.painted_effects}:
+            raise ValueError(f"{model} painted effect {content.effect!r} is not supported")
+        if len(content.segments) != get_profile(model).segment_count:
+            raise ValueError(f"{model} painted segment count does not match")
+        if not catalogue.brightness_min <= content.brightness <= catalogue.brightness_max:
+            raise ValueError(f"{model} painted brightness is outside catalogue limits")
+    else:
+        if not catalogue.palette_min <= len(content.palette) <= catalogue.palette_max:
+            raise ValueError(f"{model} palette is outside catalogue limits")
+        multi = isinstance(content, MultiEffect)
+        if isinstance(content, MultiEffect) and len(content.effects) > catalogue.multi_max:
+            raise ValueError(f"{model} Multi count is outside catalogue limits")
+        pairs = content.effects if isinstance(content, MultiEffect) else (content,)
+        for pair in pairs:
+            family = next((family for family in catalogue.effects if family.family == pair.family), None)
+            if family is None or pair.variant not in {variation.variant for variation in family.variations}:
+                raise ValueError(f"{model} family {pair.family} variation {pair.variant} is not supported")
+            if multi and not family.supports_multi:
+                raise ValueError(f"{model} family {pair.family} does not support Multi")
+            if not family.rate_min <= content.speed <= family.rate_max:
+                raise ValueError(f"{model} family {pair.family} {family.rate} is outside catalogue limits")
+    if (
+        isinstance(content, PaintedEffect | MultiEffect)
+        and not catalogue.speed_min <= content.speed <= catalogue.speed_max
+    ):
+        raise ValueError(f"{model} speed is outside catalogue limits")
 
 
 def resolve_catalogue_template(model: str, template_id: str) -> CatalogueTemplate:

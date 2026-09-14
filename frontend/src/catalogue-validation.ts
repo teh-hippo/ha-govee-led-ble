@@ -170,6 +170,11 @@ function decodeModelEffectCatalogue(
   if (musicSensitivityMinimum > musicSensitivityMaximum) {
     invalid(`${name} music sensitivity limits are inverted`);
   }
+  for (const field of ["palette", "speed", "brightness"]) {
+    if (Number(limits[`${field}_min`]) > Number(limits[`${field}_max`])) {
+      invalid(`${name} ${field} limits are inverted`);
+    }
+  }
   return {
     sku,
     painted_effects: decodePaintedEffectTemplates(
@@ -220,23 +225,27 @@ function decodeModelEffectCatalogue(
       ),
     },
     limits: {
+      speed_min: integerValue(limits.speed_min, `${name} minimum speed`, 0, 100),
+      speed_max: integerValue(limits.speed_max, `${name} maximum speed`, 0, 100),
+      brightness_min: integerValue(limits.brightness_min, `${name} minimum brightness`, 0, 100),
+      brightness_max: integerValue(limits.brightness_max, `${name} maximum brightness`, 0, 100),
       palette_min: integerValue(
         limits.palette_min,
         `${name} minimum palette`,
         1,
-        255,
+        8,
       ),
       palette_max: integerValue(
         limits.palette_max,
         `${name} maximum palette`,
         1,
-        255,
+        8,
       ),
       multi_max: integerValue(
         limits.multi_max,
         `${name} maximum Multi effects`,
         1,
-        255,
+        4,
       ),
       music_sensitivity_min: musicSensitivityMinimum,
       music_sensitivity_max: musicSensitivityMaximum,
@@ -417,6 +426,8 @@ function decodePaletteDiyFamilies(
         );
       }
       const decoded: PaletteDiyFamily = {
+        rate_min: integerValue(effect.rate_min, `${name} minimum rate`, 0, 100),
+        rate_max: integerValue(effect.rate_max, `${name} maximum rate`, 0, 100),
         id: boundedString(
           effect.id,
           `${name}[${index}] ID`,
@@ -477,10 +488,13 @@ function decodePaletteDiyFamilies(
         (variation) => variation.id,
         `${name}[${index}] variation IDs`,
       );
+      if (decoded.rate_min > decoded.rate_max) invalid(`${name} rate limits are inverted`);
+      requireUnique(decoded.variations, (variation) => String(variation.variant), `${name} variation values`);
       return decoded;
     },
   );
   requireUnique(effects, (effect) => effect.id, `${name} IDs`);
+  requireUnique(effects, (effect) => String(effect.family), `${name} family values`);
   return effects;
 }
 

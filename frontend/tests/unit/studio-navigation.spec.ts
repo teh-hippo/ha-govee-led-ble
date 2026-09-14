@@ -96,6 +96,10 @@ const catalogue: ModelEffectCatalogue = {
   },
   limits: {
     palette_min: 1,
+    speed_min: 0,
+    speed_max: 100,
+    brightness_min: 0,
+    brightness_max: 100,
     palette_max: 8,
     multi_max: 5,
     music_sensitivity_min: 0,

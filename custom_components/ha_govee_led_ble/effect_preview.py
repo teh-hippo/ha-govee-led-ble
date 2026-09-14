@@ -25,12 +25,11 @@ from .effect_catalogue import (
     validate_catalogue_template_identity,
 )
 from .effect_compiler import (
-    CompatibilityState,
     CompiledApplication,
     CompiledEffect,
-    compatibility,
     compile_application,
 )
+from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import ObservationConfidence
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
 from .effect_domain import (
@@ -67,7 +66,7 @@ from .effect_scenes import (
 )
 from .effect_template_defaults import CatalogueTemplateDefault, CatalogueTemplateDefaultRepository
 from .generated_protocol_adapter import build_power
-from .native_scenes import encode_authored_scene_body, resolve_native_scene_body
+from .native_scenes import build_native_scene_packets, encode_authored_scene_body, resolve_native_scene_body
 from .scenes import canonical_scene_key, scene_code_is_ambiguous
 
 PREVIEW_VERIFY_DELAY = 0.75
@@ -233,6 +232,7 @@ class _PreviewRequest:
     canonical_body: bytes | None = None
     default_action: str | None = None
     admission: PreviewAdmission | None = None
+    compiled: CompiledApplication | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -455,9 +455,11 @@ class EffectPreviewManager:
     ) -> PreviewAcceptance:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
-        result = compatibility(item, coordinator.model)
-        if result.state is not CompatibilityState.COMPATIBLE:
-            raise PreviewError("; ".join(result.reasons))
+        try:
+            diy_code = resolve_diy_code(item, model=coordinator.model)
+            compiled = compile_application(item, coordinator.model, diy_code=diy_code)
+        except ValueError as exc:
+            raise PreviewError(str(exc)) from exc
         if (
             persist_default
             and item.origin.kind is SourceKind.CATALOGUE_TEMPLATE
@@ -470,7 +472,6 @@ class EffectPreviewManager:
                 item.origin.source_id,
                 item.content,
             )
-        diy_code = resolve_diy_code(item, model=coordinator.model)
         fingerprint = _snapshot_fingerprint(coordinator.model, item)
         request = _PreviewRequest(
             session_id=session_id,
@@ -484,6 +485,7 @@ class EffectPreviewManager:
             content_kind=str(effect_content_to_dict(item.content)["kind"]),
             item=item,
             diy_code=diy_code,
+            compiled=compiled,
             default_action=(_snapshot_default_action(item, coordinator.model) if persist_default else None),
         )
         return await self._async_accept(owner, request)
@@ -516,6 +518,13 @@ class EffectPreviewManager:
                 resolved.entry,
                 scene_default=scene_default,
                 speed_index=speed_index,
+            )
+            require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES)
+            build_native_scene_packets(
+                coordinator.model,
+                resolved.entry,
+                speed_index=resolved_speed,
+                canonical_body=canonical_body or None,
             )
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
@@ -843,15 +852,7 @@ class EffectPreviewManager:
             return
         try:
             coordinator = self._loaded_coordinator(request.config_entry_id)
-            compiled = (
-                None
-                if request.scene is not None
-                else compile_application(
-                    _required_item(request),
-                    coordinator.model,
-                    diy_code=request.diy_code,
-                )
-            )
+            compiled = request.compiled
         except Exception as exc:
             self._diagnostics.record(
                 DiagnosticStage.COMPILATION,

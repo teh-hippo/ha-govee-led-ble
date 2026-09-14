@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
 
+import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -13,7 +15,6 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import DOMAIN
-from custom_components.ha_govee_led_ble.effect_application import EffectStudioApplication
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
@@ -24,12 +25,12 @@ from custom_components.ha_govee_led_ble.effect_preview import (
     PreviewTargetUnavailableError,
 )
 from custom_components.ha_govee_led_ble.effect_scenes import scene_detail_payload
-from custom_components.ha_govee_led_ble.effect_storage import EffectVersionConflictError
 from custom_components.ha_govee_led_ble.effect_websocket import (
     PREVIEW_SESSION_NOT_FOUND_CODE,
     PREVIEW_SESSION_UNAUTHORIZED_CODE,
     PREVIEW_TARGET_UNAVAILABLE_CODE,
     WS_APPLY,
+    WS_APPLY_SNAPSHOT,
     WS_CUSTOM_CATALOGUE,
     WS_INFO,
     WS_LIBRARY_CREATE,
@@ -348,12 +349,15 @@ async def test_apply_forwards_expected_item_version(
     deployment = MagicMock()
     deployment.to_public_dict.return_value = {"phase": "confirmed"}
     apply_saved = AsyncMock(return_value=deployment)
-    monkeypatch.setattr(cast(Any, EffectStudioApplication), "async_apply_saved_effect", apply_saved)
+    monkeypatch.setattr(backend.engine, "async_apply_saved", apply_saved)
+    mutation = await backend.application.async_create_library_item(name="Saved", content=_content())
+    item = replace(mutation.item, version=2)
+    await backend.library.async_update(item, expected_version=1, expected_updated_at=mutation.item.updated_at)
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=MagicMock(),
+        runtime_data=SimpleNamespace(model="H617A"),
     )
     monkeypatch.setattr(
         hass.config_entries,
@@ -366,8 +370,8 @@ async def test_apply_forwards_expected_item_version(
         {
             "type": WS_APPLY,
             "config_entry_id": entry.entry_id,
-            "item_id": "00000000-0000-0000-0000-000000000001",
-            "expected_version": 4,
+            "item_id": str(item.id),
+            "expected_version": 2,
             "updated_at": "2026-08-27T00:00:00Z",
         }
     )
@@ -375,13 +379,11 @@ async def test_apply_forwards_expected_item_version(
 
     assert response["success"] is True
     apply_saved.assert_awaited_once_with(
-        backend.engine,
         entry.runtime_data,
-        item_id="00000000-0000-0000-0000-000000000001",
+        item,
         config_entry_id=entry.entry_id,
         updated_at="2026-08-27T00:00:00Z",
         operation_id=None,
-        expected_version=4,
     )
 
 
@@ -392,15 +394,12 @@ async def test_apply_surfaces_item_version_conflict(
 ) -> None:
     backend = await _setup_backend(hass)
     monkeypatch.setattr(cast(Any, backend.preview), "async_supersede_device", AsyncMock())
-    apply_saved = AsyncMock(
-        side_effect=EffectVersionConflictError(5),
-    )
-    monkeypatch.setattr(cast(Any, EffectStudioApplication), "async_apply_saved_effect", apply_saved)
+    mutation = await backend.application.async_create_library_item(name="Saved", content=_content())
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=MagicMock(),
+        runtime_data=SimpleNamespace(model="H617A"),
     )
     monkeypatch.setattr(
         hass.config_entries,
@@ -413,7 +412,7 @@ async def test_apply_surfaces_item_version_conflict(
         {
             "type": WS_APPLY,
             "config_entry_id": entry.entry_id,
-            "item_id": "00000000-0000-0000-0000-000000000001",
+            "item_id": str(mutation.item.id),
             "expected_version": 4,
             "updated_at": "2026-08-27T00:00:00Z",
         }
@@ -422,6 +421,41 @@ async def test_apply_surfaces_item_version_conflict(
 
     assert response["success"] is False
     assert response["error"]["code"] == "conflict"
+    backend.preview.async_supersede_device.assert_not_awaited()
+
+
+@pytest.mark.parametrize("saved", [True, False])
+async def test_ineligible_apply_preserves_preview(hass, hass_ws_client, monkeypatch, effect_catalogue_targets, saved):
+    _broad, narrow = effect_catalogue_targets
+    backend = await _setup_backend(hass)
+    supersede = AsyncMock()
+    monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
+    apply_saved = AsyncMock()
+    apply_snapshot = AsyncMock()
+    monkeypatch.setattr(backend.engine, "async_apply_saved", apply_saved)
+    monkeypatch.setattr(backend.engine, "async_apply_snapshot", apply_snapshot)
+    entry = SimpleNamespace(
+        entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=SimpleNamespace(model=narrow)
+    )
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    content = effect_content_to_dict(SingleEffect(0, 1, 50, ((255, 0, 0), (0, 0, 255))))
+    mutation = await backend.application.async_create_library_item(name="Imported", content=content)
+    client = await hass_ws_client(hass)
+    message = {
+        "type": WS_APPLY if saved else WS_APPLY_SNAPSHOT,
+        "config_entry_id": entry.entry_id,
+        "updated_at": "2026-08-27T00:00:00Z",
+    }
+    message.update(
+        {"item_id": str(mutation.item.id), "expected_version": 1} if saved else {"name": "Imported", "content": content}
+    )
+    await client.send_json_auto_id(message)
+    response = await client.receive_json()
+    assert response["success"] is False
+    assert response["error"]["code"] == "unsupported_model"
+    supersede.assert_not_awaited()
+    apply_saved.assert_not_awaited()
+    apply_snapshot.assert_not_awaited()
 
 
 async def test_admin_current_only_library_lifecycle_and_stale_token(

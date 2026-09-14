@@ -7,6 +7,7 @@ import {
   cloneEditableEffect,
   customEffectCategoryForKind,
   effectOriginDescription,
+  effectContentEligible,
   installLibraryItemEditorMetadata,
   isEditableEffectContent,
   libraryItemSyncResult,
@@ -25,10 +26,12 @@ import {
   installAdvancedLayerLabels,
 } from "../../src/advanced-effect-model";
 import type {
+  EffectContent,
   LibraryItem,
   ModelEffectCatalogue,
   PaintedContent,
 } from "../../src/types";
+import { decodeEffectContent } from "../../src/validation";
 
 const catalogue = {
   sku: "H617A",
@@ -41,6 +44,8 @@ const catalogue = {
       variations: [{ id: "base", label: "Base", variant: 2 }],
       supports_multi: true,
       rate: "speed",
+      rate_min: 0,
+      rate_max: 100,
       category: "single_layer",
     },
     {
@@ -53,6 +58,8 @@ const catalogue = {
       ],
       supports_multi: true,
       rate: "speed",
+      rate_min: 0,
+      rate_max: 100,
       category: "single_layer",
     },
   ],
@@ -68,6 +75,10 @@ const catalogue = {
   },
   limits: {
     palette_min: 1,
+    speed_min: 0,
+    speed_max: 100,
+    brightness_min: 0,
+    brightness_max: 100,
     palette_max: 8,
     multi_max: 5,
     music_sensitivity_min: 0,
@@ -91,6 +102,47 @@ test("custom defaults use catalogue identities without sharing palettes", () => 
   expect(first.family).toBe(1);
   expect(first.variant).toBe(2);
   expect(second.palette[0]).toEqual([255, 0, 0]);
+});
+
+test("target eligibility preserves imports and isolates catalogue extensions", () => {
+  const broad: ModelEffectCatalogue = { ...structuredClone(catalogue), sku: "H9901" };
+  const narrow = structuredClone(broad);
+  narrow.sku = "H9902";
+  narrow.effects = [{ ...narrow.effects[0], rate_min: 20, rate_max: 60, supports_multi: false }];
+  narrow.limits = { ...narrow.limits, palette_min: 2, palette_max: 2, multi_max: 1 };
+  const content = { ...blankCustomEffect("h617a_single", broad), palette: [[255, 0, 0], [0, 0, 255]] } as const;
+  const valid = decodeEffectContent(content);
+  expect(effectContentEligible(valid, narrow, narrow.sku, 15)).toBe(true);
+  const invalid = [
+    { ...content, family: 9, variant: 9 },
+    { ...content, palette: [[255, 0, 0]] },
+    { ...content, palette: [[255, 0, 0], [0, 0, 255], [0, 255, 0]] },
+    { ...content, speed: 19 },
+    { ...content, speed: 61 },
+    { kind: "h617a_multi", effects: [{ family: 1, variant: 2 }], speed: 50, palette: content.palette },
+    { kind: "h617a_multi", effects: [{ family: 1, variant: 2 }, { family: 1, variant: 2 }], speed: 50, palette: content.palette },
+  ];
+  for (const raw of invalid) {
+    const decoded = decodeEffectContent(raw);
+    expect(decoded).toEqual(raw);
+    expect(effectContentEligible(decoded, broad, broad.sku, 15)).toBe(true);
+    expect(effectContentEligible(decoded, narrow, narrow.sku, 15)).toBe(false);
+  }
+  const unknown: EffectContent = decodeEffectContent({ ...content, family: 42, variant: 7 });
+  expect(effectContentEligible(unknown, broad, broad.sku, 15)).toBe(false);
+  broad.effects.push({ ...broad.effects[0], family: 42, variations: [{ id: "new", label: "New", variant: 7 }] });
+  expect(effectContentEligible(unknown, broad, broad.sku, 15)).toBe(true);
+  expect(effectContentEligible(unknown, narrow, narrow.sku, 15)).toBe(false);
+  expect(effectContentEligible(unknown, catalogue, catalogue.sku, 15)).toBe(false);
+  expect(effectContentEligible(valid, undefined, broad.sku, 15)).toBe(false);
+  expect(effectContentEligible(blankCustomEffect("h617a_single", narrow), narrow, narrow.sku, 15)).toBe(true);
+  narrow.painted_effects = [{ id: "clockwise", label: "Clockwise" }];
+  narrow.limits.brightness_max = 60;
+  const paint = blankCustomEffect("h617a_painted", narrow);
+  expect(effectContentEligible(paint, narrow, narrow.sku, 15)).toBe(true);
+  expect(effectContentEligible({ ...paint, effect: "cycle" }, narrow, narrow.sku, 15)).toBe(false);
+  expect(effectContentEligible({ ...paint, brightness: 61 }, narrow, narrow.sku, 15)).toBe(false);
+  expect(effectContentEligible(paint, narrow, narrow.sku, 14)).toBe(false);
 });
 
 test("multi defaults select Flow and Clockwise by catalogue identity", () => {

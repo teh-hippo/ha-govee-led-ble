@@ -109,6 +109,49 @@ export function blankPainted(): PaintedContent {
   };
 }
 
+export function effectContentEligible(
+  content: EffectContent,
+  catalogue: ModelEffectCatalogue | undefined,
+  model: string,
+  segmentCount: number,
+): boolean {
+  if (
+    content.kind !== "h617a_painted" && content.kind !== "h617a_single" &&
+    content.kind !== "h617a_multi" && content.kind !== "palette_diy"
+  ) return true;
+  if (!catalogue || catalogue.sku !== model) return false;
+  const limits = catalogue.limits;
+  if (content.kind === "h617a_painted") {
+    return (
+      catalogue.apply.painted === "supported" &&
+      catalogue.painted_effects.some((effect) => effect.id === content.effect) &&
+      content.segments.length === segmentCount &&
+      content.speed >= limits.speed_min && content.speed <= limits.speed_max &&
+      content.brightness >= limits.brightness_min && content.brightness <= limits.brightness_max
+    );
+  }
+  if (content.kind === "palette_diy" && (content.model !== model || catalogue.apply.palette_diy !== "supported")) return false;
+  if (content.kind === "h617a_single" && catalogue.apply.single !== "supported") return false;
+  if (content.palette.length < limits.palette_min || content.palette.length > limits.palette_max) return false;
+  if (
+    content.kind === "h617a_multi" && (
+      catalogue.apply.multi !== "supported" || content.effects.length < 1 ||
+      content.effects.length > limits.multi_max || content.speed < limits.speed_min ||
+      content.speed > limits.speed_max
+    )
+  ) return false;
+  const pairs = content.kind === "h617a_multi" ? content.effects : [content];
+  return pairs.every((pair) => {
+    const family = catalogue.effects.find((effect) => effect.family === pair.family);
+    return (
+      family !== undefined &&
+      family.variations.some((variation) => variation.variant === pair.variant) &&
+      (content.kind !== "h617a_multi" || family.supports_multi) &&
+      content.speed >= family.rate_min && content.speed <= family.rate_max
+    );
+  });
+}
+
 export function blankPaintedSegments(): PaintedSegmentDraft[] {
   return Array.from({ length: PAINTED_SEGMENT_COUNT }, () => null);
 }
@@ -134,7 +177,13 @@ export function blankCustomEffect(
   catalogue: ModelEffectCatalogue,
 ): CustomEffectContent {
   if (kind === "h617a_painted") {
-    return blankPainted();
+    const effect = catalogue.painted_effects[0];
+    if (!effect) throw new Error("The target catalogue has no painted effects.");
+    return {
+      ...blankPainted(), effect: effect.id,
+      speed: Math.max(catalogue.limits.speed_min, Math.min(50, catalogue.limits.speed_max)),
+      brightness: catalogue.limits.brightness_max,
+    };
   }
   const preferred =
     kind === "h617a_multi"
@@ -168,15 +217,15 @@ export function blankCustomEffect(
     return {
       kind,
       ...pair,
-      speed: 50,
-      palette: defaultPalette(),
+      speed: Math.max(first.rate_min, Math.min(50, first.rate_max)),
+      palette: defaultPalette(catalogue),
     };
   }
   return {
     kind,
     effects: [pair],
-    speed: 50,
-    palette: defaultPalette(),
+    speed: Math.max(catalogue.limits.speed_min, first.rate_min, Math.min(50, first.rate_max, catalogue.limits.speed_max)),
+    palette: defaultPalette(catalogue),
   };
 }
 
@@ -202,8 +251,8 @@ export function blankPaletteDiy(
     model,
     family: family ?? selected.family,
     variant: variant ?? selected.variations[0].variant,
-    speed: 50,
-    palette: defaultPalette(),
+    speed: Math.max(selected.rate_min, Math.min(50, selected.rate_max)),
+    palette: defaultPalette(catalogue),
   };
 }
 
@@ -321,8 +370,8 @@ export function updateAdvancedEditorContent(
   };
 }
 
-export function defaultPalette(): RGB[] {
-  return [
+export function defaultPalette(catalogue?: ModelEffectCatalogue): RGB[] {
+  const colours: RGB[] = [
     [255, 0, 0],
     [255, 127, 0],
     [255, 255, 0],
@@ -331,6 +380,9 @@ export function defaultPalette(): RGB[] {
     [0, 255, 255],
     [139, 0, 255],
   ];
+  if (!catalogue) return colours;
+  const count = Math.max(catalogue.limits.palette_min, Math.min(colours.length, catalogue.limits.palette_max));
+  return Array.from({ length: count }, (_, index) => cloneRgb(colours[index % colours.length]));
 }
 
 export function mergedPaintBrushes(colours: RGB[]): RGB[] {

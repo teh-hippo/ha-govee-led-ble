@@ -22,6 +22,7 @@ from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspaceRepository,
 )
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
+from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import CompiledMusicProfile, CompiledVideoProfile
 from custom_components.ha_govee_led_ble.effect_deployments import (
     DeploymentPhase,
@@ -50,6 +51,7 @@ from custom_components.ha_govee_led_ble.effect_selector import (
     resolve_effect_selector,
 )
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
+from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefault
 from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
@@ -113,6 +115,49 @@ def test_basic_and_color_props(light, mock_coordinator):
     assert light.rgb_color == (128, 64, 32) and light.color_temp_kelvin is None
     light._attr_color_mode = ColorMode.COLOR_TEMP
     assert light.rgb_color is None and light.color_temp_kelvin == 4000
+
+
+@pytest.mark.parametrize("source", ["saved", "unknown", "template", "stale_saved"])
+async def test_effect_preflight_precedes_light_side_effects(hass, mock_coordinator, monkeypatch, source):
+    backend = await EffectBackend.async_create(hass)
+    supersede = AsyncMock()
+    monkeypatch.setattr(backend.preview, "async_supersede_device", supersede)
+    item = LibraryItem.new("Saved", SingleEffect(0, 0, 50, ((255, 0, 0),)))
+    await backend.library.async_create(item)
+    entity = GoveeBLELight(mock_coordinator, config_entry_id="entry-a", effect_backend=backend)
+    entity.async_write_ha_state = MagicMock()
+    selector = "Saved"
+    if source == "unknown":
+        selector = "Not an effect"
+    elif source == "template":
+        selector = "Rhythm [Music]"
+        content = MusicProfile("H617A", "rhythm", 50, parameters={"unsupported": 1})
+        await backend.template_defaults.async_set(
+            CatalogueTemplateDefault(
+                config_entry_id="entry-a",
+                model="H617A",
+                template_id="template:music:rhythm",
+                content=content,
+                updated_at="2026-08-27T00:00:00Z",
+            )
+        )
+    else:
+        catalogue = MODEL_EFFECT_CATALOGUES["H617A"]
+        monkeypatch.setitem(MODEL_EFFECT_CATALOGUES, "H617A", replace(catalogue, palette_min=2))
+        if source == "stale_saved":
+            monkeypatch.setattr(entity, "_saved_effect", lambda _name: item)
+    before = (mock_coordinator.is_on, mock_coordinator.brightness_pct, mock_coordinator.rgb_color)
+    control = MagicMock(side_effect=AssertionError("ineligible requests must not acquire user control"))
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.light.async_control_intent", control)
+    with pytest.raises((HomeAssistantError, ValueError)):
+        await entity.async_turn_on(effect=selector, brightness=100)
+    supersede.assert_not_awaited()
+    control.assert_not_called()
+    mock_coordinator.send_command.assert_not_awaited()
+    mock_coordinator.async_write_effect_sequence.assert_not_awaited()
+    entity.async_write_ha_state.assert_not_called()
+    assert (mock_coordinator.is_on, mock_coordinator.brightness_pct, mock_coordinator.rgb_color) == before
+    assert not mock_coordinator._control_lock.locked()
 
 
 async def test_h6076_exposes_only_basic_colour_controls(mock_h6076_coordinator):

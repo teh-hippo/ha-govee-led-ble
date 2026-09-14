@@ -25,6 +25,24 @@ test("canonical backend catalogue decodes through the production catalogue valid
   ]);
 });
 
+test("target catalogue limits reject inverted ranges and wire overflows", () => {
+  for (const limits of [
+    { palette_min: 3, palette_max: 2 },
+    { palette_max: 9 },
+    { multi_max: 5 },
+    { speed_min: 61, speed_max: 60 },
+    { brightness_min: 61, brightness_max: 60 },
+  ]) {
+    const payload = structuredClone(backendContracts.responses.custom_catalogue);
+    Object.assign(payload.models.H6199.limits, limits);
+    expect(() => decodeCatalogue(payload)).toThrow();
+  }
+  const payload = structuredClone(backendContracts.responses.custom_catalogue);
+  payload.models.H6199.effects[0].rate_min = 61;
+  payload.models.H6199.effects[0].rate_max = 60;
+  expect(() => decodeCatalogue(payload)).toThrow("rate limits are inverted");
+});
+
 test("catalogue families require variations and the single-layer category", () => {
   const noVariations = structuredClone(
     backendContracts.responses.custom_catalogue,

@@ -19,11 +19,11 @@ from .effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H617A_WORKSHOP_APPLY_CODE,
     H617A_WORKSHOP_SCENE_TYPE,
-    H6199_DIY_EFFECTS,
     H6199_PALETTE_DIY_APPLY_CODE,
     H6199_PALETTE_DIY_APPLY_MUSIC_CODE,
     H6199_WORKSHOP_APPLY_CODE,
     H6199_WORKSHOP_APPLY_MUSIC_CODE,
+    validate_effect_eligibility,
 )
 from .effect_commands import (
     DiyPaintGroup,
@@ -232,15 +232,10 @@ def compatibility(item: LibraryItem, model: str) -> CompatibilityResult:
                 CompatibilityState.INCOMPATIBLE,
                 (f"palette DIY targets {content.model}, not {model}",),
             )
-        supported = {(effect.family, effect.variant) for effect in H6199_DIY_EFFECTS}
-        if (content.family, content.variant) not in supported:
-            return CompatibilityResult(
-                CompatibilityState.INCOMPATIBLE,
-                (f"H6199 palette DIY family {content.family} variation {content.variant} is not supported",),
-            )
     if isinstance(content, PaintedEffect | SingleEffect | MultiEffect | PaletteDiyEffect):
         try:
             resolve_diy_code(item, model=model)
+            validate_effect_eligibility(content, model)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)

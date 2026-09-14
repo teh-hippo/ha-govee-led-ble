@@ -1463,6 +1463,26 @@ async def test_h6199_rejects_unsupported_variation_before_any_write(
     coordinator.refresh_state.assert_not_awaited()
 
 
+@pytest.mark.parametrize("snapshot", [False, True])
+async def test_target_content_limits_reject_before_deployment(hass, effect_catalogue_targets, snapshot):
+    _broad, narrow = effect_catalogue_targets
+    repository, cache = await _repositories(hass)
+    coordinator = _coordinator()
+    coordinator.model = narrow
+    coordinator.is_on = False
+    engine = EffectDeploymentEngine(repository, cache)
+    apply = engine.async_apply_snapshot if snapshot else engine.async_apply_saved
+    item = LibraryItem.new("Unsupported", SingleEffect(0, 1, 50, ((255, 0, 0), (0, 0, 255))))
+    before = repository.snapshot()
+    with pytest.raises(ValueError, match="variation 1"):
+        await apply(coordinator, item, config_entry_id="entry-a", updated_at="2026-08-11T00:00:00Z")
+    coordinator.send_command.assert_not_awaited()
+    coordinator.refresh_state.assert_not_awaited()
+    assert coordinator.is_on is False
+    assert repository.snapshot() == before
+    assert cache.get("entry-a") is None
+
+
 async def test_h6199_uncertain_result_emits_structured_evidence_gap(
     hass: HomeAssistant,
 ) -> None:

@@ -16,6 +16,7 @@ import {
 } from "./editor-state";
 import {
   blankPainted,
+  effectContentEligible,
   isEditableEffectContent,
   serialiseEditable,
   type CustomEffectCategory,
@@ -412,6 +413,7 @@ export class PanelModel {
         liveApplyEnabled: this.liveApplyEnabled,
         canApply:
           isEditableEffectContent(this.content) &&
+          this.previewCapability === "supported" &&
           this.isAdmin &&
           !this.stateUpdatesUnavailable,
         canSave: this.canSaveCurrentDraft,
@@ -455,6 +457,9 @@ export class PanelModel {
     const device = this.selectedDevice;
     if (!device) {
       return undefined;
+    }
+    if (!effectContentEligible(this.content, this.modelCatalogue, device.model, device.segment_count)) {
+      return "unsupported";
     }
     switch (this.content.kind) {
       case "h617a_painted":

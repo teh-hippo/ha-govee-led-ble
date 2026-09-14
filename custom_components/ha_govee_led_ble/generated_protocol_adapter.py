@@ -430,7 +430,7 @@ def build_h6199_palette_diy_envelope(
     root.chunk_count = root.diy_chunk_count
     root.kind = H6199EffectUpload.BodyKind.diy
     content = _child(H6199EffectUpload.DiyContent, root)
-    content.family = H6199EffectUpload.EffectFamily(family)
+    content.family = KaitaiStream.resolve_enum(H6199EffectUpload.EffectFamily, family)
     content.variant = variant
     content.speed = speed
     content.palette_len = len(palette) * 3
