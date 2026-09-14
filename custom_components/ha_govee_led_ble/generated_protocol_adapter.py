@@ -984,7 +984,7 @@ def build_relative_brightness(
     body = _child(H6199CommandWrite.RelativeBrightnessBody, root)
     body.selector = b"\x01"
     body.edge_count = len(profile.video_brightness_zones)
-    if (strip_left is not None and strip_right is not None) != (body.edge_count == 6):
+    if any((value is not None) != (body.edge_count == 6) for value in (strip_left, strip_right)):
         raise ValueError("brightness values must match the model topology")
     body.left_percent = max(0, min(100, left))
     body.top_percent = max(0, min(100, top))

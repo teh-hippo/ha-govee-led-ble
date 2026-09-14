@@ -78,6 +78,7 @@ from .music_semantics import music_variant
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
+from .video_applicability import validate_video_request
 
 # fmt: on
 
@@ -590,6 +591,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return None
         item = LibraryItem.new(template_id, stored.content)
         compiled = compile_application(item, self.coordinator.model)
+        validate_video_request(self.coordinator, item.content)
         if not isinstance(compiled, CompiledMusicProfile | CompiledVideoProfile):
             raise RuntimeError("native selector template default did not compile to a native profile")
         return compiled
@@ -750,6 +752,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 model=self.coordinator.model,
                 expected_version=item.version,
             ) as current:
+                validate_video_request(self.coordinator, current.content)
                 await self._async_supersede_preview()
                 async with async_control_intent(
                     self.coordinator,

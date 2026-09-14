@@ -63,6 +63,7 @@ export interface DeviceCapabilities {
     music: CapabilityState;
     video: CapabilityState;
   };
+  video_control_states?: Partial<Record<VideoProfileSetting, CapabilityState>>;
   readback: string;
   effect_categories: string[];
   preview_health: PreviewHealthStatus;

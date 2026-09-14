@@ -484,7 +484,9 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
     white_balance.assert_awaited_once_with(h6199)
     relative_brightness.assert_awaited_once_with(h6199)
     blank_screen.assert_awaited_once_with(h6199)
-    video_mode.assert_awaited_once_with(h6199)
+    video_mode.assert_awaited_once_with(
+        h6199, requested_fields=frozenset({"full_screen", "saturation", "sound_effects", "sound_effects_softness"})
+    )
     assert (
         h6199.video_mode,
         h6199.video_full_screen,

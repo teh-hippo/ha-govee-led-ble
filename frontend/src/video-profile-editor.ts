@@ -21,6 +21,7 @@ import type {
   VideoProfileContent,
   VideoProfileSetting,
   VideoControls,
+  CapabilityState,
 } from "./types";
 import { clampInteger } from "./ui-utils";
 
@@ -82,6 +83,9 @@ export class GoveeVideoProfileEditor extends LitElement {
   @property({ attribute: false })
   public controls?: VideoControls;
 
+  @property({ attribute: false })
+  public applicability?: Partial<Record<VideoProfileSetting, CapabilityState>>;
+
   @property({ type: Boolean })
   public disabled = false;
 
@@ -130,6 +134,44 @@ export class GoveeVideoProfileEditor extends LitElement {
 
     return html`
       <div class="editor-grid">
+        ${Object.entries(this.applicability ?? {}).filter(([, state]) => state !== "supported").map(([control, state]) => html`
+          <p role="status">${control.replaceAll("_", " ")}: ${state === "evidence_gap" ? "firmware identity unavailable" : "unavailable on this device"}.
+            A profile requesting this setting cannot be applied.</p>`)}
+        <section class="card">
+          <h3 class="section-title">Included settings</h3>
+          <p class="muted">Unchecked settings are left unchanged on the device.</p>
+          ${this.settings.map(setting => this.renderCheckboxField(
+            `Include ${setting.replaceAll("_", " ")}`,
+            setting === "white_balance" ? whiteBalance : setting === "relative_brightness" ? relativeBrightness
+              : setting === "blank_screen" ? blankScreen : setting === "capture_region" ? captureRegion
+              : setting === "saturation" ? saturation : soundEffects,
+            checked => this.updateContent(content => {
+              switch (setting) {
+                case "capture_region": content.full_screen = checked ? true : null; break;
+                case "saturation": content.saturation = checked ? 50 : null; break;
+                case "sound_effects":
+                  content.sound_effects = checked ? false : null;
+                  content.sound_effects_softness = checked ? 50 : null;
+                  break;
+                case "blank_screen": content.blank_screen = checked ? false : null; break;
+                case "white_balance":
+                  content.white_balance_position = null;
+                  delete content.white_balance_value;
+                  if (checked) {
+                    const value = this.controls?.white_balance.default ?? 17;
+                    if (this.controls?.white_balance.representation === "scalar") content.white_balance_value = value;
+                    else content.white_balance_position = value;
+                  }
+                  break;
+                case "relative_brightness":
+                  content.relative_brightness = checked ? {
+                    left: 100, top: 100, right: 100, bottom: 100,
+                    ...(this.controls?.brightness_zones.length === 6 ? {strip_left: 100, strip_right: 100} : {}),
+                  } : null;
+              }
+            }),
+          ))}
+        </section>
         <section
           class="card"
           ?hidden=${!captureRegion && !soundEffects && !blankScreen}

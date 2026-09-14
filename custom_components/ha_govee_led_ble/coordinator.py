@@ -31,6 +31,7 @@ from .coordinator_expectations import expectations_from_packet
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_status import ParsedMode, StatusDomain, decode_status_frame_result, parse_color_mode
 from .effect_commands import build_h617a_diy_activation
+from .effect_contracts import CapabilityState
 from .effect_deployments import PriorControlState
 from .generated_protocol_adapter import (
     build_blank_screen_query,
@@ -68,6 +69,7 @@ from .native_profile_controls import (
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, canonical_scene_key, resolve_scene_code, scene_code_is_ambiguous
 from .transport import READ_UUID, WRITE_UUID
+from .video_applicability import video_control_states
 
 EFFECT_SEQUENCE_ATTEMPTS = 3
 EFFECT_SEQUENCE_CONNECT_TIMEOUT = 8.0
@@ -316,11 +318,52 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 music_calm,
                 music_parameters,
             )
-        if self.profile.supports_white_balance and state.white_balance_scalar is not None:
+        states = video_control_states(self.profile, self)
+        permitted = {
+            control
+            for control, status in states.items()
+            if status is CapabilityState.SUPPORTED
+            and (state.video_restore_controls is None or control in state.video_restore_controls)
+        }
+        needed = {
+            control
+            for control, fields in (
+                (
+                    "white_balance",
+                    ("white_balance_scalar",)
+                    if self.profile.video_white_balance_representation == "scalar"
+                    else ("white_balance_red", "white_balance_blue"),
+                ),
+                (
+                    "relative_brightness",
+                    tuple(f"relative_brightness_{zone}" for zone in self.profile.video_brightness_zones),
+                ),
+                (
+                    "blank_screen",
+                    (
+                        "blank_screen",
+                        "blank_screen_detection",
+                        "blank_screen_low_brightness_duration_seconds",
+                        "blank_screen_same_tone_duration_seconds",
+                    ),
+                ),
+            )
+            if (state.video_restore_controls is None or control in state.video_restore_controls)
+            and any(
+                getattr(state, field) is not None and getattr(self, field) != getattr(state, field) for field in fields
+            )
+        }
+        complete = not (needed - permitted)
+        if (
+            "white_balance" in permitted & needed
+            and state.white_balance_scalar is not None
+            and self.profile.video_white_balance_representation == "scalar"
+        ):
             self.white_balance_scalar = state.white_balance_scalar
             await apply_white_balance(self)
         if (
-            self.profile.supports_white_balance
+            "white_balance" in permitted & needed
+            and self.profile.video_white_balance_representation == "position"
             and state.white_balance_red is not None
             and state.white_balance_blue is not None
         ):
@@ -328,7 +371,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.white_balance_blue = state.white_balance_blue
             await apply_white_balance(self)
         if (
-            self.profile.supports_relative_brightness
+            "relative_brightness" in permitted & needed
             and state.relative_brightness_left is not None
             and state.relative_brightness_top is not None
             and state.relative_brightness_right is not None
@@ -342,7 +385,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.relative_brightness_strip_left = state.relative_brightness_strip_left
             self.relative_brightness_strip_right = state.relative_brightness_strip_right
             await apply_relative_brightness(self)
-        if self.profile.supports_blank_screen and state.blank_screen is not None:
+        if "blank_screen" in permitted & needed and state.blank_screen is not None:
             self.blank_screen = state.blank_screen
             self.blank_screen_detection = state.blank_screen_detection
             self.blank_screen_low_brightness_duration_seconds = state.blank_screen_low_brightness_duration_seconds
@@ -351,7 +394,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         if not state.is_on:
             await self.send_command(build_power(False, self.model))
             self.is_on = False
-            return self.profile.state_readable and await self.refresh_state(expected_on=False)
+            return self.profile.state_readable and await self.refresh_state(expected_on=False) and complete
         if state.mode == "custom":
             if (
                 state.diy_code is None
@@ -363,7 +406,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 return False
             await self.send_command(build_h617a_diy_activation(state.diy_code))
             self.diy_code = state.diy_code
-            return await self.async_observe_effect({"is_on": True, "diy_code": state.diy_code}) is True
+            return await self.async_observe_effect({"is_on": True, "diy_code": state.diy_code}) is True and complete
         if state.mode == "scene" and (state.effect is not None or state.scene_code is not None):
             resolved = (
                 resolve_scene_code(
@@ -393,7 +436,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self._scene_code = scene.code
             self.diy_code = None
             self.music_mode = self.video_mode = "off"
-            return self.profile.state_readable and await self.refresh_state(expected_scene_code=scene.code)
+            return self.profile.state_readable and await self.refresh_state(expected_scene_code=scene.code) and complete
         if state.mode == "music" and state.music_mode in self.profile.music_modes:
             self.install_music_profile_state(
                 mode=state.music_mode,
@@ -408,14 +451,36 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.music_mode, self.video_mode = state.music_mode, "off"
             self.effect = None
             self.diy_code = None
-            return self.profile.state_readable and await self.refresh_state(expected_music_mode=state.music_mode)
+            return (
+                self.profile.state_readable
+                and await self.refresh_state(expected_music_mode=state.music_mode)
+                and complete
+            )
         if state.mode == "video" and state.video_mode in {"movie", "game"} and self.profile.supports_video_mode:
+            for field, control in (
+                ("full_screen", "capture_region"),
+                ("saturation", "saturation"),
+                ("sound_effects", "sound_effects"),
+                ("sound_effects_softness", "sound_effects"),
+            ):
+                if (
+                    state.video_restore_controls is None or control in state.video_restore_controls
+                ) and control not in permitted:
+                    complete = complete and getattr(self, f"video_{field}") == getattr(state, f"video_{field}")
             self.video_mode = state.video_mode
-            self.video_full_screen = state.video_full_screen
-            self.video_saturation = state.video_saturation
-            self.video_sound_effects = state.video_sound_effects
-            self.video_sound_effects_softness = state.video_sound_effects_softness
-            return await apply_active_video_mode(self)
+            restored = frozenset(
+                field
+                for field, control in (
+                    ("full_screen", "capture_region"),
+                    ("saturation", "saturation"),
+                    ("sound_effects", "sound_effects"),
+                    ("sound_effects_softness", "sound_effects"),
+                )
+                if control in permitted
+            )
+            for field in restored:
+                setattr(self, f"video_{field}", getattr(state, f"video_{field}"))
+            return await apply_active_video_mode(self, requested_fields=restored) and complete
         if state.mode != "colour":
             return False
         await self.send_command(build_power(True, self.model))
@@ -437,6 +502,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             self.profile.state_readable
             and await self.refresh_state(**static_expectations)
             and self.active_mode == "colour"
+            and complete
         )
 
     @callback
@@ -1034,7 +1100,12 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                         self.blank_screen_same_tone_duration_seconds = int(payload.same_tone_duration_seconds)
                         if self._accept_expected("blank_screen", blank_screen):
                             self.blank_screen = blank_screen
-                            observed = ("blank_screen",)
+                            observed = (
+                                "blank_screen",
+                                "blank_screen_detection",
+                                "blank_screen_low_brightness_duration_seconds",
+                                "blank_screen_same_tone_duration_seconds",
+                            )
             elif domain is StatusDomain.RELATIVE_BRIGHTNESS:
                 zones = self.profile.video_brightness_zones
                 if generated.body.edge_count != len(zones):
@@ -1360,6 +1431,29 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             deadline = time.monotonic() + timeout
             for attempt in range(2):
                 field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
+                if refresh_display_settings:
+                    display_fields: list[str] = []
+                    if self.profile.supports_white_balance:
+                        display_fields.extend(
+                            ("white_balance_scalar",)
+                            if self.profile.video_white_balance_representation == "scalar"
+                            else ("white_balance_red", "white_balance_blue")
+                        )
+                    if self.profile.supports_blank_screen:
+                        display_fields.extend(
+                            (
+                                "blank_screen",
+                                "blank_screen_detection",
+                                "blank_screen_low_brightness_duration_seconds",
+                                "blank_screen_same_tone_duration_seconds",
+                            )
+                        )
+                    field_baselines.update((field, self._field_revisions.get(field, 0)) for field in display_fields)
+                if refresh_relative_brightness:
+                    field_baselines.update(
+                        (f"relative_brightness_{zone}", self._field_revisions.get(f"relative_brightness_{zone}", 0))
+                        for zone in self.profile.video_brightness_zones
+                    )
                 domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
                 async with self._lock:
                     if self._client is not client:

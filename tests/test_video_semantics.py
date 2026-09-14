@@ -120,6 +120,8 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
     assert await coordinator.async_observe_effect(expected, timeout=0.001) is None
     prior = coordinator.capture_effect_control_state()
     assert PriorControlState.from_dict(prior.to_dict()) == prior
+    coordinator.white_balance_scalar = 90
+    coordinator.relative_brightness_strip_right = 10
     send = AsyncMock()
     monkeypatch.setattr(coordinator, "send_command", send)
     monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))

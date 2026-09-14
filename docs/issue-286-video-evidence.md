@@ -17,3 +17,25 @@ Source: Govee Android 7.6.01, locally decompiled under
   calibration evidence, or qualification of six-zone hardware.
 
 No H6099 profile, border-removal control, or physical device support is enabled.
+
+## Firmware Identity
+
+- `pact_h6099/detail/mode/VideoVm.java:72-76` passes `info.n0()` to
+  `pact_h6099/pact/Support.java:319-320`. For H6099, that example requires
+  `NumberUtil.parseVersion(version) >= 10011` for border removal.
+- `base2light/kt/comm/Info4BleIotDevice.java:650-651` returns field H;
+  line 450 assigns H to `BleIotInfo.wifiSoftVersion`.
+- `base2light/ble/controller/WifiSoftVersionController.java:12,30-32`
+  reads opcode 0x21. `WifiHardVersionController.java:12,30-32` reads 0x20.
+  Integration fields remain `subordinate_21_version` and `subordinate_20_version`.
+- `base2home/util/NumberUtil.java:385-392` removes dots then parses an integer;
+  `shared/utils/KmpVersionUtils.java:22` defines the delimiter as `.`.
+  Missing/malformed identity is an evidence gap here, not the app's numeric zero.
+
+No shipped profile has a firmware condition. Tests use a deliberately unrelated
+`9.08.07` threshold on an already-declared synthetic white-balance control.
+The H6099 border-removal threshold is not transferred to any runtime control.
+Conditions can only narrow an existing per-model capability. The existing device
+subscription publishes updated control states after identity notifications.
+Recovery retains old documents unchanged; new profile transactions persist their
+requested control set so omitted registers are not restored as incidental writes.

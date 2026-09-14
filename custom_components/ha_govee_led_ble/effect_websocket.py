@@ -127,6 +127,7 @@ from .effect_websocket_schema import (
     WS_USER_STATE_UPDATE,
     strict_int,
 )
+from .video_applicability import validate_video_request, video_control_states
 
 BACKEND_DATA_KEY = "effect_backend"
 PREVIEW_SESSION_NOT_FOUND_CODE = "preview_session_not_found"
@@ -214,6 +215,9 @@ def _device_payload(
         effect_categories=tuple(coordinator.effect_categories),
     ).to_dict()
     device["active_state"] = observed.to_public_dict()
+    device["video_control_states"] = {
+        key: value.value for key, value in video_control_states(coordinator.profile, coordinator).items()
+    }
     workspace = backend.active_workspaces.get(entry.entry_id)
     device["active_workspace"] = (
         workspace.to_dict() if workspace is not None and active_workspace_matches(coordinator, workspace) else None
@@ -1321,6 +1325,7 @@ async def ws_apply(
             model=entry.runtime_data.model,
             expected_version=msg["expected_version"],
         ) as item:
+            validate_video_request(entry.runtime_data, item.content)
             await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
             result = await backend.engine.async_apply_saved(
                 entry.runtime_data,
@@ -1390,6 +1395,7 @@ async def ws_apply_snapshot(
         compile_application(
             item, entry.runtime_data.model, diy_code=resolve_diy_code(item, model=entry.runtime_data.model)
         )
+        validate_video_request(entry.runtime_data, item.content)
         await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
         result = await backend.engine.async_apply_snapshot(
             entry.runtime_data,

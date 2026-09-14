@@ -12,6 +12,7 @@ from .generated_protocol_adapter import (
     build_video_mode,
     build_white_balance,
 )
+from .video_applicability import require_video_controls
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
@@ -47,6 +48,19 @@ async def apply_active_video_mode(
 ) -> bool:
     if coordinator.video_mode not in ("movie", "game"):
         return False
+    if requested_fields is not None:
+        require_video_controls(
+            coordinator.profile,
+            coordinator,
+            {
+                "capture_region"
+                if field == "full_screen"
+                else "sound_effects"
+                if field == "sound_effects_softness"
+                else field
+                for field in requested_fields
+            },
+        )
     send = coordinator.send_command if writer is None else writer
     for _ in range(2 if verify else 1):
         if not coordinator.is_on:
@@ -96,6 +110,7 @@ async def apply_white_balance(
     writer: Callable[[bytes], Awaitable[None]] | None = None,
     verify: bool = True,
 ) -> bool:
+    require_video_controls(coordinator.profile, coordinator, ("white_balance",))
     scalar = coordinator.profile.video_white_balance_representation == "scalar"
     if scalar and coordinator.white_balance_scalar is None:
         raise ValueError("Scalar white balance has not been read")
@@ -127,6 +142,7 @@ async def apply_relative_brightness(
     writer: Callable[[bytes], Awaitable[None]] | None = None,
     verify: bool = True,
 ) -> bool:
+    require_video_controls(coordinator.profile, coordinator, ("relative_brightness",))
     zones = coordinator.profile.video_brightness_zones
     values = tuple(getattr(coordinator, f"relative_brightness_{edge}") for edge in zones)
     if any(value is None for value in values):
@@ -163,6 +179,7 @@ async def apply_blank_screen(
     writer: Callable[[bytes], Awaitable[None]] | None = None,
     verify: bool = True,
 ) -> bool:
+    require_video_controls(coordinator.profile, coordinator, ("blank_screen",))
     expected = bool(coordinator.blank_screen)
     detection = coordinator.blank_screen_detection
     low_duration = coordinator.blank_screen_low_brightness_duration_seconds

@@ -476,6 +476,17 @@ export class PanelModel {
       case "music_profile":
         return device.profiles.music;
       case "video_profile":
+        for (const [control, requested] of Object.entries({
+          capture_region: this.content.full_screen !== null,
+          saturation: this.content.saturation !== null,
+          sound_effects: this.content.sound_effects !== null || this.content.sound_effects_softness !== null,
+          white_balance: this.content.white_balance_position !== null || this.content.white_balance_value !== undefined,
+          relative_brightness: this.content.relative_brightness !== null,
+          blank_screen: this.content.blank_screen !== null,
+        })) {
+          const state = device.video_control_states?.[control as keyof NonNullable<typeof device.video_control_states>];
+          if (requested && state && state !== "supported") return state;
+        }
         return device.profiles.video;
       case "workshop":
         return device.custom_effects.workshop;

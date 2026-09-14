@@ -19,6 +19,7 @@ from .coordinator import GoveeBLECoordinator
 from .generated_protocol_adapter import build_power, build_video_mode
 from .light_commands import SegmentColorGroup, build_segment_brightness, build_segment_paint, segments_to_mask
 from .native_profile_controls import apply_active_video_mode
+from .video_applicability import require_video_controls
 
 __all__ = ("apply_active_video_mode", "async_register_light_services")
 
@@ -133,6 +134,14 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             resolved_softness = (
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
+            require_video_controls(c.profile, c, {
+                control for control, changed in (
+                    ("capture_region", resolved_fs != c.video_full_screen),
+                    ("saturation", resolved_saturation != c.video_saturation),
+                    ("sound_effects", resolved_sound != c.video_sound_effects
+                     or resolved_softness != c.video_sound_effects_softness),
+                ) if changed
+            })
             packet = build_video_mode(
                 mode,
                 resolved_fs,

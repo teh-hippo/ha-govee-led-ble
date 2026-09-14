@@ -76,6 +76,28 @@ _IDENTITY_READ_DOMAINS = frozenset(
 
 
 @dataclass(frozen=True)
+class VideoFirmwareCondition:
+    control: str
+    identity_field: str
+    minimum: str
+
+    def __post_init__(self) -> None:
+        if self.control not in {
+            "capture_region",
+            "saturation",
+            "sound_effects",
+            "white_balance",
+            "relative_brightness",
+            "blank_screen",
+        }:
+            raise ValueError("unknown video firmware control")
+        if self.identity_field not in {"fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}:
+            raise ValueError("unknown firmware identity field")
+        if re.fullmatch(r"[0-9]{1,3}\.[0-9]{2}\.[0-9]{2}", self.minimum) is None:
+            raise ValueError("firmware minimum must use major.xx.xx notation")
+
+
+@dataclass(frozen=True)
 class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
@@ -85,6 +107,7 @@ class ModelProfile:
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
     video_grammar: str | None = None
+    video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     read_domains: frozenset[ReadDomain] = frozenset()
     setup_required_read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
@@ -137,6 +160,10 @@ class ModelProfile:
             raise ValueError("physical IC count must be a positive integer or unknown")
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
+        if len({condition.control for condition in self.video_firmware_conditions}) != len(
+            self.video_firmware_conditions
+        ):
+            raise ValueError("only one firmware condition per video control is supported")
         if self.read_domains and self.status_grammar is None:
             raise ValueError("read domains require a status grammar")
         if (

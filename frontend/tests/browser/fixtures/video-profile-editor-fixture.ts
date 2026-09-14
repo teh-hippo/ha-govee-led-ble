@@ -34,3 +34,6 @@ if (new URLSearchParams(location.search).has("alternate")) {
     editor.content = (event as CustomEvent).detail.content;
   });
 }
+if (new URLSearchParams(location.search).has("gated")) {
+  editor.applicability = {white_balance: "evidence_gap"};
+}

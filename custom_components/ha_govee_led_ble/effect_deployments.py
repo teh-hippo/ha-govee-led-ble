@@ -122,8 +122,26 @@ class PriorControlState:
     blank_screen_detection: int | None = None
     blank_screen_low_brightness_duration_seconds: int | None = None
     blank_screen_same_tone_duration_seconds: int | None = None
+    video_restore_controls: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
+        if self.video_restore_controls is not None and (
+            not isinstance(self.video_restore_controls, tuple)
+            or any(
+                not isinstance(control, str)
+                or control
+                not in {
+                    "capture_region",
+                    "saturation",
+                    "sound_effects",
+                    "white_balance",
+                    "relative_brightness",
+                    "blank_screen",
+                }
+                for control in self.video_restore_controls
+            )
+        ):
+            raise EffectStorageError("invalid video restoration controls")
         validate_bounded_string(
             self.mode,
             "prior control mode",
@@ -237,6 +255,11 @@ class PriorControlState:
     def to_dict(self) -> dict[str, Any]:
         return {
             "mode": self.mode,
+            **(
+                {"video_restore_controls": list(self.video_restore_controls)}
+                if self.video_restore_controls is not None
+                else {}
+            ),
             "is_on": self.is_on,
             "brightness_pct": self.brightness_pct,
             "rgb_color": list(self.rgb_color),
@@ -299,8 +322,14 @@ class PriorControlState:
                 },
                 **raw,
             }
+        controls = raw.get("video_restore_controls")
+        if "video_restore_controls" in raw and (
+            not isinstance(controls, list) or any(not isinstance(control, str) for control in controls)
+        ):
+            raise EffectStorageError("invalid video restoration controls")
         return cls(
             mode=_required_str(raw, "mode"),
+            video_restore_controls=tuple(raw["video_restore_controls"]) if "video_restore_controls" in raw else None,
             is_on=_required_bool(raw, "is_on"),
             brightness_pct=_required_int(raw, "brightness_pct"),
             rgb_color=_required_rgb(raw, "rgb_color"),

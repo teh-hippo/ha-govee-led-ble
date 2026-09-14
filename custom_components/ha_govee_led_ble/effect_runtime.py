@@ -63,6 +63,7 @@ from .native_profile_controls import (
     apply_white_balance,
 )
 from .scenes import canonical_scene_key, resolve_scene_identity, scene_code_is_ambiguous
+from .video_applicability import requested_video_controls, require_video_controls, validate_video_request
 
 ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
@@ -112,6 +113,26 @@ async def async_apply_compiled_profile(
         return
 
     profile = coordinator.profile
+    require_video_controls(profile, coordinator, requested_video_controls(compiled))
+    omitted_mode_fields = tuple(
+        field
+        for field, supported in (
+            ("full_screen", profile.supports_video_capture_region),
+            ("saturation", profile.supports_video_saturation),
+            ("sound_effects", profile.supports_video_sound_effects),
+            ("sound_effects_softness", profile.supports_video_sound_effects),
+        )
+        if supported and getattr(compiled, field) is None
+    )
+    if omitted_mode_fields:
+        baselines = {
+            f"video_{field}": coordinator._field_revisions.get(f"video_{field}", 0) for field in omitted_mode_fields
+        }
+        if not await coordinator.refresh_state() or any(
+            coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
+        ):
+            raise ValueError("Cannot preserve omitted video settings without fresh readback")
+        require_video_controls(profile, coordinator, requested_video_controls(compiled))
     # Validate every packet before changing state or sending the first command.
     build_video_mode(
         compiled.mode,
@@ -245,6 +266,7 @@ class EffectDeploymentEngine:
     ) -> tuple[CompiledApplication, DeploymentRecord]:
         resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model)
         compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
+        validate_video_request(coordinator, item.content)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -436,6 +458,8 @@ class EffectDeploymentEngine:
             ):
                 lock_acquired = True
                 try:
+                    if isinstance(compiled, CompiledVideoProfile):
+                        require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
                     self._reconcile_observation(
                         coordinator,
@@ -447,6 +471,10 @@ class EffectDeploymentEngine:
                         coordinator,
                         config_entry_id=current.config_entry_id,
                     )
+                    if isinstance(compiled, CompiledVideoProfile):
+                        prior_state = replace(
+                            prior_state, video_restore_controls=tuple(sorted(requested_video_controls(compiled)))
+                        )
                     next_record = replace(current, prior_state=prior_state)
                     await self._deployments.async_put(next_record, expected_version=None)
                     current = next_record

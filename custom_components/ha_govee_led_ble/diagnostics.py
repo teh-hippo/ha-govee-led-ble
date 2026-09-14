@@ -109,8 +109,10 @@ async def async_get_config_entry_diagnostics(
             else None
         ),
         "relative_brightness": coordinator.relative_brightness,
+        "white_balance_scalar": coordinator.white_balance_scalar,
         "relative_brightness_edges": {
-            edge: getattr(coordinator, f"relative_brightness_{edge}") for edge in ("left", "top", "right", "bottom")
+            edge: getattr(coordinator, f"relative_brightness_{edge}")
+            for edge in coordinator.profile.video_brightness_zones
         },
         "blank_screen": coordinator.blank_screen,
         "blank_screen_policy": {

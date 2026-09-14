@@ -79,6 +79,24 @@ function device(
   };
 }
 
+test("live video conditions reject requested settings without stripping persisted content", () => {
+  const model = new PanelModel(() => undefined);
+  const target = device("video", "H6199");
+  target.profiles.video = "supported";
+  target.video_control_states = {white_balance: "evidence_gap"};
+  model.devices = [target];
+  model.selectedDeviceId = "video";
+  model.content = videoProfile("H6199", "movie");
+  expect(model.previewCapability).toBe("evidence_gap");
+  expect(model.content.white_balance_position).toBe(17);
+  target.video_control_states.white_balance = "unsupported";
+  expect(model.previewCapability).toBe("unsupported");
+  model.content = {...model.content, white_balance_position: null};
+  expect(model.previewCapability).toBe("supported");
+  model.content = painted();
+  expect(model.previewCapability).toBe("supported");
+});
+
 function painted(): PaintedContent {
   return {
     kind: "h617a_painted",

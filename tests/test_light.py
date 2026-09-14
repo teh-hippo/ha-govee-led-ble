@@ -1396,7 +1396,8 @@ async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_
     assert isinstance(compiled, CompiledVideoProfile)
     assert compiled.saturation == 63
     assert compiled.relative_brightness == (80, 70, 60, 50)
-    backend.template_defaults.get.assert_called_once_with("entry-a", "template:video:movie")
+    assert backend.template_defaults.get.call_count == 2
+    backend.template_defaults.get.assert_called_with("entry-a", "template:video:movie")
 
 
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):

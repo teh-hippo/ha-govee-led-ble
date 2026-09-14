@@ -867,6 +867,7 @@ export class GoveeLedEffectStudio extends LitElement {
         .content=${this.content}
         .settings=${this.model.modelCatalogue?.video_settings ?? []}
         .controls=${this.model.modelCatalogue?.video_controls}
+        .applicability=${this.model.selectedDevice?.video_control_states}
         .disabled=${this.editorDisabled}
         @content-changed=${(
           event: CustomEvent<{

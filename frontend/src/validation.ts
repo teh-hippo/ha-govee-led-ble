@@ -188,6 +188,10 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         music: capabilityValue(profiles.music, "music profile capability"),
         video: capabilityValue(profiles.video, "video profile capability"),
       },
+      ...(device.video_control_states === undefined ? {} : {
+        video_control_states: Object.fromEntries(Object.entries(objectValue(device.video_control_states, "video control states"))
+          .map(([control, state]) => [control, capabilityValue(state, `video control ${control}`)])),
+      }),
       readback: boundedString(
         device.readback,
         `devices[${index}].readback`,
@@ -921,7 +925,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
           content.white_balance_position,
           "video profile white-balance position",
           1,
-          20,
+          255,
         ),
         ...(content.white_balance_value === undefined ? {} : {
           white_balance_value: integerValue(content.white_balance_value, "video white balance", 0, 255),
