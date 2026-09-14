@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Any
 from uuid import UUID, uuid4
 
-from .const import MUSIC_MODE_SLUGS, ModelProfile, ReadDomain, get_profile
+from .const import ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .effect_active_workspace import (
@@ -50,6 +50,7 @@ from .effect_protocol_decoder import (
 )
 from .generated_protocol_adapter import build_power
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
+from .music_commands import prepare_music_request
 from .native_profile_controls import (
     apply_active_video_mode,
     apply_blank_screen,
@@ -73,6 +74,16 @@ async def async_apply_compiled_profile(
     progress: Callable[[int], Awaitable[None]] | None = None,
 ) -> None:
     if isinstance(compiled, CompiledMusicProfile):
+        if coordinator.model != compiled.model:
+            raise ValueError("music profile target does not match coordinator")
+        packets = prepare_music_request(
+            compiled.model,
+            compiled.mode,
+            compiled.sensitivity,
+            compiled.colour,
+            compiled.calm,
+            compiled.parameters,
+        )
         coordinator.install_music_profile_state(
             mode=compiled.mode,
             sensitivity=compiled.sensitivity,
@@ -80,28 +91,18 @@ async def async_apply_compiled_profile(
             calm=compiled.calm,
             parameters=compiled.parameters,
         )
-        if writer is None:
-            await coordinator.async_select_music_slug(
-                compiled.mode,
-                include_parameters=False,
-            )
-        else:
-            await coordinator.async_select_music_slug(
-                compiled.mode,
-                include_parameters=False,
-                writer=writer,
-            )
+        if coordinator.active_mode == "colour":
+            coordinator._pre_mode_snapshot = coordinator._capture_static_state()
+        send = coordinator.send_command if writer is None else writer
+        for packet in packets:
+            await send(packet)
+        coordinator.is_on = True
+        coordinator.music_mode, coordinator.video_mode = compiled.mode, "off"
+        coordinator.effect = None
+        coordinator.diy_code = None
         if progress is not None:
             await progress(1)
-        if compiled.progress_total > 1:
-            if writer is None:
-                await coordinator.async_apply_music_params(MUSIC_MODE_SLUGS[compiled.mode])
-            else:
-                await coordinator.async_apply_music_params(
-                    MUSIC_MODE_SLUGS[compiled.mode],
-                    writer=writer,
-                )
-            if progress is not None:
+            if len(packets) > 2:
                 await progress(2)
         return
 
@@ -846,6 +847,7 @@ class EffectDeploymentEngine:
             scene_code=getattr(coordinator, "scene_code", None),
             diy_code=coordinator.diy_code,
             music_mode=getattr(coordinator, "music_mode", "off"),
+            music_model=coordinator.model,
             video_mode=getattr(coordinator, "video_mode", "off"),
             music_sensitivity=getattr(coordinator, "music_sensitivity", 100),
             music_calm=getattr(coordinator, "music_calm", False),

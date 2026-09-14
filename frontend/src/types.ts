@@ -328,11 +328,29 @@ export interface ReleaseWorkflowCapability {
   application: ReleaseWorkflowApplication;
 }
 
+export interface MusicParameterSpec {
+  kind: "number" | "switch" | "select";
+  default: number | boolean | string;
+  min: number;
+  max: number;
+  options: string[];
+}
+
+export interface MusicSettings {
+  style: boolean;
+  calm_default: boolean;
+  colour: boolean;
+  evidence: string | null;
+  palette_size: number;
+  parameters: Record<string, MusicParameterSpec>;
+}
+
 export interface ModelEffectCatalogue {
   sku: ModelSku;
   painted_effects: PaintedEffectTemplate[];
   effects: PaletteDiyFamily[];
   music_modes: EffectStudioModeOption[];
+  music_settings: Record<string, MusicSettings>;
   video_modes: EffectStudioModeOption[];
   video_settings: VideoProfileSetting[];
   templates?: CatalogueTemplate[];

@@ -259,6 +259,7 @@ def test_capture_effect_control_state(coord):
 
     assert state == PriorControlState(
         mode="colour",
+        music_model="H617A",
         is_on=True,
         brightness_pct=72,
         rgb_color=(1, 2, 3),
@@ -403,8 +404,7 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
 
     with (
         patch.object(coord, "install_music_profile_state") as install,
-        patch.object(coord, "async_select_music_slug", new_callable=AsyncMock) as select,
-        patch.object(coord, "async_apply_music_params", new_callable=AsyncMock) as parameters,
+        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
         patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
         recovered = await coord.async_restore_effect_control_state(
@@ -421,15 +421,9 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
         parameters={
             "point": 4,
             "gradient": False,
-            "relative_brightness": 50,
-            "key_count": 15,
-            "direction": "clockwise",
-            "segment_count": 1,
-            "speed": 10,
         },
     )
-    select.assert_awaited_once_with("separation")
-    parameters.assert_awaited_once_with(0x32)
+    assert send.await_count == 4
     refresh.assert_awaited_once_with(expected_music_mode="separation")
 
 
@@ -3158,7 +3152,7 @@ def test_segment_query_groups_are_model_bounded(model: str, maximum: int) -> Non
 
 
 def test_unknown_model_encoders_fail_closed() -> None:
-    with pytest.raises(ValueError, match="music grammar"):
+    with pytest.raises(ValueError, match="does not support music mode"):
         build_music_mode(0x03, 50, None, False, "H9999")
     with pytest.raises(ValueError, match="scene activation grammar"):
         build_native_scene_packets("H9999", SCENES["rainbow"])

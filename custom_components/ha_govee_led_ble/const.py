@@ -6,6 +6,8 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
+from .music_semantics import H617A_MUSIC_VARIANTS, MusicVariant
+
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
 CONF_EFFECT_CATEGORIES = "effect_categories"
@@ -102,6 +104,9 @@ class ModelProfile:
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
     music_modes: tuple[str, ...] = ()
+    music_variants: tuple[MusicVariant, ...] = ()
+    # Physical IC count is independent of logical segment_count. None means unknown.
+    physical_ic_count: int | None = None
     music_sensitivity_min: int = 0
     music_sensitivity_max: int = 99
     supports_music_color: bool = False
@@ -119,6 +124,10 @@ class ModelProfile:
     effect_readback: str = "none"
 
     def __post_init__(self) -> None:
+        if self.physical_ic_count is not None and (
+            type(self.physical_ic_count) is not int or self.physical_ic_count <= 0
+        ):
+            raise ValueError("physical IC count must be a positive integer or unknown")
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
         if self.read_domains and self.status_grammar is None:
@@ -238,6 +247,7 @@ _H617A_PROFILE = ModelProfile(
         "bloom",
         "shiny",
     ),
+    music_variants=H617A_MUSIC_VARIANTS,
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
@@ -263,6 +273,10 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617E": replace(
         _H617A_PROFILE,
         name="H617E LED Strip",
+        music_variants=tuple(
+            replace(variant, evidence="H617E owner-qualified shared music semantics")
+            for variant in H617A_MUSIC_VARIANTS
+        ),
         support_quality=SupportQuality.COMPATIBLE,
         effect_grammar="H617A",
         music_modes=(
@@ -347,6 +361,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_relative_brightness=True,
         supports_blank_screen=True,
         music_modes=_H6199_MUSIC_MODES,
+        music_variants=(MusicVariant(0x03, "H6199 captured Rhythm selector style", supports_style=True),),
         music_sensitivity_min=1,
         music_sensitivity_max=100,
         supports_music_color=True,

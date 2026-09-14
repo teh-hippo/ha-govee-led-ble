@@ -36,6 +36,7 @@ from .const import (
     EFFECT_FAMILY_MUSIC,
     EFFECT_FAMILY_SCENES,
     EFFECT_FAMILY_VIDEO,
+    MUSIC_MODE_SLUGS,
     ModelProfile,
     effect_category_for_content_kind,
 )
@@ -47,7 +48,7 @@ from .effect_compiler import CompiledMusicProfile, CompiledVideoProfile, compile
 from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import DeploymentRecord
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage
-from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
+from .effect_domain import EffectValidationError, LibraryItem, MusicProfile, effect_content_to_dict
 from .effect_runtime import (
     active_workspace_matches,
     async_apply_compiled_profile,
@@ -72,6 +73,8 @@ from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
 from .light_services import (
     _GoveeLightServicesMixin,
 )
+from .music_commands import prepare_music_request
+from .music_semantics import music_variant
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
@@ -635,6 +638,33 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         coordinator._enter_static_mode()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        if ATTR_EFFECT in kwargs:
+            try:
+                selected = resolve_effect_selector(self._selector_entries(), str(kwargs[ATTR_EFFECT]))
+            except EffectValidationError:
+                selected = None
+            if selected is not None and selected.item is not None and isinstance(selected.item.content, MusicProfile):
+                compile_application(selected.item, self.coordinator.model)
+            elif selected is not None and selected.source == "music":
+                defaults = getattr(self._effect_backend, "template_defaults", None) if self._effect_backend else None
+                stored = (
+                    defaults.get(self._config_entry_id, f"template:music:{selected.value}")
+                    if defaults is not None and self._config_entry_id is not None
+                    else None
+                )
+                if stored is not None and stored.model == self.coordinator.model:
+                    compile_application(LibraryItem.new("Music", stored.content), self.coordinator.model)
+                else:
+                    variant = music_variant(self.coordinator.profile, MUSIC_MODE_SLUGS[selected.value])
+                    prepare_music_request(
+                        self.coordinator.model,
+                        selected.value,
+                        self.coordinator.music_sensitivity,
+                        self.coordinator.music_color if self.coordinator.profile.supports_music_color else None,
+                        self.coordinator.music_calm if variant and variant.supports_style else False,
+                        {},
+                        include_parameters=bool(variant and variant.supports_style),
+                    )
         active_workspace = self._matching_active_workspace()
         custom_requested = (
             ATTR_EFFECT in kwargs

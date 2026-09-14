@@ -12,6 +12,7 @@ from typing import Any, cast
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
 from .const import get_profile
+from .music_semantics import MusicVariant, music_variant
 from .transport import A3_CHUNK_SIZE, xor_checksum
 
 CommandWrite = cast(
@@ -74,6 +75,7 @@ WorkshopBody = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.workshop_body").WorkshopBody,
 )
+MusicBody = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.music_body").MusicBody)
 
 _U1_MAX = 0xFF
 _A3_MAX_CONTENT = _U1_MAX * A3_CHUNK_SIZE
@@ -986,7 +988,26 @@ def build_music_mode(
     calm: bool,
     model: str = "H617A",
 ) -> bytes:
-    resolved = get_profile(model).command_grammar
+    from .const import MUSIC_MODE_SLUGS
+
+    profile = get_profile(model)
+    if type(mode_id) is not int or mode_id not in (MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes):
+        raise ValueError(f"{model} does not support music mode {mode_id}")
+    if (
+        type(sensitivity) is not int
+        or not profile.music_sensitivity_min <= sensitivity <= profile.music_sensitivity_max
+    ):
+        raise ValueError("music sensitivity is outside model limits")
+    variant = music_variant(profile, mode_id)
+    if not isinstance(calm, bool) or (calm and (variant is None or not variant.supports_style)):
+        raise ValueError("music style is unsupported or invalid")
+    if colour is not None and (
+        not profile.supports_music_color
+        or len(colour) != 3
+        or any(type(channel) is not int or not 0 <= channel <= 255 for channel in colour)
+    ):
+        raise ValueError("fixed music colour is unsupported or invalid")
+    resolved = profile.command_grammar
     if resolved == "H6199":
         root = H6199CommandWrite()
         root.header = b"\x33"
@@ -1020,3 +1041,48 @@ def build_music_mode(
     multi.sub_body = selector
     root.body = multi
     return _serialize_xor(root)
+
+
+def encode_music_parameters(
+    variant: MusicVariant,
+    parameters: dict[str, int | bool | str],
+    *,
+    palette: list[tuple[int, int, int]] | None,
+    calm: bool,
+) -> bytes:
+    """Edit named Kaitai fields; palette length never becomes an absolute tail offset."""
+    if variant.layout != "music_body" or not variant.evidence or not variant.template:
+        raise ValueError("music parameter layout is unqualified")
+    root = MusicBody.from_bytes(b"\x01\x02\x41" + variant.template)
+    root._read()
+    if root.mode != variant.mode_code:
+        raise ValueError("music template does not match variant mode")
+    if palette is not None:
+        if len(palette) != root.num_palette:
+            raise ValueError("palette count does not match music variant")
+        if any(
+            len(rgb) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in rgb)
+            for rgb in palette
+        ):
+            raise ValueError("invalid music palette")
+        root.palette = [_rgb(root, *rgb) for rgb in palette]
+    tail = root.tail
+    for spec in variant.parameters:
+        value = parameters[spec.profile_key]
+        if not hasattr(tail, spec.wire_field):
+            raise ValueError("music parameter field is absent from qualified layout")
+        if spec.kind != "select":
+            setattr(tail, spec.wire_field, int(value))
+    if variant.gradient_companions is not None:
+        tail.companion = variant.gradient_companions[bool(parameters["gradient"])]
+    if variant.piano_derived_half:
+        tail.derived_half = tail.key_count // 2
+    if variant.direction_values:
+        tail.start_point, tail.piece_num = {name: (start, pieces) for name, start, pieces in variant.direction_values}[
+            str(parameters["direction"])
+        ]
+    if variant.style_companions is not None:
+        value = variant.style_companions[calm]
+        tail.style_companion = MusicBody.ShinyStyle(value) if isinstance(tail, MusicBody.ShinyTail) else value
+    _check_tree(root)
+    return _write(root, len(variant.template) + 3)[3:]

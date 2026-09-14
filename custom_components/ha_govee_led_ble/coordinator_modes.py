@@ -2,20 +2,21 @@
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 from .const import MUSIC_MODE_SLUGS
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_status import ParsedMode
 from .effect_contracts import CapabilityWorkflow, require_effect_route
-from .generated_protocol_adapter import build_music_mode, build_power
+from .generated_protocol_adapter import build_power
 from .light_commands import (
     build_color_rgb,
     build_color_temp,
     build_white_brightness,
 )
-from .music_commands import build_music_params
+from .music_commands import build_music_params, prepare_music_request
+from .music_semantics import compile_music_parameters, music_params_for_mode, music_variant
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key
 
@@ -32,104 +33,6 @@ class PreModeSnapshot:
     rgb: tuple[int, int, int] = (255, 255, 255)
     kelvin: int = 0
     level: int = 100
-
-
-RHYTHM_MODE_ID = MUSIC_MODE_SLUGS["rhythm"]
-BLOOM_MODE_ID = MUSIC_MODE_SLUGS["bloom"]
-SHINY_MODE_ID = MUSIC_MODE_SLUGS["shiny"]
-# Modes whose govee_common::music_selector style byte carries Dynamic/Calm.
-MUSIC_STYLE_MODE_IDS = frozenset({RHYTHM_MODE_ID, BLOOM_MODE_ID, SHINY_MODE_ID})
-# Slugs for the style-carrying modes, derived so the set never drifts from the id set above.
-MUSIC_STYLE_SLUGS = frozenset(slug for slug, mode_id in MUSIC_MODE_SLUGS.items() if mode_id in MUSIC_STYLE_MODE_IDS)
-# Bloom and Shiny also carry Dynamic/Calm in their a3 movement companion; Rhythm rides byte 5 alone.
-# Absolute a3 offsets keyed by ``calm``; the Dynamic (False) values equal the capture-pinned templates.
-_MUSIC_STYLE_COMPANION: dict[int, dict[bool, dict[int, int]]] = {
-    BLOOM_MODE_ID: {False: {27: 0x50}, True: {27: 0x14}},
-    SHINY_MODE_ID: {False: {20: 0x05, 21: 0x64}, True: {20: 0x14, 21: 0x46}},
-}
-
-FOUNTAIN_DIRECTION_BYTES: dict[str, tuple[int, int]] = {
-    "clockwise": (0x00, 0x05),
-    "counterclockwise": (0x02, 0x05),
-    "two_way": (0x01, 0x03),
-}
-
-
-def _encode_byte(value: Any) -> int:
-    return int(value)
-
-
-def _encode_bool(value: Any) -> int:
-    return int(bool(value))
-
-
-def _encode_fountain_direction(value: Any) -> int:
-    return FOUNTAIN_DIRECTION_BYTES[str(value)][1]
-
-
-@dataclass(frozen=True)
-class MusicParamSpec:
-    key: str
-    profile_key: str
-    mode_code: int
-    offset: int
-    kind: Literal["number", "switch", "select"]
-    encode: Callable[[Any], int]
-    default: int | bool | str
-    min_value: int = 0
-    max_value: int = 0
-    options: tuple[str, ...] = ()
-
-
-MUSIC_PARAM_SPECS: tuple[MusicParamSpec, ...] = (
-    MusicParamSpec("music_separation_point", "point", 0x32, 20, "number", _encode_byte, 1, min_value=1, max_value=5),
-    MusicParamSpec("music_separation_gradient", "gradient", 0x32, 21, "switch", _encode_bool, True),
-    MusicParamSpec(
-        "music_hopping_brightness",
-        "relative_brightness",
-        0x33,
-        29,
-        "number",
-        _encode_byte,
-        50,
-        min_value=0,
-        max_value=50,
-    ),
-    MusicParamSpec(
-        "music_piano_key_count", "key_count", 0x34, 27, "number", _encode_byte, 15, min_value=8, max_value=15
-    ),
-    MusicParamSpec(
-        "music_fountain_direction",
-        "direction",
-        0x35,
-        28,
-        "select",
-        _encode_fountain_direction,
-        "clockwise",
-        options=("clockwise", "counterclockwise", "two_way"),
-    ),
-    MusicParamSpec(
-        "music_daynight_segments",
-        "segment_count",
-        0x37,
-        26,
-        "number",
-        _encode_byte,
-        1,
-        min_value=1,
-        max_value=7,
-    ),
-    MusicParamSpec("music_daynight_speed", "speed", 0x37, 27, "number", _encode_byte, 10, min_value=1, max_value=50),
-    MusicParamSpec("music_daynight_gradient", "gradient", 0x37, 28, "switch", _encode_bool, False),
-)
-
-
-def music_params_for_mode(mode_code: int) -> tuple[MusicParamSpec, ...]:
-    return tuple(spec for spec in MUSIC_PARAM_SPECS if spec.mode_code == mode_code)
-
-
-def music_mode_has_parameter_write(mode_code: int) -> bool:
-    return bool(music_params_for_mode(mode_code) or mode_code in _MUSIC_STYLE_COMPANION)
 
 
 class _ActiveModeMixin(_CoordinatorBase):
@@ -287,25 +190,27 @@ class _ActiveModeMixin(_CoordinatorBase):
             return
         if slug not in self.profile.music_modes:
             raise ValueError(f"{self.model} does not support music mode {slug}")
+        mode_id = MUSIC_MODE_SLUGS[slug]
+        variant = music_variant(self.profile, mode_id)
+        calm = self.music_calm if variant is not None and variant.supports_style else False
+        color = self.music_color if self.profile.supports_music_color else None
+        # Native selection historically sends only style companions; authored profiles
+        # and recovery explicitly request all parameter packets.
+        packets = prepare_music_request(
+            self.model,
+            slug,
+            self.music_sensitivity,
+            color,
+            calm,
+            {},
+            include_parameters=include_parameters and variant is not None and variant.supports_style,
+        )
         if self.active_mode == "colour":
             self._pre_mode_snapshot = self._capture_static_state()
-        mode_id = MUSIC_MODE_SLUGS[slug]
-        calm = self.music_calm if mode_id in MUSIC_STYLE_MODE_IDS else False
-        color = self.music_color if self.profile.supports_music_color else None
         send = self.send_command if writer is None else writer
-        await send(build_power(True, self.model))
+        for packet in packets:
+            await send(packet)
         self.is_on = True
-        await send(
-            build_music_mode(
-                mode_id,
-                self.music_sensitivity,
-                color,
-                calm,
-                self.model,
-            )
-        )
-        if include_parameters and mode_id in _MUSIC_STYLE_COMPANION:
-            await self._send_music_params(mode_id, writer=send)
         self.music_mode, self.video_mode = slug, "off"
         self.effect = None
         self.diy_code = None
@@ -319,10 +224,12 @@ class _ActiveModeMixin(_CoordinatorBase):
         calm: bool,
         parameters: Mapping[str, int | bool | str],
     ) -> None:
+        parameters = compile_music_parameters(parameters, MUSIC_MODE_SLUGS[mode], self.profile)
+        prepare_music_request(self.model, mode, sensitivity, colour, calm, parameters)
         self.music_sensitivity = sensitivity
         self.music_color = colour
         self.music_calm = calm
-        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode]):
+        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], self.profile):
             if spec.profile_key in parameters:
                 setattr(self, spec.key, parameters[spec.profile_key])
 
@@ -340,19 +247,12 @@ class _ActiveModeMixin(_CoordinatorBase):
         *,
         writer: Callable[[bytes], Awaitable[None]] | None = None,
     ) -> None:
-        overrides = {spec.offset: spec.encode(getattr(self, spec.key)) for spec in music_params_for_mode(mode_code)}
-        if mode_code == 0x35:
-            start_point, piece_num = FOUNTAIN_DIRECTION_BYTES[self.music_fountain_direction]
-            overrides.update({26: start_point, 28: piece_num})
-        if mode_code == 0x32:
-            overrides[22] = 0x5E if self.music_separation_gradient else 0x61
-        if mode_code == 0x34:
-            overrides[30] = self.music_piano_key_count // 2
-        companion = _MUSIC_STYLE_COMPANION.get(mode_code)
-        if companion is not None:
-            overrides.update(companion[self.music_calm])
+        parameters = {
+            spec.profile_key: getattr(self, spec.key) for spec in music_params_for_mode(mode_code, self.profile)
+        }
+        packets = build_music_params(mode_code, parameters, profile=self.profile, calm=self.music_calm)
         send = self.send_command if writer is None else writer
-        for packet in build_music_params(mode_code, overrides):
+        for packet in packets:
             await send(packet)
 
     async def async_restore_pre_mode(self) -> None:

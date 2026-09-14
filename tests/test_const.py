@@ -215,6 +215,7 @@ async def test_new_encoding_metadata_does_not_enable_music_before_profile_constr
     )
     tree.body.insert(tree.body.index(assignment) + 1, ast.parse('MUSIC_MODE_SLUGS["future_mode"] = 5').body[0])
     namespace = ModuleType("_music_profile_regression")
+    namespace.__package__ = const.__package__
     monkeypatch.setitem(sys.modules, namespace.__name__, namespace)
     exec(compile(ast.fix_missing_locations(tree), const.__file__, "exec"), namespace.__dict__)  # noqa: S102
     monkeypatch.setitem(const.MUSIC_MODE_SLUGS, "future_mode", 5)

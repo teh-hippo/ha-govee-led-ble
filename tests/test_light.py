@@ -1277,6 +1277,7 @@ async def test_turn_on_unknown_effect_raises(light, mock_coordinator):
 )
 async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effect, slug):
     co = mock_coordinator
+    co.music_sensitivity = 99
     co.is_on = True
     await light.async_turn_on(effect=effect)
     co.async_select_music_slug.assert_awaited_once_with(slug)
@@ -1313,7 +1314,18 @@ async def test_turn_on_music_effect_uses_the_device_template_default(mock_coordi
     assert isinstance(compiled, CompiledMusicProfile)
     assert compiled.mode == "rhythm"
     assert compiled.sensitivity == 42
-    backend.template_defaults.get.assert_called_once_with("entry-a", "template:music:rhythm")
+    assert backend.template_defaults.get.call_count == 2
+    backend.template_defaults.get.assert_called_with("entry-a", "template:music:rhythm")
+    mock_coordinator.async_select_music_slug.assert_not_awaited()
+
+
+async def test_invalid_music_selection_has_no_control_side_effects(light, mock_coordinator):
+    mock_coordinator.music_sensitivity = True
+    with patch.object(light, "_async_supersede_preview", new_callable=AsyncMock) as cancel:
+        with pytest.raises(ValueError, match="sensitivity"):
+            await light.async_turn_on(effect="Music: Rhythm", brightness=50)
+        cancel.assert_not_awaited()
+    mock_coordinator.send_command.assert_not_awaited()
     mock_coordinator.async_select_music_slug.assert_not_awaited()
 
 

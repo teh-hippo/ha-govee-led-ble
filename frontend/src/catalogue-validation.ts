@@ -19,6 +19,7 @@ import type {
   EffectStudioCatalogue,
   EffectStudioModeOption,
   ModelEffectCatalogue,
+  MusicSettings,
   PaintedContent,
   PaintedEffectTemplate,
   PaletteDiyFamily,
@@ -189,6 +190,7 @@ function decodeModelEffectCatalogue(
       catalogue.music_modes,
       `${name} music modes`,
     ),
+    music_settings: decodeMusicSettings(catalogue.music_settings),
     video_modes: decodeModeOptions(
       catalogue.video_modes,
       `${name} video modes`,
@@ -272,6 +274,31 @@ function decodeModelEffectCatalogue(
   };
 }
 
+
+function decodeMusicSettings(value: unknown): Record<string, MusicSettings> {
+  return Object.fromEntries(Object.entries(objectValue(value, "music settings")).map(([mode, raw]) => {
+    const settings = objectValue(raw, "music mode settings");
+    const parameters = objectValue(settings.parameters, "music parameters");
+    return [mode, {
+      style: booleanValue(settings.style, "music style"),
+      calm_default: booleanValue(settings.calm_default, "music default style"),
+      colour: booleanValue(settings.colour, "music colour"),
+      evidence: settings.evidence === null ? null : boundedString(settings.evidence, "music evidence", 1024),
+      palette_size: integerValue(settings.palette_size, "music palette size", 0, 255),
+      parameters: Object.fromEntries(Object.entries(parameters).map(([key, rawSpec]) => {
+        const spec = objectValue(rawSpec, "music parameter");
+        const kind = enumString(spec.kind, ["number", "switch", "select"] as const, "music parameter kind");
+        const min = integerValue(spec.min, "music minimum", 0, 255);
+        const max = integerValue(spec.max, "music maximum", min, 255);
+        const options = arrayValue(spec.options, "music options", 255).map((option) => boundedString(option, "music option", 128));
+        const defaultValue = kind === "number" ? integerValue(spec.default, "music default", min, max)
+          : kind === "switch" ? booleanValue(spec.default, "music default")
+          : enumString(spec.default, options, "music default");
+        return [key, {kind, default: defaultValue, min, max, options}];
+      })),
+    }];
+  }));
+}
 
 function decodeVideoSettings(
   value: unknown,

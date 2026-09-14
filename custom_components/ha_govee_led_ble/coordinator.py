@@ -28,7 +28,7 @@ from .const import (
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_expectations import expectations_from_packet
-from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin, music_params_for_mode
+from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_status import ParsedMode, StatusDomain, decode_status_frame_result, parse_color_mode
 from .effect_commands import build_h617a_diy_activation
 from .effect_deployments import PriorControlState
@@ -57,6 +57,8 @@ from .light_commands import (
     build_segment_paint,
     kelvin_to_rgb,
 )
+from .music_commands import prepare_music_request
+from .music_semantics import music_params_for_mode, music_variant
 from .native_profile_controls import (
     apply_active_video_mode,
     apply_blank_screen,
@@ -208,6 +210,9 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         self.music_daynight_segments = 1
         self.music_daynight_speed = 10
         self.music_daynight_gradient = False
+        for variant in self.profile.music_variants:
+            for spec in music_params_for_mode(variant.mode_code, self.profile):
+                setattr(self, spec.key, spec.default)
         self.packet_log: list[dict[str, Any]] = []
         self._expected_state: dict[str, tuple[Any, float]] = {}
         self._notify_started_monotonic: float | None = None
@@ -244,6 +249,7 @@ class GoveeBLECoordinator(_ActiveModeMixin):
             scene_code=self.scene_code,
             diy_code=self.diy_code,
             music_mode=self.music_mode,
+            music_model=self.model,
             video_mode=self.video_mode,
             music_sensitivity=self.music_sensitivity,
             music_calm=self.music_calm,
@@ -279,6 +285,30 @@ class GoveeBLECoordinator(_ActiveModeMixin):
         *,
         overwritten_diy_code: int | None,
     ) -> bool:
+        music_parameters = {}
+        music_packets: tuple[bytes, ...] = ()
+        music_calm = False
+        if state.mode == "music" and state.is_on:
+            if state.music_model is not None and state.music_model != self.model:
+                raise ValueError("music recovery model does not match device")
+            if state.music_mode not in self.profile.music_modes:
+                return False
+            variant = music_variant(self.profile, MUSIC_MODE_SLUGS[state.music_mode])
+            # Legacy snapshots retain style across modes even when the active selector
+            # has no style byte semantics. Do not reinterpret that retained value.
+            music_calm = state.music_calm if variant and variant.supports_style else False
+            music_parameters = {
+                spec.profile_key: getattr(state, spec.key)
+                for spec in music_params_for_mode(MUSIC_MODE_SLUGS[state.music_mode], self.profile)
+            }
+            music_packets = prepare_music_request(
+                self.model,
+                state.music_mode,
+                state.music_sensitivity,
+                state.music_color,
+                music_calm,
+                music_parameters,
+            )
         if (
             self.profile.supports_white_balance
             and state.white_balance_red is not None
@@ -357,25 +387,15 @@ class GoveeBLECoordinator(_ActiveModeMixin):
                 mode=state.music_mode,
                 sensitivity=state.music_sensitivity,
                 colour=state.music_color,
-                calm=state.music_calm,
-                parameters={
-                    "point": state.music_separation_point,
-                    "gradient": (
-                        state.music_daynight_gradient
-                        if state.music_mode == "day_and_night"
-                        else state.music_separation_gradient
-                    ),
-                    "relative_brightness": state.music_hopping_brightness,
-                    "key_count": state.music_piano_key_count,
-                    "direction": state.music_fountain_direction,
-                    "segment_count": state.music_daynight_segments,
-                    "speed": state.music_daynight_speed,
-                },
+                calm=music_calm,
+                parameters=music_parameters,
             )
-            await self.async_select_music_slug(state.music_mode)
-            mode_code = MUSIC_MODE_SLUGS[state.music_mode]
-            if music_params_for_mode(mode_code):
-                await self.async_apply_music_params(mode_code)
+            for packet in music_packets:
+                await self.send_command(packet)
+            self.is_on = True
+            self.music_mode, self.video_mode = state.music_mode, "off"
+            self.effect = None
+            self.diy_code = None
             return self.profile.state_readable and await self.refresh_state(expected_music_mode=state.music_mode)
         if state.mode == "video" and state.video_mode in {"movie", "game"} and self.profile.supports_video_mode:
             self.video_mode = state.video_mode

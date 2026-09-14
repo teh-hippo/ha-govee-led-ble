@@ -13,7 +13,7 @@ from uuid import UUID
 
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import DOMAIN, MODEL_PROFILES
 from .effect_domain import LibraryItem, SourceKind, effect_content_from_dict, effect_content_hash
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -45,6 +45,7 @@ from .effect_persistence_validation import required_persisted_string as _require
 from .effect_persistence_validation import validate_persisted_rgb as _validate_rgb
 from .effect_schema_migration import LegacyEffectMigrationError, migrate_effect_content_v1
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
+from .music_semantics import music_params_for_mode
 
 DEPLOYMENT_STORE_VERSION: Final = 2
 DEPLOYMENT_STORE_MINOR_VERSION: Final = 0
@@ -90,6 +91,7 @@ class PriorControlState:
     scene_code: int | None = None
     diy_code: int | None = None
     music_mode: str = "off"
+    music_model: str | None = None
     video_mode: str = "off"
     music_sensitivity: int = 100
     music_calm: bool = False
@@ -141,6 +143,7 @@ class PriorControlState:
         ):
             raise EffectStorageError("prior colour temperature must be from 1000 to 10000")
         for value, name in (
+            (self.music_model, "prior music model"),
             (self.effect, "prior effect"),
             (self.music_mode, "prior music mode"),
             (self.video_mode, "prior video mode"),
@@ -166,11 +169,12 @@ class PriorControlState:
         if self.music_color is not None:
             _validate_rgb(self.music_color, "prior music colour")
         numeric_values: tuple[tuple[int, str, int, int], ...] = (
-            (self.music_separation_point, "prior separation point", 1, 5),
-            (self.music_hopping_brightness, "prior hopping brightness", 0, 50),
-            (self.music_piano_key_count, "prior piano key count", 8, 15),
-            (self.music_daynight_segments, "prior day-and-night segment count", 1, 7),
-            (self.music_daynight_speed, "prior day-and-night speed", 1, 50),
+            # Storage is structural; exact variant limits are checked before restoration writes.
+            (self.music_separation_point, "prior separation point", 0, 255),
+            (self.music_hopping_brightness, "prior hopping brightness", 0, 255),
+            (self.music_piano_key_count, "prior piano key count", 0, 255),
+            (self.music_daynight_segments, "prior day-and-night segment count", 0, 255),
+            (self.music_daynight_speed, "prior day-and-night speed", 0, 255),
             (self.video_saturation, "prior video saturation", 0, 100),
             (self.video_sound_effects_softness, "prior video sound-effects softness", 1, 100),
         )
@@ -235,6 +239,7 @@ class PriorControlState:
             "scene_code": self.scene_code,
             "diy_code": self.diy_code,
             "music_mode": self.music_mode,
+            "music_model": self.music_model,
             "video_mode": self.video_mode,
             "music_sensitivity": self.music_sensitivity,
             "music_calm": self.music_calm,
@@ -266,6 +271,19 @@ class PriorControlState:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> PriorControlState:
+        model = _optional_str(raw, "music_model")
+        # Legacy records have no model and retain their shipped defaults. New records
+        # use exact-profile defaults for omitted fields, not another device's geometry.
+        if model in MODEL_PROFILES:
+            profile = MODEL_PROFILES[model]
+            raw = {
+                **{
+                    spec.key: spec.default
+                    for variant in profile.music_variants
+                    for spec in music_params_for_mode(variant.mode_code, profile)
+                },
+                **raw,
+            }
         return cls(
             mode=_required_str(raw, "mode"),
             is_on=_required_bool(raw, "is_on"),
@@ -276,6 +294,7 @@ class PriorControlState:
             scene_code=_optional_int(raw, "scene_code"),
             diy_code=_optional_int(raw, "diy_code"),
             music_mode=_optional_str(raw, "music_mode") or "off",
+            music_model=model,
             video_mode=_optional_str(raw, "video_mode") or "off",
             music_sensitivity=_optional_int(raw, "music_sensitivity", default=100),
             music_calm=_optional_bool(raw, "music_calm", default=False),

@@ -167,6 +167,7 @@ function h6199Catalogue(): ModelEffectCatalogue {
         category: "single_layer",
       },
     ],
+    music_settings: {},
     music_modes: [
       { id: "energetic", label: "Energetic" },
       { id: "rhythm", label: "Rhythm" },

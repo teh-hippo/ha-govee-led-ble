@@ -1,10 +1,16 @@
 meta:
   id: music_body
-  title: Govee H617A music-mode wire structures (decode-only)
+  title: Govee H617A music-mode wire structures
   endian: le
   imports:
     - govee_shared
     - govee_common
+doc: >
+  Capture-backed H617A music parameter structure. Palette-relative tails are
+  read and written by the generated adapter. A structurally valid alternative
+  palette or tail does not qualify model-specific bounds, defaults, style,
+  companion values, or physical IC geometry. Issue 286 synthetic tests reuse
+  this structure without claiming new device support.
 seq:
   - id: header
     type: govee_common::a3_header

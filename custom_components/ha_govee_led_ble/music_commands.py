@@ -1,33 +1,52 @@
-"""Capture-backed music parameter encoding."""
+"""Qualified music requests, prepared in full before any control side effects."""
 
+from collections.abc import Mapping
+from typing import Any
+
+from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile
+from .generated_protocol_adapter import build_music_mode, build_power, encode_music_parameters
+from .music_semantics import compile_music_parameters, music_parameters_available, music_variant
 from .transport import fragment_a3
-
-_MUSIC_PARAM_TEMPLATE: dict[int, bytes] = {
-    0x30: bytes.fromhex("3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000"),
-    0x31: bytes.fromhex("3105ff0000ff7f00ffff0000ff000000ff05640a0000000000000000000000"),
-    0x32: bytes.fromhex("3205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000"),
-    0x33: bytes.fromhex(
-        "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ffff000032620103020600000000000000000000000000000000"
-    ),
-    0x34: bytes.fromhex("3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0407000000"),
-    0x35: bytes.fromhex("3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0001055000000000"),
-    0x37: bytes.fromhex("3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010a000000000000"),
-}
-_MUSIC_PARAM_COUNT = {mode: body[1] for mode, body in _MUSIC_PARAM_TEMPLATE.items()}
-_MUSIC_PARAM_BASE = 3
 
 
 def build_music_params(
     mode: int,
-    overrides: dict[int, int],
+    parameters: Mapping[str, Any],
     palette: list[tuple[int, int, int]] | None = None,
+    *,
+    profile: ModelProfile,
+    calm: bool = False,
 ) -> list[bytes]:
-    """Overlay decoded fields on a captured per-mode template and fragment it."""
-    body = bytearray(_MUSIC_PARAM_TEMPLATE[mode])
-    if palette is not None:
-        if len(palette) != _MUSIC_PARAM_COUNT[mode]:
-            raise ValueError("palette count does not match the captured mode template")
-        body[2 : 2 + 3 * len(palette)] = bytes(channel for rgb in palette for channel in rgb)
-    for offset, value in overrides.items():
-        body[offset - _MUSIC_PARAM_BASE] = max(0, min(255, value))
-    return fragment_a3(0x41, bytes(body))
+    if type(mode) is not int or mode not in (MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes):
+        raise ValueError("unsupported music mode")
+    if not isinstance(calm, bool):
+        raise ValueError("music style must be a boolean")
+    variant = music_variant(profile, mode)
+    compiled = compile_music_parameters(parameters, mode, profile)
+    if variant is None or variant.layout is None:
+        if compiled or palette is not None:
+            raise ValueError("music parameter layout is unqualified")
+        return []
+    if not music_parameters_available(profile, variant):
+        if palette is not None:
+            raise ValueError("music parameters require known physical IC count")
+        return []
+    return fragment_a3(0x41, encode_music_parameters(variant, compiled, palette=palette, calm=calm))
+
+
+def prepare_music_request(
+    model: str,
+    mode: str,
+    sensitivity: int,
+    colour: tuple[int, int, int] | None,
+    calm: bool,
+    parameters: Mapping[str, Any],
+    *,
+    include_parameters: bool = True,
+) -> tuple[bytes, ...]:
+    profile = get_profile(model)
+    if mode not in profile.music_modes:
+        raise ValueError(f"{model} does not support music mode {mode}")
+    mode_code = MUSIC_MODE_SLUGS[mode]
+    companion = build_music_params(mode_code, parameters, profile=profile, calm=calm) if include_parameters else []
+    return (build_power(True, model), build_music_mode(mode_code, sensitivity, colour, calm, model), *companion)

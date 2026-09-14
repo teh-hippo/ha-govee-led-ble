@@ -26,6 +26,7 @@ import type {
   JsonObject,
   ModelEffectCatalogue,
   MusicProfileContent,
+  MusicParameterSpec,
   RGB,
 } from "./types";
 import { clampInteger, cloneRgb } from "./ui-utils";
@@ -41,7 +42,6 @@ type OwnedMusicParameterKey =
 
 type FountainDirection = "clockwise" | "two_way" | "counterclockwise";
 
-const STYLE_MODE_IDS = new Set(["rhythm", "bloom", "shiny"]);
 const FOUNTAIN_DIRECTIONS: ReadonlyArray<{
   id: FountainDirection;
   label: string;
@@ -108,7 +108,7 @@ export class GoveeMusicProfileEditor extends LitElement {
               }),
           )}
 
-          <label class="field">
+          ${this.settings?.colour ? html`<label class="field">
             <span>Colour mode</span>
             <select
               aria-label="Colour mode"
@@ -128,9 +128,9 @@ export class GoveeMusicProfileEditor extends LitElement {
                 Fixed
               </option>
             </select>
-          </label>
+          </label>` : nothing}
 
-          ${colourMode === "fixed"
+          ${this.settings?.colour && colourMode === "fixed"
             ? html`
                 <govee-single-colour-field
                   label="Fixed colour"
@@ -147,7 +147,7 @@ export class GoveeMusicProfileEditor extends LitElement {
               `
             : nothing}
 
-          ${isStyleMode(this.content.mode)
+          ${this.settings?.style
             ? html`
                 <label class="field">
                   <span class="field-label-with-help">
@@ -169,14 +169,14 @@ export class GoveeMusicProfileEditor extends LitElement {
                   >
                     <option
                       value="dynamic"
-                      .selected=${musicStyleValue(this.content.calm) ===
+                      .selected=${musicStyleValue(this.content.calm ?? this.settings.calm_default) ===
                       "dynamic"}
                     >
                       Dynamic
                     </option>
                     <option
                       value="calm"
-                      .selected=${musicStyleValue(this.content.calm) ===
+                      .selected=${musicStyleValue(this.content.calm ?? this.settings.calm_default) ===
                       "calm"}
                     >
                       Calm
@@ -275,50 +275,43 @@ export class GoveeMusicProfileEditor extends LitElement {
     }
   }
 
-  private renderSeparationParameters(parameters: JsonObject) {
-    const point = numberParameter(parameters, "point", 1, 1, 5);
-    const gradient = booleanParameter(parameters, "gradient", true);
+  private get settings() {
+    return this.content ? this.catalogue?.music_settings[this.content.mode] : undefined;
+  }
 
+  private renderNumberParameter(label: string, key: OwnedMusicParameterKey, parameters: JsonObject) {
+    const spec = this.settings?.parameters[key];
+    if (!spec || spec.kind !== "number") return nothing;
+    return this.renderRangeField(label, numberParameter(parameters, key, spec.default as number, spec.min, spec.max),
+      spec.min, spec.max, key, (value) => this.updateParameter(key, value));
+  }
+
+  private renderGradient(parameters: JsonObject) {
+    const spec = this.settings?.parameters.gradient;
+    if (!spec || spec.kind !== "switch") return nothing;
+    return this.renderCheckboxField("Gradient", booleanParameter(parameters, "gradient", spec.default as boolean),
+      (checked) => this.updateParameter("gradient", checked));
+  }
+
+  private renderSeparationParameters(parameters: JsonObject) {
     return html`
-      ${this.renderRangeField("Point", point, 1, 5, "point", (value) =>
-        this.updateParameter("point", value))}
-      ${this.renderCheckboxField("Gradient", gradient, (checked) =>
-        this.updateParameter("gradient", checked))}
+      ${this.renderNumberParameter("Point", "point", parameters)}
+      ${this.renderGradient(parameters)}
     `;
   }
 
   private renderHoppingParameters(parameters: JsonObject) {
-    const relativeBrightness = numberParameter(
-      parameters,
-      "relative_brightness",
-      50,
-      0,
-      50,
-    );
-
-    return html`
-      ${this.renderRangeField(
-        "Relative brightness",
-        relativeBrightness,
-        0,
-        50,
-        "relative_brightness",
-        (value) => this.updateParameter("relative_brightness", value),
-      )}
-    `;
+    return this.renderNumberParameter("Relative brightness", "relative_brightness", parameters);
   }
 
   private renderPianoKeysParameters(parameters: JsonObject) {
-    const keyCount = numberParameter(parameters, "key_count", 15, 8, 15);
-
-    return html`
-      ${this.renderRangeField("Key count", keyCount, 8, 15, "key_count", (value) =>
-        this.updateParameter("key_count", value))}
-    `;
+    return this.renderNumberParameter("Key count", "key_count", parameters);
   }
 
   private renderFountainParameters(parameters: JsonObject) {
-    const direction = directionParameter(parameters, "direction", "clockwise");
+    const spec = this.settings?.parameters.direction;
+    if (!spec || spec.kind !== "select") return nothing;
+    const direction = directionParameter(parameters, "direction", spec);
 
     return html`
       <label class="field">
@@ -333,7 +326,7 @@ export class GoveeMusicProfileEditor extends LitElement {
               (event.target as HTMLSelectElement).value as FountainDirection,
             )}
         >
-          ${FOUNTAIN_DIRECTIONS.map(
+          ${FOUNTAIN_DIRECTIONS.filter((option) => spec.options.includes(option.id)).map(
             (option) => html`
               <option
                 value=${option.id}
@@ -349,23 +342,10 @@ export class GoveeMusicProfileEditor extends LitElement {
   }
 
   private renderDayAndNightParameters(parameters: JsonObject) {
-    const segmentCount = numberParameter(parameters, "segment_count", 1, 1, 7);
-    const speed = numberParameter(parameters, "speed", 10, 1, 50);
-    const gradient = booleanParameter(parameters, "gradient", false);
-
     return html`
-      ${this.renderRangeField(
-        "Segment count",
-        segmentCount,
-        1,
-        7,
-        "segment_count",
-        (value) => this.updateParameter("segment_count", value),
-      )}
-      ${this.renderRangeField("Speed", speed, 1, 50, "speed", (value) =>
-        this.updateParameter("speed", value))}
-      ${this.renderCheckboxField("Gradient", gradient, (checked) =>
-        this.updateParameter("gradient", checked))}
+      ${this.renderNumberParameter("Segment count", "segment_count", parameters)}
+      ${this.renderNumberParameter("Speed", "speed", parameters)}
+      ${this.renderGradient(parameters)}
     `;
   }
 
@@ -413,7 +393,7 @@ export class GoveeMusicProfileEditor extends LitElement {
 
   private styleChanged(calm: boolean): void {
     this.updateContent((content) => {
-      if (!isStyleMode(content.mode)) {
+      if (!this.settings?.style) {
         return content;
       }
       content.calm = calm;
@@ -478,10 +458,6 @@ export class GoveeMusicProfileEditor extends LitElement {
   ];
 }
 
-function isStyleMode(mode: string): boolean {
-  return STYLE_MODE_IDS.has(mode);
-}
-
 function numberParameter(
   parameters: JsonObject,
   key: string,
@@ -507,12 +483,12 @@ function booleanParameter(
 function directionParameter(
   parameters: JsonObject,
   key: string,
-  fallback: FountainDirection,
+  spec: MusicParameterSpec,
 ): FountainDirection {
   const value = parameters[key];
-  return FOUNTAIN_DIRECTIONS.some((option) => option.id === value)
+  return typeof value === "string" && spec.options.includes(value)
     ? (value as FountainDirection)
-    : fallback;
+    : spec.default as FountainDirection;
 }
 
 declare global {

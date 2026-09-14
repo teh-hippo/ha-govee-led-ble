@@ -353,6 +353,8 @@ def _coordinator(*, readable: bool = True):
 
 def _profile_coordinator(model: str):
     coordinator = _coordinator()
+    coordinator.active_mode = None
+    coordinator.send_command = AsyncMock()
     coordinator.model = model
     coordinator.profile = get_profile(model)
     coordinator.video_full_screen = True
@@ -1655,7 +1657,8 @@ async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confid
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert events == ["install:separation", "select:separation:False", "parameters:50"]
+    assert events == ["install:separation"]
+    assert coordinator.send_command.await_count == 4
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.diy_code is None
     assert result.content_kind == "music_profile"
@@ -1696,7 +1699,8 @@ async def test_h617a_music_profile_applies_style_companion_parameters(
         updated_at="2026-08-11T00:00:00Z",
     )
 
-    assert events == ["select:bloom:False", "parameters:48"]
+    assert events == []
+    assert coordinator.send_command.await_count == 4
     assert result.progress_current == result.progress_total == 2
     assert result.verification_confidence is ObservationConfidence.MODE_MATCH
 
@@ -1851,7 +1855,9 @@ async def test_music_profile_retries_the_complete_writer_before_confirmation(
     )
 
     assert result.phase is DeploymentPhase.CONFIRMED
-    assert events == ["install", "select", "parameters", "install", "select", "parameters"]
+    assert events == ["install", "install"]
+    packets = [call.args[0] for call in coordinator.send_command.await_args_list]
+    assert len(packets) == 8 and packets[:4] == packets[4:]
 
 
 async def test_h6199_video_profile_uses_native_writers_in_profile_order(

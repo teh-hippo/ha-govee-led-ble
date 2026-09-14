@@ -30,6 +30,7 @@ const catalogue = {
     },
   ],
   music_modes: [{ id: "rhythm", label: "Rhythm" }],
+  music_settings: {},
   video_modes: [],
   video_settings: [],
   workshop_templates: [],

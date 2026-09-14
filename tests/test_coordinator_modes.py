@@ -174,7 +174,7 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
     assert _sent(sc) == [
         build_power(True),
         build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, True),
-        *build_music_params(0x31, {20: 0x14, 21: 0x46}),
+        *build_music_params(0x31, {}, profile=coord.profile, calm=True),
     ]
 
     # Bloom's Calm companion is [27].
@@ -183,7 +183,7 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
     assert _sent(sc) == [
         build_power(True),
         build_music_mode(MUSIC_MODE_SLUGS["bloom"], 80, None, True),
-        *build_music_params(0x30, {27: 0x14}),
+        *build_music_params(0x30, {}, profile=coord.profile, calm=True),
     ]
 
     # Dynamic Shiny writes the template's baseline companion values.
@@ -193,7 +193,7 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
     assert _sent(sc) == [
         build_power(True),
         build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, False),
-        *build_music_params(0x31, {20: 0x05, 21: 0x64}),
+        *build_music_params(0x31, {}, profile=coord.profile),
     ]
 
 

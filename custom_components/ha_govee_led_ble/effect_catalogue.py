@@ -32,6 +32,7 @@ from .effect_domain import (
 )
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
 from .layered_scene_decoder import decode_workshop_effect
+from .music_semantics import music_params_for_mode, music_variant
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 10
 LEGACY_CATALOGUE_SKU: Final = "H617A"
@@ -217,6 +218,28 @@ class ModelEffectCatalogue:
             "painted_effects": [dict(effect) for effect in self.painted_effects],
             "effects": [effect.to_dict() for effect in self.effects],
             "music_modes": [mode.to_dict() for mode in self.music_modes],
+            "music_settings": {
+                mode.id: {
+                    "style": bool(
+                        (variant := music_variant(profile, MUSIC_MODE_SLUGS[mode.id])) and variant.supports_style
+                    ),
+                    "calm_default": variant.calm_default if variant else False,
+                    "colour": profile.supports_music_color,
+                    "evidence": variant.evidence if variant else None,
+                    "palette_size": variant.template[1] if variant and variant.template else 0,
+                    "parameters": {
+                        spec.profile_key: {
+                            "kind": spec.kind,
+                            "default": spec.default,
+                            "min": spec.min_value,
+                            "max": spec.max_value,
+                            "options": list(spec.options),
+                        }
+                        for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode.id], profile)
+                    },
+                }
+                for mode in self.music_modes
+            },
             "video_modes": [mode.to_dict() for mode in self.video_modes],
             "video_settings": list(_video_profile_settings(profile)),
             "templates": [template.to_dict() for template in self.templates],
@@ -545,6 +568,7 @@ def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
 
 def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
     profile = MODEL_PROFILES[model]
+    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode.id])
     return CatalogueTemplate(
         id=f"template:music:{mode.id}",
         label=mode.label,
@@ -554,7 +578,7 @@ def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
             mode=mode.id,
             sensitivity=profile.music_sensitivity_max,
             colour=None,
-            calm=False if mode.id in {"rhythm", "bloom", "shiny"} else None,
+            calm=variant.calm_default if variant and variant.supports_style else None,
             parameters={},
         ),
     )

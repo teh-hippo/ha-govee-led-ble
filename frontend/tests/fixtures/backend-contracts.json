@@ -801,6 +801,161 @@
               "label": "Energetic"
             }
           ],
+          "music_settings": {
+            "bloom": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A captured Bloom companion",
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "day_and_night": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Day and Night captures",
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 7,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 10,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "energetic": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "fountain": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Fountain captures; speed pinned to captured 0x50",
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "clockwise",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Hopping captures",
+              "palette_size": 7,
+              "parameters": {
+                "relative_brightness": {
+                  "default": 50,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "piano_keys": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Piano Keys captures; captured key-count/half relationship",
+              "palette_size": 7,
+              "parameters": {
+                "key_count": {
+                  "default": 15,
+                  "kind": "number",
+                  "max": 15,
+                  "min": 8,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "rhythm": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified selector style",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "separation": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A qualified Separation captures",
+              "palette_size": 5,
+              "parameters": {
+                "gradient": {
+                  "default": true,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "shiny": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617A captured Shiny companion",
+              "palette_size": 5,
+              "parameters": {},
+              "style": true
+            },
+            "spectrum": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
           "painted_effects": [
             {
               "id": "cycle",
@@ -1495,6 +1650,161 @@
               "label": "Energetic"
             }
           ],
+          "music_settings": {
+            "bloom": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617E owner-qualified shared music semantics",
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "day_and_night": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617E owner-qualified shared music semantics",
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 7,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 10,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "energetic": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "fountain": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617E owner-qualified shared music semantics",
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "clockwise",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617E owner-qualified shared music semantics",
+              "palette_size": 7,
+              "parameters": {
+                "relative_brightness": {
+                  "default": 50,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "piano_keys": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617E owner-qualified shared music semantics",
+              "palette_size": 7,
+              "parameters": {
+                "key_count": {
+                  "default": 15,
+                  "kind": "number",
+                  "max": 15,
+                  "min": 8,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "rhythm": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617E owner-qualified shared music semantics",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "separation": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617E owner-qualified shared music semantics",
+              "palette_size": 5,
+              "parameters": {
+                "gradient": {
+                  "default": true,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 1,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "shiny": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617E owner-qualified shared music semantics",
+              "palette_size": 5,
+              "parameters": {},
+              "style": true
+            },
+            "spectrum": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
           "painted_effects": [
             {
               "id": "cycle",
@@ -2179,6 +2489,40 @@
               "label": "Energetic"
             }
           ],
+          "music_settings": {
+            "energetic": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "rhythm": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H6199 captured Rhythm selector style",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "spectrum": {
+              "calm_default": false,
+              "colour": true,
+              "evidence": null,
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
           "painted_effects": [],
           "sku": "H6199",
           "supports": {
@@ -2753,6 +3097,161 @@
           "label": "Energetic"
         }
       ],
+      "music_settings": {
+        "bloom": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": "H617A captured Bloom companion",
+          "palette_size": 7,
+          "parameters": {},
+          "style": true
+        },
+        "day_and_night": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": "H617A qualified Day and Night captures",
+          "palette_size": 7,
+          "parameters": {
+            "gradient": {
+              "default": false,
+              "kind": "switch",
+              "max": 0,
+              "min": 0,
+              "options": []
+            },
+            "segment_count": {
+              "default": 1,
+              "kind": "number",
+              "max": 7,
+              "min": 1,
+              "options": []
+            },
+            "speed": {
+              "default": 10,
+              "kind": "number",
+              "max": 50,
+              "min": 1,
+              "options": []
+            }
+          },
+          "style": false
+        },
+        "energetic": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": null,
+          "palette_size": 0,
+          "parameters": {},
+          "style": false
+        },
+        "fountain": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": "H617A qualified Fountain captures; speed pinned to captured 0x50",
+          "palette_size": 7,
+          "parameters": {
+            "direction": {
+              "default": "clockwise",
+              "kind": "select",
+              "max": 0,
+              "min": 0,
+              "options": [
+                "clockwise",
+                "counterclockwise",
+                "two_way"
+              ]
+            }
+          },
+          "style": false
+        },
+        "hopping": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": "H617A qualified Hopping captures",
+          "palette_size": 7,
+          "parameters": {
+            "relative_brightness": {
+              "default": 50,
+              "kind": "number",
+              "max": 50,
+              "min": 0,
+              "options": []
+            }
+          },
+          "style": false
+        },
+        "piano_keys": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": "H617A qualified Piano Keys captures; captured key-count/half relationship",
+          "palette_size": 7,
+          "parameters": {
+            "key_count": {
+              "default": 15,
+              "kind": "number",
+              "max": 15,
+              "min": 8,
+              "options": []
+            }
+          },
+          "style": false
+        },
+        "rhythm": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": "H617A qualified selector style",
+          "palette_size": 0,
+          "parameters": {},
+          "style": true
+        },
+        "rolling": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": null,
+          "palette_size": 0,
+          "parameters": {},
+          "style": false
+        },
+        "separation": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": "H617A qualified Separation captures",
+          "palette_size": 5,
+          "parameters": {
+            "gradient": {
+              "default": true,
+              "kind": "switch",
+              "max": 0,
+              "min": 0,
+              "options": []
+            },
+            "point": {
+              "default": 1,
+              "kind": "number",
+              "max": 5,
+              "min": 1,
+              "options": []
+            }
+          },
+          "style": false
+        },
+        "shiny": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": "H617A captured Shiny companion",
+          "palette_size": 5,
+          "parameters": {},
+          "style": true
+        },
+        "spectrum": {
+          "calm_default": false,
+          "colour": true,
+          "evidence": null,
+          "palette_size": 0,
+          "parameters": {},
+          "style": false
+        }
+      },
       "painted_effects": [
         {
           "id": "cycle",

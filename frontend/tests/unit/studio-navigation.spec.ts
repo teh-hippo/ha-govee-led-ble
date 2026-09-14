@@ -61,6 +61,7 @@ const catalogue: ModelEffectCatalogue = {
   painted_effects: [],
   effects: [],
   music_modes: [{ id: "separation", label: "Separation" }],
+  music_settings: {},
   video_modes: [{ id: "movie", label: "Movie" }],
   video_settings: [],
   templates: [

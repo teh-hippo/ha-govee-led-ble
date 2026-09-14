@@ -10,11 +10,6 @@ from hashlib import sha256
 from typing import Any, Literal, assert_never
 
 from .const import MODEL_PROFILES, MUSIC_MODE_SLUGS, get_profile
-from .coordinator_modes import (
-    MUSIC_STYLE_SLUGS,
-    music_mode_has_parameter_write,
-    music_params_for_mode,
-)
 from .effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H617A_WORKSHOP_APPLY_CODE,
@@ -60,6 +55,8 @@ from .generated_protocol_adapter import (
 )
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
+from .music_commands import prepare_music_request
+from .music_semantics import compile_music_parameters, music_variant
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body
 from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity
 from .transport import fragment_a3
@@ -124,7 +121,19 @@ class CompiledMusicProfile:
 
     @property
     def progress_total(self) -> int:
-        return 1 + int(music_mode_has_parameter_write(MUSIC_MODE_SLUGS[self.mode]))
+        return 1 + int(
+            len(
+                prepare_music_request(
+                    self.model,
+                    self.mode,
+                    self.sensitivity,
+                    self.colour,
+                    self.calm,
+                    self.parameters,
+                )
+            )
+            > 2
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -627,19 +636,23 @@ def compile_music_profile(item: LibraryItem, model: str) -> CompiledMusicProfile
     profile = MODEL_PROFILES[model]
     if content.colour is not None and not profile.supports_music_color:
         raise ValueError(f"{model} does not support a fixed music colour")
-    if content.calm is not None and content.mode not in MUSIC_STYLE_SLUGS:
+    variant = music_variant(profile, MUSIC_MODE_SLUGS[content.mode])
+    if content.calm is not None and (variant is None or not variant.supports_style):
         raise ValueError(f"music mode {content.mode} does not support a style setting")
 
     mode_code = MUSIC_MODE_SLUGS[content.mode]
-    parameters = _compile_music_parameters(content.parameters, mode_code)
+    parameters = compile_music_parameters(content.parameters, mode_code, profile)
+    calm = content.calm if content.calm is not None else variant.calm_default if variant is not None else False
+    packets = prepare_music_request(model, content.mode, content.sensitivity, content.colour, calm, parameters)
     payload = {
         "kind": "music_profile",
         "model": model,
         "mode": content.mode,
         "sensitivity": content.sensitivity,
         "colour": content.colour,
-        "calm": bool(content.calm),
+        "calm": calm,
         "parameters": parameters,
+        "packets": [packet.hex() for packet in packets],
     }
     return CompiledMusicProfile(
         item_id=str(item.id),
@@ -648,7 +661,7 @@ def compile_music_profile(item: LibraryItem, model: str) -> CompiledMusicProfile
         mode=content.mode,
         sensitivity=content.sensitivity,
         colour=content.colour,
-        calm=bool(content.calm),
+        calm=calm,
         parameters=parameters,
         artifact_sha256=_semantic_digest(payload),
     )
@@ -691,29 +704,6 @@ def compile_video_profile(item: LibraryItem, model: str) -> CompiledVideoProfile
         blank_screen=content.blank_screen,
         artifact_sha256=_semantic_digest(payload),
     )
-
-
-def _compile_music_parameters(
-    raw: Mapping[str, Any],
-    mode_code: int,
-) -> dict[str, int | bool | str]:
-    relevant = music_params_for_mode(mode_code)
-    unsupported = sorted(set(raw).difference(spec.profile_key for spec in relevant))
-    if unsupported:
-        raise ValueError(f"music mode does not support parameter {unsupported[0]}")
-    compiled: dict[str, int | bool | str] = {}
-    for spec in relevant:
-        value = raw.get(spec.profile_key, spec.default)
-        if spec.kind == "number":
-            if not isinstance(value, int) or isinstance(value, bool) or not spec.min_value <= value <= spec.max_value:
-                raise ValueError(f"{spec.profile_key} must be an integer from {spec.min_value} to {spec.max_value}")
-        elif spec.kind == "switch":
-            if not isinstance(value, bool):
-                raise ValueError(f"{spec.profile_key} must be a boolean")
-        elif not isinstance(value, str) or value not in spec.options:
-            raise ValueError(f"{spec.profile_key} must be one of {', '.join(spec.options)}")
-        compiled[spec.profile_key] = value
-    return compiled
 
 
 def _semantic_digest(payload: Mapping[str, Any]) -> str:
