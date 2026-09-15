@@ -260,6 +260,20 @@ export const effectStudioPanelStyles = [
       margin-inline-start: auto;
     }
 
+    .support-notice {
+      margin: 0;
+      padding: var(--studio-tight-gap) var(--studio-section-gap);
+      border-bottom: var(--studio-border-width) solid var(--studio-border);
+      color: var(--primary-text-color);
+      background: color-mix(
+        in srgb,
+        var(--warning-color, #ff9800) 14%,
+        var(--primary-background-color)
+      );
+      font-size: var(--studio-parameter-label-size);
+      line-height: var(--studio-muted-line-height);
+    }
+
     .light-control-button {
       display: inline-grid;
       width: var(--studio-touch-target-size);
@@ -575,6 +589,37 @@ export const effectStudioPanelStyles = [
 
     .read-only-copy {
       color: var(--studio-muted);
+    }
+
+    .h6179-diy-approval {
+      margin-bottom: var(--studio-section-gap);
+      border-color: var(--warning-color, #ff9800);
+    }
+
+    .h6179-diy-approval p {
+      line-height: var(--studio-muted-line-height);
+    }
+
+    .observed-diy-code {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--studio-control-gap);
+      margin-bottom: var(--studio-field-margin);
+    }
+
+    .approval-status {
+      margin-bottom: var(--studio-field-margin);
+      color: var(--studio-muted);
+    }
+
+    .observed-diy-code .approval-status {
+      margin-bottom: 0;
+    }
+
+    .observed-diy-code code {
+      color: var(--primary-text-color);
+      font-weight: var(--studio-font-weight-semibold);
     }
 
     /* Accommodates Home Assistant's docked sidebar on common 1024px and 1280px desktops. */

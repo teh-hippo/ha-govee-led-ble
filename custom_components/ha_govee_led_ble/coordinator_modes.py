@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from .const import MUSIC_MODE_SLUGS
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .coordinator_status import ParsedMode
@@ -16,6 +15,7 @@ from .light_commands import (
     build_white_brightness,
 )
 from .music_commands import build_music_params, prepare_music_request
+from .music_protocol import music_code_for, music_mode_supports_style
 from .music_semantics import music_params_for_mode, music_variant
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key
@@ -53,7 +53,8 @@ class _ActiveModeMixin(_CoordinatorBase):
     def music_calm(self) -> bool:
         if self._music_calm is not None:
             return self._music_calm
-        variant = music_variant(self.profile, MUSIC_MODE_SLUGS.get(self.music_mode, -1))
+        mode_code = music_code_for(self.model, self.music_mode) if self.music_mode in self.profile.music_modes else -1
+        variant = music_variant(self.profile, mode_code)
         return variant.calm_default if variant and variant.supports_style else False
 
     @music_calm.setter
@@ -202,13 +203,13 @@ class _ActiveModeMixin(_CoordinatorBase):
             return
         if slug not in self.profile.music_modes:
             raise ValueError(f"{self.model} does not support music mode {slug}")
-        mode_id = MUSIC_MODE_SLUGS[slug]
+        mode_id = music_code_for(self.model, slug)
         variant = music_variant(self.profile, mode_id)
-        calm = (
-            (self._music_calm if self._music_calm is not None else variant.calm_default)
-            if variant is not None and variant.supports_style
-            else False
+        supports_style = (variant is not None and variant.supports_style) or music_mode_supports_style(
+            self.model, mode_id
         )
+        calm_default = variant.calm_default if variant is not None else False
+        calm = (self._music_calm if self._music_calm is not None else calm_default) if supports_style else False
         color = self.music_color if self.profile.supports_music_color else None
         # Native selection historically sends only style companions; authored profiles
         # and recovery explicitly request all parameter packets.

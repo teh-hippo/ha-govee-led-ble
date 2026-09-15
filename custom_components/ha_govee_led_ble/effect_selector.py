@@ -267,12 +267,11 @@ def _selector_candidates(
             _SelectorCandidate(
                 source="music",
                 category=EFFECT_CATEGORY_REACTIVE,
-                base_label=_native_base_label(label),
+                base_label=_native_base_label(f"Music: {slug.replace('_', ' ').title()}"),
                 value=slug,
-                aliases=(label,),
+                aliases=(f"Music: {slug.replace('_', ' ').title()}",),
             )
-            for label, slug in MUSIC_EFFECTS.items()
-            if slug in profile.music_modes
+            for slug in profile.music_modes
         )
     candidates.extend(
         _SelectorCandidate(
@@ -284,8 +283,9 @@ def _selector_candidates(
             item=item,
         )
         for item in compatible_saved_effects(items, model)
-        if (category := effect_category_for_content_kind(str(effect_content_to_dict(item.content).get("kind"))))
-        is not None
+        if (kind := str(effect_content_to_dict(item.content).get("kind")))
+        not in {"h6179_single_diy", "h6179_mixed_diy"}
+        and (category := effect_category_for_content_kind(kind)) is not None
         and (category in categories or always_include_custom_effects)
     )
     return tuple(candidates)

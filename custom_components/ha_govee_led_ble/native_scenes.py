@@ -3,12 +3,13 @@
 import base64
 from dataclasses import replace
 
+from .const import get_profile
 from .effect_domain import LayeredScene, PaletteScene
 from .generated_protocol_adapter import build_scene_activation
 from .layered_scene import CatalogueRef, LayeredEffect
 from .layered_scene_decoder import decode_layered_scene, encode_layered_scene
 from .palette_scene_decoder import encode_palette_scene
-from .scenes import SceneEntry, SceneSpeed
+from .scenes import SceneEntry, SceneSpeed, scene_selector_code
 from .transport import fragment_a3
 
 
@@ -57,6 +58,13 @@ def build_native_scene_packets(
     canonical_body: bytes | None = None,
 ) -> list[bytes]:
     """Build a catalogue scene upload and activation with its resolved speed default."""
+    if get_profile(model).command_grammar == "H6179":
+        if speed_index is not None:
+            raise ValueError("H6179 native scenes are selector-only and do not accept speed_index")
+        if canonical_body is not None:
+            raise ValueError("H6179 native scenes are selector-only and do not accept canonical_body")
+        return [build_scene_activation(model, scene_selector_code(model, scene))]
+
     payload, _resolved_speed = resolve_native_scene_body(
         scene,
         speed_index=speed_index,

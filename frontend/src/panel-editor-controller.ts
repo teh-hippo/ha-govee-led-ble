@@ -80,6 +80,7 @@ export class PanelEditorController {
   public beginTransition(cancelPreview = true): number {
     this.options.editorTransitionStarted();
     this.modal.closeForEditorTransition();
+    this.model.h6179ApprovedDiyCode = undefined;
     return this.preview.beginEditorTransition(cancelPreview);
   }
 
@@ -118,6 +119,15 @@ export class PanelEditorController {
         this.openEditableTemplate(
           entry.label,
           blankCustomEffect("h617a_single", catalogue, entry.family, entry.variant),
+          entry.key,
+          { section: "custom", category: entry.category },
+          true,
+        );
+      } else if (this.model.customEffectKindAvailable("h6179_single_diy")) {
+        const content = blankCustomEffect("h6179_single_diy", catalogue);
+        this.openEditableTemplate(
+          entry.label,
+          { ...content, family: entry.family, variant: entry.variant },
           entry.key,
           { section: "custom", category: entry.category },
           true,
@@ -340,6 +350,25 @@ export class PanelEditorController {
         existingTransitionEpoch,
       );
     } else if (
+      this.model.customEffectKindAvailable("h6179_single_diy") &&
+      catalogue &&
+      family
+    ) {
+      const variation = family.variations[0];
+      const content = blankCustomEffect("h6179_single_diy", catalogue);
+      this.openEditableTemplate(
+        family.label,
+        {
+          ...content,
+          family: family.family,
+          variant: variation.variant,
+        },
+        `template:single:${family.family}:${variation.variant}`,
+        { section: "custom", category },
+        false,
+        existingTransitionEpoch,
+      );
+    } else if (
       this.model.customEffectKindAvailable("palette_diy") &&
       catalogue &&
       family
@@ -386,7 +415,7 @@ export class PanelEditorController {
       category:
         kind === "music_profile"
           ? "music"
-          : kind === "h617a_multi"
+          : kind === "h617a_multi" || kind === "h6179_mixed_diy"
             ? "multi-layer"
             : kind === "advanced"
               ? "advanced"
@@ -620,7 +649,11 @@ export class PanelEditorController {
     const variation = family?.variations[0];
     if (!family || !variation) return;
     if (this.model.content.kind === "h617a_painted") this.switchCustomMode("h617a_single", false);
-    if (this.model.content.kind !== "h617a_single" && this.model.content.kind !== "palette_diy") return;
+    if (
+      this.model.content.kind !== "h617a_single" &&
+      this.model.content.kind !== "h6179_single_diy" &&
+      this.model.content.kind !== "palette_diy"
+    ) return;
     const selectedContent = {
       ...this.model.content,
       family: family.family,
@@ -695,6 +728,10 @@ export class PanelEditorController {
       this.model.content.kind === kind
     ) return;
     const current = this.model.content;
+    if (
+      current.kind === "h6179_single_diy" ||
+      current.kind === "h6179_mixed_diy"
+    ) return;
     if (kind === "h617a_single" && current.kind === "h617a_multi" && current.effects.length > 1) return;
     let next: CustomEffectContent;
     if (kind === "h617a_painted") {
@@ -848,7 +885,8 @@ export class PanelEditorController {
       };
     }
     if (
-      (content.kind === "h617a_single" &&
+      ((content.kind === "h617a_single" ||
+        content.kind === "h6179_single_diy") &&
         this.model.customEffectKindAvailable(content.kind)) ||
       (content.kind === "palette_diy" &&
         content.model === selectedModel &&
@@ -868,6 +906,12 @@ export class PanelEditorController {
       const resetContent =
         content.kind === "h617a_single"
           ? blankCustomEffect("h617a_single", catalogue, family.family, variation.variant)
+          : content.kind === "h6179_single_diy"
+            ? {
+                ...blankCustomEffect("h6179_single_diy", catalogue),
+                family: family.family,
+                variant: variation.variant,
+              }
           : blankPaletteDiy(
               catalogue,
               selectedModel,

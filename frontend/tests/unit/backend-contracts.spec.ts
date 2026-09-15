@@ -27,6 +27,8 @@ const knownContentFamilies = [
   "h617a_painted",
   "h617a_single",
   "h617a_multi",
+  "h6179_single_diy",
+  "h6179_mixed_diy",
   "palette_diy",
   "music_profile",
   "video_profile",
@@ -52,6 +54,7 @@ test("canonical backend responses decode through the production validators", () 
   expect(devices.map((device) => device.model)).toEqual([
     "H617A",
     "H617E",
+    "H6179",
     "H6199",
   ]);
   expect(devices[0].light_entity_id).toBe("light.h617a_main");
@@ -60,10 +63,10 @@ test("canonical backend responses decode through the production validators", () 
     "custom:800",
   );
   expect(decodeCustomCatalogue(responses.custom_catalogue).models).toHaveProperty(
-    "H6199",
+    "H6179",
   );
   expect(decodeLibrarySnapshot(responses.library_snapshot).items).toHaveLength(
-    2,
+    4,
   );
   expect(decodeLibraryItem(responses.library_item).content.kind).toBe(
     "h617a_painted",
@@ -125,6 +128,44 @@ test("snapshot previews pass catalogue provenance through the API boundary", asy
       origin_id: "template:single:1:0",
     }),
   );
+});
+
+test("H6179 DIY actions carry an explicit code while other actions omit it", async () => {
+  const callWS = vi.fn().mockResolvedValue(undefined);
+  const api = new EffectStudioApi({
+    callWS,
+    callService: vi.fn(),
+    connection: {
+      subscribeMessage: vi.fn(),
+    },
+  } as unknown as HomeAssistant);
+  const h6179Content = decodeEffectContent(
+    contentSamples.h6179_single_diy,
+  );
+  const h617aContent = decodeEffectContent(contentSamples.h617a_single);
+
+  await api.applySnapshot(
+    "h6179-main",
+    "Disposable",
+    h6179Content,
+    undefined,
+    0x1234,
+  );
+  await api.previewSnapshot(
+    "session-a",
+    1,
+    "h6179-main",
+    "Disposable",
+    h6179Content,
+    false,
+    undefined,
+    0x1234,
+  );
+  await api.applySnapshot("h617a-main", "Compatible", h617aContent);
+
+  expect(callWS.mock.calls[0][0]).toMatchObject({ diy_code: 0x1234 });
+  expect(callWS.mock.calls[1][0]).toMatchObject({ diy_code: 0x1234 });
+  expect(callWS.mock.calls[2][0]).not.toHaveProperty("diy_code");
 });
 
 test("saved-name collisions confirm a guarded overwrite and accept its generation", async () => {
@@ -373,6 +414,48 @@ describe("focused response mutations", () => {
 });
 
 describe("focused effect-content mutations", () => {
+  test("H6179 DIY content is exact while shared profiles remain model-driven", () => {
+    const unsupportedPair = cloneObject(contentSamples.h6179_single_diy);
+    unsupportedPair.variant = 1;
+    expect(() => decodeEffectContent(unsupportedPair)).toThrow(
+      "H6179 Single DIY variant must be an integer from 0 to 0",
+    );
+
+    const emptyMixed = cloneObject(contentSamples.h6179_mixed_diy);
+    emptyMixed.components = [];
+    expect(() => decodeEffectContent(emptyMixed)).toThrow(
+      "H6179 Mixed DIY components must not be empty",
+    );
+
+    const music = {
+      ...cloneObject(contentSamples.music_profile),
+      model: "H6179",
+      mode: "mode_0",
+      sensitivity: 99,
+      calm: null,
+      parameters: {},
+    };
+    expect(decodeEffectContent(music)).toMatchObject({
+      model: "H6179",
+      mode: "mode_0",
+      sensitivity: 99,
+    });
+    expect(
+      decodeEffectContent({ ...music, sensitivity: 100, calm: false }),
+    ).toMatchObject({
+      model: "H6179",
+      sensitivity: 100,
+      calm: false,
+    });
+
+    const paletteDiy = cloneObject(contentSamples.palette_diy);
+    paletteDiy.model = "H6179";
+    expect(decodeEffectContent(paletteDiy)).toMatchObject({
+      kind: "palette_diy",
+      model: "H6179",
+    });
+  });
+
   test("palette scenes reject invalid layouts, flags, colours, and padding", () => {
     const mutations: Array<(payload: JsonObject) => void> = [
       (payload) => {

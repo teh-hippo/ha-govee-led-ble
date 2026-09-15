@@ -7,6 +7,7 @@ from kaitaistruct import KaitaiStructError
 
 from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile
 from .generated_protocol_adapter import build_music_mode, build_power, encode_music_parameters
+from .music_protocol import music_code_for, music_mode_has_parameter_write
 from .music_semantics import compile_music_parameters, music_parameters_available, music_params_for_mode, music_variant
 from .transport import fragment_a3
 
@@ -53,8 +54,12 @@ def prepare_music_request(
     profile = get_profile(model)
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
-    mode_code = MUSIC_MODE_SLUGS[mode]
-    companion = build_music_params(mode_code, parameters, profile=profile, calm=calm) if include_parameters else []
+    mode_code = music_code_for(model, mode)
+    companion = (
+        build_music_params(mode_code, parameters, profile=profile, calm=calm)
+        if include_parameters and music_mode_has_parameter_write(model, mode_code)
+        else []
+    )
     return (build_power(True, model), build_music_mode(mode_code, sensitivity, colour, calm, model), *companion)
 
 
@@ -70,13 +75,14 @@ def resolve_music_profile(
     profile = get_profile(model)
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
-    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
+    mode_code = music_code_for(model, mode)
+    variant = music_variant(profile, mode_code)
     if calm is not None and (variant is None or not variant.supports_style):
         raise ValueError(f"music mode {mode} does not support a style setting")
     if colour is not None and not profile.supports_music_color:
         raise ValueError(f"{model} does not support a fixed music colour")
     resolved_calm = calm if calm is not None else variant.calm_default if variant and variant.supports_style else False
-    compiled = compile_music_parameters(parameters, MUSIC_MODE_SLUGS[mode], profile)
+    compiled = compile_music_parameters(parameters, mode_code, profile)
     packets = prepare_music_request(model, mode, sensitivity, colour, resolved_calm, compiled)
     return resolved_calm, compiled, packets
 
@@ -106,7 +112,7 @@ def prepare_music_profile_writes(
         # Earlier fragments cannot complete the companion; a final attempt may.
         states[-1] = {
             spec.key: parameters.get(spec.profile_key, spec.default)
-            for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], get_profile(model))
+            for spec in music_params_for_mode(music_code_for(model, mode), get_profile(model))
         }
     return tuple(zip(packets, states, strict=True))
 
