@@ -158,8 +158,8 @@ def limited_readback_coord(hass):
         )
 
 
-def test_h617x_uses_short_idle_release_without_periodic_polling(coord):
-    assert coord.update_interval is None
+def test_h617x_uses_short_idle_release_with_periodic_polling(coord):
+    assert coord.update_interval == timedelta(seconds=30)
     with patch(f"{M}.async_call_later") as call_later:
         coord._reset_disconnect_timer()
     assert call_later.call_args.args[1] == 3.0

@@ -173,9 +173,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             hass,
             _LOGGER,
             name=f"Govee {model} ({address})",
-            update_interval=(
-                timedelta(seconds=30) if profile.state_readable and profile.connection_idle_timeout is None else None
-            ),
+            update_interval=timedelta(seconds=30) if profile.state_readable else None,
         )
         self.address, self.model, self.profile = address, model, profile
         self._profile_generation = 0
