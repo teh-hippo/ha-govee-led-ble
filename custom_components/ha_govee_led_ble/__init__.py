@@ -15,6 +15,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
+from .ble_connection import clear_stale_gatt_recovery
 from .const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_CATEGORIES,
@@ -293,4 +294,5 @@ async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
     ir.async_delete_issue(hass, DOMAIN, _unsupported_model_issue_id(entry))
     if entry.unique_id is not None:
         clear_availability_log_state(hass, entry.unique_id)
+        clear_stale_gatt_recovery(hass, entry.unique_id)
     await _async_update_editor_panel(hass, excluding_entry_id=entry.entry_id)

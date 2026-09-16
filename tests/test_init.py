@@ -1,9 +1,13 @@
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from bleak import BleakClient, BleakError
 from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.ha_govee_led_ble import (
     _async_cleanup_legacy_entities,
@@ -13,18 +17,21 @@ from custom_components.ha_govee_led_ble import (
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.ha_govee_led_ble.ble_connection import mark_stale_gatt_recovery, stale_gatt_recovery_pending
+from custom_components.ha_govee_led_ble.ble_device_resolver import BLEDeviceResolution
 from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_MODEL,
     DOMAIN,
     MODEL_PROFILES,
 )
-from custom_components.ha_govee_led_ble.coordinator import AVAILABILITY_UNAVAILABLE_DATA_KEY
+from custom_components.ha_govee_led_ble.coordinator import AVAILABILITY_UNAVAILABLE_DATA_KEY, GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.editor import (
     EDITOR_PANEL_PATH,
     EDITOR_ROUTE_SEGMENT,
     editor_url,
 )
+from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 
 @pytest.fixture(autouse=True)
@@ -138,6 +145,143 @@ async def test_setup_entry_rejects_known_advertised_model_mismatch(hass: HomeAss
     ):
         assert await async_setup_entry(hass, entry) is False
     cls.assert_not_called()
+
+
+@pytest.mark.parametrize("first_failure", ["connect", "notify", "identity"])
+async def test_scheduled_setup_retry_replaces_coordinator_and_retains_recovery(hass, freezer, first_failure):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H617A"})
+    entry.add_to_hass(hass)
+    hass.state = CoreState.running
+    coordinators = []
+    order = []
+
+    def create_coordinator(*args, **kwargs):
+        coordinator = GoveeBLECoordinator(*args, **kwargs)
+        coordinators.append(coordinator)
+        return coordinator
+
+    def client(name):
+        return MagicMock(
+            is_connected=True,
+            services=[],
+            start_notify=AsyncMock(),
+            write_gatt_char=AsyncMock(),
+            clear_cache=AsyncMock(side_effect=lambda: order.append((name, "clear")) or True),
+            disconnect=AsyncMock(side_effect=lambda: order.append((name, "disconnect"))),
+        )
+
+    stale = client("stale")
+    error = BleakError("GATT characteristic not found")
+    if first_failure == "notify":
+        stale.start_notify.side_effect = error
+    elif first_failure == "identity":
+        stale.write_gatt_char.side_effect = error
+    bootstrap = client("bootstrap")
+    failed = client("failed")
+    failed.start_notify.side_effect = BleakError("notify failed")
+    retry_bootstrap = client("retry-bootstrap")
+    recovered = client("recovered")
+
+    async def reply(_uuid, packet, **_kwargs):
+        values = {
+            0x01: [1],
+            0x04: [42],
+            0x05: [0x04, 0x9D, 0x08],
+            0xA5: [packet[2], *([100, 10, 20, 30] * 3)],
+        }
+        if packet[1] in values:
+            payload = bytearray([0xAA, packet[1], *values[packet[1]]])
+            payload.extend(b"\x00" * (19 - len(payload)))
+            payload.append(xor_checksum(payload))
+            recovered.start_notify.await_args.args[1](None, payload)
+
+    recovered.write_gatt_char.side_effect = reply
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", side_effect=create_coordinator),
+        patch("custom_components.ha_govee_led_ble.coordinator.bluetooth"),
+        patch(
+            "custom_components.ha_govee_led_ble.coordinator.BLEDeviceResolver.async_resolve",
+            return_value=BLEDeviceResolution(MagicMock(), BleakClient),
+        ),
+        patch(
+            "custom_components.ha_govee_led_ble.coordinator.establish_connection",
+            side_effect=[
+                error if first_failure == "connect" else stale,
+                bootstrap,
+                failed,
+                retry_bootstrap,
+                recovered,
+            ],
+        ) as connect,
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock) as forward,
+    ):
+        await entry.async_setup_locked(hass)
+        assert entry.state is ConfigEntryState.SETUP_RETRY
+        assert len(coordinators) == 1
+        assert coordinators[0].fresh_services_required
+        assert coordinators[0]._client is None
+        forward.assert_not_awaited()
+
+        freezer.tick(timedelta(seconds=10))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert entry.state is ConfigEntryState.SETUP_RETRY
+        assert len(coordinators) == 2
+        assert all(c.fresh_services_required for c in coordinators)
+        assert all(c._client is None for c in coordinators)
+        forward.assert_not_awaited()
+
+        freezer.tick(timedelta(seconds=20))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert entry.state is ConfigEntryState.LOADED
+        assert len(coordinators) == 3
+        assert len({id(c) for c in coordinators}) == 3
+        assert entry.runtime_data is coordinators[-1]
+        assert entry.runtime_data.is_on
+        assert entry.runtime_data.brightness_pct == 42
+        assert all(not c.fresh_services_required for c in coordinators)
+        assert entry.runtime_data.fresh_service_discovery_forced
+        forward.assert_awaited_once()
+        assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [True] + [False] * 4
+        for index, native in ((1, bootstrap), (3, retry_bootstrap)):
+            assert "disconnected_callback" not in connect.await_args_list[index].kwargs
+            native.start_notify.assert_not_awaited()
+            native.write_gatt_char.assert_not_awaited()
+            native.clear_cache.assert_awaited_once_with()
+            native.disconnect.assert_awaited_once_with()
+        assert connect.await_args_list[2].kwargs["disconnected_callback"] == coordinators[1]._disconnected_callback
+        assert connect.await_args_list[4].kwargs["disconnected_callback"] == coordinators[2]._disconnected_callback
+        assert order == ([] if first_failure == "connect" else [("stale", "clear"), ("stale", "disconnect")]) + [
+            ("bootstrap", "clear"),
+            ("bootstrap", "disconnect"),
+            ("failed", "disconnect"),
+            ("retry-bootstrap", "clear"),
+            ("retry-bootstrap", "disconnect"),
+            ("recovered", "disconnect"),
+        ]
+
+
+@pytest.mark.parametrize("unload_ok", [True, False])
+async def test_unload_retains_pending_recovery_but_entry_removal_clears_only_its_address(hass, unload_ok):
+    entry = _entry(unique_id="aa:bb:cc:dd:ee:ff", runtime_data=MagicMock(disconnect=AsyncMock()))
+    other_address = "11:22:33:44:55:66"
+    mark_stale_gatt_recovery(hass, entry.unique_id.upper())
+    mark_stale_gatt_recovery(hass, other_address)
+    with (
+        patch("custom_components.ha_govee_led_ble.get_effect_backend", return_value=None),
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_unload_platforms", return_value=unload_ok),
+    ):
+        assert await async_unload_entry(hass, entry) is unload_ok
+        assert stale_gatt_recovery_pending(hass, entry.unique_id)
+        assert stale_gatt_recovery_pending(hass, other_address)
+        await async_remove_entry(hass, entry)
+        assert not stale_gatt_recovery_pending(hass, entry.unique_id)
+        assert stale_gatt_recovery_pending(hass, other_address)
+        await async_remove_entry(hass, entry)
+        assert stale_gatt_recovery_pending(hass, other_address)
 
 
 @pytest.mark.parametrize("unload_ok,disc", [(True, "assert_awaited_once"), (False, "assert_not_awaited")])

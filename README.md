@@ -35,10 +35,6 @@ and Workshop remain unavailable, music companion readback is not guaranteed,
 and DreamView membership is locally authored and unconfirmed. See the
 [H6099 support record](docs/h6099-support.md) for the full scope and remaining gaps.
 
-H617A and H617E release their BLE connection about three seconds after the last Home Assistant
-command. This allows sequential control from Home Assistant and the Govee app; the device still
-accepts only one BLE connection at a time, so the two controllers cannot operate it simultaneously.
-
 ## Effect Studio
 
 Effect Studio appears in the Home Assistant sidebar when a configured light supports it.  Available scenes, effects, music, video, and editing controls follow the selected device's capabilities.

@@ -14,6 +14,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.ha_govee_led_ble.ble_connection import mark_stale_gatt_recovery
 from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
     BLEDeviceResolver,
@@ -62,6 +63,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command_ack_result,
     parse_status,
 )
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -128,16 +130,6 @@ def coord(hass):
         )
 
 
-@pytest.fixture(params=("H617A", "H617E"))
-def h617x(hass, request):
-    return GoveeBLECoordinator(
-        hass,
-        "AA:BB:CC:DD:EE:FF",
-        request.param,
-        configuration_url=_CONFIGURATION_URL,
-    )
-
-
 @pytest.fixture
 def h6199(hass):
     return GoveeBLECoordinator(
@@ -166,10 +158,10 @@ def limited_readback_coord(hass):
         )
 
 
-def test_h617x_uses_short_idle_release_without_periodic_polling(h617x):
-    assert h617x.update_interval is None
+def test_h617x_uses_short_idle_release_without_periodic_polling(coord):
+    assert coord.update_interval is None
     with patch(f"{M}.async_call_later") as call_later:
-        h617x._reset_disconnect_timer()
+        coord._reset_disconnect_timer()
     assert call_later.call_args.args[1] == 3.0
 
 
@@ -792,9 +784,9 @@ async def test_send_command(coord, transform):
 
 
 @pytest.mark.parametrize("transform", [None, _transform_packet])
-async def test_effect_sequence_reconnect_restarts_from_frame_zero(h617x, transform):
+async def test_effect_sequence_reconnect_restarts_from_frame_zero(coord, transform):
     transform_mock = MagicMock(side_effect=transform) if transform is not None else None
-    h617x.profile = replace(h617x.profile, outbound_transform=transform_mock)
+    coord.profile = replace(coord.profile, outbound_transform=transform_mock)
     packets = [b"first", b"second", b"activation"]
     wire_packets = packets if transform is None else [transform(packet) for packet in packets]
     attempted: list[bytes] = []
@@ -819,11 +811,11 @@ async def test_effect_sequence_reconnect_restarts_from_frame_zero(h617x, transfo
         progress.append(index)
 
     with patch.object(
-        h617x,
+        coord,
         "_ensure_connected",
         new=AsyncMock(side_effect=[first, replacement]),
     ):
-        await h617x.async_write_effect_sequence(
+        await coord.async_write_effect_sequence(
             packets,
             intent=ControlIntent.PREVIEW,
             attempt_started=note_attempt,
@@ -831,7 +823,7 @@ async def test_effect_sequence_reconnect_restarts_from_frame_zero(h617x, transfo
         )
 
     assert attempted == [*wire_packets[:2], *wire_packets]
-    assert [entry["raw"] for entry in h617x.packet_log] == [packet.hex() for packet in (wire_packets[0], *wire_packets)]
+    assert [entry["raw"] for entry in coord.packet_log] == [packet.hex() for packet in (wire_packets[0], *wire_packets)]
     assert attempts == [1, 2]
     assert progress == [1, 1, 2, 3]
     if transform_mock is not None:
@@ -887,6 +879,7 @@ async def test_preview_write_arms_expected_state(coord):
 async def test_preview_stale_gatt_failure_discards_client_and_requires_fresh_services(coord):
     client = _c(
         write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        clear_cache=AsyncMock(return_value=True),
         disconnect=AsyncMock(),
     )
     coord._client = client
@@ -896,7 +889,144 @@ async def test_preview_stale_gatt_failure_discards_client_and_requires_fresh_ser
 
     assert coord.fresh_services_required is True
     assert coord._client is None
+    client.clear_cache.assert_awaited_once_with()
     client.disconnect.assert_awaited_once()
+
+
+@pytest.mark.parametrize("clear_result", [True, False, BleakError("clear failed"), "cancel"])
+async def test_stale_write_revokes_authority_before_awaited_native_clear(coord, clear_result):
+    clearing = asyncio.Event()
+    release = asyncio.Event()
+
+    async def clear_cache():
+        clearing.set()
+        await release.wait()
+        if isinstance(clear_result, Exception):
+            raise clear_result
+        return clear_result
+
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(),
+        clear_cache=AsyncMock(side_effect=clear_cache),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=client),
+    ):
+        assert await coord._ensure_connected() is client
+    receive = client.start_notify.await_args.args[1]
+    client.write_gatt_char.reset_mock(side_effect=True)
+    client.write_gatt_char.side_effect = BleakError("GATT characteristic not found")
+    coord._arm_expected_values({"brightness_pct": 42})
+    task = asyncio.create_task(coord.async_preview_write(build_power(True)))
+    try:
+        await asyncio.wait_for(clearing.wait(), 1)
+        assert coord.fresh_services_required
+        assert coord._client is None
+        assert coord._notification_token is None
+        assert coord._expected_state == {}
+        assert coord._cancel_disconnect is None
+        assert coord._keep_alive_task is None
+        assert not coord._encryption.ready
+        client.disconnect.assert_not_awaited()
+        before = (coord.brightness_pct, dict(coord._domain_revisions), list(coord.packet_log))
+        receive(None, bytearray(_packet(0xAA, 0x04, [42])))
+        assert (coord.brightness_pct, coord._domain_revisions, coord.packet_log) == before
+        with pytest.raises(GoveeCryptoError, match="stale_connection"):
+            await coord._async_write_packet(client, build_power(False))
+        client.write_gatt_char.assert_awaited_once()
+        if clear_result == "cancel":
+            task.cancel()
+        else:
+            release.set()
+        error = asyncio.CancelledError if clear_result == "cancel" else BleakError
+        with pytest.raises(error):
+            await task
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    client.clear_cache.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once_with()
+    assert coord.fresh_services_required
+    assert coord._client is None
+
+
+@pytest.mark.parametrize("outcome", ["cancel", "stale-bleak", "stale-crypto"])
+@pytest.mark.parametrize("disconnect_failure", ["bleak", "runtime", "stall"])
+async def test_gatt_cleanup_disconnect_failure_preserves_original_outcome(coord, outcome, disconnect_failure):
+    clearing = asyncio.Event()
+    release = asyncio.Event()
+    disconnect_finished = asyncio.Event()
+    original = (GoveeCryptoError if outcome == "stale-crypto" else BleakError)("GATT characteristic not found")
+
+    async def clear_cache():
+        clearing.set()
+        await release.wait()
+        return True
+
+    async def disconnect():
+        try:
+            if disconnect_failure == "stall":
+                await asyncio.Future()
+            raise (BleakError if disconnect_failure == "bleak" else RuntimeError)("disconnect failed")
+        finally:
+            disconnect_finished.set()
+
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(),
+        clear_cache=AsyncMock(side_effect=clear_cache),
+        disconnect=AsyncMock(side_effect=disconnect),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=client),
+    ):
+        assert await coord._ensure_connected() is client
+    client.write_gatt_char.reset_mock()
+    client.write_gatt_char.side_effect = original
+
+    with patch(f"{M}.VALIDATION_DISCONNECT_TIMEOUT", 0.01):
+        task = asyncio.create_task(coord.async_preview_write(build_power(True)))
+        try:
+            await asyncio.wait_for(clearing.wait(), 1)
+            assert coord.fresh_services_required
+            assert coord._client is None
+            client.disconnect.assert_not_awaited()
+            if outcome == "cancel":
+                task.cancel("cancel native cache clear")
+            else:
+                release.set()
+            # Observe completion without a watchdog cancellation hiding an unbounded disconnect.
+            done, _ = await asyncio.wait({task}, timeout=1)
+            assert task in done, "GATT recovery disconnect did not respect its timeout"
+            with pytest.raises(asyncio.CancelledError if outcome == "cancel" else type(original)) as raised:
+                await task
+            if outcome == "cancel":
+                assert raised.value.args == ("cancel native cache clear",)
+                assert task.cancelled()
+            else:
+                assert raised.value is original
+        finally:
+            release.set()
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    assert disconnect_finished.is_set()
+    client.clear_cache.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once_with()
+    client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, build_power(True), response=False)
+    assert coord.fresh_services_required
+    assert coord._client is None
+    assert coord._intentional_disconnect_client is None
+    assert coord._notification_token is None
+    assert coord._cancel_disconnect is None
+    assert coord._keep_alive_task is None
+    assert not coord._encryption.ready
 
 
 async def test_background_connection_use_does_not_renew_foreground_lease(coord):
@@ -911,13 +1041,13 @@ async def test_background_connection_use_does_not_renew_foreground_lease(coord):
         reset.assert_called_once_with()
 
 
-async def test_successful_command_renews_foreground_lease(h617x):
+async def test_successful_command_renews_foreground_lease(coord):
     client = _c(write_gatt_char=AsyncMock())
     with (
-        patch.object(h617x, "_ensure_connected", new=AsyncMock(return_value=client)),
-        patch.object(h617x, "_reset_disconnect_timer") as reset,
+        patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
+        patch.object(coord, "_reset_disconnect_timer") as reset,
     ):
-        await h617x.send_command(proto.build_power(True))
+        await coord.send_command(proto.build_power(True))
 
     reset.assert_called_once_with()
 
@@ -1273,37 +1403,44 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
     await coord.disconnect()
 
 
-async def test_gatt_failure_reconnects_new_client_with_fresh_services(h617x):
+async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord):
     device = MagicMock()
     resolver = MagicMock(spec=BLEDeviceResolver)
     resolver.async_resolve = AsyncMock(return_value=_resolution(device))
-    h617x._device_resolver = resolver
+    coord._device_resolver = resolver
     first = _c(
         write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        clear_cache=AsyncMock(return_value=True),
         disconnect=AsyncMock(),
     )
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
     fresh = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     normal = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
 
     with (
-        patch(f"{M}.establish_connection", side_effect=[first, fresh, normal]) as connect,
+        patch(f"{M}.establish_connection", side_effect=[first, bootstrap, fresh, normal]) as connect,
         patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
-        patch.object(h617x, "_start_notify", new_callable=AsyncMock),
-        patch.object(h617x, "_send_identity_queries", new_callable=AsyncMock),
+        patch.object(coord, "_start_notify", new_callable=AsyncMock),
+        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
     ):
-        await h617x.send_command(proto.build_power(True, h617x.model))
-        assert h617x.fresh_services_required is False
-        assert h617x.fresh_service_discovery_forced is True
-        assert h617x.last_failure_type == "BleakError"
+        await coord.send_command(proto.build_power(True))
+        assert coord.fresh_services_required is False
+        assert coord.fresh_service_discovery_forced is True
+        assert coord.last_failure_type == "BleakError"
 
-        await h617x.disconnect()
-        assert await h617x._ensure_connected() is normal
+        await coord.disconnect()
+        assert await coord._ensure_connected() is normal
 
-    assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [True, False, True]
+    assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [True, False, False, True]
+    assert "disconnected_callback" not in connect.await_args_list[1].kwargs
+    assert connect.await_args_list[2].kwargs["disconnected_callback"] == coord._disconnected_callback
+    first.clear_cache.assert_awaited_once_with()
+    bootstrap.clear_cache.assert_awaited_once_with()
+    bootstrap.disconnect.assert_awaited_once_with()
     first.disconnect.assert_awaited_once()
     fresh.disconnect.assert_awaited_once()
-    assert h617x.fresh_service_discovery_forced is False
-    await h617x.disconnect()
+    assert coord.fresh_service_discovery_forced is False
+    await coord.disconnect()
 
 
 async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord):
@@ -1312,9 +1449,10 @@ async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord)
     resolver.async_resolve = AsyncMock(return_value=_resolution(device))
     coord._device_resolver = resolver
     client = _c(disconnect=AsyncMock())
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
 
     with (
-        patch(f"{M}.establish_connection", side_effect=[BleakError("GATT service not found"), client]) as connect,
+        patch(f"{M}.establish_connection", side_effect=BleakError("GATT service not found")) as connect,
         patch.object(coord, "_start_notify", new_callable=AsyncMock),
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
         pytest.raises(BleakError, match="GATT service not found"),
@@ -1325,13 +1463,24 @@ async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord)
     assert connect.await_args.kwargs["use_services_cache"] is True
 
     with (
-        patch(f"{M}.establish_connection", return_value=client) as fresh_connect,
+        patch(f"{M}.establish_connection", side_effect=[bootstrap, client]) as fresh_connect,
         patch.object(coord, "_start_notify", new_callable=AsyncMock),
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
     ):
         assert await coord._ensure_connected() is client
 
-    assert fresh_connect.await_args.kwargs["use_services_cache"] is False
+    assert fresh_connect.await_args_list == [
+        call(BleakClient, device, coord.address, use_services_cache=False),
+        call(
+            BleakClient,
+            device,
+            coord.address,
+            disconnected_callback=coord._disconnected_callback,
+            use_services_cache=False,
+        ),
+    ]
+    bootstrap.clear_cache.assert_awaited_once_with()
+    bootstrap.disconnect.assert_awaited_once_with()
     assert coord.fresh_services_required is False
     assert coord.fresh_service_discovery_forced is True
     await coord.disconnect()
@@ -1342,14 +1491,16 @@ async def test_failed_fresh_notification_setup_retains_fresh_requirement(coord):
     resolver = MagicMock(spec=BLEDeviceResolver)
     resolver.async_resolve = AsyncMock(return_value=_resolution(device))
     coord._device_resolver = resolver
-    coord._fresh_services_required = True
+    mark_stale_gatt_recovery(coord.hass, coord.address)
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    retry_bootstrap = _c(clear_cache=AsyncMock(return_value=True))
     failed = _c(
         start_notify=AsyncMock(side_effect=BleakError("notify failed")),
         disconnect=AsyncMock(),
     )
     recovered = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
 
-    with patch(f"{M}.establish_connection", side_effect=[failed, recovered]) as connect:
+    with patch(f"{M}.establish_connection", side_effect=[bootstrap, failed, retry_bootstrap, recovered]) as connect:
         with pytest.raises(BleakError, match="notify failed"):
             await coord._ensure_connected()
         assert coord.fresh_services_required is True
@@ -1357,7 +1508,11 @@ async def test_failed_fresh_notification_setup_retains_fresh_requirement(coord):
 
         assert await coord._ensure_connected() is recovered
 
-    assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [False, False]
+    assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [False] * 4
+    for index, native in ((0, bootstrap), (2, retry_bootstrap)):
+        assert "disconnected_callback" not in connect.await_args_list[index].kwargs
+        native.clear_cache.assert_awaited_once_with()
+        native.disconnect.assert_awaited_once_with()
     assert coord.fresh_services_required is False
     assert coord.fresh_service_discovery_forced is True
     failed.disconnect.assert_awaited_once()
@@ -1372,6 +1527,7 @@ async def test_stale_gatt_identity_failure_discards_client_and_requires_fresh_se
     client = _c(
         start_notify=AsyncMock(),
         write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        clear_cache=AsyncMock(return_value=True),
         disconnect=AsyncMock(),
     )
 
@@ -1384,7 +1540,192 @@ async def test_stale_gatt_identity_failure_discards_client_and_requires_fresh_se
     assert connect.await_args.kwargs["use_services_cache"] is True
     assert coord.fresh_services_required is True
     assert coord._client is None
+    client.clear_cache.assert_awaited_once_with()
     client.disconnect.assert_awaited_once()
+
+
+@pytest.mark.parametrize("stale", [False, True], ids=["ordinary-optional", "stale-gatt"])
+async def test_recovery_identity_failure_only_rejects_discarded_client(coord, stale):
+    mark_stale_gatt_recovery(coord.hass, coord.address.lower())
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    error = BleakError("GATT characteristic not found" if stale else "identity query failed")
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(side_effect=error),
+        clear_cache=AsyncMock(return_value=True),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", side_effect=[bootstrap, client]) as connect,
+    ):
+        if stale:
+            with pytest.raises(BleakError, match="GATT characteristic not found"):
+                await coord._ensure_connected()
+            assert coord._client is None
+            client.clear_cache.assert_awaited_once_with()
+            client.disconnect.assert_awaited_once_with()
+        else:
+            assert await coord._ensure_connected() is client
+            assert coord._encryption.ready
+            assert coord.hw_version is None
+            client.clear_cache.assert_not_awaited()
+            client.disconnect.assert_not_awaited()
+        assert coord.fresh_services_required is stale
+        assert coord.fresh_service_discovery_forced is not stale
+        assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [False, False]
+        assert "disconnected_callback" not in connect.await_args_list[0].kwargs
+    bootstrap.clear_cache.assert_awaited_once_with()
+    bootstrap.disconnect.assert_awaited_once_with()
+    client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, build_hardware_query(), response=False)
+    await coord.disconnect()
+
+
+@pytest.mark.parametrize("stale", [False, True], ids=["ordinary-optional", "stale-gatt"])
+async def test_optional_state_query_failure_only_tolerated_on_current_client(coord, stale):
+    optional = build_colour_mode_query()
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == optional:
+            raise BleakError("GATT characteristic not found" if stale else "query failed")
+
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(side_effect=write),
+        clear_cache=AsyncMock(return_value=True),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=client),
+    ):
+        await coord._ensure_connected()
+    client.write_gatt_char.reset_mock()
+    assert (
+        await coord._send_state_queries(
+            required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        )
+        is not stale
+    )
+    packets = [item.args[1] for item in client.write_gatt_char.await_args_list]
+    assert packets[:3] == [build_power_query(), build_brightness_query(), optional]
+    assert coord.fresh_services_required is stale
+    if stale:
+        assert len(packets) == 3
+        assert coord._client is None
+        client.clear_cache.assert_awaited_once_with()
+        client.disconnect.assert_awaited_once_with()
+    else:
+        assert build_segment_query(1) in packets
+        assert coord._client is client
+        client.clear_cache.assert_not_awaited()
+        client.disconnect.assert_not_awaited()
+    await coord.disconnect()
+
+
+@pytest.mark.parametrize("failure", ["false", "error", "timeout", "cancel", "disconnect"])
+async def test_recovery_bootstrap_failure_retains_pending_and_skips_qualification(coord, failure):
+    mark_stale_gatt_recovery(coord.hass, coord.address)
+    clearing = asyncio.Event()
+
+    async def clear_cache():
+        clearing.set()
+        if failure in {"cancel", "timeout"}:
+            await asyncio.Future()
+        if failure == "error":
+            raise BleakError("native clear failed")
+        return failure != "false"
+
+    bootstrap = _c(
+        clear_cache=AsyncMock(side_effect=clear_cache),
+        disconnect=AsyncMock(side_effect=BleakError("disconnect failed") if failure == "disconnect" else None),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=bootstrap) as connect,
+        patch(
+            "custom_components.ha_govee_led_ble.ble_connection.GATT_CACHE_CLEAR_TIMEOUT",
+            0 if failure == "timeout" else 10,
+        ),
+    ):
+        task = asyncio.create_task(coord._ensure_connected())
+        try:
+            await asyncio.wait_for(clearing.wait(), 1)
+            if failure == "cancel":
+                task.cancel()
+            with pytest.raises(asyncio.CancelledError if failure == "cancel" else BleakError):
+                await task
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    connect.assert_awaited_once()
+    assert connect.await_args.kwargs == {"use_services_cache": False}
+    bootstrap.clear_cache.assert_awaited_once_with()
+    bootstrap.disconnect.assert_awaited_once_with()
+    bootstrap.start_notify.assert_not_called()
+    bootstrap.write_gatt_char.assert_not_called()
+    assert coord.fresh_services_required
+    assert not coord.fresh_service_discovery_forced
+    assert coord._client is None
+    assert not coord._connection_initializing
+
+
+async def test_recovery_proxy_switch_failure_requires_another_native_bootstrap(coord):
+    mark_stale_gatt_recovery(coord.hass, coord.address)
+    local = _resolution(client_class=type("LocalClient", (), {}))
+    proxy = _resolution(client_class=type("ProxyClient", (), {}))
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    proxy_bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    qualified = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock())
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", side_effect=[local, proxy, proxy, proxy]),
+        patch(
+            f"{M}.establish_connection",
+            side_effect=[
+                bootstrap,
+                BleakError("proxy connection failed"),
+                proxy_bootstrap,
+                qualified,
+            ],
+        ) as connect,
+    ):
+        with pytest.raises(BleakError, match="Failed to recover the GATT cache"):
+            await coord._ensure_connected()
+        assert coord.fresh_services_required
+        assert coord._client is None
+        assert await coord._ensure_connected() is qualified
+    assert [item.args[0] for item in connect.await_args_list] == [
+        local.client_class,
+        proxy.client_class,
+        proxy.client_class,
+        proxy.client_class,
+    ]
+    assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [False] * 4
+    for index, client in ((0, bootstrap), (2, proxy_bootstrap)):
+        assert "disconnected_callback" not in connect.await_args_list[index].kwargs
+        client.clear_cache.assert_awaited_once_with()
+        client.disconnect.assert_awaited_once_with()
+        client.start_notify.assert_not_called()
+    assert not coord.fresh_services_required
+    await coord.disconnect()
+
+
+async def test_keep_alive_stale_identity_failure_stops_before_state_queries(coord):
+    client = _c(
+        write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        clear_cache=AsyncMock(return_value=True),
+    )
+    coord._client = client
+    with (
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+        patch.object(coord, "_send_state_queries", new_callable=AsyncMock) as state_queries,
+    ):
+        await coord._keep_alive_loop()
+    state_queries.assert_not_awaited()
+    client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, build_hardware_query(), response=False)
+    client.clear_cache.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once_with()
+    assert coord._client is None
+    assert coord.fresh_services_required
 
 
 async def test_start_notify(coord, h6199):
