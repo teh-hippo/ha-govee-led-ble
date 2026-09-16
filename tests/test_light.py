@@ -1482,9 +1482,7 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
     await h6199_light.async_turn_on(effect=effect)
     packet = build_h6199_video(False, mode == "game", 63, True, 27)
     assert [call.args[0] for call in co.send_command.call_args_list] == [
-        build_power(True),
         packet,
-        build_power(True),
         packet,
     ]
     for call in co.refresh_state.await_args_list:

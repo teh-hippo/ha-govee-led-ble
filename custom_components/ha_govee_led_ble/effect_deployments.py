@@ -97,6 +97,7 @@ class PriorControlState:
     music_parameters: Mapping[str, int | bool | str] | None = None
     music_palette: tuple[tuple[int, int, int], ...] | None = None
     video_mode: str = "off"
+    video_parameters: Mapping[str, int | bool | str] | None = None
     music_sensitivity: int = 100
     music_calm: bool = False
     music_color: tuple[int, int, int] | None = None
@@ -135,6 +136,20 @@ class PriorControlState:
     video_restore_controls: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
+        if self.video_parameters is not None:
+            if not isinstance(self.video_parameters, Mapping):
+                raise EffectStorageError("prior video parameters must be a mapping")
+            validate_json_document(
+                dict(self.video_parameters),
+                "prior video parameters",
+                maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
+                error_type=EffectStorageError,
+            )
+            if any(
+                not isinstance(key, str) or type(value) not in (int, bool, str)
+                for key, value in self.video_parameters.items()
+            ):
+                raise EffectStorageError("invalid prior video parameter")
         if self.music_palette is not None:
             if not isinstance(self.music_palette, tuple) or not 1 <= len(self.music_palette) <= 8:
                 raise EffectStorageError("prior music palette must contain 1 to 8 colours")
@@ -223,7 +238,12 @@ class PriorControlState:
             _validate_rgb(self.music_color, "prior music colour")
         numeric_values: tuple[tuple[int, str, int, int], ...] = (
             (self.video_saturation, "prior video saturation", 0, 100),
-            (self.video_sound_effects_softness, "prior video sound-effects softness", 1, 100),
+            (
+                self.video_sound_effects_softness,
+                "prior video sound-effects softness",
+                0 if self.video_parameters else 1,
+                100,
+            ),
         )
         if self.music_parameters is None:
             # Only legacy snapshots use these fields; mappings use variant validation before writes.
@@ -320,6 +340,7 @@ class PriorControlState:
             **({"music_parameters": dict(self.music_parameters)} if self.music_parameters is not None else {}),
             **({"music_palette": [list(rgb) for rgb in self.music_palette]} if self.music_palette is not None else {}),
             "video_mode": self.video_mode,
+            **({"video_parameters": dict(self.video_parameters)} if self.video_parameters is not None else {}),
             "music_sensitivity": self.music_sensitivity,
             "music_calm": self.music_calm,
             "music_color": list(self.music_color) if self.music_color is not None else None,
@@ -403,6 +424,7 @@ class PriorControlState:
             music_parameters=parameters,
             music_palette=palette,
             video_mode=_optional_str(raw, "video_mode") or "off",
+            video_parameters=_required_mapping(raw, "video_parameters") if "video_parameters" in raw else None,
             music_sensitivity=_optional_int(raw, "music_sensitivity", default=100),
             music_calm=_optional_bool(raw, "music_calm", default=False),
             music_color=_optional_rgb(raw, "music_color"),

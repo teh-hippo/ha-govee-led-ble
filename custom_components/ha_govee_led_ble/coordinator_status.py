@@ -5,7 +5,7 @@ from enum import Enum, auto
 from typing import Any, cast
 
 from .const import MUSIC_MODE_SLUGS, ReadDomain, get_profile
-from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
+from .generated_protocol_adapter import ProtocolParseResult, parse_status_result, video_parameters_from_detail
 from .scenes import MODEL_SCENES
 
 _MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
@@ -86,6 +86,7 @@ class ParsedColorModeResponse:
     diy_code: int | None = None
     music_mode: str | None = None
     video_mode: str | None = None
+    video_parameters: dict[str, Any] | None = None
     video_full_screen: bool | None = None
     video_saturation: int | None = None
     video_sound_effects: bool | None = None
@@ -103,6 +104,25 @@ class ParsedColorModeResponse:
 def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
+    profile = get_profile(model)
+    if mode_name == "video" and profile.video_grammar == "H66A0-video":
+        detail = body.detail
+        source = getattr(detail.source, "name", None)
+        if source not in profile.video_modes:
+            return ParsedColorModeResponse()
+        parameters = video_parameters_from_detail(detail, profile.video_grammar)
+        if detail.sound_effects not in (0, 1) or not 0 <= detail.softness <= 100:
+            raise ValueError("invalid video sound effects or softness")
+        return ParsedColorModeResponse(
+            mode=ParsedMode.VIDEO,
+            video_mode=source,
+            video_parameters=parameters,
+            video_saturation=int(detail.saturation)
+            if profile.supports_video_saturation and profile.video_saturation_min <= detail.saturation <= 100
+            else None,
+            video_sound_effects=bool(detail.sound_effects) if profile.supports_video_sound_effects else None,
+            video_sound_effects_softness=int(detail.softness) if profile.supports_video_sound_effects else None,
+        )
     music_mode = None
     if mode_name == "music":
         detail = getattr(body, "detail", getattr(body, "mode_body", None))

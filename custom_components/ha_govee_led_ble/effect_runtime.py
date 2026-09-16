@@ -54,7 +54,6 @@ from .generated_protocol_adapter import (
     build_blank_screen,
     build_power,
     build_relative_brightness,
-    build_video_mode,
     build_white_balance,
 )
 from .music_commands import prepare_music_profile_writes
@@ -68,6 +67,7 @@ from .native_profile_controls import (
     apply_relative_brightness,
     apply_white_balance,
     async_require_video_controls,
+    prepare_video_mode,
 )
 from .scenes import canonical_scene_key, resolve_scene_identity, scene_code_is_ambiguous
 from .video_applicability import requested_video_controls, require_video_controls
@@ -174,16 +174,12 @@ async def async_apply_compiled_profile(
         ):
             raise ValueError("Blank-screen policy state has not been read freshly; refresh the device first")
     # Validate every packet before changing state or sending the first command.
-    build_video_mode(
-        compiled.mode,
-        coordinator.video_full_screen if compiled.full_screen is None else compiled.full_screen,
-        coordinator.video_saturation if compiled.saturation is None else compiled.saturation,
-        coordinator.video_sound_effects if compiled.sound_effects is None else compiled.sound_effects,
-        coordinator.video_sound_effects_softness
-        if compiled.sound_effects_softness is None
-        else compiled.sound_effects_softness,
-        coordinator.model,
-    )
+    mode_values = {
+        field: getattr(compiled, field)
+        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
+        if getattr(compiled, field) is not None
+    }
+    prepare_video_mode(coordinator, mode=compiled.mode, requested_values=mode_values)
     if compiled.white_balance_wire is not None:
         build_white_balance(
             compiled.white_balance_wire[0],
@@ -216,11 +212,6 @@ async def async_apply_compiled_profile(
         build_blank_screen(compiled.blank_screen, coordinator.model, detection, low_duration, same_duration)
     if compiled.black_border is not None:
         build_black_border(compiled.black_border, coordinator.model)
-    mode_values = {
-        field: getattr(compiled, field)
-        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
-        if getattr(compiled, field) is not None
-    }
     await apply_active_video_mode(
         coordinator,
         mode=compiled.mode,
@@ -1013,6 +1004,7 @@ class EffectDeploymentEngine:
                 getattr(coordinator, "music_mode", "off"),
             ),
             video_mode=getattr(coordinator, "video_mode", "off"),
+            video_parameters=getattr(coordinator, "video_parameters", None),
             music_sensitivity=getattr(coordinator, "music_sensitivity", 100),
             music_calm=getattr(coordinator, "music_calm", False),
             music_color=getattr(coordinator, "music_color", None),
@@ -1365,7 +1357,7 @@ def compiled_observation(
             return expectations, ObservationConfidence.MODE_MATCH
     else:
         expectations["video_mode"] = compiled.mode
-        if profile.video_grammar not in {"H6099", "H6199"}:
+        if profile.video_grammar not in {"H6099", "H6199", "H66A0-video"}:
             return None, ObservationConfidence.UNKNOWN
         complete = True
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness"):

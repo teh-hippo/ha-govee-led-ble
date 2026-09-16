@@ -317,6 +317,12 @@ async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, m
         writer.assert_not_awaited()
         assert device.is_on is False and not device._expected_state
     else:
+
+        async def write(packets, **kwargs):
+            vars(device).update(kwargs.get("state_values") or {})
+
+        writer.side_effect = write
+        monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
         await light._async_set_video_mode("movie", saturation=0)
         assert writer.await_count == 2
         assert device.video_saturation == 0

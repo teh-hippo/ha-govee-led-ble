@@ -204,6 +204,8 @@ def _make_coord(**ov) -> MagicMock:
         for packet in packets:
             if (guard := _kwargs.get("write_guard")) is not None:
                 guard()
+            for field, value in (_kwargs.get("state_values") or {}).items():
+                setattr(c, field, value)
             await c.send_command(packet)
 
     c.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)

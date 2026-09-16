@@ -1,6 +1,6 @@
 """Control helpers for the Govee BLE light."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any
 
@@ -17,15 +17,13 @@ from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .dreamview_services import async_register_dreamview_services
-from .generated_protocol_adapter import build_power, build_video_mode
 from .h6099_controls import (
     async_read_installation_controls,
     async_set_installation_direction,
     installation_direction_value,
 )
 from .light_commands import SegmentColorGroup, build_segment_brightness, build_segment_paint, segments_to_mask
-from .native_profile_controls import _send_video_setting, apply_active_video_mode
-from .video_applicability import require_video_controls, video_control_states
+from .native_profile_controls import apply_active_video_mode
 
 __all__ = ("apply_active_video_mode", "async_register_light_services")
 
@@ -140,7 +138,8 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
     # fmt: off
     async def _async_set_video_mode(self, mode: str, saturation: int = 100,
             capture_region: str | None = None, full_screen: bool = True,
-            sound_effects: bool = False, sound_effects_softness: int | None = None) -> None:
+            sound_effects: bool = False, sound_effects_softness: int | None = None,
+            *, values: Mapping[str, Any] | None = None) -> None:
         # fmt: on
         self._require_support("set_video_mode", supported=self.coordinator.profile.supports_video_mode)
         if sound_effects:
@@ -159,64 +158,13 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             resolved_softness = (
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
-            controls = frozenset(
-                control for control, changed in (
-                    ("capture_region", resolved_fs != c.video_full_screen),
-                    ("saturation", resolved_saturation != c.video_saturation),
-                    ("sound_effects", resolved_sound != c.video_sound_effects
-                     or resolved_softness != c.video_sound_effects_softness),
-                ) if changed
-            )
-            require_video_controls(c.profile, c, controls)
-            packet = build_video_mode(
-                mode,
-                resolved_fs,
-                resolved_saturation,
-                resolved_sound,
-                resolved_softness,
-                c.model,
-            )
-
-            def check_retained() -> None:
-                c.profile.validate_video_saturation(resolved_saturation)
-                changed_controls = {
-                    control for control, changed in (
-                        ("capture_region", resolved_fs != c.video_full_screen),
-                        ("saturation", resolved_saturation != c.video_saturation),
-                        ("sound_effects", resolved_sound != c.video_sound_effects
-                         or resolved_softness != c.video_sound_effects_softness),
-                    ) if changed
-                }
-                if changed_controls - controls:
-                    raise ValueError("Retained video settings changed before write; refresh and retry")
-
-            async def apply() -> None:
-                require_video_controls(c.profile, c, controls)
-                await _send_video_setting(
-                    c, build_power(True, c.model), controls, writer=None, write_guard=check_retained
-                )
-                self.coordinator.is_on = True
-                await _send_video_setting(c, packet, controls, writer=None, write_guard=check_retained)
-
-            await apply()
-            observable = video_control_states(c.profile, c)
-            await self._refresh_with_retry(
-                expected_on=True,
-                expected_video_mode=mode,
-                expected_video_full_screen=resolved_fs if observable["capture_region"] == "supported" else None,
-                expected_video_saturation=resolved_saturation if observable["saturation"] == "supported" else None,
-                expected_video_sound_effects=resolved_sound if observable["sound_effects"] == "supported" else None,
-                expected_video_sound_effects_softness=resolved_softness if resolved_sound
-                    and observable["sound_effects"] == "supported" else None,
-                retry_command=apply,
-            )
-            c.video_mode, c.effect = mode, None
-            c.music_mode = "off"
-            c.diy_code = None
-            c.video_saturation, c.video_full_screen = resolved_saturation, resolved_fs
-            c.video_sound_effects = resolved_sound
-            if supports_sound:
-                c.video_sound_effects_softness = resolved_softness
+            requested = {
+                field: value for field, value in (
+                    ("full_screen", resolved_fs), ("saturation", resolved_saturation),
+                    ("sound_effects", resolved_sound), ("sound_effects_softness", resolved_softness),
+                ) if value != getattr(c, f"video_{field}")
+            }
+            await apply_active_video_mode(c, mode=mode, requested_values=requested, parameters=values)
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:

@@ -305,4 +305,15 @@ async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
         build_h6199_video(True, False, 100, False, 100),
     ]
     assert h6199.is_on is True
-    assert refresh.await_args_list == [call(expected_on=True, expected_video_mode="movie")] * 2
+    assert (
+        refresh.await_args_list
+        == [
+            call(
+                expected_on=True,
+                expected_video_mode="movie",
+                expected_video_full_screen=True,
+                expected_video_saturation=100,
+            )
+        ]
+        * 2
+    )

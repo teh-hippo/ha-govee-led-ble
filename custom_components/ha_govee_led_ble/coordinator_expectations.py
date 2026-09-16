@@ -4,7 +4,7 @@ from typing import Any
 
 from .const import MUSIC_MODE_SLUGS, get_profile
 from .coordinator_status import ParsedMode
-from .generated_protocol_adapter import parse_command
+from .generated_protocol_adapter import parse_command, parse_video_command, video_parameters_from_detail
 from .light_commands import parse_static_write
 from .scenes import MODEL_SCENES
 
@@ -21,6 +21,21 @@ def expectations_from_packet(
     static_echoes_color: bool = False,
 ) -> dict[str, Any]:
     """Map an outgoing command to the optimistic fields its replies should confirm."""
+    video = parse_video_command(packet, model)
+    if video is not None:
+        profile = get_profile(model)
+        detail = video.detail
+        expectations = {
+            "color_mode": (ParsedMode.VIDEO, None),
+            "video_mode": detail.source.name,
+            "video_parameters": video_parameters_from_detail(detail, profile.video_grammar),
+        }
+        if profile.supports_video_saturation:
+            expectations["video_saturation"] = int(detail.saturation)
+        if profile.supports_video_sound_effects:
+            expectations["video_sound_effects"] = bool(detail.sound_effects)
+            expectations["video_sound_effects_softness"] = int(detail.softness)
+        return expectations
     generated = parse_command(packet, model)
     if generated is None:
         return {}
@@ -31,7 +46,7 @@ def expectations_from_packet(
         return {"is_on": bool(generated.body.is_on)}
     if operation == "brightness":
         return {"brightness_pct": int(generated.body.percent)}
-    expectations: dict[str, Any] = {}
+    expectations = {}
     if color_mode := _expected_color_mode(
         generated,
         model,

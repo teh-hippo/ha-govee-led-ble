@@ -118,6 +118,7 @@ _CORE_STATE_FIELDS = (
 )
 _COLOR_MODE_FIELDS = (
     "video_full_screen",
+    "video_parameters",
     "video_saturation",
     "video_sound_effects",
     "video_sound_effects_softness",
@@ -227,6 +228,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self.music_sensitivity = 99
         self.video_full_screen, self.video_sound_effects = True, False
         self.video_sound_effects_softness = 100
+        self.video_parameters: dict[str, Any] | None = None
         self.music_color: tuple[int, int, int] | None = None
         # H6199 display settings and edge brightness. None means the first read has not landed.
         self.white_balance_red: int | None = None
@@ -304,6 +306,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             music_parameters=capture_music_parameters(self, self.profile, self.music_mode),
             music_palette=self.music_palette,
             video_mode=self.video_mode,
+            video_parameters=dict(self.video_parameters) if self.video_parameters is not None else None,
             music_sensitivity=self.music_sensitivity,
             music_calm=self.music_calm,
             music_color=self.music_color,
@@ -347,6 +350,11 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         overwritten_diy_code: int | None,
     ) -> bool:
         music_writes: tuple[tuple[bytes, dict[str, Any]], ...] = ()
+        if state.mode == "video" and self.profile.supports_video_mode:
+            # A legacy snapshot cannot reconstruct values overwritten since it was captured.
+            from .generated_protocol_adapter import validate_video_parameters
+
+            validate_video_parameters(self.profile.video_grammar, state.video_parameters or {})
         physical_ic_count = self.profile.physical_ic_count
         variant = None
         if state.mode == "music" and state.is_on:
@@ -518,7 +526,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 )
         if "black_border" in permitted & needed and state.black_border is not None:
             await apply_black_border(self, state.black_border)
-        if not state.is_on:
+        if not state.is_on and not (state.mode == "video" and state.video_parameters is not None):
             await self.send_command(build_power(False, self.model))
             self.is_on = False
             return self.profile.state_readable and await self.refresh_state(expected_on=False) and complete
@@ -607,14 +615,16 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 )
                 if control in permitted
             )
-            return (
-                await apply_active_video_mode(
-                    self,
-                    mode=state.video_mode,
-                    requested_values={field: getattr(state, f"video_{field}") for field in restored},
-                )
-                and complete
+            confirmed = await apply_active_video_mode(
+                self,
+                mode=state.video_mode,
+                requested_values={field: getattr(state, f"video_{field}") for field in restored},
+                parameters=state.video_parameters,
             )
+            if not state.is_on:
+                await self.send_command(build_power(False, self.model), state_values={"is_on": False})
+                confirmed = await self.refresh_state(expected_on=False) and confirmed
+            return confirmed and complete
         if state.mode != "colour":
             return False
         await self.send_command(build_power(True, self.model))
@@ -735,6 +745,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         self.music_calm = False
                         self.video_saturation = self.video_sound_effects_softness = 100
                         self.video_full_screen, self.video_sound_effects = True, False
+                        self.video_parameters = None
                         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
                         self.color_temp_kelvin = None
                         self.segment_colors = [(255, 255, 255)] * profile.segment_count
@@ -836,6 +847,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
         # Invalidate authorization before reconnect can yield; unrelated display identity stays cached.
+        self.video_parameters = None
         for field in video_identity_fields(self.profile):
             setattr(self, field, None)
         self.installation_direction, self.camera_health = None, "unknown"
@@ -1830,6 +1842,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         expected_music_color: tuple[int, int, int] | None = None,
         expected_music_auto_color: bool = False,
         expected_video_mode: str | None = None,
+        expected_video_parameters: Mapping[str, Any] | None = None,
         expected_video_full_screen: bool | None = None,
         expected_video_saturation: int | None = None,
         expected_video_sound_effects: bool | None = None,
@@ -1868,6 +1881,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 ("music_calm", expected_music_calm),
                 ("music_color", expected_music_color),
                 ("video_mode", expected_video_mode),
+                ("video_parameters", expected_video_parameters),
                 ("video_full_screen", expected_video_full_screen),
                 ("video_saturation", expected_video_saturation),
                 ("video_sound_effects", expected_video_sound_effects),
@@ -1923,6 +1937,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             expected_music_calm,
             expected_music_color,
             expected_video_mode,
+            expected_video_parameters,
             expected_video_full_screen,
             expected_video_saturation,
             expected_video_sound_effects,
@@ -2331,6 +2346,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     "music_calm",
                     "music_color",
                     "video_mode",
+                    "video_parameters",
                     "video_full_screen",
                     "video_saturation",
                     "video_sound_effects",

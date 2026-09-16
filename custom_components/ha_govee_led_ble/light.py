@@ -84,7 +84,7 @@ from .light_services import (
 )
 from .music_commands import prepare_music_request
 from .music_semantics import music_variant
-from .native_profile_controls import _send_video_setting, async_require_video_controls
+from .native_profile_controls import _send_video_setting, async_require_video_controls, prepare_video_mode
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
@@ -724,35 +724,34 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if selected is not None and selected.source == "video":
             compiled = self._compile_template_default(f"template:video:{selected.value}")
             if compiled is not None:
-                if video_guards is not None and isinstance(compiled, CompiledVideoProfile):
+                if isinstance(compiled, CompiledVideoProfile):
                     controls = requested_video_controls(compiled)
-                    video_guards.append(lambda: require_video_controls(coordinator.profile, coordinator, controls))
+                    _, _, _, retained_guard = prepare_video_mode(
+                        coordinator,
+                        mode=compiled.mode,
+                        requested_values={
+                            field: getattr(compiled, field)
+                            for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
+                            if getattr(compiled, field) is not None
+                        },
+                    )
+
+                    def check_default() -> None:
+                        require_video_controls(coordinator.profile, coordinator, controls)
+                        retained_guard()
+
+                    if video_guards is not None:
+                        video_guards.append(check_default)
                 return partial(async_apply_compiled_profile, coordinator, compiled)
-            coordinator.profile.validate_video_saturation(coordinator.video_saturation)
-            retained = {
-                field: getattr(coordinator, f"video_{field}")
-                for field in (
-                    "full_screen",
-                    "saturation",
-                    "sound_effects",
-                    "sound_effects_softness",
-                )
-            }
-
-            def check_retained() -> None:
-                if any(getattr(coordinator, f"video_{field}") != value for field, value in retained.items()):
-                    raise ValueError("Retained video settings changed before write; refresh and retry")
-
+            _, _, _, check_retained = prepare_video_mode(coordinator, mode=selected.value, requested_values={})
             if video_guards is not None:
                 video_guards.append(check_retained)
-            return partial(
-                self._async_set_video_mode,
-                mode=selected.value,
-                saturation=coordinator.video_saturation,
-                full_screen=coordinator.video_full_screen,
-                sound_effects=(coordinator.video_sound_effects and coordinator.profile.supports_video_sound_effects),
-                sound_effects_softness=coordinator.video_sound_effects_softness,
-            )
+
+            async def apply_video() -> None:
+                check_retained()
+                await apply_active_video_mode(coordinator, mode=selected.value, requested_values={})
+
+            return apply_video
         if selected is not None and selected.source == "music":
             compiled = self._compile_template_default(f"template:music:{selected.value}")
             if compiled is not None:

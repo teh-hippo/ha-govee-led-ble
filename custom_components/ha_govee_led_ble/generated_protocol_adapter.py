@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib import import_module
@@ -100,6 +101,9 @@ WorkshopBody = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.workshop_body").WorkshopBody,
 )
 MusicBody = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.music_body").MusicBody)
+H66a0VideoCommand = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_video_command").H66a0VideoCommand
+)
 
 _U1_MAX = 0xFF
 _A3_MAX_CONTENT = _U1_MAX * A3_CHUNK_SIZE
@@ -1048,12 +1052,32 @@ def build_video_mode(
     sound_effects: bool,
     softness: int,
     model: str,
+    *,
+    values: Mapping[str, Any] | None = None,
+    profile: ModelProfile | None = None,
 ) -> bytes:
-    profile = get_profile(model)
+    profile = profile or get_profile(model)
     if video_mode not in profile.video_modes:
         raise ValueError(f"{model} does not support video mode {video_mode}")
     profile.validate_video_saturation(saturation)
-    if (grammar := _video_grammar(model)) not in {"H6099", "H6199"}:
+    grammar = profile.video_grammar
+    parameters = validate_video_parameters(grammar, values or {})
+    if grammar == "H66A0-video":
+        if video_mode not in H66a0VideoCommand.VideoSource.__members__:
+            raise ValueError("invalid video source")
+        root = H66a0VideoCommand()
+        root.header, root.opcode, root.mode = b"\x33", b"\x05", b"\x00"
+        detail = _child(H66a0VideoCommand.VideoBody, root)
+        detail.source = H66a0VideoCommand.VideoSource[video_mode]
+        detail.picture_preset = H66a0VideoCommand.PicturePreset[parameters["picture_preset"]]
+        detail.opaque = parameters["opaque"]
+        detail.saturation = saturation
+        if type(sound_effects) is not bool or type(softness) is not int or not 0 <= softness <= 100:
+            raise ValueError("invalid video sound effects or softness")
+        detail.sound_effects, detail.softness = int(sound_effects), softness
+        root.detail = detail
+        return _serialize_xor(root)
+    if grammar not in {"H6099", "H6199"}:
         raise ValueError(f"{model} has no generated video-mode grammar")
     if video_mode not in {"movie", "game"}:
         raise ValueError(f"{model} video mode {video_mode} is not supported by the H6199 grammar")
@@ -1076,6 +1100,37 @@ def build_video_mode(
     mode.detail = detail
     root.body = mode
     return _serialize_xor(root)
+
+
+def validate_video_parameters(grammar: str | None, values: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate complete grammar-specific values; unknown bytes have no defaults."""
+    if grammar == "H66A0-video":
+        if set(values) != {"picture_preset", "opaque"}:
+            raise ValueError("video requires picture_preset and opaque values; refresh the device first")
+        if (
+            not isinstance(values["picture_preset"], str)
+            or values["picture_preset"] not in H66a0VideoCommand.PicturePreset.__members__
+        ):
+            raise ValueError("invalid video picture_preset")
+        if type(values["opaque"]) is not int or not 0 <= values["opaque"] <= 255:
+            raise ValueError("video opaque value must be a byte")
+    elif values:
+        raise ValueError("video grammar does not support these values")
+    return dict(values)
+
+
+def video_parameters_from_detail(detail: Any, grammar: str | None) -> dict[str, Any] | None:
+    if grammar != "H66A0-video":
+        return None
+    return validate_video_parameters(
+        grammar, {"picture_preset": getattr(detail.picture_preset, "name", None), "opaque": int(detail.opaque)}
+    )
+
+
+def parse_video_command(frame: bytes, model: str) -> Any | None:
+    return _parse_xor_frame(
+        frame, get_profile(model).video_grammar, {"H66A0-video": ("h66a0_video_command", H66a0VideoCommand)}
+    ).parsed
 
 
 def build_h6199_video(

@@ -500,6 +500,7 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
     blank_screen.assert_awaited_once_with(h6199, True)
     video_mode.assert_awaited_once_with(
         h6199,
+        parameters=None,
         mode="game",
         requested_values={"full_screen": False, "saturation": 63, "sound_effects": True, "sound_effects_softness": 27},
     )

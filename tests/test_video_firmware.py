@@ -529,7 +529,7 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
         video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
     )
     coordinator.subordinate_21_version = "9.08.06" if during == "retained" else "9.08.07"
-    coordinator.is_on = True
+    coordinator.is_on = during not in {"power", "retained_power"}
     coordinator.video_saturation = 31
     backend = await EffectBackend.async_create(hass)
     entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
@@ -569,7 +569,7 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
         coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
     if during == "retained":
         await entity.async_turn_on(effect="Video: Movie")
-        assert physical.await_count == 2
+        assert physical.await_count == 1
         assert coordinator.video_saturation == 31
     else:
         with pytest.raises((HomeAssistantError, ValueError)) as error:
