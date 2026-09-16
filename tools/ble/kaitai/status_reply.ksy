@@ -86,13 +86,49 @@ types:
             'color_mode::diy': govee_common::diy_selector
             'color_mode::music': govee_common::music_selector
   cm_static:
+    doc: |
+      The static-colour read-back. `sub`, then the colour temperature the device reports.
+
+      `colour_temperature_kelvin` was `padding` with `valid: 0` until an H66A0 in
+      colour-temperature mode answered `aa 05 15 00 0f a0 00...`. That failed the zero check,
+      so the WHOLE frame was rejected, the colour-mode domain was never observed, and the
+      device never completed a state refresh: its config entry sat in setup_retry reporting
+      "unreachable at setup" while every other register answered normally on the same
+      connection.
+
+      Measured across two devices and arbitrary values, big-endian, matching the requested
+      temperature exactly each time:
+
+        asked 4000 K -> 0f a0   asked 6500 K -> 19 64   asked 3123 K -> 0c 33
+
+      Confirmed independently from a capture of the vendor app, which is what settles it rather
+      than any behaviour of this integration. The app's own read-back carries the same field --
+      `aa 05 15 00 10 04` for 4100 K -- and its writes sweep the slider through the matching
+      values: `33 05 15 01 00 00 00 0a 8c ...` = 2700 K, `0b b8` = 3000 K, `0e d8` = 3800 K,
+      `19 64` = 6500 K. In the write the RGB sits at bytes 4-6 and the temperature at 7-8; in
+      this read-back the temperature follows `sub`.
+
+      **Zero means the device is not reporting one**, not 0 K. It reads zero in RGB mode on
+      every device tested, and zero on an H61F5 even in colour-temperature mode: all three
+      received a byte-identical `33 05 15 01 ...` carrying the same value, and only two echoed
+      it back. The app lists both in `ColorTemConfig.isSupportColorTemMode`, so this is not a
+      device that lacks the concept; it simply does not answer with a temperature here. Whether
+      it holds one and declines to report it, or keeps it somewhere this register does not
+      reach, is not established -- and it does not need to be. Where the field reads zero the
+      temperature is recovered from the reported colour: the app inverts it through
+      `KelvinHelp.color2kelvin`, testing whether the colour sits on the colour-temperature
+      curve, which is the same thing this integration already does for a colour-temp state that
+      reads back as its white point. That is
+      why it set up fine while the other two did not.
+
+      Anything after it stays opaque: nothing has ever been observed in those bytes.
     seq:
       - id: sub
         type: u1
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
+      - id: colour_temperature_kelvin
+        type: u2be
+      - id: opaque
+        size-eos: true
   cm_scene:
     seq:
       - id: scene_id
