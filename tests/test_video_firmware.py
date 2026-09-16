@@ -30,10 +30,13 @@ from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeScene
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    build_power,
     build_relative_brightness,
     build_white_balance,
     build_white_balance_query,
 )
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.video_applicability import validate_video_request, video_control_states
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_video_semantics import alternate, reply
@@ -128,13 +131,23 @@ async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monk
     prior = replace(before, white_balance_scalar=100, video_restore_controls=("white_balance",))
     assert PriorControlState.from_dict(prior.to_dict()) == prior
     assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
-    assert send.await_count == 1  # power only
+    assert [call.args[0] for call in send.await_args_list] == [
+        build_power(True, "H7000"),
+        build_brightness(prior.brightness_pct, "H7000"),
+        build_color_rgb(*prior.rgb_color, "H7000"),
+        build_power(False, "H7000"),
+    ]
     coordinator.subordinate_21_version = "9.08.07"
     send.reset_mock()
     await coordinator.async_restore_effect_control_state(
         replace(prior, video_restore_controls=()), overwritten_diy_code=None
     )
-    assert send.await_count == 1
+    assert [call.args[0] for call in send.await_args_list] == [
+        build_power(True, "H7000"),
+        build_brightness(prior.brightness_pct, "H7000"),
+        build_color_rgb(*prior.rgb_color, "H7000"),
+        build_power(False, "H7000"),
+    ]
     # Identity gating is write-only: the existing query remains available.
     coordinator.subordinate_21_version = None
     assert build_white_balance_query("H7000")
@@ -671,7 +684,7 @@ async def test_prior_refresh_requires_only_requested_register(hass, monkeypatch,
 
     async def respond(**kwargs):
         queries.append(kwargs)
-        bodies = ["aa0101", "aa05000100320032"]
+        bodies = ["aa0101", "aa0464", "aa05000100320032"]
         if kwargs.get(f"query_{setting}"):
             bodies.append("aaa90006011003011003" if setting == "white_balance" else "aaa90a0600020a007800")
         for body in bodies:
@@ -967,6 +980,10 @@ async def test_public_deployment_recovers_only_after_control_attempt(hass, monke
             body = "aaa90006011003011003"
         elif packet[1] == 1:
             body = "aa0101"
+        elif packet[1] == 4:
+            body = "aa0464"
+        elif packet[1] == 0xA5:
+            body = f"aaa5{packet[2]:02x}" + "64ffffff" * 4
         else:
             body = "aa0515"
         frame = bytearray.fromhex(body)

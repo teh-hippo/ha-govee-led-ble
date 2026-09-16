@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Any
 
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
-from .music_semantics import H617A_MUSIC_VARIANTS, H6099_MUSIC_VARIANTS, MusicVariant
+from .music_semantics import H617A_MUSIC_VARIANTS, H617E_MUSIC_VARIANTS, H6099_MUSIC_VARIANTS, MusicVariant
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
@@ -146,6 +146,7 @@ class ModelProfile:
     music_modes: tuple[str, ...] = ()
     music_variants: tuple[MusicVariant, ...] = ()
     music_upload_before_selector: bool = False
+    music_requires_upload_ack: bool = False
     # Physical IC count is independent of logical segment_count. None means unknown.
     physical_ic_count: int | None = None
     music_sensitivity_min: int = 0
@@ -326,6 +327,8 @@ _H617A_PROFILE = ModelProfile(
         "shiny",
     ),
     music_variants=H617A_MUSIC_VARIANTS,
+    music_upload_before_selector=True,
+    music_requires_upload_ack=True,
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
@@ -423,10 +426,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617E": replace(
         _H617A_PROFILE,
         name="H617E LED Strip",
-        music_variants=tuple(
-            replace(variant, evidence="H617E owner-qualified shared music semantics")
-            for variant in H617A_MUSIC_VARIANTS
-        ),
+        music_variants=H617E_MUSIC_VARIANTS,
+        music_upload_before_selector=False,
+        music_requires_upload_ack=False,
         support_quality=SupportQuality.COMPATIBLE,
         effect_grammar="H617A",
         music_modes=(

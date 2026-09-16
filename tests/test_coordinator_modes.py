@@ -179,22 +179,23 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
         build_music_mode(MUSIC_MODE_SLUGS["rhythm"], 80, None, True),
     ]
 
-    # A mode without a style keeps calm out of the base frame and sends no companion.
+    # Destination presets upload before the selector, including modes without style.
     with _music_transport(coord) as sc:
         await coord.async_select_music_slug("hopping")
     assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
+        *build_music_params(0x33, {}, profile=coord.profile),
         build_music_mode(MUSIC_MODE_SLUGS["hopping"], 80, None, False),
     ]
 
-    # Shiny sets the base-frame STYLE and its a3 companion [20,21] to the Calm values.
+    # Shiny style belongs solely to the A3 companion.
     coord.music_calm = True
     with _music_transport(coord) as sc:
         await coord.async_select_music_slug("shiny")
     assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
-        build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, True),
         *build_music_params(0x31, {}, profile=coord.profile, calm=True),
+        build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, True),
     ]
 
     # Bloom's Calm companion is [27].
@@ -202,8 +203,8 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
         await coord.async_select_music_slug("bloom")
     assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
-        build_music_mode(MUSIC_MODE_SLUGS["bloom"], 80, None, True),
         *build_music_params(0x30, {}, profile=coord.profile, calm=True),
+        build_music_mode(MUSIC_MODE_SLUGS["bloom"], 80, None, True),
     ]
 
     # Dynamic Shiny writes the template's baseline companion values.
@@ -212,8 +213,8 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
         await coord.async_select_music_slug("shiny")
     assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
-        build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, False),
         *build_music_params(0x31, {}, profile=coord.profile),
+        build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, False),
     ]
 
 

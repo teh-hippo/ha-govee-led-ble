@@ -10,6 +10,8 @@ speculative/h6099_effect_upload
 speculative/h6099_music_parameters
 speculative/h6099_status_query
 speculative/h6099_status_reply
+speculative/h617a_command_ack
+speculative/h617a_control_payload
 speculative/h66a0_video_command
 speculative/h66a0_video_status
 h6199_command_write

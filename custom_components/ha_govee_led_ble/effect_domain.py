@@ -595,13 +595,39 @@ class LibraryItem:
         extensions_raw = raw.get("extensions", {})
         if not isinstance(extensions_raw, Mapping):
             raise EffectValidationError("extensions must be a mapping")
+        content_raw = _required_mapping(raw, "content")
+        content = _content_from_dict(content_raw)
+        content_hash = _required_str(raw, "content_hash")
+        # Old layered documents packed distribution extension bits in method.
+        # Verify the original hash before accepting their lossless normalization.
+        if (
+            content_hash
+            and content_hash != effect_content_hash(content)
+            and isinstance(content, LayeredEffect | LayeredScene | WorkshopEffect)
+        ):
+            legacy = _content_to_dict(content)
+            body = legacy if isinstance(content, LayeredEffect) else cast(dict[str, Any], legacy["effect"])
+            for layer in cast(list[dict[str, Any]], body["layers"]):
+                distribution = layer["distribution"]
+                distribution["method"] |= distribution.pop("extensions", 0)
+            original_hash = sha256(
+                json.dumps(
+                    legacy,
+                    allow_nan=False,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            if content_hash == original_hash:
+                content_hash = effect_content_hash(content)
         return cls(
             id=item_id,
             version=_required_int(raw, "version"),
             updated_at=_required_str(raw, "updated_at"),
             name=_required_str(raw, "name"),
-            content=_content_from_dict(_required_mapping(raw, "content")),
-            content_hash=_required_str(raw, "content_hash"),
+            content=content,
+            content_hash=content_hash,
             origin=_origin_from_dict(origin_raw),
             target_hint=(
                 None

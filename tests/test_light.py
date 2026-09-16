@@ -1561,6 +1561,7 @@ def test_registers_light_services_during_integration_setup():
         "paint_segments",
         "set_segment_brightness",
         "set_segment_color",
+        "set_segment_color_temp",
         "set_installation_direction",
         "read_installation_controls",
         "replace_dreamview_group",
@@ -2097,14 +2098,14 @@ async def test_control_lock_keeps_failed_rollback_before_newer_colour(light, moc
     red = build_color_rgb(255, 0, 0)
     blue = build_color_rgb(0, 0, 255)
 
-    async def send(packet: bytes) -> None:
+    async def transmit(_uuid, packet: bytes, *, response) -> None:
         sent.append(packet)
         if packet == red:
             first_started.set()
             await release_first.wait()
             raise BleakError("failed red write")
 
-    mock_coordinator.send_command = AsyncMock(side_effect=send)
+    mock_coordinator._client.write_gatt_char.side_effect = transmit
     first = asyncio.create_task(light.async_turn_on(rgb_color=(255, 0, 0)))
     await first_started.wait()
     second = asyncio.create_task(light.async_turn_on(rgb_color=(0, 0, 255)))

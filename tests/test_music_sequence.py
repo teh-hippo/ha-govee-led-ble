@@ -12,7 +12,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import compile_applicati
 from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile, compiled_observation
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import music_default_palette
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, music_default_palette
 from custom_components.ha_govee_led_ble.govee_encryption import (
     KEY_HANDSHAKE,
     GoveeCryptoError,
@@ -22,7 +22,7 @@ from custom_components.ha_govee_led_ble.govee_encryption import (
     unseal,
     v1_transform,
 )
-from custom_components.ha_govee_led_ble.music_commands import prepare_music_profile_writes
+from custom_components.ha_govee_led_ble.music_commands import prepare_music_body_writes, prepare_music_profile_writes
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from tests.test_govee_encryption import client, v1_reply, v2_reply
 
@@ -53,12 +53,18 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
         music_mode="bloom",
         music_calm=True,
         music_palette=music_default_palette(music_variant(coordinator.profile, 0x30)),
+        music_body=writes[-2][1]["_music_body"][1],
     )
+    prefix = [build_brightness(prior.brightness_pct, "H6099")] if route == "recovery" else []
+    if route == "recovery":
+        writes = prepare_music_body_writes("H6099", "bloom", 42, prior.music_body, profile=coordinator.profile)
     devices, attempts, host_ivs = [], [], []
     expected_state = {"music_mode": "off", "music_calm": route == "native"}
 
     async def connect(*args, **kwargs):
         connection = len(devices)
+        if connection:
+            expected_state["_music_palette"] = None
         device = client(bytes((1, version)) if version else None)
         devices.append(device)
         attempts.append([])
@@ -94,8 +100,21 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
                 assert counter == 2 + index
             if version:
                 assert frame != plain and frame not in packets
+            if connection == 0 and prefix:
+                if index == 0:
+                    assert plain == b"\xfe" + prefix[0]
+                    attempts[connection].append(plain)
+                    return
+                index -= 1
             assert plain == b"\xfe" + packets[index]
-            expected_state.update(writes[index][1])
+            expected_state.update(
+                {
+                    key: value
+                    for key, value in writes[index][1].items()
+                    if key not in {"_music_body", "_music_parameter_keys"}
+                }
+            )
+            assert coordinator._music_body is None
             assert all(getattr(coordinator, field) == value for field, value in expected_state.items())
             if index < 3:
                 assert coordinator._pre_mode_snapshot is snapshot
@@ -138,12 +157,13 @@ async def test_bloom_last_fragment_failure_restarts_all_packets(hass, route, ver
                 ):
                     with pytest.raises(GoveeCryptoError if version else BleakError):
                         await apply()
-                assert attempts == [[b"\xfe" + p for p in packets[:3]], []]
+                assert attempts == [[b"\xfe" + p for p in prefix + packets[:3]], []]
                 assert coordinator.music_mode == "off" and coordinator._pre_mode_snapshot is snapshot
             else:
                 await apply()
-                assert attempts == [[b"\xfe" + p for p in packets[:3]], [b"\xfe" + p for p in packets]]
-                assert transformed == packets[:3] + packets
+                assert attempts == [[b"\xfe" + p for p in prefix + packets[:3]], [b"\xfe" + p for p in packets]]
+                assert transformed == prefix + packets[:3] + packets
+                assert coordinator.music_body == prior.music_body
                 assert coordinator._encryption.active is bool(version)
                 if version == 2:
                     assert host_ivs[0] != host_ivs[1]

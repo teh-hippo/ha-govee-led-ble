@@ -217,8 +217,15 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
         return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(body.mode_body.code))
     if mode_name == "music":
         detail = body.mode_body
+        if not detail.is_legacy:
+            return ParsedColorModeResponse(
+                mode=ParsedMode.MUSIC,
+                music_mode=music_mode,
+                music_sensitivity=int(detail.sensitivity),
+                music_color_present=False,
+            )
         music_color = None
-        if detail.manual_color_count >= 1:
+        if detail.has_fixed_colour:
             music_color = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,

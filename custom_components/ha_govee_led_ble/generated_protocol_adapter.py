@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib import import_module
@@ -14,7 +14,7 @@ from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, Read
 
 from .const import ModelProfile, ReadDomain, get_profile
 from .music_semantics import MusicVariant, music_variant
-from .transport import A3_CHUNK_SIZE, xor_checksum
+from .transport import A3_CHUNK_SIZE, reassemble_a3, xor_checksum
 
 CommandWrite = cast(
     Any,
@@ -39,6 +39,14 @@ H6099EffectUpload = cast(
 H6099CommandAck = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_command_ack").H6099CommandAck,
+)
+H617aCommandAck = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617a_command_ack").H617aCommandAck,
+)
+H617aControlPayload = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617a_control_payload").H617aControlPayload,
 )
 H6199CommandWrite = cast(
     Any,
@@ -213,6 +221,7 @@ _COMMAND_ROOTS = {
 }
 _COMMAND_ACK_ROOTS = {
     "H6099": ("h6099_command_ack", H6099CommandAck),
+    "H617A": ("h617a_command_ack", H617aCommandAck),
     "H6199": ("h6199_command_ack", H6199CommandAck),
 }
 
@@ -253,10 +262,36 @@ def parse_command_result(frame: bytes, model: str = "H617A") -> ProtocolParseRes
 
 
 def parse_command_ack_result(frame: bytes, model: str) -> ProtocolParseResult:
-    grammar = get_profile(model).video_grammar
-    if grammar is None:
-        return ProtocolParseResult(None, None, ProtocolParseRejection.UNSUPPORTED_MODEL)
-    return _parse_xor_frame(frame, grammar, _COMMAND_ACK_ROOTS)
+    profile = get_profile(model)
+    # Video companions retain their independently selected ACK codec. SDK ACKs
+    # also exist on devices with no video grammar (notably H617A A3 uploads).
+    if profile.video_grammar is not None:
+        video = _parse_xor_frame(frame, profile.video_grammar, _COMMAND_ACK_ROOTS)
+        if video.parsed is not None:
+            return video
+    return _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ACK_ROOTS)
+
+
+def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str) -> int:
+    """Validate a complete A3 upload ending at index, returning its ACK command."""
+    if get_profile(model).command_grammar != "H617A":
+        raise ValueError("Upload ACK semantics are not qualified for this command grammar")
+    roots = {"H617A": ("command_write.upload_frame", CommandWrite.UploadFrame)}
+    for start in range(index, -1, -1):
+        frame = _parse_xor_frame(packets[start], "H617A", roots).parsed
+        if frame is None or (start == index and not frame.is_final):
+            break
+        if frame.index == 0:
+            reassemble_a3(packets[start : index + 1])
+            return int(frame.body.subtype)
+    raise ValueError("Upload ACK index must end a complete A3 upload")
+
+
+def upload_ack_success(parsed: Any, subtype: int) -> bool | None:
+    """Return a matching upload result, never treating an ordinary ACK as A3."""
+    if isinstance(parsed, H617aCommandAck) and parsed.is_upload and parsed.opcode == subtype:
+        return bool(parsed.is_success)
+    return None
 
 
 def parse_command(frame: bytes, model: str = "H617A") -> Any | None:
@@ -1332,10 +1367,13 @@ def build_music_mode(
     selector = _child(GoveeCommon.MusicSelector, multi)
     selector.mode_id = GoveeCommon.MusicMode(mode_id)
     selector.sensitivity = max(0, min(100, sensitivity))
-    selector.style = int(calm)
-    selector.manual_color_count = int(colour is not None)
-    if colour is not None:
-        selector.rgb = _rgb(selector, *colour)
+    if selector.is_legacy:
+        selector.style = int(calm)
+        selector.has_fixed_colour = int(colour is not None)
+        if colour is not None:
+            selector.rgb = _rgb(selector, *colour)
+    elif colour is not None:
+        raise ValueError("new H617A music selectors omit fixed colour")
     multi.sub_body = selector
     root.body = multi
     return _serialize_xor(root)
@@ -1345,17 +1383,27 @@ def music_default_palette(variant: MusicVariant | None) -> tuple[tuple[int, int,
     """Read the qualified default through its schema, not palette byte offsets."""
     if variant is None or not variant.template:
         raise ValueError("music palette layout is unqualified")
+    root = parse_music_parameters(variant, variant.template)
+    return tuple((int(rgb.red), int(rgb.green), int(rgb.blue)) for rgb in root.palette)
+
+
+def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
+    """Validate a complete retained body with the selected KSY, independent of authoring bounds."""
+    if not isinstance(body, bytes) or not body or len(body) > 255 * 17 - 3:
+        raise ValueError("invalid music body length")
     if variant.layout == "h6099_music_parameters":
         root_type = import_module(
             "custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters"
         ).H6099MusicParameters
-        root = root_type.from_bytes(variant.template)
+        root = root_type.from_bytes(body)
     elif variant.layout == "music_body":
-        root = MusicBody.from_bytes(b"\x01\x02\x41" + variant.template)
+        root = MusicBody.from_bytes(b"\x01\x02\x41" + body)
     else:
         raise ValueError("music palette layout is unqualified")
     root._read()
-    return tuple((int(rgb.red), int(rgb.green), int(rgb.blue)) for rgb in root.palette)
+    if int(root.mode) != variant.mode_code or root.tail is None or not root._io.is_eof():
+        raise ValueError("music body does not match qualified layout")
+    return root
 
 
 def encode_music_parameters(
@@ -1363,55 +1411,82 @@ def encode_music_parameters(
     parameters: dict[str, int | bool | str],
     *,
     palette: list[tuple[int, int, int]] | None,
-    calm: bool,
+    calm: bool | None,
     physical_ic_count: int | None = None,
+    preserve_companions: bool = False,
 ) -> bytes:
     """Edit named Kaitai fields; palette length never becomes an absolute tail offset."""
     if variant.layout == "h6099_music_parameters":
-        return _encode_h6099_music_parameters(variant, parameters, palette, calm, physical_ic_count)
+        return _encode_h6099_music_parameters(
+            variant, parameters, palette, calm, physical_ic_count, preserve_companions
+        )
     if variant.layout != "music_body" or not variant.evidence or not variant.template:
         raise ValueError("music parameter layout is unqualified")
-    root = MusicBody.from_bytes(b"\x01\x02\x41" + variant.template)
-    root._read()
-    if root.mode != variant.mode_code:
-        raise ValueError("music template does not match variant mode")
+    root = parse_music_parameters(variant, variant.template)
+    length = len(variant.template) + 3
     if palette is not None:
-        if len(palette) != root.num_palette:
-            raise ValueError("palette count does not match music variant")
+        if variant.palette_bounds is None or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]:
+            raise ValueError("palette count is outside music variant bounds")
         if any(
             len(rgb) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in rgb)
             for rgb in palette
         ):
             raise ValueError("invalid music palette")
+        length += 3 * (len(palette) - root.num_palette)
+        root.num_palette = len(palette)
         root.palette = [_rgb(root, *rgb) for rgb in palette]
     tail = root.tail
     for spec in variant.parameters:
+        if spec.profile_key not in parameters:
+            continue
+        if spec.requires_physical_ic_count and physical_ic_count is None:
+            raise ValueError("music parameter requires known physical IC count")
         value = parameters[spec.profile_key]
         if not hasattr(tail, spec.wire_field):
             raise ValueError("music parameter field is absent from qualified layout")
-        if spec.kind != "select":
+        if spec.wire_field == "background":
+            rgb = int(value)
+            tail.background = _rgb(tail, rgb >> 16, (rgb >> 8) & 255, rgb & 255)
+        elif spec.kind != "select":
             setattr(tail, spec.wire_field, int(value))
-    if variant.gradient_companions is not None:
-        tail.companion = variant.gradient_companions[bool(parameters["gradient"])]
-    if variant.piano_derived_half:
-        tail.derived_half = tail.key_count // 2
-    if variant.direction_values:
+    if variant.gradient_companions is not None and "gradient" in parameters:
+        tail.speed = variant.gradient_companions[bool(parameters["gradient"])]
+    if variant.piano_derived_half and "key_count" in parameters:
+        if (
+            physical_ic_count is not None
+            and not preserve_companions
+            and any(spec.profile_key == "key_count" and spec.requires_physical_ic_count for spec in variant.parameters)
+        ):
+            from math import ceil
+
+            tail.speed = 10 if physical_ic_count < 30 else 35
+            tail.off_minimum = ceil(physical_ic_count / 4) if physical_ic_count < 30 else 1
+        tail.off_maximum = max(tail.off_minimum, tail.key_count // 2)
+    if variant.direction_values and "direction" in parameters:
         tail.start_point, tail.piece_num = {name: (start, pieces) for name, start, pieces in variant.direction_values}[
             str(parameters["direction"])
         ]
-    if variant.style_companions is not None:
+        if physical_ic_count is not None and any(
+            spec.profile_key == "direction" and spec.requires_physical_ic_count for spec in variant.parameters
+        ):
+            tail.piece_len = 1 if physical_ic_count < 30 else 2 if tail.start_point == 1 else 3
+    if variant.style_companions is not None and calm is not None:
         value = variant.style_companions[calm]
-        tail.style_companion = MusicBody.ShinyStyle(value) if isinstance(tail, MusicBody.ShinyTail) else value
+        if isinstance(tail, H617aControlPayload.ShinyTail):
+            tail.minimum_brightness, tail.maximum_brightness = value >> 8, value & 255
+        else:
+            tail.no_rhythm_speed, tail.rhythm_speed = 10, value
     _check_tree(root)
-    return _write(root, len(variant.template) + 3)[3:]
+    return _write(root, length)[3:]
 
 
 def _encode_h6099_music_parameters(
     variant: MusicVariant,
     parameters: dict[str, int | bool | str],
     palette: list[tuple[int, int, int]] | None,
-    calm: bool,
+    calm: bool | None,
     ic: int | None,
+    preserve_companions: bool = False,
 ) -> bytes:
     from math import ceil
 
@@ -1433,6 +1508,8 @@ def _encode_h6099_music_parameters(
         root.palette = [_rgb(root, *rgb) for rgb in palette]
     tail = root.tail
     for spec in variant.parameters:
+        if spec.profile_key not in parameters:
+            continue
         value = parameters[spec.profile_key]
         if spec.wire_field == "background":
             rgb = int(value)
@@ -1441,29 +1518,31 @@ def _encode_h6099_music_parameters(
             setattr(tail, spec.wire_field, int(value))
     if variant.requires_physical_ic_count and ic is None:
         raise ValueError("music parameters require known physical IC count")
-    if root.mode == 0x30:
-        tail.rhythm_speed = 20 if calm else 80
-    elif root.mode == 0x31:
+    if root.mode == 0x30 and calm is not None:
+        tail.no_rhythm_speed, tail.rhythm_speed = 10, 20 if calm else 80
+    elif root.mode == 0x31 and calm is not None:
         tail.minimum_brightness, tail.maximum_brightness = (20, 70) if calm else (5, 100)
     elif ic is not None:
-        if root.mode == 0x32:
+        if root.mode == 0x32 and (not preserve_companions or "gradient" in parameters):
             tail.companion = (99, 98)[bool(tail.gradient)] if ic >= 30 else (97, 94)[bool(tail.gradient)]
-        elif root.mode == 0x33:
+        elif root.mode == 0x33 and not preserve_companions:
             tail.piece_count_min = max(1, ceil(ic * 3 / 25))
             tail.piece_count_max = max(1, ceil(ic * 2 / 5))
-        elif root.mode == 0x34:
-            tail.speed = 10 if ic < 30 else 35
-            tail.off_minimum = ceil(ic / 4) if ic < 30 else 1
+        elif root.mode == 0x34 and (not preserve_companions or "key_count" in parameters):
+            if not preserve_companions:
+                tail.speed = 10 if ic < 30 else 35
+                tail.off_minimum = ceil(ic / 4) if ic < 30 else 1
             tail.off_maximum = max(tail.off_minimum, tail.key_count // 2)
-        elif root.mode == 0x35:
+        elif root.mode == 0x35 and (not preserve_companions or "direction" in parameters):
             tail.start_point = {"clockwise": 0, "counterclockwise": 2, "two_way": 1}[str(parameters["direction"])]
             two_way = tail.start_point == 1
             tail.piece_length = 1 if ic < 30 else 2 if two_way else 3
             tail.piece_count = (
                 (ic // 4 if two_way else ic // 3) if ic < 30 else ceil(ic / 10 if two_way else ic * 4 / 25)
             )
-            tail.speed = 80 if ic < 30 else 85
-        elif root.mode == 0x37:
+            if not preserve_companions:
+                tail.speed = 80 if ic < 30 else 85
+        elif root.mode == 0x37 and not preserve_companions:
             tail.piece_count = max(1, ic // 2) if ic < 30 else ceil(ic * 7 / 50)
             # MusicMode.d uses default subEffect[0] (piece) as speed and [1] (10/20) as fade.
             tail.speed = max(1, min(50, tail.piece_count))

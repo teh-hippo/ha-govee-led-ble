@@ -17,18 +17,18 @@ test("fill pattern labels retain the wire selection mappings", () => {
     3: "Custom",
   });
   expect(fillPatternParameters(0)).toEqual([
-    ["param_2", "Segment Count", "segmentCount"],
+    ["quantity", "Selection Quantity"],
   ]);
   expect(fillPatternParameters(1)).toEqual([
-    ["param_2", "LED Count"],
+    ["quantity", "IC Quantity"],
   ]);
   expect(fillPatternParameters(2)).toEqual([
-    ["param_2", "Minimum LED Count"],
-    ["param_1", "Maximum LED Count"],
+    ["param_2", "Random Minimum IC Count"],
+    ["param_1", "Random Maximum IC Count"],
   ]);
   expect(fillPatternParameters(3)).toEqual([
-    ["param_1", "Lit Length"],
-    ["param_2", "Gap"],
+    ["param_1", "Piece IC Count"],
+    ["param_2", "Gap IC Count"],
   ]);
 });
 

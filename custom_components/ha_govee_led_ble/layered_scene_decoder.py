@@ -49,7 +49,7 @@ __all__ = [
 _APPLIED_AREA_WIDTH_SHIFT = 4
 _LAYER_FLAG_BRIGHTNESS_GRADIENT = 0x02
 _DIRECTION_BACKWARD_BIT = 0x80
-_DIRECTION_METHOD_MASK = 0x7F
+_DIRECTION_METHOD_MASK = 0x0F
 _MOVEMENT_ENABLED_BIT = 0x10
 _MOVEMENT_ENTER_EXIT_BIT = 0x04
 _MOVEMENT_DIRECTION_MASK = 0x03
@@ -166,8 +166,10 @@ def _encode_layer(record: Any, layer: EffectLayer) -> Any:
     )
     body.num_brightness_blocks = len(layer.brightness_patterns)
     body.brightness_blocks = [_encode_brightness_block(body, pattern) for pattern in layer.brightness_patterns]
-    body.direction_distribution = (_DIRECTION_BACKWARD_BIT if layer.distribution.backwards else 0) | (
-        layer.distribution.method & _DIRECTION_METHOD_MASK
+    body.direction_distribution = (
+        (_DIRECTION_BACKWARD_BIT if layer.distribution.backwards else 0)
+        | (layer.distribution.method & _DIRECTION_METHOD_MASK)
+        | layer.distribution.extensions
     )
     body.colour_speed = layer.colour_speed
     body.colour_retention = layer.colour_retention
@@ -230,6 +232,7 @@ def _decode_layer(layer: Any) -> EffectLayer:
         distribution=Distribution(
             method=int(layer.distribution_method),
             backwards=bool(layer.direction_is_backward),
+            extensions=int(layer.distribution_extensions),
         ),
         colour_speed=int(layer.colour_speed),
         colour_retention=int(layer.colour_retention),

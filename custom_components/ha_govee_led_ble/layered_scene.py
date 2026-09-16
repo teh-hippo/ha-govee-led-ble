@@ -104,6 +104,27 @@ class Selection:
     param_1: int
     param_2: int
 
+    @property
+    def quantity(self) -> int:
+        """BE selection/IC quantity (types 0/1 only)."""
+        return (self.param_1 << 8) | self.param_2
+
+    @property
+    def random_ic_min(self) -> int:
+        return self.param_2
+
+    @property
+    def random_ic_max(self) -> int:
+        return self.param_1
+
+    @property
+    def piece_ic_count(self) -> int:
+        return self.param_1
+
+    @property
+    def gap_ic_count(self) -> int:
+        return self.param_2
+
     def __post_init__(self) -> None:
         _validate_byte(self.type, "selection type")
         _validate_byte(self.param_1, "selection parameter 1")
@@ -151,11 +172,16 @@ class Movement:
 class Distribution:
     method: int
     backwards: bool = False
+    extensions: int = 0
 
     def __post_init__(self) -> None:
         if not _is_int(self.method) or not 0 <= self.method <= 0x7F:
             raise LayeredSceneValidationError("distribution method must be an integer from 0 to 127")
         _validate_bool(self.backwards, "distribution backwards")
+        _validate_unknown_flags(self.extensions, 0x70, "distribution extensions")
+        # Legacy documents stored bits 4..6 in method; retain them on import.
+        object.__setattr__(self, "extensions", self.extensions | (self.method & 0x70))
+        object.__setattr__(self, "method", self.method & 0x0F)
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +199,15 @@ class EffectLayer:
     priority: int
     unknown_flags: int = 0
     excess: bytes = b""
+
+    @property
+    def brightness_algorithm(self) -> int:
+        """APK algorithm nibble; legacy flag storage remains lossless."""
+        return self.unknown_flags >> 4
+
+    @property
+    def brightness_type(self) -> int:
+        return (self.unknown_flags & 0x0F) | (2 if self.brightness_gradient else 0)
 
     def __post_init__(self) -> None:
         _validate_instance(self.area, AppliedArea, "layer area")
@@ -194,9 +229,12 @@ class EffectLayer:
 @dataclass(frozen=True, slots=True)
 class LayeredEffect:
     layers: tuple[EffectLayer, ...]
+    native_diy: int | None = None
 
     def __post_init__(self) -> None:
         _validate_items(self.layers, EffectLayer, "effect layers")
+        if self.native_diy is not None and (not _is_int(self.native_diy) or not 501 <= self.native_diy <= 507):
+            raise LayeredSceneValidationError("native DIY template must be an integer from 501 to 507")
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,7 +277,10 @@ class LayeredScene:
 def layered_effect_to_value(effect: LayeredEffect) -> dict[str, JsonValue]:
     """Return an effect as JSON-compatible values."""
     _validate_instance(effect, LayeredEffect, "layered effect")
-    return {"layers": [_layer_to_value(layer) for layer in effect.layers]}
+    return {
+        "layers": [_layer_to_value(layer) for layer in effect.layers],
+        **({"native_diy": effect.native_diy} if effect.native_diy is not None else {}),
+    }
 
 
 def layered_effect_from_value(raw: Mapping[str, Any]) -> LayeredEffect:
@@ -248,7 +289,8 @@ def layered_effect_from_value(raw: Mapping[str, Any]) -> LayeredEffect:
         tuple(
             _layer_from_value(_as_mapping(layer, "effect layer"))
             for layer in _required_sequence(_as_mapping(raw, "layered effect"), "layers")
-        )
+        ),
+        native_diy=_optional_int(raw, "native_diy"),
     )
 
 
@@ -302,6 +344,7 @@ def _layer_to_value(layer: EffectLayer) -> dict[str, JsonValue]:
         "distribution": {
             "method": layer.distribution.method,
             "backwards": layer.distribution.backwards,
+            **({"extensions": layer.distribution.extensions} if layer.distribution.extensions else {}),
         },
         "colour_speed": layer.colour_speed,
         "colour_retention": layer.colour_retention,
@@ -336,6 +379,7 @@ def _layer_from_value(raw: Mapping[str, Any]) -> EffectLayer:
         distribution=Distribution(
             method=_required_int(distribution, "method"),
             backwards=_required_bool(distribution, "backwards"),
+            extensions=_optional_int(distribution, "extensions") or 0,
         ),
         colour_speed=_required_int(raw, "colour_speed"),
         colour_retention=_required_int(raw, "colour_retention"),

@@ -116,6 +116,9 @@ def _make_coord(**ov) -> MagicMock:
         _field_revisions={},
         _domain_revisions={},
         _profile_generation=0,
+        _encryption=None,
+        control_write_attempts=0,
+        _static_write_attempts=0,
         _scene_code=None,
         _segment_groups_observed=set(),
         _segment_query_colors=None,
@@ -177,7 +180,14 @@ def _make_coord(**ov) -> MagicMock:
         frozenset(MODEL_SCENES[model]) if "scenes" in effect_families else frozenset(),
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
-    c.send_command = AsyncMock()
+    c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+
+    async def send_command(packet, *, write_guard=None, state_values=None) -> None:
+        await GoveeBLECoordinator._async_write_packet(
+            c, c._client, packet, arm_expected=True, before_write=write_guard, state_values=state_values
+        )
+
+    c.send_command = AsyncMock(side_effect=send_command)
     c.install_static_color = MagicMock(
         side_effect=lambda **kwargs: GoveeBLECoordinator.install_static_color(c, **kwargs)
     )

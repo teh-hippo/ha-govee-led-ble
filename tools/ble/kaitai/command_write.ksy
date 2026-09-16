@@ -36,6 +36,32 @@ enums:
     0x13: music
     0x15: static
 types:
+  upload_frame:
+    doc: A3 transport frame used to validate the completed upload before arming its ACK.
+    seq:
+      - id: header
+        contents: [0xa3]
+      - id: index
+        type: u1
+      - id: body
+        size: 17
+        type:
+          switch-on: index
+          cases:
+            0: upload_start
+      - id: checksum
+        type: u1
+    instances:
+      is_final:
+        value: index == 0xff
+  upload_start:
+    seq:
+      - id: header
+        type: govee_common::a3_header
+      - id: subtype
+        type: u1
+      - id: content
+        size-eos: true
   multi_effect_cmd:
     doc: >
       Boolean gradual-change register. The app writes false as the prologue to

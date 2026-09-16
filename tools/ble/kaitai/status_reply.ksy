@@ -5,9 +5,12 @@ meta:
   imports:
     - govee_segment_page
     - govee_common
+    - speculative/h617a_control_payload
 doc: |
   H617A 20-byte status reply. The final byte is the XOR of bytes 0 through 18.
   Segment replies have five groups of three records and four validated-zero bytes.
+  Issue #286 AA0F is an APK/direct-device extension, not official-app capture
+  qualification; its payload remains in speculative/h617a_control_payload.ksy.
 seq:
   - id: header
     contents: [0xaa]
@@ -24,6 +27,7 @@ seq:
         'aa_domain::colormode': colormode_body
         'aa_domain::fw_version': version_body
         'aa_domain::hw_version': hw_version_body
+        'aa_domain::light_count': h617a_control_payload::light_count_body
         'aa_domain::segments': govee_segment_page(15, 3, true)
         'aa_domain::multi_effect': multi_effect_body
   - id: checksum
@@ -35,6 +39,7 @@ enums:
     0x05: colormode
     0x06: fw_version
     0x07: hw_version
+    0x0f: light_count
     0xa3: multi_effect
     0xa5: segments
   color_mode:

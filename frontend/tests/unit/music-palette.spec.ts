@@ -32,6 +32,8 @@ describe("optional music palette", () => {
     const catalogue = decodeCustomCataloguePayload(contracts.responses.custom_catalogue, decodeEffectContent).models.H617A;
     catalogue.music_modes = [{id: "bloom", label: "Bloom"}];
     const authored: MusicProfileContent = {...content, palette: [[12, 34, 56]]};
+    expect(effectContentEligible(authored, catalogue, "H617A", 15)).toBe(true);
+    delete catalogue.music_settings.bloom.palette;
     expect(effectContentEligible(authored, catalogue, "H617A", 15)).toBe(false);
     catalogue.music_settings.bloom.palette = {min: 1, max: 8, default: [[12, 34, 56]]};
     expect(decodeMusicSettings(catalogue.music_settings).bloom.palette).toEqual(catalogue.music_settings.bloom.palette);

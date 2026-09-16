@@ -5,8 +5,11 @@ meta:
   imports:
     - govee_shared
     - govee_common
+    - speculative/h617a_control_payload
 doc: >
-  Capture-backed H617A music parameter structure. Palette-relative tails are
+  Capture-backed H617A music envelope and presets. Generalized APK-backed tails
+  remain in speculative/h617a_control_payload.ksy under issue #286 (Fountain #129);
+  importing them does not promote their evidence class. Palette-relative tails are
   read and written by the generated adapter. A structurally valid alternative
   palette or tail does not qualify model-specific bounds, defaults, style,
   companion values, or physical IC geometry. Issue 286 synthetic tests reuse
@@ -30,13 +33,13 @@ seq:
     type:
       switch-on: mode
       cases:
-        'govee_common::music_mode::bloom': bloom_tail
-        'govee_common::music_mode::shiny': shiny_tail
-        'govee_common::music_mode::separation': separation_tail
-        'govee_common::music_mode::hopping': hopping_tail
-        'govee_common::music_mode::piano_keys': piano_keys_tail
-        'govee_common::music_mode::fountain': fountain_tail
-        'govee_common::music_mode::day_and_night': day_and_night_tail
+        'govee_common::music_mode::bloom': h617a_control_payload::bloom_tail
+        'govee_common::music_mode::shiny': h617a_control_payload::shiny_tail
+        'govee_common::music_mode::separation': h617a_control_payload::separation_tail
+        'govee_common::music_mode::hopping': h617a_control_payload::hopping_tail
+        'govee_common::music_mode::piano_keys': h617a_control_payload::piano_keys_tail
+        'govee_common::music_mode::fountain': h617a_control_payload::fountain_tail
+        'govee_common::music_mode::day_and_night': h617a_control_payload::day_and_night_tail
   - id: padding
     type: u1
     valid: 0
@@ -51,65 +54,6 @@ instances:
       mode == govee_common::music_mode::shiny ? 3 :
       mode == govee_common::music_mode::day_and_night ? 3 : 2
 types:
-  bloom_tail:
-    seq:
-      - contents: [0x0a]
-      - id: style_companion
-        type: u1
-  shiny_tail:
-    seq:
-      - id: style_companion
-        type: u2be
-        enum: shiny_style
-      - contents: [0x0a]
-  separation_tail:
-    seq:
-      - id: point
-        type: u1
-      - id: gradient
-        type: u1
-      - id: companion
-        type: u1
-  hopping_tail:
-    seq:
-      - id: background
-        type: govee_shared::rgb
-      - id: rel_brightness
-        type: u1
-      - contents: [0x62, 0x01, 0x03, 0x02, 0x06]
-  piano_keys_tail:
-    seq:
-      - id: gradient
-        type: u1
-      - id: key_count
-        type: u1
-      - contents: [0x0a, 0x04]
-      - id: derived_half
-        type: u1
-  fountain_tail:
-    seq:
-      - id: start_point
-        type: u1
-      - id: piece_len
-        type: u1
-        valid: 0x01
-      - id: piece_num
-        type: u1
-      - id: speed
-        type: u1
-        doc: >
-          Fountain animation speed. The app derives 0x50 for a 15-segment device. A
-          controlled 0x10/0x50/0x10/0x50 device comparison showed slower movement at
-          0x10 and the faster baseline returning at 0x50. An extreme 0xf0 value changed
-          the visible fill density and is not used to infer scaling beyond that pair.
-  day_and_night_tail:
-    seq:
-      - id: segment_count
-        type: u1
-      - id: speed
-        type: u1
-      - id: gradient
-        type: u1
   mode_set_frame:
     seq:
       - id: header
@@ -118,29 +62,8 @@ types:
         contents: [0x05]
       - id: sub
         contents: [0x13]
-      - id: mode
-        type: u1
-        enum: govee_common::music_mode
-      - id: sensitivity
-        type: u1
-      - id: style
-        type: u1
-      - id: num_colors
-        type: u1
-        valid:
-          max: 4
-      - id: colors
-        type: govee_shared::rgb
-        repeat: expr
-        repeat-expr: num_colors
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: expr
-        repeat-expr: 12 - num_colors * 3
+      - id: selector
+        size: 16
+        type: govee_common::music_selector
       - id: checksum
         type: u1
-enums:
-  shiny_style:
-    0x0564: dynamic
-    0x1446: calm

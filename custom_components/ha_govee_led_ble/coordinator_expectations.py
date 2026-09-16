@@ -98,12 +98,12 @@ def expectations_from_packet(
             music_mode = _MUSIC_SLUG_BY_ID.get(int(detail.mode_id))
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
+            if not detail.is_legacy:
+                return expectations
             if music_mode == "rhythm":
                 expectations["music_calm"] = bool(detail.style)
             expectations["music_color"] = (
-                (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
-                if detail.manual_color_count
-                else None
+                (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue)) if detail.has_fixed_colour else None
             )
             return expectations
         if mode == "scene":

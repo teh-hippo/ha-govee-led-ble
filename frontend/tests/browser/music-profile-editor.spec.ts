@@ -67,3 +67,45 @@ test("new declared Fountain speed renders and survives editing", async ({ page }
     (element as HTMLElement & {content: {parameters: unknown}}).content.parameters,
   )).toEqual({speed: 16, direction: "two_way"});
 });
+
+test("H617A fixed colour contract follows the exact legacy editor roster", async ({ page }) => {
+  for (const mode of ["spectrum", "rolling", "energetic"]) {
+    await page.goto(`/tests/browser/fixtures/music-profile-editor.html?mode=${mode}`);
+    const control = page.getByLabel("Colour mode", {exact: true});
+    if (mode === "energetic") {
+      await expect(control).toBeHidden();
+    } else {
+      await control.selectOption("fixed");
+      await expect(page.getByRole("group", {name: "Fixed colour", exact: true})).toBeVisible();
+    }
+  }
+});
+
+test("Hopping background uses RGB picker and exact no-colour sentinel without dropping siblings", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?mode=hopping");
+  const editor = page.locator("govee-music-profile-editor");
+  await editor.evaluate(el => {
+    const editor = el as GoveeMusicProfileEditor;
+    editor.content = {...editor.content!, palette: [[12, 34, 56]], parameters: {background: 0, relative_brightness: 17}};
+  });
+  await expect(page.getByRole("slider", {name: "Background", exact: true})).toBeHidden();
+  await expect(page.getByRole("group", {name: "Background colour", exact: true})).toBeVisible();
+  await page.getByRole("button", {name: "No colour", exact: true}).click();
+  expect(await editor.evaluate(el => (el as GoveeMusicProfileEditor).content)).toMatchObject({
+    palette: [[12, 34, 56]], parameters: {background: 0x010101, relative_brightness: 17},
+  });
+  await page.locator("govee-single-colour-field").evaluate(el => el.dispatchEvent(new CustomEvent("colour-changed", {
+    detail: {colour: [32, 96, 160]}, bubbles: true, composed: true,
+  })));
+  expect(await editor.evaluate(el => (el as GoveeMusicProfileEditor).content)).toMatchObject({
+    palette: [[12, 34, 56]], parameters: {background: 0x2060a0, relative_brightness: 17},
+  });
+});
+
+test("Piano gradient remains editable with unknown IC count", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?mode=piano_keys");
+  await expect(page.getByRole("slider", {name: "Key count", exact: true})).toBeHidden();
+  await page.getByRole("checkbox", {name: "Gradient", exact: true}).check();
+  expect(await page.locator("govee-music-profile-editor").evaluate(el => (el as GoveeMusicProfileEditor).content!.parameters.gradient)).toBe(true);
+  await expect(page.locator("govee-palette-editor")).toBeVisible();
+});

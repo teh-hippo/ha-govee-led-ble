@@ -247,6 +247,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         generation = self.coordinator._profile_generation
         revisions = dict(self.coordinator._field_revisions)
         segment_revision = self.coordinator._domain_revisions.get(ReadDomain.SEGMENTS, 0)
+        static_attempts = getattr(self.coordinator, "_static_write_attempts", 0)
         mode_snap = self._attr_color_mode
         try:
             yield
@@ -261,6 +262,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             )
             segment_page_received = self.coordinator._domain_revisions.get(ReadDomain.SEGMENTS, 0) != segment_revision
             for f, v in snap.items():
+                if getattr(self.coordinator, "_static_write_attempts", 0) != static_attempts and (
+                    f.startswith(("segment_", "_segment_")) or f in {"rgb_color_source", "color_temp_kelvin_source"}
+                ):
+                    continue
                 if self.coordinator._profile_generation != generation:
                     # A newly identified wire family invalidates the old control snapshot.
                     continue
@@ -273,8 +278,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         continue
                 elif f not in {"is_on", "brightness_pct"} and mode_updated:
                     continue
-                # RGB evidence can also clear Kelvin without advancing its revision.
-                if colour_updated and f in {
+                # Complete segment evidence can also clear Kelvin without its own revision.
+                if (colour_updated or segments_updated) and f in {
                     "rgb_color",
                     "color_temp_kelvin",
                     "rgb_color_source",
@@ -781,17 +786,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     async def _async_clear_effect(self) -> None:
         coordinator = self.coordinator
         with self._rollback():
-            coordinator.install_static_color(rgb=coordinator.rgb_color, kelvin=coordinator.color_temp_kelvin)
             if coordinator.color_temp_kelvin is not None:
                 packet = build_color_temp(coordinator.color_temp_kelvin, coordinator.model)
                 self._attr_color_mode = ColorMode.COLOR_TEMP
-                colour = kelvin_to_rgb(coordinator.color_temp_kelvin)
             else:
                 packet = build_color_rgb(*coordinator.rgb_color, coordinator.model)
                 self._attr_color_mode = ColorMode.RGB
-                colour = coordinator.rgb_color
-            coordinator.mark_segment_state_optimistic(colours=[colour] * len(coordinator.segment_colors))
-            coordinator._enter_static_mode()
             await coordinator.send_command(packet)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -1038,12 +1038,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 packet = build_color_rgb(r, g, b, self.coordinator.model)
                 # Checkpoint observations received during earlier power/brightness writes.
                 with self._rollback():
-                    self.coordinator.install_static_color(rgb=(r, g, b))
-                    self.coordinator.mark_segment_state_optimistic(
-                        colours=[(r, g, b)] * len(self.coordinator.segment_colors),
-                    )
                     self._attr_color_mode = ColorMode.RGB
-                    self.coordinator._enter_static_mode()
                     await send(packet)
                     if self.coordinator.profile.static_readback_echoes_color:
                         await self._refresh_with_retry(
@@ -1061,12 +1056,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
                 packet = build_color_temp(kelvin, self.coordinator.model)
                 with self._rollback():
-                    self.coordinator.install_static_color(kelvin=kelvin)
-                    self.coordinator.mark_segment_state_optimistic(
-                        colours=[kelvin_to_rgb(kelvin)] * len(self.coordinator.segment_colors),
-                    )
                     self._attr_color_mode = ColorMode.COLOR_TEMP
-                    self.coordinator._enter_static_mode()
                     await send(packet)
                     if self.coordinator.profile.static_readback_kelvin:
                         await self._refresh_with_retry(

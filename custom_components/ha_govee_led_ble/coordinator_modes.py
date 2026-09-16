@@ -15,8 +15,14 @@ from .light_commands import (
     build_color_temp,
     build_white_brightness,
 )
-from .music_commands import build_music_params, prepare_music_profile_writes
-from .music_semantics import music_params_for_mode, music_variant
+from .music_commands import (
+    edit_music_body,
+    music_body_parameters,
+    music_body_style,
+    prepare_music_body_writes,
+    prepare_music_profile_writes,
+)
+from .music_semantics import music_parameters_depend_on_ic, music_params_for_mode, music_variant
 from .native_profile_controls import ProfileWriter
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key
@@ -50,6 +56,24 @@ class _ActiveModeMixin(_CoordinatorBase):
     _scene_code: int | None
     _music_calm: bool | None = None
     _music_palette: tuple[str, tuple[tuple[int, int, int], ...]] | None = None
+    _retained_music_body: tuple[str, bytes] | None = None
+    _music_body_revision: int = 0
+
+    @property
+    def _music_body(self) -> tuple[str, bytes] | None:
+        return self._retained_music_body
+
+    @_music_body.setter
+    def _music_body(self, value: tuple[str, bytes] | None) -> None:
+        self._retained_music_body = value
+        self._music_body_revision += 1
+
+    @property
+    def music_body(self) -> bytes | None:
+        """Known complete upload, scoped to its selector; never a BLE observation."""
+        if self._music_body is not None and self._music_body[0] == self.music_mode:
+            return self._music_body[1]
+        return None
 
     @property
     def music_palette(self) -> tuple[tuple[int, int, int], ...] | None:
@@ -258,90 +282,133 @@ class _ActiveModeMixin(_CoordinatorBase):
         physical_ic_count: int | None,
         intent: ControlIntent,
         writer: ProfileWriter | None = None,
+        retained_body_revision: int | None = None,
     ) -> None:
         variant = music_variant(self.profile, mode_code)
+        parameters = {
+            spec.profile_key: state[spec.key]
+            for spec in (() if variant is None else variant.parameters)
+            for _, state in writes
+            if spec.key in state
+        }
+        parameter_keys = next(
+            (state["_music_parameter_keys"] for _, state in writes if "_music_parameter_keys" in state), None
+        )
+        if parameter_keys is not None:
+            parameters = {key: value for key, value in parameters.items() if key in parameter_keys}
+        dependent = parameter_keys != () and music_parameters_depend_on_ic(variant, parameters)
+        candidate = next((state["_music_body"] for _, state in writes if state.get("_music_body") is not None), None)
+        first_upload = next((index for index, (_, state) in enumerate(writes) if "_music_body" in state), None)
+        last_upload = next(
+            (index for index, (_, state) in enumerate(writes) if state.get("_music_body") is not None), None
+        )
+        states = tuple(
+            {
+                key: value
+                for key, value in state.items()
+                if key != "_music_parameter_keys" and (key != "_music_body" or value is None)
+            }
+            for _, state in writes
+        )
+        attempted_upload = False
+        revision = self._music_body_revision
 
         def guard(index: int) -> None:
-            if variant and variant.requires_physical_ic_count and physical_ic_count != self.profile.physical_ic_count:
+            nonlocal attempted_upload, revision
+            if dependent and physical_ic_count != self.profile.physical_ic_count:
                 raise ValueError("Physical IC count changed since preparation; refresh and retry")
+            if (
+                not attempted_upload
+                and retained_body_revision is not None
+                and retained_body_revision != self._music_body_revision
+            ):
+                raise ValueError("Retained music body changed before edit; refresh and retry")
+            if index == first_upload:
+                attempted_upload = True
+                # The shared writer installs the first-fragment None immediately after this guard.
+                revision = self._music_body_revision + 1
             if "music_mode" in writes[index][1] and self.active_mode == "colour":
                 self._pre_mode_snapshot = self._capture_static_state()
 
-        if writer is None:
-            await self.async_write_effect_sequence(
-                tuple(packet for packet, _ in writes),
-                intent=intent,
-                packet_state_values=tuple(state for _, state in writes),
-                packet_write_guard=guard,
-            )
-            return
-        # Connection-bound preview writers fail closed; they never retry a fragment.
-        for index, (packet, state_values) in enumerate(writes):
-
-            def check(index: int = index) -> None:
-                guard(index)
-
-            await writer(packet, state_values=state_values, write_guard=check)
+        async with async_control_intent(self, intent):
+            try:
+                ack_options: dict[str, Any] = {}
+                if last_upload is not None and self.profile.music_requires_upload_ack:
+                    ack_options = {"require_upload_ack": True, "upload_ack_index": last_upload}
+                await self.async_write_effect_sequence(
+                    tuple(packet for packet, _ in writes),
+                    intent=intent,
+                    packet_state_values=states,
+                    packet_write_guard=guard,
+                    writer=writer,
+                    **ack_options,
+                )
+            except BaseException:
+                if attempted_upload:
+                    self._music_body = None
+                    self._music_palette = None
+                raise
+            if candidate is not None and attempted_upload and revision == self._music_body_revision:
+                self._music_body = candidate
+            elif candidate is not None and attempted_upload:
+                self._music_palette = None
 
     async def async_apply_music_params(
         self,
         mode_code: int,
         *,
         writer: ProfileWriter | None = None,
+        parameters: Mapping[str, Any] | None = None,
+        calm: bool | None = None,
     ) -> None:
-        await self._send_music_params(mode_code, writer=writer)
-
-    async def _send_music_params(
-        self,
-        mode_code: int,
-        *,
-        writer: ProfileWriter | None = None,
-    ) -> None:
-        parameters = {
-            spec.profile_key: getattr(self, spec.key, spec.default)
-            for spec in music_params_for_mode(mode_code, self.profile)
-        }
-        variant = music_variant(self.profile, mode_code)
-        if variant and variant.palette_bounds:
-            if MUSIC_MODE_SLUGS.get(self.music_mode) != mode_code or self.music_palette is None:
-                raise ValueError("Cannot preserve unknown music palette; select or apply a complete profile")
-            writes = prepare_music_profile_writes(
-                self.model,
-                self.music_mode,
-                self.music_sensitivity,
-                None,
-                self.music_calm,
-                parameters,
-                profile=self.profile,
-                palette=self.music_palette,
-            )
-            await self.async_write_music_sequence(
-                writes[1:-1] if self.profile.music_upload_before_selector else writes[2:],
-                mode_code=mode_code,
-                physical_ic_count=self.profile.physical_ic_count,
-                intent=ControlIntent.USER,
-                writer=writer,
-            )
-            return
-        packets = build_music_params(mode_code, parameters, profile=self.profile, calm=self.music_calm)
-        if packets:
-            await self.async_write_music_sequence(
-                tuple((packet, {}) for packet in packets),
-                mode_code=mode_code,
-                physical_ic_count=self.profile.physical_ic_count,
-                intent=ControlIntent.USER,
-                writer=writer,
-            )
+        if MUSIC_MODE_SLUGS.get(self.music_mode) != mode_code or self.music_body is None:
+            raise ValueError("Cannot preserve unknown music body; select or apply a complete profile")
+        retained_body_revision = self._music_body_revision
+        previous = music_body_parameters(self.music_body, self.music_mode, profile=self.profile)
+        parameters = (
+            parameters
+            if parameters is not None
+            else {
+                spec.profile_key: getattr(self, spec.key)
+                for spec in music_params_for_mode(mode_code, self.profile)
+                if hasattr(self, spec.key) and getattr(self, spec.key) != previous.get(spec.profile_key)
+            }
+        )
+        previous_style = music_body_style(self.music_body, self.music_mode, profile=self.profile)
+        if calm is None and previous_style is not None and self.music_calm != previous_style:
+            calm = self.music_calm
+        body = edit_music_body(self.music_body, self.music_mode, parameters, profile=self.profile, calm=calm)
+        writes = prepare_music_body_writes(
+            self.model, self.music_mode, self.music_sensitivity, body, profile=self.profile
+        )
+        upload = list(writes[1:-1] if self.profile.music_upload_before_selector else writes[2:])
+        # Actual edited keys, rather than every control the mode could support, govern the guard.
+        upload[-1][1].update(
+            {
+                spec.key: parameters[spec.profile_key]
+                for spec in music_params_for_mode(mode_code, self.profile)
+                if spec.profile_key in parameters
+            }
+        )
+        upload[-1][1]["_music_parameter_keys"] = tuple(parameters)
+        if calm is not None:
+            upload[-1][1]["music_calm"] = calm
+        await self.async_write_music_sequence(
+            upload,
+            mode_code=mode_code,
+            physical_ic_count=self.profile.physical_ic_count,
+            intent=ControlIntent.USER,
+            writer=writer,
+            retained_body_revision=retained_body_revision,
+        )
 
     async def async_restore_pre_mode(self) -> None:
         snap = self._pre_mode_snapshot
         match snap.kind:
             case "color_temp":
-                self.install_static_color(kelvin=snap.kelvin)
                 await self.send_command(build_color_temp(snap.kelvin, self.model))
             case "white":
                 await self.send_command(build_white_brightness(snap.level, self.model))
             case _:
-                self.install_static_color(rgb=snap.rgb)
                 await self.send_command(build_color_rgb(*snap.rgb, self.model))
         self._enter_static_mode()

@@ -14,6 +14,8 @@ h6099_effect_upload.py
 h6099_music_parameters.py
 h6099_status_query.py
 h6099_status_reply.py
+h617a_command_ack.py
+h617a_control_payload.py
 h66a0_video_command.py
 h66a0_video_status.py
 h6199_command_write.py

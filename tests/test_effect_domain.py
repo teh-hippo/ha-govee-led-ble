@@ -601,13 +601,16 @@ def test_music_profile_compiler_rejects_invalid_mode_settings(mode, calm, parame
     )
 
     with pytest.raises(ValueError, match=message):
-        compile_music_profile(item, "H617A")
+        compile_music_profile(item, "H617A", profile=replace(MODEL_PROFILES["H617A"], physical_ic_count=15))
 
 
 def test_music_profile_compiler_applies_parameter_defaults_and_select_values() -> None:
+    # Synthetic known IC metadata, not inferred from H617A's logical segment count.
+    profile = replace(MODEL_PROFILES["H617A"], physical_ic_count=15)
     separation = compile_music_profile(
         LibraryItem.new("Separation", MusicProfile("H617A", "separation", 50)),
         "H617A",
+        profile=profile,
     )
     fountain = compile_music_profile(
         LibraryItem.new(
@@ -615,6 +618,7 @@ def test_music_profile_compiler_applies_parameter_defaults_and_select_values() -
             MusicProfile("H617A", "fountain", 50, parameters={"direction": "two_way"}),
         ),
         "H617A",
+        profile=profile,
     )
 
     assert separation.parameters == {"point": 1, "gradient": True}

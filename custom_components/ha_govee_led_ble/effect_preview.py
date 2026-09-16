@@ -35,7 +35,6 @@ from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import ObservationConfidence
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
 from .effect_domain import (
-    EffectContent,
     JsonValue,
     LayeredScene,
     LibraryItem,
@@ -46,11 +45,8 @@ from .effect_domain import (
 )
 from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
-from .effect_protocol_decoder import (
-    UnsupportedA3EffectError,
-    decode_a3_effect_frames,
-)
 from .effect_runtime import (
+    _active_workspace_content,
     active_workspace_matches,
     async_apply_compiled_profile,
     compiled_observation,
@@ -966,6 +962,15 @@ class EffectPreviewManager:
                         intent=ControlIntent.PREVIEW,
                         before_write=writer.begin,
                         write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                        **(
+                            {
+                                "require_upload_ack": True,
+                                "upload_ack_index": len(compiled.upload_packets) - 1 + int(power_required),
+                                "writer": writer,
+                            }
+                            if "native_diy_positive_ack_required" in compiled.evidence_codes
+                            else {}
+                        ),
                     )
                     if power_required:
                         coordinator.is_on = True
@@ -1625,19 +1630,6 @@ def _required_item(request: _PreviewRequest) -> LibraryItem:
     if request.item is None:
         raise RuntimeError("snapshot preview request has no effect content")
     return request.item
-
-
-def _active_workspace_content(
-    source: EffectContent,
-    compiled: CompiledApplication | None,
-) -> EffectContent:
-    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
-        return source
-    try:
-        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
-    except UnsupportedA3EffectError:
-        return source
-    return decoded if type(decoded) is type(source) else source
 
 
 def _preview_scene_identity(

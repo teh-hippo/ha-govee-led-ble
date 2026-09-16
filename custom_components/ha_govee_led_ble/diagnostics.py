@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
+from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
@@ -77,6 +78,7 @@ async def async_get_config_entry_diagnostics(
         "supports_white_brightness": coordinator.profile.supports_white_brightness,
         "supports_segments": coordinator.profile.supports_segments,
         "segment_count": coordinator.profile.segment_count,
+        "light_count_observation": _light_count_observation(packet_log, coordinator.model),
         "connected": bool(client and client.is_connected),
         "encryption": encryption.diagnostics() if (encryption := getattr(coordinator, "_encryption", None)) else None,
         "advertised_encryption": getattr(coordinator, "_advertised_encryption", False),
@@ -162,6 +164,26 @@ async def async_get_config_entry_diagnostics(
         "active_effect_state": _active_effect_state(hass, entry.entry_id),
         "effect_deployment_diagnostics": _effect_deployment_diagnostics(hass, entry.entry_id),
     }
+
+
+def _light_count_observation(packet_log: list[dict[str, Any]], model: str) -> dict[str, Any] | None:
+    """Report the latest qualified AA0F in the bounded log, without querying or changing geometry."""
+    if model != "H617A":
+        return None
+    for entry in reversed(packet_log):
+        if entry.get("dir") != "rx" or entry.get("outcome") != "parsed":
+            continue
+        raw = entry.get("raw")
+        if not isinstance(raw, str):
+            continue
+        try:
+            decoded = decode_status_frame(bytes.fromhex(raw), model)
+        except ValueError:
+            continue
+        if decoded is not None and getattr(decoded.generated.domain, "name", None) == "light_count":
+            body = decoded.generated.body
+            return {"value": int(body.light_count) if body.is_valid else None, "received_at": entry.get("ts")}
+    return None
 
 
 def _bounded_packet_entry(entry: dict[str, Any]) -> dict[str, Any]:

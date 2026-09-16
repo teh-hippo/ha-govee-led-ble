@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicP
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile
 from custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters import H6099MusicParameters
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
     build_music_mode,
     build_physical_ic_count_query,
     music_default_palette,
@@ -199,7 +200,7 @@ def test_packet_specific_state_follows_reordered_packet():
     writes = prepare_music_profile_writes("H6099", "bloom", 42, None, True, {})
     assert [packet[0] for packet, _ in writes] == [0x33, 0xA3, 0xA3, 0x33]
     palette = music_default_palette(music_variant(get_profile("H6099"), 0x30))
-    assert [state for _, state in writes[:-1]] == [
+    assert [{key: value for key, value in state.items() if key != "_music_body"} for _, state in writes[:-1]] == [
         {"is_on": True},
         {"_music_palette": None},
         {"music_calm": True, "_music_palette": ("bloom", palette)},
@@ -207,7 +208,7 @@ def test_packet_specific_state_follows_reordered_packet():
     assert writes[-1][1]["music_mode"] == "bloom" and "music_calm" not in writes[-1][1]
     profile = replace(get_profile("H6099"), physical_ic_count=60)
     writes = prepare_music_profile_writes("H6099", "piano_keys", 42, None, False, {}, profile=profile)
-    assert writes[-2][1] == {
+    assert {key: value for key, value in writes[-2][1].items() if key != "_music_body"} == {
         "music_piano_key_count": 18,
         "music_piano_gradient": False,
         "_music_palette": ("piano_keys", palette),
@@ -232,6 +233,7 @@ async def test_all_callers_order_and_physical_attempt_state(hass, route, failed_
         music_mode="bloom",
         music_calm=True,
         music_palette=music_default_palette(music_variant(coordinator.profile, 0x30)),
+        music_body=prepare_music_profile_writes("H6099", "bloom", 42, None, True, {})[-2][1]["_music_body"][1],
     )
     if route == "native":
         coordinator.music_calm = True
@@ -239,9 +241,13 @@ async def test_all_callers_order_and_physical_attempt_state(hass, route, failed_
     attempted = set()
 
     async def transmit(uuid, packet, *, response):
+        if packet == build_brightness(restored.brightness_pct, "H6099"):
+            assert route == "recovery"
+            return
         index = packets.index(packet)
         attempted.add(index)
         assert coordinator.music_mode == ("bloom" if 3 in attempted else "rhythm")
+        # Verbatim recovery derives retained display controls from that same body.
         assert coordinator.music_calm is (route == "native" or 2 in attempted)
         if index == failed_index:
             raise BleakError("music write failed")
@@ -258,11 +264,17 @@ async def test_all_callers_order_and_physical_attempt_state(hass, route, failed_
         physical.side_effect = transmit
         if failed_index is None:
             await apply()
-            assert [call.args[1] for call in physical.await_args_list] == list(packets)
+            assert [call.args[1] for call in physical.await_args_list] == (
+                [build_brightness(restored.brightness_pct, "H6099")] if route == "recovery" else []
+            ) + list(packets)
+            assert coordinator.music_body == restored.music_body
         else:
             with pytest.raises(BleakError, match="music write failed"):
                 await apply()
-            assert [call.args[1] for call in physical.await_args_list] == list(packets[: failed_index + 1]) * 3
+            assert [call.args[1] for call in physical.await_args_list] == (
+                [build_brightness(restored.brightness_pct, "H6099")] if route == "recovery" else []
+            ) + list(packets[: failed_index + 1]) * 3
+            assert coordinator.music_body is None
     assert coordinator._field_revisions == {}
 
 
@@ -275,6 +287,26 @@ async def test_native_connection_failure_keeps_state_and_snapshot(hass):
             await coordinator.async_select_music_slug("bloom")
     assert coordinator.capture_effect_control_state() == before
     assert coordinator._pre_mode_snapshot is snapshot
+
+
+async def test_recovery_without_complete_body_never_substitutes_preset(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6099", configuration_url="test")
+    before = coordinator.capture_effect_control_state()
+    prior = replace(
+        before,
+        mode="music",
+        is_on=True,
+        music_mode="bloom",
+        music_calm=True,
+        music_palette=music_default_palette(music_variant(coordinator.profile, 0x30)),
+    )
+    assert prior.music_body is None
+    with _music_transport(coordinator) as physical:
+        assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+        physical.assert_not_awaited()
+        coordinator._ensure_connected.assert_not_awaited()
+    assert coordinator.capture_effect_control_state() == before
+    assert coordinator.control_write_attempts == 0
 
 
 @pytest.mark.parametrize("route", ["native", "studio", "recovery"])
@@ -291,6 +323,7 @@ async def test_transform_rejection_keeps_unattempted_selector_state(hass, route)
         music_mode="bloom",
         music_sensitivity=42,
         music_palette=music_default_palette(music_variant(coordinator.profile, 0x30)),
+        music_body=prepare_music_profile_writes("H6099", "bloom", 42, None, True, {})[-2][1]["_music_body"][1],
     )
 
     def reject(packet):
@@ -307,9 +340,9 @@ async def test_transform_rejection_keeps_unattempted_selector_state(hass, route)
                 await async_apply_compiled_profile(coordinator, compiled)
             else:
                 await coordinator.async_restore_effect_control_state(restored, overwritten_diy_code=None)
-        assert physical.await_count == 1
+        assert physical.await_count == (2 if route == "recovery" else 1)
     assert coordinator.capture_effect_control_state() == before
-    assert coordinator.control_write_attempts == 1
+    assert coordinator.control_write_attempts == (2 if route == "recovery" else 1)
 
 
 async def test_native_does_not_overwrite_state_arriving_during_selector_await(hass):
