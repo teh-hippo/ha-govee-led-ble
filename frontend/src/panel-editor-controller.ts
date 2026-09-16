@@ -99,6 +99,11 @@ export class PanelEditorController {
   public selectCustomEffectEntry(entry: CustomEffectListEntry): void {
     if (entry.kind === "saved") {
       this.options.selectItem(entry.item.id);
+    } else if (entry.kind === "native-diy") {
+      const template = this.model.modelCatalogue?.templates?.find((template) => template.id === entry.key);
+      if (template?.content.kind !== "advanced") return;
+      this.openEditableTemplate(entry.label, cloneEditableEffect(template.content), entry.key,
+        { section: "custom", category: "advanced" }, true);
     } else if (entry.kind === "music") {
       this.openMusicTemplate(entry.mode, entry.label, true);
     } else if (entry.kind === "paint") {

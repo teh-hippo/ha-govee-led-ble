@@ -565,12 +565,16 @@ class EffectDeploymentEngine:
                         if upload_count == 0:
                             current = replace(current, phase=DeploymentPhase.ACTIVATING)
                             await self._deployments.async_put(current, expected_version=None)
+                        ack_options: dict[str, Any] = {}
+                        if "native_diy_positive_ack_required" in compiled.evidence_codes:
+                            ack_options = {"require_upload_ack": True, "upload_ack_index": upload_count - 1}
                         await coordinator.async_write_effect_sequence(
                             compiled.packets,
                             intent=ControlIntent.APPLY,
                             attempt_started=attempt_started,
                             progress=record_sequence_progress,
                             write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                            **ack_options,
                         )
                     else:
                         current = await self._async_apply_profile(coordinator, compiled, current)
@@ -905,7 +909,38 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
     ) -> bool:
-        refreshed = await self._async_refresh_for_reconciliation(coordinator)
+        profile = coordinator.profile
+        refreshed = False
+        if profile.state_readable:
+            revisions = getattr(coordinator, "_field_revisions", {})
+            baselines = {
+                field: revisions.get(field, 0)
+                for field, readable in (
+                    ("is_on", profile.can_read(ReadDomain.POWER)),
+                    ("brightness_pct", profile.can_read(ReadDomain.BRIGHTNESS)),
+                    ("color_mode", profile.supports_color_mode_readback),
+                )
+                if readable and hasattr(coordinator, "_field_revisions")
+            }
+            refreshed = (
+                await coordinator.refresh_state(
+                    refresh_all=True,
+                    required_domains=profile.read_domains
+                    & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+                )
+                is True
+            )
+            if not refreshed or any(
+                coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
+            ):
+                raise RuntimeError("Could not read the current power, mode and brightness before applying the effect")
+            if (
+                profile.supports_segments
+                and profile.can_read(ReadDomain.SEGMENTS)
+                and _coordinator_mode(coordinator) in {"colour", "off"}
+                and await coordinator.async_refresh_segments() is not True
+            ):
+                raise RuntimeError("Could not read the current segment layout before applying the effect")
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed
         profile = coordinator.profile
@@ -992,12 +1027,19 @@ class EffectDeploymentEngine:
             brightness_pct=getattr(coordinator, "brightness_pct", 100),
             rgb_color=getattr(coordinator, "rgb_color", (255, 255, 255)),
             color_temp_kelvin=getattr(coordinator, "color_temp_kelvin", None),
+            segment_colors=tuple(coordinator.segment_colors)
+            if getattr(coordinator, "segment_state_source", None) == "observed"
+            else None,
+            segment_brightness=tuple(coordinator.segment_brightness)
+            if getattr(coordinator, "segment_state_source", None) == "observed"
+            else None,
             effect=getattr(coordinator, "effect", None),
             scene_code=getattr(coordinator, "scene_code", None),
             diy_code=coordinator.diy_code,
             music_mode=getattr(coordinator, "music_mode", "off"),
             music_model=coordinator.model,
             music_palette=getattr(coordinator, "music_palette", None),
+            music_body=getattr(coordinator, "music_body", None),
             music_parameters=capture_music_parameters(
                 coordinator,
                 coordinator.profile,
@@ -1230,7 +1272,7 @@ def observable_signature_for_state(
 
 def _active_workspace_content(
     source: EffectContent,
-    compiled: CompiledApplication,
+    compiled: CompiledApplication | None,
 ) -> EffectContent:
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
         return source
@@ -1238,6 +1280,8 @@ def _active_workspace_content(
         decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
     except UnsupportedA3EffectError:
         return source
+    if isinstance(source, LayeredEffect) and isinstance(decoded, LayeredEffect):
+        return replace(decoded, native_diy=source.native_diy)
     return decoded if type(decoded) is type(source) else source
 
 
@@ -1257,6 +1301,8 @@ def active_workspace_matches(
     if isinstance(content, BuiltinScene | PaletteScene | LayeredScene):
         identity = (content.template.scene_id, content.template.effect_id)
     elif isinstance(content, LayeredEffect):
+        if content.native_diy is not None:
+            return getattr(coordinator, "scene_code", None) == content.native_diy
         identity = get_profile(workspace.model).advanced_scene_carrier
     else:
         return True

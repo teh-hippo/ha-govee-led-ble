@@ -115,6 +115,10 @@ export function effectContentEligible(
   model: string,
   segmentCount: number,
 ): boolean {
+  if (content.kind === "advanced" && content.native_diy !== undefined) {
+    return model === "H617A" && catalogue?.templates?.some((template) =>
+      template.content.kind === "advanced" && template.content.native_diy === content.native_diy) === true;
+  }
   if (content.kind === "music_profile") {
     if (!catalogue || catalogue.sku !== model || content.model !== model ||
         !catalogue.music_modes.some((mode) => mode.id === content.mode)) return false;

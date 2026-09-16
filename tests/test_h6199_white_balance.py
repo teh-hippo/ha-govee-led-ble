@@ -11,8 +11,14 @@ from custom_components.ha_govee_led_ble.effect_deployments import EffectDeployme
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, VideoProfile
 from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectStorageError
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, compiled_observation
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_white_balance, parse_command
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    build_power,
+    build_white_balance,
+    parse_command,
+)
 from custom_components.ha_govee_led_ble.native_profile_controls import apply_white_balance
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_h6099 import frame
 from tests.test_h6199_capabilities import QUALIFIED
@@ -47,6 +53,8 @@ def test_captured_modes_and_defaults_survive_persistence(coordinator):
 
 @pytest.mark.parametrize("flag", [0, 1])
 async def test_recovery_writes_original_flag_even_with_equal_gains(coordinator, monkeypatch, flag):
+    scene = MODEL_SCENES["H6199"]["candlelight"]
+    coordinator._notify_callback(None, bytearray(frame(f"aa0504{scene.code & 255:02x}{scene.code >> 8:02x}")))
     coordinator._notify_callback(None, bytearray(AUTO if flag == 0 else MANUAL))
     state = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
     state = replace(state, video_restore_controls=("white_balance",))
@@ -59,14 +67,28 @@ async def test_recovery_writes_original_flag_even_with_equal_gains(coordinator, 
         if kwargs.get("query_white_balance"):
             coordinator._notify_callback(None, bytearray(AUTO if flag == 0 else MANUAL))
         if kwargs.get("query_power"):
-            coordinator._notify_callback(None, bytearray(frame("aa0100")))
+            coordinator._notify_callback(None, bytearray(reply_power))
+        if kwargs.get("query_brightness"):
+            coordinator._notify_callback(None, bytearray(frame("aa0464")))
+        if kwargs.get("query_color_mode"):
+            coordinator._notify_callback(None, bytearray(frame(f"aa0504{scene.code & 255:02x}{scene.code >> 8:02x}")))
         return True
 
+    reply_power = frame("aa0100")
+
+    async def transmit(_uuid, packet, **kwargs):
+        nonlocal reply_power
+        if packet in (build_power(True, "H6199"), build_power(False, "H6199")):
+            reply_power = frame("aa0101" if packet == build_power(True, "H6199") else "aa0100")
+
+    client.write_gatt_char.side_effect = transmit
     monkeypatch.setattr(coordinator, "_send_state_queries", respond)
     assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
     assert client.write_gatt_char.await_args_list[0].args[1] == build_white_balance(21, 5, "H6199", flag=flag)
     assert coordinator.capture_effect_control_state().white_balance_flag == flag
     assert coordinator.white_balance_default_red == 16
+    packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert build_brightness(100, "H6199") in packets and packets[-1] == build_power(False, "H6199")
 
 
 @pytest.mark.parametrize("same_gains", [True, False])
@@ -182,7 +204,14 @@ def test_unknown_wire_flags_preserved_but_not_writable(coordinator):
 async def test_deployment_requires_complete_prior_wb_register(coordinator, monkeypatch, missing):
     coordinator._notify_callback(None, bytearray(AUTO))
     setattr(coordinator, missing, None)
-    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+
+    async def refresh(**kwargs):
+        if kwargs.get("refresh_all"):
+            for prefix in ("aa0101", "aa0464", "aa05000100320032"):
+                coordinator._notify_callback(None, bytearray(frame(prefix)))
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", refresh)
     engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
     compiled = compile_video_profile(
         LibraryItem.new("Manual", VideoProfile("H6199", "movie", None, None, None, None, 17, None, None)), "H6199"

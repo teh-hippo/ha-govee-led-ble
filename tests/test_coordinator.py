@@ -55,6 +55,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power,
     build_power_query,
     build_relative_brightness_query,
+    build_scene_activation,
     build_segment_query,
     build_video_mode,
     build_white_balance,
@@ -73,7 +74,6 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_white_brightness,
     kelvin_to_rgb,
 )
-from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
@@ -272,7 +272,7 @@ def test_capture_effect_control_state(coord):
     )
 
 
-async def test_restore_effect_control_state_reapplies_static_state(coord):
+async def test_restore_effect_control_state_legacy_static_never_flattens(coord):
     state = PriorControlState(
         mode="colour",
         is_on=True,
@@ -289,14 +289,9 @@ async def test_restore_effect_control_state_reapplies_static_state(coord):
             overwritten_diy_code=800,
         )
 
-    assert recovered is True
-    assert send.await_args_list == [
-        call(proto.build_power(True)),
-        call(proto.build_brightness(72)),
-        call(proto.build_color_rgb(1, 2, 3)),
-    ]
-    refresh.assert_awaited_once_with()
-    assert coord.active_mode == "colour"
+    assert recovered is False
+    send.assert_not_awaited()
+    refresh.assert_not_awaited()
 
 
 async def test_restore_effect_control_state_cannot_recover_overwritten_diy_slot(coord):
@@ -328,7 +323,11 @@ async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
             rgb_color=(1, 2, 3),
             effect=effect,
         )
-        expected = build_native_scene_packets(coordinator.model, scene)
+        expected = [
+            build_power(True, coordinator.model),
+            build_brightness(72, coordinator.model),
+            build_scene_activation(coordinator.model, scene.code, scene.music_code),
+        ]
 
         with (
             patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
@@ -339,10 +338,9 @@ async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
                 overwritten_diy_code=-1,
             )
 
-        assert recovered is True
+        assert recovered is False  # original authored body/speed is unknown
         assert send.await_args_list == [call(packet) for packet in expected]
-        refresh.assert_awaited_once_with(expected_scene_code=scene.code)
-        assert coordinator.active_mode == "scene"
+        refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
 
 
 async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
@@ -362,8 +360,8 @@ async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
             overwritten_diy_code=None,
         )
 
-    assert recovered is True
-    send.assert_awaited_once_with(proto.build_power(False))
+    assert recovered is False  # power alone cannot recover the missing hidden layout
+    send.assert_awaited_once_with(proto.build_power(False), state_values={"is_on": False})
     refresh.assert_awaited_once_with(expected_on=False)
 
 
@@ -383,6 +381,7 @@ async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coor
         patch.object(coord, "send_command", wraps=coord.send_command) as send,
         patch.object(coord, "_ensure_connected", return_value=_c(write_gatt_char=AsyncMock())),
         patch.object(coord, "async_observe_effect", new_callable=AsyncMock, return_value=True) as refresh,
+        patch.object(coord, "refresh_state", new=AsyncMock(return_value=True)),
     ):
         recovered = await coord.async_restore_effect_control_state(
             state,
@@ -390,58 +389,36 @@ async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coor
         )
 
     assert recovered is True
-    send.assert_awaited_once_with(proto.build_h617a_diy_activation(700), state_values={"diy_code": 700})
+    assert send.await_args_list == [
+        call(build_power(True, model)),
+        call(build_brightness(72, model)),
+        call(proto.build_h617a_diy_activation(700), state_values={"diy_code": 700}),
+    ]
     refresh.assert_awaited_once_with({"is_on": True, "diy_code": 700})
     assert coord.diy_code == 700
 
 
 async def test_restore_effect_control_state_reapplies_complete_music_profile(coord):
+    from custom_components.ha_govee_led_ble.music_commands import prepare_music_body_writes
+    from custom_components.ha_govee_led_ble.music_semantics import music_variant
+
+    body = music_variant(coord.profile, MUSIC_MODE_SLUGS["separation"]).template
     state = PriorControlState(
         mode="music",
         is_on=True,
         brightness_pct=72,
         rgb_color=(1, 2, 3),
         music_mode="separation",
+        music_model="H617A",
+        music_body=body,
         music_sensitivity=50,
         music_color=(4, 5, 6),
         music_separation_point=4,
         music_separation_gradient=False,
     )
-    packets = prepare_music_request("H617A", "separation", 50, (4, 5, 6), False, {"point": 4, "gradient": False})
-    states = (
-        {"is_on": True},
-        {
-            "music_mode": "separation",
-            "music_sensitivity": 50,
-            "music_color": (4, 5, 6),
-            "music_calm": False,
-            "video_mode": "off",
-            "effect": None,
-            "diy_code": None,
-        },
-        {},
-        {"music_separation_point": 4, "music_separation_gradient": False},
-    )
-    coord.rgb_color = (7, 8, 9)
-    snapshot = coord._pre_mode_snapshot
-    expected_state = {}
-
-    async def transmit(_uuid, packet, **_kwargs):
-        index = client.write_gatt_char.await_count - 1
-        assert packet == packets[index]
-        expected_state.update(states[index])
-        assert all(getattr(coord, field) == value for field, value in expected_state.items())
-        assert coord._control_arbiter.current_task_intent is ControlIntent.APPLY
-        if index == 0:
-            assert coord._pre_mode_snapshot is snapshot
-        else:
-            assert coord._pre_mode_snapshot.rgb == (7, 8, 9)
-
-    client = _c(write_gatt_char=AsyncMock(side_effect=transmit))
-
     with (
-        patch.object(coord, "_ensure_connected", return_value=client),
-        patch.object(coord, "async_write_effect_sequence", wraps=coord.async_write_effect_sequence) as sequence,
+        patch.object(coord, "send_command", new=AsyncMock()) as send,
+        patch.object(coord, "async_write_music_sequence", new=AsyncMock()) as sequence,
         patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
         recovered = await coord.async_restore_effect_control_state(
@@ -449,12 +426,17 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
             overwritten_diy_code=None,
         )
 
-    assert recovered is True
-    sequence.assert_awaited_once()
-    assert sequence.await_args.args == (packets,)
-    assert sequence.await_args.kwargs["packet_state_values"] == states
-    assert client.write_gatt_char.await_args_list == [call(WRITE_UUID, packet, response=False) for packet in packets]
-    refresh.assert_awaited_once_with(expected_music_mode="separation")
+    assert recovered is False  # accepted bytes are not full-settings readback
+    sequence.assert_awaited_once_with(
+        prepare_music_body_writes("H617A", "separation", 50, body, profile=coord.profile),
+        mode_code=MUSIC_MODE_SLUGS["separation"],
+        physical_ic_count=None,
+        intent=ControlIntent.APPLY,
+    )
+    send.assert_awaited_once_with(build_brightness(72, "H617A"))
+    refresh.assert_awaited_once_with(
+        expected_on=True, expected_brightness=72, expected_music_mode="separation", expected_music_sensitivity=50
+    )
 
 
 async def test_restore_effect_control_state_reapplies_complete_video_profile(h6199):
@@ -490,6 +472,8 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
         patch(f"{M}.apply_relative_brightness", new_callable=AsyncMock, return_value=True) as relative_brightness,
         patch(f"{M}.apply_blank_screen", new_callable=AsyncMock, return_value=True) as blank_screen,
         patch(f"{M}.apply_active_video_mode", new_callable=AsyncMock, return_value=True) as video_mode,
+        patch.object(h6199, "send_command", new=AsyncMock()),
+        patch.object(h6199, "refresh_state", new=AsyncMock(return_value=True)),
     ):
         recovered = await h6199.async_restore_effect_control_state(
             state,
@@ -524,6 +508,10 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
     from tests.test_h6199_capabilities import QUALIFIED
 
     vars(h6199).update(QUALIFIED)
+    h6199.is_on = True
+    h6199.color_mode = ParsedMode.SCENE
+    h6199.effect = "candlelight"
+    h6199._scene_code = MODEL_SCENES["H6199"]["candlelight"].code
     h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 1, 2, 10, 0, 120, 0])))
     state = h6199.capture_effect_control_state()
     h6199.blank_screen = enabled
@@ -562,8 +550,14 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
             assert h6199.blank_screen is enabled
             assert "blank_screen" not in h6199._expected_state
         else:
-            assert await h6199.async_restore_effect_control_state(state, overwritten_diy_code=None)
-            packets = ([] if enabled else [build_blank_screen(True, "H6199", *policy)]) + [build_power(False, "H6199")]
+            recovered = await h6199.async_restore_effect_control_state(state, overwritten_diy_code=None)
+            scene = MODEL_SCENES["H6199"]["candlelight"]
+            assert recovered is (not bool(scene.param))
+            packets = ([] if enabled else [build_blank_screen(True, "H6199", *policy)]) + [
+                build_power(True, "H6199"),
+                build_brightness(state.brightness_pct, "H6199"),
+                build_scene_activation("H6199", scene.code, scene.music_code),
+            ]
             assert client.write_gatt_char.await_args_list == [
                 call(WRITE_UUID, packet, response=False) for packet in packets
             ]
@@ -571,7 +565,7 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
                 []
                 if enabled
                 else [call(refresh_display_settings=frozenset({"blank_screen"})), call(expected_blank_screen=True)]
-            ) + [call(expected_on=False)]
+            ) + [call(expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=scene.code)]
             assert h6199.blank_screen is True
     assert (
         h6199.blank_screen_detection,
@@ -599,11 +593,13 @@ async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
             overwritten_diy_code=None,
         )
 
-    assert recovered is True
-    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H6199", scene)]
-    refresh.assert_awaited_once_with(expected_scene_code=scene.code)
-    assert h6199.effect == "forest"
-    assert (h6199.diy_code, h6199.music_mode, h6199.video_mode) == (None, "off", "off")
+    assert recovered is (not bool(scene.param))
+    assert send.await_args_list == [
+        call(build_power(True, "H6199")),
+        call(build_brightness(72, "H6199")),
+        call(build_scene_activation("H6199", scene.code, scene.music_code)),
+    ]
+    refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
 
 
 async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
@@ -626,11 +622,16 @@ async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
         patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
         patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
-        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None) is (
+            not bool(scene.param)
+        )
 
-    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", scene)]
-    refresh.assert_awaited_once_with(expected_scene_code=scene.code)
-    assert coordinator.effect == "aurora-a"
+    assert send.await_args_list == [
+        call(build_power(True, "H617E")),
+        call(build_brightness(72, "H617E")),
+        call(build_scene_activation("H617E", scene.code, scene.music_code)),
+    ]
+    refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
 
 
 async def test_restore_effect_control_state_preserves_h617e_raw_legacy_scene(hass):
@@ -656,11 +657,18 @@ async def test_restore_effect_control_state_preserves_h617e_raw_legacy_scene(has
         patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
         patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
-        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None) is (
+            not bool(legacy.param)
+        )
 
-    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", legacy)]
-    refresh.assert_awaited_once_with(expected_scene_code=legacy.code)
-    assert coordinator.effect == legacy_name
+    assert send.await_args_list == [
+        call(build_power(True, "H617E")),
+        call(build_brightness(state.brightness_pct, "H617E")),
+        call(build_scene_activation("H617E", legacy.code, legacy.music_code)),
+    ]
+    refresh.assert_awaited_once_with(
+        expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=legacy.code
+    )
 
 
 async def test_restore_effect_control_state_uses_legacy_identity_to_disambiguate_scene_code(hass):
@@ -684,10 +692,15 @@ async def test_restore_effect_control_state_uses_legacy_identity_to_disambiguate
         patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
         patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True),
     ):
-        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None) is (
+            not bool(legacy.param)
+        )
 
-    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", legacy)]
-    assert coordinator.effect == "aurora"
+    assert send.await_args_list == [
+        call(build_power(True, "H617E")),
+        call(build_brightness(72, "H617E")),
+        call(build_scene_activation("H617E", legacy.code, legacy.music_code)),
+    ]
 
 
 @pytest.mark.parametrize("model", ["H617A", "H6199"])
@@ -1281,7 +1294,7 @@ def test_notify_callback_parses_full_frame_with_checksum(h6199):
 
 def test_notify_callback_records_command_echoes_without_applying_status(coord, h6199):
     for coordinator, model, parser in (
-        (coord, "H617A", "command_write"),
+        (coord, "H617A", "h617a_command_ack"),
         (h6199, "H6199", "h6199_command_write"),
     ):
         initial_state = coordinator.is_on
@@ -1291,7 +1304,9 @@ def test_notify_callback_records_command_echoes_without_applying_status(coord, h
 
         assert coordinator.is_on is initial_state
         assert coordinator.packet_log[-1]["outcome"] == "parsed"
-        assert coordinator.packet_log[-1]["reason"] == "command_echo_parsed"
+        assert coordinator.packet_log[-1]["reason"] == (
+            "command_ack_parsed" if model == "H617A" else "command_echo_parsed"
+        )
         assert coordinator.packet_log[-1]["parser"] == parser
         assert coordinator.packet_log[-1]["raw"] == frame.hex()
 

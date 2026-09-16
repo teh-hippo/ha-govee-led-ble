@@ -160,9 +160,9 @@ def _music_item(model: str = "H617A") -> LibraryItem:
             model,
             "separation" if model == "H617A" else "rolling",
             50,
-            (1, 2, 3),
+            None if model == "H617A" else (1, 2, 3),
             None,
-            {"point": 5, "gradient": False} if model == "H617A" else {},
+            {"point": 5} if model == "H617A" else {},
         ),
     )
 
@@ -255,6 +255,33 @@ def test_compiled_observation_uses_read_domains_and_status_grammar() -> None:
     assert not any(key.startswith(("white_balance", "relative_brightness", "blank_screen")) for key in expectations)
 
 
+@pytest.mark.parametrize("mode", ["colour", "scene", "custom", "music", "video", "off"])
+async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
+    coordinator = _coordinator()
+    coordinator.active_mode = mode
+    coordinator.brightness_pct = 99
+
+    async def refresh(**kwargs):
+        assert kwargs["refresh_all"] is True
+        assert ReadDomain.BRIGHTNESS in kwargs["required_domains"]
+        coordinator.brightness_pct = 37
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+    engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
+    assert await engine._async_prepare_prior_state(coordinator, compile_h617a(_item(), 800))
+    assert engine._capture_prior_state(coordinator, config_entry_id="entry-a").brightness_pct == 37
+
+
+async def test_truthy_mock_is_not_successful_preflight():
+    coordinator = _coordinator()
+    coordinator.refresh_state = AsyncMock()
+    engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
+    with pytest.raises(RuntimeError, match="Could not read"):
+        await engine._async_prepare_prior_state(coordinator, compile_h617a(_item(), 800))
+    coordinator.send_command.assert_not_awaited()
+
+
 async def test_profile_reconciliation_never_revives_settings_from_mode_only() -> None:
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
@@ -323,9 +350,19 @@ def _coordinator(*, readable: bool = True):
         music_sensitivity=50,
         music_calm=False,
         music_color=None,
+        _music_body_revision=0,
         send_command=AsyncMock(),
         refresh_state=AsyncMock(return_value=True),
+        segment_colors=[(1, 2, 3)] * 15,
+        segment_brightness=[100] * 15,
+        segment_state_source="initial",
     )
+
+    async def refresh_segments():
+        coordinator.segment_state_source = "observed"
+        return True
+
+    coordinator.async_refresh_segments = AsyncMock(side_effect=refresh_segments)
 
     async def write_effect_sequence(
         packets,
@@ -337,6 +374,9 @@ def _coordinator(*, readable: bool = True):
         write_guard=None,
         packet_state_values=None,
         packet_write_guard=None,
+        require_upload_ack=False,
+        upload_ack_index=None,
+        writer=None,
     ) -> None:
         if attempt_started is not None:
             await attempt_started(1)
@@ -376,6 +416,9 @@ def _profile_coordinator(model: str):
     coordinator._field_revisions = {}
 
     async def refresh(**kwargs):
+        if kwargs.get("refresh_all"):
+            for field in ("is_on", "brightness_pct", "color_mode"):
+                coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
         if "blank_screen" in kwargs.get("refresh_display_settings", ()):
             for field in (
                 "blank_screen_detection",
@@ -433,7 +476,7 @@ class YieldingVersionedDocumentStore(InMemoryVersionedDocumentStore):
 
 
 def _confirm_on_call(coordinator, call_number: int, diy_code: int) -> None:
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count >= call_number:
             coordinator.diy_code = diy_code
         return True
@@ -442,7 +485,7 @@ def _confirm_on_call(coordinator, call_number: int, diy_code: int) -> None:
 
 
 def _confirm_scene_code_on_call(coordinator, call_number: int, scene_code: int) -> None:
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count >= call_number:
             coordinator.scene_code = scene_code
         return True
@@ -535,7 +578,7 @@ async def test_layered_scene_uses_shared_transaction_and_identity_verification(
     item = LibraryItem.new("Layered scene", content.effect if advanced else content)
     compiled = compile_effect(item, "H617A")
 
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count >= 2:
             coordinator.effect = compiled.expected_effect
             coordinator.scene_code = compiled.diy_code
@@ -583,7 +626,7 @@ async def test_h6199_layered_scene_uses_model_framing_and_identity_verification(
     item = LibraryItem.new("Layered scene", content)
     compiled = compile_effect(item, "H6199")
 
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count >= 2:
             coordinator.effect = compiled.expected_effect
             coordinator.scene_code = compiled.diy_code
@@ -684,7 +727,7 @@ async def test_verification_retry_only_repeats_safe_activation(
     item = _item()
     compiled = compile_h617a(item, 800)
 
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count == 2:
             coordinator.diy_code = 999
         elif coordinator.refresh_state.await_count >= 3:
@@ -879,7 +922,7 @@ async def test_verification_failure_retries_reads_then_recovers(
     coordinator = _coordinator()
     coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
 
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count == 1:
             return True
         raise RuntimeError("read failed")
@@ -1081,7 +1124,14 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
     expected = dict(coordinator._expected_state)
     published: list[PriorControlState] = []
     unsubscribe = coordinator.async_add_listener(lambda: published.append(coordinator.capture_effect_control_state()))
-    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+
+    async def refresh(**_kwargs):
+        for field in ("is_on", "brightness_pct", "color_mode"):
+            coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+        field_revisions.update(coordinator._field_revisions)
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=refresh))
     restore = AsyncMock(return_value=False)
     monkeypatch.setattr(coordinator, "async_restore_effect_control_state", restore)
     physical = AsyncMock()
@@ -1917,7 +1967,7 @@ async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confid
     )
 
     assert coordinator.music_separation_point == 5
-    assert coordinator.music_separation_gradient is False
+    assert coordinator.music_separation_gradient is True
     assert coordinator.send_command.await_count == 4
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.diy_code is None
@@ -2054,7 +2104,13 @@ async def test_music_profile_retries_the_complete_writer_before_confirmation(
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H617A")
-    coordinator.refresh_state.side_effect = [True, False, True]
+    refresh = coordinator.refresh_state.side_effect
+
+    async def refresh_then_verify(**kwargs):
+        await refresh(**kwargs)
+        return coordinator.refresh_state.await_count != 2
+
+    coordinator.refresh_state.side_effect = refresh_then_verify
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
@@ -2148,7 +2204,21 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
     coordinator.video_sound_effects_softness = 50
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
-    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+
+    async def refresh(**_kwargs):
+        for field in ("is_on", "brightness_pct", "color_mode"):
+            coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=refresh))
+
+    async def refresh_segments():
+        coordinator.segment_colors = [(1, 2, 3)] * coordinator.profile.segment_count
+        coordinator.segment_brightness = [100] * coordinator.profile.segment_count
+        coordinator.segment_state_source = "observed"
+        return True
+
+    monkeypatch.setattr(coordinator, "async_refresh_segments", AsyncMock(side_effect=refresh_segments))
     monkeypatch.setattr(
         coordinator,
         "async_observe_effect",

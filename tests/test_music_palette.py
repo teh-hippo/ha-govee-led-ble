@@ -26,6 +26,7 @@ from custom_components.ha_govee_led_ble.effect_persistence_validation import Eff
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile, compiled_observation
 from custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters import H6099MusicParameters
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import MusicBody, build_brightness
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
 from tests.test_effect_preview import _manager, _open
@@ -74,7 +75,7 @@ def test_present_invalid_palette_fails_document_validation(palette):
         ("H6099", "piano_keys", None, False),
         ("H6099", "piano_keys", 60, True),
         ("H6099", "rhythm", None, False),
-        ("H617A", "bloom", None, False),
+        ("H617A", "bloom", None, True),
     ],
 )
 def test_variant_availability_matches_catalogue_and_compiler(model, mode, ic, available):
@@ -85,7 +86,11 @@ def test_variant_availability_matches_catalogue_and_compiler(model, mode, ic, av
     assert (compatibility(item, model, profile=profile).state is CompatibilityState.COMPATIBLE) is available
     if available:
         compiled = compile_music_profile(item, model, profile=profile)
-        parsed = H6099MusicParameters.from_bytes(reassemble_a3(compiled.packets[1:-1])[3:])
+        parsed = (
+            MusicBody.from_bytes(reassemble_a3(compiled.packets[1:-1]))
+            if model == "H617A"
+            else H6099MusicParameters.from_bytes(reassemble_a3(compiled.packets[1:-1])[3:])
+        )
         parsed._read()
         assert [(rgb.red, rgb.green, rgb.blue) for rgb in parsed.palette] == list(PALETTE)
         expectations, confidence = compiled_observation(compiled, profile=profile)
@@ -127,7 +132,10 @@ async def test_apply_recovery_and_retained_palette_are_not_readback(hass, route)
         physical.reset_mock()
         coordinator.refresh_state.return_value = True
         assert not await coordinator.async_restore_effect_control_state(restored, overwritten_diy_code=None)
-        assert [call.args[1] for call in physical.await_args_list] == list(compiled.packets)
+        assert [call.args[1] for call in physical.await_args_list] == [
+            build_brightness(restored.brightness_pct, coordinator.model),
+            *compiled.packets,
+        ]
         assert coordinator.music_palette == PALETTE
         assert "music_palette" not in coordinator._expected_state
 
@@ -170,7 +178,7 @@ async def test_guards_and_fresh_notifications_do_not_install_unattempted_palette
         with pytest.raises(ValueError, match="before physical"):
             await async_apply_compiled_profile(coordinator, compiled)
         assert physical.await_count == index
-    assert coordinator.music_palette == (old if index <= 1 else None if index == 2 else PALETTE)
+    assert coordinator.music_palette == (old if index <= 1 else None)
     coordinator._expected_state.clear()
     coordinator._notify_callback(None, bytearray(frame("aa05130611")))
     assert coordinator.music_palette is None
@@ -257,6 +265,14 @@ async def test_public_apply_persists_palette_and_never_claims_settings_match(has
         patch.object(coordinator, "_encryption", None),
         patch.object(coordinator, "async_observe_effect", AsyncMock(return_value=True)),
     ):
+
+        async def refresh(**kwargs):
+            coordinator._notify_callback(None, bytearray(frame("aa0101")))
+            coordinator._notify_callback(None, bytearray(frame("aa0464")))
+            coordinator._notify_callback(None, bytearray(frame("aa0513062a")))
+            return True
+
+        coordinator.refresh_state.side_effect = refresh
         if saved:
             result = await backend.application.async_apply_saved_effect(
                 backend.engine,

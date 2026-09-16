@@ -4,6 +4,9 @@ meta:
   endian: le
 doc: |
   H617A 20-byte status query. The final byte is the XOR of bytes 0 through 18.
+  Issue #286 AA0F reuses zero_body based on Android 7.6.01 LightNumController /
+  AbsOnlyReadSingleController and direct H617A queries, not official-app captures.
+  This route remains speculative; see speculative/h617a_control_payload.ksy.
 seq:
   - id: header
     contents: [0xaa]
@@ -20,6 +23,7 @@ seq:
         'query_domain::colour_mode': zero_body
         'query_domain::firmware': zero_body
         'query_domain::hardware': hardware_query_body
+        'query_domain::light_count': zero_body
         'query_domain::segments': segment_query_body
   - id: checksum
     type: u1
@@ -30,6 +34,7 @@ enums:
     0x05: colour_mode
     0x06: firmware
     0x07: hardware
+    0x0f: light_count
     0xa5: segments
 types:
   zero_body:

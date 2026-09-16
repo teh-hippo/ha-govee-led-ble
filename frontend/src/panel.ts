@@ -1197,6 +1197,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-advanced-effect-editor
         .content=${advancedEditorContent(this.content)}
         .disabled=${this.editorDisabled}
+        .physicalIcCount=${this.model.selectedDevice?.physical_ic_count}
         .segmentCount=${this.model.selectedDevice?.segment_count ?? 15}
         @content-changed=${(
           event: CustomEvent<{

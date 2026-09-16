@@ -249,6 +249,7 @@ export interface BrightnessPattern {
 interface Distribution {
   method: number;
   backwards: boolean;
+  extensions?: number;
 }
 
 export interface Movement {
@@ -279,6 +280,7 @@ export interface EffectLayer {
 export interface AdvancedContent {
   kind: "advanced";
   layers: EffectLayer[];
+  native_diy?: number;
 }
 
 export interface WorkshopContent {
@@ -336,6 +338,7 @@ export interface WorkshopTemplate {
 
 export type CatalogueTemplateContent =
   | CustomEffectContent
+  | AdvancedContent
   | PaletteDiyEffectContent
   | MusicProfileContent
   | VideoProfileContent;
@@ -343,7 +346,7 @@ export type CatalogueTemplateContent =
 export interface CatalogueTemplate {
   id: string;
   label: string;
-  category: "single-layer" | "music" | "video";
+  category: "single-layer" | "music" | "video" | "advanced";
   content: CatalogueTemplateContent;
 }
 

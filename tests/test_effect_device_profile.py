@@ -1,5 +1,6 @@
 """Device-scoped AA40 geometry through public Effect Studio paths."""
 
+from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -8,7 +9,7 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_MUSIC, get_profile
+from custom_components.ha_govee_led_ble.const import DOMAIN, EFFECT_FAMILY_MUSIC, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, resolve_catalogue_template
@@ -26,12 +27,37 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_TEMPLATE_DEFAULT_GET,
 )
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import music_default_palette
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, music_default_palette
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from custom_components.ha_govee_led_ble.music_commands import music_body_parameters, prepare_music_profile_writes
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from tests.test_effect_preview import _manager, _open
 from tests.test_effect_websocket import _setup_backend
-from tests.test_music_commands import _music_transport
+from tests.test_h6099_music import frame
+from tests.test_music_commands import _music_transport as _transport
+
+
+@contextmanager
+def _music_transport(coordinator):
+    async def refresh(**kwargs):
+        # Fresh preflight replies, without turning optimistic writes into observations.
+        if not kwargs.get("refresh_all"):
+            return True
+        for prefix in (f"aa01{int(coordinator.is_on):02x}", "aa0464", "aa0515000000"):
+            coordinator._notify_callback(None, bytearray(frame(prefix)))
+        return True
+
+    async def segments(**kwargs):
+        for group in range(1, 5):
+            coordinator._notify_callback(None, bytearray(frame(f"aaa5{group:02x}" + "64ffffff" * 4)))
+        return True
+
+    with (
+        _transport(coordinator) as physical,
+        patch.object(coordinator, "refresh_state", AsyncMock(side_effect=refresh)),
+        patch.object(coordinator, "async_refresh_segments", AsyncMock(side_effect=segments)),
+    ):
+        yield physical
 
 
 def _item(kind):
@@ -103,8 +129,21 @@ async def test_public_saved_and_snapshot_apply_use_effective_profile(hass, kind,
             )
         assert result.phase is DeploymentPhase.CONFIRMED
         assert [call.args[1] for call in physical.await_args_list][-len(compiled.packets) :] == list(compiled.packets)
-    assert coordinator._field_revisions == {}
-    assert coordinator._domain_revisions == {}
+    assert coordinator._field_revisions == {
+        "is_on": 1,
+        "brightness_pct": 1,
+        "color_mode": 1,
+        "color_temp_kelvin": 1,
+        "effect": 1,
+        "segment_colors": 1,
+        "segment_brightness": 1,
+    }
+    assert coordinator._domain_revisions == {
+        ReadDomain.POWER: 1,
+        ReadDomain.BRIGHTNESS: 1,
+        ReadDomain.COLOUR_MODE: 1,
+        ReadDomain.SEGMENTS: 4,
+    }
     if kind == "music":
         assert coordinator.capture_effect_control_state().music_parameters == {"key_count": 18, "gradient": False}
 
@@ -116,10 +155,11 @@ async def test_committed_apply_fails_closed_when_geometry_changes(hass, kind, co
     backend = await EffectBackend.async_create(hass)
     coordinator = _device(hass)
     with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
+        refresh = coordinator.refresh_state.side_effect
 
-        async def change():
+        async def change(**kwargs):
             coordinator.profile = replace(coordinator.profile, physical_ic_count=count)
-            return coordinator._client if stage == "connect" else False
+            return coordinator._client if stage == "connect" else await refresh(**kwargs)
 
         (coordinator.refresh_state if stage == "refresh" else coordinator._ensure_connected).side_effect = change
         with pytest.raises(ValueError, match="Physical IC count changed"):
@@ -335,6 +375,10 @@ async def test_native_music_rechecks_count_at_connection(hass, parameters_only):
     coordinator = _device(hass)
     coordinator.music_mode = "piano_keys"
     coordinator._music_palette = ("piano_keys", music_default_palette(music_variant(coordinator.profile, 0x34)))
+    compiled = compile_application(_item("music"), coordinator.model, profile=coordinator.profile)
+    coordinator._music_body = prepare_music_profile_writes(
+        "H6099", "piano_keys", 42, None, False, compiled.parameters, profile=coordinator.profile
+    )[-2][1]["_music_body"]
     with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
 
         async def connect():
@@ -344,7 +388,7 @@ async def test_native_music_rechecks_count_at_connection(hass, parameters_only):
         coordinator._ensure_connected.side_effect = connect
         with pytest.raises(ValueError, match="Physical IC count changed"):
             if parameters_only:
-                await coordinator.async_apply_music_params(0x34)
+                await coordinator.async_apply_music_params(0x34, parameters={"key_count": 20})
             else:
                 await coordinator.async_select_music_slug("piano_keys")
         physical.assert_not_awaited()
@@ -352,17 +396,30 @@ async def test_native_music_rechecks_count_at_connection(hass, parameters_only):
 
 async def test_recovery_uses_device_scoped_music_parameters(hass):
     coordinator = _device(hass)
+    compiled = compile_application(_item("music"), coordinator.model, profile=coordinator.profile)
+    body = prepare_music_profile_writes(
+        "H6099", "piano_keys", 42, None, False, compiled.parameters, profile=coordinator.profile
+    )[-2][1]["_music_body"][1]
     state = replace(
         coordinator.capture_effect_control_state(),
         mode="music",
         is_on=True,
         music_mode="piano_keys",
+        music_sensitivity=42,
         music_parameters={"key_count": 18, "gradient": False},
         music_palette=music_default_palette(music_variant(coordinator.profile, 0x34)),
+        music_body=body,
     )
     with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
         coordinator.refresh_state.return_value = True
         assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
-        assert physical.await_count == 4
-    assert coordinator.music_piano_key_count == 18
+        assert [call.args[1] for call in physical.await_args_list] == [
+            build_brightness(state.brightness_pct, "H6099"),
+            *compiled.packets,
+        ]
+    assert coordinator.music_body == body
+    assert music_body_parameters(body, "piano_keys", profile=coordinator.profile) == {
+        "key_count": 18,
+        "gradient": False,
+    }
     assert coordinator._field_revisions == {} and coordinator._domain_revisions == {}

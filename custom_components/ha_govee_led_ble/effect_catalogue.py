@@ -19,6 +19,7 @@ from .effect_domain import (
     EffectContent,
     EffectValidationError,
     JsonValue,
+    LayeredEffect,
     MultiEffect,
     MusicProfile,
     PaintedEffect,
@@ -394,6 +395,7 @@ H617A_TYPE04_FAMILIES: Final = (
         10,
         (DiyEffectVariation("default", "Default", 0),),
         False,
+        palette_max=3,
     ),
 )
 
@@ -711,12 +713,50 @@ def _h617a_catalogue_templates(
                 segments=(None,) * MODEL_PROFILES[model].segment_count,
             ),
         ),
-        *(_single_template(model, family) for family in H617A_TYPE04_FAMILIES),
+        *(
+            _single_template(model, family if model == "H617A" else replace(family, palette_max=None))
+            for family in H617A_TYPE04_FAMILIES
+        ),
         *(_music_template(model, mode) for mode in music_modes),
     )
 
 
-H617A_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617A", H617A_NATIVE_MUSIC_MODES)
+# Android 7.6.01 ParamsV2 seeds, in selector order (DiyM 1087..1117).
+# Seed IC quantities are opaque preset values, never device geometry metadata.
+H617A_NATIVE_DIY_SEEDS: Final = (
+    (
+        501,
+        "Brilliant / Colorful",
+        "AxoAAAABAAEyMgEAAAAC+gABAP8AAAAAAAAAAB0AAgoFAAH/MgHIAAAC+goC/38AAAD/AAAAAAAAARoAAh4KAAH/MgHIAAAB+goB8v8AAAAAAAAAAg==",
+    ),
+    (502, "Colorful Sky", "AhoAAg8BAAH/AAHIMjICyDIBAAD/AAAAAAAAARoAAg8BAAH/MgHIFBQCyDIB/wAAAAAAAAAAAA=="),
+    (503, "Meteor", "ASAgAQAKAgH/CgIAAAACAAADAKr/AP//////AAD6EAH+AA=="),
+    (
+        504,
+        "Meteor Shower",
+        "AyAgAQAKAgH/CgIAAAAA+mQD/wAAAAD//3v/AAD6EAH9ABokAQAKAgH/CgIAAAAA+mQBAP8AAAD6EAH9ABonAQAKAgH/CgIAAAAA+mQB9QD/AAD6EAH9AA==",
+    ),
+    (505, "Shine", "AiYAAhQKAgH/yADwAAAB8AAF/wAA/////wAAAP8AAAD/AAD/EAHwARoAAQAAAAEUFAAAAAAAADIBAAAAAAAAAAAAAA=="),
+    (
+        506,
+        "Bloom DIY",
+        "BCkAAg8FAAH/AAL/MjIC/wIG/wAAAAAA//8AAAAAAAD/AP//AAAAEgH6ACkAAg8FAAH/AAL/MjIC/wIGiwD/AAAA//8AAAAA/3L/AP//AAAAEgH6AB1QAQAZAAH/AAD/MjICZAACAP///38AFAD/AAAAAB1VAQAZAAH/AAD/MjICZAAC/wAAAAD/FgD/AAAAAA==",
+    ),
+    (507, "Stack", "AiAAAAABAAFkZAAAAAAAyDID/wAAAP8AAAD/FgDOAAAAASAAAQABAAFkZAAAAAAAyDIDAAD//wAAAP8AFAD/AAAAAA=="),
+)
+H617A_NATIVE_DIY_TEMPLATES: Final = tuple(
+    CatalogueTemplate(
+        id=f"template:native-diy:{code}",
+        label=label,
+        category="advanced",
+        content=replace(decode_workshop_effect("H617A", base64.b64decode(seed))[0], native_diy=code),
+    )
+    for code, label, seed in H617A_NATIVE_DIY_SEEDS
+)
+H617A_CATALOGUE_TEMPLATES: Final = (
+    *_h617a_catalogue_templates("H617A", H617A_NATIVE_MUSIC_MODES),
+    *H617A_NATIVE_DIY_TEMPLATES,
+)
 H617E_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617E")
 H617E_CATALOGUE_TEMPLATES: Final = _h617a_catalogue_templates("H617E", H617E_NATIVE_MUSIC_MODES)
 
@@ -840,7 +880,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
     "H617E": ModelEffectCatalogue(
         sku="H617E",
         painted_effects=H617A_PAINTED_EFFECTS,
-        effects=H617A_TYPE04_FAMILIES,
+        effects=tuple(replace(family, palette_max=None) for family in H617A_TYPE04_FAMILIES),
         music_modes=H617E_NATIVE_MUSIC_MODES,
         video_modes=(),
         templates=H617E_CATALOGUE_TEMPLATES,
@@ -932,6 +972,76 @@ def validate_effect_eligibility(
         raise ValueError(f"{model} speed is outside catalogue limits")
 
 
+def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfile) -> None:
+    """Only geometry-dependent edits need IC metadata; APK seeds remain presets."""
+    if model != "H617A" or profile.effect_grammar != "H617A":
+        raise ValueError("native DIY templates 501..507 target H617A only")
+    template = next(
+        (
+            t
+            for t in H617A_NATIVE_DIY_TEMPLATES
+            if isinstance(t.content, LayeredEffect) and t.content.native_diy == content.native_diy
+        ),
+        None,
+    )
+    if template is None:
+        raise ValueError("unknown native DIY template")
+    seed = template.content
+    assert isinstance(seed, LayeredEffect)
+    if len(content.layers) != len(seed.layers):
+        raise ValueError("native DIY must retain its template layer count")
+    for index, (layer, original) in enumerate(zip(content.layers, seed.layers, strict=True)):
+        if not 1 <= len(layer.palette) <= 8:
+            raise ValueError("native DIY layer palette must contain 1 to 8 colours")
+        dependent = (
+            content.native_diy == 502
+            and layer.selection != original.selection
+            or content.native_diy == 504
+            and layer.selection != original.selection
+            or content.native_diy == 506
+            and index >= 2
+            and (
+                layer.selection != original.selection
+                or layer.area != original.area
+                or layer.selected_movement.direction != original.selected_movement.direction
+            )
+            or content.native_diy == 503
+            and len(layer.palette) != len(original.palette)
+        )
+        if dependent and profile.physical_ic_count is None:
+            raise ValueError("this native DIY geometry edit requires a known physical IC count")
+        if profile.physical_ic_count is not None:
+            count = profile.physical_ic_count
+            if (
+                content.native_diy == 502
+                and layer.selection != original.selection
+                and not (
+                    layer.selection.type == 2
+                    and 1 <= layer.selection.random_ic_min <= layer.selection.random_ic_max <= min(25, count * 4 // 5)
+                )
+            ):
+                raise ValueError("Sky star size is outside APK physical-IC bounds")
+            if (
+                content.native_diy == 503
+                and len(layer.palette) != len(original.palette)
+                and len(layer.palette) > min(max(1, count * 2 // 10), 8)
+            ):
+                raise ValueError("Meteor palette is outside APK physical-IC bounds")
+            if (
+                content.native_diy == 504
+                and layer.selection != original.selection
+                and (layer.selection.type != 1 or layer.selection.quantity != count // 5)
+            ):
+                raise ValueError("Meteor Shower selection must use physical IC count / 5")
+            if (
+                content.native_diy == 506
+                and index >= 2
+                and layer.selection != original.selection
+                and (layer.selection.type != 1 or layer.selection.quantity not in (1, count, count // 2))
+            ):
+                raise ValueError("Bloom selection must use one, all, or half the physical IC count")
+
+
 def resolve_catalogue_template(
     model: str,
     template_id: str,
@@ -986,6 +1096,9 @@ def validate_catalogue_template_identity(
         or isinstance(canonical, VideoProfile)
         and isinstance(content, VideoProfile)
         and (content.model, content.mode) == (canonical.model, canonical.mode)
+        or isinstance(canonical, LayeredEffect)
+        and isinstance(content, LayeredEffect)
+        and content.native_diy == canonical.native_diy
     )
     if not valid:
         raise EffectValidationError(

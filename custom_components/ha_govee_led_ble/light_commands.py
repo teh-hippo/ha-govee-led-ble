@@ -102,6 +102,25 @@ def build_color_temp(kelvin: int, model: str = "H617A") -> bytes:
     return build_colour_temperature(value, kelvin_to_rgb(value), profile.whole_device_mask, model)
 
 
+def build_segment_color_temp(
+    segments: Iterable[int],
+    kelvin: int,
+    model: str = "H617A",
+    *,
+    profile: ModelProfile | None = None,
+) -> bytes:
+    """Build masked Kelvin with its rendered RGB companion, using the target bounds."""
+    profile = profile or get_profile(model)
+    mask = segments_to_mask(segments, profile)
+    if not profile.supports_color_temperature:
+        raise ValueError(f"{profile.name} does not support colour temperature")
+    if isinstance(kelvin, bool) or not isinstance(kelvin, int):
+        raise ValueError("Kelvin must be an integer")
+    if not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
+        raise ValueError("Kelvin outside profile range")
+    return build_colour_temperature(kelvin, kelvin_to_rgb(kelvin), mask, model)
+
+
 def build_white_brightness(percent: int, model: str = "H617A") -> bytes:
     return build_segment_brightness_mask(get_profile(model).whole_device_mask, percent, model)
 

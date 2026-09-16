@@ -767,9 +767,14 @@ export function decodeCatalogueTemplateDefaultDetail(
     "palette_diy",
     "music_profile",
     "video_profile",
+    "advanced",
   ]);
   if (!supported.has(content.kind) || !supported.has(catalogueContent.kind)) {
     invalid("catalogue-template default content is unsupported");
+  }
+  if ((content.kind === "advanced" && content.native_diy === undefined) ||
+      (catalogueContent.kind === "advanced" && catalogueContent.native_diy === undefined)) {
+    invalid("catalogue-template native DIY identity is missing");
   }
   return {
     template_id: boundedString(
@@ -973,6 +978,9 @@ export function decodeEffectContent(value: unknown): EffectContent {
       return {
         kind,
         layers: layerArray(content.layers, "Advanced layers"),
+        ...(content.native_diy === undefined ? {} : {
+          native_diy: integerValue(content.native_diy, "native DIY template", 501, 507),
+        }),
       } satisfies AdvancedContent;
     case "workshop": {
       const effect = objectValue(content.effect, "Workshop effect");
@@ -1299,6 +1307,9 @@ function layerValue(value: unknown, name: string): EffectLayer {
         distribution.backwards,
         `${name}.distribution.backwards`,
       ),
+      ...(distribution.extensions === undefined ? {} : {
+        extensions: unknownFlagsValue(distribution.extensions, 0x70, "distribution extensions"),
+      }),
     },
     colour_speed: byteValue(layer.colour_speed, `${name}.colour_speed`),
     colour_retention: byteValue(

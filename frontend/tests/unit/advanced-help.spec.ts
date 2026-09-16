@@ -26,19 +26,19 @@ test("Advanced help registry covers supported evidence without time units", () =
   ]);
 
   expect(ADVANCED_HELP_CONTENT.appliedArea.text).toContain(
-    "physical LED boundary",
+    "width in tenths",
   );
   expect(ADVANCED_HELP_CONTENT.fillPattern.text).toContain(
     "inside the applied area",
   );
   expect(ADVANCED_HELP_CONTENT.fillPatternType.text).toContain(
-    "Segment Count",
+    "two-byte selection or IC quantity",
   );
   expect(ADVANCED_HELP_CONTENT.fillPatternType.text).toContain(
-    "Minimum LED Count",
+    "minimum and maximum IC counts",
   );
   expect(ADVANCED_HELP_CONTENT.fillPatternType.text).toContain(
-    "Lit Length",
+    "piece and gap IC counts",
   );
   expect(ADVANCED_HELP_CONTENT.segmentCount.text).toBe(
     "Sets how many repeated sections divide the applied area for the Segmented fill pattern.",

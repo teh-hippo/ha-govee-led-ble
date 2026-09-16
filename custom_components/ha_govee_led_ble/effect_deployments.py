@@ -134,6 +134,10 @@ class PriorControlState:
     blank_screen_low_brightness_duration_seconds: int | None = None
     blank_screen_same_tone_duration_seconds: int | None = None
     video_restore_controls: tuple[str, ...] | None = None
+    # Missing legacy/unobserved layouts cannot be reconstructed from aggregate RGB.
+    segment_colors: tuple[tuple[int, int, int], ...] | None = None
+    segment_brightness: tuple[int, ...] | None = None
+    music_body: bytes | None = None
 
     def __post_init__(self) -> None:
         if self.video_parameters is not None:
@@ -150,6 +154,27 @@ class PriorControlState:
                 for key, value in self.video_parameters.items()
             ):
                 raise EffectStorageError("invalid prior video parameter")
+        if self.music_body is not None:
+            from .music_commands import validate_music_body
+
+            if self.music_model not in MODEL_PROFILES:
+                raise EffectStorageError("prior music body requires a known model")
+            try:
+                validate_music_body(self.music_body, self.music_mode, profile=MODEL_PROFILES[self.music_model])
+            except ValueError as error:
+                raise EffectStorageError("invalid prior music body") from error
+        if self.segment_colors is not None or self.segment_brightness is not None:
+            if (
+                not isinstance(self.segment_colors, tuple)
+                or not isinstance(self.segment_brightness, tuple)
+                or not 1 <= len(self.segment_colors) <= 16
+                or len(self.segment_colors) != len(self.segment_brightness)
+            ):
+                raise EffectStorageError("prior segment layout must contain matching 1 to 16 element tuples")
+            for rgb in self.segment_colors:
+                _validate_rgb(rgb, "prior segment colour")
+            if any(type(value) is not int or not 0 <= value <= 100 for value in self.segment_brightness):
+                raise EffectStorageError("prior segment brightness must be from 0 to 100")
         if self.music_palette is not None:
             if not isinstance(self.music_palette, tuple) or not 1 <= len(self.music_palette) <= 8:
                 raise EffectStorageError("prior music palette must contain 1 to 8 colours")
@@ -332,6 +357,14 @@ class PriorControlState:
             "brightness_pct": self.brightness_pct,
             "rgb_color": list(self.rgb_color),
             "color_temp_kelvin": self.color_temp_kelvin,
+            **(
+                {
+                    "segment_colors": [list(rgb) for rgb in self.segment_colors],
+                    "segment_brightness": list(self.segment_brightness),
+                }
+                if self.segment_colors is not None and self.segment_brightness is not None
+                else {}
+            ),
             "effect": self.effect,
             "scene_code": self.scene_code,
             "diy_code": self.diy_code,
@@ -339,6 +372,7 @@ class PriorControlState:
             "music_model": self.music_model,
             **({"music_parameters": dict(self.music_parameters)} if self.music_parameters is not None else {}),
             **({"music_palette": [list(rgb) for rgb in self.music_palette]} if self.music_palette is not None else {}),
+            **({"music_body": self.music_body.hex()} if self.music_body is not None else {}),
             "video_mode": self.video_mode,
             **({"video_parameters": dict(self.video_parameters)} if self.video_parameters is not None else {}),
             "music_sensitivity": self.music_sensitivity,
@@ -385,6 +419,21 @@ class PriorControlState:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> PriorControlState:
+        music_body = raw.get("music_body")
+        if music_body is not None:
+            if not isinstance(music_body, str) or not 0 < len(music_body) <= 2 * (255 * 17 - 3):
+                raise EffectStorageError("invalid prior music body hex")
+            try:
+                music_body = bytes.fromhex(music_body)
+            except ValueError as error:
+                raise EffectStorageError("invalid prior music body hex") from error
+        segment_colors = raw.get("segment_colors")
+        segment_brightness = raw.get("segment_brightness")
+        if segment_colors is not None or segment_brightness is not None:
+            if not isinstance(segment_colors, list) or not isinstance(segment_brightness, list):
+                raise EffectStorageError("invalid prior segment layout")
+            segment_colors = tuple(_required_rgb({"rgb": rgb}, "rgb") for rgb in segment_colors)
+            segment_brightness = tuple(segment_brightness)
         palette = raw.get("music_palette")
         if palette is not None:
             if not isinstance(palette, list) or not 1 <= len(palette) <= 8:
@@ -416,6 +465,8 @@ class PriorControlState:
             brightness_pct=_required_int(raw, "brightness_pct"),
             rgb_color=_required_rgb(raw, "rgb_color"),
             color_temp_kelvin=_optional_int(raw, "color_temp_kelvin"),
+            segment_colors=segment_colors,
+            segment_brightness=segment_brightness,
             effect=_optional_str(raw, "effect"),
             scene_code=_optional_int(raw, "scene_code"),
             diy_code=_optional_int(raw, "diy_code"),
@@ -423,6 +474,7 @@ class PriorControlState:
             music_model=model,
             music_parameters=parameters,
             music_palette=palette,
+            music_body=music_body,
             video_mode=_optional_str(raw, "video_mode") or "off",
             video_parameters=_required_mapping(raw, "video_parameters") if "video_parameters" in raw else None,
             music_sensitivity=_optional_int(raw, "music_sensitivity", default=100),

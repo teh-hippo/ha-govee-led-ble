@@ -4,6 +4,11 @@ import { property, state } from "lit/decorators.js";
 import {
   isKnownBrightnessOrder,
   KNOWN_BRIGHTNESS_ORDERS,
+  layerBrightness,
+  withLayerBrightness,
+  nativeDiyPalette,
+  updateNativeDiy,
+  type NativeDiyEdit,
 } from "./advanced-effect-model";
 import {
   AdvancedEffectEditorController,
@@ -89,6 +94,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   @property({ type: Number })
   public segmentCount = DEFAULT_SEGMENT_COUNT;
 
+  @property({ attribute: false })
+  public physicalIcCount?: number | null;
+
   @state()
   private movementAnnouncement = "";
 
@@ -125,11 +133,12 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const layerActions = advancedLayerActions(
       this.content.layers.length,
       this.disabled,
-    ).filter((action) => action.visible);
+    ).filter((action) => action.visible && (!this.content?.native_diy || action.kind === "renumber"));
     return html`
       <div class="visually-hidden" aria-live="polite">
         ${this.movementAnnouncement}
       </div>
+      ${this.renderNativeDiy()}
 
       <section class="card layer-card">
         <h3 class="section-title">Layers</h3>
@@ -141,8 +150,8 @@ export class GoveeAdvancedEffectEditor extends LitElement {
           itemRole="tab"
           addLabel="Add layer"
           .addDisabled=${this.disabled}
-          .addHidden=${this.content.layers.length >= AUTHORING_LAYER_LIMIT}
-          .reorderDisabled=${this.disabled}
+          .addHidden=${Boolean(this.content.native_diy) || this.content.layers.length >= AUTHORING_LAYER_LIMIT}
+          .reorderDisabled=${this.disabled || Boolean(this.content.native_diy)}
           .separateActions=${layerActions.length > 0}
           @item-selected=${(event: CustomEvent<{ index: number }>) =>
             this.selectLayer(event.detail.index)}
@@ -245,6 +254,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
   }
 
   private renderAppliedArea(layer: EffectLayer) {
+    const geometryUnknown = this.nativeGeometryUnknown;
     return html`
       <section class="card">
         <div class="section-heading">
@@ -253,7 +263,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         </div>
         <govee-applied-area-control
           .layer=${layer}
-          .disabled=${this.disabled}
+          .disabled=${this.disabled || (geometryUnknown && this.content?.native_diy === 506)}
           .segmentCount=${this.segmentCount}
           @area-changed=${(event: CustomEvent<AppliedAreaChange>) =>
             this.applyContentChange(
@@ -263,24 +273,29 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         ></govee-applied-area-control>
         ${renderFillPatternControls(
           layer,
-          this.disabled,
+          this.disabled || geometryUnknown,
           (update) =>
             this.applyContentChange(
               this.controller.updateNested("selection", update),
             ),
         )}
+        ${geometryUnknown ? html`<p>Physical IC count is unknown. This template's IC-dependent area/selection controls retain their preset values.</p>` : nothing}
       </section>
     `;
   }
 
   private renderPalette(layer: EffectLayer) {
+    const meteor = this.content?.native_diy === 503;
+    const maximum = meteor
+      ? this.physicalIcCount == null ? layer.palette.length : Math.min(8, Math.max(1, Math.floor(this.physicalIcCount / 5)))
+      : AUTHORING_PALETTE_LIMIT;
     return html`
       <section class="card">
         <h3 class="section-title">Colours</h3>
         <govee-palette-editor
           .palette=${layer.palette}
-          .minColours=${1}
-          .maxColours=${AUTHORING_PALETTE_LIMIT}
+          .minColours=${meteor && this.physicalIcCount == null ? layer.palette.length : 1}
+          .maxColours=${maximum}
           .disabled=${this.disabled}
           @palette-changed=${(event: CustomEvent<{ palette: RGB[] }>) =>
             this.applyContentChange(
@@ -316,25 +331,26 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     );
     const pattern = layer.brightness_patterns[activeIndex];
     const knownOrder = isKnownBrightnessOrder(pattern.order);
+    const brightness = layerBrightness(layer);
     return html`
       <section class="card">
         <h3 class="section-title">Brightness</h3>
         <div class="parameter-stack">
-          <label class="field">
-            <span>Style</span>
-            <select
-              .value=${layer.brightness_gradient ? "gradient" : "unified"}
-              ?disabled=${this.disabled}
-              @change=${(event: Event) =>
-                this.updateLayer({
-                  brightness_gradient:
-                    (event.target as HTMLSelectElement).value === "gradient",
-                })}
-            >
-              <option value="unified">Unified</option>
-              <option value="gradient">Gradient</option>
-            </select>
-          </label>
+          ${(["algorithm", "type"] as const).map((key) => html`
+            <label class="field">
+              <span>Brightness ${key}</span>
+              <select aria-label=${`Brightness ${key}`} ?disabled=${this.disabled}
+                @change=${(event: Event) => this.updateLayer(withLayerBrightness(layer, {
+                  [key]: Number((event.target as HTMLSelectElement).value),
+                }))}>
+                ${brightness[key] > (key === "algorithm" ? 2 : 3)
+                  ? html`<option selected disabled>Unknown (${brightness[key]})</option>` : nothing}
+                ${(key === "algorithm" ? [0, 1, 2] : [0, 1, 2, 3]).map((value) => html`
+                  <option value=${value} .selected=${brightness[key] === value}>${value}</option>
+                `)}
+              </select>
+            </label>
+          `)}
 
           <div class="patterns-section">
             <div class="subsection-heading">
@@ -523,7 +539,7 @@ export class GoveeAdvancedEffectEditor extends LitElement {
                     .value=${knownDirection
                       ? String(movement.direction)
                       : ""}
-                    ?disabled=${this.disabled}
+                    ?disabled=${this.disabled || (this.nativeGeometryUnknown && this.content?.native_diy === 506)}
                     @change=${(event: Event) => {
                       const direction = Number(
                         (event.target as HTMLSelectElement).value,
@@ -613,6 +629,69 @@ export class GoveeAdvancedEffectEditor extends LitElement {
         </div>
       </section>
     `;
+  }
+
+  private get nativeGeometryUnknown(): boolean {
+    const code = this.content?.native_diy;
+    return this.physicalIcCount == null && (
+      code === 502 || code === 504 || (code === 506 && this.controller.activeLayerIndex >= 2)
+    );
+  }
+
+  private renderNativeDiy() {
+    const content = this.content!;
+    const code = content.native_diy;
+    if (code === undefined) return nothing;
+    const layers = content.layers;
+    const names = ["Brilliant / Colorful", "Colorful Sky", "Meteor", "Meteor Shower", "Shine", "Bloom DIY", "Stack"];
+    const change = (edit: NativeDiyEdit) => this.applyContentChange(updateNativeDiy(content, edit, this.physicalIcCount));
+    const palette = (label: string, secondary = false) => {
+      const colours = nativeDiyPalette(content, secondary);
+      const min = code === 501 ? 4 : code === 502 || code === 506 ? 2 : code === 504 ? 3 : 1;
+      const unknownMeteor = code === 503 && this.physicalIcCount == null;
+      const max = code === 503 && this.physicalIcCount != null
+        ? Math.min(8, Math.max(1, Math.floor(this.physicalIcCount / 5))) : 8;
+      return html`<h4>${label}</h4><govee-palette-editor
+        .palette=${colours} .minColours=${unknownMeteor ? colours.length : min}
+        .maxColours=${unknownMeteor ? colours.length : max} .disabled=${this.disabled}
+        @palette-changed=${(event: CustomEvent<{ palette: RGB[] }>) => change({ [secondary ? "secondary" : "palette"]: event.detail.palette })}
+      ></govee-palette-editor>`;
+    };
+    const first = layers[code === 501 ? 1 : 0];
+    const pattern = first.brightness_patterns[0];
+    return html`<section class="card">
+      <h3>${names[code - 501]} · Native DIY ${code}</h3>
+      <p>APK template preset. Playback and rendering await device qualification.</p>
+      ${palette(code === 506 ? "Bloom colours" : code === 507 ? "Moving colours" : "Effect colours")}
+      ${code === 506 || code === 507 ? palette(code === 506 ? "Moving colours" : "Stack colours", true) : nothing}
+      ${code === 501 || code === 505 ? html`<h4>Background</h4><govee-palette-editor
+        .palette=${layers[code === 501 ? 0 : 1].palette} .minColours=${1} .maxColours=${1} .disabled=${this.disabled}
+        @palette-changed=${(event: CustomEvent<{ palette: RGB[] }>) => change({ background: event.detail.palette[0] })}
+      ></govee-palette-editor>` : nothing}
+      ${code <= 505 ? renderNumberField("Template speed", code === 503 || code === 504 ? first.overall_movement.speed : first.colour_speed,
+        (speed) => change({ speed }), this.disabled, { minimum: code === 501 ? 0 : code === 502 ? 150 : 200, maximum: code === 505 ? 245 : 255 }) : nothing}
+      ${pattern && (code === 501 || code === 505) ? html`
+        ${renderNumberField("Minimum brightness", pattern.scope_low, (low) => change({ low }), this.disabled, { maximum: Math.max(0, pattern.scope_high - 76) })}
+        ${renderNumberField("Maximum brightness", pattern.scope_high, (high) => change({ high }), this.disabled, { minimum: Math.min(255, pattern.scope_low + 76) })}
+      ` : nothing}
+      ${pattern && (code === 502 || code === 506 || code === 507) ? renderNumberField("Template brightness", pattern.scope_high,
+        (brightness) => change({ brightness }), this.disabled, { minimum: code === 507 ? 25 : 50 }) : nothing}
+      ${code === 501 ? html`<label><input type="checkbox" .checked=${first.colour_retention === 50} ?disabled=${this.disabled}
+        @change=${(event: Event) => change({ gradient: (event.target as HTMLInputElement).checked })}>Colour gradient</label>` : nothing}
+      ${code === 502 ? html`
+        ${renderNumberField("Minimum star IC count", first.selection.param_2, (starMin) => change({ starMin }), this.disabled || this.physicalIcCount == null, { minimum: 1, maximum: first.selection.param_1 })}
+        ${renderNumberField("Maximum star IC count", first.selection.param_1, (starMax) => change({ starMax }), this.disabled || this.physicalIcCount == null, { minimum: first.selection.param_2, maximum: this.physicalIcCount == null ? first.selection.param_1 : Math.min(25, Math.floor(this.physicalIcCount * 4 / 5)) })}
+      ` : nothing}
+      ${code === 503 || code === 504 || code === 506 || code === 507 ? html`<label class="field"><span>Template direction</span>
+        <select aria-label="Template direction" ?disabled=${this.disabled || (code === 506 && this.physicalIcCount == null)}
+          @change=${(event: Event) => change({ direction: Number((event.target as HTMLSelectElement).value) })}>
+          <option value="" selected disabled>Choose direction</option>
+          <option value="0">Clockwise</option><option value="1">Counterclockwise</option>
+          ${code === 506 ? html`<option value="2">Two-way</option>` : nothing}
+        </select></label>` : nothing}
+      ${this.physicalIcCount == null && [502, 503, 504, 506].includes(code)
+        ? html`<p>Physical IC count is unknown; dependent controls retain the APK seed. Logical segment count is not used as IC geometry.</p>` : nothing}
+    </section>`;
   }
 
   private updateLayer(update: Partial<EffectLayer>, interaction?: LivePreviewInteraction): void {

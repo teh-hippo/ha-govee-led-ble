@@ -23,7 +23,12 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     WORKSHOP_PROTOCOL_FIXTURES,
     resolve_catalogue_template,
 )
-from custom_components.ha_govee_led_ble.effect_compiler import CompiledEffect, CompiledVideoProfile, compile_application
+from custom_components.ha_govee_led_ble.effect_compiler import (
+    CompiledEffect,
+    CompiledMusicProfile,
+    CompiledVideoProfile,
+    compile_application,
+)
 from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
@@ -56,6 +61,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    MusicBody,
     build_blank_screen,
     build_h6199_video,
     build_power,
@@ -65,6 +71,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
+from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -1128,7 +1135,7 @@ async def test_workshop_preview_verifies_evidenced_selector(
             "H617A",
             LibraryItem.new(
                 "Music",
-                MusicProfile("H617A", "separation", 50, (1, 2, 3), None, {"point": 3, "gradient": True}),
+                MusicProfile("H617A", "separation", 50, parameters={"point": 3}, palette=((1, 2, 3), (32, 96, 160))),
             ),
         ),
         (
@@ -1166,6 +1173,23 @@ async def test_snapshot_profile_previews_use_preview_transport(
     coordinator.blank_screen_low_brightness_duration_seconds = 10
     coordinator.blank_screen_same_tone_duration_seconds = 120
     coordinator._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    if model == "H617A":
+        compiled = compile_application(item, model)
+        assert isinstance(compiled, CompiledMusicProfile)
+
+        async def acknowledge_upload(_uuid, packet, **kwargs):
+            if packet == compiled.packets[-2]:
+                assert coordinator.music_mode == "off"
+                assert coordinator._upload_ack is not None
+                pending = coordinator._upload_ack[-1]
+                assert not pending.done()
+                payload = bytes.fromhex("a3413200").ljust(19, b"\0")
+                coordinator._notify_callback(None, bytearray(payload + bytes([xor_checksum(payload)])))
+                assert pending.result() is True
+            elif packet == compiled.packets[-1]:
+                assert coordinator._upload_ack is None
+
+        coordinator._client.write_gatt_char.side_effect = acknowledge_upload
     if model == "H6199":
         from tests.test_h6099 import frame
         from tests.test_h6199_capabilities import QUALIFIED
@@ -1184,7 +1208,8 @@ async def test_snapshot_profile_previews_use_preview_transport(
     coordinator.send_command = AsyncMock(side_effect=AssertionError("preview must use preview transport"))  # type: ignore[method-assign]
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
-    session_id = _open(manager, owner, [])
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
 
     await manager.async_queue_snapshot(
         session_id=session_id,
@@ -1198,6 +1223,20 @@ async def test_snapshot_profile_previews_use_preview_transport(
 
     coordinator.async_preview_write.assert_awaited()
     coordinator.send_command.assert_not_awaited()
+    assert events[-1].phase is PreviewPhase.CONFIRMED
+    if model == "H617A":
+        assert isinstance(compiled, CompiledMusicProfile)
+        calls = coordinator.async_preview_write.await_args_list
+        assert [entry.args[0] for entry in calls] == list(compiled.packets)
+        assert [entry.args[1] for entry in coordinator._client.write_gatt_char.await_args_list] == list(
+            compiled.packets
+        )
+        body = MusicBody.from_bytes(reassemble_a3(compiled.packets[1:-1]))
+        body._read()
+        assert [(rgb.red, rgb.green, rgb.blue) for rgb in body.palette] == [(1, 2, 3), (32, 96, 160)]
+        assert body.tail.point == 3
+        assert coordinator.music_mode == "separation"
+        assert coordinator.music_palette == ((1, 2, 3), (32, 96, 160))
     if model == "H6199":
         compiled = compile_application(item, model)
         assert isinstance(compiled, CompiledVideoProfile)

@@ -11,6 +11,7 @@ from .coordinator_status import ParsedMode
 
 if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
+    from .native_profile_controls import ProfileWriter
 
 
 class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
@@ -77,6 +78,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             progress: Callable[[int], Awaitable[None]] | None = None,
             packet_state_values: Sequence[Mapping[str, Any]] | None = None,
             packet_write_guard: Callable[[int], None] | None = None,
+            require_upload_ack: bool = False,
+            upload_ack_index: int | None = None,
+            writer: ProfileWriter | None = None,
         ) -> None: ...
 
         async def refresh_state(

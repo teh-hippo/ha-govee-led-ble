@@ -7,6 +7,8 @@ import {
 import {
   isKnownSelectionType,
   KNOWN_SELECTION_TYPES,
+  selectionQuantity,
+  withSelectionQuantity,
 } from "./advanced-effect-model";
 import {
   DISTRIBUTION_COLOUR_FIELDS,
@@ -59,10 +61,10 @@ export function renderFillPatternControls(
       ${parameters.map(([key, label, help]) =>
         renderNumberField(
           label,
-          selection[key],
-          (value) => update({ [key]: value }),
+          key === "quantity" ? selectionQuantity(selection) : selection[key],
+          (value) => update(key === "quantity" ? withSelectionQuantity(value) : { [key]: value }),
           disabled,
-          { help },
+          { help, maximum: key === "quantity" ? 65535 : 255 },
         ),
       )}
     </div>
@@ -72,8 +74,8 @@ export function renderFillPatternControls(
 export function renderDistribution(
   layer: EffectLayer, disabled: boolean, updateDistribution: (update: Partial<EffectLayer["distribution"]>) => void, updateLayer: (update: Partial<EffectLayer>) => void,
 ): TemplateResult {
-  const method = layer.distribution.method;
-  const knownMethod = method >= 0 && method <= 2;
+  const method = layer.distribution.method & 15;
+  const knownMethod = method >= 0 && method <= 3;
   return html`
     <section class="card">
       <div class="section-heading">
@@ -94,9 +96,10 @@ export function renderDistribution(
             <option value="0">Unified</option>
             <option value="1">By IC</option>
             <option value="2">By Segment</option>
+            <option value="3">By Segment with Gradient</option>
           </select>
         </label>
-        ${method === 1 || method === 2
+        ${method >= 1 && method <= 3
           ? html`
               <label class="field">
                 <span>Direction</span>

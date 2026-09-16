@@ -18,11 +18,19 @@ from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEn
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_black_border_query,
     build_blank_screen_query,
+    build_brightness,
+    build_brightness_query,
     build_h6099_diy_activation,
     build_physical_ic_count_query,
+    build_power,
+    build_power_query,
     build_subordinate_query,
 )
-from custom_components.ha_govee_led_ble.music_commands import build_music_params, prepare_music_request
+from custom_components.ha_govee_led_ble.music_commands import (
+    build_music_params,
+    prepare_music_profile_writes,
+    prepare_music_request,
+)
 from custom_components.ha_govee_led_ble.music_semantics import capture_music_parameters
 from custom_components.ha_govee_led_ble.native_profile_controls import apply_black_border, apply_blank_screen
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -230,8 +238,14 @@ async def test_diy_recovery_activation_preserves_notification_and_zero_attempt_s
         return
 
     async def respond(_uuid, packet, **kwargs):
-        assert packet == build_h6099_diy_activation(0x1234)
-        notify(device, "aa050a7856")
+        if packet == build_h6099_diy_activation(0x1234):
+            notify(device, "aa050a7856")
+        elif packet == build_power_query("H6099"):
+            notify(device, "aa0101")
+        elif packet == build_brightness_query("H6099"):
+            notify(device, "aa0464")
+        else:
+            assert packet in (build_power(True, "H6099"), build_brightness(100, "H6099"))
 
     device._client.write_gatt_char.side_effect = respond
     monkeypatch.setattr(device, "async_observe_effect", AsyncMock(return_value=True))
@@ -244,6 +258,36 @@ async def test_diy_recovery_activation_preserves_notification_and_zero_attempt_s
     device._client.write_gatt_char.assert_not_awaited()
 
 
+@pytest.mark.parametrize("attempted", [False, True])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_off_recovery_cleanup_preserves_original_failure(device, attempted, cleanup_fails, cancelled):
+    state = replace(device.capture_effect_control_state(), mode="custom", is_on=False, diy_code=0x1234)
+    error = asyncio.CancelledError() if cancelled else ValueError("original recovery failure")
+    off = build_power(False, "H6099")
+
+    def transform(packet):
+        if packet != off and not attempted:
+            raise error
+        return packet
+
+    async def transmit(_uuid, packet, **kwargs):
+        if packet != off:
+            raise error
+        if cleanup_fails:
+            raise RuntimeError("power-off cleanup failed")
+
+    device.profile = replace(device.profile, outbound_transform=transform)
+    device._client.write_gatt_char.side_effect = transmit
+    with pytest.raises(type(error)) as caught:
+        await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
+    assert caught.value is error
+    packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
+    assert packets == ([build_power(True, "H6099"), off] if attempted else [])
+    assert device.control_write_attempts == len(packets)
+    assert not device._lock.locked() and not device._control_lock.locked()
+
+
 async def test_music_recovery_uses_device_geometry_without_unsupported_colour(device, monkeypatch):
     notify(device, "aa40003c")
     state = replace(
@@ -254,11 +298,21 @@ async def test_music_recovery_uses_device_geometry_without_unsupported_colour(de
         music_color=(1, 2, 3),
         music_parameters={"key_count": 18, "gradient": False},
         music_palette=((12, 34, 56),) * 7,
+        music_body=prepare_music_profile_writes(
+            "H6099",
+            "piano_keys",
+            99,
+            None,
+            False,
+            {"key_count": 18, "gradient": False},
+            profile=device.profile,
+            palette=((12, 34, 56),) * 7,
+        )[-2][1]["_music_body"][1],
     )
     monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
     assert not await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
     packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
-    assert packets == list(
+    assert packets == [build_brightness(state.brightness_pct, "H6099")] + list(
         prepare_music_request(
             "H6099",
             "piano_keys",
@@ -274,13 +328,19 @@ async def test_music_recovery_uses_device_geometry_without_unsupported_colour(de
     assert device.music_color is None
     assert device.music_piano_key_count == 18 and device.music_piano_gradient is False
     assert device.music_palette == state.music_palette
-    device.refresh_state.assert_awaited_once_with(expected_music_mode="piano_keys")
+    device.refresh_state.assert_awaited_once_with(
+        expected_on=True,
+        expected_brightness=100,
+        expected_music_mode="piano_keys",
+        expected_music_sensitivity=99,
+    )
     assert "music_palette" not in device._expected_state
     assert device._field_revisions == {}
 
 
 @pytest.mark.parametrize("missing_policy", [False, True])
 async def test_video_recovery_restores_policy_and_border_only_when_requested(device, monkeypatch, missing_policy):
+    notify(device, "aa0500010864010237")
     device.subordinate_21_version = "1.00.11"
     device.blank_screen = True
     device.black_border = True
@@ -297,7 +357,24 @@ async def test_video_recovery_restores_policy_and_border_only_when_requested(dev
     monkeypatch.setattr(f"{M}.apply_blank_screen", blank)
     monkeypatch.setattr(f"{M}.apply_black_border", border)
     monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
+
+    async def transmit(_uuid, packet, **kwargs):
+        if packet in (build_power(True, "H6099"), build_power(False, "H6099")):
+            notify(device, "aa0101" if packet == build_power(True, "H6099") else "aa0100")
+        elif packet == build_brightness(100, "H6099"):
+            notify(device, "aa0464")
+
+    device._client.write_gatt_char.side_effect = transmit
     assert await device.async_restore_effect_control_state(state, overwritten_diy_code=None) is not missing_policy
+    packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
+    assert packets == [
+        build_power(True, "H6099"),
+        build_brightness(100, "H6099"),
+        frame("330500010864010237"),
+        build_power(False, "H6099"),
+    ]
+    assert device.refresh_state.await_args_list[-2].kwargs == {"expected_on": True, "expected_brightness": 100}
+    assert device.refresh_state.await_args_list[-1].kwargs == {"expected_on": False}
     if missing_policy:
         blank.assert_not_awaited()
     else:
@@ -315,7 +392,7 @@ async def test_video_recovery_restores_policy_and_border_only_when_requested(dev
 
 @pytest.mark.parametrize("changed_at", [0, 1, 2, 3])
 @pytest.mark.parametrize("count", [None, 14])
-async def test_music_recovery_rechecks_geometry_before_every_attempt(device, changed_at, count):
+async def test_authored_music_rechecks_geometry_before_every_attempt(device, changed_at, count):
     notify(device, "aa40003c")
     state = replace(
         device.capture_effect_control_state(),
@@ -336,6 +413,16 @@ async def test_music_recovery_rechecks_geometry_before_every_attempt(device, cha
         palette=state.music_palette,
     )
     assert len(packets) == 4
+    writes = prepare_music_profile_writes(
+        "H6099",
+        "piano_keys",
+        99,
+        None,
+        False,
+        state.music_parameters,
+        profile=device.profile,
+        palette=state.music_palette,
+    )
     client = device._client
 
     def change_geometry():
@@ -352,7 +439,7 @@ async def test_music_recovery_rechecks_geometry_before_every_attempt(device, cha
     device._ensure_connected.side_effect = reconnect
     client.write_gatt_char.side_effect = transmit
     with pytest.raises(ValueError, match="Physical IC count changed"):
-        await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        await device.async_write_music_sequence(writes, mode_code=52, physical_ic_count=60, intent=ControlIntent.USER)
     assert device.control_write_attempts == client.write_gatt_char.await_count == changed_at
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(packets[:changed_at])
     assert device.music_mode == "off" and device._field_revisions == {}
@@ -360,6 +447,7 @@ async def test_music_recovery_rechecks_geometry_before_every_attempt(device, cha
 
 @pytest.mark.parametrize("changed", [False, True])
 async def test_authored_policy_recovery_checks_notifications_at_physical_boundary(device, monkeypatch, changed):
+    notify(device, "aa0500010864010237")
     notify(device, "aaa90a0601020a007800")
     state = replace(
         device.capture_effect_control_state(),
@@ -378,6 +466,14 @@ async def test_authored_policy_recovery_checks_notifications_at_physical_boundar
 
     device._ensure_connected.side_effect = reconnect
     monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
+
+    async def transmit(_uuid, packet, **kwargs):
+        if packet in (build_power(True, "H6099"), build_power(False, "H6099")):
+            notify(device, "aa0101" if packet == build_power(True, "H6099") else "aa0100")
+        elif packet == build_brightness(100, "H6099"):
+            notify(device, "aa0464")
+
+    client.write_gatt_char.side_effect = transmit
     if changed:
         with pytest.raises(ValueError, match="policy changed before recovery write"):
             await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
@@ -387,6 +483,12 @@ async def test_authored_policy_recovery_checks_notifications_at_physical_boundar
     else:
         assert await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
         assert client.write_gatt_char.await_args_list[0].args[1] == frame("33a90a0601012c015802")
+        assert [call.args[1] for call in client.write_gatt_char.await_args_list[1:]] == [
+            build_power(True, "H6099"),
+            build_brightness(100, "H6099"),
+            frame("330500010864010237"),
+            build_power(False, "H6099"),
+        ]
         assert tuple(getattr(device, field) for field in POLICY_FIELDS) == (True, 1, 300, 600)
 
 
@@ -395,6 +497,9 @@ async def test_studio_persists_policy_recovery_only_for_explicit_policy(device, 
     notify(device, "aaa90a0601020a007800")
 
     async def refresh(**kwargs):
+        if kwargs.get("refresh_all"):
+            for prefix in ("aa0101", "aa0464", "aa0500010864010237"):
+                notify(device, prefix)
         if kwargs.get("refresh_display_settings"):
             notify(device, "aaa90a0601020a007800")
         return True
@@ -441,7 +546,9 @@ async def test_authored_policy_recovery_does_not_retry_over_a_filtered_notificat
     client.write_gatt_char.side_effect = transmit
     with pytest.raises(ValueError, match="policy changed before recovery write"):
         await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
-    assert device.control_write_attempts == client.write_gatt_char.await_count == 1
+    # The first policy attempt failed; power-off cleanup retries but must not mask the policy guard.
+    assert device.control_write_attempts == client.write_gatt_char.await_count == 4
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list[1:]] == [build_power(False, "H6099")] * 3
     assert device._field_revisions["blank_screen"] == 1
 
 

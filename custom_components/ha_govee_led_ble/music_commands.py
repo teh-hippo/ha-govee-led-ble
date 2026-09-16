@@ -1,12 +1,19 @@
 """Qualified music requests, prepared in full before any control side effects."""
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 from kaitaistruct import KaitaiStructError
 
 from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile
-from .generated_protocol_adapter import build_music_mode, build_power, encode_music_parameters, music_default_palette
+from .generated_protocol_adapter import (
+    build_music_mode,
+    build_power,
+    encode_music_parameters,
+    music_default_palette,
+    parse_music_parameters,
+)
 from .music_semantics import compile_music_parameters, music_parameters_available, music_params_for_mode, music_variant
 from .transport import fragment_a3
 
@@ -114,9 +121,14 @@ def prepare_music_profile_writes(
     profile: ModelProfile | None = None,
     include_parameters: bool = True,
     palette: Sequence[tuple[int, int, int]] | None = None,
+    original_body: bytes | None = None,
 ) -> tuple[tuple[bytes, dict[str, Any]], ...]:
     """Pair validated packets with retained state installed at their physical attempt."""
     profile = get_profile(model) if profile is None else profile
+    if original_body is not None:
+        if not include_parameters or palette is not None or parameters:
+            raise ValueError("original music body cannot be combined with authored parameters")
+        validate_music_body(original_body, mode, profile=profile)
     packets = prepare_music_request(
         model,
         mode,
@@ -125,9 +137,13 @@ def prepare_music_profile_writes(
         calm,
         parameters,
         profile=profile,
-        include_parameters=include_parameters,
+        include_parameters=include_parameters and original_body is None,
         palette=palette,
     )
+    if original_body is not None:
+        power, selector = packets
+        upload = fragment_a3(0x41, original_body)
+        packets = (power, *upload, selector) if profile.music_upload_before_selector else (power, selector, *upload)
     states: list[dict[str, Any]] = [{} for _ in packets]
     states[0] = {"is_on": True}
     selector_index = len(packets) - 1 if profile.music_upload_before_selector else 1
@@ -141,7 +157,7 @@ def prepare_music_profile_writes(
         "diy_code": None,
     }
     variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
-    if variant and variant.layout == "h6099_music_parameters":
+    if variant and variant.layout in {"music_body", "h6099_music_parameters"}:
         # New selectors carry neither style nor fixed colour, even without an upload.
         del states[selector_index]["music_calm"]
         del states[selector_index]["music_color"]
@@ -151,16 +167,132 @@ def prepare_music_profile_writes(
         states[companion_index] = {
             spec.key: parameters.get(spec.profile_key, spec.default)
             for spec in music_params_for_mode(MUSIC_MODE_SLUGS[mode], profile)
+            if original_body is None
         }
-        if variant and variant.layout == "h6099_music_parameters" and variant.supports_style:
+        if original_body is None and variant and variant.supports_style:
             states[companion_index]["music_calm"] = calm
+        assert variant is not None
+        body = (
+            original_body
+            if original_body is not None
+            else encode_music_parameters(
+                variant,
+                compile_music_parameters(parameters, MUSIC_MODE_SLUGS[mode], profile),
+                palette=None if palette is None else list(palette),
+                calm=calm,
+                physical_ic_count=profile.physical_ic_count,
+            )
+        )
+        if original_body is not None:
+            decoded = music_body_parameters(body, mode, profile=profile)
+            states[companion_index].update(
+                {spec.key: decoded[spec.profile_key] for spec in variant.parameters if spec.profile_key in decoded}
+            )
+            if variant.supports_style:
+                # Unknown companion pairs must not inherit the previous effect's style.
+                style = music_body_style(body, mode, profile=profile)
+                states[companion_index]["_music_calm" if style is None else "music_calm"] = style
+            # Retained display fields are not edit intent or geometry-dependent writes.
+            states[companion_index]["_music_parameter_keys"] = ()
+        first_companion = 1 if profile.music_upload_before_selector else 2
+        states[first_companion]["_music_body"] = None
+        # Candidate only: async_write_music_sequence defers this until successful completion.
+        states[companion_index]["_music_body"] = (mode, body)
         if variant and variant.palette_bounds:
             # An incomplete upload invalidates retained knowledge. Neither assignment is readback.
-            first_companion = 1 if profile.music_upload_before_selector else 2
             states[first_companion]["_music_palette"] = None
-            retained = tuple(tuple(rgb) for rgb in palette) if palette is not None else music_default_palette(variant)
+            retained = music_default_palette(replace(variant, template=body))
             states[companion_index]["_music_palette"] = (mode, retained)
     return tuple(zip(packets, states, strict=True))
+
+
+def validate_music_body(body: bytes, mode: str, *, profile: ModelProfile) -> Any:
+    """Validate restored bytes structurally; authoring bounds cannot discard original companions."""
+    variant = music_variant(profile, MUSIC_MODE_SLUGS.get(mode, -1))
+    if mode not in profile.music_modes or variant is None or not variant.evidence:
+        raise ValueError("music body mode is unqualified")
+    try:
+        return parse_music_parameters(variant, body)
+    except (KaitaiStructError, EOFError) as error:
+        raise ValueError("invalid original music body") from error
+
+
+def prepare_music_body_writes(
+    model: str,
+    mode: str,
+    sensitivity: int,
+    body: bytes,
+    *,
+    profile: ModelProfile | None = None,
+) -> tuple[tuple[bytes, dict[str, Any]], ...]:
+    """Replay a complete known body verbatim; the new selector carries only mode/sensitivity."""
+    return prepare_music_profile_writes(model, mode, sensitivity, None, False, {}, profile=profile, original_body=body)
+
+
+def edit_music_body(
+    body: bytes,
+    mode: str,
+    parameters: Mapping[str, Any],
+    *,
+    profile: ModelProfile,
+    calm: bool | None = None,
+) -> bytes:
+    """Overlay only requested fields on a validated original, never fill missing fields from defaults."""
+    validate_music_body(body, mode, profile=profile)
+    mode_code = MUSIC_MODE_SLUGS[mode]
+    variant = music_variant(profile, mode_code)
+    assert variant is not None
+    if calm is not None and (type(calm) is not bool or not variant.supports_style):
+        raise ValueError("music style is unsupported or invalid")
+    compiled = compile_music_parameters(parameters, mode_code, profile)
+    return encode_music_parameters(
+        replace(variant, template=body),
+        {key: compiled[key] for key in parameters},
+        palette=None,
+        calm=calm,
+        physical_ic_count=profile.physical_ic_count,
+        preserve_companions=True,
+    )
+
+
+def music_body_parameters(body: bytes, mode: str, *, profile: ModelProfile) -> dict[str, int | bool | str]:
+    """Read declared fields from the known body so an edit can distinguish unchanged siblings."""
+    root = validate_music_body(body, mode, profile=profile)
+    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
+    assert variant is not None
+    result: dict[str, int | bool | str] = {}
+    # Decoding known fields does not require permission to author geometry-dependent values.
+    for spec in variant.parameters:
+        value = getattr(root.tail, spec.wire_field)
+        if spec.wire_field == "background":
+            result[spec.profile_key] = (int(value.red) << 16) | (int(value.green) << 8) | int(value.blue)
+        elif spec.kind == "switch":
+            result[spec.profile_key] = bool(value)
+        elif spec.kind == "select":
+            directions = (
+                ((name, start) for name, start, _ in variant.direction_values)
+                if variant.direction_values
+                else (("clockwise", 0), ("counterclockwise", 2), ("two_way", 1))
+            )
+            for name, start in directions:
+                if root.tail.start_point == start and name in spec.options:
+                    result[spec.profile_key] = name
+        else:
+            result[spec.profile_key] = int(value)
+    return result
+
+
+def music_body_style(body: bytes, mode: str, *, profile: ModelProfile) -> bool | None:
+    """Only recognized companion pairs establish a style; unknown pairs stay unknown."""
+    root = validate_music_body(body, mode, profile=profile)
+    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
+    if variant is None or not variant.supports_style:
+        return None
+    if hasattr(root.tail, "rhythm_speed") and root.tail.no_rhythm_speed == 10:
+        return {80: False, 20: True}.get(root.tail.rhythm_speed)
+    if hasattr(root.tail, "minimum_brightness"):
+        return {(5, 100): False, (20, 70): True}.get((root.tail.minimum_brightness, root.tail.maximum_brightness))
+    return None
 
 
 def music_default_available(model: str, mode: str, *, profile: ModelProfile | None = None) -> bool:

@@ -262,6 +262,30 @@ export class GoveeMusicProfileEditor extends LitElement {
   private renderModeParameters(content: MusicProfileContent) {
     return Object.entries(this.settings?.parameters ?? {}).map(([key, spec]) => {
       const label = parameterLabel(key);
+      if (key === "background" && spec.kind === "number") {
+        const value = numberParameter(content.parameters, key, spec.default as number, spec.min, spec.max);
+        const colour: RGB = [value >> 16, (value >> 8) & 255, value & 255];
+        const change = (event: CustomEvent<{ colour: RGB }>, interaction: LivePreviewInteraction) => {
+          const [red, green, blue] = event.detail.colour;
+          this.updateContent(content => ({
+            ...content, parameters: {...content.parameters, [key]: (red << 16) | (green << 8) | blue},
+          }), interaction);
+        };
+        return html`
+          <div class="field">
+            <govee-single-colour-field
+              label="Background colour"
+              .colour=${colour}
+              .disabled=${this.disabled}
+              @colour-changing=${(event: CustomEvent<{ colour: RGB }>) => change(event, "changing")}
+              @colour-changed=${(event: CustomEvent<{ colour: RGB }>) => change(event, "committed")}
+            ></govee-single-colour-field>
+            <button type="button" ?disabled=${this.disabled} @click=${() => this.updateParameter(key, 0x010101)}>
+              No colour
+            </button>
+          </div>
+        `;
+      }
       if (spec.kind === "number") {
         return this.renderRangeField(
           label, numberParameter(content.parameters, key, spec.default as number, spec.min, spec.max),

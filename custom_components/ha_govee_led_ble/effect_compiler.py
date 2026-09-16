@@ -21,6 +21,7 @@ from .effect_catalogue import (
     H6199_WORKSHOP_APPLY_CODE,
     H6199_WORKSHOP_APPLY_MUSIC_CODE,
     validate_effect_eligibility,
+    validate_native_diy,
 )
 from .effect_commands import (
     DiyPaintGroup,
@@ -59,7 +60,7 @@ from .generated_protocol_adapter import (
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
 from .music_commands import resolve_music_profile
-from .music_semantics import music_variant
+from .music_semantics import music_parameters_depend_on_ic, music_variant
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body
 from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity
 from .transport import fragment_a3
@@ -174,7 +175,7 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
     dependent = compiled.physical_ic_count is not None
     if isinstance(compiled, CompiledMusicProfile):
         variant = music_variant(profile, MUSIC_MODE_SLUGS[compiled.mode])
-        dependent = bool(variant and variant.requires_physical_ic_count)
+        dependent = music_parameters_depend_on_ic(variant, compiled.parameters)
     if dependent and compiled.physical_ic_count != profile.physical_ic_count:
         raise ValueError("Physical IC count changed since compilation; refresh and retry")
 
@@ -304,7 +305,10 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
     if isinstance(content, LayeredEffect):
         try:
             require_effect_route(model, CapabilityWorkflow.ADVANCED)
-            _advanced_carrier(model)
+            if content.native_diy is not None:
+                validate_native_diy(content, model, profile)
+            else:
+                _advanced_carrier(model)
         except ValueError as error:
             return CompatibilityResult(CompatibilityState.INCOMPATIBLE, (str(error),))
         return CompatibilityResult(CompatibilityState.COMPATIBLE)
@@ -335,6 +339,8 @@ def compile_effect(
             profile=profile,
         )
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene | LayeredEffect):
+        if isinstance(item.content, LayeredEffect) and item.content.native_diy is not None:
+            resolve_diy_code(item, diy_code, model=model)
         return compile_scene_effect(item, model, profile=profile)
     if isinstance(item.content, WorkshopEffect):
         resolve_diy_code(item, diy_code, model=model)
@@ -356,6 +362,12 @@ def resolve_diy_code(
 ) -> int | None:
     """Resolve a custom selector; scene and profile applications return None."""
     content = item.content
+    if isinstance(content, LayeredEffect) and content.native_diy is not None:
+        if model is not None and model != "H617A":
+            raise ValueError("native DIY templates target H617A only")
+        if requested is not None and requested != content.native_diy:
+            raise ValueError("native DIY requires its own template selector")
+        return content.native_diy
     if isinstance(content, MusicProfile | VideoProfile):
         if requested is not None:
             raise ValueError("profiles do not use a DIY code")
@@ -443,6 +455,28 @@ def compile_scene_effect(item: LibraryItem, model: str, *, profile: ModelProfile
         raise ValueError("; ".join(result.reasons))
 
     content = item.content
+    if isinstance(content, LayeredEffect) and content.native_diy is not None:
+        upload = tuple(fragment_a3(int(SceneBody.SceneType.scene_v2), encode_workshop_effect(model, content)))
+        activation = build_scene_activation(model, content.native_diy, 0)
+        return CompiledEffect(
+            item_id=str(item.id),
+            item_version=item.version,
+            model=model,
+            content_kind="advanced",
+            diy_code=content.native_diy,
+            activation_mode=ActivationMode.CUSTOM,
+            selector_kind="scene",
+            expected_effect=None,
+            upload_packets=upload,
+            activation_packet=activation,
+            artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
+            evidence_codes=(
+                "native_diy_positive_ack_required",
+                "effect_content_readback_unavailable",
+                "native_diy_rendering_unqualified",
+            ),
+            physical_ic_count=(get_profile(model) if profile is None else profile).physical_ic_count,
+        )
     evidence_codes: list[str] = []
     if isinstance(content, BuiltinScene):
         content_kind = "scene_builtin"

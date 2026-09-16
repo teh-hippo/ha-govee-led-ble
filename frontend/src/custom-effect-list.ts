@@ -19,6 +19,12 @@ export interface CustomEffectListContext {
 
 export type CustomEffectListEntry =
   | {
+      kind: "native-diy";
+      key: string;
+      label: string;
+      category: "advanced";
+    }
+  | {
       kind: "paint";
       key: "template:paint";
       label: "Paint";
@@ -53,6 +59,11 @@ export function buildCustomEffectEntries(
 ): CustomEffectListEntry[] {
   const catalogue = context.catalogue;
   const entries: CustomEffectListEntry[] = [
+    ...(catalogue?.templates?.filter((template) =>
+      template.content.kind === "advanced" && template.content.native_diy !== undefined,
+    ).map((template): CustomEffectListEntry => ({
+      kind: "native-diy", key: template.id, label: template.label, category: "advanced",
+    })) ?? []),
     ...(catalogue?.painted_effects.length
       ? [
           {
@@ -235,6 +246,8 @@ function customEffectEntryAvailable(
   entry: CustomEffectListEntry,
 ): boolean {
   switch (entry.kind) {
+    case "native-diy":
+      return customEffectKindAvailable(context, "advanced");
     case "paint":
       return customEffectKindAvailable(context, "h617a_painted");
     case "single":

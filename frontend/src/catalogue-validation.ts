@@ -373,7 +373,8 @@ function decodeCatalogueTemplates(
         content.kind !== "h617a_single" &&
         content.kind !== "palette_diy" &&
         content.kind !== "music_profile" &&
-        content.kind !== "video_profile"
+        content.kind !== "video_profile" &&
+        content.kind !== "advanced"
       ) {
         invalid(`${name}[${index}] content is not a supported built-in template`);
       }
@@ -382,6 +383,9 @@ function decodeCatalogueTemplates(
         content.model !== model
       ) {
         invalid(`${name}[${index}] content does not target ${model}`);
+      }
+      if (content.kind === "advanced" && (model !== "H617A" || content.native_diy === undefined)) {
+        invalid(`${name}[${index}] native DIY template identity`);
       }
       return {
         id: boundedString(
@@ -396,7 +400,7 @@ function decodeCatalogueTemplates(
         ),
         category: enumString(
           template.category,
-          ["single-layer", "music", "video"],
+          ["single-layer", "music", "video", "advanced"],
           `${name}[${index}] category`,
         ) as CatalogueTemplate["category"],
         content,

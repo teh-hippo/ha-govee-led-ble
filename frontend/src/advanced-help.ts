@@ -1,7 +1,7 @@
 export const ADVANCED_HELP_CONTENT = {
   appliedArea: {
     label: "Applied area information",
-    text: "Sets the physical LED boundary for this layer.",
+    text: "Sets the layer's area index and width in tenths. Logical segments are a visual guide, not a physical IC count.",
   },
   fillPattern: {
     label: "Fill pattern information",
@@ -9,7 +9,7 @@ export const ADVANCED_HELP_CONTENT = {
   },
   fillPatternType: {
     label: "Fill pattern type information",
-    text: "Segment repeats the applied area according to Segment Count.  Continuous uses runs of the selected LED Count.  Random varies runs between Minimum LED Count and Maximum LED Count.  Custom alternates Lit Length with Gap.",
+    text: "Segment and Continuous use a two-byte selection or IC quantity (0–65535). Random uses separate minimum and maximum IC counts. Custom uses piece and gap IC counts. These are not Home Assistant logical segment counts.",
   },
   segmentCount: {
     label: "Segment Count information",

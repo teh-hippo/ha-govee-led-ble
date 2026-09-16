@@ -90,6 +90,16 @@ export class AdvancedEffectEditorController {
     if (!this.canEditLayer()) {
       return undefined;
     }
+    if (key === "distribution") {
+      const distribution = this.activeLayer.distribution;
+      const extensions = (distribution.extensions ?? 0) | (distribution.method & 0x70);
+      return this.updateLayer({ distribution: {
+        ...distribution,
+        method: distribution.method & 15,
+        ...(extensions ? { extensions } : {}),
+        ...update,
+      } });
+    }
     return this.updateLayer({ [key]: { ...this.activeLayer[key], ...update } } as Partial<EffectLayer>);
   }
 
@@ -203,7 +213,7 @@ export class AdvancedEffectEditorController {
   }
 
   private contentChange(layers: EffectLayer[], install = false): AdvancedContent {
-    const content: AdvancedContent = { kind: "advanced", layers };
+    const content: AdvancedContent = { ...this.content!, kind: "advanced", layers };
     if (install) {
       this.content = content;
     }

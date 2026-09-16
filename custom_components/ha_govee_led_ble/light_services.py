@@ -22,7 +22,14 @@ from .h6099_controls import (
     async_set_installation_direction,
     installation_direction_value,
 )
-from .light_commands import SegmentColorGroup, build_segment_brightness, build_segment_paint, segments_to_mask
+from .light_commands import (
+    SegmentColorGroup,
+    build_segment_brightness,
+    build_segment_color_temp,
+    build_segment_paint,
+    kelvin_to_rgb,
+    segments_to_mask,
+)
 from .native_profile_controls import apply_active_video_mode
 
 __all__ = ("apply_active_video_mode", "async_register_light_services")
@@ -61,6 +68,10 @@ _SET_SEGMENT_BRIGHTNESS_SCHEMA: VolDictType = {
     vol.Required("segments"): _SEGMENTS,
     vol.Required("brightness"): _PERCENTAGE,
 }
+_SET_SEGMENT_COLOR_TEMP_SCHEMA: VolDictType = {
+    vol.Required("segments"): _SEGMENTS,
+    vol.Required("color_temp_kelvin"): vol.All(vol.NotIn([True, False]), vol.Any(str, int), cv.positive_int),
+}
 
 
 def async_register_light_services(hass: HomeAssistant) -> None:
@@ -86,6 +97,7 @@ def async_register_light_services(hass: HomeAssistant) -> None:
     for name, schema, method in (
         ("paint_segments", _PAINT_SEGMENTS_SCHEMA, "async_paint_segments"),
         ("set_segment_color", _SET_SEGMENT_COLOR_SCHEMA, "async_set_segment_color"),
+        ("set_segment_color_temp", _SET_SEGMENT_COLOR_TEMP_SCHEMA, "async_set_segment_color_temp"),
         (
             "set_segment_brightness",
             _SET_SEGMENT_BRIGHTNESS_SCHEMA,
@@ -194,6 +206,54 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
     async def async_set_segment_color(self, segments: list[int], color: tuple[int, int, int]) -> None:
         group: dict[str, Any] = {"segments": segments, "rgb_color": color}
         await self.async_paint_segments([group])
+
+    async def async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
+        """Verify rendered RGB and preserve freshly read sibling colours/brightness.
+
+        At 3000 K the service computes (255,177,109). The older manual probe
+        supplied (255,185,105); its device qualification is distinct.
+        """
+        c = self.coordinator
+        self._require_support(
+            "set_segment_color_temp",
+            supported=c.profile.supports_segments and c.profile.supports_color_temperature,
+        )
+        try:
+            segments = list(segments)
+            packet = build_segment_color_temp(segments, color_temp_kelvin, c.model, profile=c.profile)
+            expected = kelvin_to_rgb(color_temp_kelvin)
+            await self._async_supersede_preview()
+            async with async_control_intent(c, ControlIntent.USER):
+                try:
+                    if not await c.async_refresh_segments():
+                        raise RuntimeError("Failed to read segments before colour temperature write")
+                    expected_colors = list(c.segment_colors)
+                    expected_brightness = list(c.segment_brightness)
+                    for segment in segments:
+                        expected_colors[segment - 1] = expected
+                    # The shared writer installs masked RGB only at the physical-write boundary
+                    # and reconciles attempted failures. Readback proves RGB, not per-segment Kelvin.
+                    await c.send_command(packet)
+                    if (
+                        not await c.async_refresh_segments()
+                        or c.segment_colors != expected_colors
+                        or c.segment_brightness != expected_brightness
+                    ):
+                        raise RuntimeError("Failed to confirm segment colour temperature")
+                finally:
+                    self._notify_state_changed()
+        except (TypeError, ValueError) as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_segments",
+            ) from err
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="device_command_failed",
+            ) from err
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
         self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
