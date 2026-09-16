@@ -129,15 +129,15 @@ async def test_refresh_and_observe_require_exact_reply(device, setting, fresh):
             "expected_blank_screen_policy": (1, 300, 600),
         }
     )
-    assert await device.refresh_state(**kwargs, timeout=0) is fresh
-    assert await device.async_observe_effect(expected, timeout=0) is (True if fresh else None)
-    assert await device.refresh_state(refresh_display_settings=frozenset({setting}), timeout=0) is fresh
+    assert await device.refresh_state(**kwargs, timeout=0.01) is fresh
+    assert await device.async_observe_effect(expected, timeout=0.01) is (True if fresh else None)
+    assert await device.refresh_state(refresh_display_settings=frozenset({setting}), timeout=0.01) is fresh
 
 
 @pytest.mark.parametrize("version", [None, "1.00.10", "1.00.11"])
 async def test_border_query_gate_and_optional_setup(device, version):
     device.subordinate_21_version = version
-    await device._send_state_queries()
+    await device._send_state_queries(query_segments=False)
     packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
     assert (build_black_border_query("H6099") in packets) is (version == "1.00.11")
     if version != "1.00.11":
@@ -153,7 +153,7 @@ async def test_border_query_gate_and_optional_setup(device, version):
     assert await device.refresh_state(
         refresh_all=True,
         required_domains=device.profile.setup_required_read_domains,
-        timeout=0,
+        timeout=0.01,
     )
     assert device.profile.physical_ic_count is None
 
@@ -581,7 +581,7 @@ async def test_toggle_reads_fresh_external_policy_before_writing(device, monkeyp
     refresh = device.refresh_state
 
     async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0)
+        return await refresh(**kwargs, timeout=0.01)
 
     monkeypatch.setattr(device, "refresh_state", immediate_refresh)
 
@@ -630,7 +630,7 @@ async def test_toggle_guard_rejects_filtered_reply_or_reconnect(device, monkeypa
     refresh = device.refresh_state
 
     async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0)
+        return await refresh(**kwargs, timeout=0.01)
 
     monkeypatch.setattr(device, "refresh_state", immediate_refresh)
 
@@ -669,7 +669,7 @@ async def test_compiled_toggle_prepares_policy_before_any_control(device, monkey
     queries = 0
 
     async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0)
+        return await refresh(**kwargs, timeout=0.01)
 
     monkeypatch.setattr(device, "refresh_state", immediate_refresh)
 

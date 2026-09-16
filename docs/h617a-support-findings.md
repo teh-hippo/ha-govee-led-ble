@@ -38,10 +38,44 @@ transaction ID. Unknown physical IC count still gates only dependent controls.
 The owner authorised automated qualification of **cupboard skirt only** and
 replacement of unreadable resident music/DIY customisations with a known test
 baseline. Human animation and sound checks await a later testing window.
-**Every Home Assistant restart requires fresh owner approval.** No installed-RC
-result is claimed by this software gate; stable publication remains gated on
-the outstanding qualification. Detailed implementation evidence is in
+**Every Home Assistant restart requires fresh owner approval.** Stable publication
+remains gated on the outstanding qualification. Detailed implementation evidence is in
 [music](h617a-music-implementation.md) and [native DIY](h617a-diy-implementation.md).
+
+### RC1 installed results and RC2 timing correction
+
+Published `v7.7.0-rc.1.h617a` at
+`3d8cdd871a175a38b9dad11757108b717f01aecb`, with package SHA-256
+`9b1dba98c4f491c342ed139bf646c302638123e5e89d13a8193aab1cd8d8358e`.
+Check, Hassfest and HACS passed. Installation used HACS and an individually
+approved HA restart; diagnostics confirmed running `7.7.0rc1` on HA 2026.9.2.
+
+- **Passed:** power, hidden static state, master brightness, whole-strip RGB and
+  Kelvin 2000/3000/9000, verified through fresh complete segment replies.
+- **Partial:** mixed RGB and relative brightness across all 15 segments, master
+  brightness preserving that layout, and zero relative brightness on segments
+  1/15 passed. Setting segments 2/7/14 to 100% returned a confirmation failure.
+- **Root-cause evidence:** an earlier background poll still had replies in flight
+  when the write and its verification queries began. Its old complete segment
+  values satisfied the revision gate prematurely. Later readback contained the
+  exact requested brightness, before any brightness retry/reset; RGB was unchanged.
+  Packet-to-query attribution is inferred because the wire has no query IDs.
+- **Cleanup passed:** authorised known warm RGB baseline, master 5%, all relative
+  levels 100%, power off. Music, native DIY and remaining checks were not run.
+  Raw household diagnostics remain private.
+
+RC2 collects segment replies under the existing control arbiter for all query
+producers. Transmission and collection share one absolute deadline; abandoned
+batches require a renewed subscription before another control write. Cancellation
+cleanup is bounded too. Healthy completion is response-driven, with no settling
+sleep or extra reconnect. Indistinguishable unsolicited duplicate batches remain
+a wire limitation.
+
+The final RC2 `make check` passed **2,798 Python tests (79 skipped), 269 frontend
+unit tests, 33 browser tests and 132 protocol replays**, plus typing, lint,
+formatting and generated-output checks. Independent correctness/Ponytail review
+closed deadline and cancellation findings; its final affected-flow check passed
+237 tests and five independent probes. Installed RC2 qualification is pending.
 
 ## Method and exact-device scope
 

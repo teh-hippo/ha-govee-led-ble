@@ -1644,7 +1644,7 @@ async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeyp
     refresh = coordinator.refresh_state
 
     async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0)
+        return await refresh(**kwargs, timeout=0.01)
 
     monkeypatch.setattr(coordinator, "refresh_state", immediate_refresh)
 
