@@ -4,7 +4,7 @@ import time
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
 from bleak import BleakClient, BleakError
@@ -2251,6 +2251,7 @@ async def test_refresh_state_query_selection(coord):
         query_power: bool,
         query_brightness: bool,
         query_color_mode: bool,
+        deadline: float,
     ) -> bool:
         if query_power:
             coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
@@ -2265,19 +2266,19 @@ async def test_refresh_state_query_selection(coord):
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_reply)) as sq,
     ):
         assert await coord.refresh_state(expected_effect=None, expected_on=True) is True
-        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False)
+        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False, deadline=ANY)
         sq.reset_mock()
 
         assert await coord.refresh_state(expected_effect="candy", expected_on=None) is True
-        sq.assert_awaited_with(query_power=False, query_brightness=False, query_color_mode=True)
+        sq.assert_awaited_with(query_power=False, query_brightness=False, query_color_mode=True, deadline=ANY)
         sq.reset_mock()
 
         assert await coord.refresh_state(expected_brightness=42) is True
-        sq.assert_awaited_with(query_power=False, query_brightness=True, query_color_mode=False)
+        sq.assert_awaited_with(query_power=False, query_brightness=True, query_color_mode=False, deadline=ANY)
         sq.reset_mock()
 
         assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
-        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
+        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True, deadline=ANY)
 
 
 async def test_h617e_legacy_scene_verifies_by_raw_selector_code(hass):
@@ -2337,6 +2338,7 @@ async def test_refresh_without_colour_readback_requires_power_and_brightness_onl
             "query_color_mode": False,
             "required_domains": frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
             "optional_baselines": {},
+            "deadline": ANY,
         }
         limited_readback_coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [0])))
         limited_readback_coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [40])))
@@ -3363,6 +3365,7 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord, 
         query_blank_screen=False,
         query_black_border=False,
         query_relative_brightness=False,
+        deadline=ANY,
     )
     disconnect.assert_not_awaited()
     send.assert_not_awaited()

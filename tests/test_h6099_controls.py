@@ -207,7 +207,7 @@ async def test_concrete_controls_optional_refresh_and_independent_freshness(hass
     refresh = c.refresh_state
 
     async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0)
+        return await refresh(**kwargs, timeout=0.1)
 
     monkeypatch.setattr(c, "refresh_state", immediate_refresh)
     for prefix in ("aa3002", "aa3201"):
@@ -216,6 +216,9 @@ async def test_concrete_controls_optional_refresh_and_independent_freshness(hass
     async def respond(_uuid, packet, **kwargs):
         for prefix in ("aa0101", "aa042a", "aa0515011194", *replies):
             c._notify_callback(None, bytearray(frame(prefix)))
+        if packet[:2] == b"\xaa\xa5":
+            count = min(4, 15 - (packet[2] - 1) * 4)
+            c._notify_callback(None, bytearray(frame(packet[:3].hex() + "64010203" * count)))
 
     client.write_gatt_char.side_effect = respond
     assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
@@ -247,7 +250,7 @@ async def test_concrete_direction_write_requires_fresh_readback(hass, monkeypatc
     refresh = c.refresh_state
 
     async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0)
+        return await refresh(**kwargs, timeout=0.01)
 
     monkeypatch.setattr(c, "refresh_state", immediate_refresh)
 
@@ -281,7 +284,7 @@ async def test_queued_read_does_not_claim_external_replies(hass, monkeypatch):
     refresh = c.refresh_state
 
     async def immediate_refresh(**kwargs):
-        return await refresh(**kwargs, timeout=0)
+        return await refresh(**kwargs, timeout=0.01)
 
     monkeypatch.setattr(c, "refresh_state", immediate_refresh)
     async with c._control_arbiter.hold(ControlIntent.USER):

@@ -205,7 +205,7 @@ async def test_optional_camera_silence_does_not_fail_basic_refresh(coordinator):
             c._notify_callback(None, bytearray(replies[packet]))
 
     c._client.write_gatt_char.side_effect = respond
-    assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0)
+    assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.01)
     packets = [call.args[1] for call in c._client.write_gatt_char.await_args_list]
     assert all(build_h6199_control_query(key) in packets for key in H6199_NATIVE_CONTROLS)
     assert c.camera_status == "unknown" and c.is_on and GoveeBLELight(c).available

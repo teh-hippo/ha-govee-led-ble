@@ -241,6 +241,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._segment_groups_observed: set[int] = set()
         self._segment_query_colors: list[tuple[int, int, int]] | None = None
         self._segment_query_brightness: list[int] | None = None
+        self._segment_query_incomplete = False
         self.video_saturation = self.white_brightness = 100
         self.music_sensitivity = 99
         self.video_full_screen, self.video_sound_effects = True, False
@@ -288,6 +289,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._last_rx_monotonic: float | None = None
         self._domain_revisions: dict[StatusDomain, int] = {}
         self._field_revisions: dict[str, int] = {}
+        self._field_received_at: dict[str, float] = {}
+        self._domain_received_at: dict[StatusDomain, float] = {}
         self._revision_event = asyncio.Event()
         # BLE presence (advertisement-driven) and first-refresh gate for ConfigEntryNotReady.
         self._present = False
@@ -955,7 +958,11 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if self._connection_initializing:
             raise GoveeCryptoError("connection_setup_in_progress")
         if self._client and self._client.is_connected:
-            if (self._encryption is None or self._encryption.ready) and not self._receive_is_stale():
+            if (
+                (self._encryption is None or self._encryption.ready)
+                and not self._receive_is_stale()
+                and not self._segment_query_incomplete
+            ):
                 self._renew_foreground_lease()
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
@@ -1097,6 +1104,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._notify_started_monotonic = None
         self._last_rx_monotonic = None
         self._expected_state.clear()
+        self._segment_query_incomplete = False
+        self._segment_groups_observed.clear()
+        self._segment_query_colors = self._segment_query_brightness = None
         self.installation_direction, self.camera_health = None, "unknown"
         if self._intentional_disconnect_client is not client:
             self.strip_direction = self.camera_position = self.gradient = None
@@ -1132,9 +1142,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         return baseline is not None and time.monotonic() - baseline >= RX_STALE_TIMEOUT
 
     def _mark_received(self, domain: StatusDomain, *fields: str) -> None:
+        received_at = time.monotonic()
         self._domain_revisions[domain] = self._domain_revisions.get(domain, 0) + 1
+        self._domain_received_at[domain] = received_at
         for field in fields:
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
+            self._field_received_at[field] = received_at
         self._revision_event.set()
 
     @property
@@ -1662,8 +1675,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         before_write: Callable[[], None] | None = None,
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
+        cleanup_deadline: float | None = None,
     ) -> None:
         """Write on the caller's connection without changing its transaction policy."""
+        if arm_expected and self._segment_query_incomplete:
+            # The caller owns reconnect/retry policy; never write across an abandoned query.
+            raise BleakError("Incomplete segment query requires a new connection")
         require_profile_packet(packet, self.profile)
         wire_packet = packet
         if (transform := self.profile.outbound_transform) is not None:
@@ -1710,7 +1727,17 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
         except asyncio.CancelledError:
             if self._encryption is not None:
-                await self._disconnect_locked()
+                try:
+                    # The expired query timeout cannot cancel its own cleanup again.
+                    # Invalidation and final client clearing live in _disconnect_locked.
+                    async with asyncio.timeout_at(
+                        cleanup_deadline
+                        if cleanup_deadline is not None
+                        else time.monotonic() + VALIDATION_DISCONNECT_TIMEOUT
+                    ):
+                        await self._disconnect_locked()
+                except TimeoutError:
+                    pass
             raise
         except Exception as err:
             stale_gatt = self._record_ble_failure(err)
@@ -1739,11 +1766,16 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         query_segments: bool | None = None,
         required_domains: frozenset[ReadDomain] | None = None,
         optional_baselines: dict[str, int] | None = None,
+        deadline: float | None = None,
     ) -> bool:
         client = self._client
-        if client is None or not client.is_connected:
+        if client is None or not client.is_connected or self._segment_query_incomplete:
             return False
         generation = self._profile_generation
+        token = self._notification_token
+        if deadline is None:
+            deadline = time.monotonic() + 2.0
+        segment_baseline: dict[str, int] = {}
         try:
             queries: list[tuple[bytes, ReadDomain, tuple[str, ...]]] = []
             states = video_control_states(self.profile, self)
@@ -1815,6 +1847,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 and self.profile.supports_segments
                 and (query_segments if query_segments is not None else full_query)
             ):
+                segment_baseline = {"segment_colors": self._field_revisions.get("segment_colors", 0)}
                 self._segment_groups_observed.clear()
                 self._segment_query_colors = list(self.segment_colors)
                 self._segment_query_brightness = list(self.segment_brightness)
@@ -1859,22 +1892,63 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             )
             if query_segments is True:
                 required |= {ReadDomain.SEGMENTS}
-            for query, domain, fields in queries:
+            for index, (query, domain, fields) in enumerate(queries):
                 if generation != self._profile_generation or self._client is not client or not client.is_connected:
                     return False
+                if time.monotonic() >= deadline:
+                    return all(d not in required for _, d, _ in queries[index:])
                 baselines = {field: self._field_revisions.get(field, 0) for field in fields}
+
+                def before_segment_write() -> None:
+                    # A rejected transform has not started a batch. Once any page is
+                    # attempted, later failures must leave the connection non-reusable.
+                    self._segment_query_incomplete = True
+
                 try:
-                    await self._async_write_packet(client, query)
+                    async with asyncio.timeout_at(deadline) as write_timeout:
+                        await self._async_write_packet(
+                            client,
+                            query,
+                            before_write=before_segment_write if domain is ReadDomain.SEGMENTS else None,
+                            cleanup_deadline=deadline,
+                        )
+                except TimeoutError:
+                    if not write_timeout.expired():
+                        raise
+                    return (
+                        self._client is client
+                        and client.is_connected
+                        and all(d not in required for _, d, _ in queries[index:])
+                    )
                 except BleakError:
                     if domain in required or self._client is not client or not client.is_connected:
                         return False
                     _LOGGER.debug("Optional %s query failed for %s", domain.value, self.address, exc_info=True)
                     continue
+                if time.monotonic() >= deadline:
+                    return all(d not in required for _, d, _ in queries[index:])
                 if optional_baselines is not None:
                     for field, revision in baselines.items():
                         optional_baselines.setdefault(field, revision)
             if generation != self._profile_generation or self._client is not client or not client.is_connected:
                 return False
+            if segment_baseline:
+                # All producers hold the existing control intent through this collection.
+                # Buffer resets cannot distinguish an older in-flight reply on this wire.
+                # ponytail: no wire query IDs; collection prevents local overlap, not
+                # indistinguishable unsolicited/duplicate batches from the same subscription.
+                complete = await self._wait_for_revisions(segment_baseline, {}, deadline)
+                complete = complete and time.monotonic() < deadline
+                if (
+                    generation != self._profile_generation
+                    or self._client is not client
+                    or not client.is_connected
+                    or self._notification_token is not token
+                ):
+                    return False
+                self._segment_query_incomplete = not complete
+                if not complete and ReadDomain.SEGMENTS in required:
+                    return False
             return True
         except BleakError:
             return False
@@ -1907,10 +1981,13 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 observation = "gradient_register" if control == "gradient" else control
                 baseline = {observation: self._field_revisions.get(observation, 0)}
                 setattr(self, control, None)
+                deadline = time.monotonic() + timeout
                 try:
-                    async with asyncio.timeout(timeout):
-                        await self._async_write_packet(client, build_h6199_control_query(control))
-                        fresh = await self._wait_for_revisions(baseline, {}, time.monotonic() + timeout)
+                    async with asyncio.timeout_at(deadline):
+                        await self._async_write_packet(
+                            client, build_h6199_control_query(control), cleanup_deadline=deadline
+                        )
+                        fresh = await self._wait_for_revisions(baseline, {}, deadline)
                 finally:
                     self.async_set_updated_data(self.data or {})
                 if not fresh or getattr(self, observation, None) != value:
@@ -1978,11 +2055,15 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         expectations: Mapping[str, Any] | None = None,
     ) -> bool:
         def received() -> bool:
+            # Collection of optional domains can consume the budget after basic replies
+            # arrived. Accept those timely observations, never a late callback that won
+            # the event-loop race against the timeout waiter.
             # Segment RGB revisions update presentation, not direct static readback.
             fresh_fields = {
                 field
                 for field, baseline in field_baselines.items()
                 if self._field_revisions.get(field, 0) > baseline
+                and self._field_received_at.get(field, float("inf")) <= deadline
                 and (
                     field not in {"rgb_color", "color_temp_kelvin"}
                     or (self.color_mode is ParsedMode.COLOUR and getattr(self, f"{field}_source") == "observed")
@@ -1996,7 +2077,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             if field_baselines and fresh_fields != field_baselines.keys():
                 return False
             return all(
-                self._domain_revisions.get(domain, 0) > baseline for domain, baseline in domain_baselines.items()
+                self._domain_revisions.get(domain, 0) > baseline
+                and self._domain_received_at.get(domain, float("inf")) <= deadline
+                for domain, baseline in domain_baselines.items()
             )
 
         while not received():
@@ -2227,10 +2310,13 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             initial_domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
             deadline = time.monotonic() + timeout
             for attempt in range(2):
+                if time.monotonic() >= deadline:
+                    break
                 optional_baselines: dict[str, int] = {}
-                query_options: dict[str, Any] = {}
+                query_options: dict[str, Any] = {"deadline": deadline}
                 if refresh_all or required_domains is not None:
                     query_options = {
+                        "deadline": deadline,
                         "required_domains": frozenset(awaited_domains)
                         | (
                             {ReadDomain.DISPLAY_SETTING}
@@ -2301,9 +2387,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     if generation == self._profile_generation:
                         await self._disconnect_if_current_locked(client)
                     return False
-                attempt_deadline = (
-                    deadline if attempt else time.monotonic() + max(0.0, (deadline - time.monotonic()) / 2)
-                )
+                attempt_deadline = deadline if attempt else min(deadline, (time.monotonic() + deadline) / 2)
                 if await self._wait_for_revisions(field_baselines, domain_baselines, attempt_deadline):
                     if not expectations or all(
                         getattr(self, field) == expected for field, expected in expectations.items()
@@ -2373,27 +2457,23 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if not self.profile.state_readable or not self.profile.supports_segments:
             return False
         async with async_control_intent(self, ControlIntent.USER):
-            baseline = self._field_revisions.get("segment_colors", 0)
             async with self._lock:
                 client = await self._ensure_connected()
+                baseline = self._field_revisions.get("segment_colors", 0)
                 ok = await self._send_state_queries(
                     query_power=False,
                     query_brightness=False,
                     query_color_mode=False,
                     query_segments=True,
+                    deadline=time.monotonic() + timeout,
                 )
-            if not ok:
-                return False
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                if self._client is not client:
-                    return False
-                if self._field_revisions.get("segment_colors", 0) > baseline:
-                    return True
-                remaining = deadline - time.monotonic()
-                if remaining > 0:
-                    await asyncio.sleep(min(0.05, remaining))
-            return False
+            return (
+                ok
+                and self._client is client
+                and client.is_connected
+                and not self._segment_query_incomplete
+                and self._field_revisions.get("segment_colors", 0) > baseline
+            )
 
     async def async_preview_write(
         self,
@@ -2639,6 +2719,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 if client is None or not client.is_connected:
                     return None
                 field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
+                deadline = time.monotonic() + timeout
                 ok = await self._send_state_queries(
                     query_power=query_power,
                     query_brightness=query_brightness,
@@ -2647,13 +2728,14 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     query_blank_screen=query_blank_screen,
                     query_black_border=query_black_border,
                     query_relative_brightness=query_relative_brightness,
+                    deadline=deadline,
                 )
         if not ok or self._client is not client:
             return None
         if not await self._wait_for_revisions(
             field_baselines,
             {},
-            time.monotonic() + timeout,
+            deadline,
             expectations=expectations,
         ):
             return None
