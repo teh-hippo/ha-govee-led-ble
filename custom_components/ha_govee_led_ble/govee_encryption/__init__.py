@@ -17,6 +17,10 @@ from kaitaistruct import KaitaiStream
 
 from ..transport import xor_checksum
 
+GoveeEncryption = import_module(
+    "custom_components.ha_govee_led_ble.generated_protocol.govee_encryption"
+).GoveeEncryption
+
 KEY_COMMUNICATION = bytes.fromhex("4d616b696e674c696665536d61727465")
 KEY_HANDSHAKE = bytes.fromhex("fc03783c7c42cb83e202a1643648aff6")
 KEY_DEVICE = bytes.fromhex("ae028b630bae6ecc4bff1b249e22f955")
@@ -30,10 +34,9 @@ class GoveeCryptoError(ValueError):
 
 def parse_wire(kind: str, data: bytes) -> Any:
     """Read a schema-owned structure without exposing parser exception payloads."""
-    wire = import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_encryption").GoveeEncryption
     try:
         stream = KaitaiStream(io.BytesIO(data))
-        parsed = getattr(wire, kind)(stream)
+        parsed = getattr(GoveeEncryption, kind)(stream)
         parsed._read()
         if not stream.is_eof():
             raise GoveeCryptoError("invalid_frame_length")

@@ -45,6 +45,14 @@ IV = bytes(range(8))
 M = "custom_components.ha_govee_led_ble.coordinator"
 
 
+async def test_wire_parsing_does_not_import_on_event_loop():
+    with patch(
+        "custom_components.ha_govee_led_ble.govee_encryption.import_module",
+        side_effect=AssertionError("Runtime protocol import blocks the event loop"),
+    ):
+        assert parse_wire("Marker", b"\x01\x01").version == 1
+
+
 def v1_reply(opcode=1, key=KEY):
     body = bytes((0xE7, opcode)) + key + b"\0"
     return v1_transform(body + bytes((xor_checksum(body),)), KEY_COMMUNICATION, encrypt=True)

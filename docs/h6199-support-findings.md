@@ -446,6 +446,36 @@ or explicitly excluded; publishing a candidate does not close it.
 The narrowed/withdrawn claims above remain withdrawn. No query-discriminator,
 keepalive, saturation, topology or existing blank-policy rewrite was made.
 
+## Issue #115 live A3 response rejection (2026-09-17)
+
+H6199 HW `3.02.01` / FW `1.10.04` produced three identical checksum-valid
+notifications during the palette DIY workflows:
+`a3040000000000000000000000000000000000a7`. The private integration diagnostics
+reported each as `schema_rejected` by `h6199_status_reply`: the command-ACK root
+accepted only header `33`, so A3 fell through to the status parser. These are
+integration notifications, not official-app captures; the private export is not
+repository evidence. Successful workflow readback is independent of these ACKs.
+
+APK response trace (Android 7.6.01, paths relative to `com/govee/`):
+
+- `pact_tvlightv2/iot/OpDiyCommDialog4BleIot.java:32-40,85-100` selects
+  `MultipleDiyControllerV1`, checks its upload result, then separately selects a mode.
+- `base2light/ble/controller/MultipleDiyControllerV1.java:6,15-18` declares
+  command `04`; `AbsMultipleControllerV14Diy.java:6,39-42` forwards the result.
+- `base2light/ble/controller/AbsMultipleControllerV1.java:18-35,52-54` declares
+  protocol A3 and tests absolute byte 2 for zero success.
+- `base2light/ble/controller/AbsController.java:97-99` matches protocol and
+  command, providing no effect identity or transaction correlation.
+
+The exact H6199 speculative upload-ACK payload names only opcode/status and
+preserves the sixteen unknown trailing bytes. The existing notification ACK
+path records it without changing observed state or confirming activation.
+`tests/test_kaitai_protocol.py` replays the literal notification and checks
+negative statuses, unknown-tail round trips, malformed frames and unrelated
+opcodes. Negative statuses/nonzero tails are synthetic APK-contract tests;
+physical negative replies, other upload commands/revisions and general H6199
+upload-ACK sequencing remain unqualified. No new upload policy is enabled.
+
 ## Release And Restoration Gates
 
 Independent correctness and separate Ponytail ultra reviews passed after

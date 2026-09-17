@@ -25,6 +25,7 @@ h6199_control_payload.py
 h6199_effect_upload.py
 h6199_status_query.py
 h6199_status_reply.py
+h6199_upload_ack_payload.py
 h6199_wifi_body.py
 h6199_wifi_provision.py
 h6199_wifi_result.py

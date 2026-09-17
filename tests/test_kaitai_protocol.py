@@ -70,6 +70,8 @@ H6199_POWER_ACK = bytes.fromhex("3301000000000000000000000000000000000032")
 H6199_MODE_ACK = bytes.fromhex("3305000000000000000000000000000000000036")
 H6199_DISPLAY_ACK = bytes.fromhex("33a900000000000000000000000000000000009a")
 H6199_RELATIVE_BRIGHTNESS_ACK = bytes.fromhex("33ae00000000000000000000000000000000009d")
+# Issue #115: identical H6199 notification observed three times on 2026-09-17.
+H6199_DIY_UPLOAD_ACK = bytes.fromhex("a3040000000000000000000000000000000000a7")
 TYPE03_PAINTED = bytes.fromhex(
     "0105030900640101010f01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff000701eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
 )
@@ -765,6 +767,7 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(StatusQuery, H617A_SEGMENT_QUERY, id="H617A segment query"),
     pytest.param(H6199StatusQuery, H6199_SEGMENT_QUERY, id="H6199 segment query"),
     pytest.param(H6199CommandAck, H6199_DISPLAY_ACK, id="H6199 command acknowledgement"),
+    pytest.param(H6199CommandAck, H6199_DIY_UPLOAD_ACK, id="H6199 DIY upload acknowledgement"),
     pytest.param(DiyType03, TYPE03_PAINTED, id="Type03 painted"),
     pytest.param(DiyType04, TYPE04_FLAT, id="Type04 flat"),
     pytest.param(DiyType04, TYPE04_COMBO, id="Type04 combo"),
@@ -809,6 +812,57 @@ def test_h6199_generic_command_acknowledgements_are_distinct_from_writes(frame: 
     assert generated_protocol_adapter.parse_command_ack_result(frame, "H6199").parsed is not None
     if opcode in {"display_setting", "relative_brightness"}:
         assert generated_protocol_adapter.parse_command_result(frame, "H6199").parsed is None
+
+
+@pytest.mark.parametrize("status,tail", [(0, bytes(16)), (1, bytes(16)), (0xFF, bytes(range(16)))])
+def test_h6199_diy_upload_notification_is_not_state(hass, status: int, tail: bytes) -> None:
+    # Only the all-zero response is live evidence; other values probe APK semantics
+    # and unknown-byte preservation without assigning meanings to the tail.
+    frame = bytearray(H6199_DIY_UPLOAD_ACK)
+    frame[2] = status
+    frame[3:19] = tail
+    frame[-1] = xor_checksum(frame[:-1])
+    parsed = _parse(H6199CommandAck, bytes(frame))
+    assert parsed.upload.opcode == 4 and parsed.upload.status == status
+    assert parsed.upload.is_success is (status == 0)
+    assert parsed.upload.unknown_tail == tail
+    parsed._fetch_instances()
+    parsed._check()
+    output = KaitaiStream(io.BytesIO(bytes(20)))
+    parsed._write(output)
+    assert output.to_byte_array() == frame
+
+    coord = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    coord.is_on = True
+    coord.color_mode = ParsedMode.VIDEO
+    coord._notify_callback(None, frame)
+    assert coord.packet_log[-1]["reason"] == "command_ack_parsed"
+    assert coord.packet_log[-1]["parser"] == "h6199_command_ack"
+    assert coord.packet_log[-1]["raw"] == frame.hex()
+    assert coord.is_on and coord.color_mode is ParsedMode.VIDEO
+    assert coord._field_revisions == coord._domain_revisions == {}
+    assert generated_protocol_adapter.parse_status_result(bytes(frame), "H6199").parsed is None
+
+
+@pytest.mark.parametrize(
+    "frame,reason",
+    [
+        (H6199_DIY_UPLOAD_ACK[:-1], "invalid_length"),
+        (H6199_DIY_UPLOAD_ACK + b"\0", "invalid_length"),
+        (H6199_DIY_UPLOAD_ACK[:-1] + b"\0", "invalid_checksum"),
+        (bytes.fromhex("a39900000000000000000000000000000000003a"), "schema_rejected"),
+        (bytes.fromhex("a3050000000000000000000000000000000000a6"), "schema_rejected"),
+    ],
+)
+def test_h6199_upload_ack_rejection_remains_diagnostic(hass, frame: bytes, reason: str) -> None:
+    result = generated_protocol_adapter.parse_command_ack_result(frame, "H6199")
+    assert result.parsed is None and result.rejection == reason
+    coord = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    coord._notify_callback(None, bytearray(frame))
+    assert coord.packet_log[-1]["outcome"] == "rejected"
+    assert coord.packet_log[-1]["reason"] == reason
+    assert coord.packet_log[-1]["raw"] == frame.hex()
+    assert coord._field_revisions == coord._domain_revisions == {}
 
 
 def test_h6199_command_acknowledgement_rejects_unobserved_opcodes() -> None:

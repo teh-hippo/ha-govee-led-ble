@@ -2,6 +2,8 @@ meta:
   id: h6199_command_ack
   title: Govee H6199 generic command acknowledgement
   endian: le
+  imports:
+    - speculative/h6199_upload_ack_payload
 doc: |
   H6199 display-setting and relative-brightness writes acknowledge with the command opcode,
   a zero success byte, and zero padding. The acknowledgement does not echo the setting or
@@ -9,11 +11,16 @@ doc: |
   Issue #294 direction30, position31 and Gradient A3 ACKs were observed in
   direct-register tests, not official-app BLE captures. Their use remains
   speculative; a zero ACK never establishes changed state.
+  A3/04 DIY upload responses observed during issue #115 live qualification use
+  the separate speculative payload; they are acknowledgements, not status.
 seq:
   - id: header
-    contents: [0x33]
+    type: u1
+    valid:
+      any-of: [0x33, 0xa3]
   - id: opcode
     type: u1
+    if: header == 0x33
     enum: command_op
     valid:
       any-of:
@@ -27,8 +34,13 @@ seq:
   - id: status
     type: u1
     valid: 0
+    if: header == 0x33
   - id: padding
     contents: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+    if: header == 0x33
+  - id: upload
+    type: h6199_upload_ack_payload
+    if: header == 0xa3
   - id: checksum
     type: u1
 enums:

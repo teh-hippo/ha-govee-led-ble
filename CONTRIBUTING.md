@@ -95,6 +95,10 @@ Release 7.6.0 has an explicit maintainer-approved exception for H6099: its owner
 reported connection success, but control qualification remains outstanding.
 It remains labelled Experimental, with manual addition and documented limits;
 inclusion in a stable package is not a support or schema-evidence promotion.
+Release 7.8.0 has an explicit maintainer-approved exception for H6102 after
+shared-workflow regression qualification on H617A and H6199. H6102 remains
+Experimental pending its owner's physical qualification; stable inclusion does
+not promote its support status or speculative protocol evidence.
 Prerelease versions are stamped only in the packaged artifact; feature branches retain the current stable source version so release-candidate metadata cannot leak into master.
 
 ## Device-owner validation
