@@ -15,11 +15,11 @@ GATT-cache and idle-polling fixes.
 | Scope | Software status | Installed-RC qualification |
 | --- | --- | --- |
 | R1/R2 | Fresh pre-write power, mode, master brightness and static segments; persisted complete layout; faithful on/off restoration and fresh verification | Pending |
-| R3/R4 | Mixed segments invalidate incompatible Kelvin; physical-attempt rollback preserves fresh observations and reconciles ambiguous writes | Pending |
-| R5/R6 | Exact-mode fixed-colour permissions, mode/sensitivity-only new replies, complete known-body retention/replay and explicit uncertainty for unreadable settings | Pending |
+| R3/R4 | Mixed segments invalidate incompatible Kelvin; physical-attempt rollback preserves fresh observations and reconciles ambiguous writes | RC2 Kelvin-to-masked-RGB passed; ambiguous failures remain software-qualified |
+| R5/R6 | Exact-mode fixed-colour permissions, mode/sensitivity-only new replies, complete known-body retention/replay and explicit uncertainty for unreadable settings | RC2 fixed-colour UI/readback passed; failed-application body restoration remains software-qualified |
 | Music controls | Seven palettes, Piano gradient and Hopping background/no-colour; field-specific physical-IC gates | Experimental; rendering and sound pending |
 | Native DIY | Templates 501–507 retain their own identity and use subtype 02 upload, positive result, then their own selector | Experimental; rendering pending |
-| Segment Kelvin / light count | Whole-layout preservation checked; AA0F is optional passive diagnostic evidence, never physical geometry | Exact service / broader count interpretation pending |
+| Segment Kelvin / light count | Whole-layout preservation checked; AA0F is optional passive diagnostic evidence, never physical geometry | RC2 exact service passed; AA0F remained absent |
 
 Correctness and APK/Kaitai reviews found six issues; all were fixed and their
 affected flows independently re-reviewed. A fresh Ponytail review supplied five
@@ -75,7 +75,66 @@ The final RC2 `make check` passed **2,798 Python tests (79 skipped), 269 fronten
 unit tests, 33 browser tests and 132 protocol replays**, plus typing, lint,
 formatting and generated-output checks. Independent correctness/Ponytail review
 closed deadline and cancellation findings; its final affected-flow check passed
-237 tests and five independent probes. Installed RC2 qualification is pending.
+237 tests and five independent probes.
+
+### RC2 installed results and RC3 Live-ordering correction
+
+Published `v7.7.0-rc.2.h617a` at
+`8a1fd33a7e05fe2119bb583f9bec940ffe53a00b`, package SHA-256
+`53bb8520e8cea71032ad024b7c8b86e9e624e52f1e9f32b3d0911fee0795ccc4`.
+Check, Hassfest and HACS passed. HACS installation and one individually approved
+restart loaded `7.7.0rc2`, confirmed through diagnostics on HA 2026.9.2.
+
+- **Static/segments passed:** whole-strip power, RGB, Kelvin and master brightness;
+  mixed RGB/relative brightness across all 15 segments; the RC1 failing brightness
+  case; masked Kelvin on boundary/disjoint selections with full sibling-colour and
+  relative-brightness preservation. Retained Kelvin followed by masked RGB correctly
+  invalidated aggregate Kelvin. This establishes RGB companions, not Kelvin readback.
+- **Music/native API workflows passed:** all eleven music modes and native carriers
+  501–507 completed snapshot Apply, save/get, edit/save, saved Apply, Preview,
+  Cancel after confirmation and saved Reapply. Sensitivity 0/99, seven palettes
+  of 1/8 colours, selected companions, Piano gradient and Hopping no-colour versus
+  black were submitted. New-mode readback establishes only mode/sensitivity;
+  native readback establishes the selector. Positive upload results preceded
+  activation for all inspected uploads. Neither proves resident-body equality.
+- **Installed browser:** inspected all music/native templates and layer tabs,
+  fixed-colour permissions, palette bounds, Piano/Hopping controls and geometry
+  gates. Representative Spectrum, Hopping and DIY applications, save/reopen and
+  completed-preview cancellation passed. Named edits were a subset, not all ranges.
+- **Lifecycle:** normal idle release/reconnect passed. A 125-second off/static
+  observation contained four automatic complete query/reply cycles with release
+  between them. This is not a long soak or forced stale-GATT qualification.
+- **Runner corrections:** generic HA refresh is debounced, so the private runner
+  now subscribes and awaits fresh replies after one refresh request. Saved Apply
+  correctly clears transient workspace and reports saved identity separately;
+  the runner now checks that contract. Neither required a production change.
+- **Warning disposition:** one capability-update warning followed intensive
+  library/workspace creation and removal. Sampled transitions changed the expected
+  effect-list entries only; polling showed no capability churn. No fix justified.
+- **Cleanup passed:** all temporary items removed and previews closed; fresh replies
+  confirmed off, master 5%, warm RGB `(255,177,109)` and all relative levels 100%.
+  Private raw diagnostics and browser authentication are not committed.
+
+The browser exposed a real ordering race: enabling Live and immediately editing
+allowed the older saved Apply, still persisting its initial record, to invalidate
+the newer preview. RC3 admits APPLY under the existing arbiter before that save
+yields. Independent review also reproduced cancellation while awaiting ownership
+readmitting APPLY during failure cleanup; pre-ownership cleanup now persists a
+zero-write failure without another admission. Possible-write restoration remains
+under the original ownership. No settling sleeps or new locks were introduced.
+
+Final RC3 `make check` passed **2,810 Python tests (79 skipped), 269 frontend unit
+tests, 33 browser tests**, and the protocol/type/lint/generated-output gates.
+Independent correctness/Ponytail re-review closed both races, including 312
+focused tests and independent pre-/post-write cancellation and storage-failure
+probes. Installed RC3 race qualification remains pending.
+
+Remaining release gates include owner-observed rendering/sound, broader control
+coverage, separately approved restart-persistence checks and a normal-use window.
+Production failed-application restoration and ambiguous-write faults remain
+software-qualified; successful runner cleanup is not proof of those paths.
+Official-app captures and exact-device geometry are still absent; speculative
+schemas are not promoted by these installed tests.
 
 ## Method and exact-device scope
 

@@ -63,6 +63,8 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_cata
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
+from tests.test_effect_preview import _manager, _open
+from tests.test_music_commands import _music_transport
 
 
 def _item() -> LibraryItem:
@@ -1213,6 +1215,188 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
             pending.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         unsubscribe()
+
+
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+async def test_preview_admitted_during_apply_persistence_writes_latest_intent(hass, monkeypatch, source, model):
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    content = (
+        MusicProfile(model, "rolling", 99, (0, 0, 0))
+        if model == "H6199"
+        else MusicProfile(model, "hopping", 99, parameters={"background": 0})
+    )
+    edited = (
+        replace(content, colour=(1, 1, 1)) if model == "H6199" else replace(content, parameters={"background": 65793})
+    )
+    saved_item = LibraryItem.new("Saved black", content)
+    preview_item = LibraryItem.new("Unsaved No colour", edited)
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectDeploymentRepository(store)
+    await repository.async_load()
+    manager, cache = await _manager(hass, monkeypatch, coordinator)
+    engine = EffectDeploymentEngine(repository, cache, manager._active_workspaces)
+    owner = object()
+    events = []
+    session_id = _open(manager, owner, events)
+    persisting = asyncio.Event()
+    release_persistence = asyncio.Event()
+    preflighting = asyncio.Event()
+    release_preview = asyncio.Event()
+    save = store.async_save
+    preflight = coordinator.async_preview_preflight
+
+    async def gated_save(data):
+        if not persisting.is_set():
+            persisting.set()
+            await release_persistence.wait()
+        await save(data)
+
+    async def preview_preflight(**kwargs):
+        preflighting.set()
+        await release_preview.wait()
+        await preflight(**kwargs)
+
+    monkeypatch.setattr(store, "async_save", gated_save)
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
+    monkeypatch.setattr(coordinator, "async_preview_preflight", preview_preflight)
+    monkeypatch.setattr(coordinator, "_encryption", None)
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+    with _music_transport(coordinator) as physical:
+        older_preview = coordinator.admit_preview()
+        task = asyncio.create_task(
+            apply(coordinator, saved_item, config_entry_id="entry-a", updated_at="2026-09-17T00:00:00Z")
+        )
+        try:
+            async with asyncio.timeout(5):
+                await persisting.wait()
+                accepted = await manager.async_queue_snapshot(
+                    session_id=session_id,
+                    owner=owner,
+                    config_entry_id="entry-a",
+                    sequence=1,
+                    updated_at="2026-09-17T00:00:01Z",
+                    item=preview_item,
+                )
+                await preflighting.wait()
+                assert accepted.accepted and not task.done()
+                physical.assert_not_awaited()
+                release_persistence.set()
+                assert (await task).phase is DeploymentPhase.CONFIRMED
+                release_preview.set()
+                await manager.async_wait_idle("entry-a")
+
+            assert not older_preview.is_current
+            assert events[-1].phase is PreviewPhase.CONFIRMED
+            assert events[-1].write_disposition is PreviewWriteDisposition.COMPLETED
+            assert [write.args[1] for write in physical.await_args_list] == [
+                *compile_application(saved_item, model).packets,
+                *compile_application(preview_item, model).packets,
+            ]
+            assert manager._active_workspaces.get("entry-a").content == edited
+            assert not coordinator._control_arbiter.locked() and not coordinator._lock.locked()
+            assert not engine._operation_locks and not engine._operation_lock_users
+        finally:
+            release_persistence.set()
+            release_preview.set()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("storage_fails", [False, True])
+async def test_cancelled_apply_waiter_preserves_newer_preview(hass, monkeypatch, caplog, source, model, storage_fails):
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectDeploymentRepository(store)
+    await repository.async_load()
+    manager, cache = await _manager(hass, monkeypatch, coordinator)
+    engine = EffectDeploymentEngine(repository, cache, manager._active_workspaces)
+    restore = AsyncMock()
+    monkeypatch.setattr(coordinator, "async_restore_effect_control_state", restore)
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
+    if storage_fails:
+        monkeypatch.setattr(store, "async_save", AsyncMock(side_effect=OSError("terminal storage unavailable")))
+    admitted = asyncio.Event()
+    invalidate = coordinator._control_arbiter.invalidate_previews
+
+    def foreground_admitted():
+        invalidate()
+        admitted.set()
+
+    owner = object()
+    events = []
+    session_id = _open(manager, owner, events)
+    preview_item = _music_item(model)
+    operation_id = uuid4()
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+    task = None
+    try:
+        with _music_transport(coordinator) as physical:
+            async with coordinator._control_arbiter.hold(ControlIntent.USER):
+                monkeypatch.setattr(coordinator._control_arbiter, "invalidate_previews", foreground_admitted)
+                task = asyncio.create_task(
+                    apply(
+                        coordinator,
+                        preview_item,
+                        config_entry_id="entry-a",
+                        updated_at="2026-09-17T00:00:00Z",
+                        operation_id=operation_id,
+                    )
+                )
+                async with asyncio.timeout(2):
+                    await admitted.wait()
+                    assert not task.done()
+                    accepted = await manager.async_queue_snapshot(
+                        session_id=session_id,
+                        owner=owner,
+                        config_entry_id="entry-a",
+                        sequence=1,
+                        updated_at="2026-09-17T00:00:01Z",
+                        item=preview_item,
+                    )
+                    assert accepted.accepted
+                    generation = coordinator._control_arbiter.preview_generation
+                    task.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await asyncio.shield(task)
+                    assert task.done()
+                assert coordinator._control_arbiter.preview_generation == generation
+                assert coordinator._control_arbiter.current_task_intent is ControlIntent.USER
+                assert coordinator.control_write_attempts == 0
+                physical.assert_not_awaited()
+                restore.assert_not_awaited()
+                assert not engine._operation_locks and not engine._operation_lock_users
+                assert all(waiter.task is not task for waiter in coordinator._control_arbiter._waiters)
+                if storage_fails:
+                    assert repository.get_optional(operation_id) is None
+                    assert "Failed to persist the terminal state" in caplog.text
+                else:
+                    failed = repository.get(operation_id)
+                    assert failed.phase is DeploymentPhase.FAILED
+                    assert failed.error_code == "operation_cancelled"
+                    assert failed.prior_state is None and failed.progress_current == 0
+
+            async with asyncio.timeout(2):
+                await manager.async_wait_idle("entry-a")
+            assert events[-1].phase is PreviewPhase.CONFIRMED
+            assert events[-1].write_disposition is PreviewWriteDisposition.COMPLETED
+            assert [write.args[1] for write in physical.await_args_list] == list(
+                compile_application(preview_item, model).packets
+            )
+            assert not coordinator._control_arbiter.locked() and not coordinator._lock.locked()
+    finally:
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        await manager.async_shutdown()
 
 
 async def test_same_operation_id_does_not_repeat_uncertain_upload(
