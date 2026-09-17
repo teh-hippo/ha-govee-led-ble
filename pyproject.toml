@@ -13,7 +13,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "aiousbwatcher>=1.1.1",
-    "bleak-esphome==4.0.0",
+    "bleak-esphome==4.1.0",
     "mypy>=1.15",
     # Drags in homeassistant, which pins Pillow to an exact version. That pin is currently
     # behind Pillow's security releases, which is where the open advisories come from. Do NOT
