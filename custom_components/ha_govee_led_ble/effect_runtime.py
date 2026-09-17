@@ -474,7 +474,6 @@ class EffectDeploymentEngine:
         current = record
         lock_acquired = False
         try:
-            await self._deployments.async_put(record, expected_version=None)
             async with async_control_intent(
                 coordinator,
                 ControlIntent.APPLY,
@@ -489,6 +488,8 @@ class EffectDeploymentEngine:
                     return coordinator.control_write_attempts != write_baseline
 
                 try:
+                    # Admit APPLY before persistence yields, so later previews remain newer.
+                    await self._deployments.async_put(record, expected_version=None)
                     if isinstance(compiled, CompiledVideoProfile):
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
@@ -852,15 +853,13 @@ class EffectDeploymentEngine:
         error_code: str,
     ) -> None:
         try:
-            async with async_control_intent(
+            # Ownership was never acquired: persist failure without admitting new control.
+            await self._async_finish_failure(
                 coordinator,
-                ControlIntent.APPLY,
-            ):
-                await self._async_finish_failure(
-                    coordinator,
-                    record,
-                    error_code=error_code,
-                )
+                record,
+                error_code=error_code,
+                writes_attempted=False,
+            )
         except Exception:
             _LOGGER.exception(
                 "Failed to persist the terminal state for Effect Studio deployment %s",
