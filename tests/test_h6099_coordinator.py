@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
@@ -20,6 +21,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
     build_brightness,
     build_brightness_query,
+    build_colour_mode_query,
     build_h6099_diy_activation,
     build_physical_ic_count_query,
     build_power,
@@ -135,7 +137,8 @@ async def test_refresh_and_observe_require_exact_reply(device, setting, fresh):
 
 
 @pytest.mark.parametrize("version", [None, "1.00.10", "1.00.11"])
-async def test_border_query_gate_and_optional_setup(device, version):
+@pytest.mark.parametrize("missing_reply", [None, "power", "brightness", "mode"])
+async def test_border_query_gate_and_optional_setup(device, monkeypatch, version, missing_reply):
     device.subordinate_21_version = version
     await device._send_state_queries(query_segments=False)
     packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
@@ -145,16 +148,40 @@ async def test_border_query_gate_and_optional_setup(device, version):
         assert not await device.refresh_state(expected_black_border=True, timeout=0)
         device._ensure_connected.assert_not_awaited()
 
-    async def respond(_uuid, packet, **kwargs):
-        for prefix in ("aa0101", "aa042a", "aa0515011194"):
-            notify(device, prefix)
+    # Exercise optional-query expiry without a 10 ms wall-clock race under CI
+    # coverage/logging. The asyncio deadline is deliberately well ahead; only
+    # this coordinator's clock advances, after the required queries are sent.
+    start = asyncio.get_running_loop().time()
+    clock = [start]
+    monkeypatch.setattr(f"{M}.time", SimpleNamespace(monotonic=lambda: clock[0]))
+    replies = {
+        build_power_query("H6099"): ("power", "aa0101"),
+        build_brightness_query("H6099"): ("brightness", "aa042a"),
+        build_colour_mode_query("H6099"): ("mode", "aa0515011194"),
+    }
 
-    device._client.write_gatt_char.side_effect = respond
-    assert await device.refresh_state(
+    async def respond(_uuid, packet, **kwargs):
+        if packet in replies:
+            name, prefix = replies[packet]
+            if name != missing_reply:
+                notify(device, prefix)
+        else:
+            clock[0] = start + 61
+
+    client = device._client
+    client.write_gatt_char.reset_mock()
+    client.write_gatt_char.side_effect = respond
+    refreshed = await device.refresh_state(
         refresh_all=True,
         required_domains=device.profile.setup_required_read_domains,
-        timeout=0.01,
+        timeout=60,
     )
+    assert refreshed is (missing_reply is None)
+    packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert packets[:3] == list(replies)
+    assert (device._client is client) is (missing_reply is None)
+    assert clock[0] > start + 60  # Optional silence actually exhausted the budget.
+    assert device.control_write_attempts == 0
     assert device.profile.physical_ic_count is None
 
 
