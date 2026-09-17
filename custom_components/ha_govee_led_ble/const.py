@@ -7,11 +7,18 @@ from enum import StrEnum
 from typing import Any
 
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
-from .music_semantics import H617A_MUSIC_VARIANTS, MusicVariant
+from .music_semantics import (
+    H617A_MUSIC_VARIANTS,
+    H617E_MUSIC_VARIANTS,
+    H6099_MUSIC_VARIANTS,
+    H6102_MUSIC_VARIANTS,
+    MusicVariant,
+)
 
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
 CONF_H6102_APP_FIRMWARE = "h6102_app_firmware"
+CONF_H6102_PACT = "h6102_pact"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
@@ -63,6 +70,8 @@ class ReadDomain(StrEnum):
     DISPLAY_SETTING = "display_setting"
     RELATIVE_BRIGHTNESS = "relative_brightness"
     SEGMENTS = "segments"
+    INSTALLATION_DIRECTION = "installation_direction"
+    CAMERA_HEALTH = "camera_health"
     OTHER = "other"
 
 
@@ -90,6 +99,7 @@ class VideoFirmwareCondition:
             "white_balance",
             "relative_brightness",
             "blank_screen",
+            "black_border",
         }:
             raise ValueError("unknown video firmware control")
         if self.identity_field not in {"fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}:
@@ -103,15 +113,24 @@ class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
     command_grammar: str | None = None
+    # None retains the grammar's shipped operations; a set restricts physical writes.
+    command_operations: frozenset[str] | None = None
     status_grammar: str | None = None
     outbound_transform: Callable[[bytes], bytes] | None = None
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
     video_grammar: str | None = None
+    dreamview_grammar: str | None = None
+    dreamview_operations: frozenset[str] = frozenset()
+    dreamview_reads: frozenset[str] = frozenset()
+    dreamview_max_sub_devices: int = 0
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
+    # Exact-product revision policy, independent of compatible wire grammars.
+    video_revision_policy: str | None = None
     read_domains: frozenset[ReadDomain] = frozenset()
     setup_required_read_domains: frozenset[ReadDomain] = frozenset()
     supports_rgb: bool = False
+    supports_installation_direction: bool = False
     supports_color_temperature: bool = False
     min_color_temp_kelvin: int = 2000
     max_color_temp_kelvin: int = 9000
@@ -121,10 +140,12 @@ class ModelProfile:
     video_modes: tuple[str, ...] = ()
     supports_video_capture_region: bool = False
     supports_video_saturation: bool = False
+    video_saturation_min: int = 0
     supports_video_sound_effects: bool = False
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
+    supports_white_balance_readback: bool = False
     video_white_balance_default: int = 17
     video_white_balance_representation: str = "position"
     video_white_balance_min: int = 1
@@ -133,8 +154,11 @@ class ModelProfile:
     video_brightness_zones: tuple[str, ...] = ()
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
+    supports_black_border: bool = False
     music_modes: tuple[str, ...] = ()
     music_variants: tuple[MusicVariant, ...] = ()
+    music_upload_before_selector: bool = False
+    music_requires_upload_ack: bool = False
     # Physical IC count is independent of logical segment_count. None means unknown.
     physical_ic_count: int | None = None
     music_sensitivity_min: int = 0
@@ -143,6 +167,8 @@ class ModelProfile:
     supports_white_brightness: bool = False
     static_readback_echoes_color: bool = False
     static_readback_kelvin: bool = False
+    static_readback_zero_kelvin_is_rgb: bool = False
+    static_readback_gradual: bool = False
     whole_device_mask: int = 0
     segment_count: int = 0
     segment_group_size: int = 0
@@ -151,14 +177,31 @@ class ModelProfile:
     scene_catalogue_sku: str | None = None
     legacy_scene_catalogue_sku: str | None = None
     advanced_scene_carrier: tuple[int, int] | None = None
+    advanced_diy_selector: int | None = None
+    diy_requires_upload_ack: bool = False
+    boolean_controls: frozenset[str] = frozenset()
     default_effect_families_override: frozenset[str] | None = None
     effect_readback: str = "none"
 
     def __post_init__(self) -> None:
+        if not self.boolean_controls <= {"gradual", "limit"}:
+            raise ValueError("unknown boolean device setting")
+        if self.boolean_controls and (self.command_grammar is None or self.status_grammar is None):
+            raise ValueError("boolean settings require command and status grammars")
+        if self.advanced_diy_selector is not None and (
+            type(self.advanced_diy_selector) is not int or not 0 <= self.advanced_diy_selector <= 65535
+        ):
+            raise ValueError("Advanced DIY selector must be an unsigned 16-bit value")
+        if type(self.dreamview_max_sub_devices) is not int or not 0 <= self.dreamview_max_sub_devices <= 255:
+            raise ValueError("DreamView member capacity must be from 0 to 255")
         if self.physical_ic_count is not None and (
             type(self.physical_ic_count) is not int or self.physical_ic_count <= 0
         ):
             raise ValueError("physical IC count must be a positive integer or unknown")
+        if self.video_revision_policy not in (None, "H6199"):
+            raise ValueError("unknown video revision policy")
+        if type(self.video_saturation_min) is not int or not 0 <= self.video_saturation_min <= 100:
+            raise ValueError("video saturation minimum must be from 0 to 100")
         if not self.setup_required_read_domains <= self.read_domains:
             raise ValueError("setup-required read domains must also be readable")
         if len({condition.control for condition in self.video_firmware_conditions}) != len(
@@ -177,6 +220,8 @@ class ModelProfile:
                 ReadDomain.FIRMWARE,
                 ReadDomain.HARDWARE,
                 ReadDomain.SEGMENTS,
+                ReadDomain.INSTALLATION_DIRECTION,
+                ReadDomain.CAMERA_HEALTH,
             }
             and self.command_grammar is None
         ):
@@ -192,13 +237,15 @@ class ModelProfile:
             or self.supports_white_balance
             or self.supports_relative_brightness
             or self.supports_blank_screen
+            or self.supports_black_border
         ) and not self.supports_video_mode:
             raise ValueError("video settings require video-mode support")
-        if self.supports_white_balance:
+        if self.supports_white_balance or self.supports_white_balance_readback:
             if self.video_white_balance_representation not in {"position", "scalar"}:
                 raise ValueError("unknown white-balance representation")
             if not self.video_white_balance_min <= self.video_white_balance_default <= self.video_white_balance_max:
                 raise ValueError("white-balance default is outside its range")
+        if self.supports_white_balance:
             if (
                 len(self.video_white_balance_calibration)
                 != self.video_white_balance_max - self.video_white_balance_min + 1
@@ -219,9 +266,13 @@ class ModelProfile:
     def can_read(self, domain: ReadDomain) -> bool:
         return domain in self.read_domains
 
+    def validate_video_saturation(self, value: int) -> None:
+        if type(value) is not int or not self.video_saturation_min <= value <= 100:
+            raise ValueError(f"video saturation must be from {self.video_saturation_min} to 100")
+
     @property
     def requires_notifications(self) -> bool:
-        return bool(self.read_domains)
+        return bool(self.read_domains or self.dreamview_reads or self.boolean_controls)
 
     @property
     def state_readable(self) -> bool:
@@ -304,6 +355,8 @@ _H617A_PROFILE = ModelProfile(
         "shiny",
     ),
     music_variants=H617A_MUSIC_VARIANTS,
+    music_upload_before_selector=True,
+    music_requires_upload_ack=True,
     supports_music_color=True,
     supports_advanced_effects=True,
     supports_multi_layered_effects=True,
@@ -325,14 +378,111 @@ _H617A_PROFILE = ModelProfile(
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "H6099": ModelProfile(
+        "H6099 TV Backlight 3 Lite",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        command_grammar="H6099",
+        status_grammar="H6099",
+        effect_grammar="H6099",
+        video_grammar="H6099",
+        dreamview_grammar="H6099",
+        dreamview_operations=frozenset(
+            {
+                "replace_group",
+                "delete_group",
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "sample",
+                "sound",
+            }
+        ),
+        dreamview_reads=frozenset(
+            {
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "sample",
+                "sound",
+            }
+        ),
+        dreamview_max_sub_devices=7,
+        video_firmware_conditions=(VideoFirmwareCondition("black_border", "subordinate_21_version", "1.00.11"),),
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+                ReadDomain.SEGMENTS,
+                ReadDomain.INSTALLATION_DIRECTION,
+                ReadDomain.CAMERA_HEALTH,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_installation_direction=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        static_readback_kelvin=True,
+        supports_scenes=True,
+        supports_video_mode=True,
+        video_modes=("movie", "game"),
+        supports_video_capture_region=True,
+        supports_video_saturation=True,
+        video_saturation_min=1,
+        supports_video_sound_effects=True,
+        supports_white_balance=True,
+        supports_white_balance_readback=True,
+        video_white_balance_representation="scalar",
+        video_white_balance_default=50,
+        video_white_balance_max=100,
+        video_white_balance_calibration=tuple((value,) for value in range(1, 101)),
+        video_brightness_zones=("left", "top", "right", "bottom"),
+        supports_relative_brightness=True,
+        supports_blank_screen=True,
+        supports_black_border=True,
+        music_variants=H6099_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        supports_music_color=True,
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        whole_device_mask=0x3FFF,
+        segment_count=14,
+        segment_group_size=4,
+        supports_segment_writes=True,
+        scene_catalogue_sku="H6099",
+        supports_custom_effects=True,
+        default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
+        # Ordinary DIY uses Sub4Diy, not an H6199 scene or Workshop carrier.
+        effect_readback="diy_code_only",
+    ),
     "H617A": _H617A_PROFILE,
     "H617E": replace(
         _H617A_PROFILE,
         name="H617E LED Strip",
-        music_variants=tuple(
-            replace(variant, evidence="H617E owner-qualified shared music semantics")
-            for variant in H617A_MUSIC_VARIANTS
-        ),
+        music_variants=H617E_MUSIC_VARIANTS,
+        music_upload_before_selector=False,
+        music_requires_upload_ack=False,
         support_quality=SupportQuality.COMPATIBLE,
         effect_grammar="H617A",
         music_modes=(
@@ -376,7 +526,54 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6102": ModelProfile(
         "H6102 LED Strip",
         support_quality=SupportQuality.EXPERIMENTAL,
-        command_grammar="H6102",
+        command_grammar="H617A",
+        status_grammar="H6102",
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        static_readback_gradual=True,
+        effect_grammar="H617A",
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        music_variants=H6102_MUSIC_VARIANTS,
+        supports_music_color=True,
+        whole_device_mask=0x7FFF,
+        segment_count=15,
+        segment_group_size=3,
+        supports_segment_writes=True,
+        effect_readback="diy_code_only",
+        advanced_diy_selector=402,
+        diy_requires_upload_ack=True,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        boolean_controls=frozenset({"gradual", "limit"}),
         connection_idle_timeout=3.0,
         scene_catalogue_sku="H6102",
     ),
@@ -387,6 +584,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H6199",
         effect_grammar="H6199",
         video_grammar="H6199",
+        video_revision_policy="H6199",
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -406,8 +604,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 ReadDomain.POWER,
                 ReadDomain.BRIGHTNESS,
                 ReadDomain.COLOUR_MODE,
-                ReadDomain.DISPLAY_SETTING,
-                ReadDomain.RELATIVE_BRIGHTNESS,
             }
         ),
         supports_rgb=True,
@@ -421,13 +617,19 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_video_sound_effects=True,
         # These independently captured video registers have byte-exact builders.
         supports_white_balance=True,
+        supports_white_balance_readback=True,
         video_white_balance_calibration=WHITE_BALANCE_POSITIONS,
         video_brightness_zones=("left", "top", "right", "bottom"),
         supports_relative_brightness=True,
         supports_blank_screen=True,
         music_modes=_H6199_MUSIC_MODES,
-        music_variants=(MusicVariant(0x03, "H6199 captured Rhythm selector style", supports_style=True),),
-        music_sensitivity_min=1,
+        music_variants=(
+            MusicVariant(0x05, "H6199 Energetic selector; no fixed colour", supports_fixed_colour=False),
+            MusicVariant(0x03, "H6199 captured Rhythm selector style", supports_style=True),
+            MusicVariant(0x04, "H6199 owner-qualified Spectrum fixed-colour readback"),
+            MusicVariant(0x06, "H6199 owner-qualified Rolling fixed-colour readback"),
+        ),
+        music_sensitivity_min=0,
         music_sensitivity_max=100,
         supports_music_color=True,
         supports_advanced_effects=True,
@@ -449,6 +651,40 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
 BLE_DISCOVERABLE_MODELS = frozenset({"H6076", "H617A", "H617E", "H6199"})
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
+
+H6199_PACT1_PROFILE = ModelProfile(
+    "H6199 Pact 1 (power only)",
+    support_quality=SupportQuality.PARTIAL,
+    command_grammar="H6199",
+    command_operations=frozenset({"power"}),
+    status_grammar="H6199",
+    read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+    setup_required_read_domains=frozenset({ReadDomain.POWER}),
+)
+
+
+def device_profile(
+    model: str,
+    pact_type: int | None,
+    pact_code: int | None,
+    *,
+    firmware: str | None = None,
+    hardware: str | None = None,
+) -> ModelProfile:
+    """Restrict positively identified Pact 1 only; unknown is not proof of Pact 2."""
+    if model == "H6199" and (pact_type, pact_code) == (1, 1):
+        return H6199_PACT1_PROFILE
+    if model == "H6102":
+        from .h6102_capabilities import resolve_h6102_capabilities
+
+        return resolve_h6102_capabilities(
+            firmware,
+            "ble" if firmware is not None else None,
+            hardware=hardware,
+            pact_type=pact_type,
+            pact_code=pact_code,
+        ).profile
+    return get_profile(model)
 
 
 def resolve_model(model: str) -> str | None:
@@ -485,8 +721,8 @@ def supported_effect_families(model: str) -> frozenset[str]:
     return frozenset(families)
 
 
-def supported_effect_categories(model: str) -> tuple[str, ...]:
-    profile = get_profile(model)
+def supported_effect_categories(model: str, *, profile: ModelProfile | None = None) -> tuple[str, ...]:
+    profile = get_profile(model) if profile is None else profile
     categories: set[str] = set()
     if profile.supports_custom_effects:
         categories.add(EFFECT_CATEGORY_EFFECTS)

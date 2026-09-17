@@ -1,4 +1,18 @@
 {
+  "entity": {
+    "switch": {
+      "gradual": {"name": "Gradual"},
+      "limit": {"name": "Limit"}
+    },
+    "select": {
+      "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},
+      "camera_position": {"name": "Camera position", "state": {"top": "Top", "bottom": "Bottom"}},
+      "gradient": {"name": "Gradient", "state": {"off": "Off", "on": "On"}}
+    },
+    "sensor": {
+      "camera_status": {"name": "Camera status", "state": {"absent": "Absent", "healthy": "Connected", "incompatible": "Incompatible", "unknown": "Unknown"}}
+    }
+  },
   "config": {
     "step": {
       "bluetooth": {
@@ -26,10 +40,11 @@
         }
       },
       "h6102_firmware": {
-        "title": "Experimental H6102 firmware context",
-        "description": "Enter the exact dotted-decimal software version shown by Govee Home. This temporary qualification context is not observed device identity. After any firmware update, reconfigure the device before further qualification. Leave blank for power and brightness only.",
+        "title": "Experimental H6102 protocol context",
+        "description": "Pact is normally read from Bluetooth advertisements. If it is missing, select a Pact only when identified with the maintainer using device evidence. Firmware alone cannot identify Pact. Unknown context permits power, brightness and identity reads. Observed Bluetooth context takes precedence.",
         "data": {
-          "h6102_app_firmware": "App-reported software version"
+          "h6102_app_firmware": "App-reported software version",
+          "h6102_pact": "Owner-qualified Pact context"
         },
         "data_description": {
           "h6102_app_firmware": "Use the exact value shown by Govee Home, for example 1.03.01. Leave blank to store no firmware context."
@@ -39,6 +54,7 @@
     "error": {
       "invalid_address": "Enter a valid 12-digit BLE MAC address.",
       "invalid_firmware": "Enter the exact dotted-decimal software version shown by Govee Home, for example 1.03.01.",
+      "invalid_pact": "Select a known Pact or leave it automatic.",
       "cannot_connect": "Unable to connect to the device.",
       "model_mismatch": "The device at this address advertises a different supported model.",
       "unknown": "Unexpected error while validating the device."
@@ -61,6 +77,15 @@
     },
     "device_command_failed": {
       "message": "The device command failed."
+    },
+    "camera_absent": {
+      "message": "Video mode is unavailable because the camera is absent. Connect the camera and try again."
+    },
+    "camera_incompatible": {
+      "message": "Video mode is unavailable because the connected camera is incompatible."
+    },
+    "invalid_control_request": {
+      "message": "The requested control settings are invalid or unsupported."
     },
     "invalid_custom_effect": {
       "message": "The saved effect is invalid or unavailable."

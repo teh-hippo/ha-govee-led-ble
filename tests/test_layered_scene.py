@@ -197,7 +197,7 @@ def test_effect_domain_compatibility_shape_uses_raw_integer_values() -> None:
                         "darkest_retention": 255,
                     }
                 ],
-                "distribution": {"method": 127, "backwards": True},
+                "distribution": {"method": 15, "backwards": True, "extensions": 112},
                 "colour_speed": 255,
                 "colour_retention": 0,
                 "palette": [[1, 2, 3]],

@@ -236,7 +236,7 @@ async def test_h6102_firmware_step_rechecks_duplicate(hass: HomeAssistant):
     assert result["reason"] == "already_configured"
 
 
-@pytest.mark.parametrize("firmware", ["1..3", "1. 3", "+1.03.01", "version 1.03.01"])
+@pytest.mark.parametrize("firmware", ["1..3", "1. 3", "+1.03.01", "version 1.03.01", "3.2.2", "1.3"])
 async def test_user_step_rejects_invalid_h6102_firmware(hass: HomeAssistant, firmware: str):
     result = await _init(
         hass,
@@ -446,8 +446,11 @@ async def test_options_flow_aborts_when_model_has_no_effect_options(
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_options"
+    if data[CONF_MODEL] == "H6102":
+        assert result["type"] is FlowResultType.FORM
+    else:
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "no_options"
 
 
 async def test_reconfigure_h6076_preserves_entry_identity(hass: HomeAssistant):

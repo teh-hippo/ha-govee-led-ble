@@ -61,7 +61,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power,
 )
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
-from custom_components.ha_govee_led_ble.h6102_protocol import H6102RgbVariant
 from custom_components.ha_govee_led_ble.light import (
     GoveeBLELight,
     _coerce_segment_brightness,
@@ -103,8 +102,8 @@ def h6199_light(mock_h6199_coordinator):
     return e
 
 
-def _h6102_light(mock_coordinator, firmware=None, firmware_source=None):
-    resolution = resolve_h6102_capabilities(firmware, firmware_source)
+def _h6102_light(mock_coordinator, firmware=None, firmware_source=None, *, pact_type=None):
+    resolution = resolve_h6102_capabilities(firmware, firmware_source, pact_type=pact_type, pact_code=1)
     mock_coordinator.model = "H6102"
     mock_coordinator.profile = resolution.profile
     mock_coordinator.rgb_variant = resolution.rgb_variant
@@ -119,37 +118,35 @@ def _h6102_light(mock_coordinator, firmware=None, firmware_source=None):
     return light
 
 
-async def test_h6102_write_only_controls_follow_resolved_capabilities(mock_coordinator):
+async def test_h6102_bootstrap_controls_follow_resolved_capabilities(mock_coordinator):
     light = _h6102_light(mock_coordinator)
     mock_coordinator.is_on = True
 
     assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
-    assert light.assumed_state is True
+    assert light.assumed_state is False
 
     await light.async_turn_on(brightness=128)
 
     assert [item.args[0] for item in mock_coordinator.send_command.await_args_list] == [
-        build_power(True, "H6102"),
         build_brightness(50, "H6102"),
     ]
-    mock_coordinator.refresh_state.assert_not_awaited()
+    mock_coordinator.refresh_state.assert_awaited()
 
 
-async def test_h6102_extended_rgb_uses_the_firmware_selected_kaitai_path(mock_coordinator):
-    light = _h6102_light(mock_coordinator, "1.03.01", "configured")
+async def test_h6102_extended_rgb_uses_the_pact_selected_shared_kaitai_path(mock_coordinator):
+    light = _h6102_light(mock_coordinator, "1.03.01", "configured", pact_type=10)
     mock_coordinator.is_on = True
 
     await light.async_turn_on(rgb_color=(32, 64, 96))
 
-    assert light.supported_color_modes == {ColorMode.RGB}
+    assert light.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
     assert [item.args[0] for item in mock_coordinator.send_command.await_args_list] == [
-        build_power(True, "H6102"),
         build_color_rgb(
             32,
             64,
             96,
             "H6102",
-            h6102_variant=H6102RgbVariant.EXTENDED,
+            profile=mock_coordinator.profile,
         ),
     ]
 
@@ -667,6 +664,7 @@ def test_saved_categories_remain_visible_when_native_families_are_narrower(
         effect_backend=backend,
     )
 
+    backend.template_defaults = SimpleNamespace(get=MagicMock(return_value=None))
     assert {"Saved scene", "Saved reactive"} <= set(entity.effect_list)
 
 
@@ -1533,7 +1531,10 @@ async def test_invalid_music_selection_has_no_control_side_effects(light, mock_c
 
 @pytest.mark.parametrize("effect,mode", [("Video: Movie", "movie"), ("Video: Game", "game"), ("video: game", "game")])
 async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coordinator, effect, mode):
+    from tests.test_h6199_capabilities import QUALIFIED
+
     co = mock_h6199_coordinator
+    vars(co).update(QUALIFIED)
     co.is_on = True
     co.video_full_screen = False
     co.video_saturation = 63
@@ -1543,9 +1544,7 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
     await h6199_light.async_turn_on(effect=effect)
     packet = build_h6199_video(False, mode == "game", 63, True, 27)
     assert [call.args[0] for call in co.send_command.call_args_list] == [
-        build_power(True),
         packet,
-        build_power(True),
         packet,
     ]
     for call in co.refresh_state.await_args_list:
@@ -1558,6 +1557,9 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
 
 
 async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_coordinator):
+    from tests.test_h6199_capabilities import QUALIFIED
+
+    vars(mock_h6199_coordinator).update(QUALIFIED)
     content = VideoProfile(
         "H6199",
         "movie",
@@ -1598,7 +1600,7 @@ async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_
     assert isinstance(compiled, CompiledVideoProfile)
     assert compiled.saturation == 63
     assert compiled.relative_brightness == (80, 70, 60, 50)
-    backend.template_defaults.get.assert_called_once_with("entry-a", "template:video:movie")
+    backend.template_defaults.get.assert_called_with("entry-a", "template:video:movie")
 
 
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):
@@ -1612,7 +1614,7 @@ async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordin
     assert h6199_light.effect == "off"
 
 
-def test_registers_segment_services_during_integration_setup():
+def test_registers_light_services_during_integration_setup():
     hass = MagicMock()
     hass.data = {}
     async_register_light_services(hass)
@@ -1621,6 +1623,19 @@ def test_registers_segment_services_during_integration_setup():
         "paint_segments",
         "set_segment_brightness",
         "set_segment_color",
+        "set_segment_color_temp",
+        "set_installation_direction",
+        "read_installation_controls",
+        "replace_dreamview_group",
+        "delete_dreamview_group",
+        "read_dreamview_group",
+        "set_dreamview_switch",
+        "set_dreamview_member_brightness",
+        "set_dreamview_same_brightness",
+        "set_dreamview_member_connect",
+        "set_dreamview_saturation",
+        "set_dreamview_sample",
+        "set_dreamview_sound_effects",
     }
 
 
@@ -2145,14 +2160,14 @@ async def test_control_lock_keeps_failed_rollback_before_newer_colour(light, moc
     red = build_color_rgb(255, 0, 0)
     blue = build_color_rgb(0, 0, 255)
 
-    async def send(packet: bytes) -> None:
+    async def transmit(_uuid, packet: bytes, *, response) -> None:
         sent.append(packet)
         if packet == red:
             first_started.set()
             await release_first.wait()
             raise BleakError("failed red write")
 
-    mock_coordinator.send_command = AsyncMock(side_effect=send)
+    mock_coordinator._client.write_gatt_char.side_effect = transmit
     first = asyncio.create_task(light.async_turn_on(rgb_color=(255, 0, 0)))
     await first_started.wait()
     second = asyncio.create_task(light.async_turn_on(rgb_color=(0, 0, 255)))
@@ -2189,10 +2204,14 @@ async def test_failed_rgb_keeps_unset_music_style_for_native_bloom(hass, monkeyp
         await GoveeBLELight(coord).async_turn_on(rgb_color=(1, 2, 3))
     assert coord._music_calm is None
     coord.send_command = AsyncMock()
-    await coord.async_select_music_slug("bloom")
-    assert [call.args[0] for call in coord.send_command.await_args_list] == list(
-        prepare_music_request(coord.model, "bloom", 99, None, True, {})
-    )
+    from tests.test_music_commands import _music_transport
+
+    with _music_transport(coord) as physical:
+        await coord.async_select_music_slug("bloom")
+        assert [call.args[1] for call in physical.await_args_list] == list(
+            prepare_music_request(coord.model, "bloom", 99, None, True, {})
+        )
+    coord.send_command.assert_not_awaited()
 
 
 async def test_failed_rgb_preserves_newer_observed_music_style(hass):

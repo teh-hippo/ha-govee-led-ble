@@ -1,4 +1,3 @@
-import asyncio
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
@@ -12,6 +11,7 @@ from custom_components.ha_govee_led_ble.const import (
     default_effect_categories,
     default_effect_families,
 )
+from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
@@ -102,6 +102,11 @@ def _make_coord(**ov) -> MagicMock:
         effect="video: movie",
         fw_version=None,
         hw_version=None,
+        fresh_services_required=False,
+        fresh_service_discovery_forced=False,
+        last_connected_at=None,
+        last_disconnected_at=None,
+        last_failure_type=None,
         available=True,
         brightness_pct=100,
         rgb_color=(255, 255, 255),
@@ -110,10 +115,15 @@ def _make_coord(**ov) -> MagicMock:
         color_temp_kelvin_source="initial",
         _field_revisions={},
         _domain_revisions={},
+        _profile_generation=0,
+        _encryption=None,
+        control_write_attempts=0,
+        _static_write_attempts=0,
         _scene_code=None,
         _segment_groups_observed=set(),
         _segment_query_colors=None,
         _segment_query_brightness=None,
+        _segment_query_incomplete=False,
         video_saturation=100,
         white_brightness=100,
         video_full_screen=True,
@@ -121,6 +131,10 @@ def _make_coord(**ov) -> MagicMock:
         video_sound_effects_softness=100,
         white_balance_red=None,
         white_balance_blue=None,
+        white_balance_flag=None,
+        white_balance_default_flag=None,
+        white_balance_default_red=None,
+        white_balance_default_blue=None,
         white_balance_scalar=None,
         subordinate_20_version=None,
         subordinate_21_version=None,
@@ -133,6 +147,10 @@ def _make_coord(**ov) -> MagicMock:
         relative_brightness_strip_left=None,
         relative_brightness_strip_right=None,
         blank_screen=None,
+        black_border=None,
+        installation_direction=None,
+        camera_health="unknown",
+        _dreamview_last_write="unknown",
         blank_screen_detection=2,
         blank_screen_low_brightness_duration_seconds=10,
         blank_screen_same_tone_duration_seconds=120,
@@ -163,7 +181,14 @@ def _make_coord(**ov) -> MagicMock:
         frozenset(MODEL_SCENES[model]) if "scenes" in effect_families else frozenset(),
     )
     c = MagicMock(spec=GoveeBLECoordinator, **d)
-    c.send_command = AsyncMock()
+    c._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+
+    async def send_command(packet, *, write_guard=None, state_values=None) -> None:
+        await GoveeBLECoordinator._async_write_packet(
+            c, c._client, packet, arm_expected=True, before_write=write_guard, state_values=state_values
+        )
+
+    c.send_command = AsyncMock(side_effect=send_command)
     c.install_static_color = MagicMock(
         side_effect=lambda **kwargs: GoveeBLECoordinator.install_static_color(c, **kwargs)
     )
@@ -187,8 +212,7 @@ def _make_coord(**ov) -> MagicMock:
 
     c.mark_segment_state_optimistic = MagicMock(side_effect=mark_segment_state_optimistic)
     c.mark_segment_state_restored = MagicMock(side_effect=mark_segment_state_restored)
-    c._control_lock = asyncio.Lock()
-    c._control_arbiter = MagicMock(current_task_intent=None)
+    c._control_arbiter = c._control_lock = BLEControlArbiter()
     c.refresh_state, c.async_set_updated_data = AsyncMock(return_value=True), MagicMock()
     c.unknown_scene_code = None
 
@@ -196,6 +220,8 @@ def _make_coord(**ov) -> MagicMock:
         for packet in packets:
             if (guard := _kwargs.get("write_guard")) is not None:
                 guard()
+            for field, value in (_kwargs.get("state_values") or {}).items():
+                setattr(c, field, value)
             await c.send_command(packet)
 
     c.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)

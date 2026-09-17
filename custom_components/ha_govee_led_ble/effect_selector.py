@@ -20,6 +20,7 @@ from .const import (
     EFFECT_CATEGORY_SCENES,
     EFFECT_CATEGORY_VIDEO,
     MUSIC_MODE_SLUGS,
+    ModelProfile,
     effect_category_for_content_kind,
     get_profile,
 )
@@ -94,6 +95,8 @@ def effect_selector_entries(
     always_include_custom_effects: bool = False,
     active_custom: bool = False,
     native_categories: frozenset[str] | None = None,
+    profile: ModelProfile | None = None,
+    video_modes: tuple[str, ...] | None = None,
 ) -> tuple[EffectSelectorEntry, ...]:
     candidates = _selector_candidates(
         model,
@@ -101,6 +104,8 @@ def effect_selector_entries(
         items,
         always_include_custom_effects=always_include_custom_effects,
         native_categories=native_categories,
+        profile=profile,
+        video_modes=video_modes,
     )
     names_by_candidate = tuple(
         frozenset(normalise_effect_name(name) for name in (candidate.base_label, *candidate.aliases))
@@ -203,8 +208,12 @@ def classify_saved_effect_name(
 def compatible_saved_effects(
     items: Iterable[LibraryItem],
     model: str,
+    *,
+    profile: ModelProfile | None = None,
 ) -> tuple[LibraryItem, ...]:
-    compatible = [item for item in items if compatibility(item, model).state is CompatibilityState.COMPATIBLE]
+    compatible = [
+        item for item in items if compatibility(item, model, profile=profile).state is CompatibilityState.COMPATIBLE
+    ]
     counts = Counter(normalise_effect_name(item.name) for item in compatible)
     return tuple(
         sorted(
@@ -218,12 +227,15 @@ def saved_effect_by_name(
     items: Iterable[LibraryItem],
     model: str,
     effect_name: str,
+    *,
+    profile: ModelProfile | None = None,
 ) -> LibraryItem | None:
     entries = effect_selector_entries(
         model,
         frozenset(EFFECT_CATEGORIES),
         items,
         prefix_effect_names=False,
+        profile=profile,
     )
     resolved = resolve_effect_selector(entries, effect_name)
     return resolved.item if resolved is not None and resolved.source == "saved" else None
@@ -236,10 +248,13 @@ def _selector_candidates(
     *,
     always_include_custom_effects: bool = False,
     native_categories: frozenset[str] | None = None,
+    profile: ModelProfile | None = None,
+    video_modes: tuple[str, ...] | None = None,
 ) -> tuple[_SelectorCandidate, ...]:
     candidates: list[_SelectorCandidate] = []
+    profile = get_profile(model) if profile is None else profile
     native = categories if native_categories is None else native_categories
-    if EFFECT_CATEGORY_SCENES in native:
+    if EFFECT_CATEGORY_SCENES in native and profile.supports_scenes:
         candidates.extend(
             _SelectorCandidate(
                 source="scene",
@@ -250,7 +265,6 @@ def _selector_candidates(
             )
             for key, label in MODEL_SCENE_LABELS[model].items()
         )
-    profile = get_profile(model)
     if EFFECT_CATEGORY_VIDEO in native and profile.supports_video_mode:
         candidates.extend(
             _SelectorCandidate(
@@ -261,6 +275,7 @@ def _selector_candidates(
                 aliases=(f"Video: {mode.replace('_', ' ').title()}",),
             )
             for mode in profile.video_modes
+            if video_modes is None or mode in video_modes
         )
     if EFFECT_CATEGORY_REACTIVE in native:
         candidates.extend(
@@ -283,7 +298,7 @@ def _selector_candidates(
             aliases=(),
             item=item,
         )
-        for item in compatible_saved_effects(items, model)
+        for item in compatible_saved_effects(items, model, profile=profile)
         if (category := effect_category_for_content_kind(str(effect_content_to_dict(item.content).get("kind"))))
         is not None
         and (category in categories or always_include_custom_effects)

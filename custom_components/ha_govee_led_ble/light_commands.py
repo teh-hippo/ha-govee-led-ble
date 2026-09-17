@@ -7,14 +7,12 @@ from dataclasses import dataclass
 from .const import ModelProfile, get_profile
 from .generated_protocol_adapter import (
     build_colour_temperature,
-    build_h6102_extended_rgb,
     build_segment_colour,
     parse_command,
 )
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
 )
-from .h6102_protocol import H6102RgbVariant
 
 SEGMENT_COUNT = 15
 ALL_SEGMENTS: tuple[int, ...] = tuple(range(1, SEGMENT_COUNT + 1))
@@ -53,7 +51,8 @@ def build_segment_color(
     *,
     profile: ModelProfile | None = None,
 ) -> bytes:
-    return build_segment_colour(segments_to_mask(segments, profile or get_profile(model)), red, green, blue, model)
+    profile = profile or get_profile(model)
+    return build_segment_colour(segments_to_mask(segments, profile), red, green, blue, model, profile=profile)
 
 
 def build_segment_brightness(
@@ -63,7 +62,8 @@ def build_segment_brightness(
     *,
     profile: ModelProfile | None = None,
 ) -> bytes:
-    return build_segment_brightness_mask(segments_to_mask(segments, profile or get_profile(model)), percent, model)
+    profile = profile or get_profile(model)
+    return build_segment_brightness_mask(segments_to_mask(segments, profile), percent, model, profile=profile)
 
 
 def build_segment_paint(
@@ -88,13 +88,10 @@ def build_color_rgb(
     blue: int,
     model: str = "H617A",
     *,
-    h6102_variant: H6102RgbVariant | None = None,
+    profile: ModelProfile | None = None,
 ) -> bytes:
-    if model == "H6102":
-        if h6102_variant is not H6102RgbVariant.EXTENDED:
-            raise ValueError("H6102 RGB requires the extended variant")
-        return build_h6102_extended_rgb(ALL_SEGMENTS_MASK, red, green, blue)
-    return build_segment_colour(get_profile(model).whole_device_mask, red, green, blue, model)
+    profile = profile or get_profile(model)
+    return build_segment_colour(profile.whole_device_mask, red, green, blue, model, profile=profile)
 
 
 def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
@@ -109,14 +106,34 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
     return int(red), _clamp(int(green), 0, 255), _clamp(int(blue), 0, 255)
 
 
-def build_color_temp(kelvin: int, model: str = "H617A") -> bytes:
-    profile = get_profile(model)
+def build_color_temp(kelvin: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
+    profile = profile or get_profile(model)
     value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
-    return build_colour_temperature(value, kelvin_to_rgb(value), profile.whole_device_mask, model)
+    return build_colour_temperature(value, kelvin_to_rgb(value), profile.whole_device_mask, model, profile=profile)
 
 
-def build_white_brightness(percent: int, model: str = "H617A") -> bytes:
-    return build_segment_brightness_mask(get_profile(model).whole_device_mask, percent, model)
+def build_segment_color_temp(
+    segments: Iterable[int],
+    kelvin: int,
+    model: str = "H617A",
+    *,
+    profile: ModelProfile | None = None,
+) -> bytes:
+    """Build masked Kelvin with its rendered RGB companion, using the target bounds."""
+    profile = profile or get_profile(model)
+    mask = segments_to_mask(segments, profile)
+    if not profile.supports_color_temperature:
+        raise ValueError(f"{profile.name} does not support colour temperature")
+    if isinstance(kelvin, bool) or not isinstance(kelvin, int):
+        raise ValueError("Kelvin must be an integer")
+    if not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
+        raise ValueError("Kelvin outside profile range")
+    return build_colour_temperature(kelvin, kelvin_to_rgb(kelvin), mask, model, profile=profile)
+
+
+def build_white_brightness(percent: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
+    profile = profile or get_profile(model)
+    return build_segment_brightness_mask(profile.whole_device_mask, percent, model, profile=profile)
 
 
 @dataclass(frozen=True)
@@ -136,22 +153,16 @@ class ParsedStaticWrite:
         return self.segment_mask == self.whole_device_mask
 
 
-def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite | None:
+def parse_static_write(
+    packet: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
+) -> ParsedStaticWrite | None:
     """Convert a generated static command into optimistic semantic state."""
-    generated = parse_command(packet, model)
-    if generated is None:
+    profile = profile or get_profile(model)
+    generated = parse_command(packet, model, profile=profile)
+    if generated is None or not hasattr(generated.opcode, "name"):
         return None
-    if model == "H6102":
-        if generated.opcode.name != "mode":
-            return None
-        detail = generated.body
-        return ParsedStaticWrite(
-            operation=int.from_bytes(detail.operation),
-            segment_mask=int(detail.mask.bits),
-            rgb=(int(detail.rgb_direct.red), int(detail.rgb_direct.green), int(detail.rgb_direct.blue)),
-        )
-    whole_device_mask = get_profile(model).whole_device_mask
-    if get_profile(model).command_grammar == "H6199":
+    whole_device_mask = profile.whole_device_mask
+    if profile.command_grammar in {"H6099", "H6199"}:
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
             return None
         detail = generated.body.detail

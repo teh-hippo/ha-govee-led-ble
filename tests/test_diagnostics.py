@@ -28,6 +28,9 @@ def _prep(coord, *, packet_log=None, segment_colors=None):
     coord._lock = MagicMock()
     coord._lock.locked.return_value = False
     coord._expected_state = {}
+    coord.pact_type = coord.pact_code = None
+    coord.strip_direction = coord.camera_position = coord.gradient = None
+    coord.camera_status = "unknown"
     return coord
 
 
@@ -119,9 +122,9 @@ async def test_h6076_diagnostics_expose_basic_capability_boundary(mock_h6076_coo
 @pytest.mark.parametrize(
     ("firmware", "classified_variant", "rgb_enabled", "reason"),
     [
-        pytest.param(None, None, False, "firmware_unknown", id="unknown"),
-        pytest.param("1.03.00", "legacy", False, "legacy_capture_required", id="legacy"),
-        pytest.param("1.03.01", "extended", True, None, id="extended"),
+        pytest.param(None, None, False, "pact_unknown", id="unknown"),
+        pytest.param("1.03.00", None, False, "pact_unknown", id="legacy"),
+        pytest.param("3.02.02", None, False, "pact_unknown", id="modern"),
     ],
 )
 async def test_h6102_diagnostics_expose_resolved_capabilities_without_implying_identity(
@@ -153,12 +156,18 @@ async def test_h6102_diagnostics_expose_resolved_capabilities_without_implying_i
 
     assert resolution == {
         "configured_app_firmware": firmware,
+        "configured_pact": None,
+        "pact_type": None,
+        "pact_code": None,
+        "music_modes": [],
+        "music_context": "evidence_gap",
+        "boolean_controls": {},
         "resolved_profile": "H6102 LED Strip",
         "firmware_source": "configured" if firmware is not None else None,
         "classified_rgb_variant": classified_variant,
         "rgb_enabled": rgb_enabled,
         "capability_resolution_reason": reason,
-        "read_domains": [],
+        "read_domains": ["brightness", "firmware", "hardware", "power"],
         "surface_capabilities": {
             "color_temperature": False,
             "regions": False,
@@ -190,7 +199,7 @@ async def test_h6102_diagnostics_expose_resolved_capabilities_without_implying_i
     assert coord["supports_white_brightness"] is False
     assert coord["supports_segments"] is False
     assert coord["segment_count"] == 0
-    assert coord["release_capabilities"]["capabilities"] == []
+    assert coord["release_capabilities"]["capabilities"]
     assert coord["fw_version"] is None
     assert coord["hw_version"] is None
 
@@ -214,6 +223,7 @@ async def test_h6102_diagnostics_keep_configured_and_observed_firmware_distinct(
     )
     coordinator.fw_version = "1.03.01"
     coordinator.hw_version = "1.00.03"
+    coordinator._resolve_device_profile()
 
     diag = await _run(_prep(coordinator), entry, hass)
     resolution = diag["coordinator"]["capability_resolution"]
@@ -222,7 +232,7 @@ async def test_h6102_diagnostics_keep_configured_and_observed_firmware_distinct(
     assert resolution["observed_firmware"] == "1.03.01"
     assert resolution["observed_hardware"] == "1.00.03"
     assert resolution["firmware_source"] == "ble"
-    assert resolution["classified_rgb_variant"] == "extended"
+    assert resolution["classified_rgb_variant"] is None
 
 
 async def test_stale_experimental_option_ignored(mock_h6199_coordinator):
@@ -313,6 +323,23 @@ async def test_surfaces_firmware_hardware_and_availability(mock_h6199_coordinato
     assert diag["coordinator"]["fw_version"] == "3.02.24"
     assert diag["coordinator"]["hw_version"] == "3.01.01"
     assert diag["coordinator"]["available"] is True
+
+
+async def test_surfaces_privacy_safe_connection_recovery_state(mock_h6199_coordinator):
+    coord = _prep(mock_h6199_coordinator)
+    coord.fresh_services_required = True
+    coord.fresh_service_discovery_forced = True
+    coord.last_connected_at = "2026-08-29T12:00:00-07:00"
+    coord.last_disconnected_at = "2026-08-29T12:00:03-07:00"
+    coord.last_failure_type = "BleakError"
+
+    diag = (await _run(coord))["coordinator"]
+
+    assert diag["fresh_services_required"] is True
+    assert diag["fresh_service_discovery_forced"] is True
+    assert diag["last_connected_at"] == "2026-08-29T12:00:00-07:00"
+    assert diag["last_disconnected_at"] == "2026-08-29T12:00:03-07:00"
+    assert diag["last_failure_type"] == "BleakError"
 
 
 async def test_lock_locked_surfaced(mock_h6199_coordinator):
@@ -421,16 +448,16 @@ async def test_surfaces_only_bounded_deployment_diagnostics_for_this_entry(
     assert "never-visible" not in str(diag)
 
 
-async def test_unknown_white_balance_is_not_reported_as_neutral(mock_h6199_coordinator):
-    coord = _prep(mock_h6199_coordinator)
+async def test_unknown_white_balance_is_not_reported_as_neutral(hass):
+    coord = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     coord.white_balance_red = coord.white_balance_blue = None
     diag = await _run(coord)
     assert diag["coordinator"]["white_balance"] is None
     assert diag["coordinator"]["white_balance_position"] is None
 
 
-async def test_white_balance_position_is_exact_not_nearest(mock_h6199_coordinator):
-    coord = _prep(mock_h6199_coordinator)
+async def test_white_balance_position_is_exact_not_nearest(hass):
+    coord = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     coord.white_balance_red, coord.white_balance_blue = 16, 3
     diag = await _run(coord)
     assert diag["coordinator"]["white_balance_position"] == 17
@@ -438,3 +465,29 @@ async def test_white_balance_position_is_exact_not_nearest(mock_h6199_coordinato
     coord.white_balance_red, coord.white_balance_blue = 17, 4
     diag = await _run(coord)
     assert diag["coordinator"]["white_balance_position"] is None
+
+
+@pytest.mark.parametrize(
+    "hardware,native,video",
+    [
+        ("3.02.01", "supported", "supported"),
+        (None, "evidence_gap", "evidence_gap"),
+        ("1.00.01", "evidence_gap", "unsupported"),
+    ],
+)
+async def test_native_registers_pact_and_effective_qualification(hass, hardware, native, video):
+    coord = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    coord.fw_version, coord.hw_version = "1.10.04", hardware
+    coord.subordinate_20_version, coord.subordinate_21_version = "1.03.00", "1.00.33"
+    coord.pact_type, coord.pact_code = 2, 1
+    coord.strip_direction, coord.camera_position, coord.gradient = 0, 1, 1
+    coord.camera_status = "incompatible"
+    data = (await _run(coord, hass=hass))["coordinator"]
+    assert (data["pact_type"], data["pact_code"]) == (2, 1)
+    assert (data["strip_direction"], data["camera_position"], data["gradient"]) == (0, 1, 1)
+    assert data["camera_status"] == "incompatible"
+    assert data["h6199_camera_controls_state"] == native
+    assert data["video_control_states"]["white_balance"] == video
+    assert data["supports_white_balance"] is True
+    assert data["white_balance"] is None
+    assert data["address"] == REDACTED

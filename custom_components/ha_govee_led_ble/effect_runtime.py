@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Any
 from uuid import UUID, uuid4
 
-from .const import ModelProfile, ReadDomain, get_profile
+from .const import MUSIC_MODE_SLUGS, ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .effect_active_workspace import (
@@ -24,6 +24,7 @@ from .effect_compiler import (
     CompiledMusicProfile,
     CompiledVideoProfile,
     compile_application,
+    validate_compiled_geometry,
 )
 from .effect_compiler import resolve_diy_code as resolve_diy_code
 from .effect_deployments import (
@@ -49,24 +50,27 @@ from .effect_protocol_decoder import (
     decode_a3_effect_frames,
 )
 from .generated_protocol_adapter import (
+    build_black_border,
     build_blank_screen,
     build_power,
     build_relative_brightness,
-    build_video_mode,
     build_white_balance,
 )
 from .music_commands import prepare_music_profile_writes
-from .music_semantics import capture_music_parameters
+from .music_semantics import capture_music_parameters, music_variant
 from .native_profile_controls import (
     ProfileWriter,
     _send_video_setting,
     apply_active_video_mode,
+    apply_black_border,
     apply_blank_screen,
     apply_relative_brightness,
     apply_white_balance,
+    async_require_video_controls,
+    prepare_video_mode,
 )
 from .scenes import canonical_scene_key, resolve_scene_identity, scene_code_is_ambiguous
-from .video_applicability import requested_video_controls, require_video_controls, validate_video_request
+from .video_applicability import requested_video_controls, require_video_controls, require_video_mode
 
 ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
@@ -85,6 +89,7 @@ async def async_apply_compiled_profile(
     if isinstance(compiled, CompiledMusicProfile):
         if coordinator.model != compiled.model:
             raise ValueError("music profile target does not match coordinator")
+        validate_compiled_geometry(compiled, coordinator.profile)
         writes = prepare_music_profile_writes(
             compiled.model,
             compiled.mode,
@@ -92,15 +97,19 @@ async def async_apply_compiled_profile(
             compiled.colour,
             compiled.calm,
             compiled.parameters,
+            profile=coordinator.profile,
+            palette=compiled.palette,
         )
+        if tuple(packet for packet, _ in writes) != compiled.packets:
+            raise ValueError("Music request changed since compilation; refresh and retry")
 
-        def capture_static() -> None:
-            if coordinator.active_mode == "colour":
-                coordinator._pre_mode_snapshot = coordinator._capture_static_state()
-
-        send = coordinator.send_command if writer is None else writer
-        for index, (packet, state_values) in enumerate(writes):
-            await send(packet, state_values=state_values, write_guard=capture_static if index == 1 else None)
+        await coordinator.async_write_music_sequence(
+            writes,
+            mode_code=MUSIC_MODE_SLUGS[compiled.mode],
+            physical_ic_count=compiled.physical_ic_count,
+            intent=ControlIntent.APPLY,
+            writer=writer,
+        )
         if progress is not None:
             await progress(1)
             if len(writes) > 2:
@@ -108,7 +117,8 @@ async def async_apply_compiled_profile(
         return
 
     profile = coordinator.profile
-    require_video_controls(profile, coordinator, requested_video_controls(compiled))
+    await async_require_video_controls(coordinator, requested_video_controls(compiled))
+    require_video_mode(coordinator.profile, coordinator)
     underlying_writer = writer
     requested_controls = requested_video_controls(compiled)
 
@@ -148,18 +158,29 @@ async def async_apply_compiled_profile(
             coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
         ):
             raise ValueError("Cannot preserve omitted video settings without fresh readback")
-        require_video_controls(profile, coordinator, requested_video_controls(compiled))
+        await async_require_video_controls(coordinator, requested_video_controls(compiled))
+    if compiled.blank_screen is not None and compiled.blank_screen_policy is None:
+        baselines = {
+            field: coordinator._field_revisions.get(field, 0)
+            for field in (
+                "blank_screen_detection",
+                "blank_screen_low_brightness_duration_seconds",
+                "blank_screen_same_tone_duration_seconds",
+            )
+        }
+        # Preparation must fail before even the mode/power write. The shared
+        # toggle writer refreshes again and guards its own physical boundary.
+        if not await coordinator.refresh_state(refresh_display_settings=frozenset({"blank_screen"})) or any(
+            coordinator._field_revisions.get(field, 0) <= revision for field, revision in baselines.items()
+        ):
+            raise ValueError("Blank-screen policy state has not been read freshly; refresh the device first")
     # Validate every packet before changing state or sending the first command.
-    build_video_mode(
-        compiled.mode,
-        coordinator.video_full_screen if compiled.full_screen is None else compiled.full_screen,
-        coordinator.video_saturation if compiled.saturation is None else compiled.saturation,
-        coordinator.video_sound_effects if compiled.sound_effects is None else compiled.sound_effects,
-        coordinator.video_sound_effects_softness
-        if compiled.sound_effects_softness is None
-        else compiled.sound_effects_softness,
-        coordinator.model,
-    )
+    mode_values = {
+        field: getattr(compiled, field)
+        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
+        if getattr(compiled, field) is not None
+    }
+    prepare_video_mode(coordinator, mode=compiled.mode, requested_values=mode_values)
     if compiled.white_balance_wire is not None:
         build_white_balance(
             compiled.white_balance_wire[0],
@@ -178,17 +199,20 @@ async def async_apply_compiled_profile(
             values[5] if len(values) == 6 else None,
         )
     if compiled.blank_screen is not None:
-        detection = coordinator.blank_screen_detection
-        low_duration = coordinator.blank_screen_low_brightness_duration_seconds
-        same_duration = coordinator.blank_screen_same_tone_duration_seconds
+        detection, low_duration, same_duration = (
+            compiled.blank_screen_policy
+            if compiled.blank_screen_policy is not None
+            else (
+                coordinator.blank_screen_detection,
+                coordinator.blank_screen_low_brightness_duration_seconds,
+                coordinator.blank_screen_same_tone_duration_seconds,
+            )
+        )
         if detection is None or low_duration is None or same_duration is None:
             raise ValueError("Blank-screen policy state has not been read; refresh the device first")
         build_blank_screen(compiled.blank_screen, coordinator.model, detection, low_duration, same_duration)
-    mode_values = {
-        field: getattr(compiled, field)
-        for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness")
-        if getattr(compiled, field) is not None
-    }
+    if compiled.black_border is not None:
+        build_black_border(compiled.black_border, coordinator.model)
     await apply_active_video_mode(
         coordinator,
         mode=compiled.mode,
@@ -213,7 +237,22 @@ async def async_apply_compiled_profile(
             await progress(completed)
 
     if compiled.blank_screen is not None:
-        await apply_blank_screen(coordinator, compiled.blank_screen, writer=writer, verify=verify)
+        policy_options: dict[str, Any] = (
+            {"policy": compiled.blank_screen_policy} if compiled.blank_screen_policy is not None else {}
+        )
+        await apply_blank_screen(
+            coordinator,
+            compiled.blank_screen,
+            writer=writer,
+            verify=verify,
+            **policy_options,
+        )
+        completed += 1
+        if progress is not None:
+            await progress(completed)
+
+    if compiled.black_border is not None:
+        await apply_black_border(coordinator, compiled.black_border, writer=writer, verify=verify)
         completed += 1
         if progress is not None:
             await progress(completed)
@@ -247,8 +286,12 @@ class EffectDeploymentEngine:
         source_kind: str,
     ) -> tuple[CompiledApplication, DeploymentRecord]:
         resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model)
-        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code)
-        validate_video_request(coordinator, item.content)
+        compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code, profile=coordinator.profile)
+        if isinstance(compiled, CompiledVideoProfile):
+            await async_require_video_controls(
+                coordinator, requested_video_controls(compiled), intent=ControlIntent.APPLY
+            )
+            require_video_mode(coordinator.profile, coordinator)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -433,7 +476,6 @@ class EffectDeploymentEngine:
         current = record
         lock_acquired = False
         try:
-            await self._deployments.async_put(record, expected_version=None)
             async with async_control_intent(
                 coordinator,
                 ControlIntent.APPLY,
@@ -448,9 +490,13 @@ class EffectDeploymentEngine:
                     return coordinator.control_write_attempts != write_baseline
 
                 try:
+                    # Admit APPLY before persistence yields, so later previews remain newer.
+                    await self._deployments.async_put(record, expected_version=None)
                     if isinstance(compiled, CompiledVideoProfile):
+                        require_video_mode(coordinator.profile, coordinator)
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
+                    validate_compiled_geometry(compiled, coordinator.profile)
                     self._reconcile_observation(
                         coordinator,
                         config_entry_id=record.config_entry_id,
@@ -463,8 +509,16 @@ class EffectDeploymentEngine:
                     )
                     if isinstance(compiled, CompiledVideoProfile):
                         prior_state = replace(
-                            prior_state, video_restore_controls=tuple(sorted(requested_video_controls(compiled)))
+                            prior_state,
+                            video_restore_controls=tuple(
+                                sorted(
+                                    requested_video_controls(compiled)
+                                    | ({"blank_screen_policy"} if compiled.blank_screen_policy is not None else set())
+                                )
+                            ),
                         )
+                    else:
+                        prior_state = replace(prior_state, video_restore_controls=())
                     next_record = replace(current, prior_state=prior_state)
                     await self._deployments.async_put(next_record, expected_version=None)
                     current = next_record
@@ -476,7 +530,10 @@ class EffectDeploymentEngine:
                         if compiled.activation_packet is None:
                             raise RuntimeError("compiled activation verification has no activation packet")
                         if not coordinator.is_on:
-                            await coordinator.send_command(build_power(True, coordinator.model))
+                            await coordinator.send_command(
+                                build_power(True, coordinator.model),
+                                write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                            )
                             coordinator.is_on = True
                         upload_count = len(compiled.upload_packets)
 
@@ -512,11 +569,16 @@ class EffectDeploymentEngine:
                         if upload_count == 0:
                             current = replace(current, phase=DeploymentPhase.ACTIVATING)
                             await self._deployments.async_put(current, expected_version=None)
+                        ack_options: dict[str, Any] = {}
+                        if "native_diy_positive_ack_required" in compiled.evidence_codes:
+                            ack_options = {"require_upload_ack": True, "upload_ack_index": upload_count - 1}
                         await coordinator.async_write_effect_sequence(
                             compiled.packets,
                             intent=ControlIntent.APPLY,
                             attempt_started=attempt_started,
                             progress=record_sequence_progress,
+                            write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                            **ack_options,
                         )
                     else:
                         current = await self._async_apply_profile(coordinator, compiled, current)
@@ -606,11 +668,15 @@ class EffectDeploymentEngine:
     async def _async_activate(
         self,
         coordinator: GoveeBLECoordinator,
-        activation_packet: bytes,
+        compiled: CompiledEffect,
     ) -> None:
         for attempt in range(ACTIVATION_ATTEMPTS):
             try:
-                await coordinator.send_command(activation_packet)
+                assert compiled.activation_packet is not None
+                await coordinator.send_command(
+                    compiled.activation_packet,
+                    write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                )
                 return
             except Exception:
                 if attempt + 1 == ACTIVATION_ATTEMPTS:
@@ -680,7 +746,7 @@ class EffectDeploymentEngine:
                 break
             current = replace(current, phase=DeploymentPhase.ACTIVATING)
             await self._deployments.async_put(current, expected_version=None)
-            await self._async_activate(coordinator, compiled.activation_packet)
+            await self._async_activate(coordinator, compiled)
             current = replace(current, phase=DeploymentPhase.VERIFYING)
             await self._deployments.async_put(current, expected_version=None)
         return False, ObservationConfidence.UNKNOWN, current
@@ -751,7 +817,8 @@ class EffectDeploymentEngine:
                         recovering.prior_state,
                         overwritten_diy_code=(
                             recovering.diy_code
-                            if _record_signature(recovering, coordinator.model) == f"custom:{recovering.diy_code}"
+                            if _record_signature(recovering, coordinator.model)
+                            in {f"custom:{recovering.diy_code}", f"scene-code:{recovering.diy_code}"}
                             else -1
                             if recovering.target_mode in {ActivationMode.SCENE.value, ActivationMode.CUSTOM.value}
                             else None
@@ -790,15 +857,13 @@ class EffectDeploymentEngine:
         error_code: str,
     ) -> None:
         try:
-            async with async_control_intent(
+            # Ownership was never acquired: persist failure without admitting new control.
+            await self._async_finish_failure(
                 coordinator,
-                ControlIntent.APPLY,
-            ):
-                await self._async_finish_failure(
-                    coordinator,
-                    record,
-                    error_code=error_code,
-                )
+                record,
+                error_code=error_code,
+                writes_attempted=False,
+            )
         except Exception:
             _LOGGER.exception(
                 "Failed to persist the terminal state for Effect Studio deployment %s",
@@ -847,7 +912,38 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
     ) -> bool:
-        refreshed = await self._async_refresh_for_reconciliation(coordinator)
+        profile = coordinator.profile
+        refreshed = False
+        if profile.state_readable:
+            revisions = getattr(coordinator, "_field_revisions", {})
+            baselines = {
+                field: revisions.get(field, 0)
+                for field, readable in (
+                    ("is_on", profile.can_read(ReadDomain.POWER)),
+                    ("brightness_pct", profile.can_read(ReadDomain.BRIGHTNESS)),
+                    ("color_mode", profile.supports_color_mode_readback),
+                )
+                if readable and hasattr(coordinator, "_field_revisions")
+            }
+            refreshed = (
+                await coordinator.refresh_state(
+                    refresh_all=True,
+                    required_domains=profile.read_domains
+                    & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+                )
+                is True
+            )
+            if not refreshed or any(
+                coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
+            ):
+                raise RuntimeError("Could not read the current power, mode and brightness before applying the effect")
+            if (
+                profile.supports_segments
+                and profile.can_read(ReadDomain.SEGMENTS)
+                and _coordinator_mode(coordinator) in {"colour", "off"}
+                and await coordinator.async_refresh_segments() is not True
+            ):
+                raise RuntimeError("Could not read the current segment layout before applying the effect")
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed
         profile = coordinator.profile
@@ -856,6 +952,7 @@ class EffectDeploymentEngine:
             for setting, requested in (
                 ("white_balance", compiled.white_balance_wire is not None),
                 ("blank_screen", compiled.blank_screen is not None),
+                ("black_border", compiled.black_border is not None),
             )
             if requested
         )
@@ -868,11 +965,20 @@ class EffectDeploymentEngine:
         ):
             raise RuntimeError("Could not read the current video settings before applying the profile")
         required: list[object | None] = []
+        if compiled.black_border is not None:
+            required.append(coordinator.black_border)
         if compiled.white_balance_wire is not None:
             required.extend(
                 (coordinator.white_balance_scalar,)
                 if profile.video_white_balance_representation == "scalar"
-                else (coordinator.white_balance_red, coordinator.white_balance_blue)
+                else (
+                    coordinator.white_balance_flag,
+                    coordinator.white_balance_red,
+                    coordinator.white_balance_blue,
+                    coordinator.white_balance_default_flag,
+                    coordinator.white_balance_default_red,
+                    coordinator.white_balance_default_blue,
+                )
             )
         if compiled.relative_brightness is not None:
             required.extend(
@@ -889,6 +995,12 @@ class EffectDeploymentEngine:
             )
         if any(value is None for value in required):
             raise RuntimeError("The current video settings are incomplete")
+        if (
+            compiled.white_balance_wire is not None
+            and profile.video_white_balance_representation == "position"
+            and coordinator.white_balance_flag not in (0, 1)
+        ):
+            raise RuntimeError("The current white-balance mode cannot be safely restored")
         return True
 
     def _capture_prior_state(
@@ -918,17 +1030,26 @@ class EffectDeploymentEngine:
             brightness_pct=getattr(coordinator, "brightness_pct", 100),
             rgb_color=getattr(coordinator, "rgb_color", (255, 255, 255)),
             color_temp_kelvin=getattr(coordinator, "color_temp_kelvin", None),
+            segment_colors=tuple(coordinator.segment_colors)
+            if getattr(coordinator, "segment_state_source", None) == "observed"
+            else None,
+            segment_brightness=tuple(coordinator.segment_brightness)
+            if getattr(coordinator, "segment_state_source", None) == "observed"
+            else None,
             effect=getattr(coordinator, "effect", None),
             scene_code=getattr(coordinator, "scene_code", None),
             diy_code=coordinator.diy_code,
             music_mode=getattr(coordinator, "music_mode", "off"),
             music_model=coordinator.model,
+            music_palette=getattr(coordinator, "music_palette", None),
+            music_body=getattr(coordinator, "music_body", None),
             music_parameters=capture_music_parameters(
                 coordinator,
                 coordinator.profile,
                 getattr(coordinator, "music_mode", "off"),
             ),
             video_mode=getattr(coordinator, "video_mode", "off"),
+            video_parameters=getattr(coordinator, "video_parameters", None),
             music_sensitivity=getattr(coordinator, "music_sensitivity", 100),
             music_calm=getattr(coordinator, "music_calm", False),
             music_color=getattr(coordinator, "music_color", None),
@@ -946,6 +1067,10 @@ class EffectDeploymentEngine:
             video_sound_effects_softness=getattr(coordinator, "video_sound_effects_softness", 100),
             white_balance_red=getattr(coordinator, "white_balance_red", None),
             white_balance_blue=getattr(coordinator, "white_balance_blue", None),
+            white_balance_flag=getattr(coordinator, "white_balance_flag", None),
+            white_balance_default_flag=getattr(coordinator, "white_balance_default_flag", None),
+            white_balance_default_red=getattr(coordinator, "white_balance_default_red", None),
+            white_balance_default_blue=getattr(coordinator, "white_balance_default_blue", None),
             white_balance_scalar=getattr(coordinator, "white_balance_scalar", None),
             relative_brightness=getattr(coordinator, "relative_brightness", None),
             relative_brightness_left=getattr(coordinator, "relative_brightness_left", None),
@@ -955,6 +1080,7 @@ class EffectDeploymentEngine:
             relative_brightness_strip_left=getattr(coordinator, "relative_brightness_strip_left", None),
             relative_brightness_strip_right=getattr(coordinator, "relative_brightness_strip_right", None),
             blank_screen=getattr(coordinator, "blank_screen", None),
+            black_border=getattr(coordinator, "black_border", None),
             blank_screen_detection=getattr(coordinator, "blank_screen_detection", None),
             blank_screen_low_brightness_duration_seconds=getattr(
                 coordinator,
@@ -1149,7 +1275,7 @@ def observable_signature_for_state(
 
 def _active_workspace_content(
     source: EffectContent,
-    compiled: CompiledApplication,
+    compiled: CompiledApplication | None,
 ) -> EffectContent:
     if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
         return source
@@ -1157,6 +1283,8 @@ def _active_workspace_content(
         decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
     except UnsupportedA3EffectError:
         return source
+    if isinstance(source, LayeredEffect) and isinstance(decoded, LayeredEffect):
+        return replace(decoded, native_diy=source.native_diy)
     return decoded if type(decoded) is type(source) else source
 
 
@@ -1176,6 +1304,10 @@ def active_workspace_matches(
     if isinstance(content, BuiltinScene | PaletteScene | LayeredScene):
         identity = (content.template.scene_id, content.template.effect_id)
     elif isinstance(content, LayeredEffect):
+        if content.native_diy is not None:
+            return getattr(coordinator, "scene_code", None) == content.native_diy
+        if coordinator.profile.advanced_diy_selector is not None:
+            return getattr(coordinator, "scene_code", None) == coordinator.profile.advanced_diy_selector
         identity = get_profile(workspace.model).advanced_scene_carrier
     else:
         return True
@@ -1265,14 +1397,18 @@ def compiled_observation(
     if isinstance(compiled, CompiledMusicProfile):
         expectations["music_mode"] = compiled.mode
         # H617A settings are not confirmed by the shipped readback evidence.
-        if profile.status_grammar == "H6199":
+        if profile.status_grammar in {"H6099", "H6199"}:
             expectations["music_sensitivity"] = compiled.sensitivity
-            expectations["music_color"] = compiled.colour
-            if compiled.mode == "rhythm":
+            variant = music_variant(profile, MUSIC_MODE_SLUGS[compiled.mode])
+            if profile.supports_music_color and (variant is None or variant.supports_fixed_colour):
+                expectations["music_color"] = compiled.colour
+            if compiled.mode == "rhythm" and variant and variant.supports_style:
                 expectations["music_calm"] = compiled.calm
+        if len(compiled.packets) > 2:
+            return expectations, ObservationConfidence.MODE_MATCH
     else:
         expectations["video_mode"] = compiled.mode
-        if profile.video_grammar != "H6199":
+        if profile.video_grammar not in {"H6099", "H6199", "H66A0-video"}:
             return None, ObservationConfidence.UNKNOWN
         complete = True
         for field in ("full_screen", "saturation", "sound_effects", "sound_effects_softness"):
@@ -1286,11 +1422,30 @@ def compiled_observation(
                     else ("white_balance_red", "white_balance_blue")
                 )
                 expectations.update(zip(fields, compiled.white_balance_wire, strict=True))
+                if profile.video_white_balance_representation == "position":
+                    expectations["white_balance_flag"] = 1
             else:
                 complete = False
         if compiled.blank_screen is not None:
             if profile.can_read(ReadDomain.DISPLAY_SETTING):
                 expectations["blank_screen"] = compiled.blank_screen
+                if compiled.blank_screen_policy is not None:
+                    expectations.update(
+                        zip(
+                            (
+                                "blank_screen_detection",
+                                "blank_screen_low_brightness_duration_seconds",
+                                "blank_screen_same_tone_duration_seconds",
+                            ),
+                            compiled.blank_screen_policy,
+                            strict=True,
+                        )
+                    )
+            else:
+                complete = False
+        if compiled.black_border is not None:
+            if profile.can_read(ReadDomain.DISPLAY_SETTING):
+                expectations["black_border"] = compiled.black_border
             else:
                 complete = False
         if compiled.relative_brightness is not None:

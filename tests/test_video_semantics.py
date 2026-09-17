@@ -38,6 +38,7 @@ def alternate(monkeypatch: pytest.MonkeyPatch) -> ModelProfile:
         supports_video_mode=True,
         video_modes=("movie", "game"),
         supports_white_balance=True,
+        supports_white_balance_readback=True,
         supports_relative_brightness=True,
         video_white_balance_representation="scalar",
         video_white_balance_min=0,
@@ -114,7 +115,7 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
         if field not in {"is_on", "video_mode"}:
             assert getattr(coordinator, field) == value
             assert coordinator._field_revisions[field] == 1
-    coordinator._client = MagicMock(is_connected=True)
+    coordinator._client = MagicMock(is_connected=True, disconnect=AsyncMock())
     monkeypatch.setattr(coordinator, "_send_state_queries", AsyncMock(return_value=True))
     assert await coordinator.async_observe_effect(expected, timeout=0.001) is None
 
@@ -141,10 +142,11 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
     assert packets[1] in writes and packets[2] in writes
     unavailable = replace(profile, read_domains=frozenset({ReadDomain.POWER, ReadDomain.COLOUR_MODE}))
     assert compiled_observation(compiled, profile=unavailable)[1] is ObservationConfidence.MODE_MATCH
-    assert "H6099" not in MODEL_PROFILES
 
 
 async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant) -> None:
+    from tests.test_h6199_capabilities import QUALIFIED
+
     content = VideoProfile("H6199", "movie", True, 50, False, 50, 17, RelativeBrightness(100, 100, 100, 100), False)
     raw = effect_content_to_dict(content)
     assert "white_balance_value" not in raw
@@ -164,6 +166,7 @@ async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant
         key.startswith(("white_balance", "relative_brightness", "blank_screen")) for key in expected
     )
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    vars(coordinator).update(QUALIFIED)
     coordinator.is_on = True
     writer = AsyncMock()
     await async_apply_compiled_profile(coordinator, compiled, writer=writer, verify=False)

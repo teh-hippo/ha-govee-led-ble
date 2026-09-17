@@ -58,7 +58,11 @@ def build_h617a_diy_painted(
     brightness: int,
     background: RGB,
     groups: Sequence[DiyPaintGroup] = (),
+    *,
+    segment_count: int = SEGMENT_COUNT,
 ) -> list[bytes]:
+    if not isinstance(segment_count, int) or isinstance(segment_count, bool) or not 1 <= segment_count <= 255:
+        raise ValueError("painted address count must be from 1 to 255")
     if effect not in DIY_PAINTED_EFFECTS:
         raise ValueError(f"unknown painted effect: {effect}")
     _validate_percent(speed, "speed")
@@ -72,8 +76,8 @@ def build_h617a_diy_painted(
             raise ValueError("paint group must include at least one segment")
         segments = list(group.segments)
         for segment in segments:
-            if not isinstance(segment, int) or not 0 <= segment < SEGMENT_COUNT:
-                raise ValueError(f"painted segment {segment} out of range 0..{SEGMENT_COUNT - 1}")
+            if not isinstance(segment, int) or not 0 <= segment < segment_count:
+                raise ValueError(f"painted segment {segment} out of range 0..{segment_count - 1}")
             if segment in seen_segments:
                 raise ValueError(f"painted segment {segment} appears in more than one group")
             seen_segments.add(segment)

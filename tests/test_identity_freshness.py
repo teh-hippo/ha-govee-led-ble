@@ -145,6 +145,7 @@ async def test_malformed_notification_retries_until_valid(identity, monkeypatch)
 
 async def test_unconditioned_identity_remains_cached(hass, monkeypatch):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    coordinator.profile = replace(coordinator.profile, video_revision_policy=None)
     for field, _ in IDENTITY:
         setattr(coordinator, field, "legacy display")
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())

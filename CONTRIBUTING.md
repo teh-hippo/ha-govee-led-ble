@@ -32,6 +32,9 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
 - Declare `effect_grammar` independently of basic command and status compatibility. It selects A3 and Workshop codecs, including their canonical semantics; it does not authorize effect application, catalogue reuse, activation, or readback policy. Workshop application also requires the exact-model capability contract and an implemented activation route.
 - Declare effect families, variations, per-family rate bounds, palette bounds, Painted parameters, and Multi limits in the exact-model `ModelEffectCatalogue`. Shared grammars do not inherit another product's catalogue. Structural imports preserve representable unknown pairs; application checks the target catalogue and compiles the complete immutable request before preview admission or other device-control side effects.
 - Declare video modes and setting capabilities on the exact-model profile. `video_grammar` selects compatible mode, query, writer, readback, and command-ACK semantics independently of the basic grammars; it does not authorize a model or imply support for every companion setting. Grammar keys select codecs directly, not another model's profile.
+- Declare `dreamview_grammar="H6099"` only with evidence of compatibility with the existing MovieFeastV2 encoding. Independently list evidenced `dreamview_operations` (`replace_group`, `delete_group`, `switch_group`, `member_brightness`, `same_brightness`, `member_connect`, `saturation`, `sample`, `sound`) and `dreamview_reads` (the same individual settings, excluding replacement/deletion). Both sets default to empty and authorize nothing. Basic command/status grammars, video support, and camera presence do not grant DreamView support.
+- Declare `dreamview_max_sub_devices` from product evidence for replacement and indexed writes only (1..255, subject to the A3 payload limit). Capacity zero still permits declared non-indexed settings, deletion, and reads. Service schemas enforce wire bounds; target validation enforces its capacity before preview or control side effects, then revalidates prepared packets at each physical attempt. DreamView authorization is independent of restrictions on basic `command_operations`.
+- DreamView reads enable notifications independently of ordinary `read_domains`. Read responses separate `unsupported_reads` from missing supported replies, preserve fixed raw slot arrays from the selected grammar, and never map them to locally authored identities or confirm membership. Cite per-operation write/read evidence and product capacity when contributing a profile; synthetic reuse tests in `tests/test_dreamview_profiles.py` establish software boundaries only. A different encoding needs its own evidenced KSY/semantics; H6199 legacy DreamView is not MovieFeastV2.
 - Declare each model's `music_modes` explicitly. The shared slug-to-wire-ID registry records encoding knowledge, not product support.
 - Qualify `music_variants` separately: `MusicParamSpec` defaults/bounds, named Kaitai fields, palette templates, style and companion semantics need their own evidence. An absent variant permits the native selector only. Unknown physical IC count must not be inferred from logical `segment_count`; it blocks only explicitly dependent parameter writes. Recovery retains legacy fields, validates against the effective variant before writes, and never promotes restored parameters to observed state.
 - Pass the effective device profile to semantic segment builders. Construct and validate the entire request before cancelling previews, acquiring user control, changing optimistic state, or writing to BLE. Whole-device masks remain separate from individually selectable segments.
@@ -88,6 +91,10 @@ The progression is:
 7. Supported is a later promotion after the model's features and explicit exclusions are completely documented.
 
 An Experimental profile that receives no owner confirmation is not merged as stable support.
+Release 7.6.0 has an explicit maintainer-approved exception for H6099: its owner
+reported connection success, but control qualification remains outstanding.
+It remains labelled Experimental, with manual addition and documented limits;
+inclusion in a stable package is not a support or schema-evidence promotion.
 Prerelease versions are stamped only in the packaged artifact; feature branches retain the current stable source version so release-candidate metadata cannot leak into master.
 
 ## Device-owner validation
@@ -137,6 +144,16 @@ packet captures, diagnostics exports, or a second protocol representation.
 
 Do not add offsets, command literals, or packet enums to entity or coordinator code.
 
+Review the complete semantic path, not just generated packet equality:
+named fields -> observations -> sibling preservation -> persisted recovery ->
+generated writes -> fresh verification. Classify each relevant field as
+applied, preserved, decode-only, or unknown. Include a differential replay when
+two replies differ only in a mode/flag that recovery must retain. Legacy missing
+fields stay unknown; restored values never become fresh observations. Test
+partial writes and complete-but-mismatched readback, not only missing replies.
+Keep every investigation finding in its verification ledger, including deferred
+paths and the evidence or approval needed to qualify them.
+
 ## Exact-SKU scene catalogues
 
 Scene catalogues come from Govee's exact-SKU catalogue endpoint through the existing repository tool:
@@ -159,17 +176,28 @@ promotion.
 
 ## Repository non-goals
 
-The repository may retain Kaitai schemas and protocol findings for excluded runtime features.  It does not expose:
+These exclusions apply globally to every model, including Experimental profiles,
+services, Effect Studio, queries, and recovery. App availability or known BLE
+encoding does not override them. See [scope policy and evidence](docs/scope-policy.md).
+The repository may retain decode-only Kaitai documentation and protocol findings
+for excluded features; this does not authorize runtime control. It does not expose:
 
+- AI filters, including their BLE selectors, configuration, and readback;
 - Wi-Fi provisioning, cloud control, or account and network setup;
-- user-facing on-device timers or schedules;
-- host microphone capture or audio-derived control;
+- on-device timers, countdowns, or schedules; use Home Assistant automations instead;
+- phone or host microphone capture, injection, or audio-derived control;
 - continuous host-driven BLE streaming for real-time audio or animation;
-- firmware or OTA updates;
+- firmware or OTA updates, for device safety;
 - manufacturer-style animated scene previews; or
 - camera calibration that depends on Govee Wi-Fi or cloud services.
 
 Onboard device-microphone modes, ordinary BLE commands, and bounded multipart effect uploads remain in scope.
+BLE installation direction and white balance are not excluded by the cloud camera
+image-calibration non-goal; qualify each independently using exact-model evidence.
+Known Wi-Fi provisioning and onboard-timer layouts belong in Kaitai documentation,
+not runtime provisioning, cloud communication, timer queries, or timer writes.
+Keep new excluded-feature speculative roots out of the runtime root list and
+runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 ## Validation
 

@@ -48,8 +48,19 @@ def decode_a3_effect_frames(
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
     grammar = get_profile(model).effect_grammar
+    if grammar == "H6099":
+        if int(tree.kind) == 4:
+            return _decode_h617a_type04(tree.diy)
+        # The upload omits total IC count; retain the already validated source
+        # rather than infer topology from the highest painted index.
+        raise UnsupportedA3EffectError("H6099 upload requires source topology or catalogue identity")
     if grammar == "H617A":
         if isinstance(tree, DiyType03):
+            from .effect_catalogue import MODEL_EFFECT_CATALOGUES
+
+            catalogue = MODEL_EFFECT_CATALOGUES.get(model)
+            if catalogue is not None and catalogue.painted_addressing == "physical_ic":
+                raise UnsupportedA3EffectError("Painted upload omits total physical IC count; retain source topology")
             return _decode_h617a_painted(tree)
         if isinstance(tree, DiyType04):
             return _decode_h617a_type04(tree)
@@ -82,8 +93,6 @@ def _decode_h617a_painted(tree: Any) -> PaintedEffect:
     effect = getattr(tree.effect, "name", None)
     if not isinstance(effect, str):
         raise UnsupportedA3EffectError(f"H617A painted effect {int(tree.effect)} has no canonical name")
-    if _rgb(tree.background) != (0, 0, 0):
-        raise UnsupportedA3EffectError("H617A painted background cannot be represented by canonical PaintedEffect")
     if tree.num_groups != len(tree.groups):
         raise UnsupportedA3EffectError("H617A painted group count does not match its generated tree")
     _require_zero_padding(tree.padding, "H617A painted")
@@ -105,6 +114,7 @@ def _decode_h617a_painted(tree: Any) -> PaintedEffect:
         speed=tree.speed,
         brightness=tree.brightness,
         segments=tuple(segments),
+        background=_rgb(tree.background),
     )
 
 

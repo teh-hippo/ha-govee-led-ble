@@ -105,6 +105,39 @@ test("custom defaults use catalogue identities without sharing palettes", () => 
   expect(second.palette[0]).toEqual([255, 0, 0]);
 });
 
+test("H6099 graffiti uses physical topology and retains background through edits", () => {
+  const target: ModelEffectCatalogue = {
+    ...structuredClone(catalogue), sku: "H6099", painted_addressing: "physical_ic",
+    painted_background: [255, 255, 255], physical_ic_count: 60,
+    painted_effects: [{ id: "clockwise", label: "Clockwise" }],
+  };
+  const content = blankCustomEffect("h617a_painted", target);
+  expect(content.segments).toHaveLength(60);
+  expect(content.segments[59]).toBeNull();
+  expect(content.background).toEqual([255, 255, 255]);
+  expect(effectContentEligible(content, target, "H6099", 14)).toBe(true);
+  expect(effectContentEligible(content, { ...target, physical_ic_count: null }, "H6099", 14)).toBe(false);
+  expect(decodeEffectContent(content)).toEqual(content);
+  const clone = cloneEditableEffect(content) as PaintedContent;
+  clone.background![0] = 0;
+  expect(content.background![0]).toBe(255);
+});
+
+test("family palette bounds and noneditable music rate govern H6099 defaults", () => {
+  const target: ModelEffectCatalogue = {
+    ...structuredClone(catalogue), sku: "H6099",
+    effects: [{ ...catalogue.effects[0], family: 10, palette_max: 3 },
+      { ...catalogue.effects[0], family: 4, rate: "none", rate_min: 50, rate_max: 50 }],
+  };
+  const chase = blankCustomEffect("h617a_single", target, 10);
+  expect(chase.palette).toEqual([[255, 0, 0], [0, 255, 0], [0, 0, 255]]);
+  expect(effectContentEligible(chase, target, "H6099", 14)).toBe(true);
+  expect(effectContentEligible({ ...chase, palette: [...chase.palette, [1, 2, 3]] }, target, "H6099", 14)).toBe(false);
+  const music = blankCustomEffect("h617a_single", target, 4);
+  expect(music.speed).toBe(50);
+  expect(effectContentEligible({ ...music, speed: 51 }, target, "H6099", 14)).toBe(false);
+});
+
 test("target eligibility preserves imports and isolates catalogue extensions", () => {
   const broad: ModelEffectCatalogue = { ...structuredClone(catalogue), sku: "H9901" };
   const narrow = structuredClone(broad);

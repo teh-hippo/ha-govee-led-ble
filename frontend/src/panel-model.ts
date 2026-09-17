@@ -286,7 +286,18 @@ export class PanelModel {
 
   public get modelCatalogue(): ModelEffectCatalogue | undefined {
     const model = this.selectedModel;
-    return model ? this.customCatalogue?.models[model] : undefined;
+    const catalogue = model ? this.customCatalogue?.models[model] : undefined;
+    return catalogue && (catalogue.painted_addressing === "physical_ic" || this.selectedDevice?.music_settings !== undefined)
+      ? {
+          ...catalogue,
+          physical_ic_count: this.selectedDevice?.physical_ic_count,
+          music_settings: this.selectedDevice?.music_settings ?? catalogue.music_settings,
+          music_modes: catalogue.music_modes.filter(mode =>
+            this.selectedDevice?.music_settings === undefined || mode.id in this.selectedDevice.music_settings),
+          templates: catalogue.templates?.filter(template => template.content.kind !== "music_profile" ||
+            this.selectedDevice?.music_settings === undefined || template.content.mode in this.selectedDevice.music_settings),
+        }
+      : catalogue;
   }
 
   public get videoAvailable(): boolean {
@@ -476,6 +487,10 @@ export class PanelModel {
       case "music_profile":
         return device.profiles.music;
       case "video_profile":
+        if (this.content.saturation !== null &&
+            this.content.saturation < (this.modelCatalogue?.video_controls?.saturation_min ?? 0)) {
+          return "unsupported";
+        }
         for (const [control, requested] of Object.entries({
           capture_region: this.content.full_screen !== null,
           saturation: this.content.saturation !== null,
@@ -483,6 +498,7 @@ export class PanelModel {
           white_balance: this.content.white_balance_position !== null || this.content.white_balance_value !== undefined,
           relative_brightness: this.content.relative_brightness !== null,
           blank_screen: this.content.blank_screen !== null,
+          black_border: this.content.black_border !== undefined,
         })) {
           const state = device.video_control_states?.[control as keyof NonNullable<typeof device.video_control_states>];
           if (requested && state && state !== "supported") return state;

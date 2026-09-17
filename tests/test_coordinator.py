@@ -4,7 +4,7 @@ import time
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
 from bleak import BleakClient, BleakError
@@ -14,6 +14,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.ha_govee_led_ble.ble_connection import mark_stale_gatt_recovery
 from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
     BLEDeviceResolver,
@@ -54,6 +55,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power,
     build_power_query,
     build_relative_brightness_query,
+    build_scene_activation,
     build_segment_query,
     build_video_mode,
     build_white_balance,
@@ -62,7 +64,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command_ack_result,
     parse_status,
 )
-from custom_components.ha_govee_led_ble.h6102_protocol import H6102RgbVariant
+from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -148,17 +150,17 @@ def h6102(hass):
     )
 
 
-def test_h6102_construction_uses_resolved_write_only_profile(h6102):
-    assert h6102.profile is MODEL_PROFILES["H6102"]
+def test_h6102_unknown_context_bootstraps_identity_with_notifications(h6102):
+    assert h6102.profile.command_operations == frozenset({"power", "brightness"})
     assert h6102.rgb_variant is None
     assert h6102.firmware_source is None
-    assert h6102.capability_resolution_reason == "firmware_unknown"
+    assert h6102.capability_resolution_reason == "pact_unknown"
     assert h6102.configuration_url is None
-    assert h6102.effect_categories == frozenset()
-    assert h6102.update_interval is None
+    assert h6102.profile.requires_notifications
+    assert h6102.update_interval == timedelta(seconds=30)
 
 
-def test_h6102_configured_firmware_enables_only_extended_rgb(hass):
+def test_h6102_configured_firmware_does_not_invent_pact(hass):
     coordinator = GoveeBLECoordinator(
         hass,
         "44:55:66:77:88:99",
@@ -168,10 +170,10 @@ def test_h6102_configured_firmware_enables_only_extended_rgb(hass):
         h6102_firmware_source="configured",
     )
 
-    assert coordinator.profile.supports_rgb
-    assert coordinator.rgb_variant is H6102RgbVariant.EXTENDED
+    assert not coordinator.profile.supports_rgb
+    assert coordinator.rgb_variant is None
     assert coordinator.firmware_source == "configured"
-    assert coordinator.capability_resolution_reason is None
+    assert coordinator.capability_resolution_reason == "pact_unknown"
 
 
 @pytest.fixture
@@ -192,8 +194,8 @@ def limited_readback_coord(hass):
         )
 
 
-def test_h617x_uses_short_idle_release_without_periodic_polling(coord):
-    assert coord.update_interval is None
+def test_h617x_uses_short_idle_release_with_periodic_polling(coord):
+    assert coord.update_interval == timedelta(seconds=30)
     with patch(f"{M}.async_call_later") as call_later:
         coord._reset_disconnect_timer()
     assert call_later.call_args.args[1] == 3.0
@@ -207,6 +209,7 @@ def test_h6199_retains_default_idle_release_and_polling(h6199):
 
 
 def _c(**kw):
+    kw.setdefault("disconnect", AsyncMock())
     return MagicMock(is_connected=True, **kw)
 
 
@@ -305,7 +308,7 @@ def test_capture_effect_control_state(coord):
     )
 
 
-async def test_restore_effect_control_state_reapplies_static_state(coord):
+async def test_restore_effect_control_state_legacy_static_never_flattens(coord):
     state = PriorControlState(
         mode="colour",
         is_on=True,
@@ -322,14 +325,9 @@ async def test_restore_effect_control_state_reapplies_static_state(coord):
             overwritten_diy_code=800,
         )
 
-    assert recovered is True
-    assert send.await_args_list == [
-        call(proto.build_power(True)),
-        call(proto.build_brightness(72)),
-        call(proto.build_color_rgb(1, 2, 3)),
-    ]
-    refresh.assert_awaited_once_with()
-    assert coord.active_mode == "colour"
+    assert recovered is False
+    send.assert_not_awaited()
+    refresh.assert_not_awaited()
 
 
 async def test_restore_effect_control_state_cannot_recover_overwritten_diy_slot(coord):
@@ -361,7 +359,11 @@ async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
             rgb_color=(1, 2, 3),
             effect=effect,
         )
-        expected = build_native_scene_packets(coordinator.model, scene)
+        expected = [
+            build_power(True, coordinator.model),
+            build_brightness(72, coordinator.model),
+            build_scene_activation(coordinator.model, scene.code, scene.music_code),
+        ]
 
         with (
             patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
@@ -372,10 +374,9 @@ async def test_restore_effect_control_state_reapplies_model_scene(coord, h6199):
                 overwritten_diy_code=-1,
             )
 
-        assert recovered is True
+        assert recovered is False  # original authored body/speed is unknown
         assert send.await_args_list == [call(packet) for packet in expected]
-        refresh.assert_awaited_once_with(expected_scene_code=scene.code)
-        assert coordinator.active_mode == "scene"
+        refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
 
 
 async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
@@ -395,8 +396,8 @@ async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
             overwritten_diy_code=None,
         )
 
-    assert recovered is True
-    send.assert_awaited_once_with(proto.build_power(False))
+    assert recovered is False  # power alone cannot recover the missing hidden layout
+    send.assert_awaited_once_with(proto.build_power(False), state_values={"is_on": False})
     refresh.assert_awaited_once_with(expected_on=False)
 
 
@@ -413,8 +414,10 @@ async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coor
     )
 
     with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "send_command", wraps=coord.send_command) as send,
+        patch.object(coord, "_ensure_connected", return_value=_c(write_gatt_char=AsyncMock())),
         patch.object(coord, "async_observe_effect", new_callable=AsyncMock, return_value=True) as refresh,
+        patch.object(coord, "refresh_state", new=AsyncMock(return_value=True)),
     ):
         recovered = await coord.async_restore_effect_control_state(
             state,
@@ -422,26 +425,36 @@ async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coor
         )
 
     assert recovered is True
-    send.assert_awaited_once_with(proto.build_h617a_diy_activation(700))
+    assert send.await_args_list == [
+        call(build_power(True, model)),
+        call(build_brightness(72, model)),
+        call(proto.build_h617a_diy_activation(700), state_values={"diy_code": 700}),
+    ]
     refresh.assert_awaited_once_with({"is_on": True, "diy_code": 700})
     assert coord.diy_code == 700
 
 
 async def test_restore_effect_control_state_reapplies_complete_music_profile(coord):
+    from custom_components.ha_govee_led_ble.music_commands import prepare_music_body_writes
+    from custom_components.ha_govee_led_ble.music_semantics import music_variant
+
+    body = music_variant(coord.profile, MUSIC_MODE_SLUGS["separation"]).template
     state = PriorControlState(
         mode="music",
         is_on=True,
         brightness_pct=72,
         rgb_color=(1, 2, 3),
         music_mode="separation",
+        music_model="H617A",
+        music_body=body,
         music_sensitivity=50,
         music_color=(4, 5, 6),
         music_separation_point=4,
         music_separation_gradient=False,
     )
-
     with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coord, "send_command", new=AsyncMock()) as send,
+        patch.object(coord, "async_write_music_sequence", new=AsyncMock()) as sequence,
         patch.object(coord, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
         recovered = await coord.async_restore_effect_control_state(
@@ -449,25 +462,25 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
             overwritten_diy_code=None,
         )
 
-    assert recovered is True
-    assert send.await_args_list[1].kwargs["state_values"] == {
-        "music_mode": "separation",
-        "music_sensitivity": 50,
-        "music_color": (4, 5, 6),
-        "music_calm": False,
-        "video_mode": "off",
-        "effect": None,
-        "diy_code": None,
-    }
-    assert send.await_args_list[-1].kwargs["state_values"] == {
-        "music_separation_point": 4,
-        "music_separation_gradient": False,
-    }
-    assert send.await_count == 4
-    refresh.assert_awaited_once_with(expected_music_mode="separation")
+    assert recovered is False  # accepted bytes are not full-settings readback
+    sequence.assert_awaited_once_with(
+        prepare_music_body_writes("H617A", "separation", 50, body, profile=coord.profile),
+        mode_code=MUSIC_MODE_SLUGS["separation"],
+        physical_ic_count=None,
+        intent=ControlIntent.APPLY,
+    )
+    send.assert_awaited_once()
+    assert send.await_args.args == (build_brightness(72, "H617A"),)
+    send.await_args.kwargs["write_guard"]()
+    refresh.assert_awaited_once_with(
+        expected_on=True, expected_brightness=72, expected_music_mode="separation", expected_music_sensitivity=50
+    )
 
 
 async def test_restore_effect_control_state_reapplies_complete_video_profile(h6199):
+    from tests.test_h6199_capabilities import QUALIFIED
+
+    vars(h6199).update(QUALIFIED)
     initial = h6199.capture_effect_control_state()
     state = PriorControlState(
         mode="video",
@@ -481,6 +494,7 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
         video_sound_effects_softness=27,
         white_balance_red=21,
         white_balance_blue=5,
+        white_balance_flag=1,
         relative_brightness_left=20,
         relative_brightness_top=30,
         relative_brightness_right=40,
@@ -496,6 +510,8 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
         patch(f"{M}.apply_relative_brightness", new_callable=AsyncMock, return_value=True) as relative_brightness,
         patch(f"{M}.apply_blank_screen", new_callable=AsyncMock, return_value=True) as blank_screen,
         patch(f"{M}.apply_active_video_mode", new_callable=AsyncMock, return_value=True) as video_mode,
+        patch.object(h6199, "send_command", new=AsyncMock()),
+        patch.object(h6199, "refresh_state", new=AsyncMock(return_value=True)),
     ):
         recovered = await h6199.async_restore_effect_control_state(
             state,
@@ -503,11 +519,12 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
         )
 
     assert recovered is True
-    white_balance.assert_awaited_once_with(h6199, (21, 5))
+    white_balance.assert_awaited_once_with(h6199, (21, 5), flag=1)
     relative_brightness.assert_awaited_once_with(h6199, (20, 30, 40, 50))
     blank_screen.assert_awaited_once_with(h6199, True)
     video_mode.assert_awaited_once_with(
         h6199,
+        parameters=None,
         mode="game",
         requested_values={"full_screen": False, "saturation": 63, "sound_effects": True, "sound_effects_softness": 27},
     )
@@ -526,6 +543,13 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
     ],
 )
 async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, policy, change_during_restore):
+    from tests.test_h6199_capabilities import QUALIFIED
+
+    vars(h6199).update(QUALIFIED)
+    h6199.is_on = True
+    h6199.color_mode = ParsedMode.SCENE
+    h6199.effect = "candlelight"
+    h6199._scene_code = MODEL_SCENES["H6199"]["candlelight"].code
     h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 1, 2, 10, 0, 120, 0])))
     state = h6199.capture_effect_control_state()
     h6199.blank_screen = enabled
@@ -544,27 +568,42 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
             h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 0, 60, 0, 44, 1])))
         return client
 
+    async def refresh_policy(**kwargs):
+        if kwargs.get("refresh_display_settings") and None not in policy:
+            h6199._notify_callback(
+                None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, int(enabled), policy[0], policy[1], 0, policy[2], 0]))
+            )
+        return True
+
     with (
         patch.object(h6199, "_ensure_connected", new=AsyncMock(side_effect=connect)),
-        patch.object(h6199, "refresh_state", new=AsyncMock(return_value=True)) as refresh,
+        patch.object(h6199, "refresh_state", new=AsyncMock(side_effect=refresh_policy)) as refresh,
     ):
         if None in policy or change_during_restore:
             message = "policy changed before write" if change_during_restore else "policy state has not been read"
             with pytest.raises(ValueError, match=message):
                 await h6199.async_restore_effect_control_state(state, overwritten_diy_code=None)
             client.write_gatt_char.assert_not_awaited()
-            refresh.assert_not_awaited()
+            refresh.assert_awaited_once_with(refresh_display_settings=frozenset({"blank_screen"}))
             assert h6199.blank_screen is enabled
             assert "blank_screen" not in h6199._expected_state
         else:
-            assert await h6199.async_restore_effect_control_state(state, overwritten_diy_code=None)
-            packets = ([] if enabled else [build_blank_screen(True, "H6199", *policy)]) + [build_power(False, "H6199")]
+            recovered = await h6199.async_restore_effect_control_state(state, overwritten_diy_code=None)
+            scene = MODEL_SCENES["H6199"]["candlelight"]
+            assert recovered is (not bool(scene.param))
+            packets = ([] if enabled else [build_blank_screen(True, "H6199", *policy)]) + [
+                build_power(True, "H6199"),
+                build_brightness(state.brightness_pct, "H6199"),
+                build_scene_activation("H6199", scene.code, scene.music_code),
+            ]
             assert client.write_gatt_char.await_args_list == [
                 call(WRITE_UUID, packet, response=False) for packet in packets
             ]
-            assert refresh.await_args_list == ([] if enabled else [call(expected_blank_screen=True)]) + [
-                call(expected_on=False)
-            ]
+            assert refresh.await_args_list == (
+                []
+                if enabled
+                else [call(refresh_display_settings=frozenset({"blank_screen"})), call(expected_blank_screen=True)]
+            ) + [call(expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=scene.code)]
             assert h6199.blank_screen is True
     assert (
         h6199.blank_screen_detection,
@@ -592,11 +631,13 @@ async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
             overwritten_diy_code=None,
         )
 
-    assert recovered is True
-    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H6199", scene)]
-    refresh.assert_awaited_once_with(expected_scene_code=scene.code)
-    assert h6199.effect == "forest"
-    assert (h6199.diy_code, h6199.music_mode, h6199.video_mode) == (None, "off", "off")
+    assert recovered is (not bool(scene.param))
+    assert send.await_args_list == [
+        call(build_power(True, "H6199")),
+        call(build_brightness(72, "H6199")),
+        call(build_scene_activation("H6199", scene.code, scene.music_code)),
+    ]
+    refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
 
 
 async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
@@ -619,11 +660,16 @@ async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
         patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
         patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
-        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None) is (
+            not bool(scene.param)
+        )
 
-    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", scene)]
-    refresh.assert_awaited_once_with(expected_scene_code=scene.code)
-    assert coordinator.effect == "aurora-a"
+    assert send.await_args_list == [
+        call(build_power(True, "H617E")),
+        call(build_brightness(72, "H617E")),
+        call(build_scene_activation("H617E", scene.code, scene.music_code)),
+    ]
+    refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
 
 
 async def test_restore_effect_control_state_preserves_h617e_raw_legacy_scene(hass):
@@ -649,11 +695,18 @@ async def test_restore_effect_control_state_preserves_h617e_raw_legacy_scene(has
         patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
         patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
     ):
-        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None) is (
+            not bool(legacy.param)
+        )
 
-    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", legacy)]
-    refresh.assert_awaited_once_with(expected_scene_code=legacy.code)
-    assert coordinator.effect == legacy_name
+    assert send.await_args_list == [
+        call(build_power(True, "H617E")),
+        call(build_brightness(state.brightness_pct, "H617E")),
+        call(build_scene_activation("H617E", legacy.code, legacy.music_code)),
+    ]
+    refresh.assert_awaited_once_with(
+        expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=legacy.code
+    )
 
 
 async def test_restore_effect_control_state_uses_legacy_identity_to_disambiguate_scene_code(hass):
@@ -677,10 +730,15 @@ async def test_restore_effect_control_state_uses_legacy_identity_to_disambiguate
         patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
         patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True),
     ):
-        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None) is (
+            not bool(legacy.param)
+        )
 
-    assert send.await_args_list == [call(packet) for packet in build_native_scene_packets("H617E", legacy)]
-    assert coordinator.effect == "aurora"
+    assert send.await_args_list == [
+        call(build_power(True, "H617E")),
+        call(build_brightness(72, "H617E")),
+        call(build_scene_activation("H617E", legacy.code, legacy.music_code)),
+    ]
 
 
 @pytest.mark.parametrize("model", ["H617A", "H6199"])
@@ -696,7 +754,7 @@ async def test_outbound_workflows_share_profile_transform(coord, h6199, model, w
     if workflow == "state":
         packets = [build_power_query(model)]
     elif workflow == "identity":
-        coordinator.fw_version = coordinator.subordinate_20_version = coordinator.subordinate_21_version = "known"
+        coordinator.fw_version = coordinator.subordinate_20_version = coordinator.subordinate_21_version = "1.00.01"
         packets = [build_hardware_query(model)]
     elif workflow == "sequence":
         packets.extend(build_native_scene_packets(model, MODEL_SCENES[model]["glacier"]))
@@ -867,6 +925,159 @@ async def test_preview_write_arms_expected_state(coord):
     await coord.async_preview_write(packet)
 
     assert coord._expected_state["is_on"][0] is True
+
+
+async def test_preview_stale_gatt_failure_discards_client_and_requires_fresh_services(coord):
+    client = _c(
+        write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        clear_cache=AsyncMock(return_value=True),
+        disconnect=AsyncMock(),
+    )
+    coord._client = client
+
+    with pytest.raises(BleakError, match="GATT characteristic not found"):
+        await coord.async_preview_write(proto.build_power(True))
+
+    assert coord.fresh_services_required is True
+    assert coord._client is None
+    client.clear_cache.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once()
+
+
+@pytest.mark.parametrize("clear_result", [True, False, BleakError("clear failed"), "cancel"])
+async def test_stale_write_revokes_authority_before_awaited_native_clear(coord, clear_result):
+    clearing = asyncio.Event()
+    release = asyncio.Event()
+
+    async def clear_cache():
+        clearing.set()
+        await release.wait()
+        if isinstance(clear_result, Exception):
+            raise clear_result
+        return clear_result
+
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(),
+        clear_cache=AsyncMock(side_effect=clear_cache),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=client),
+    ):
+        assert await coord._ensure_connected() is client
+    receive = client.start_notify.await_args.args[1]
+    client.write_gatt_char.reset_mock(side_effect=True)
+    client.write_gatt_char.side_effect = BleakError("GATT characteristic not found")
+    coord._arm_expected_values({"brightness_pct": 42})
+    task = asyncio.create_task(coord.async_preview_write(build_power(True)))
+    try:
+        await asyncio.wait_for(clearing.wait(), 1)
+        assert coord.fresh_services_required
+        assert coord._client is None
+        assert coord._notification_token is None
+        assert coord._expected_state == {}
+        assert coord._cancel_disconnect is None
+        assert coord._keep_alive_task is None
+        assert not coord._encryption.ready
+        client.disconnect.assert_not_awaited()
+        before = (coord.brightness_pct, dict(coord._domain_revisions), list(coord.packet_log))
+        receive(None, bytearray(_packet(0xAA, 0x04, [42])))
+        assert (coord.brightness_pct, coord._domain_revisions, coord.packet_log) == before
+        with pytest.raises(GoveeCryptoError, match="stale_connection"):
+            await coord._async_write_packet(client, build_power(False))
+        client.write_gatt_char.assert_awaited_once()
+        if clear_result == "cancel":
+            task.cancel()
+        else:
+            release.set()
+        error = asyncio.CancelledError if clear_result == "cancel" else BleakError
+        with pytest.raises(error):
+            await task
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    client.clear_cache.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once_with()
+    assert coord.fresh_services_required
+    assert coord._client is None
+
+
+@pytest.mark.parametrize("outcome", ["cancel", "stale-bleak", "stale-crypto"])
+@pytest.mark.parametrize("disconnect_failure", ["bleak", "runtime", "stall"])
+async def test_gatt_cleanup_disconnect_failure_preserves_original_outcome(coord, outcome, disconnect_failure):
+    clearing = asyncio.Event()
+    release = asyncio.Event()
+    disconnect_finished = asyncio.Event()
+    original = (GoveeCryptoError if outcome == "stale-crypto" else BleakError)("GATT characteristic not found")
+
+    async def clear_cache():
+        clearing.set()
+        await release.wait()
+        return True
+
+    async def disconnect():
+        try:
+            if disconnect_failure == "stall":
+                await asyncio.Future()
+            raise (BleakError if disconnect_failure == "bleak" else RuntimeError)("disconnect failed")
+        finally:
+            disconnect_finished.set()
+
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(),
+        clear_cache=AsyncMock(side_effect=clear_cache),
+        disconnect=AsyncMock(side_effect=disconnect),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=client),
+    ):
+        assert await coord._ensure_connected() is client
+    client.write_gatt_char.reset_mock()
+    client.write_gatt_char.side_effect = original
+
+    with patch(f"{M}.VALIDATION_DISCONNECT_TIMEOUT", 0.01):
+        task = asyncio.create_task(coord.async_preview_write(build_power(True)))
+        try:
+            await asyncio.wait_for(clearing.wait(), 1)
+            assert coord.fresh_services_required
+            assert coord._client is None
+            client.disconnect.assert_not_awaited()
+            if outcome == "cancel":
+                task.cancel("cancel native cache clear")
+            else:
+                release.set()
+            # Observe completion without a watchdog cancellation hiding an unbounded disconnect.
+            done, _ = await asyncio.wait({task}, timeout=1)
+            assert task in done, "GATT recovery disconnect did not respect its timeout"
+            with pytest.raises(asyncio.CancelledError if outcome == "cancel" else type(original)) as raised:
+                await task
+            if outcome == "cancel":
+                assert raised.value.args == ("cancel native cache clear",)
+                assert task.cancelled()
+            else:
+                assert raised.value is original
+        finally:
+            release.set()
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    assert disconnect_finished.is_set()
+    client.clear_cache.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once_with()
+    client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, build_power(True), response=False)
+    assert coord.fresh_services_required
+    assert coord._client is None
+    assert coord._intentional_disconnect_client is None
+    assert coord._notification_token is None
+    assert coord._cancel_disconnect is None
+    assert coord._keep_alive_task is None
+    assert not coord._encryption.ready
 
 
 async def test_background_connection_use_does_not_renew_foreground_lease(coord):
@@ -1121,7 +1332,7 @@ def test_notify_callback_parses_full_frame_with_checksum(h6199):
 
 def test_notify_callback_records_command_echoes_without_applying_status(coord, h6199):
     for coordinator, model, parser in (
-        (coord, "H617A", "command_write"),
+        (coord, "H617A", "h617a_command_ack"),
         (h6199, "H6199", "h6199_command_write"),
     ):
         initial_state = coordinator.is_on
@@ -1131,7 +1342,9 @@ def test_notify_callback_records_command_echoes_without_applying_status(coord, h
 
         assert coordinator.is_on is initial_state
         assert coordinator.packet_log[-1]["outcome"] == "parsed"
-        assert coordinator.packet_log[-1]["reason"] == "command_echo_parsed"
+        assert coordinator.packet_log[-1]["reason"] == (
+            "command_ack_parsed" if model == "H617A" else "command_echo_parsed"
+        )
         assert coordinator.packet_log[-1]["parser"] == parser
         assert coordinator.packet_log[-1]["raw"] == frame.hex()
 
@@ -1198,6 +1411,7 @@ async def test_ensure_connected_retries_cache_resolution_with_wrapped_client(coo
         device,
         coord.address,
         disconnected_callback=coord._disconnected_callback,
+        use_services_cache=True,
     )
 
 
@@ -1228,16 +1442,343 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
             device,
             coord.address,
             disconnected_callback=coord._disconnected_callback,
+            use_services_cache=True,
         ),
         call(
             original_client_class,
             device,
             coord.address,
             disconnected_callback=coord._disconnected_callback,
+            use_services_cache=True,
         ),
     ]
     first.disconnect.assert_awaited_once()
     await coord.disconnect()
+
+
+async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord):
+    device = MagicMock()
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(return_value=_resolution(device))
+    coord._device_resolver = resolver
+    first = _c(
+        write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        clear_cache=AsyncMock(return_value=True),
+        disconnect=AsyncMock(),
+    )
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    fresh = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    normal = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+
+    with (
+        patch(f"{M}.establish_connection", side_effect=[first, bootstrap, fresh, normal]) as connect,
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+        patch.object(coord, "_start_notify", new_callable=AsyncMock),
+        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+    ):
+        await coord.send_command(proto.build_power(True))
+        assert coord.fresh_services_required is False
+        assert coord.fresh_service_discovery_forced is True
+        assert coord.last_failure_type == "BleakError"
+
+        await coord.disconnect()
+        assert await coord._ensure_connected() is normal
+
+    assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [True, False, False, True]
+    assert "disconnected_callback" not in connect.await_args_list[1].kwargs
+    assert connect.await_args_list[2].kwargs["disconnected_callback"] == coord._disconnected_callback
+    first.clear_cache.assert_awaited_once_with()
+    bootstrap.clear_cache.assert_awaited_once_with()
+    bootstrap.disconnect.assert_awaited_once_with()
+    first.disconnect.assert_awaited_once()
+    fresh.disconnect.assert_awaited_once()
+    assert coord.fresh_service_discovery_forced is False
+    await coord.disconnect()
+
+
+async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord):
+    device = MagicMock()
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(return_value=_resolution(device))
+    coord._device_resolver = resolver
+    client = _c(disconnect=AsyncMock())
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+
+    with (
+        patch(f"{M}.establish_connection", side_effect=BleakError("GATT service not found")) as connect,
+        patch.object(coord, "_start_notify", new_callable=AsyncMock),
+        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+        pytest.raises(BleakError, match="GATT service not found"),
+    ):
+        await coord._ensure_connected()
+
+    assert coord.fresh_services_required is True
+    assert connect.await_args.kwargs["use_services_cache"] is True
+
+    with (
+        patch(f"{M}.establish_connection", side_effect=[bootstrap, client]) as fresh_connect,
+        patch.object(coord, "_start_notify", new_callable=AsyncMock),
+        patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
+    ):
+        assert await coord._ensure_connected() is client
+
+    assert fresh_connect.await_args_list == [
+        call(BleakClient, device, coord.address, use_services_cache=False),
+        call(
+            BleakClient,
+            device,
+            coord.address,
+            disconnected_callback=coord._disconnected_callback,
+            use_services_cache=False,
+        ),
+    ]
+    bootstrap.clear_cache.assert_awaited_once_with()
+    bootstrap.disconnect.assert_awaited_once_with()
+    assert coord.fresh_services_required is False
+    assert coord.fresh_service_discovery_forced is True
+    await coord.disconnect()
+
+
+async def test_failed_fresh_notification_setup_retains_fresh_requirement(coord):
+    device = MagicMock()
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(return_value=_resolution(device))
+    coord._device_resolver = resolver
+    mark_stale_gatt_recovery(coord.hass, coord.address)
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    retry_bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    failed = _c(
+        start_notify=AsyncMock(side_effect=BleakError("notify failed")),
+        disconnect=AsyncMock(),
+    )
+    recovered = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+
+    with patch(f"{M}.establish_connection", side_effect=[bootstrap, failed, retry_bootstrap, recovered]) as connect:
+        with pytest.raises(BleakError, match="notify failed"):
+            await coord._ensure_connected()
+        assert coord.fresh_services_required is True
+        assert coord.fresh_service_discovery_forced is False
+
+        assert await coord._ensure_connected() is recovered
+
+    assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [False] * 4
+    for index, native in ((0, bootstrap), (2, retry_bootstrap)):
+        assert "disconnected_callback" not in connect.await_args_list[index].kwargs
+        native.clear_cache.assert_awaited_once_with()
+        native.disconnect.assert_awaited_once_with()
+    assert coord.fresh_services_required is False
+    assert coord.fresh_service_discovery_forced is True
+    failed.disconnect.assert_awaited_once()
+    await coord.disconnect()
+
+
+async def test_stale_gatt_identity_failure_discards_client_and_requires_fresh_services(coord):
+    device = MagicMock()
+    resolver = MagicMock(spec=BLEDeviceResolver)
+    resolver.async_resolve = AsyncMock(return_value=_resolution(device))
+    coord._device_resolver = resolver
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        clear_cache=AsyncMock(return_value=True),
+        disconnect=AsyncMock(),
+    )
+
+    with (
+        patch(f"{M}.establish_connection", return_value=client) as connect,
+        pytest.raises(BleakError, match="GATT characteristic not found"),
+    ):
+        await coord._ensure_connected()
+
+    assert connect.await_args.kwargs["use_services_cache"] is True
+    assert coord.fresh_services_required is True
+    assert coord._client is None
+    client.clear_cache.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once()
+
+
+@pytest.mark.parametrize("stale", [False, True], ids=["ordinary-optional", "stale-gatt"])
+async def test_recovery_identity_failure_only_rejects_discarded_client(coord, stale):
+    mark_stale_gatt_recovery(coord.hass, coord.address.lower())
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    error = BleakError("GATT characteristic not found" if stale else "identity query failed")
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(side_effect=error),
+        clear_cache=AsyncMock(return_value=True),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", side_effect=[bootstrap, client]) as connect,
+    ):
+        if stale:
+            with pytest.raises(BleakError, match="GATT characteristic not found"):
+                await coord._ensure_connected()
+            assert coord._client is None
+            client.clear_cache.assert_awaited_once_with()
+            client.disconnect.assert_awaited_once_with()
+        else:
+            assert await coord._ensure_connected() is client
+            assert coord._encryption.ready
+            assert coord.hw_version is None
+            client.clear_cache.assert_not_awaited()
+            client.disconnect.assert_not_awaited()
+        assert coord.fresh_services_required is stale
+        assert coord.fresh_service_discovery_forced is not stale
+        assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [False, False]
+        assert "disconnected_callback" not in connect.await_args_list[0].kwargs
+    bootstrap.clear_cache.assert_awaited_once_with()
+    bootstrap.disconnect.assert_awaited_once_with()
+    client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, build_hardware_query(), response=False)
+    await coord.disconnect()
+
+
+@pytest.mark.parametrize("stale", [False, True], ids=["ordinary-optional", "stale-gatt"])
+async def test_optional_state_query_failure_only_tolerated_on_current_client(coord, stale):
+    optional = build_colour_mode_query()
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == optional:
+            raise BleakError("GATT characteristic not found" if stale else "query failed")
+
+    client = _c(
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(side_effect=write),
+        clear_cache=AsyncMock(return_value=True),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=client),
+    ):
+        await coord._ensure_connected()
+    client.write_gatt_char.reset_mock()
+    assert (
+        await coord._send_state_queries(
+            required_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        )
+        is not stale
+    )
+    packets = [item.args[1] for item in client.write_gatt_char.await_args_list]
+    assert packets[:3] == [build_power_query(), build_brightness_query(), optional]
+    assert coord.fresh_services_required is stale
+    if stale:
+        assert len(packets) == 3
+        assert coord._client is None
+        client.clear_cache.assert_awaited_once_with()
+        client.disconnect.assert_awaited_once_with()
+    else:
+        assert build_segment_query(1) in packets
+        assert coord._client is client
+        client.clear_cache.assert_not_awaited()
+        client.disconnect.assert_not_awaited()
+    await coord.disconnect()
+
+
+@pytest.mark.parametrize("failure", ["false", "error", "timeout", "cancel", "disconnect"])
+async def test_recovery_bootstrap_failure_retains_pending_and_skips_qualification(coord, failure):
+    mark_stale_gatt_recovery(coord.hass, coord.address)
+    clearing = asyncio.Event()
+
+    async def clear_cache():
+        clearing.set()
+        if failure in {"cancel", "timeout"}:
+            await asyncio.Future()
+        if failure == "error":
+            raise BleakError("native clear failed")
+        return failure != "false"
+
+    bootstrap = _c(
+        clear_cache=AsyncMock(side_effect=clear_cache),
+        disconnect=AsyncMock(side_effect=BleakError("disconnect failed") if failure == "disconnect" else None),
+    )
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", return_value=_resolution()),
+        patch(f"{M}.establish_connection", return_value=bootstrap) as connect,
+        patch(
+            "custom_components.ha_govee_led_ble.ble_connection.GATT_CACHE_CLEAR_TIMEOUT",
+            0 if failure == "timeout" else 10,
+        ),
+    ):
+        task = asyncio.create_task(coord._ensure_connected())
+        try:
+            await asyncio.wait_for(clearing.wait(), 1)
+            if failure == "cancel":
+                task.cancel()
+            with pytest.raises(asyncio.CancelledError if failure == "cancel" else BleakError):
+                await task
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    connect.assert_awaited_once()
+    assert connect.await_args.kwargs == {"use_services_cache": False}
+    bootstrap.clear_cache.assert_awaited_once_with()
+    bootstrap.disconnect.assert_awaited_once_with()
+    bootstrap.start_notify.assert_not_called()
+    bootstrap.write_gatt_char.assert_not_called()
+    assert coord.fresh_services_required
+    assert not coord.fresh_service_discovery_forced
+    assert coord._client is None
+    assert not coord._connection_initializing
+
+
+async def test_recovery_proxy_switch_failure_requires_another_native_bootstrap(coord):
+    mark_stale_gatt_recovery(coord.hass, coord.address)
+    local = _resolution(client_class=type("LocalClient", (), {}))
+    proxy = _resolution(client_class=type("ProxyClient", (), {}))
+    bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    proxy_bootstrap = _c(clear_cache=AsyncMock(return_value=True))
+    qualified = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock())
+    with (
+        patch(f"{M}.BLEDeviceResolver.async_resolve", side_effect=[local, proxy, proxy, proxy]),
+        patch(
+            f"{M}.establish_connection",
+            side_effect=[
+                bootstrap,
+                BleakError("proxy connection failed"),
+                proxy_bootstrap,
+                qualified,
+            ],
+        ) as connect,
+    ):
+        with pytest.raises(BleakError, match="Failed to recover the GATT cache"):
+            await coord._ensure_connected()
+        assert coord.fresh_services_required
+        assert coord._client is None
+        assert await coord._ensure_connected() is qualified
+    assert [item.args[0] for item in connect.await_args_list] == [
+        local.client_class,
+        proxy.client_class,
+        proxy.client_class,
+        proxy.client_class,
+    ]
+    assert [item.kwargs["use_services_cache"] for item in connect.await_args_list] == [False] * 4
+    for index, client in ((0, bootstrap), (2, proxy_bootstrap)):
+        assert "disconnected_callback" not in connect.await_args_list[index].kwargs
+        client.clear_cache.assert_awaited_once_with()
+        client.disconnect.assert_awaited_once_with()
+        client.start_notify.assert_not_called()
+    assert not coord.fresh_services_required
+    await coord.disconnect()
+
+
+async def test_keep_alive_stale_identity_failure_stops_before_state_queries(coord):
+    client = _c(
+        write_gatt_char=AsyncMock(side_effect=BleakError("GATT characteristic not found")),
+        clear_cache=AsyncMock(return_value=True),
+    )
+    coord._client = client
+    with (
+        patch(f"{M}.asyncio.sleep", new_callable=AsyncMock),
+        patch.object(coord, "_send_state_queries", new_callable=AsyncMock) as state_queries,
+    ):
+        await coord._keep_alive_loop()
+    state_queries.assert_not_awaited()
+    client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, build_hardware_query(), response=False)
+    client.clear_cache.assert_awaited_once_with()
+    client.disconnect.assert_awaited_once_with()
+    assert coord._client is None
+    assert coord.fresh_services_required
 
 
 async def test_start_notify(coord, h6199):
@@ -1382,6 +1923,10 @@ async def test_send_state_queries_selective(coord):
 
 
 async def test_send_state_queries_include_h6199_display_state(h6199):
+    from tests.test_h6199_capabilities import QUALIFIED
+
+    vars(h6199).update(QUALIFIED)
+    h6199.pact_type = None  # This test isolates video queries, not qualified native installation queries.
     c = _c(write_gatt_char=AsyncMock())
     h6199._client = c
     assert await h6199._send_state_queries() is True
@@ -1414,7 +1959,10 @@ def test_video_grammar_owns_writers_and_ack_independently_of_basic_grammars(
     )
 
     assert build_video_mode("game", False, 42, True, 55, model) == build_h6199_video(False, True, 42, True, 55)
-    queries = (build_white_balance_query, build_blank_screen_query, build_relative_brightness_query)
+    # White-balance reads require their own capability and use the command query grammar.
+    with pytest.raises(ValueError, match="readback"):
+        build_white_balance_query(model)
+    queries = (build_blank_screen_query, build_relative_brightness_query)
     expected_queries = [build("H6199") for build in queries]
     # Video grammar keys must not be resolved through the H6199 model profile.
     monkeypatch.setitem(
@@ -1744,6 +2292,7 @@ async def test_refresh_state_query_selection(coord):
         query_power: bool,
         query_brightness: bool,
         query_color_mode: bool,
+        deadline: float,
     ) -> bool:
         if query_power:
             coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
@@ -1758,19 +2307,19 @@ async def test_refresh_state_query_selection(coord):
         patch.object(coord, "_send_state_queries", new=AsyncMock(side_effect=_reply)) as sq,
     ):
         assert await coord.refresh_state(expected_effect=None, expected_on=True) is True
-        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False)
+        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=False, deadline=ANY)
         sq.reset_mock()
 
         assert await coord.refresh_state(expected_effect="candy", expected_on=None) is True
-        sq.assert_awaited_with(query_power=False, query_brightness=False, query_color_mode=True)
+        sq.assert_awaited_with(query_power=False, query_brightness=False, query_color_mode=True, deadline=ANY)
         sq.reset_mock()
 
         assert await coord.refresh_state(expected_brightness=42) is True
-        sq.assert_awaited_with(query_power=False, query_brightness=True, query_color_mode=False)
+        sq.assert_awaited_with(query_power=False, query_brightness=True, query_color_mode=False, deadline=ANY)
         sq.reset_mock()
 
         assert await coord.refresh_state(expected_effect=None, expected_on=None) is True
-        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True)
+        sq.assert_awaited_with(query_power=True, query_brightness=False, query_color_mode=True, deadline=ANY)
 
 
 async def test_h617e_legacy_scene_verifies_by_raw_selector_code(hass):
@@ -1828,6 +2377,9 @@ async def test_refresh_without_colour_readback_requires_power_and_brightness_onl
             "query_power": True,
             "query_brightness": True,
             "query_color_mode": False,
+            "required_domains": frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+            "optional_baselines": {},
+            "deadline": ANY,
         }
         limited_readback_coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [0])))
         limited_readback_coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [40])))
@@ -1885,7 +2437,7 @@ async def test_h6076_refresh_all_uses_limited_readback_profile(hass):
         assert await coordinator.refresh_state(refresh_all=True, timeout=0.02)
 
     assert coordinator.scene_name_set == frozenset()
-    with pytest.raises(ValueError, match="does not support native scenes"):
+    with pytest.raises(ValueError, match="native scenes are not supported"):
         await coordinator.async_apply_native_scene(next(iter(MODEL_SCENES["H6076"])))
 
 
@@ -1925,6 +2477,9 @@ async def test_refresh_reply_timeout_starts_after_connection(coord):
 
 
 async def test_refresh_state_queries_each_display_domain(h6199):
+    from tests.test_h6199_capabilities import QUALIFIED
+
+    vars(h6199).update(QUALIFIED)
     h6199._client = client = _c()
 
     async def _reply(**kwargs) -> bool:
@@ -2246,23 +2801,33 @@ def test_segment_query_replies_replace_restored_state(
     assert coordinator.segment_colors == [(value, value + 1, value + 2) for value in range(15)]
 
 
-async def test_async_paint_segments_updates_slots_and_sends(coord):
+@pytest.fixture
+def segment_client(coord):
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coord._client = client
+    with (
+        patch.object(coord, "_ensure_connected", AsyncMock(return_value=client)),
+        patch.object(coord, "_disconnect_locked", AsyncMock()),
+        patch.object(coord, "_renew_foreground_lease"),
+    ):
+        yield client
+
+
+async def test_async_paint_segments_updates_slots_and_sends(coord, segment_client):
     groups = [([1, 2, 2], (255, 0, 0)), ([2, 3], (0, 0, 255))]
     with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as sc,
         patch.object(coord, "async_refresh_segments", new_callable=AsyncMock, return_value=True) as refresh,
         patch.object(coord, "async_set_updated_data") as pushed,
     ):
         await coord.async_paint_segments((iter(segments), rgb) for segments, rgb in groups)
-    assert [call.args[0] for call in sc.await_args_list] == proto.build_segment_paint(groups)
-    assert sc.await_count == 2
+    assert [call.args[1] for call in segment_client.write_gatt_char.await_args_list] == build_segment_paint(groups)
     assert coord.segment_colors[:4] == [(255, 0, 0), (0, 0, 255), (0, 0, 255), (255, 255, 255)]
     assert coord.segment_state_source == "optimistic"
     refresh.assert_awaited_once_with()
     pushed.assert_called_once()
 
 
-async def test_async_paint_segments_rolls_back_on_failure(coord):
+async def test_async_paint_segments_preserves_state_without_write_attempt(coord):
     before = list(coord.segment_colors)
     with (
         patch.object(coord, "send_command", new=AsyncMock(side_effect=BleakError("boom"))),
@@ -2273,18 +2838,20 @@ async def test_async_paint_segments_rolls_back_on_failure(coord):
     assert coord.segment_state_source == "initial"
 
 
-async def test_async_set_segment_brightness_verifies_complete_state(coord):
-    def write(_packet):
-        assert coord.segment_brightness == [100] * 15
-        assert coord.segment_state_source == "initial"
+async def test_async_set_segment_brightness_verifies_complete_state(coord, segment_client):
+    def write(_uuid, _packet, **_kwargs):
+        assert coord.segment_brightness[:5] == [100, 60, 100, 60, 100]
+        assert coord.segment_state_source == "optimistic"
 
+    segment_client.write_gatt_char.side_effect = write
     with (
-        patch.object(coord, "send_command", new=AsyncMock(side_effect=write)) as send,
         patch.object(coord, "async_refresh_segments", new_callable=AsyncMock, return_value=True) as refresh,
     ):
         await coord.async_set_segment_brightness(iter([2, 4, 4]), 60)
 
-    send.assert_awaited_once_with(build_segment_brightness([2, 4], 60))
+    segment_client.write_gatt_char.assert_awaited_once_with(
+        WRITE_UUID, build_segment_brightness([2, 4], 60), response=False
+    )
     assert coord.segment_brightness[:5] == [100, 60, 100, 60, 100]
     assert coord.segment_state_source == "optimistic"
     refresh.assert_awaited_once_with()
@@ -2313,25 +2880,24 @@ async def test_async_paint_segments_rejects_invalid_segments(coord, bad):
 
 
 @pytest.mark.parametrize("count", [5, 14])
-async def test_segment_writes_use_effective_profile(coord, count):
+async def test_segment_writes_use_effective_profile(coord, segment_client, count):
     coord.profile = replace(coord.profile, segment_count=count)
     coord.segment_colors = coord.segment_colors[:count]
     coord.segment_brightness = coord.segment_brightness[:count]
     with (
-        patch.object(coord, "send_command", new_callable=AsyncMock) as send,
         patch.object(coord, "async_refresh_segments", new_callable=AsyncMock),
     ):
         await coord.async_paint_segments([([count], (1, 2, 3))])
         await coord.async_set_segment_brightness([count], 50)
-        assert send.await_count == 2
-        send.reset_mock()
+        assert segment_client.write_gatt_char.await_count == 2
+        segment_client.write_gatt_char.reset_mock()
         with patch.object(coord, "mark_segment_state_optimistic") as optimistic:
             with pytest.raises(ValueError):
                 await coord.async_paint_segments([([1], (4, 5, 6)), ([count + 1], (1, 2, 3))])
             with pytest.raises(ValueError):
                 await coord.async_set_segment_brightness([count + 1], 50)
         optimistic.assert_not_called()
-        send.assert_not_awaited()
+        segment_client.write_gatt_char.assert_not_awaited()
     assert coord.segment_colors == [(255, 255, 255)] * (count - 1) + [(1, 2, 3)]
     assert coord.segment_brightness == [100] * (count - 1) + [50]
 
@@ -2353,6 +2919,400 @@ async def test_paint_serialization_failure_precedes_optimistic_state(coord):
     send.assert_not_awaited()
     assert coord.segment_colors == before
     assert coord.segment_state_source == "initial"
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+@pytest.mark.parametrize("recovery", ["complete", "partial", "error"])
+async def test_segment_write_failure_reconciles_without_masking_error(coord, segment_client, operation, recovery):
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+    revision = coord._field_revisions["segment_colors"]
+    coord.rgb_color_source = coord.color_temp_kelvin_source = "observed"
+    # A pre-write page must not complete the post-write observation.
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [5, *([100, 10, 20, 30] * 3)])))
+    error = BleakError("original write failure")
+    segment_client.write_gatt_char.side_effect = [None, error, error, error] if operation == "paint" else error
+
+    async def refresh():
+        assert coord._control_arbiter.current_task_intent is ControlIntent.USER
+        assert not coord._lock.locked()
+        assert coord.segment_state_source == "optimistic"
+        assert coord.segment_state_observed_at is None
+        assert not coord._segment_groups_observed
+        assert coord._field_revisions["segment_colors"] == revision
+        if operation == "paint":
+            assert coord.segment_colors[:3] == [(255, 0, 0), (0, 0, 255), (10, 20, 30)]
+            assert coord.rgb_color_source == coord.color_temp_kelvin_source == "retained"
+        if recovery == "error":
+            raise RuntimeError("recovery failed")
+        for group in range(1, 6 if recovery == "complete" else 5):
+            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [group, *([40, 9, 8, 7] * 3)])))
+        return recovery == "complete"
+
+    with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)) as refresh_mock:
+        with pytest.raises(BleakError) as raised:
+            if operation == "paint":
+                await coord.async_paint_segments([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+            else:
+                await coord.async_set_segment_brightness([1], 60)
+    assert raised.value is error
+    refresh_mock.assert_awaited_once_with()
+    assert segment_client.write_gatt_char.await_count == (4 if operation == "paint" else 3)
+    assert not coord._control_arbiter.locked()
+    if recovery == "complete":
+        assert coord.segment_colors == [(9, 8, 7)] * 15
+        assert coord.segment_brightness == [40] * 15
+        assert coord.segment_state_source == "observed"
+        assert coord.segment_state_observed_at is not None
+        assert coord._field_revisions["segment_colors"] == revision + 1
+    else:
+        assert coord.segment_state_source == "optimistic"
+        assert coord.segment_state_observed_at is None
+        assert coord._field_revisions["segment_colors"] == revision
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+async def test_segment_false_confirmation_surfaces_without_resending(coord, segment_client, operation):
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+    with patch.object(coord, "async_refresh_segments", AsyncMock(return_value=False)) as refresh:
+        with pytest.raises(RuntimeError, match="confirm segment"):
+            if operation == "paint":
+                await coord.async_paint_segments([([1], (255, 0, 0))])
+            else:
+                await coord.async_set_segment_brightness([1], 60)
+    assert segment_client.write_gatt_char.await_count == 1
+    refresh.assert_awaited_once_with()
+    assert coord.segment_state_source == "optimistic"
+    assert coord.segment_state_observed_at is None
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+@pytest.mark.parametrize("failure", ["validation", "transform", "connection"])
+async def test_segment_no_write_preserves_observation_and_buffers(coord, segment_client, operation, failure):
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+    coord.rgb_color_source = coord.color_temp_kelvin_source = "observed"
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [1, *([40, 9, 8, 7] * 3)])))
+    observed_at = coord.segment_state_observed_at
+    revisions = dict(coord._field_revisions)
+    colors, brightness = coord._segment_query_colors, coord._segment_query_brightness
+    admission = coord.admit_preview()
+    if failure == "transform":
+        coord.profile = replace(coord.profile, outbound_transform=MagicMock(side_effect=ValueError("transform")))
+    elif failure == "connection":
+        coord._ensure_connected.side_effect = TimeoutError("connection")
+    with patch.object(coord, "async_refresh_segments", AsyncMock()) as refresh:
+        with pytest.raises((ValueError, TimeoutError)):
+            selected = [16] if failure == "validation" else [1]
+            if operation == "paint":
+                await coord.async_paint_segments([([1], (255, 0, 0)), (selected, (0, 0, 255))])
+            else:
+                await coord.async_set_segment_brightness(selected, 60)
+    segment_client.write_gatt_char.assert_not_awaited()
+    refresh.assert_not_awaited()
+    assert coord.segment_colors == [(10, 20, 30)] * 15
+    assert coord.segment_brightness == [100] * 15
+    assert coord.segment_state_source == coord.rgb_color_source == coord.color_temp_kelvin_source == "observed"
+    assert coord.segment_state_observed_at == observed_at
+    assert coord._field_revisions == revisions
+    assert coord._segment_groups_observed == {1}
+    assert coord._segment_query_colors is colors
+    assert coord._segment_query_brightness is brightness
+    if failure == "validation":
+        assert admission.is_current
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled"])
+async def test_segment_new_observations_survive_write_completion(coord, segment_client, operation, outcome):
+    def write(_uuid, _packet, **_kwargs):
+        _send_uniform_segment_replies(coord, (9, 8, 7))
+        coord.rgb_color_source = coord.color_temp_kelvin_source = "observed"
+        coord._mark_received(ReadDomain.COLOUR_MODE, "rgb_color", "color_temp_kelvin", "color_mode")
+        coord.color_mode = ParsedMode.VIDEO
+        coord.video_mode = "game"
+        if outcome == "failure":
+            raise TimeoutError("ambiguous write")
+        if outcome == "cancelled":
+            raise asyncio.CancelledError
+
+    segment_client.write_gatt_char.side_effect = write
+    with patch.object(coord, "async_refresh_segments", AsyncMock(return_value=True)) as refresh:
+
+        async def apply():
+            if operation == "paint":
+                await coord.async_paint_segments([([1], (255, 0, 0))])
+            else:
+                await coord.async_set_segment_brightness([1], 60)
+
+        if outcome == "success":
+            with pytest.raises(RuntimeError, match="confirm segment"):
+                await apply()
+        else:
+            with pytest.raises(TimeoutError if outcome == "failure" else asyncio.CancelledError):
+                await apply()
+    assert refresh.await_count == (0 if outcome == "cancelled" else 1)
+    assert coord.segment_colors == [(9, 8, 7)] * 15
+    assert coord.segment_brightness == [100] * 15
+    assert coord.segment_state_source == coord.rgb_color_source == coord.color_temp_kelvin_source == "observed"
+    assert coord.segment_state_observed_at is not None
+    assert coord.color_mode is ParsedMode.VIDEO
+    assert coord.video_mode == "game"
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+async def test_cancelled_segment_write_leaves_uncertainty_without_recovery_task(coord, segment_client, operation):
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+    segment_client.write_gatt_char.side_effect = asyncio.CancelledError
+    with patch.object(coord, "async_refresh_segments", AsyncMock()) as refresh:
+        with pytest.raises(asyncio.CancelledError):
+            if operation == "paint":
+                await coord.async_paint_segments([([1], (255, 0, 0))])
+            else:
+                await coord.async_set_segment_brightness([1], 60)
+    refresh.assert_not_awaited()
+    assert coord.segment_state_source == "optimistic"
+    assert coord.segment_state_observed_at is None
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
+
+
+@pytest.mark.parametrize("model_fixture", ["coord", "h6199"])
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+async def test_segment_failure_reconciles_real_complete_query_pages(request, model_fixture, operation):
+    coord = request.getfixturevalue(model_fixture)
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+    revision = coord._field_revisions["segment_colors"]
+    group_size = coord.profile.segment_group_size
+    replies = {
+        build_segment_query(group, coord.model): proto.build_packet(
+            0xAA, 0xA5, [group, *([40, 9, 8, 7] * min(group_size, 15 - (group - 1) * group_size))]
+        )
+        for group in range(1, coord._segment_group_count + 1)
+    }
+    packets = (
+        build_segment_paint([([1], (255, 0, 0)), ([2], (0, 0, 255))], coord.model)
+        if operation == "paint"
+        else [build_segment_brightness([1], 60, coord.model)]
+    )
+    error = TimeoutError("ambiguous write")
+
+    def write(_uuid, packet, **_kwargs):
+        if packet == packets[-1]:
+            raise error
+        if packet in replies:
+            coord._notify_callback(None, bytearray(replies[packet]))
+            if packet != list(replies)[-1]:
+                assert coord.segment_state_source == "optimistic"
+                assert coord.segment_state_observed_at is None
+                assert coord._field_revisions["segment_colors"] == revision
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
+    coord._client = client
+    with (
+        patch.object(coord, "_ensure_connected", AsyncMock(return_value=client)),
+        patch.object(coord, "_renew_foreground_lease"),
+        pytest.raises(TimeoutError) as raised,
+    ):
+        if operation == "paint":
+            await coord.async_paint_segments([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+        else:
+            await coord.async_set_segment_brightness([1], 60)
+    assert raised.value is error
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == packets + list(replies)
+    assert coord.segment_colors == [(9, 8, 7)] * 15
+    assert coord.segment_brightness == [40] * 15
+    assert coord.segment_state_source == "observed"
+    assert coord.segment_state_observed_at is not None
+    assert coord._field_revisions["segment_colors"] == revision + 1
+
+
+async def test_paint_later_transform_failure_keeps_latest_observations(coord, segment_client):
+    packets = build_segment_paint([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+    error = ValueError("second transform rejected")
+    coord.profile = replace(coord.profile, outbound_transform=MagicMock(side_effect=[packets[0], error]))
+    segment_client.write_gatt_char.side_effect = lambda *_args, **_kwargs: _send_uniform_segment_replies(
+        coord, (9, 8, 7)
+    )
+    with patch.object(coord, "async_refresh_segments", AsyncMock(return_value=False)) as refresh:
+        with pytest.raises(ValueError) as raised:
+            await coord.async_paint_segments([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+    assert raised.value is error
+    assert segment_client.write_gatt_char.await_count == 1
+    refresh.assert_awaited_once_with()
+    assert coord.segment_colors == [(9, 8, 7)] * 15
+    assert coord.segment_state_source == "observed"
+    assert coord.segment_state_observed_at is not None
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+async def test_segment_recovery_cancellation_releases_operation(coord, segment_client, operation):
+    started = asyncio.Event()
+    segment_client.write_gatt_char.side_effect = TimeoutError("ambiguous write")
+
+    async def refresh():
+        started.set()
+        await asyncio.Event().wait()
+
+    with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)):
+        task = asyncio.create_task(
+            coord.async_paint_segments([([1], (255, 0, 0))])
+            if operation == "paint"
+            else coord.async_set_segment_brightness([1], 60)
+        )
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert coord.segment_state_source == "optimistic"
+    assert coord.segment_state_observed_at is None
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
+
+
+@pytest.mark.parametrize("model_fixture", ["coord", "h6199"])
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+@pytest.mark.parametrize("source", ["observed", "initial", "restored", "optimistic"])
+@pytest.mark.parametrize("result", ["unchanged", "partial", "match", "unselected", "companion"])
+async def test_segment_confirmation_compares_complete_pages(request, model_fixture, operation, source, result):
+    coord = request.getfixturevalue(model_fixture)
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+    coord.segment_state_source = source
+    if source != "observed":
+        coord.segment_state_observed_at = None
+    revision = coord._field_revisions["segment_colors"]
+    colors = list(coord.segment_colors)
+    brightness = list(coord.segment_brightness)
+    groups = [([1, 2], (255, 0, 0)), ([2], (0, 0, 255))]
+    if result != "unchanged":
+        if operation == "paint":
+            colors[:2] = [(255, 0, 0), (255, 0, 0) if result == "partial" else (0, 0, 255)]
+        else:
+            brightness[:2] = [60, 100 if result == "partial" else 60]
+    if result == "unselected":
+        if operation == "paint":
+            colors[-1] = (9, 8, 7)
+        else:
+            brightness[-1] = 40
+    if result == "companion":
+        if operation == "paint":
+            brightness[0] = 40
+        else:
+            colors[0] = (9, 8, 7)
+    size = coord.profile.segment_group_size
+    replies = {}
+    for group in range(1, coord._segment_group_count + 1):
+        payload = [group]
+        for index in range((group - 1) * size, min(group * size, len(colors))):
+            payload.extend((brightness[index], *colors[index]))
+        replies[build_segment_query(group, coord.model)] = proto.build_packet(0xAA, 0xA5, payload)
+
+    def write(_uuid, packet, **_kwargs):
+        if packet in replies:
+            coord._notify_callback(None, bytearray(replies[packet]))
+
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=write))
+    coord._client = client
+    with (
+        patch.object(coord, "_ensure_connected", AsyncMock(return_value=client)),
+        patch.object(coord, "_renew_foreground_lease"),
+    ):
+
+        async def apply():
+            if operation == "paint":
+                await coord.async_paint_segments(groups)
+            else:
+                await coord.async_set_segment_brightness([1, 2], 60)
+
+        if result in {"unchanged", "partial"}:
+            with pytest.raises(RuntimeError, match="confirm segment"):
+                await apply()
+        else:
+            await apply()
+    assert coord.segment_colors == colors
+    assert coord.segment_brightness == brightness
+    assert coord.segment_state_source == "observed"
+    assert coord.segment_state_observed_at is not None
+    assert coord._field_revisions["segment_colors"] == revision + 1
+    assert client.write_gatt_char.await_count == len(replies) + (2 if operation == "paint" else 1)
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+@pytest.mark.parametrize("observed", [False, True])
+@pytest.mark.parametrize("error", [TimeoutError("verification failed"), asyncio.CancelledError()])
+async def test_segment_verification_error_preserves_state(coord, segment_client, operation, observed, error):
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+    revision = coord._field_revisions["segment_colors"]
+
+    async def refresh():
+        assert coord._control_arbiter.current_task_intent is ControlIntent.USER
+        assert not coord._lock.locked()
+        if observed:
+            _send_uniform_segment_replies(coord, (9, 8, 7))
+        raise error
+
+    with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)) as verify:
+        with pytest.raises(type(error)) as raised:
+            if operation == "paint":
+                await coord.async_paint_segments([([1], (255, 0, 0))])
+            else:
+                await coord.async_set_segment_brightness([1], 60)
+    assert raised.value is error
+    verify.assert_awaited_once_with()
+    assert segment_client.write_gatt_char.await_count == 1
+    assert coord.segment_state_source == ("observed" if observed else "optimistic")
+    assert (coord.segment_state_observed_at is not None) == observed
+    assert coord._field_revisions["segment_colors"] == revision + observed
+    if observed:
+        assert coord.segment_colors == [(9, 8, 7)] * 15
+        assert coord.segment_brightness == [100] * 15
+    assert not coord._control_arbiter.locked()
+    assert not coord._lock.locked()
+
+
+@pytest.mark.parametrize("operation", ["paint", "brightness"])
+@pytest.mark.parametrize("during_write", [False, True])
+async def test_segment_preservation_baseline_is_first_write_boundary(coord, segment_client, operation, during_write):
+    _send_uniform_segment_replies(coord, (10, 20, 30))
+
+    async def connect():
+        if not during_write:
+            _send_uniform_segment_replies(coord, (9, 8, 7))
+        return segment_client
+
+    def write(*_args, **_kwargs):
+        if during_write:
+            _send_uniform_segment_replies(coord, (9, 8, 7))
+
+    async def refresh():
+        colors = [(9, 8, 7)] * 15
+        if operation == "paint":
+            colors[:2] = [(255, 0, 0), (0, 0, 255)]
+        for group in range(1, 6):
+            payload = [group]
+            for index in range((group - 1) * 3, group * 3):
+                payload.extend((60 if operation == "brightness" and index == 0 else 100, *colors[index]))
+            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, payload)))
+        return True
+
+    coord._ensure_connected.side_effect = connect
+    segment_client.write_gatt_char.side_effect = write
+    with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)):
+
+        async def apply():
+            if operation == "paint":
+                await coord.async_paint_segments([([1], (255, 0, 0)), ([2], (0, 0, 255))])
+            else:
+                await coord.async_set_segment_brightness([1], 60)
+
+        # Only the connect-time observation is a pre-write baseline. The historical
+        # observation and replies after the first write cannot establish one.
+        await apply()
+    assert coord.segment_state_source == "observed"
+    assert coord.segment_colors[-1] == (9, 8, 7)
 
 
 async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
@@ -2444,7 +3404,9 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord, 
         query_color_mode=True,
         query_white_balance=False,
         query_blank_screen=False,
+        query_black_border=False,
         query_relative_brightness=False,
+        deadline=ANY,
     )
     disconnect.assert_not_awaited()
     send.assert_not_awaited()
@@ -3186,28 +4148,26 @@ def test_video_readback_is_gated_on_the_model(coord, h6199):
     assert h6199.video_saturation == 42
 
 
-def test_white_balance_fills_the_untouched_axis_with_the_apps_own_neutral(coord):
-    """The register takes both gains at once and never reads back, so one axis alone is a guess.
-
-    Filling from the pair the app's Reset button writes is the only defensible starting point:
-    zero is a real gain the app never sends, and reusing the other axis would tint the picture.
-    """
-    assert coord.white_balance == proto.WHITE_BALANCE_RESET
+def test_white_balance_never_fabricates_an_unknown_gain(coord):
+    assert coord.white_balance is None
     coord.white_balance_red = 21
-    assert coord.white_balance == (21, proto.WHITE_BALANCE_RESET[1])
+    assert coord.white_balance is None
     coord.white_balance_blue = 5
     assert coord.white_balance == (21, 5)
     assert build_white_balance(*coord.white_balance, "H6199") == build_white_balance(21, 5, "H6199")
 
 
-def test_h6199_blank_screen_builder_clamps_durations() -> None:
+def test_h6199_blank_screen_builder_validates_durations() -> None:
     assert build_blank_screen(
         True,
         "H6199",
         detection=2,
-        low_brightness_duration_seconds=-1,
-        same_tone_duration_seconds=0x10000,
+        low_brightness_duration_seconds=0,
+        same_tone_duration_seconds=0xFFFF,
     ) == bytes.fromhex("33a90a0601020000ffff00000000000000000095")
+    for low, same in ((-1, 120), (10, 0x10000), (True, 120), (10, 1.5)):
+        with pytest.raises(ValueError, match="durations must be integer seconds"):
+            build_blank_screen(True, "H6199", 2, low, same)
 
 
 def test_generated_adapter_rejects_structurally_invalid_frames() -> None:

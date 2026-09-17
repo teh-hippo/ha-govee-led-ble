@@ -1,10 +1,11 @@
 import { LitElement, css, html, nothing } from "lit";
-import { property } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 
 import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
 import "./info-control";
+import "./palette-editor";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import { reactiveParameterValueText } from "./effect-editor-model";
 import { recentColour } from "./recent-colours";
@@ -26,9 +27,10 @@ import type {
   JsonObject,
   ModelEffectCatalogue,
   MusicProfileContent,
+  RetainedMusicEdit,
   RGB,
 } from "./types";
-import { clampInteger, cloneRgb } from "./ui-utils";
+import { clampInteger, clonePalette, cloneRgb } from "./ui-utils";
 
 export interface MusicModeChange {
   mode: string;
@@ -47,9 +49,30 @@ export class GoveeMusicProfileEditor extends LitElement {
   @property({ type: Boolean })
   public modeSelectionEnabled = false;
 
+  @property({ attribute: false })
+  public retainedEdit?: RetainedMusicEdit | null;
+
+  @property({ attribute: false })
+  public configEntryId?: string;
+
+  @state() private retainedParameters: JsonObject = {};
+  @state() private retainedCalm?: boolean;
+
   private lastFixedColour?: RGB;
   private interaction: LivePreviewInteraction = "committed";
+  public clearRetainedEdits(): void {
+    this.retainedParameters = {};
+    this.retainedCalm = undefined;
+  }
+
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
+    const previous = changed.get("retainedEdit") as RetainedMusicEdit | null | undefined;
+    if (changed.has("configEntryId") ||
+        (changed.has("content") && (changed.get("content") as MusicProfileContent | undefined)?.mode !== this.content?.mode) ||
+        (changed.has("retainedEdit") &&
+          (previous?.mode !== this.retainedEdit?.mode || previous?.revision !== this.retainedEdit?.revision))) {
+      this.clearRetainedEdits();
+    }
     if (changed.has("content") && this.content?.colour != null) {
       this.lastFixedColour = cloneRgb(this.content.colour);
     }
@@ -166,8 +189,57 @@ export class GoveeMusicProfileEditor extends LitElement {
             : nothing}
 
           ${this.renderModeParameters(this.content)}
+          ${this.settings?.palette ? html`
+            <div class="field">
+              <span>Music colours</span>
+              <govee-palette-editor
+                .palette=${this.content.palette ?? this.settings.palette.default}
+                .minColours=${this.settings.palette.min}
+                .maxColours=${this.settings.palette.max}
+                .disabled=${this.disabled}
+                .ariaLabel=${"Music colours"}
+                @palette-changed=${(event: CustomEvent<{palette: RGB[]; interaction: LivePreviewInteraction}>) => {
+                  this.updateContent(content => ({...content, palette: clonePalette(event.detail.palette)}), event.detail.interaction);
+                }}
+              ></govee-palette-editor>
+              ${this.content.palette === undefined ? nothing : html`
+                <button type="button" ?disabled=${this.disabled} @click=${() => this.updateContent(content => {
+                  delete content.palette;
+                  return content;
+                })}>Use default colours</button>
+              `}
+            </div>
+          ` : nothing}
         </div>
       </section>
+      ${this.retainedEdit?.mode === this.content.mode ? html`
+        <section class="card">
+          <h3>Edit retained device music</h3>
+          <p>Preserves the last complete body, including its palette and geometry. This is retained data, not readback.</p>
+          ${this.renderModeParameters(
+            { ...this.content, parameters: { ...this.retainedEdit.parameters, ...this.retainedParameters } },
+            this.retainedEdit.settings,
+            (key, value) => { this.retainedParameters = { ...this.retainedParameters, [key]: value }; },
+          )}
+          ${this.retainedEdit.settings.style ? html`
+            <label class="field">Style
+              <select aria-label="Retained music style" ?disabled=${this.disabled}
+                @change=${(event: Event) => {
+                  const value = (event.target as HTMLSelectElement).value;
+                  this.retainedCalm = value === "preserve" ? undefined : value === "calm";
+                }}>
+                <option value="preserve" .selected=${this.retainedCalm === undefined}>Preserve</option>
+                <option value="dynamic" .selected=${this.retainedCalm === false}>Dynamic</option>
+                <option value="calm" .selected=${this.retainedCalm === true}>Calm</option>
+              </select>
+            </label>` : nothing}
+          <button type="button" ?disabled=${this.disabled ||
+            (!Object.keys(this.retainedParameters).length && this.retainedCalm === undefined)}
+            @click=${() => this.dispatchEvent(new CustomEvent("retained-music-edit", {
+              detail: { edit: this.retainedEdit, parameters: this.retainedParameters, calm: this.retainedCalm },
+              bubbles: true, composed: true,
+            }))}>Apply retained-body edits</button>
+        </section>` : nothing}
     `;
   }
 
@@ -237,19 +309,44 @@ export class GoveeMusicProfileEditor extends LitElement {
     `;
   }
 
-  private renderModeParameters(content: MusicProfileContent) {
-    return Object.entries(this.settings?.parameters ?? {}).map(([key, spec]) => {
+  private renderModeParameters(content: MusicProfileContent, settings = this.settings,
+    update = (key: string, value: boolean | number | string) => this.updateParameter(key, value)) {
+    return Object.entries(settings?.parameters ?? {}).map(([key, spec]) => {
       const label = parameterLabel(key);
+      if (key === "background" && spec.kind === "number") {
+        const value = numberParameter(content.parameters, key, spec.default as number, spec.min, spec.max);
+        const colour: RGB = [value >> 16, (value >> 8) & 255, value & 255];
+        const change = (event: CustomEvent<{ colour: RGB }>, interaction: LivePreviewInteraction) => {
+          const [red, green, blue] = event.detail.colour;
+          this.interaction = interaction;
+          try { update(key, (red << 16) | (green << 8) | blue); }
+          finally { this.interaction = "committed"; }
+        };
+        return html`
+          <div class="field">
+            <govee-single-colour-field
+              label="Background colour"
+              .colour=${colour}
+              .disabled=${this.disabled}
+              @colour-changing=${(event: CustomEvent<{ colour: RGB }>) => change(event, "changing")}
+              @colour-changed=${(event: CustomEvent<{ colour: RGB }>) => change(event, "committed")}
+            ></govee-single-colour-field>
+            <button type="button" ?disabled=${this.disabled} @click=${() => update(key, 0x010101)}>
+              No colour
+            </button>
+          </div>
+        `;
+      }
       if (spec.kind === "number") {
         return this.renderRangeField(
           label, numberParameter(content.parameters, key, spec.default as number, spec.min, spec.max),
-          spec.min, spec.max, key, (value) => this.updateParameter(key, value),
+          spec.min, spec.max, key, (value) => update(key, value),
         );
       }
       if (spec.kind === "switch") {
         return this.renderCheckboxField(
           label, booleanParameter(content.parameters, key, spec.default as boolean),
-          (checked) => this.updateParameter(key, checked),
+          (checked) => update(key, checked),
         );
       }
       const raw = content.parameters[key];
@@ -261,7 +358,7 @@ export class GoveeMusicProfileEditor extends LitElement {
             aria-label=${label}
             .value=${live(selected)}
             ?disabled=${this.disabled}
-            @change=${(event: Event) => this.updateParameter(key, (event.target as HTMLSelectElement).value)}
+            @change=${(event: Event) => update(key, (event.target as HTMLSelectElement).value)}
           >
             ${spec.options.map((option) => html`
               <option value=${option} .selected=${option === selected}>${parameterLabel(option)}</option>

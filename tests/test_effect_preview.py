@@ -23,7 +23,12 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     WORKSHOP_PROTOCOL_FIXTURES,
     resolve_catalogue_template,
 )
-from custom_components.ha_govee_led_ble.effect_compiler import CompiledEffect, CompiledVideoProfile, compile_application
+from custom_components.ha_govee_led_ble.effect_compiler import (
+    CompiledEffect,
+    CompiledMusicProfile,
+    CompiledVideoProfile,
+    compile_application,
+)
 from custom_components.ha_govee_led_ble.effect_deployments import (
     ObservationConfidence,
 )
@@ -56,6 +61,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    MusicBody,
     build_blank_screen,
     build_h6199_video,
     build_power,
@@ -65,6 +71,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
+from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 
@@ -103,12 +110,15 @@ def _coordinator(*, model: str = "H617A", readable: bool = False) -> SimpleNames
         before_write=None,
         attempt_started=None,
         progress=None,
+        write_guard=None,
     ) -> None:
         if attempt_started is not None:
             await attempt_started(1)
         if before_write is not None:
             await before_write()
         for index, packet in enumerate(packets, start=1):
+            if write_guard is not None:
+                write_guard()
             await coordinator.async_preview_write(packet)
             if progress is not None:
                 await progress(index)
@@ -203,9 +213,9 @@ async def test_worker_preflights_all_but_writes_only_newest_pending_request(
 
     original_compile = effect_preview.compile_application
 
-    def compile_recording(item, model, *, diy_code=None):
+    def compile_recording(item, model, *, diy_code=None, profile=None):
         compiled_names.append(item.name)
-        return original_compile(item, model, diy_code=diy_code)
+        return original_compile(item, model, diy_code=diy_code, profile=profile)
 
     monkeypatch.setattr(effect_preview, "compile_application", compile_recording)
 
@@ -272,9 +282,9 @@ async def test_newest_request_can_return_to_the_active_state(
 
     original_compile = effect_preview.compile_application
 
-    def compile_recording(item, model, *, diy_code=None):
+    def compile_recording(item, model, *, diy_code=None, profile=None):
         compiled_names.append(item.name)
-        return original_compile(item, model, diy_code=diy_code)
+        return original_compile(item, model, diy_code=diy_code, profile=profile)
 
     monkeypatch.setattr(effect_preview, "compile_application", compile_recording)
 
@@ -1125,7 +1135,7 @@ async def test_workshop_preview_verifies_evidenced_selector(
             "H617A",
             LibraryItem.new(
                 "Music",
-                MusicProfile("H617A", "separation", 50, (1, 2, 3), None, {"point": 3, "gradient": True}),
+                MusicProfile("H617A", "separation", 50, parameters={"point": 3}, palette=((1, 2, 3), (32, 96, 160))),
             ),
         ),
         (
@@ -1163,13 +1173,43 @@ async def test_snapshot_profile_previews_use_preview_transport(
     coordinator.blank_screen_low_brightness_duration_seconds = 10
     coordinator.blank_screen_same_tone_duration_seconds = 120
     coordinator._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    if model == "H617A":
+        compiled = compile_application(item, model)
+        assert isinstance(compiled, CompiledMusicProfile)
+
+        async def acknowledge_upload(_uuid, packet, **kwargs):
+            if packet == compiled.packets[-2]:
+                assert coordinator.music_mode == "off"
+                assert coordinator._upload_ack is not None
+                pending = coordinator._upload_ack[-1]
+                assert not pending.done()
+                payload = bytes.fromhex("a3413200").ljust(19, b"\0")
+                coordinator._notify_callback(None, bytearray(payload + bytes([xor_checksum(payload)])))
+                assert pending.result() is True
+            elif packet == compiled.packets[-1]:
+                assert coordinator._upload_ack is None
+
+        coordinator._client.write_gatt_char.side_effect = acknowledge_upload
+    if model == "H6199":
+        from tests.test_h6099 import frame
+        from tests.test_h6199_capabilities import QUALIFIED
+
+        vars(coordinator).update(QUALIFIED)
+
+        async def fresh_policy(**kwargs):
+            assert kwargs == {"refresh_display_settings": frozenset({"blank_screen"})}
+            coordinator._notify_callback(None, bytearray(frame("aaa90a0600020a007800")))
+            return True
+
+        monkeypatch.setattr(coordinator, "refresh_state", fresh_policy)
     coordinator.async_preview_preflight = AsyncMock()  # type: ignore[method-assign]
     coordinator.async_preview_write = AsyncMock(wraps=coordinator.async_preview_write)  # type: ignore[method-assign]
     coordinator.async_observe_effect = AsyncMock(return_value=True)  # type: ignore[method-assign]
     coordinator.send_command = AsyncMock(side_effect=AssertionError("preview must use preview transport"))  # type: ignore[method-assign]
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
-    session_id = _open(manager, owner, [])
+    events: list[PreviewStatus] = []
+    session_id = _open(manager, owner, events)
 
     await manager.async_queue_snapshot(
         session_id=session_id,
@@ -1183,6 +1223,20 @@ async def test_snapshot_profile_previews_use_preview_transport(
 
     coordinator.async_preview_write.assert_awaited()
     coordinator.send_command.assert_not_awaited()
+    assert events[-1].phase is PreviewPhase.CONFIRMED
+    if model == "H617A":
+        assert isinstance(compiled, CompiledMusicProfile)
+        calls = coordinator.async_preview_write.await_args_list
+        assert [entry.args[0] for entry in calls] == list(compiled.packets)
+        assert [entry.args[1] for entry in coordinator._client.write_gatt_char.await_args_list] == list(
+            compiled.packets
+        )
+        body = MusicBody.from_bytes(reassemble_a3(compiled.packets[1:-1]))
+        body._read()
+        assert [(rgb.red, rgb.green, rgb.blue) for rgb in body.palette] == [(1, 2, 3), (32, 96, 160)]
+        assert body.tail.point == 3
+        assert coordinator.music_mode == "separation"
+        assert coordinator.music_palette == ((1, 2, 3), (32, 96, 160))
     if model == "H6199":
         compiled = compile_application(item, model)
         assert isinstance(compiled, CompiledVideoProfile)
@@ -1207,7 +1261,10 @@ async def test_snapshot_profile_previews_use_preview_transport(
                 "music_mode": "off",
                 "diy_code": None,
             },
-            dict(zip(("white_balance_red", "white_balance_blue"), compiled.white_balance_wire, strict=True)),
+            {
+                **dict(zip(("white_balance_red", "white_balance_blue"), compiled.white_balance_wire, strict=True)),
+                "white_balance_flag": 1,
+            },
             {
                 "relative_brightness": None,
                 "relative_brightness_left": 80,
@@ -1570,6 +1627,60 @@ async def test_scene_preview_validation_errors(
             speed_index=speed_scene.speed.option_count,
         )
     await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("fresh", [False, True])
+async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeypatch, fresh):
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_blank_screen_query
+    from tests.test_h6099 import frame
+
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6099", configuration_url="test")
+    coordinator._notify_callback(None, bytearray(frame("aaa90a0600020a007800")))
+    coordinator.is_on = True
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
+    coordinator._client = client
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    refresh = coordinator.refresh_state
+
+    async def immediate_refresh(**kwargs):
+        return await refresh(**kwargs, timeout=0.01)
+
+    monkeypatch.setattr(coordinator, "refresh_state", immediate_refresh)
+
+    async def reconnect(**kwargs):
+        coordinator._clear_client_state(client)
+        coordinator._client = client
+
+    monkeypatch.setattr(coordinator, "async_preview_preflight", reconnect)
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
+
+    async def transmit(_uuid, packet, **kwargs):
+        if packet == build_blank_screen_query("H6099") and fresh:
+            coordinator._notify_callback(None, bytearray(frame("aaa90a0600011e00f000")))
+
+    client.write_gatt_char.side_effect = transmit
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    owner, events = object(), []
+    session_id = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session_id,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-09-15T00:00:00Z",
+            item=LibraryItem.new("Toggle", VideoProfile("H6099", "movie", True, 70, False, 40, None, None, True)),
+        )
+        await asyncio.wait_for(manager.async_wait_idle("entry-a"), 1)
+        writes = [call.args[1] for call in client.write_gatt_char.await_args_list]
+        assert build_blank_screen_query("H6099") in writes
+        blank_writes = [packet for packet in writes if packet[:3] == bytes.fromhex("33a90a")]
+        assert blank_writes == ([build_blank_screen(True, "H6099", 1, 30, 240)] if fresh else [])
+        assert any(event.phase is (PreviewPhase.WRITTEN if fresh else PreviewPhase.FAILED) for event in events)
+        assert not coordinator._lock.locked() and not coordinator._control_lock.locked()
+    finally:
+        await manager.async_shutdown()
 
 
 async def test_preview_acceptance_rejects_stale_unloading_and_incompatible_requests(

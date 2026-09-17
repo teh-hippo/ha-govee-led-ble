@@ -25,6 +25,7 @@ editor.content = {
 if (new URLSearchParams(location.search).has("alternate")) {
   editor.settings = ["white_balance", "relative_brightness"];
   editor.controls = {
+    saturation_min: 0,
     white_balance: {representation: "scalar", minimum: 0, maximum: 2, default: 1},
     brightness_zones: ["left", "top", "right", "bottom", "strip_left", "strip_right"],
   };
@@ -36,4 +37,17 @@ if (new URLSearchParams(location.search).has("alternate")) {
 }
 if (new URLSearchParams(location.search).has("gated")) {
   editor.applicability = {white_balance: "evidence_gap"};
+}
+if (new URLSearchParams(location.search).has("h6099")) {
+  editor.settings = ["saturation", "blank_screen", "black_border"];
+  editor.content = {...editor.content, model: "H6099", blank_screen: false};
+  editor.controls = {
+    saturation_min: 1,
+    white_balance: {representation: "scalar", minimum: 1, maximum: 100, default: 50},
+    brightness_zones: ["left", "top", "right", "bottom"],
+  };
+  editor.applicability = {black_border: "evidence_gap", saturation: "supported", blank_screen: "supported"};
+  editor.addEventListener("content-changed", event => {
+    editor.content = (event as CustomEvent).detail.content;
+  });
 }

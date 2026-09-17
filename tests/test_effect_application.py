@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pytest
 
+from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_application import EffectStudioApplication
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -439,7 +440,7 @@ async def test_hard_delete_waits_for_saved_effect_application() -> None:
         EffectDeploymentEngine,
         SimpleNamespace(async_apply_saved=apply_saved),
     )
-    coordinator = cast(GoveeBLECoordinator, SimpleNamespace(model="H617A"))
+    coordinator = cast(GoveeBLECoordinator, SimpleNamespace(model="H617A", profile=get_profile("H617A")))
     apply_task = asyncio.create_task(
         application.async_apply_saved_effect(
             engine,
@@ -483,7 +484,7 @@ async def test_name_based_apply_rejects_a_concurrently_changed_version() -> None
     with pytest.raises(EffectVersionConflictError):
         await application.async_apply_saved_effect(
             AsyncMock(),
-            cast(GoveeBLECoordinator, SimpleNamespace(model="H617A")),
+            cast(GoveeBLECoordinator, SimpleNamespace(model="H617A", profile=get_profile("H617A"))),
             item_id=str(created.item.id),
             config_entry_id="entry-a",
             updated_at="2026-08-17T00:00:00Z",

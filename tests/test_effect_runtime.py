@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from hashlib import sha256
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 from uuid import uuid4
 
@@ -13,7 +13,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
-from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent, async_control_intent
+from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
@@ -63,6 +63,8 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_cata
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
+from tests.test_effect_preview import _manager, _open
+from tests.test_music_commands import _music_transport
 
 
 def _item() -> LibraryItem:
@@ -160,9 +162,9 @@ def _music_item(model: str = "H617A") -> LibraryItem:
             model,
             "separation" if model == "H617A" else "rolling",
             50,
-            (1, 2, 3),
+            None if model == "H617A" else (1, 2, 3),
             None,
-            {"point": 5, "gradient": False} if model == "H617A" else {},
+            {"point": 5} if model == "H617A" else {},
         ),
     )
 
@@ -255,6 +257,33 @@ def test_compiled_observation_uses_read_domains_and_status_grammar() -> None:
     assert not any(key.startswith(("white_balance", "relative_brightness", "blank_screen")) for key in expectations)
 
 
+@pytest.mark.parametrize("mode", ["colour", "scene", "custom", "music", "video", "off"])
+async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
+    coordinator = _coordinator()
+    coordinator.active_mode = mode
+    coordinator.brightness_pct = 99
+
+    async def refresh(**kwargs):
+        assert kwargs["refresh_all"] is True
+        assert ReadDomain.BRIGHTNESS in kwargs["required_domains"]
+        coordinator.brightness_pct = 37
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
+    engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
+    assert await engine._async_prepare_prior_state(coordinator, compile_h617a(_item(), 800))
+    assert engine._capture_prior_state(coordinator, config_entry_id="entry-a").brightness_pct == 37
+
+
+async def test_truthy_mock_is_not_successful_preflight():
+    coordinator = _coordinator()
+    coordinator.refresh_state = AsyncMock()
+    engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
+    with pytest.raises(RuntimeError, match="Could not read"):
+        await engine._async_prepare_prior_state(coordinator, compile_h617a(_item(), 800))
+    coordinator.send_command.assert_not_awaited()
+
+
 async def test_profile_reconciliation_never_revives_settings_from_mode_only() -> None:
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
@@ -323,9 +352,19 @@ def _coordinator(*, readable: bool = True):
         music_sensitivity=50,
         music_calm=False,
         music_color=None,
+        _music_body_revision=0,
         send_command=AsyncMock(),
         refresh_state=AsyncMock(return_value=True),
+        segment_colors=[(1, 2, 3)] * 15,
+        segment_brightness=[100] * 15,
+        segment_state_source="initial",
     )
+
+    async def refresh_segments():
+        coordinator.segment_state_source = "observed"
+        return True
+
+    coordinator.async_refresh_segments = AsyncMock(side_effect=refresh_segments)
 
     async def write_effect_sequence(
         packets,
@@ -334,17 +373,31 @@ def _coordinator(*, readable: bool = True):
         before_write=None,
         attempt_started=None,
         progress=None,
+        write_guard=None,
+        packet_state_values=None,
+        packet_write_guard=None,
+        require_upload_ack=False,
+        upload_ack_index=None,
+        writer=None,
     ) -> None:
         if attempt_started is not None:
             await attempt_started(1)
         if before_write is not None:
             await before_write()
         for index, packet in enumerate(packets, start=1):
-            await coordinator.send_command(packet)
+            if write_guard is not None:
+                write_guard()
+            if packet_write_guard is not None:
+                packet_write_guard(index - 1)
+            if packet_state_values is None:
+                await coordinator.send_command(packet)
+            else:
+                await coordinator.send_command(packet, state_values=packet_state_values[index - 1])
             if progress is not None:
                 await progress(index)
 
     coordinator.async_write_effect_sequence = AsyncMock(side_effect=write_effect_sequence)
+    coordinator.async_write_music_sequence = MethodType(GoveeBLECoordinator.async_write_music_sequence, coordinator)
 
     async def observe(expectations, *, timeout):
         refreshed = await coordinator.refresh_state()
@@ -355,8 +408,29 @@ def _coordinator(*, readable: bool = True):
 
 
 def _profile_coordinator(model: str):
+    from tests.test_h6199_capabilities import QUALIFIED
+
     coordinator = _coordinator()
+    coordinator._control_arbiter = coordinator._control_lock = BLEControlArbiter()
+    if model == "H6199":
+        vars(coordinator).update(QUALIFIED)
     coordinator.active_mode = None
+    coordinator._field_revisions = {}
+
+    async def refresh(**kwargs):
+        if kwargs.get("refresh_all"):
+            for field in ("is_on", "brightness_pct", "color_mode"):
+                coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+        if "blank_screen" in kwargs.get("refresh_display_settings", ()):
+            for field in (
+                "blank_screen_detection",
+                "blank_screen_low_brightness_duration_seconds",
+                "blank_screen_same_tone_duration_seconds",
+            ):
+                coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+        return True
+
+    coordinator.refresh_state.side_effect = refresh
 
     async def send_command(_packet, *, write_guard=None, state_values=None):
         if write_guard is not None:
@@ -373,6 +447,10 @@ def _profile_coordinator(model: str):
     coordinator.video_sound_effects_softness = 50
     coordinator.white_balance_red = 16
     coordinator.white_balance_blue = 3
+    coordinator.white_balance_flag = 1
+    coordinator.white_balance_default_flag = 1
+    coordinator.white_balance_default_red = 16
+    coordinator.white_balance_default_blue = 3
     coordinator.relative_brightness = 75
     coordinator.relative_brightness_left = 75
     coordinator.relative_brightness_top = 75
@@ -400,7 +478,7 @@ class YieldingVersionedDocumentStore(InMemoryVersionedDocumentStore):
 
 
 def _confirm_on_call(coordinator, call_number: int, diy_code: int) -> None:
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count >= call_number:
             coordinator.diy_code = diy_code
         return True
@@ -409,7 +487,7 @@ def _confirm_on_call(coordinator, call_number: int, diy_code: int) -> None:
 
 
 def _confirm_scene_code_on_call(coordinator, call_number: int, scene_code: int) -> None:
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count >= call_number:
             coordinator.scene_code = scene_code
         return True
@@ -482,7 +560,7 @@ async def test_saved_effect_powers_on_before_committed_upload(
     assert result.phase is DeploymentPhase.CONFIRMED
     assert coordinator.is_on is True
     assert coordinator.send_command.await_args_list == [
-        call(build_power(True, coordinator.model)),
+        call(build_power(True, coordinator.model), write_guard=ANY),
         *(call(packet) for packet in compiled.packets),
     ]
 
@@ -502,7 +580,7 @@ async def test_layered_scene_uses_shared_transaction_and_identity_verification(
     item = LibraryItem.new("Layered scene", content.effect if advanced else content)
     compiled = compile_effect(item, "H617A")
 
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count >= 2:
             coordinator.effect = compiled.expected_effect
             coordinator.scene_code = compiled.diy_code
@@ -550,7 +628,7 @@ async def test_h6199_layered_scene_uses_model_framing_and_identity_verification(
     item = LibraryItem.new("Layered scene", content)
     compiled = compile_effect(item, "H6199")
 
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count >= 2:
             coordinator.effect = compiled.expected_effect
             coordinator.scene_code = compiled.diy_code
@@ -610,7 +688,7 @@ async def test_failed_layered_scene_recovers_prior_state(
     assert result.phase is DeploymentPhase.FAILED
     coordinator.async_restore_effect_control_state.assert_awaited_once_with(
         result.prior_state,
-        overwritten_diy_code=-1,
+        overwritten_diy_code=entry.code,
     )
     assert active_workspaces.get("entry-a") == prior_workspace
 
@@ -651,7 +729,7 @@ async def test_verification_retry_only_repeats_safe_activation(
     item = _item()
     compiled = compile_h617a(item, 800)
 
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count == 2:
             coordinator.diy_code = 999
         elif coordinator.refresh_state.await_count >= 3:
@@ -671,7 +749,7 @@ async def test_verification_retry_only_repeats_safe_activation(
     assert coordinator.send_command.await_args_list == [
         *[call(packet) for packet in compiled.upload_packets],
         call(compiled.activation_packet),
-        call(compiled.activation_packet),
+        call(compiled.activation_packet, write_guard=ANY),
     ]
     assert coordinator.refresh_state.await_count == 3
 
@@ -846,7 +924,7 @@ async def test_verification_failure_retries_reads_then_recovers(
     coordinator = _coordinator()
     coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
 
-    async def refresh() -> bool:
+    async def refresh(**_kwargs) -> bool:
         if coordinator.refresh_state.await_count == 1:
             return True
         raise RuntimeError("read failed")
@@ -1048,7 +1126,14 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
     expected = dict(coordinator._expected_state)
     published: list[PriorControlState] = []
     unsubscribe = coordinator.async_add_listener(lambda: published.append(coordinator.capture_effect_control_state()))
-    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+
+    async def refresh(**_kwargs):
+        for field in ("is_on", "brightness_pct", "color_mode"):
+            coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+        field_revisions.update(coordinator._field_revisions)
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=refresh))
     restore = AsyncMock(return_value=False)
     monkeypatch.setattr(coordinator, "async_restore_effect_control_state", restore)
     physical = AsyncMock()
@@ -1100,7 +1185,7 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
         assert failed.verification_confidence is ObservationConfidence.UNKNOWN
         assert failed.error_code == ("operation_cancelled" if cancelled else "RuntimeError")
         assert failed.progress_current == 0
-        assert failed.prior_state == before
+        assert failed.prior_state == replace(before, video_restore_controls=())
         assert coordinator.control_write_attempts == 0
         physical.assert_not_awaited()
         restore.assert_not_awaited()
@@ -1130,6 +1215,188 @@ async def test_music_deployment_before_first_control_preserves_native_selection(
             pending.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         unsubscribe()
+
+
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+async def test_preview_admitted_during_apply_persistence_writes_latest_intent(hass, monkeypatch, source, model):
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    content = (
+        MusicProfile(model, "rolling", 99, (0, 0, 0))
+        if model == "H6199"
+        else MusicProfile(model, "hopping", 99, parameters={"background": 0})
+    )
+    edited = (
+        replace(content, colour=(1, 1, 1)) if model == "H6199" else replace(content, parameters={"background": 65793})
+    )
+    saved_item = LibraryItem.new("Saved black", content)
+    preview_item = LibraryItem.new("Unsaved No colour", edited)
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectDeploymentRepository(store)
+    await repository.async_load()
+    manager, cache = await _manager(hass, monkeypatch, coordinator)
+    engine = EffectDeploymentEngine(repository, cache, manager._active_workspaces)
+    owner = object()
+    events = []
+    session_id = _open(manager, owner, events)
+    persisting = asyncio.Event()
+    release_persistence = asyncio.Event()
+    preflighting = asyncio.Event()
+    release_preview = asyncio.Event()
+    save = store.async_save
+    preflight = coordinator.async_preview_preflight
+
+    async def gated_save(data):
+        if not persisting.is_set():
+            persisting.set()
+            await release_persistence.wait()
+        await save(data)
+
+    async def preview_preflight(**kwargs):
+        preflighting.set()
+        await release_preview.wait()
+        await preflight(**kwargs)
+
+    monkeypatch.setattr(store, "async_save", gated_save)
+    monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=True))
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
+    monkeypatch.setattr(coordinator, "async_preview_preflight", preview_preflight)
+    monkeypatch.setattr(coordinator, "_encryption", None)
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+    with _music_transport(coordinator) as physical:
+        older_preview = coordinator.admit_preview()
+        task = asyncio.create_task(
+            apply(coordinator, saved_item, config_entry_id="entry-a", updated_at="2026-09-17T00:00:00Z")
+        )
+        try:
+            async with asyncio.timeout(5):
+                await persisting.wait()
+                accepted = await manager.async_queue_snapshot(
+                    session_id=session_id,
+                    owner=owner,
+                    config_entry_id="entry-a",
+                    sequence=1,
+                    updated_at="2026-09-17T00:00:01Z",
+                    item=preview_item,
+                )
+                await preflighting.wait()
+                assert accepted.accepted and not task.done()
+                physical.assert_not_awaited()
+                release_persistence.set()
+                assert (await task).phase is DeploymentPhase.CONFIRMED
+                release_preview.set()
+                await manager.async_wait_idle("entry-a")
+
+            assert not older_preview.is_current
+            assert events[-1].phase is PreviewPhase.CONFIRMED
+            assert events[-1].write_disposition is PreviewWriteDisposition.COMPLETED
+            assert [write.args[1] for write in physical.await_args_list] == [
+                *compile_application(saved_item, model).packets,
+                *compile_application(preview_item, model).packets,
+            ]
+            assert manager._active_workspaces.get("entry-a").content == edited
+            assert not coordinator._control_arbiter.locked() and not coordinator._lock.locked()
+            assert not engine._operation_locks and not engine._operation_lock_users
+        finally:
+            release_persistence.set()
+            release_preview.set()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await manager.async_shutdown()
+
+
+@pytest.mark.parametrize("source", ["saved", "snapshot"])
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
+@pytest.mark.parametrize("storage_fails", [False, True])
+async def test_cancelled_apply_waiter_preserves_newer_preview(hass, monkeypatch, caplog, source, model, storage_fails):
+    from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
+
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
+    store = InMemoryVersionedDocumentStore()
+    repository = EffectDeploymentRepository(store)
+    await repository.async_load()
+    manager, cache = await _manager(hass, monkeypatch, coordinator)
+    engine = EffectDeploymentEngine(repository, cache, manager._active_workspaces)
+    restore = AsyncMock()
+    monkeypatch.setattr(coordinator, "async_restore_effect_control_state", restore)
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
+    if storage_fails:
+        monkeypatch.setattr(store, "async_save", AsyncMock(side_effect=OSError("terminal storage unavailable")))
+    admitted = asyncio.Event()
+    invalidate = coordinator._control_arbiter.invalidate_previews
+
+    def foreground_admitted():
+        invalidate()
+        admitted.set()
+
+    owner = object()
+    events = []
+    session_id = _open(manager, owner, events)
+    preview_item = _music_item(model)
+    operation_id = uuid4()
+    apply = engine.async_apply_saved if source == "saved" else engine.async_apply_snapshot
+    task = None
+    try:
+        with _music_transport(coordinator) as physical:
+            async with coordinator._control_arbiter.hold(ControlIntent.USER):
+                monkeypatch.setattr(coordinator._control_arbiter, "invalidate_previews", foreground_admitted)
+                task = asyncio.create_task(
+                    apply(
+                        coordinator,
+                        preview_item,
+                        config_entry_id="entry-a",
+                        updated_at="2026-09-17T00:00:00Z",
+                        operation_id=operation_id,
+                    )
+                )
+                async with asyncio.timeout(2):
+                    await admitted.wait()
+                    assert not task.done()
+                    accepted = await manager.async_queue_snapshot(
+                        session_id=session_id,
+                        owner=owner,
+                        config_entry_id="entry-a",
+                        sequence=1,
+                        updated_at="2026-09-17T00:00:01Z",
+                        item=preview_item,
+                    )
+                    assert accepted.accepted
+                    generation = coordinator._control_arbiter.preview_generation
+                    task.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await asyncio.shield(task)
+                    assert task.done()
+                assert coordinator._control_arbiter.preview_generation == generation
+                assert coordinator._control_arbiter.current_task_intent is ControlIntent.USER
+                assert coordinator.control_write_attempts == 0
+                physical.assert_not_awaited()
+                restore.assert_not_awaited()
+                assert not engine._operation_locks and not engine._operation_lock_users
+                assert all(waiter.task is not task for waiter in coordinator._control_arbiter._waiters)
+                if storage_fails:
+                    assert repository.get_optional(operation_id) is None
+                    assert "Failed to persist the terminal state" in caplog.text
+                else:
+                    failed = repository.get(operation_id)
+                    assert failed.phase is DeploymentPhase.FAILED
+                    assert failed.error_code == "operation_cancelled"
+                    assert failed.prior_state is None and failed.progress_current == 0
+
+            async with asyncio.timeout(2):
+                await manager.async_wait_idle("entry-a")
+            assert events[-1].phase is PreviewPhase.CONFIRMED
+            assert events[-1].write_disposition is PreviewWriteDisposition.COMPLETED
+            assert [write.args[1] for write in physical.await_args_list] == list(
+                compile_application(preview_item, model).packets
+            )
+            assert not coordinator._control_arbiter.locked() and not coordinator._lock.locked()
+    finally:
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        await manager.async_shutdown()
 
 
 async def test_same_operation_id_does_not_repeat_uncertain_upload(
@@ -1657,7 +1924,7 @@ async def test_h6199_upload_without_selector_readback_stays_uncertain(
     assert coordinator.send_command.await_args_list == [
         *[call(packet) for packet in compiled.upload_packets],
         call(compiled.activation_packet),
-        call(compiled.activation_packet),
+        call(compiled.activation_packet, write_guard=ANY),
     ]
     assert coordinator.refresh_state.await_count == 3
 
@@ -1884,7 +2151,7 @@ async def test_h617a_music_profile_applies_base_then_parameters_with_mode_confid
     )
 
     assert coordinator.music_separation_point == 5
-    assert coordinator.music_separation_gradient is False
+    assert coordinator.music_separation_gradient is True
     assert coordinator.send_command.await_count == 4
     assert result.phase is DeploymentPhase.CONFIRMED
     assert result.diy_code is None
@@ -2021,7 +2288,13 @@ async def test_music_profile_retries_the_complete_writer_before_confirmation(
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H617A")
-    coordinator.refresh_state.side_effect = [True, False, True]
+    refresh = coordinator.refresh_state.side_effect
+
+    async def refresh_then_verify(**kwargs):
+        await refresh(**kwargs)
+        return coordinator.refresh_state.await_count != 2
+
+    coordinator.refresh_state.side_effect = refresh_then_verify
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
@@ -2115,7 +2388,21 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
     coordinator.video_sound_effects_softness = 50
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
-    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(return_value=True))
+
+    async def refresh(**_kwargs):
+        for field in ("is_on", "brightness_pct", "color_mode"):
+            coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=refresh))
+
+    async def refresh_segments():
+        coordinator.segment_colors = [(1, 2, 3)] * coordinator.profile.segment_count
+        coordinator.segment_brightness = [100] * coordinator.profile.segment_count
+        coordinator.segment_state_source = "observed"
+        return True
+
+    monkeypatch.setattr(coordinator, "async_refresh_segments", AsyncMock(side_effect=refresh_segments))
     monkeypatch.setattr(
         coordinator,
         "async_observe_effect",

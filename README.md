@@ -11,19 +11,37 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 
 | Model | Status | Controls and limitations |
 | --- | --- | --- |
+| **H6099** | Experimental | Exact-model candidate: basic light controls, 14 logical zones, 240 scenes, Basic/Mixed/Graffiti DIY, video and onboard music, plus service-only installation controls and DreamView. Owner-reported connection success; control qualification remains outstanding. Requires manual addition. [Evidence and limits](docs/h6099-support.md). |
 | **H617A** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 83 scenes, 11 music modes and Effect Studio |
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio |
 | **H617E** | Compatible | H617A-compatible controls, effects and music modes with its exact 240-scene catalogue and retained legacy scene-name compatibility; exact-model protocol documentation remains incomplete |
 | **H6076** | Partial | Power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable |
-| **H6102** | Experimental | Manual setup or reconfiguration with assumed-state power and 1–100 brightness; configured software version 1.03.01 or later also enables speculative write-only whole-device RGB |
+| **H6102** | Experimental | Revision-aware candidate: basic controls, RGB/Kelvin and 15 segments, 240 exact-model scenes, DIY and Effect Studio; hardware/firmware/Pact determine available controls. [Evidence and limits](docs/h6102-application-findings.md). |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded and evidence-backed Kaitai coverage for every enabled wire path.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, speculative-schema, prerelease and promotion process.
 
-### H6102 Experimental candidate
+H6099 is included in stable 7.6.0 by explicit maintainer approval as an exception
+to the prerelease-only Experimental policy. This does not promote its support
+status or establish compatibility for its unqualified controls.
 
-H6102 setup is manual-only until its BLE local name is confirmed.  An unresolved or older configured software version exposes power and brightness; version 1.03.01 or later also enables speculative whole-strip RGB.
+H6199 capabilities depend on the detected protocol and hardware/firmware.
+Positively identified Pact 1/1 devices expose on/off only; brightness, colour,
+effects and Effect Studio remain unavailable. Unknown Pact retains existing
+behaviour without establishing compatibility. See [protocol limits](docs/h6199-pact1.md).
 
-State is assumed and updated after writes.  Identity, state and region readback, colour temperature, region control, music, scene activation, DIY, saved effects and Effect Studio remain unavailable.  The committed exact-SKU scene catalogue is refreshable Govee metadata rather than active scene support.
+H6099 uses exact Android 7.6.01 app-derived hypotheses, not an H6199 profile
+alias. Graffiti and dependent music parameters require discovered physical IC
+count; black-border removal requires Wi-Fi software 1.00.11 or newer. Advanced
+and Workshop remain unavailable, music companion readback is not guaranteed,
+and DreamView membership is locally authored and unconfirmed. See the
+[H6099 support record](docs/h6099-support.md) for the full scope and remaining gaps.
+
+H6102 requires manual setup or reconfiguration. Its advertised Pact and hardware/
+firmware identity select independently qualified controls; firmware `1.03.01`
+alone does not establish extended RGB or DIY compatibility. Unknown Pact retains
+power, brightness and identity reads. Physical-IC-dependent authoring requires
+known geometry; fifteen logical segments are not a physical IC count. Saved
+H617A scene references are preserved but are not silently relabelled H6102.
 
 ## Effect Studio
 
@@ -62,7 +80,8 @@ Restart Home Assistant after updating this integration through HACS or replacing
 
 ## Configuration
 
-The integration auto-discovers exact listed models.  Experimental models are available only in their model-specific prerelease.
+The integration auto-discovers H617A, H617E, H6076 and H6199. H6099 requires
+manual addition or reconfiguration and is included as Experimental in 7.6.0.
 
 To add manually in Home Assistant:
 
@@ -74,7 +93,7 @@ Use **Reconfigure** to correct the selected model while preserving the existing 
 
 ## Scope, non-goals, and expert tools
 
-The maintained product scope and per-model limitations are defined by the [device support table](#device-support).  H617A stores a gradual-colour-change boolean, but the app classifies the model as unsupported and physical comparisons found no visible effect, so the integration exposes no user-facing behaviour for it.
+The maintained product scope and per-model limitations are defined by the [device support table](#device-support) and [global scope policy](docs/scope-policy.md).  H617A stores a gradual-colour-change boolean, but the app classifies the model as unsupported and physical comparisons found no visible effect, so the integration exposes no user-facing behaviour for it.
 
 Wi-Fi provisioning is not a maintained integration or contributor workflow.  The decoded H6199 [`a1 11` frame](tools/ble/kaitai/h6199_wifi_provision.ksy), [reassembled body](tools/ble/kaitai/h6199_wifi_body.ksy) and [`ee 11` result](tools/ble/kaitai/h6199_wifi_result.ksy) remain as tested protocol findings.
 

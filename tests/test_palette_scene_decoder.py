@@ -17,6 +17,11 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compatibility,
     compile_effect,
 )
+from custom_components.ha_govee_led_ble.effect_contracts import (
+    CapabilityState,
+    CapabilityWorkflow,
+    studio_apply_capability_state,
+)
 from custom_components.ha_govee_led_ble.effect_domain import (
     BuiltinScene,
     CatalogueRef,
@@ -104,12 +109,15 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
             assert encode_palette_scene(decoded) == raw_param
             fixtures += 1
 
-    assert fixtures == 6
+    assert fixtures == 10
 
 
 def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
     for model, entries in SCENE_ENTRIES.items():
-        if not get_profile(model).supports_scenes:
+        if (
+            studio_apply_capability_state(model, CapabilityWorkflow.EDITED_PALETTE_SCENES)
+            is not CapabilityState.SUPPORTED
+        ):
             continue
         entry = next(scene for scene in entries if scene.scene_type == 1)
         decoded = decode_catalogue_palette_scene(model, entry)

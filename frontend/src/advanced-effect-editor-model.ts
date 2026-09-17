@@ -14,7 +14,7 @@ export const FILL_PATTERN_LABELS: Record<SelectionType, string> = {
   3: "Custom",
 };
 
-export type FillPatternParameterKey = "param_1" | "param_2";
+export type FillPatternParameterKey = "param_1" | "param_2" | "quantity";
 export type FillPatternParameter = readonly [
   FillPatternParameterKey,
   string,
@@ -25,15 +25,15 @@ export const FILL_PATTERN_PARAMETERS: Record<
   SelectionType,
   readonly FillPatternParameter[]
 > = {
-  0: [["param_2", "Segment Count", "segmentCount"]],
-  1: [["param_2", "LED Count"]],
+  0: [["quantity", "Selection Quantity"]],
+  1: [["quantity", "IC Quantity"]],
   2: [
-    ["param_2", "Minimum LED Count"],
-    ["param_1", "Maximum LED Count"],
+    ["param_2", "Random Minimum IC Count"],
+    ["param_1", "Random Maximum IC Count"],
   ],
   3: [
-    ["param_1", "Lit Length"],
-    ["param_2", "Gap"],
+    ["param_1", "Piece IC Count"],
+    ["param_2", "Gap IC Count"],
   ],
 };
 

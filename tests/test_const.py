@@ -105,15 +105,15 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert profile.effect_grammar is None
 
 
-def test_h6102_profile_is_manual_only_and_fail_closed():
+def test_h6102_static_candidate_is_exact_and_manual_only():
     profile = MODEL_PROFILES["H6102"]
 
     assert profile.support_quality is SupportQuality.EXPERIMENTAL
-    assert profile.command_grammar == "H6102"
-    assert profile.status_grammar is None
+    assert profile.command_grammar == "H617A"
+    assert profile.status_grammar == "H6102"
     assert profile.scene_catalogue_sku == "H6102"
-    assert not profile.read_domains
-    assert not profile.supports_rgb
+    assert profile.requires_notifications
+    assert profile.supports_rgb
     assert "H6102" not in BLE_DISCOVERABLE_MODELS
     assert model_from_ble_name("Govee_H6102_ABCD") is None
 
@@ -212,7 +212,7 @@ def test_model_specific_music_capabilities():
     assert MODEL_PROFILES["H617A"].supports_music_color
     assert MODEL_PROFILES["H6199"].supports_music_color
     assert (MODEL_PROFILES["H617A"].music_sensitivity_min, MODEL_PROFILES["H617A"].music_sensitivity_max) == (0, 99)
-    assert (MODEL_PROFILES["H6199"].music_sensitivity_min, MODEL_PROFILES["H6199"].music_sensitivity_max) == (1, 100)
+    assert (MODEL_PROFILES["H6199"].music_sensitivity_min, MODEL_PROFILES["H6199"].music_sensitivity_max) == (0, 100)
     assert not MODEL_PROFILES["H6199"].supports_white_brightness
     assert not MODEL_PROFILES["H6199"].static_readback_echoes_color
     assert MODEL_PROFILES["H6199"].supports_video_sound_effects

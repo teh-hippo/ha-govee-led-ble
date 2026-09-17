@@ -103,6 +103,109 @@ def _parse(root_type: type[Any], data: bytes) -> Any:
     return parsed
 
 
+@pytest.mark.parametrize("selector", [0, 1])
+def test_shared_colour_mode_query_selectors(selector: int) -> None:
+    packet = generated_protocol_adapter.build_colour_mode_query(selector=selector)
+    parsed = _parse(StatusQuery, packet)
+    assert parsed.domain.name == "colour_mode" and parsed.body.selector == selector
+    assert parsed.body.zeros == [0] * 16
+
+
+def test_h617a_direct_register_replay_not_app_captures(hass) -> None:
+    """H617A HW 3.01.01/FW 3.02.24, direct queries on 2026-09-16."""
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
+    coordinator.install_static_color(kelvin=4000)
+    static = bytes.fromhex("aa051500000000000000000000000000000000ba")
+    detail = _parse(StatusReply, static).body.mode_body
+    assert detail.kelvin == 0 and detail.unknown_tail == bytes(13)
+    coordinator._notify_callback(None, bytearray(static))
+    # Both AA0500 and AA0501 returned this mode-only reply after a 4000 K write.
+    pages = [
+        "aaa501640000ff64ffcda664ffcda60000000095",
+        "aaa50264ffcda664ffcda664ffcda600000000fd",
+        "aaa50364ffcda664ffcda664ffcda600000000fc",
+        "aaa50464ffcda664ffcda664ffcda600000000fb",
+        "aaa50564ffcda664ffcda664ffcda600000000fa",
+    ]
+    for first, expected in (
+        (pages[0], (0, 0, 255)),
+        ("aaa50164ffb96964ffcda664ffcda60000000045", (255, 185, 105)),
+    ):
+        for raw in (first, *pages[1:]):
+            packet = bytes.fromhex(raw)
+            assert xor_checksum(packet) == 0
+            coordinator._notify_callback(None, bytearray(packet))
+        assert coordinator.segment_colors == [expected] + [(255, 205, 166)] * 14
+        assert coordinator.segment_brightness == [100] * 15
+        assert coordinator.segment_state_source == "observed"
+
+    for raw, mode in (
+        ("aa0513043200012060a00000000000000000006b", "spectrum"),
+        ("aa0513063200012060a000000000000000000069", "rolling"),
+    ):
+        packet = bytes.fromhex(raw)
+        assert xor_checksum(packet) == 0
+        parsed = parse_color_mode(_parse(StatusReply, packet), "H617A")
+        assert parsed.music_mode == mode
+        assert parsed.music_sensitivity == 50
+        assert parsed.music_color == (32, 96, 160)
+
+    count = _parse(StatusReply, bytes.fromhex("aa0f0f00000000000000000000000000000000aa"))
+    assert count.domain == 0x0F and count.body.light_count == 15
+    assert count.body.is_valid and count.body.unknown == bytes(16)
+    # The count reply is currently raw/unnamed, not a physical-IC observation.
+
+
+def test_h617a_apk_schema_counterexamples_are_synthetic() -> None:
+    """Document current parser limits, without claiming these replies occurred live."""
+    query = _parse(StatusQuery, bytes.fromhex("aa050100000000000000000000000000000000ae"))
+    assert query.body.selector == 1
+    hopping = _parse(MusicBody, bytes.fromhex("0102413301ff0000ff0000326101030206"))
+    assert hopping.tail.speed == 0x61
+    assert (hopping.tail.piece_length_min, hopping.tail.piece_length_max) == (1, 3)
+    assert (hopping.tail.piece_count_min, hopping.tail.piece_count_max) == (2, 6)
+    piano = _parse(MusicBody, bytes.fromhex("0102413401ff0000000f0b0407"))
+    assert (piano.tail.gradient, piano.tail.key_count, piano.tail.speed) == (0, 15, 11)
+    assert (piano.tail.off_minimum, piano.tail.off_maximum) == (4, 7)
+    # New music reads ID/sensitivity only; the synthetic suffix stays opaque.
+    music = _parse(StatusReply, bytes.fromhex("aa0513303200012060a00000000000000000005f"))
+    selector = music.body.mode_body
+    assert selector.mode_id.name == "bloom" and selector.sensitivity == 50
+    assert not selector.is_legacy
+    assert not hasattr(selector, "has_fixed_colour") and not hasattr(selector, "rgb")
+    assert music.body._raw_mode_body[2:] == bytes.fromhex("00012060a0000000000000000000")
+    parsed = parse_color_mode(music, "H617A")
+    assert parsed.music_color is None and not parsed.music_color_present and parsed.music_calm is None
+    # A real successful ordinary ACK parses as a write, but is never state evidence.
+    ack = _parse(CommandWrite, H6199_POWER_ACK)
+    assert ack.body.is_on == 0
+    flat = _parse(DiyType04, bytes.fromhex("01020401003203ff000000"))
+    assert flat.body.padding == [0]  # APK names this octet as empty sequence length.
+
+
+def test_h6199_direct_register_extensions_not_app_captures() -> None:
+    diy = _parse(H6199StatusReply, bytes.fromhex("aa050afe0000000000000000000000000000005b"))
+    assert diy.body.mode.name == "diy" and diy.body.detail.code == 254
+    static = _parse(H6199StatusReply, bytes.fromhex("aa051501000000000000000000000000000000bb"))
+    assert static.body.detail.gradient == 1
+    for raw, domain, value in (
+        ("aa3001000000000000000000000000000000009b", "strip_direction", 1),
+        ("aa3101000000000000000000000000000000009a", "camera_position", 1),
+        ("aa32010000000000000000000000000000000099", "camera_status", 1),
+        ("aaa3010000000000000000000000000000000008", "gradient", 1),
+    ):
+        packet = bytes.fromhex(raw)
+        assert xor_checksum(packet[:-1]) == packet[-1]
+        parsed = _parse(H6199StatusReply, packet)
+        assert parsed.domain.name == domain and parsed.body.value == value
+    for raw, opcode in (
+        ("3330000000000000000000000000000000000003", "strip_direction"),
+        ("3331000000000000000000000000000000000002", "camera_position"),
+        ("33a3000000000000000000000000000000000090", "gradient"),
+    ):
+        assert _parse(H6199CommandAck, bytes.fromhex(raw)).opcode.name == opcode
+
+
 @pytest.fixture
 def static_coordinator(hass, monkeypatch):
     if not _GENERATED_DIR:
@@ -485,23 +588,33 @@ async def test_static_local_write_keeps_notification_source(static_coordinator, 
 
 
 @pytest.mark.parametrize("restore", ["pre_mode", "recovery"])
-async def test_static_command_restoration_is_not_observation(static_coordinator, restore):
+async def test_static_command_restoration_is_not_observation(static_coordinator, monkeypatch, restore):
     coord = static_coordinator
+    # Direct-colour recovery is separate from observed per-segment restoration.
+    coord.profile = replace(coord.profile, segment_count=0, supports_segment_writes=False)
+    monkeypatch.setitem(MODEL_PROFILES, coord.model, coord.profile)
+    coord.segment_colors = []
+    coord.segment_brightness = []
     coord.is_on = True
     coord._notify_callback(None, _static_reply(kelvin=4200))
     prior = coord.capture_effect_control_state()
     coord._pre_mode_snapshot = coord._capture_static_state()
     coord.install_static_color(rgb=(1, 2, 3))
-    coord.send_command = AsyncMock()
+    coord._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coord._ensure_connected = AsyncMock(return_value=coord._client)
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
     coord.refresh_state = AsyncMock(return_value=True)
     if restore == "pre_mode":
         await coord.async_restore_pre_mode()
     else:
-        await coord.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+        assert await coord.async_restore_effect_control_state(prior, overwritten_diy_code=None)
     assert coord.color_temp_kelvin == 4200 and coord.color_temp_kelvin_source == "optimistic"
     assert coord._field_revisions["color_temp_kelvin"] == 1
     if restore == "recovery":
-        coord.refresh_state.assert_awaited_once_with(expected_color_temp_kelvin=4200)
+        coord.refresh_state.assert_awaited_once_with(
+            expected_on=True, expected_brightness=prior.brightness_pct, expected_color_temp_kelvin=4200
+        )
+    assert coord._client.write_gatt_char.await_args.args[1] == build_color_temp(4200, coord.model)
 
 
 async def test_static_verification_uses_actual_colour_query(static_coordinator):
@@ -542,7 +655,9 @@ async def test_direct_rgb_verification_rejects_segment_only_evidence(static_coor
 def test_static_readback_requires_qualified_fields_and_valid_kelvin(static_coordinator):
     coord = static_coordinator
     coord._notify_callback(None, _static_reply(kelvin=0))
-    assert not coord._field_revisions
+    assert coord.color_mode is ParsedMode.COLOUR
+    assert "color_temp_kelvin" not in coord._field_revisions
+    coord._notify_callback(None, _static_reply(kelvin=1))
     assert coord.packet_log[-1]["reason"] == "semantic_rejected"
     coord.profile = replace(coord.profile, static_readback_echoes_color=False, static_readback_kelvin=False)
     coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=4200))
@@ -580,11 +695,13 @@ async def test_failed_segment_write_preserves_fresh_static_provenance(static_coo
     coord = static_coordinator
     coord.install_static_color(rgb=(9, 8, 7))
 
-    async def send(_packet):
+    async def send(_packet, *, write_guard):
+        write_guard()
         coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=kelvin))
         raise RuntimeError("segment write failed after notification")
 
     coord.send_command = AsyncMock(side_effect=send)
+    coord.async_refresh_segments = AsyncMock(return_value=False)
     with pytest.raises(RuntimeError, match="segment write failed"):
         await coord.async_paint_segments([([1], (4, 5, 6))])
     assert coord.rgb_color_source == "observed"
@@ -975,7 +1092,7 @@ def test_effect_workshop_and_scene_fields_preserve_structure() -> None:
 def test_music_and_wifi_result_fields_preserve_semantics() -> None:
     body = _parse(MusicBody, MUSIC_BODY)
     assert (body.command, body.mode.name, body.num_palette) == (b"A", "bloom", 7)
-    assert (body.tail.style_companion, body.tail_len, len(body.padding)) == (20, 2, 6)
+    assert (body.tail.no_rhythm_speed, body.tail.rhythm_speed, body.tail_len, len(body.padding)) == (10, 20, 2, 6)
 
     stream = _parse(MusicStream, MUSIC_STREAM)
     assert (stream.colour.red, stream.colour.green, stream.colour.blue) == (86, 0, 0)

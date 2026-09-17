@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import backendContracts from "../fixtures/backend-contracts.json";
 
 import type { EffectStudioApi } from "../../src/api";
 import {
@@ -21,6 +22,7 @@ import {
 } from "../../src/effect-editor-model";
 import { blankAdvancedContent } from "../../src/advanced-effect-model";
 import { cloneBuiltInDefaultBaselines } from "../../src/built-in-default-state";
+import { decodeCustomCatalogue, decodeDevices } from "../../src/validation";
 import type {
   CustomEffectCatalogue,
   CatalogueTemplateDefaultDetail,
@@ -80,6 +82,63 @@ function device(
   };
 }
 
+test("device music geometry replaces catalogue defaults without leaking across devices", () => {
+  const model = new PanelModel(() => undefined);
+  installH6199Catalogue(model);
+  const catalogue = model.customCatalogue!.models.H6199;
+  model.customCatalogue!.models.H6099 = { ...catalogue, sku: "H6099", painted_addressing: "physical_ic" };
+  const settings = {
+    piano_keys: {
+      available: true, style: false, calm_default: false, colour: false, evidence: "APK", palette_size: 7,
+      parameters: { key_count: { kind: "number", default: 18, min: 9, max: 36, options: [] } },
+    },
+    hopping: {
+      available: true, style: false, calm_default: false, colour: false, evidence: "APK", palette_size: 7,
+      parameters: { background: { kind: "number", default: 0x010101, min: 0, max: 0xffffff, options: [] } },
+    },
+  };
+  model.devices = decodeDevices([
+    { ...device("known", "H6099"), physical_ic_count: 60, music_settings: settings },
+    { ...device("unknown", "H6099"), physical_ic_count: null, music_settings: {} },
+  ]);
+  model.selectedDeviceId = "known";
+  expect(model.modelCatalogue?.physical_ic_count).toBe(60);
+  expect(model.modelCatalogue?.music_settings.piano_keys.parameters.key_count.max).toBe(36);
+  model.selectedDeviceId = "unknown";
+  expect(model.modelCatalogue?.physical_ic_count).toBeUndefined();
+  expect(model.modelCatalogue?.music_settings).toEqual({});
+  expect(model.customCatalogue!.models.H6099.music_settings).toBe(catalogue.music_settings);
+  for (const count of [0, 32768]) {
+    expect(() => decodeDevices([{ ...device("invalid", "H6099"), physical_ic_count: count }])).toThrow();
+  }
+  expect(() => decodeDevices([{ ...device("large", "H6099"), physical_ic_count: 32767 }])).not.toThrow();
+});
+
+test("effective music roster filters modes and templates on device subscription replacement", () => {
+  const model = new PanelModel(() => undefined);
+  model.customCatalogue = decodeCustomCatalogue(backendContracts.responses.custom_catalogue);
+  const catalogue = model.customCatalogue!.models.H6102;
+  const originalMode = catalogue.music_modes[0];
+  const originalSettings = catalogue.music_settings[originalMode.id];
+  const originalTemplate = catalogue.templates!.find(t => t.content.kind === "music_profile")!;
+  catalogue.music_modes = Array.from({length: 11}, (_, index) => ({...originalMode, id: `mode_${index}`}));
+  catalogue.music_settings = Object.fromEntries(catalogue.music_modes.map(mode => [mode.id, originalSettings]));
+  catalogue.templates = catalogue.music_modes.map(mode => ({...originalTemplate, id: `template:${mode.id}`,
+    content: {...originalTemplate.content as MusicProfileContent, mode: mode.id}}));
+  const modes = catalogue.music_modes;
+  expect(modes.length).toBeGreaterThan(4);
+  const basic = Object.fromEntries(modes.slice(0, 4).map(mode => [mode.id, catalogue.music_settings[mode.id]]));
+  model.devices = [{ ...device("target", "H6102"), music_settings: basic }];
+  model.selectedDeviceId = "target";
+  expect(model.modelCatalogue!.music_modes).toHaveLength(4);
+  expect(model.modelCatalogue!.templates!.filter(t => t.content.kind === "music_profile")).toHaveLength(4);
+  model.devices = [{ ...device("target", "H6102"), music_settings: catalogue.music_settings }];
+  expect(model.modelCatalogue!.music_modes).toHaveLength(modes.length);
+  model.devices = [{ ...device("target", "H6102"), music_settings: {} }];
+  expect(model.modelCatalogue!.music_modes).toEqual([]);
+  expect(catalogue.music_modes).toBe(modes);
+});
+
 test("live video conditions reject requested settings without stripping persisted content", () => {
   const model = new PanelModel(() => undefined);
   const target = device("video", "H6199");
@@ -115,6 +174,50 @@ function painted(): PaintedContent {
     ],
   };
 }
+
+test("unknown border firmware blocks only profiles requesting border removal", () => {
+  const model = new PanelModel(() => undefined);
+  const target = device("video", "H6099");
+  target.profiles.video = "supported";
+  target.video_control_states = {black_border: "evidence_gap"};
+  model.devices = [target];
+  model.selectedDeviceId = "video";
+  model.content = videoProfile("H6099", "movie");
+  expect(model.previewCapability).toBe("supported");
+  model.content = {...model.content, black_border: false};
+  expect(model.previewCapability).toBe("evidence_gap");
+  target.video_control_states.black_border = "unsupported";
+  expect(model.previewCapability).toBe("unsupported");
+  target.video_control_states.black_border = "supported";
+  expect(model.previewCapability).toBe("supported");
+  target.video_control_states.black_border = "evidence_gap";
+  delete model.content.black_border;
+  expect(model.previewCapability).toBe("supported");
+});
+
+test("video saturation eligibility uses the target catalogue minimum", () => {
+  const model = new PanelModel(() => undefined);
+  const target = device("video", "H6199");
+  installH6199Catalogue(model);
+  target.profiles.video = "supported";
+  model.devices = [target];
+  model.selectedDeviceId = "video";
+  model.content = {...videoProfile("H6199", "movie"), saturation: 0};
+  expect(model.previewCapability).toBe("supported");
+  const catalogue = model.modelCatalogue;
+  if (!catalogue) throw new Error("Missing video catalogue");
+  const controls = catalogue.video_controls = {
+    saturation_min: 0,
+    white_balance: {representation: "position", minimum: 1, maximum: 20, default: 17},
+    brightness_zones: ["left", "top", "right", "bottom"],
+  };
+  controls.saturation_min = 1;
+  expect(model.previewCapability).toBe("unsupported");
+  model.content.saturation = 1;
+  expect(model.previewCapability).toBe("supported");
+  model.content.saturation = null;
+  expect(model.previewCapability).toBe("supported");
+});
 
 function videoProfile(
   model: ModelSku,

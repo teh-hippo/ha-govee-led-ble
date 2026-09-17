@@ -46,6 +46,9 @@ export interface EditorApiInfo {
 }
 
 export interface DeviceCapabilities {
+  physical_ic_count?: number | null;
+  music_settings?: Record<string, MusicSettings>;
+  retained_music_edit?: RetainedMusicEdit | null;
   config_entry_id: string;
   light_entity_id: string | null;
   model: string;
@@ -129,6 +132,8 @@ export interface PaintedContent {
   speed: number;
   brightness: number;
   segments: (RGB | null)[];
+  background?: RGB;
+  addressing?: "segments" | "physical_ic";
 }
 
 export interface SingleContent {
@@ -168,6 +173,7 @@ export interface MusicProfileContent {
   colour: RGB | null;
   calm: boolean | null;
   parameters: JsonObject;
+  palette?: RGB[];
 }
 
 export interface RelativeBrightness {
@@ -180,6 +186,7 @@ export interface RelativeBrightness {
 }
 
 export interface VideoControls {
+  saturation_min: number;
   white_balance: {
     representation: "position" | "scalar";
     minimum: number;
@@ -201,6 +208,10 @@ export interface VideoProfileContent {
   white_balance_value?: number;
   relative_brightness: RelativeBrightness | null;
   blank_screen: boolean | null;
+  black_border?: boolean;
+  blank_screen_detection?: number;
+  blank_screen_low_brightness_duration_seconds?: number;
+  blank_screen_same_tone_duration_seconds?: number;
 }
 
 export type VideoProfileSetting =
@@ -209,7 +220,8 @@ export type VideoProfileSetting =
   | "sound_effects"
   | "white_balance"
   | "relative_brightness"
-  | "blank_screen";
+  | "blank_screen"
+  | "black_border";
 
 export type BrightnessOrder = 0 | 1 | 2 | 3;
 
@@ -238,6 +250,7 @@ export interface BrightnessPattern {
 interface Distribution {
   method: number;
   backwards: boolean;
+  extensions?: number;
 }
 
 export interface Movement {
@@ -268,6 +281,7 @@ export interface EffectLayer {
 export interface AdvancedContent {
   kind: "advanced";
   layers: EffectLayer[];
+  native_diy?: number;
 }
 
 export interface WorkshopContent {
@@ -303,8 +317,10 @@ export interface PaletteDiyFamily {
   family: number;
   variations: PaletteDiyVariation[];
   supports_multi: boolean;
-  rate: "speed" | "sensitivity";
+  rate: "speed" | "sensitivity" | "none";
+  palette_max?: number;
   rate_min: number;
+  multi_rate_min?: number;
   rate_max: number;
   category: "single_layer";
 }
@@ -324,6 +340,7 @@ export interface WorkshopTemplate {
 
 export type CatalogueTemplateContent =
   | CustomEffectContent
+  | AdvancedContent
   | PaletteDiyEffectContent
   | MusicProfileContent
   | VideoProfileContent;
@@ -331,7 +348,7 @@ export type CatalogueTemplateContent =
 export interface CatalogueTemplate {
   id: string;
   label: string;
-  category: "single-layer" | "music" | "video";
+  category: "single-layer" | "music" | "video" | "advanced";
   content: CatalogueTemplateContent;
 }
 
@@ -357,10 +374,22 @@ export interface MusicSettings {
   colour: boolean;
   evidence: string | null;
   palette_size: number;
+  palette?: { min: number; max: number; default: RGB[] };
   parameters: Record<string, MusicParameterSpec>;
 }
 
+export interface RetainedMusicEdit {
+  mode: string;
+  revision: number;
+  parameters: JsonObject;
+  calm: boolean | null;
+  settings: MusicSettings;
+}
+
 export interface ModelEffectCatalogue {
+  painted_addressing?: "segments" | "physical_ic";
+  painted_background?: RGB;
+  physical_ic_count?: number | null;
   sku: ModelSku;
   painted_effects: PaintedEffectTemplate[];
   effects: PaletteDiyFamily[];

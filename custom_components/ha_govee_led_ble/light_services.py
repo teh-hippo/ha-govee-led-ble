@@ -1,13 +1,13 @@
 """Control helpers for the Govee BLE light."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components.light import ColorMode  # type: ignore[attr-defined]
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import service
@@ -16,10 +16,21 @@ from homeassistant.helpers.typing import VolDictType
 from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
-from .generated_protocol_adapter import build_power, build_video_mode
-from .light_commands import SegmentColorGroup, build_segment_brightness, build_segment_paint, segments_to_mask
-from .native_profile_controls import _send_video_setting, apply_active_video_mode
-from .video_applicability import require_video_controls, video_control_states
+from .dreamview_services import async_register_dreamview_services
+from .h6099_controls import (
+    async_read_installation_controls,
+    async_set_installation_direction,
+    installation_direction_value,
+)
+from .light_commands import (
+    SegmentColorGroup,
+    build_segment_brightness,
+    build_segment_color_temp,
+    build_segment_paint,
+    kelvin_to_rgb,
+    segments_to_mask,
+)
+from .native_profile_controls import apply_active_video_mode
 
 __all__ = ("apply_active_video_mode", "async_register_light_services")
 
@@ -57,13 +68,36 @@ _SET_SEGMENT_BRIGHTNESS_SCHEMA: VolDictType = {
     vol.Required("segments"): _SEGMENTS,
     vol.Required("brightness"): _PERCENTAGE,
 }
+_SET_SEGMENT_COLOR_TEMP_SCHEMA: VolDictType = {
+    vol.Required("segments"): _SEGMENTS,
+    vol.Required("color_temp_kelvin"): vol.All(vol.NotIn([True, False]), vol.Any(str, int), cv.positive_int),
+}
 
 
 def async_register_light_services(hass: HomeAssistant) -> None:
     """Register light entity services before config entries are loaded."""
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        "set_installation_direction",
+        entity_domain=Platform.LIGHT,
+        func=async_set_installation_direction,
+        schema={vol.Required("value"): installation_direction_value},
+    )
+    service.async_register_platform_entity_service(
+        hass,
+        DOMAIN,
+        "read_installation_controls",
+        entity_domain=Platform.LIGHT,
+        func=async_read_installation_controls,
+        schema={},
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_register_dreamview_services(hass)
     for name, schema, method in (
         ("paint_segments", _PAINT_SEGMENTS_SCHEMA, "async_paint_segments"),
         ("set_segment_color", _SET_SEGMENT_COLOR_SCHEMA, "async_set_segment_color"),
+        ("set_segment_color_temp", _SET_SEGMENT_COLOR_TEMP_SCHEMA, "async_set_segment_color_temp"),
         (
             "set_segment_brightness",
             _SET_SEGMENT_BRIGHTNESS_SCHEMA,
@@ -116,7 +150,8 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
     # fmt: off
     async def _async_set_video_mode(self, mode: str, saturation: int = 100,
             capture_region: str | None = None, full_screen: bool = True,
-            sound_effects: bool = False, sound_effects_softness: int | None = None) -> None:
+            sound_effects: bool = False, sound_effects_softness: int | None = None,
+            *, values: Mapping[str, Any] | None = None) -> None:
         # fmt: on
         self._require_support("set_video_mode", supported=self.coordinator.profile.supports_video_mode)
         if sound_effects:
@@ -129,68 +164,19 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             requested_fs = full_screen if capture_region is None else capture_region == "full"
             resolved_fs = requested_fs if c.profile.supports_video_capture_region else c.video_full_screen
             resolved_saturation = saturation if c.profile.supports_video_saturation else c.video_saturation
+            c.profile.validate_video_saturation(resolved_saturation)
             supports_sound = c.profile.supports_video_sound_effects
             resolved_sound = sound_effects and supports_sound
             resolved_softness = (
                 c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
             )
-            controls = frozenset(
-                control for control, changed in (
-                    ("capture_region", resolved_fs != c.video_full_screen),
-                    ("saturation", resolved_saturation != c.video_saturation),
-                    ("sound_effects", resolved_sound != c.video_sound_effects
-                     or resolved_softness != c.video_sound_effects_softness),
-                ) if changed
-            )
-            require_video_controls(c.profile, c, controls)
-            packet = build_video_mode(
-                mode,
-                resolved_fs,
-                resolved_saturation,
-                resolved_sound,
-                resolved_softness,
-                c.model,
-            )
-
-            def check_retained() -> None:
-                changed_controls = {
-                    control for control, changed in (
-                        ("capture_region", resolved_fs != c.video_full_screen),
-                        ("saturation", resolved_saturation != c.video_saturation),
-                        ("sound_effects", resolved_sound != c.video_sound_effects
-                         or resolved_softness != c.video_sound_effects_softness),
-                    ) if changed
-                }
-                if changed_controls - controls:
-                    raise ValueError("Retained video settings changed before write; refresh and retry")
-
-            async def apply() -> None:
-                require_video_controls(c.profile, c, controls)
-                await _send_video_setting(
-                    c, build_power(True, c.model), controls, writer=None, write_guard=check_retained
-                )
-                self.coordinator.is_on = True
-                await _send_video_setting(c, packet, controls, writer=None, write_guard=check_retained)
-
-            await apply()
-            observable = video_control_states(c.profile, c)
-            await self._refresh_with_retry(
-                expected_on=True,
-                expected_video_mode=mode,
-                expected_video_full_screen=resolved_fs if observable["capture_region"] == "supported" else None,
-                expected_video_saturation=resolved_saturation if observable["saturation"] == "supported" else None,
-                expected_video_sound_effects=resolved_sound if observable["sound_effects"] == "supported" else None,
-                expected_video_sound_effects_softness=resolved_softness if resolved_sound
-                    and observable["sound_effects"] == "supported" else None,
-                retry_command=apply,
-            )
-            c.video_mode, c.effect = mode, None
-            c.music_mode = "off"
-            c.diy_code = None
-            c.video_saturation, c.video_full_screen = resolved_saturation, resolved_fs
-            c.video_sound_effects = resolved_sound
-            if supports_sound:
-                c.video_sound_effects_softness = resolved_softness
+            requested = {
+                field: value for field, value in (
+                    ("full_screen", resolved_fs), ("saturation", resolved_saturation),
+                    ("sound_effects", resolved_sound), ("sound_effects_softness", resolved_softness),
+                ) if value != getattr(c, f"video_{field}")
+            }
+            await apply_active_video_mode(c, mode=mode, requested_values=requested, parameters=values)
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
@@ -220,6 +206,54 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
     async def async_set_segment_color(self, segments: list[int], color: tuple[int, int, int]) -> None:
         group: dict[str, Any] = {"segments": segments, "rgb_color": color}
         await self.async_paint_segments([group])
+
+    async def async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
+        """Verify rendered RGB and preserve freshly read sibling colours/brightness.
+
+        At 3000 K the service computes (255,177,109). The older manual probe
+        supplied (255,185,105); its device qualification is distinct.
+        """
+        c = self.coordinator
+        self._require_support(
+            "set_segment_color_temp",
+            supported=c.profile.supports_segments and c.profile.supports_color_temperature,
+        )
+        try:
+            segments = list(segments)
+            packet = build_segment_color_temp(segments, color_temp_kelvin, c.model, profile=c.profile)
+            expected = kelvin_to_rgb(color_temp_kelvin)
+            await self._async_supersede_preview()
+            async with async_control_intent(c, ControlIntent.USER):
+                try:
+                    if not await c.async_refresh_segments():
+                        raise RuntimeError("Failed to read segments before colour temperature write")
+                    expected_colors = list(c.segment_colors)
+                    expected_brightness = list(c.segment_brightness)
+                    for segment in segments:
+                        expected_colors[segment - 1] = expected
+                    # The shared writer installs masked RGB only at the physical-write boundary
+                    # and reconciles attempted failures. Readback proves RGB, not per-segment Kelvin.
+                    await c.send_command(packet)
+                    if (
+                        not await c.async_refresh_segments()
+                        or c.segment_colors != expected_colors
+                        or c.segment_brightness != expected_brightness
+                    ):
+                        raise RuntimeError("Failed to confirm segment colour temperature")
+                finally:
+                    self._notify_state_changed()
+        except (TypeError, ValueError) as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_segments",
+            ) from err
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="device_command_failed",
+            ) from err
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
         self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)

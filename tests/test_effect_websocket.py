@@ -14,7 +14,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ha_govee_led_ble.const import DOMAIN
+from custom_components.ha_govee_led_ble.const import DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
@@ -125,7 +125,7 @@ async def test_authenticated_users_can_read_contracts(
     assert info["result"]["api_version"] == EDITOR_API_VERSION
     assert "drafts_per_owner" not in info["result"]["limits"]
     assert library["result"] == {"generation": 0, "items": []}
-    assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H617A", "H617E", "H6199"]
+    assert sorted(catalogue["result"]["catalogue"]["models"]) == ["H6099", "H6102", "H617A", "H617E", "H6199"]
 
 
 async def test_non_admin_cannot_mutate_library(
@@ -221,7 +221,7 @@ async def test_template_default_get_is_readable_but_mutations_require_admin(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A"),
+        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
     )
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
@@ -266,7 +266,7 @@ async def test_template_default_set_rejects_mismatched_identity(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A"),
+        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
     )
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
     client = await hass_ws_client(hass)
@@ -297,7 +297,7 @@ async def test_scene_default_websocket_persists_full_content_without_ble(
         for item in SCENE_ENTRIES["H617A"]
         if item.scene_type == 2 and item.speed is not None and item.speed.option_count > 1
     )
-    coordinator = SimpleNamespace(model="H617A", async_apply_native_scene=AsyncMock())
+    coordinator = SimpleNamespace(model="H617A", profile=get_profile("H617A"), async_apply_native_scene=AsyncMock())
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,
@@ -357,7 +357,7 @@ async def test_apply_forwards_expected_item_version(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A"),
+        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
     )
     monkeypatch.setattr(
         hass.config_entries,
@@ -399,7 +399,7 @@ async def test_apply_surfaces_item_version_conflict(
         entry_id="entry-a",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A"),
+        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
     )
     monkeypatch.setattr(
         hass.config_entries,
@@ -435,7 +435,10 @@ async def test_ineligible_apply_preserves_preview(hass, hass_ws_client, monkeypa
     monkeypatch.setattr(backend.engine, "async_apply_saved", apply_saved)
     monkeypatch.setattr(backend.engine, "async_apply_snapshot", apply_snapshot)
     entry = SimpleNamespace(
-        entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=SimpleNamespace(model=narrow)
+        entry_id="entry-a",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=SimpleNamespace(model=narrow, profile=get_profile(narrow)),
     )
     monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
     content = effect_content_to_dict(SingleEffect(0, 1, 50, ((255, 0, 0), (0, 0, 255))))

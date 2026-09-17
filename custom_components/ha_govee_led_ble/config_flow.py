@@ -26,6 +26,7 @@ from .const import (
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_H6102_APP_FIRMWARE,
+    CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
@@ -36,6 +37,7 @@ from .const import (
     supported_effect_categories,
 )
 from .firmware_version import FirmwareVersion
+from .h6102_protocol import H6102_PACTS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,14 +123,21 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return self._show_h6102_firmware_form()
         firmware = user_input.get(CONF_H6102_APP_FIRMWARE)
+        # Earlier candidates accepted short forms (3.2.2). Keep stored context
+        # visible on reconfigure, but require device-format 3.02.02 before reuse.
         if firmware and FirmwareVersion.parse(firmware) is None:
             return self._show_h6102_firmware_form(errors={CONF_H6102_APP_FIRMWARE: "invalid_firmware"})
+        pact = user_input.get(CONF_H6102_PACT) or None
+        if pact is not None and pact not in H6102_PACTS:
+            return self._show_h6102_firmware_form(errors={CONF_H6102_PACT: "invalid_pact"})
         if self.source == SOURCE_RECONFIGURE:
-            return self._finish_reconfigure(self._get_reconfigure_entry(), "H6102", firmware or None)
+            return self._finish_reconfigure(self._get_reconfigure_entry(), "H6102", firmware or None, pact)
         self._abort_if_unique_id_configured()
         data = {CONF_MODEL: "H6102"}
         if firmware:
             data[CONF_H6102_APP_FIRMWARE] = firmware
+        if pact:
+            data[CONF_H6102_PACT] = pact
         return self.async_create_entry(title="Govee H6102", data=data)
 
     def _finish_reconfigure(
@@ -136,12 +145,16 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         entry: ConfigEntry,
         selected_model: str,
         firmware: str | None = None,
+        pact: str | None = None,
     ) -> ConfigFlowResult:
         data = dict(entry.data)
         data[CONF_MODEL] = selected_model
         data.pop(CONF_H6102_APP_FIRMWARE, None)
+        data.pop(CONF_H6102_PACT, None)
         if firmware is not None:
             data[CONF_H6102_APP_FIRMWARE] = firmware
+        if pact is not None:
+            data[CONF_H6102_PACT] = pact
         options = {
             key: value
             for key, value in entry.options.items()
@@ -189,9 +202,11 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def _show_h6102_firmware_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:
         current = None
+        current_pact = ""
         if self.source == SOURCE_RECONFIGURE:
             stored = self._get_reconfigure_entry().data.get(CONF_H6102_APP_FIRMWARE)
             current = stored if isinstance(stored, str) else None
+            current_pact = self._get_reconfigure_entry().data.get(CONF_H6102_PACT, "")
         field = (
             vol.Optional(CONF_H6102_APP_FIRMWARE, description={"suggested_value": current})
             if current is not None
@@ -199,7 +214,20 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(
             step_id="h6102_firmware",
-            data_schema=vol.Schema({field: str}),
+            data_schema=vol.Schema(
+                {
+                    field: str,
+                    vol.Optional(CONF_H6102_PACT, default=current_pact): vol.In(
+                        {
+                            "": "Automatic / unknown",
+                            "10/1": "RGBIC Pact 10/1",
+                            "10/2": "RGBIC Pact 10/2",
+                            "1/1": "Legacy Pact 1/1",
+                            "1/2": "Legacy Pact 1/2",
+                        }
+                    ),
+                }
+            ),
             errors=errors,
         )
 

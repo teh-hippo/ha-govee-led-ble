@@ -77,10 +77,13 @@ types:
         enum: select_type
       - id: select_param_1
         type: u1
+        doc: 'ParamsV2.RgbICEffect.l: high byte of BE quantity for types 0/1; random maximum for 2; piece IC count for 3.'
       - id: select_param_2
         type: u1
+        doc: 'Low byte of BE quantity for types 0/1; random minimum for 2; gap IC count for 3.'
       - id: layer_flags
         type: u1
+        doc: 'ScenesRgbIC.d (Android 7.6.01): high nibble brightness algorithm 0..2, low nibble brightness type 0..3. Other values remain preserved.'
       - id: num_brightness_blocks
         type: u1
       - id: brightness_blocks
@@ -117,7 +120,23 @@ types:
       direction_is_backward:
         value: '(direction_distribution & 0x80) != 0'
       distribution_method:
-        value: 'direction_distribution & 0x7f'
+        value: 'direction_distribution & 0x0f'
+      distribution_extensions:
+        value: 'direction_distribution & 0x70'
+      selection_quantity:
+        value: '(select_param_1 << 8) | select_param_2'
+      random_ic_max:
+        value: select_param_1
+      random_ic_min:
+        value: select_param_2
+      piece_ic_count:
+        value: select_param_1
+      gap_ic_count:
+        value: select_param_2
+      brightness_algorithm:
+        value: 'layer_flags >> 4'
+      brightness_type:
+        value: 'layer_flags & 0x0f'
       brightness_is_gradient:
         value: '(layer_flags & 0x02) != 0'
       unknown_flags:

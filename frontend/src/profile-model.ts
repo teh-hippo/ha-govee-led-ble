@@ -49,5 +49,6 @@ export function cloneMusicProfileContent(
     ...content,
     colour: content.colour === null ? null : cloneRgb(content.colour),
     parameters: structuredClone(content.parameters),
+    ...(content.palette === undefined ? {} : { palette: content.palette.map(cloneRgb) }),
   };
 }

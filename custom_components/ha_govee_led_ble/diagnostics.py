@@ -7,11 +7,13 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
-from .const import CONF_H6102_APP_FIRMWARE
+from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_PACT
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
+from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
 from .effect_diagnostics import empty_effect_diagnostic_snapshot
 from .h6199_calibration import WHITE_BALANCE_POSITIONS
+from .video_applicability import h6199_camera_controls_state, video_control_states
 
 REDACT_KEYS = {"address", "unique_id"}
 
@@ -36,11 +38,7 @@ async def async_get_config_entry_diagnostics(
     client = coordinator._client
     lock = coordinator._lock
     expected_brightness = coordinator._expected_state.get("brightness_pct")
-    white_balance = (
-        (coordinator.white_balance_red, coordinator.white_balance_blue)
-        if coordinator.white_balance_red is not None and coordinator.white_balance_blue is not None
-        else None
-    )
+    white_balance = coordinator.white_balance
     coordinator_data = {
         "address": coordinator.address,
         "model": coordinator.model,
@@ -64,11 +62,16 @@ async def async_get_config_entry_diagnostics(
         "supports_color_mode_readback": coordinator.profile.supports_color_mode_readback,
         "supports_custom_effects": coordinator.profile.supports_custom_effects,
         "supports_video_mode": coordinator.profile.supports_video_mode,
+        "video_control_states": {
+            control: state.value for control, state in video_control_states(coordinator.profile, coordinator).items()
+        },
+        "h6199_camera_controls_state": h6199_camera_controls_state(coordinator.model, coordinator).value,
         "video_modes": list(coordinator.profile.video_modes),
         "supports_video_capture_region": coordinator.profile.supports_video_capture_region,
         "supports_video_saturation": coordinator.profile.supports_video_saturation,
         "supports_video_sound_effects": coordinator.profile.supports_video_sound_effects,
         "supports_white_balance": coordinator.profile.supports_white_balance,
+        "supports_white_balance_readback": coordinator.profile.supports_white_balance_readback,
         "supports_relative_brightness": coordinator.profile.supports_relative_brightness,
         "supports_blank_screen": coordinator.profile.supports_blank_screen,
         "supports_music_mode": coordinator.profile.supports_music_mode,
@@ -77,12 +80,22 @@ async def async_get_config_entry_diagnostics(
         "supports_white_brightness": coordinator.profile.supports_white_brightness,
         "supports_segments": coordinator.profile.supports_segments,
         "segment_count": coordinator.profile.segment_count,
+        "light_count_observation": _light_count_observation(packet_log, coordinator.model),
         "connected": bool(client and client.is_connected),
+        "encryption": encryption.diagnostics() if (encryption := getattr(coordinator, "_encryption", None)) else None,
+        "advertised_encryption": getattr(coordinator, "_advertised_encryption", False),
+        "fresh_services_required": coordinator.fresh_services_required,
+        "fresh_service_discovery_forced": coordinator.fresh_service_discovery_forced,
+        "last_connected_at": coordinator.last_connected_at,
+        "last_disconnected_at": coordinator.last_disconnected_at,
+        "last_failure_type": coordinator.last_failure_type,
         "available": coordinator.available,
         "fw_version": coordinator.fw_version,
         "hw_version": coordinator.hw_version,
         "subordinate_20_version": coordinator.subordinate_20_version,
         "subordinate_21_version": coordinator.subordinate_21_version,
+        "pact_type": coordinator.pact_type,
+        "pact_code": coordinator.pact_code,
         "lock_locked": lock.locked(),
         "is_on": coordinator.is_on,
         "brightness_pct": coordinator.brightness_pct,
@@ -104,6 +117,12 @@ async def async_get_config_entry_diagnostics(
         "white_brightness": coordinator.white_brightness,
         "video_full_screen": coordinator.video_full_screen,
         "white_balance": white_balance,
+        "white_balance_flag": coordinator.white_balance_flag,
+        "white_balance_defaults": {
+            "flag": coordinator.white_balance_default_flag,
+            "red": coordinator.white_balance_default_red,
+            "blue": coordinator.white_balance_default_blue,
+        },
         "white_balance_position": (
             WHITE_BALANCE_POSITIONS.index(white_balance) + 1
             if white_balance is not None and white_balance in WHITE_BALANCE_POSITIONS
@@ -116,6 +135,14 @@ async def async_get_config_entry_diagnostics(
             for edge in coordinator.profile.video_brightness_zones
         },
         "blank_screen": coordinator.blank_screen,
+        "black_border": coordinator.black_border,
+        "installation_direction": coordinator.installation_direction,
+        "camera_health": coordinator.camera_health,
+        "strip_direction": coordinator.strip_direction,
+        "camera_position": coordinator.camera_position,
+        "gradient": coordinator.gradient,
+        "camera_status": coordinator.camera_status,
+        "dreamview_last_write": coordinator._dreamview_last_write,
         "blank_screen_policy": {
             "detection": coordinator.blank_screen_detection,
             "low_brightness_duration_seconds": coordinator.blank_screen_low_brightness_duration_seconds,
@@ -150,6 +177,12 @@ def _h6102_capability_resolution(
     profile = coordinator.profile
     data: dict[str, Any] = {
         "configured_app_firmware": entry.data.get(CONF_H6102_APP_FIRMWARE),
+        "configured_pact": entry.data.get(CONF_H6102_PACT),
+        "pact_type": coordinator.pact_type,
+        "pact_code": coordinator.pact_code,
+        "music_modes": list(profile.music_modes),
+        "music_context": "resolved" if profile.music_modes else "evidence_gap",
+        "boolean_controls": dict(coordinator.boolean_control_state),
         "resolved_profile": profile.name,
         "firmware_source": coordinator.firmware_source,
         "classified_rgb_variant": coordinator.rgb_variant.value if coordinator.rgb_variant is not None else None,
@@ -170,6 +203,26 @@ def _h6102_capability_resolution(
     if coordinator.hw_version is not None:
         data["observed_hardware"] = coordinator.hw_version
     return data
+
+
+def _light_count_observation(packet_log: list[dict[str, Any]], model: str) -> dict[str, Any] | None:
+    """Report the latest qualified AA0F in the bounded log, without querying or changing geometry."""
+    if model != "H617A":
+        return None
+    for entry in reversed(packet_log):
+        if entry.get("dir") != "rx" or entry.get("outcome") != "parsed":
+            continue
+        raw = entry.get("raw")
+        if not isinstance(raw, str):
+            continue
+        try:
+            decoded = decode_status_frame(bytes.fromhex(raw), model)
+        except ValueError:
+            continue
+        if decoded is not None and getattr(decoded.generated.domain, "name", None) == "light_count":
+            body = decoded.generated.body
+            return {"value": int(body.light_count) if body.is_valid else None, "received_at": entry.get("ts")}
+    return None
 
 
 def _bounded_packet_entry(entry: dict[str, Any]) -> dict[str, Any]:

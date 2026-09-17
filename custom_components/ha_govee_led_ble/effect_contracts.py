@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Final
 
-from .const import default_effect_categories, get_profile
+from .const import ModelProfile, default_effect_categories, get_profile, supported_effect_categories
 from .effect_domain import EFFECT_SCHEMA_VERSION, JsonValue
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -356,6 +356,128 @@ _RELEASE_CAPABILITY_BASE: Final = (
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    *(
+        _capability(
+            "H6102",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            VerificationConfidence.SELECTION_ONLY,
+            PhysicalValidationState.NOT_VALIDATED,
+            EvidenceClassification.STRUCTURAL,
+        )
+        for workflow, label, kind, route, strategy in (
+            (
+                CapabilityWorkflow.NATIVE_SCENES,
+                "Scenes",
+                "scene_builtin",
+                ApplicationRoute.STUDIO_SCENE_APPLY,
+                CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+            ),
+            (
+                CapabilityWorkflow.SINGLE,
+                "Single",
+                "h617a_single",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.MULTI,
+                "Mixed",
+                "h617a_multi",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.PAINTED,
+                "Painted",
+                "h617a_painted",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.NATIVE_MUSIC,
+                "Music",
+                "music_profile",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.COORDINATOR_WRITER,
+            ),
+            (
+                CapabilityWorkflow.EDITED_PALETTE_SCENES,
+                "Edited palette scenes",
+                "scene_palette",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.LAYERED_SCENES,
+                "Layered scenes",
+                "scene_layered",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.ADVANCED,
+                "Advanced",
+                "advanced",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+            ),
+        )
+    ),
+    *(
+        _capability(
+            "H6099",
+            workflow,
+            label,
+            kind,
+            ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
+            VerificationConfidence.UNVERIFIED,
+            PhysicalValidationState.NOT_VALIDATED,
+            EvidenceClassification.STRUCTURAL,
+        )
+        for workflow, label, kind in (
+            (CapabilityWorkflow.PAINTED, "Graffiti", "h617a_painted"),
+            (CapabilityWorkflow.SINGLE, "Basic", "h617a_single"),
+            (CapabilityWorkflow.MULTI, "Mixed", "h617a_multi"),
+        )
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.NATIVE_SCENES,
+        "Scenes",
+        "scene_builtin",
+        ApplicationRoute.STUDIO_SCENE_APPLY,
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.NATIVE_MUSIC,
+        "Music",
+        "music_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
+    _capability(
+        "H6099",
+        CapabilityWorkflow.VIDEO,
+        "Video",
+        "video_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.UNVERIFIED,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
@@ -378,7 +500,7 @@ def release_capability(model: str, workflow: CapabilityWorkflow) -> ReleaseCapab
 
 
 def require_effect_route(
-    model: str, workflow: CapabilityWorkflow, grammars: tuple[str, ...] = ("H617A", "H6199")
+    model: str, workflow: CapabilityWorkflow, grammars: tuple[str, ...] = ("H617A", "H6199", "H6099")
 ) -> str:
     """Require exact-model workflow authorization and matching effect/command grammar."""
     capability = release_capability(model, workflow)
@@ -478,6 +600,7 @@ class DeviceEffectCapabilities:
     workshop: CapabilityState
     readback: str
     effect_categories: tuple[str, ...]
+    physical_ic_count: int | None = None
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -486,6 +609,7 @@ class DeviceEffectCapabilities:
             "model": self.model,
             "display_name": self.display_name,
             "segment_count": self.segment_count,
+            "physical_ic_count": self.physical_ic_count,
             "custom_effects": {
                 "painted": self.painted.value,
                 "single": self.single.value,
@@ -511,21 +635,58 @@ def device_effect_capabilities(
     *,
     light_entity_id: str | None = None,
     effect_categories: tuple[str, ...] | None = None,
+    physical_ic_count: int | None = None,
+    profile: ModelProfile | None = None,
 ) -> DeviceEffectCapabilities:
-    return DeviceEffectCapabilities(
+    profile = get_profile(model) if profile is None else profile
+    capabilities = DeviceEffectCapabilities(
         config_entry_id=config_entry_id,
         light_entity_id=light_entity_id,
         model=model,
         display_name=display_name,
         segment_count=segment_count,
-        painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED),
-        single=studio_apply_capability_state(model, CapabilityWorkflow.SINGLE),
-        multi=studio_apply_capability_state(model, CapabilityWorkflow.MULTI),
-        palette_diy=studio_apply_capability_state(model, CapabilityWorkflow.PALETTE_DIY),
-        advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED),
-        music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC),
-        video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO),
-        workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP),
-        readback=get_profile(model).effect_readback,
-        effect_categories=(default_effect_categories(model) if effect_categories is None else effect_categories),
+        physical_ic_count=physical_ic_count,
+        painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED)
+        if profile.supports_custom_effects
+        else CapabilityState.UNSUPPORTED,
+        single=studio_apply_capability_state(model, CapabilityWorkflow.SINGLE)
+        if profile.supports_custom_effects
+        else CapabilityState.UNSUPPORTED,
+        multi=studio_apply_capability_state(model, CapabilityWorkflow.MULTI)
+        if profile.supports_custom_effects
+        else CapabilityState.UNSUPPORTED,
+        palette_diy=studio_apply_capability_state(model, CapabilityWorkflow.PALETTE_DIY)
+        if profile.supports_custom_effects
+        else CapabilityState.UNSUPPORTED,
+        advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED)
+        if profile.supports_advanced_effects
+        else CapabilityState.UNSUPPORTED,
+        music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC)
+        if profile.supports_music_mode
+        else CapabilityState.UNSUPPORTED,
+        video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO)
+        if profile.supports_video_mode
+        else CapabilityState.UNSUPPORTED,
+        workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP)
+        if profile.supports_advanced_effects
+        else CapabilityState.UNSUPPORTED,
+        readback=profile.effect_readback,
+        effect_categories=tuple(
+            category
+            for category in (default_effect_categories(model) if effect_categories is None else effect_categories)
+            if category in supported_effect_categories(model, profile=profile)
+        ),
     )
+    if not supported_effect_categories(model, profile=profile):
+        capabilities = replace(
+            capabilities,
+            painted=CapabilityState.UNSUPPORTED,
+            single=CapabilityState.UNSUPPORTED,
+            multi=CapabilityState.UNSUPPORTED,
+            palette_diy=CapabilityState.UNSUPPORTED,
+            advanced=CapabilityState.UNSUPPORTED,
+            music=CapabilityState.UNSUPPORTED,
+            video=CapabilityState.UNSUPPORTED,
+            workshop=CapabilityState.UNSUPPORTED,
+        )
+    return capabilities

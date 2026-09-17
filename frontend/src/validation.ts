@@ -25,7 +25,7 @@ import type {
   VideoProfileContent,
   WorkshopContent,
 } from "./types";
-import { decodeCustomCataloguePayload } from "./catalogue-validation";
+import { decodeCustomCataloguePayload, decodeMusicSettings } from "./catalogue-validation";
 import {
   EDITOR_API_VERSION,
   EFFECT_COMPILER_VERSION,
@@ -173,6 +173,15 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         0,
         65_535,
       ),
+      ...(device.physical_ic_count == null ? {} : {
+        physical_ic_count: integerValue(device.physical_ic_count, "physical IC count", 1, 32767),
+      }),
+      ...(device.music_settings === undefined ? {} : {
+        music_settings: decodeMusicSettings(device.music_settings),
+      }),
+      ...(device.retained_music_edit === undefined ? {} : {
+        retained_music_edit: decodeRetainedMusicEdit(device.retained_music_edit),
+      }),
       custom_effects: {
         painted: capabilityValue(effects.painted, "painted capability"),
         single: capabilityValue(effects.single, "single capability"),
@@ -227,6 +236,18 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
   });
   requireUnique(devices, (device) => device.config_entry_id, "device IDs");
   return devices;
+}
+
+export function decodeRetainedMusicEdit(value: unknown): import("./types").RetainedMusicEdit | null {
+  if (value === null) return null;
+  const edit = objectValue(value, "retained music edit");
+  return {
+    mode: boundedString(edit.mode, "retained music mode", MAX_IDENTIFIER_LENGTH),
+    revision: integerValue(edit.revision, "music body revision", 0, Number.MAX_SAFE_INTEGER),
+    parameters: objectValue(edit.parameters, "retained music parameters") as import("./types").JsonObject,
+    calm: edit.calm === null ? null : booleanValue(edit.calm, "retained music style"),
+    settings: decodeMusicSettings({ retained: edit.settings }).retained,
+  };
 }
 
 function optionalLightEntityId(value: unknown, name: string): string | null {
@@ -761,9 +782,14 @@ export function decodeCatalogueTemplateDefaultDetail(
     "palette_diy",
     "music_profile",
     "video_profile",
+    "advanced",
   ]);
   if (!supported.has(content.kind) || !supported.has(catalogueContent.kind)) {
     invalid("catalogue-template default content is unsupported");
+  }
+  if ((content.kind === "advanced" && content.native_diy === undefined) ||
+      (catalogueContent.kind === "advanced" && catalogueContent.native_diy === undefined)) {
+    invalid("catalogue-template native DIY identity is missing");
   }
   return {
     template_id: boundedString(
@@ -791,16 +817,22 @@ export function decodeEffectContent(value: unknown): EffectContent {
   );
   switch (kind) {
     case "h617a_painted":
+      const addressing = content.addressing === undefined ? "segments" : enumString(
+        content.addressing, ["segments", "physical_ic"], "painted addressing",
+      );
       const paintedSegments = arrayValue(
         content.segments,
         "painted segments",
-        15,
+        addressing === "physical_ic" ? 255 : 15,
       );
-      if (paintedSegments.length !== 15) {
+      if (addressing === "segments" && paintedSegments.length !== 15) {
         invalid("painted effect must contain exactly 15 segments");
       }
+      if (paintedSegments.length === 0) invalid("painted effect must not be empty");
       return {
         kind,
+        ...(content.addressing === undefined ? {} : { addressing }),
+        ...(content.background === undefined ? {} : { background: rgbValue(content.background, "painted background") }),
         effect: enumString(
           content.effect,
           [
@@ -882,6 +914,7 @@ export function decodeEffectContent(value: unknown): EffectContent {
           100,
         ),
         colour: nullableRgbValue(content.colour, "music profile colour"),
+        ...(content.palette === undefined ? {} : { palette: paletteValue(content.palette, "music profile palette", 8) }),
         calm: nullableBooleanValue(content.calm, "music profile calm"),
         parameters: boundedRecord(
           content.parameters,
@@ -889,6 +922,13 @@ export function decodeEffectContent(value: unknown): EffectContent {
         ) as JsonObject,
       } satisfies MusicProfileContent;
     case "video_profile":
+      if ([content.blank_screen_detection, content.blank_screen_low_brightness_duration_seconds,
+        content.blank_screen_same_tone_duration_seconds].some(value => value !== undefined) &&
+        (content.blank_screen == null || [content.blank_screen_detection,
+          content.blank_screen_low_brightness_duration_seconds,
+          content.blank_screen_same_tone_duration_seconds].some(value => value === undefined))) {
+        throw new Error("Blank-screen policy requires the toggle, detection and both durations");
+      }
       return {
         kind,
         model: boundedString(
@@ -938,11 +978,24 @@ export function decodeEffectContent(value: unknown): EffectContent {
           content.blank_screen,
           "video profile blank-screen flag",
         ),
+        ...(content.black_border === undefined ? {} : {
+          black_border: booleanValue(content.black_border, "video black border"),
+        }),
+        ...(content.blank_screen_detection === undefined ? {} : {
+          blank_screen_detection: integerValue(content.blank_screen_detection, "blank-screen detection", 1, 2),
+          blank_screen_low_brightness_duration_seconds: integerValue(
+            content.blank_screen_low_brightness_duration_seconds, "low-brightness seconds", 0, 65535),
+          blank_screen_same_tone_duration_seconds: integerValue(
+            content.blank_screen_same_tone_duration_seconds, "same-tone seconds", 0, 65535),
+        }),
       } satisfies VideoProfileContent;
     case "advanced":
       return {
         kind,
         layers: layerArray(content.layers, "Advanced layers"),
+        ...(content.native_diy === undefined ? {} : {
+          native_diy: integerValue(content.native_diy, "native DIY template", 501, 507),
+        }),
       } satisfies AdvancedContent;
     case "workshop": {
       const effect = objectValue(content.effect, "Workshop effect");
@@ -1269,6 +1322,9 @@ function layerValue(value: unknown, name: string): EffectLayer {
         distribution.backwards,
         `${name}.distribution.backwards`,
       ),
+      ...(distribution.extensions === undefined ? {} : {
+        extensions: unknownFlagsValue(distribution.extensions, 0x70, "distribution extensions"),
+      }),
     },
     colour_speed: byteValue(layer.colour_speed, `${name}.colour_speed`),
     colour_retention: byteValue(

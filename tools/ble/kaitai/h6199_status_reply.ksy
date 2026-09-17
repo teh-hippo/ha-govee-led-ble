@@ -5,9 +5,13 @@ meta:
   imports:
     - govee_shared
     - govee_segment_page
+    - speculative/h6199_control_payload
 doc: |
   H6199 20-byte status reply. The final byte is the XOR of bytes 0 through 18.
   Segment groups carry 4+4+4+3 records; the final four bytes remain opaque.
+  Issue #294 DIY, static Gradient, direction30, position31, status32 and A3
+  extensions are speculative APK/direct-register evidence, not official-app
+  captures; payloads remain in speculative/h6199_control_payload.ksy.
 seq:
   - id: header
     contents: [0xaa]
@@ -29,6 +33,10 @@ seq:
         'status_domain::display_setting': display_setting_body
         'status_domain::relative_brightness': relative_brightness_body
         'status_domain::segments': govee_segment_page(15, 4, false)
+        'status_domain::strip_direction': h6199_control_payload
+        'status_domain::camera_position': h6199_control_payload
+        'status_domain::camera_status': h6199_control_payload::camera_state
+        'status_domain::gradient': h6199_control_payload
   - id: checksum
     type: u1
 enums:
@@ -40,6 +48,10 @@ enums:
     0x05: colour_mode
     0x20: subordinate_20
     0x21: subordinate_21
+    0x30: strip_direction
+    0x31: camera_position
+    0x32: camera_status
+    0xa3: gradient
     0xa5: segments
     0xa9: display_setting
     0xae: relative_brightness
@@ -53,6 +65,7 @@ enums:
   mode_sel:
     0x00: video
     0x04: scene
+    0x0a: diy
     0x13: music
     0x15: static_colour
   video_source:
@@ -86,6 +99,8 @@ types:
     seq:
       - id: value
         type: u1
+      - id: unknown_tail
+        size-eos: true
   white_balance_state:
     seq:
       - id: reset_flag
@@ -100,6 +115,8 @@ types:
         type: u1
       - id: current_blue
         type: u1
+      - id: unknown_tail
+        size-eos: true
   blank_screen_state:
     doc: |
       Blank-screen detection policy. The app parser reads the same two modes and second-based
@@ -114,6 +131,8 @@ types:
         type: u2
       - id: same_tone_duration_seconds
         type: u2
+      - id: unknown_tail
+        size-eos: true
   relative_brightness_body:
     doc: |
       The shared app parser always reads six value slots. H6199 reports edge_count 4; the final
@@ -151,6 +170,8 @@ types:
             'mode_sel::video': video_state
             'mode_sel::music': music_state
             'mode_sel::scene': scene_state
+            'mode_sel::diy': h6199_control_payload::diy_selector
+            'mode_sel::static_colour': h6199_control_payload::static_detail
   music_state:
     seq:
       - id: mode
@@ -177,6 +198,8 @@ types:
         type: u1
       - id: softness
         type: u1
+      - id: unknown_tail
+        size-eos: true
   scene_state:
     seq:
       - id: scene_id

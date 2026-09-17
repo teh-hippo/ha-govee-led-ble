@@ -601,13 +601,16 @@ def test_music_profile_compiler_rejects_invalid_mode_settings(mode, calm, parame
     )
 
     with pytest.raises(ValueError, match=message):
-        compile_music_profile(item, "H617A")
+        compile_music_profile(item, "H617A", profile=replace(MODEL_PROFILES["H617A"], physical_ic_count=15))
 
 
 def test_music_profile_compiler_applies_parameter_defaults_and_select_values() -> None:
+    # Synthetic known IC metadata, not inferred from H617A's logical segment count.
+    profile = replace(MODEL_PROFILES["H617A"], physical_ic_count=15)
     separation = compile_music_profile(
         LibraryItem.new("Separation", MusicProfile("H617A", "separation", 50)),
         "H617A",
+        profile=profile,
     )
     fountain = compile_music_profile(
         LibraryItem.new(
@@ -615,6 +618,7 @@ def test_music_profile_compiler_applies_parameter_defaults_and_select_values() -
             MusicProfile("H617A", "fountain", 50, parameters={"direction": "two_way"}),
         ),
         "H617A",
+        profile=profile,
     )
 
     assert separation.parameters == {"point": 1, "gradient": True}
@@ -708,10 +712,6 @@ def test_h6102_saved_effects_are_incompatible_before_compilation() -> None:
             ),
             "H6102 Workshop application is not supported",
         ),
-        (
-            LibraryItem.new("Effect", SingleEffect(0, 0, 50, ((255, 0, 0),))),
-            "H6102 single application is not supported",
-        ),
     )
 
     for item, reason in items:
@@ -728,7 +728,9 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     h6199 = device_effect_capabilities("entry-b", "H6199", "TV", 15)
     unknown = device_effect_capabilities("entry-c", "H9999", "Unknown", 0)
     h6076 = device_effect_capabilities("entry-d", "H6076", "Floor Lamp", 0)
-    h6102 = device_effect_capabilities("entry-e", "H6102", "LED Strip", 0)
+    from custom_components.ha_govee_led_ble.const import device_profile
+
+    h6102 = device_effect_capabilities("entry-e", "H6102", "LED Strip", 0, profile=device_profile("H6102", None, None))
 
     assert api == {
         "api_version": EDITOR_API_VERSION,

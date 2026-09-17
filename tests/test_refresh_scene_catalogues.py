@@ -202,9 +202,9 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
     }
 
 
-def test_h6102_committed_snapshot_remains_inert_metadata():
-    assert not MODEL_PROFILES["H6102"].supports_scenes
-    assert supported_effect_categories("H6102") == ()
+def test_h6102_candidate_uses_complete_exact_snapshot():
+    assert MODEL_PROFILES["H6102"].supports_scenes
+    assert "scenes" in supported_effect_categories("H6102")
     assert len(SCENE_ENTRIES["H6102"]) == 240
 
 

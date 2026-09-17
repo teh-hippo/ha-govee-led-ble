@@ -46,8 +46,8 @@ def test_status_rejections_expose_stable_reasons_and_fail_closed() -> None:
     assert unsupported.rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
 
     h6102 = decode_status_frame_result(H("aa05049d0800000000000000000000000000003e"), "H6102")
-    assert h6102.parser is None
-    assert h6102.rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
+    assert h6102.parser == "h6102_status_reply"
+    assert h6102.rejection is None
 
     invalid_shape = decode_status_frame_result(H("aaa506731f646408646464fe6464640000000093"))
     assert invalid_shape.parser == "status_reply"

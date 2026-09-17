@@ -119,6 +119,7 @@ export class GoveeVideoProfileEditor extends LitElement {
     const blankScreen =
       this.settings.includes("blank_screen") &&
       this.content.blank_screen !== null;
+    const blackBorder = this.settings.includes("black_border") && this.content.black_border !== undefined;
     const relativeBrightness =
       this.settings.includes("relative_brightness") &&
       this.content.relative_brightness !== null;
@@ -134,7 +135,8 @@ export class GoveeVideoProfileEditor extends LitElement {
 
     return html`
       <div class="editor-grid">
-        ${Object.entries(this.applicability ?? {}).filter(([, state]) => state !== "supported").map(([control, state]) => html`
+        ${Object.entries(this.applicability ?? {}).filter(([control, state]) =>
+          this.settings.includes(control as VideoProfileSetting) && state !== "supported").map(([control, state]) => html`
           <p role="status">${control.replaceAll("_", " ")}: ${state === "evidence_gap" ? "firmware identity unavailable" : "unavailable on this device"}.
             A profile requesting this setting cannot be applied.</p>`)}
         <section class="card">
@@ -144,6 +146,7 @@ export class GoveeVideoProfileEditor extends LitElement {
             `Include ${setting.replaceAll("_", " ")}`,
             setting === "white_balance" ? whiteBalance : setting === "relative_brightness" ? relativeBrightness
               : setting === "blank_screen" ? blankScreen : setting === "capture_region" ? captureRegion
+              : setting === "black_border" ? blackBorder
               : setting === "saturation" ? saturation : soundEffects,
             checked => this.updateContent(content => {
               switch (setting) {
@@ -153,7 +156,18 @@ export class GoveeVideoProfileEditor extends LitElement {
                   content.sound_effects = checked ? false : null;
                   content.sound_effects_softness = checked ? 50 : null;
                   break;
-                case "blank_screen": content.blank_screen = checked ? false : null; break;
+                case "blank_screen":
+                  content.blank_screen = checked ? false : null;
+                  if (!checked) {
+                    delete content.blank_screen_detection;
+                    delete content.blank_screen_low_brightness_duration_seconds;
+                    delete content.blank_screen_same_tone_duration_seconds;
+                  }
+                  break;
+                case "black_border":
+                  if (checked) content.black_border = false;
+                  else delete content.black_border;
+                  break;
                 case "white_balance":
                   content.white_balance_position = null;
                   delete content.white_balance_value;
@@ -174,7 +188,7 @@ export class GoveeVideoProfileEditor extends LitElement {
         </section>
         <section
           class="card"
-          ?hidden=${!captureRegion && !soundEffects && !blankScreen}
+          ?hidden=${!captureRegion && !soundEffects && !blankScreen && !blackBorder}
         >
           <div class="parameter-stack">
             <label class="field" ?hidden=${!captureRegion}>
@@ -244,6 +258,46 @@ export class GoveeVideoProfileEditor extends LitElement {
                     }),
                 )
               : nothing}
+            ${blackBorder ? this.renderCheckboxField("Black-border removal", this.content.black_border ?? false,
+              checked => this.updateContent(content => { content.black_border = checked; })) : nothing}
+            ${blankScreen ? html`
+              ${this.renderCheckboxField("Edit blank-screen policy", this.content.blank_screen_detection !== undefined,
+                checked => this.updateContent(content => {
+                  if (checked) {
+                    content.blank_screen_detection = 2;
+                    content.blank_screen_low_brightness_duration_seconds = 10;
+                    content.blank_screen_same_tone_duration_seconds = 120;
+                  } else {
+                    delete content.blank_screen_detection;
+                    delete content.blank_screen_low_brightness_duration_seconds;
+                    delete content.blank_screen_same_tone_duration_seconds;
+                  }
+                }))}
+              <p class="muted">Without policy editing, the device's detection and durations are retained.</p>
+              ${this.content.blank_screen_detection === undefined ? nothing : html`
+                <label class="field"><span>Blank-screen detection</span>
+                  <select aria-label="Blank-screen detection" ?disabled=${this.disabled}
+                    @change=${(event: Event) => this.updateContent(content => {
+                      content.blank_screen_detection = Number((event.target as HTMLSelectElement).value);
+                    })}>
+                    <option value="1" .selected=${this.content.blank_screen_detection === 1}>Low brightness</option>
+                    <option value="2" .selected=${this.content.blank_screen_detection === 2}>Same tone</option>
+                  </select>
+                </label>
+                ${(["blank_screen_low_brightness_duration_seconds", "blank_screen_same_tone_duration_seconds"] as const)
+                  .map((field, index) => html`
+                    <label class="field"><span>${index === 0 ? "Low-brightness seconds" : "Same-tone seconds"}</span>
+                      <input type="number" min="0" max="65535" step="1" ?disabled=${this.disabled}
+                        .value=${String(this.content?.[field] ?? 0)}
+                        @change=${(event: Event) => {
+                          const input = event.target as HTMLInputElement;
+                          if (input.value !== "" && input.reportValidity()) this.updateContent(content => {
+                            content[field] = input.valueAsNumber;
+                          });
+                        }} />
+                    </label>`)}
+              `}
+            ` : nothing}
           </div>
         </section>
 
@@ -254,11 +308,11 @@ export class GoveeVideoProfileEditor extends LitElement {
               ? this.renderRangeField(
                   "Saturation",
                   this.content.saturation ?? 50,
-                  0,
+                  this.controls?.saturation_min ?? 0,
                   100,
                   (value) =>
                     this.updateContent((content) => {
-                      content.saturation = clampInteger(value, 0, 100);
+                      content.saturation = clampInteger(value, this.controls?.saturation_min ?? 0, 100);
                     }),
                 )
               : nothing}

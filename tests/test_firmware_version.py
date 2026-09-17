@@ -6,7 +6,7 @@ from custom_components.ha_govee_led_ble.firmware_version import FirmwareVersion
 
 
 def _version(value: str) -> FirmwareVersion:
-    version = FirmwareVersion.parse(value)
+    version = FirmwareVersion.parse(value, strict=False)
     assert version is not None
     return version
 

@@ -8,10 +8,17 @@ import {
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import type { PaintedSegmentDraft } from "./effect-editor-model";
 import { rgbToHex } from "./ui-utils";
+import type { RGB } from "./types";
 
 export class GoveePaintedSegmentEditor extends LitElement {
   @property({ attribute: false })
   public segments: PaintedSegmentDraft[] = [];
+
+  @property({ attribute: false })
+  public background: RGB = [0, 0, 0];
+
+  @property({ type: Boolean })
+  public physical = false;
 
   @property({ type: Boolean })
   public disabled = false;
@@ -24,13 +31,13 @@ export class GoveePaintedSegmentEditor extends LitElement {
     return html`
       <section class="card" aria-labelledby="painted-segments-heading">
         <h3 class="section-title" id="painted-segments-heading">
-          Painted segments
+          ${this.physical ? "Physical ICs" : "Painted segments"}
         </h3>
         <div class="segments">
           ${this.segments.map(
             (colour, index) => {
               const off = colour === null;
-              const rendered = off ? "#000000" : rgbToHex(colour);
+              const rendered = rgbToHex(off ? this.background : colour);
               return html`
               <button
                 type="button"
@@ -38,8 +45,8 @@ export class GoveePaintedSegmentEditor extends LitElement {
                 class=${off ? "off" : ""}
                 style="--segment-colour: ${rendered}"
                 aria-label=${off
-                  ? `Segment ${index + 1}, off`
-                  : `Segment ${index + 1}, ${rendered}`}
+                  ? `${this.physical ? "IC" : "Segment"} ${index + 1}, ${this.physical ? "background" : "off"}`
+                  : `${this.physical ? "IC" : "Segment"} ${index + 1}, ${rendered}`}
                 ?disabled=${this.disabled}
                 @pointerdown=${(event: PointerEvent) =>
                   this.pointerStarted(index, event)}

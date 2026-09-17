@@ -7,6 +7,10 @@ meta:
     - govee_common
 doc: |
   H617A 20-byte command frame. The final byte is the XOR of bytes 0 through 18.
+  The shared boolean payload also covers H6102 limit opcode 0E (#115): Android
+  7.6.01 dreamcolorlightv1/ble/LimitController.getCommandType/q emits 0E and
+  one boolean byte. This APK extension is not H617A product authorization or
+  capture qualification; see speculative/H6102.md.
 seq:
   - id: header
     contents: [0x33]
@@ -22,6 +26,7 @@ seq:
         'command_op::brightness': brightness_cmd
         'command_op::multi': multi_cmd
         'command_op::multi_effect': multi_effect_cmd
+        'command_op::limit': multi_effect_cmd
   - id: checksum
     type: u1
 enums:
@@ -29,13 +34,48 @@ enums:
     0x01: power
     0x04: brightness
     0x05: multi
+    0x0e: limit
     0xa3: multi_effect
   multi_sub:
     0x04: scene
     0x0a: diy
     0x13: music
     0x15: static
+instances:
+  is_static:
+    doc: Recognized static operations only, for restricted profile authorization.
+    value: >-
+      opcode == command_op::multi and body.as<multi_cmd>.sub == multi_sub::static and
+      (body.as<multi_cmd>.sub_body.as<static_cmd>.static_sub == 1 or
+      body.as<multi_cmd>.sub_body.as<static_cmd>.static_sub == 2 or
+      body.as<multi_cmd>.sub_body.as<static_cmd>.static_sub == 3)
 types:
+  upload_frame:
+    doc: A3 transport frame used to validate the completed upload before arming its ACK.
+    seq:
+      - id: header
+        contents: [0xa3]
+      - id: index
+        type: u1
+      - id: body
+        size: 17
+        type:
+          switch-on: index
+          cases:
+            0: upload_start
+      - id: checksum
+        type: u1
+    instances:
+      is_final:
+        value: index == 0xff
+  upload_start:
+    seq:
+      - id: header
+        type: govee_common::a3_header
+      - id: subtype
+        type: u1
+      - id: content
+        size-eos: true
   multi_effect_cmd:
     doc: >
       Boolean gradual-change register. The app writes false as the prologue to

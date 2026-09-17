@@ -4,8 +4,14 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, cast
 
-from .const import MUSIC_MODE_SLUGS, ReadDomain, get_profile
-from .generated_protocol_adapter import ProtocolParseResult, parse_status_result
+from .const import MUSIC_MODE_SLUGS, ModelProfile, ReadDomain, get_profile
+from .generated_protocol_adapter import (
+    ProtocolParseResult,
+    boolean_control_is_authorized,
+    boolean_control_name,
+    parse_status_result,
+    video_parameters_from_detail,
+)
 from .scenes import MODEL_SCENES
 
 _MUSIC_SLUG_BY_ID = {code: slug for slug, code in MUSIC_MODE_SLUGS.items()}
@@ -32,6 +38,8 @@ _STATUS_DOMAIN_NAMES = {
     "display_setting": StatusDomain.DISPLAY_SETTING,
     "relative_brightness": StatusDomain.RELATIVE_BRIGHTNESS,
     "segments": StatusDomain.SEGMENTS,
+    "installation_direction": StatusDomain.INSTALLATION_DIRECTION,
+    "camera_health": StatusDomain.CAMERA_HEALTH,
 }
 
 
@@ -43,8 +51,10 @@ class ParsedStatusEnvelope:
     generated: Any
 
 
-def decode_status_frame_result(frame: bytes, model: str = "H617A") -> ProtocolParseResult:
-    result = parse_status_result(frame, model)
+def decode_status_frame_result(
+    frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
+) -> ProtocolParseResult:
+    result = parse_status_result(frame, model, profile=profile)
     if result.parsed is None:
         return result
     generated = result.parsed
@@ -60,9 +70,19 @@ def decode_status_frame_result(frame: bytes, model: str = "H617A") -> ProtocolPa
     )
 
 
-def decode_status_frame(frame: bytes, model: str = "H617A") -> ParsedStatusEnvelope | None:
+def decode_status_frame(
+    frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
+) -> ParsedStatusEnvelope | None:
     """Parse one fixed-size status notification with its model-specific Kaitai class."""
-    return cast(ParsedStatusEnvelope | None, decode_status_frame_result(frame, model).parsed)
+    return cast(ParsedStatusEnvelope | None, decode_status_frame_result(frame, model, profile=profile).parsed)
+
+
+def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -> bool:
+    """Boolean registers have independent authorization, not the catch-all OTHER domain."""
+    control = boolean_control_name(getattr(decoded.generated.domain, "name", ""))
+    if control is not None:
+        return boolean_control_is_authorized(control, profile)
+    return profile.command_operations is None or profile.can_read(decoded.domain)
 
 
 class ParsedMode(Enum):
@@ -84,6 +104,7 @@ class ParsedColorModeResponse:
     diy_code: int | None = None
     music_mode: str | None = None
     video_mode: str | None = None
+    video_parameters: dict[str, Any] | None = None
     video_full_screen: bool | None = None
     video_saturation: int | None = None
     video_sound_effects: bool | None = None
@@ -91,20 +112,46 @@ class ParsedColorModeResponse:
     music_sensitivity: int | None = None
     music_calm: bool | None = None
     music_color: tuple[int, int, int] | None = None
+    music_color_present: bool = True
     rgb_color: tuple[int, int, int] | None = None
     color_temp_kelvin: int | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
 
 
-def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
+def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None = None) -> ParsedColorModeResponse:
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
+    profile = profile or get_profile(model)
+    if mode_name == "video" and profile.video_grammar == "H66A0-video":
+        detail = body.detail
+        source = getattr(detail.source, "name", None)
+        if source not in profile.video_modes:
+            return ParsedColorModeResponse()
+        parameters = video_parameters_from_detail(detail, profile.video_grammar)
+        if detail.sound_effects not in (0, 1) or not 0 <= detail.softness <= 100:
+            raise ValueError("invalid video sound effects or softness")
+        return ParsedColorModeResponse(
+            mode=ParsedMode.VIDEO,
+            video_mode=source,
+            video_parameters=parameters,
+            video_saturation=int(detail.saturation)
+            if profile.supports_video_saturation and profile.video_saturation_min <= detail.saturation <= 100
+            else None,
+            video_sound_effects=bool(detail.sound_effects) if profile.supports_video_sound_effects else None,
+            video_sound_effects_softness=int(detail.softness) if profile.supports_video_sound_effects else None,
+        )
+    music_mode = None
+    if mode_name == "music":
+        detail = getattr(body, "detail", getattr(body, "mode_body", None))
+        mode_id = int(getattr(detail, "mode", getattr(detail, "mode_id", -1)))
+        music_mode = _MUSIC_SLUG_BY_ID.get(mode_id)
+        if music_mode not in profile.music_modes:
+            raise ValueError("music selector is unsupported for model")
     if mode_name in {"static", "static_colour"}:
         detail = getattr(body, "mode_body", getattr(body, "detail", None))
         rgb = getattr(detail, "rgb", None)
-        kelvin = getattr(detail, "kelvin", None)
-        profile = get_profile(model)
+        kelvin = getattr(detail, "kelvin", None) or None
         if kelvin is not None and not profile.min_color_temp_kelvin <= int(kelvin) <= profile.max_color_temp_kelvin:
             raise ValueError("static Kelvin outside profile range")
         return ParsedColorModeResponse(
@@ -113,28 +160,39 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
             color_temp_kelvin=int(kelvin) if kelvin is not None else None,
             multi_effect_flag=getattr(detail, "sub", None),
         )
-    if get_profile(model).status_grammar == "H6199" or (
-        mode_name == "video" and get_profile(model).video_grammar == "H6199"
+    if profile.status_grammar in {"H6099", "H6199"} or (
+        mode_name == "video" and profile.video_grammar in {"H6099", "H6199"}
     ):
         if mode_name == "video":
-            profile = get_profile(model)
-            if profile.video_grammar != "H6199":
+            if profile.video_grammar not in {"H6099", "H6199"}:
                 return ParsedColorModeResponse()
             detail = body.detail
             source_name = getattr(detail.source, "name", None)
             region_name = getattr(detail.region, "name", None)
-            if source_name not in {"movie", "game"} or region_name not in {"part", "all"}:
+            if source_name not in profile.video_modes or region_name not in {"part", "all"}:
                 return ParsedColorModeResponse()
             return ParsedColorModeResponse(
                 mode=ParsedMode.VIDEO,
                 video_mode=source_name,
                 video_full_screen=region_name == "all" if profile.supports_video_capture_region else None,
-                video_saturation=int(detail.saturation) if profile.supports_video_saturation else None,
+                # Keep sibling video observations when firmware reports an unqualified saturation.
+                video_saturation=(
+                    int(detail.saturation)
+                    if profile.supports_video_saturation and profile.video_saturation_min <= detail.saturation <= 100
+                    else None
+                ),
                 video_sound_effects=bool(detail.sound_effects) if profile.supports_video_sound_effects else None,
                 video_sound_effects_softness=int(detail.softness) if profile.supports_video_sound_effects else None,
             )
         if mode_name == "music":
             detail = body.detail
+            if not getattr(detail, "is_legacy", True):
+                return ParsedColorModeResponse(
+                    mode=ParsedMode.MUSIC,
+                    music_mode=music_mode,
+                    music_sensitivity=int(detail.sensitivity),
+                    music_color_present=False,
+                )
             fixed_colour = None
             if detail.has_fixed_colour:
                 fixed_colour = (
@@ -144,7 +202,7 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
                 )
             return ParsedColorModeResponse(
                 mode=ParsedMode.MUSIC,
-                music_mode=_MUSIC_SLUG_BY_ID.get(int(detail.mode)),
+                music_mode=music_mode,
                 music_sensitivity=int(detail.sensitivity),
                 music_calm=bool(detail.is_calm),
                 music_color=fixed_colour,
@@ -156,6 +214,8 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
                 effect=_SCENE_EFFECT_BY_MODEL_ID.get(model, {}).get(scene_code),
                 scene_code=scene_code,
             )
+        if mode_name == "diy":
+            return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(body.detail.code))
         return ParsedColorModeResponse()
 
     if mode_name == "scene":
@@ -169,12 +229,19 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
         return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(body.mode_body.code))
     if mode_name == "music":
         detail = body.mode_body
+        if not detail.is_legacy:
+            return ParsedColorModeResponse(
+                mode=ParsedMode.MUSIC,
+                music_mode=music_mode,
+                music_sensitivity=int(detail.sensitivity),
+                music_color_present=False,
+            )
         music_color = None
-        if detail.manual_color_count >= 1:
+        if detail.has_fixed_colour:
             music_color = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
         return ParsedColorModeResponse(
             mode=ParsedMode.MUSIC,
-            music_mode=_MUSIC_SLUG_BY_ID.get(int(detail.mode_id)),
+            music_mode=music_mode,
             music_sensitivity=int(detail.sensitivity),
             music_calm=bool(detail.style) if int(detail.mode_id) == _RHYTHM_MODE_ID else None,
             music_color=music_color,

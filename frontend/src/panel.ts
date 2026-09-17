@@ -14,7 +14,7 @@ import {
 import type { EditorActionDescriptor } from "./editor-state";
 import { customEffectCategories } from "./custom-effect-workflow";
 import type { LivePreviewInteraction } from "./live-preview-controller";
-import type { MusicModeChange } from "./music-profile-editor";
+import type { GoveeMusicProfileEditor, MusicModeChange } from "./music-profile-editor";
 import { PanelController } from "./panel-controller";
 import { PanelEditorController } from "./panel-editor-controller";
 import { PanelModalController } from "./panel-modal-controller";
@@ -893,7 +893,30 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-music-profile-editor
         .content=${this.content}
         .catalogue=${this.model.modelCatalogue}
-        .disabled=${this.editorDisabled}
+        .retainedEdit=${this.model.selectedDevice?.retained_music_edit}
+        .configEntryId=${this.model.selectedDeviceId}
+        @retained-music-edit=${async (event: CustomEvent<{
+          edit: import("./types").RetainedMusicEdit; parameters: import("./types").JsonObject; calm?: boolean;
+        }>) => {
+          const device = this.model.selectedDevice;
+          const editor = event.currentTarget as GoveeMusicProfileEditor;
+          if (!device || !this.controller.api || !this.canMutate) return;
+          try {
+            this.model.patch({ applying: true });
+            device.retained_music_edit = await this.controller.api.editRetainedMusic(
+              device.config_entry_id, event.detail.edit, event.detail.parameters, event.detail.calm);
+            if (editor.configEntryId === device.config_entry_id &&
+                editor.retainedEdit?.mode === event.detail.edit.mode &&
+                editor.retainedEdit?.revision === event.detail.edit.revision) {
+              editor.clearRetainedEdits();
+            }
+          } catch (error) {
+            this.model.reportError(String(error));
+          } finally {
+            this.model.patch({ applying: false });
+          }
+        }}
+        .disabled=${this.editorDisabled || this.model.applying}
         .modeSelectionEnabled=${this.model.showReactiveEffectSelector}
         @mode-changed=${(event: CustomEvent<MusicModeChange>) =>
           this.editor.musicModeChanged(event.detail.mode)}
@@ -1197,6 +1220,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <govee-advanced-effect-editor
         .content=${advancedEditorContent(this.content)}
         .disabled=${this.editorDisabled}
+        .physicalIcCount=${this.model.selectedDevice?.physical_ic_count}
         .segmentCount=${this.model.selectedDevice?.segment_count ?? 15}
         @content-changed=${(
           event: CustomEvent<{
@@ -1243,13 +1267,21 @@ export class GoveeLedEffectStudio extends LitElement {
     if (this.content.kind !== "h617a_painted") {
       return nothing;
     }
+    const content = this.content;
+    const physical = content.addressing === "physical_ic";
     return html`
       ${this.renderEditorHeading()}
 
       ${this.renderSingleEffectSelector()}
 
+      ${physical && !this.model.selectedDevice?.physical_ic_count ? html`
+        <p role="status">Graffiti requires the device's physical IC count. Refresh the device before painting or applying.</p>
+      ` : nothing}
+
       <govee-painted-segment-editor
         .segments=${this.content.segments}
+        .background=${content.background ?? [0, 0, 0]}
+        .physical=${physical}
         .disabled=${this.editorDisabled}
         @segment-selected=${(
           event: CustomEvent<{
@@ -1289,7 +1321,7 @@ export class GoveeLedEffectStudio extends LitElement {
               @click=${() => this.editor.selectPaintOff()}
             >
               <span class="paint-off-swatch" aria-hidden="true"></span>
-              Off
+              ${physical ? "Background" : "Off"}
             </button>
           </div>
         </section>
@@ -1297,6 +1329,17 @@ export class GoveeLedEffectStudio extends LitElement {
         <section class="card">
           <div class="parameter-stack">
             ${this.renderPaintedVariationField()}
+            ${physical ? html`
+              <govee-single-colour-field
+                label="Background colour"
+                .colour=${content.background ?? [255, 255, 255]}
+                .disabled=${this.editorDisabled}
+                @colour-changing=${(event: CustomEvent<{ colour: RGB }>) =>
+                  this.editor.updatePaintedContent({ background: event.detail.colour }, "changing")}
+                @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
+                  this.editor.updatePaintedContent({ background: event.detail.colour }, "committed")}
+              ></govee-single-colour-field>
+            ` : nothing}
             ${this.sliderField("Speed", "speed", this.content.speed)}
             ${this.sliderField(
               "Brightness",

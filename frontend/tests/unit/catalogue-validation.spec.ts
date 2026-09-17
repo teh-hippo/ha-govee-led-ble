@@ -15,7 +15,9 @@ test("canonical backend catalogue decodes through the production catalogue valid
     backendContracts.responses.custom_catalogue,
   );
   expect(decoded.sku).toBe("H617A");
-  expect(Object.keys(decoded.models)).toEqual(["H617A", "H617E", "H6199"]);
+  expect(decoded.models.H6099.video_controls?.saturation_min).toBe(1);
+  expect(decoded.models.H6199.video_controls?.saturation_min).toBe(0);
+  expect(Object.keys(decoded.models)).toEqual(["H6099", "H6102", "H617A", "H617E", "H6199"]);
   expect(decoded.models.H6199.video_settings).toEqual([
     "capture_region",
     "saturation",
@@ -82,6 +84,18 @@ test("catalogue families require variations and the single-layer category", () =
   expect(() => decodeCatalogue(wrongCategory)).toThrow(
     "category is invalid",
   );
+});
+
+test("H6102 uses physical paint, exact native templates and separate Single/Mixed rate bounds", () => {
+  const catalogue = decodeCatalogue(backendContracts.responses.custom_catalogue).models.H6102;
+  expect(catalogue.painted_addressing).toBe("physical_ic");
+  const single = decodeEffectContent({kind: "h617a_single", family: 0, variant: 0, speed: 0, palette: [[1, 2, 3]]});
+  const mixed = decodeEffectContent({kind: "h617a_multi", effects: [{family: 0, variant: 0}], speed: 0, palette: [[1, 2, 3]]});
+  expect(effectContentEligible(single, catalogue, "H6102", 15)).toBe(false);
+  expect(effectContentEligible(mixed, catalogue, "H6102", 15)).toBe(true);
+  const native = catalogue.templates!.find(template => template.id === "template:native-diy:504")!;
+  expect(effectContentEligible(native.content, catalogue, "H6102", 15)).toBe(true);
+  expect(effectContentEligible(native.content, catalogue, "H617A", 15)).toBe(false);
 });
 
 test("release workflows remain bounded and unique without model-specific lists", () => {

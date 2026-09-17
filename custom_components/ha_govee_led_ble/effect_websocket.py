@@ -8,6 +8,7 @@ from typing import Any, cast
 from uuid import UUID
 
 import voluptuous as vol
+from bleak.exc import BleakError
 from homeassistant.components import websocket_api
 from homeassistant.components.websocket_api.connection import ActiveConnection
 from homeassistant.components.websocket_api.decorators import (
@@ -22,7 +23,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, supported_effect_categories
+from .const import DOMAIN, MUSIC_MODE_SLUGS, ModelProfile, supported_effect_categories
+from .control_arbiter import ControlIntent
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
     custom_effect_catalogue_payload,
@@ -37,6 +39,7 @@ from .effect_domain import (
     OpaqueContent,
     Origin,
     SourceKind,
+    VideoProfile,
     effect_content_from_dict,
     effect_content_hash,
     effect_content_to_dict,
@@ -76,8 +79,10 @@ from .effect_storage import (
 from .effect_template_defaults import CatalogueTemplateDefault
 from .effect_websocket_payloads import (
     deployment_snapshot_payload,
+    device_music_settings,
     item_summary,
     library_snapshot_payload,
+    retained_music_edit,
 )
 from .effect_websocket_schema import (
     EFFECT_CONTENT,
@@ -127,7 +132,9 @@ from .effect_websocket_schema import (
     WS_USER_STATE_UPDATE,
     strict_int,
 )
-from .video_applicability import validate_video_request, video_control_states
+from .music_commands import music_body_style
+from .native_profile_controls import async_require_video_controls
+from .video_applicability import requested_video_controls, video_control_states
 
 BACKEND_DATA_KEY = "effect_backend"
 PREVIEW_SESSION_NOT_FOUND_CODE = "preview_session_not_found"
@@ -156,7 +163,8 @@ async def ws_editor_devices(
     entries = [
         entry
         for entry in hass.config_entries.async_entries(DOMAIN)
-        if entry.state is ConfigEntryState.LOADED and supported_effect_categories(entry.runtime_data.model)
+        if entry.state is ConfigEntryState.LOADED
+        and supported_effect_categories(entry.runtime_data.model, profile=entry.runtime_data.profile)
     ]
     if len(entries) > MAX_EDITOR_DEVICES:
         connection.send_error(
@@ -213,8 +221,12 @@ def _device_payload(
         coordinator.profile.segment_count,
         light_entity_id=_light_entity_id(hass, entry.entry_id),
         effect_categories=tuple(coordinator.effect_categories),
+        physical_ic_count=coordinator.profile.physical_ic_count,
+        profile=coordinator.profile,
     ).to_dict()
     device["active_state"] = observed.to_public_dict()
+    device.update(device_music_settings(coordinator.model, profile=coordinator.profile))
+    device["retained_music_edit"] = retained_music_edit(coordinator)
     device["video_control_states"] = {
         key: value.value for key, value in video_control_states(coordinator.profile, coordinator).items()
     }
@@ -325,6 +337,9 @@ def ws_scene_catalogue_list(
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
     coordinator = entry.runtime_data
+    if not coordinator.profile.supports_scenes:
+        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+        return
     try:
         catalogue = scene_catalogue_payload(coordinator.model)
     except ValueError as exc:
@@ -361,6 +376,9 @@ def ws_scene_catalogue_get(
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        return
+    if not entry.runtime_data.profile.supports_scenes:
+        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
         return
     try:
         backend = _backend(hass)
@@ -402,6 +420,9 @@ async def ws_scene_apply(
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        return
+    if not entry.runtime_data.profile.supports_scenes:
+        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
         return
     try:
         backend = _backend(hass)
@@ -512,6 +533,9 @@ async def ws_scene_default_set(
     if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
         connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
         return
+    if not entry.runtime_data.profile.supports_scenes:
+        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+        return
     backend = _backend(hass)
     try:
         resolved = await async_set_scene_default(
@@ -550,8 +574,10 @@ def _template_default_detail(
     config_entry_id: str,
     model: str,
     template_id: str,
+    *,
+    profile: ModelProfile | None = None,
 ) -> dict[str, Any]:
-    template = resolve_catalogue_template(model, template_id)
+    template = resolve_catalogue_template(model, template_id, profile=profile)
     stored = backend.template_defaults.get(config_entry_id, template_id)
     if stored is not None and stored.model != model:
         stored = None
@@ -586,6 +612,7 @@ def ws_template_default_get(
             entry.entry_id,
             entry.runtime_data.model,
             msg["template_id"],
+            profile=entry.runtime_data.profile,
         )
     except ValueError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
@@ -620,6 +647,7 @@ async def ws_template_default_set(
             entry.runtime_data.model,
             msg["template_id"],
             content,
+            profile=entry.runtime_data.profile,
         )
         if effect_content_hash(content) == effect_content_hash(template.content):
             await backend.template_defaults.async_delete(entry.entry_id, msg["template_id"])
@@ -646,6 +674,7 @@ async def ws_template_default_set(
             entry.entry_id,
             entry.runtime_data.model,
             msg["template_id"],
+            profile=entry.runtime_data.profile,
         ),
     )
 
@@ -670,7 +699,7 @@ async def ws_template_default_reset(
         return
     backend = _backend(hass)
     try:
-        resolve_catalogue_template(entry.runtime_data.model, msg["template_id"])
+        resolve_catalogue_template(entry.runtime_data.model, msg["template_id"], profile=entry.runtime_data.profile)
         await backend.template_defaults.async_delete(entry.entry_id, msg["template_id"])
     except ValueError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
@@ -685,6 +714,7 @@ async def ws_template_default_reset(
             entry.entry_id,
             entry.runtime_data.model,
             msg["template_id"],
+            profile=entry.runtime_data.profile,
         ),
     )
 
@@ -714,6 +744,47 @@ async def ws_preview_close(
         connection.send_error(msg["id"], PREVIEW_SESSION_NOT_FOUND_CODE, str(exc))
         return
     connection.send_result(msg["id"], {"closed": True})
+
+
+@websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/editor/music/edit_retained",
+        vol.Required("config_entry_id"): IDENTIFIER,
+        vol.Required("mode"): IDENTIFIER,
+        vol.Required("expected_body_revision"): vol.All(int, vol.Range(min=0)),
+        vol.Required("parameters"): dict,
+        vol.Optional("calm"): STRICT_BOOL,
+    }
+)
+@require_admin
+@async_response
+async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
+    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
+    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
+        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        return
+    coordinator = entry.runtime_data
+    try:
+        if (
+            type(msg["expected_body_revision"]) is not int
+            or coordinator._music_body_revision != msg["expected_body_revision"]
+            or coordinator.music_mode != msg["mode"]
+            or msg["mode"] not in coordinator.profile.music_modes
+        ):
+            raise ValueError("Retained music body changed; refresh and retry")
+        # The existing apply path compiles the complete body before acquiring control,
+        # then guards its captured revision at each physical write.
+        await coordinator.async_apply_music_params(
+            MUSIC_MODE_SLUGS[msg["mode"]],
+            parameters=msg["parameters"],
+            calm=msg.get("calm")
+            if "calm" in msg or coordinator.music_body is None
+            else music_body_style(coordinator.music_body, msg["mode"], profile=coordinator.profile),
+        )
+    except (ValueError, HomeAssistantError, BleakError, TimeoutError) as exc:
+        connection.send_error(msg["id"], "apply_failed", str(exc))
+        return
+    connection.send_result(msg["id"], {"retained_music_edit": retained_music_edit(coordinator)})
 
 
 @websocket_command(
@@ -1324,8 +1395,12 @@ async def ws_apply(
             msg["item_id"],
             model=entry.runtime_data.model,
             expected_version=msg["expected_version"],
+            profile=entry.runtime_data.profile,
         ) as item:
-            validate_video_request(entry.runtime_data, item.content)
+            if isinstance(item.content, VideoProfile):
+                await async_require_video_controls(
+                    entry.runtime_data, requested_video_controls(item.content), intent=ControlIntent.APPLY
+                )
             await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
             result = await backend.engine.async_apply_saved(
                 entry.runtime_data,
@@ -1393,9 +1468,15 @@ async def ws_apply_snapshot(
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
         compile_application(
-            item, entry.runtime_data.model, diy_code=resolve_diy_code(item, model=entry.runtime_data.model)
+            item,
+            entry.runtime_data.model,
+            diy_code=resolve_diy_code(item, model=entry.runtime_data.model),
+            profile=entry.runtime_data.profile,
         )
-        validate_video_request(entry.runtime_data, item.content)
+        if isinstance(item.content, VideoProfile):
+            await async_require_video_controls(
+                entry.runtime_data, requested_video_controls(item.content), intent=ControlIntent.APPLY
+            )
         await backend.preview.async_supersede_device(entry.entry_id, reason="committed_apply")
         result = await backend.engine.async_apply_snapshot(
             entry.runtime_data,
@@ -1439,6 +1520,7 @@ def async_register_effect_websocket(
     websocket_api.async_register_command(hass, ws_template_default_reset)
     websocket_api.async_register_command(hass, ws_preview_close)
     websocket_api.async_register_command(hass, ws_preview_apply_snapshot)
+    websocket_api.async_register_command(hass, ws_music_edit_retained)
     websocket_api.async_register_command(hass, ws_preview_apply_scene)
     websocket_api.async_register_command(hass, ws_preview_cancel)
     websocket_api.async_register_command(hass, ws_preview_subscribe)

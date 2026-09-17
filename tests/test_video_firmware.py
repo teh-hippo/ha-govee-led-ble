@@ -30,13 +30,22 @@ from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeScene
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    build_power,
     build_relative_brightness,
     build_white_balance,
     build_white_balance_query,
 )
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 from custom_components.ha_govee_led_ble.video_applicability import validate_video_request, video_control_states
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_video_semantics import alternate, reply
+
+
+@pytest.fixture(autouse=True)
+def synthetic_firmware_policy(monkeypatch):
+    """These tests isolate synthetic conditions; exact H6199 gates have their own suite."""
+    monkeypatch.setitem(MODEL_PROFILES, "H6199", replace(MODEL_PROFILES["H6199"], video_revision_policy=None))
 
 
 def gated(monkeypatch: pytest.MonkeyPatch):
@@ -78,7 +87,6 @@ def test_correct_identity_and_qualification(monkeypatch: pytest.MonkeyPatch, ver
     assert (
         video_control_states(MODEL_PROFILES["H6199"], SimpleNamespace())["white_balance"] is CapabilityState.SUPPORTED
     )
-    assert "H6099" not in MODEL_PROFILES
 
 
 async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch):
@@ -123,13 +131,23 @@ async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monk
     prior = replace(before, white_balance_scalar=100, video_restore_controls=("white_balance",))
     assert PriorControlState.from_dict(prior.to_dict()) == prior
     assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=None)
-    assert send.await_count == 1  # power only
+    assert [call.args[0] for call in send.await_args_list] == [
+        build_power(True, "H7000"),
+        build_brightness(prior.brightness_pct, "H7000"),
+        build_color_rgb(*prior.rgb_color, "H7000"),
+        build_power(False, "H7000"),
+    ]
     coordinator.subordinate_21_version = "9.08.07"
     send.reset_mock()
     await coordinator.async_restore_effect_control_state(
         replace(prior, video_restore_controls=()), overwritten_diy_code=None
     )
-    assert send.await_count == 1
+    assert [call.args[0] for call in send.await_args_list] == [
+        build_power(True, "H7000"),
+        build_brightness(prior.brightness_pct, "H7000"),
+        build_color_rgb(*prior.rgb_color, "H7000"),
+        build_power(False, "H7000"),
+    ]
     # Identity gating is write-only: the existing query remains available.
     coordinator.subordinate_21_version = None
     assert build_white_balance_query("H7000")
@@ -524,7 +542,7 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
         video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
     )
     coordinator.subordinate_21_version = "9.08.06" if during == "retained" else "9.08.07"
-    coordinator.is_on = True
+    coordinator.is_on = during not in {"power", "retained_power"}
     coordinator.video_saturation = 31
     backend = await EffectBackend.async_create(hass)
     entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
@@ -564,7 +582,7 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
         coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
     if during == "retained":
         await entity.async_turn_on(effect="Video: Movie")
-        assert physical.await_count == 2
+        assert physical.await_count == 1
         assert coordinator.video_saturation == 31
     else:
         with pytest.raises((HomeAssistantError, ValueError)) as error:
@@ -666,7 +684,7 @@ async def test_prior_refresh_requires_only_requested_register(hass, monkeypatch,
 
     async def respond(**kwargs):
         queries.append(kwargs)
-        bodies = ["aa0101", "aa05000100320032"]
+        bodies = ["aa0101", "aa0464", "aa05000100320032"]
         if kwargs.get(f"query_{setting}"):
             bodies.append("aaa90006011003011003" if setting == "white_balance" else "aaa90a0600020a007800")
         for body in bodies:
@@ -755,6 +773,15 @@ async def test_rejected_register_does_not_arm_expectations(hass, monkeypatch, se
     )
     before = coordinator.capture_effect_control_state()
     requested = {"white_balance": (25, 6), "relative_brightness": (70, 70, 70, 70), "blank_screen": False}[setting]
+
+    async def fresh_policy(**kwargs):
+        coordinator._notify_callback(None, reply(build_blank_screen(True, "H6199", 2, 10, 120)))
+        return True
+
+    if setting == "blank_screen":
+        from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_blank_screen
+
+        monkeypatch.setattr(coordinator, "refresh_state", fresh_policy)
     with pytest.raises(ValueError, match="unsupported"):
         await getattr(controls, f"apply_{setting}")(coordinator, requested)
     physical.assert_not_awaited()
@@ -953,6 +980,10 @@ async def test_public_deployment_recovers_only_after_control_attempt(hass, monke
             body = "aaa90006011003011003"
         elif packet[1] == 1:
             body = "aa0101"
+        elif packet[1] == 4:
+            body = "aa0464"
+        elif packet[1] == 0xA5:
+            body = f"aaa5{packet[2]:02x}" + "64ffffff" * 4
         else:
             body = "aa0515"
         frame = bytearray.fromhex(body)
@@ -1034,6 +1065,9 @@ async def test_blank_screen_never_replays_superseded_policy(hass, monkeypatch, e
         return client
 
     async def verify(**kwargs):
+        if kwargs == {"refresh_display_settings": frozenset({"blank_screen"})}:
+            coordinator._notify_callback(None, reply(build_blank_screen(not enabled, "H6199", 2, 10, 120)))
+            return True
         assert kwargs == {"expected_blank_screen": enabled}
         if change_at == "verify":
             observe_policy()

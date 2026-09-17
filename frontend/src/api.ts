@@ -25,6 +25,7 @@ import {
   decodeCustomCatalogue,
   decodeCatalogueTemplateDefaultDetail,
   decodeDevices,
+  decodeRetainedMusicEdit,
   decodeEditorApiInfo,
   decodeEffectUserState,
   decodeLibraryItem,
@@ -99,6 +100,15 @@ export class EffectStudioApi {
   public async customCatalogue(): Promise<CustomEffectCatalogue> {
     const result = await this.call("custom/catalogue");
     return decodeCustomCatalogue(resultField(result, "catalogue"));
+  }
+
+  public async editRetainedMusic(configEntryId: string, edit: import("./types").RetainedMusicEdit,
+    parameters: import("./types").JsonObject, calm?: boolean) {
+    const result = await this.call("music/edit_retained", {
+      config_entry_id: configEntryId, mode: edit.mode, expected_body_revision: edit.revision,
+      parameters, ...(calm === undefined ? {} : { calm }),
+    });
+    return decodeRetainedMusicEdit(resultField(result, "retained_music_edit"));
   }
 
   public async library(): Promise<LibrarySnapshot> {

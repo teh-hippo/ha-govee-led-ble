@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from .const import MUSIC_MODE_SLUGS, get_profile
+from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile
 from .coordinator_status import ParsedMode
-from .generated_protocol_adapter import parse_command
+from .generated_protocol_adapter import parse_command, parse_video_command, video_parameters_from_detail
 from .light_commands import parse_static_write
 from .scenes import MODEL_SCENES
 
@@ -19,27 +19,43 @@ def expectations_from_packet(
     model: str = "H617A",
     *,
     static_echoes_color: bool = False,
+    profile: ModelProfile | None = None,
 ) -> dict[str, Any]:
     """Map an outgoing command to the optimistic fields its replies should confirm."""
-    generated = parse_command(packet, model)
+    profile = profile or get_profile(model)
+    video = parse_video_command(packet, model, profile=profile)
+    if video is not None:
+        detail = video.detail
+        expectations = {
+            "color_mode": (ParsedMode.VIDEO, None),
+            "video_mode": detail.source.name,
+            "video_parameters": video_parameters_from_detail(detail, profile.video_grammar),
+        }
+        if profile.supports_video_saturation:
+            expectations["video_saturation"] = int(detail.saturation)
+        if profile.supports_video_sound_effects:
+            expectations["video_sound_effects"] = bool(detail.sound_effects)
+            expectations["video_sound_effects_softness"] = int(detail.softness)
+        return expectations
+    generated = parse_command(packet, model, profile=profile)
     if generated is None:
         return {}
     operation = getattr(generated.opcode, "name", None)
     if operation is None:
         return {}
     if operation == "power":
-        value = generated.body.value if model == "H6102" else generated.body.is_on
-        return {"is_on": bool(value)}
+        return {"is_on": bool(generated.body.is_on)}
     if operation == "brightness":
         return {"brightness_pct": int(generated.body.percent)}
-    expectations: dict[str, Any] = {}
+    expectations = {}
     if color_mode := _expected_color_mode(
         generated,
         model,
         static_echoes_color=static_echoes_color,
+        profile=profile,
     ):
         expectations["color_mode"] = color_mode
-    if get_profile(model).command_grammar == "H6199":
+    if profile.command_grammar in {"H6099", "H6199"}:
         if operation != "mode":
             return expectations
         mode = getattr(generated.body.sub_mode, "name", None)
@@ -48,6 +64,8 @@ def expectations_from_packet(
             music_mode = _MUSIC_SLUG_BY_ID.get(int(detail.mode))
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
+            if not getattr(detail, "is_legacy", True):
+                return expectations
             if music_mode == "rhythm":
                 expectations["music_calm"] = bool(detail.is_calm)
             expectations["music_color"] = (
@@ -57,8 +75,7 @@ def expectations_from_packet(
             )
             return expectations
         if mode == "video":
-            profile = get_profile(model)
-            if profile.video_grammar != "H6199":
+            if profile.video_grammar not in {"H6099", "H6199"}:
                 return expectations
             expectations["video_mode"] = detail.source.name
             if profile.supports_video_capture_region:
@@ -82,12 +99,12 @@ def expectations_from_packet(
             music_mode = _MUSIC_SLUG_BY_ID.get(int(detail.mode_id))
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
+            if not detail.is_legacy:
+                return expectations
             if music_mode == "rhythm":
                 expectations["music_calm"] = bool(detail.style)
             expectations["music_color"] = (
-                (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
-                if detail.manual_color_count
-                else None
+                (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue)) if detail.has_fixed_colour else None
             )
             return expectations
         if mode == "scene":
@@ -96,10 +113,10 @@ def expectations_from_packet(
             expectations["effect"] = _SCENE_EFFECT_BY_MODEL_ID.get(model, {}).get(scene_code)
             expectations["unknown_scene_code"] = scene_code if expectations["effect"] is None else None
             return expectations
-    if (static := parse_static_write(packet, model)) and static.whole_strip:
+    if (static := parse_static_write(packet, model, profile=profile)) and static.whole_strip:
         if static.rgb is not None:
             expectations["rgb_color"] = static.rgb
-            if get_profile(model).static_readback_kelvin:
+            if profile.static_readback_kelvin:
                 expectations["color_temp_kelvin"] = None
         elif static.kelvin is not None:
             expectations["color_temp_kelvin"] = static.kelvin
@@ -113,16 +130,20 @@ def _expected_color_mode(
     model: str,
     *,
     static_echoes_color: bool,
+    profile: ModelProfile | None = None,
 ) -> tuple[ParsedMode, int | None] | None:
-    if get_profile(model).command_grammar == "H6199":
+    profile = profile or get_profile(model)
+    if profile.command_grammar in {"H6099", "H6199"}:
         if generated.opcode.name != "mode":
             return None
         mode = getattr(generated.body.sub_mode, "name", None)
         detail = generated.body.detail
         if mode == "music":
             return ParsedMode.MUSIC, None
+        if mode == "diy":
+            return ParsedMode.DIY, int(detail.code)
         if mode == "video":
-            return (ParsedMode.VIDEO, None) if get_profile(model).video_grammar == "H6199" else None
+            return (ParsedMode.VIDEO, None) if profile.video_grammar in {"H6099", "H6199"} else None
         if mode == "scene":
             return ParsedMode.SCENE, None
         if mode == "static_colour":

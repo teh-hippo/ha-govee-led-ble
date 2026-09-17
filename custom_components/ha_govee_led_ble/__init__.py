@@ -15,11 +15,13 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
+from .ble_connection import clear_stale_gatt_recovery
 from .const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_H6102_APP_FIRMWARE,
+    CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
     DOMAIN,
@@ -41,7 +43,7 @@ from .light_services import async_register_light_services
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-PLATFORMS = [Platform.LIGHT]
+PLATFORMS = [Platform.LIGHT, Platform.SELECT, Platform.SENSOR, Platform.SWITCH]
 _LEGACY_ENTITY_SUFFIXES = {
     "_active_mode",
     "_blank_screen",
@@ -213,6 +215,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         always_include_custom_effects=always_include_custom_effects_from_options(entry.options),
         h6102_firmware=h6102_firmware,
         h6102_firmware_source="configured" if h6102_firmware is not None else None,
+        h6102_pact=entry.data.get(CONF_H6102_PACT) if model == "H6102" else None,
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
@@ -298,4 +301,5 @@ async def async_remove_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) ->
     ir.async_delete_issue(hass, DOMAIN, _unsupported_model_issue_id(entry))
     if entry.unique_id is not None:
         clear_availability_log_state(hass, entry.unique_id)
+        clear_stale_gatt_recovery(hass, entry.unique_id)
     await _async_update_editor_panel(hass, excluding_entry_id=entry.entry_id)

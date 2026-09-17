@@ -24,6 +24,7 @@ from custom_components.ha_govee_led_ble.music_commands import build_music_params
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
+from tests.test_music_commands import _music_transport
 
 _CONFIGURATION_URL = "homeassistant://ha-govee-led-ble/editor/test-entry"
 
@@ -99,9 +100,26 @@ async def test_native_scene_application_requires_exact_capability_and_grammar(
 async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
     coord.is_on, coord.effect = True, "prior effect"
     coord.diy_code = 0xF0
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+
+    async def transmit(_uuid, packet, **_kwargs):
+        assert coord._control_arbiter.current_task_intent is ControlIntent.USER
+        if packet == build_power(True):
+            assert coord.effect == "prior effect" and coord.diy_code == 0xF0
+            assert coord.music_mode == "off"
+        else:
+            assert coord.effect is None and coord.diy_code is None
+            assert coord.music_mode == "rhythm"
+
+    with (
+        _music_transport(coord) as sc,
+        patch.object(coord, "async_write_effect_sequence", wraps=coord.async_write_effect_sequence) as sequence,
+    ):
+        sc.side_effect = transmit
         await coord.async_select_music_slug("rhythm")
-    assert _sent(sc) == [
+    sequence.assert_awaited_once()
+    assert callable(sequence.await_args.kwargs["packet_write_guard"])
+    assert sequence.await_args.kwargs["packet_state_values"][0] == {"is_on": True}
+    assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
         build_music_mode(MUSIC_MODE_SLUGS["rhythm"], 99, None, False),
     ]
@@ -113,9 +131,9 @@ async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):
 
 async def test_h6199_music_reapply_preserves_fixed_colour(h6199):
     h6199.music_color = (1, 2, 3)
-    with patch.object(h6199, "send_command", new_callable=AsyncMock) as sc:
+    with _music_transport(h6199) as sc:
         await h6199.async_select_music_slug("rhythm")
-    assert _sent(sc) == [
+    assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
         build_music_mode(
             MUSIC_MODE_SLUGS["rhythm"],
@@ -129,14 +147,14 @@ async def test_h6199_music_reapply_preserves_fixed_colour(h6199):
 
 async def test_entering_music_from_color_temp_captures_color_temp_snapshot(coord):
     coord.is_on, coord.color_temp_kelvin = True, 4000
-    with patch.object(coord, "send_command", new_callable=AsyncMock):
+    with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
     assert coord._pre_mode_snapshot == PreModeSnapshot(kind="color_temp", kelvin=4000)
 
 
 async def test_entering_music_from_rgb_captures_rgb_snapshot(coord):
     coord.is_on, coord.color_temp_kelvin, coord.rgb_color = True, None, (7, 8, 9)
-    with patch.object(coord, "send_command", new_callable=AsyncMock):
+    with _music_transport(coord):
         await coord.async_select_music_slug("bloom")
     assert coord._pre_mode_snapshot == PreModeSnapshot(kind="rgb", rgb=(7, 8, 9))
 
@@ -145,7 +163,7 @@ async def test_entering_music_from_active_mode_preserves_snapshot(coord):
     coord.is_on, coord.music_mode = True, "rhythm"
     original = PreModeSnapshot(kind="color_temp", kelvin=6000)
     coord._pre_mode_snapshot, coord.color_temp_kelvin = original, 4000
-    with patch.object(coord, "send_command", new_callable=AsyncMock):
+    with _music_transport(coord):
         await coord.async_select_music_slug("spectrum")
     assert coord._pre_mode_snapshot is original
 
@@ -154,47 +172,49 @@ async def test_music_style_applies_to_rhythm_bloom_and_shiny(coord):
     coord.is_on, coord.music_calm, coord.music_sensitivity = True, True, 80
 
     # Rhythm carries Dynamic/Calm in the base frame only (no a3 companion).
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+    with _music_transport(coord) as sc:
         await coord.async_select_music_slug("rhythm")
-    assert _sent(sc) == [
+    assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
         build_music_mode(MUSIC_MODE_SLUGS["rhythm"], 80, None, True),
     ]
 
-    # A mode without a style keeps calm out of the base frame and sends no companion.
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+    # Destination presets upload before the selector, including modes without style.
+    with _music_transport(coord) as sc:
         await coord.async_select_music_slug("hopping")
-    assert _sent(sc) == [
+    assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
+        *build_music_params(0x33, {}, profile=coord.profile),
         build_music_mode(MUSIC_MODE_SLUGS["hopping"], 80, None, False),
     ]
 
-    # Shiny sets the base-frame STYLE and its a3 companion [20,21] to the Calm values.
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+    # Shiny style belongs solely to the A3 companion.
+    coord.music_calm = True
+    with _music_transport(coord) as sc:
         await coord.async_select_music_slug("shiny")
-    assert _sent(sc) == [
+    assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
-        build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, True),
         *build_music_params(0x31, {}, profile=coord.profile, calm=True),
+        build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, True),
     ]
 
     # Bloom's Calm companion is [27].
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+    with _music_transport(coord) as sc:
         await coord.async_select_music_slug("bloom")
-    assert _sent(sc) == [
+    assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
-        build_music_mode(MUSIC_MODE_SLUGS["bloom"], 80, None, True),
         *build_music_params(0x30, {}, profile=coord.profile, calm=True),
+        build_music_mode(MUSIC_MODE_SLUGS["bloom"], 80, None, True),
     ]
 
     # Dynamic Shiny writes the template's baseline companion values.
     coord.music_calm = False
-    with patch.object(coord, "send_command", new_callable=AsyncMock) as sc:
+    with _music_transport(coord) as sc:
         await coord.async_select_music_slug("shiny")
-    assert _sent(sc) == [
+    assert [entry.args[1] for entry in sc.await_args_list] == [
         build_power(True),
-        build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, False),
         *build_music_params(0x31, {}, profile=coord.profile),
+        build_music_mode(MUSIC_MODE_SLUGS["shiny"], 80, None, False),
     ]
 
 
@@ -244,6 +264,9 @@ async def test_apply_active_video_mode_noop_when_video_off(coord):
 
 
 async def test_apply_active_video_mode_requires_readback(h6199):
+    from tests.test_h6199_capabilities import QUALIFIED
+
+    vars(h6199).update(QUALIFIED)
     h6199.is_on = True
     values = {"full_screen": False, "saturation": 63, "sound_effects": True, "sound_effects_softness": 27}
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
@@ -283,4 +306,15 @@ async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
         build_h6199_video(True, False, 100, False, 100),
     ]
     assert h6199.is_on is True
-    assert refresh.await_args_list == [call(expected_on=True, expected_video_mode="movie")] * 2
+    assert (
+        refresh.await_args_list
+        == [
+            call(
+                expected_on=True,
+                expected_video_mode="movie",
+                expected_video_full_screen=True,
+                expected_video_saturation=100,
+            )
+        ]
+        * 2
+    )

@@ -20,6 +20,7 @@ import type {
   EffectStudioModeOption,
   ModelEffectCatalogue,
   MusicSettings,
+  RGB,
   PaintedContent,
   PaintedEffectTemplate,
   PaletteDiyFamily,
@@ -60,6 +61,7 @@ function decodeVideoControls(value: unknown): VideoControls {
   const controls = objectValue(value, "video controls");
   const white = objectValue(controls.white_balance, "white balance control");
   return {
+    saturation_min: integerValue(controls.saturation_min, "video saturation minimum", 0, 100),
     white_balance: {
       representation: enumString(white.representation, ["position", "scalar"] as const, "white balance representation"),
       minimum: integerValue(white.minimum, "white balance minimum", 0, 255),
@@ -78,6 +80,7 @@ const VIDEO_PROFILE_SETTINGS = [
   "white_balance",
   "relative_brightness",
   "blank_screen",
+  "black_border",
 ] as const;
 export function decodeCustomCataloguePayload(
   value: unknown,
@@ -192,8 +195,18 @@ function decodeModelEffectCatalogue(
       invalid(`${name} ${field} limits are inverted`);
     }
   }
+  if (catalogue.painted_addressing !== undefined &&
+      arrayValue(catalogue.painted_background, "painted background", 3).length !== 3) {
+    invalid("painted background must contain three channels");
+  }
   return {
     sku,
+    ...(catalogue.painted_addressing === undefined ? {} : {
+      painted_addressing: enumString(catalogue.painted_addressing, ["segments", "physical_ic"], "painted addressing"),
+      painted_background: arrayValue(catalogue.painted_background, "painted background", 3).map(
+        (channel) => integerValue(channel, "painted background channel", 0, 255),
+      ) as [number, number, number],
+    }),
     painted_effects: decodePaintedEffectTemplates(
       catalogue.painted_effects,
       `${name} painted-effect templates`,
@@ -292,10 +305,19 @@ function decodeModelEffectCatalogue(
 }
 
 
-function decodeMusicSettings(value: unknown): Record<string, MusicSettings> {
+export function decodeMusicSettings(value: unknown): Record<string, MusicSettings> {
   return Object.fromEntries(Object.entries(objectValue(value, "music settings")).map(([mode, raw]) => {
     const settings = objectValue(raw, "music mode settings");
     const parameters = objectValue(settings.parameters, "music parameters");
+    const palette = settings.palette === undefined ? undefined : objectValue(settings.palette, "music palette");
+    const minimum = palette ? integerValue(palette.min, "music palette minimum", 1, 8) : 1;
+    const maximum = palette ? integerValue(palette.max, "music palette maximum", minimum, 8) : 8;
+    const defaults = palette ? arrayValue(palette.default, "music default palette", maximum).map((value) => {
+      const rgb = arrayValue(value, "music palette colour", 3);
+      if (rgb.length !== 3) invalid("music palette colour");
+      return rgb.map(channel => integerValue(channel, "music palette channel", 0, 255)) as RGB;
+    }) : [];
+    if (palette && defaults.length < minimum) invalid("music default palette");
     return [mode, {
       available: booleanValue(settings.available, "music availability"),
       style: booleanValue(settings.style, "music style"),
@@ -303,11 +325,12 @@ function decodeMusicSettings(value: unknown): Record<string, MusicSettings> {
       colour: booleanValue(settings.colour, "music colour"),
       evidence: settings.evidence === null ? null : boundedString(settings.evidence, "music evidence", 1024),
       palette_size: integerValue(settings.palette_size, "music palette size", 0, 255),
+      ...(palette ? { palette: { min: minimum, max: maximum, default: defaults } } : {}),
       parameters: Object.fromEntries(Object.entries(parameters).map(([key, rawSpec]) => {
         const spec = objectValue(rawSpec, "music parameter");
         const kind = enumString(spec.kind, ["number", "switch", "select"] as const, "music parameter kind");
-        const min = integerValue(spec.min, "music minimum", 0, 255);
-        const max = integerValue(spec.max, "music maximum", min, 255);
+        const min = integerValue(spec.min, "music minimum", 0, 0xffffff);
+        const max = integerValue(spec.max, "music maximum", min, 0xffffff);
         const options = arrayValue(spec.options, "music options", 255).map((option) => boundedString(option, "music option", 128));
         const defaultValue = kind === "number" ? integerValue(spec.default, "music default", min, max)
           : kind === "switch" ? booleanValue(spec.default, "music default")
@@ -350,7 +373,8 @@ function decodeCatalogueTemplates(
         content.kind !== "h617a_single" &&
         content.kind !== "palette_diy" &&
         content.kind !== "music_profile" &&
-        content.kind !== "video_profile"
+        content.kind !== "video_profile" &&
+        content.kind !== "advanced"
       ) {
         invalid(`${name}[${index}] content is not a supported built-in template`);
       }
@@ -359,6 +383,9 @@ function decodeCatalogueTemplates(
         content.model !== model
       ) {
         invalid(`${name}[${index}] content does not target ${model}`);
+      }
+      if (content.kind === "advanced" && content.native_diy === undefined) {
+        invalid(`${name}[${index}] native DIY template identity`);
       }
       return {
         id: boundedString(
@@ -373,7 +400,7 @@ function decodeCatalogueTemplates(
         ),
         category: enumString(
           template.category,
-          ["single-layer", "music", "video"],
+          ["single-layer", "music", "video", "advanced"],
           `${name}[${index}] category`,
         ) as CatalogueTemplate["category"],
         content,
@@ -471,7 +498,9 @@ function decodePaletteDiyFamilies(
         );
       }
       const decoded: PaletteDiyFamily = {
+        ...(effect.palette_max === undefined ? {} : { palette_max: integerValue(effect.palette_max, "family palette maximum", 1, 85) }),
         rate_min: integerValue(effect.rate_min, `${name} minimum rate`, 0, 100),
+        ...(effect.multi_rate_min === undefined ? {} : { multi_rate_min: integerValue(effect.multi_rate_min, `${name} Multi minimum rate`, 0, 100) }),
         rate_max: integerValue(effect.rate_max, `${name} maximum rate`, 0, 100),
         id: boundedString(
           effect.id,
@@ -519,7 +548,7 @@ function decodePaletteDiyFamilies(
         ),
         rate: enumString(
           effect.rate,
-          ["speed", "sensitivity"],
+          ["speed", "sensitivity", "none"],
           `${name}[${index}] rate parameter`,
         ) as "speed" | "sensitivity",
         category: enumString(

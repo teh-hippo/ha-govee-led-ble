@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 
-from .const import DOMAIN, ReadDomain
+from .const import DOMAIN, ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
@@ -29,12 +29,12 @@ from .effect_compiler import (
     CompiledEffect,
     CompiledVideoProfile,
     compile_application,
+    require_native_scenes,
+    validate_compiled_geometry,
 )
-from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_deployments import ObservationConfidence
 from .effect_diagnostics import DiagnosticOutcome, DiagnosticStage, EffectDiagnosticHistory
 from .effect_domain import (
-    EffectContent,
     JsonValue,
     LayeredScene,
     LibraryItem,
@@ -45,11 +45,8 @@ from .effect_domain import (
 )
 from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
-from .effect_protocol_decoder import (
-    UnsupportedA3EffectError,
-    decode_a3_effect_frames,
-)
 from .effect_runtime import (
+    _active_workspace_content,
     active_workspace_matches,
     async_apply_compiled_profile,
     compiled_observation,
@@ -67,9 +64,10 @@ from .effect_scenes import (
 )
 from .effect_template_defaults import CatalogueTemplateDefault, CatalogueTemplateDefaultRepository
 from .generated_protocol_adapter import build_power
+from .native_profile_controls import async_require_video_controls
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body, resolve_native_scene_body
 from .scenes import canonical_scene_key, scene_code_is_ambiguous
-from .video_applicability import validate_video_request
+from .video_applicability import requested_video_controls, require_video_mode, validate_video_request
 
 PREVIEW_VERIFY_DELAY = 0.75
 PREVIEW_VERIFY_TIMEOUT = 4.0
@@ -486,10 +484,14 @@ class EffectPreviewManager:
         coordinator = self._loaded_coordinator(config_entry_id)
         try:
             diy_code = resolve_diy_code(item, model=coordinator.model)
-            compiled = compile_application(item, coordinator.model, diy_code=diy_code)
+            compiled = compile_application(item, coordinator.model, diy_code=diy_code, profile=coordinator.profile)
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
-        validate_video_request(coordinator, item.content)
+        if isinstance(compiled, CompiledVideoProfile):
+            await async_require_video_controls(
+                coordinator, requested_video_controls(compiled), intent=ControlIntent.PREVIEW
+            )
+            require_video_mode(coordinator.profile, coordinator)
         if (
             persist_default
             and item.origin.kind is SourceKind.CATALOGUE_TEMPLATE
@@ -501,6 +503,7 @@ class EffectPreviewManager:
                 coordinator.model,
                 item.origin.source_id,
                 item.content,
+                profile=coordinator.profile,
             )
         fingerprint = _snapshot_fingerprint(coordinator.model, item)
         request = _PreviewRequest(
@@ -516,7 +519,11 @@ class EffectPreviewManager:
             item=item,
             diy_code=diy_code,
             compiled=compiled,
-            default_action=(_snapshot_default_action(item, coordinator.model) if persist_default else None),
+            default_action=(
+                _snapshot_default_action(item, coordinator.model, profile=coordinator.profile)
+                if persist_default
+                else None
+            ),
         )
         return await self._async_accept(owner, request)
 
@@ -549,7 +556,7 @@ class EffectPreviewManager:
                 scene_default=scene_default,
                 speed_index=speed_index,
             )
-            require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES)
+            require_native_scenes(coordinator.model, coordinator.profile)
             build_native_scene_packets(
                 coordinator.model,
                 resolved.entry,
@@ -883,8 +890,11 @@ class EffectPreviewManager:
         try:
             coordinator = self._loaded_coordinator(request.config_entry_id)
             compiled = request.compiled
-            if request.item is not None:
-                validate_video_request(coordinator, request.item.content)
+            if isinstance(compiled, CompiledVideoProfile):
+                await async_require_video_controls(
+                    coordinator, requested_video_controls(compiled), intent=ControlIntent.PREVIEW
+                )
+                require_video_mode(coordinator.profile, coordinator)
         except Exception as exc:
             self._diagnostics.record(
                 DiagnosticStage.COMPILATION,
@@ -929,6 +939,8 @@ class EffectPreviewManager:
         writer: _PreviewWriter | None = None
         try:
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
+            if compiled is not None:
+                validate_compiled_geometry(compiled, coordinator.profile)
             writer = _PreviewWriter(self, request, coordinator)
             if request.scene is not None:
                 await coordinator.async_apply_native_scene(
@@ -951,6 +963,16 @@ class EffectPreviewManager:
                         packets,
                         intent=ControlIntent.PREVIEW,
                         before_write=writer.begin,
+                        write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                        **(
+                            {
+                                "require_upload_ack": True,
+                                "upload_ack_index": len(compiled.upload_packets) - 1 + int(power_required),
+                                "writer": writer,
+                            }
+                            if "native_diy_positive_ack_required" in compiled.evidence_codes
+                            else {}
+                        ),
                     )
                     if power_required:
                         coordinator.is_on = True
@@ -1165,6 +1187,7 @@ class EffectPreviewManager:
                 self._loaded_coordinator(request.config_entry_id).model,
                 template_id,
                 item.content,
+                profile=self._loaded_coordinator(request.config_entry_id).profile,
             )
             if effect_content_hash(item.content) == effect_content_hash(template.content):
                 await self._template_defaults.async_delete(request.config_entry_id, template_id)
@@ -1611,19 +1634,6 @@ def _required_item(request: _PreviewRequest) -> LibraryItem:
     return request.item
 
 
-def _active_workspace_content(
-    source: EffectContent,
-    compiled: CompiledApplication | None,
-) -> EffectContent:
-    if not isinstance(compiled, CompiledEffect) or not compiled.upload_packets:
-        return source
-    try:
-        decoded = decode_a3_effect_frames(compiled.upload_packets, compiled.model)
-    except UnsupportedA3EffectError:
-        return source
-    return decoded if type(decoded) is type(source) else source
-
-
 def _preview_scene_identity(
     request: _PreviewRequest,
 ) -> tuple[int | None, int | None]:
@@ -1649,7 +1659,7 @@ def _scene_default_action(
     return "reset" if canonical_body == catalogue_body and speed_index == catalogue_speed else "set"
 
 
-def _snapshot_default_action(item: LibraryItem, model: str) -> str | None:
+def _snapshot_default_action(item: LibraryItem, model: str, *, profile: ModelProfile | None = None) -> str | None:
     if isinstance(item.content, PaletteScene | LayeredScene):
         scene = resolve_scene(
             item.content.template.sku,
@@ -1671,6 +1681,7 @@ def _snapshot_default_action(item: LibraryItem, model: str) -> str | None:
         model,
         item.origin.source_id,
         item.content,
+        profile=profile,
     )
     return "reset" if effect_content_hash(item.content) == effect_content_hash(template.content) else "set"
 

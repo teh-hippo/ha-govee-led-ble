@@ -4,6 +4,8 @@ meta:
   endian: le
 doc: |
   H6199 20-byte status query. The final byte is the XOR of bytes 0 through 18.
+  Issue #294 direction30, position31, status32 and Gradient A3 queries are
+  speculative APK/direct-register evidence, not official-app BLE captures.
 seq:
   - id: header
     contents: [0xaa]
@@ -26,6 +28,10 @@ seq:
         'query_domain::display_setting': display_setting_query_body
         'query_domain::relative_brightness': relative_brightness_query_body
         'query_domain::segments': segment_query_body
+        'query_domain::strip_direction': zero_body
+        'query_domain::camera_position': zero_body
+        'query_domain::camera_status': zero_body
+        'query_domain::gradient': zero_body
   - id: checksum
     type: u1
 enums:
@@ -38,6 +44,10 @@ enums:
     0x14: identity
     0x20: subordinate_20
     0x21: subordinate_21
+    0x30: strip_direction
+    0x31: camera_position
+    0x32: camera_status
+    0xa3: gradient
     0xa9: display_setting
     0xae: relative_brightness
     0xa5: segments

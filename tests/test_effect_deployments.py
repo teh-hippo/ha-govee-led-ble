@@ -437,6 +437,41 @@ def test_unsaved_apply_records_content_free_source_metadata() -> None:
     assert "content" not in document
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("music_body", 123),
+        ("music_body", "zz"),
+        ("music_body", "00"),
+        ("music_body", "00" * (255 * 17)),
+        ("music_body", ""),
+        ("music_body", "3101ff000005640a"),
+        ("segment_colors", []),
+        ("segment_colors", [[1, 2, 3]] * 17),
+        ("segment_colors", [[1, 2, True]]),
+        ("segment_brightness", [True]),
+        ("segment_brightness", [101]),
+        ("segment_brightness", [-1]),
+    ],
+)
+def test_prior_state_rejects_invalid_body_and_segment_persistence(field, value):
+    from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectStorageError
+
+    raw = PriorControlState("music", True, 50, (1, 2, 3), music_model="H617A", music_mode="separation").to_dict()
+    raw.update(segment_colors=[[1, 2, 3]], segment_brightness=[50])
+    raw[field] = value
+    with pytest.raises(EffectStorageError):
+        PriorControlState.from_dict(raw)
+
+
+def test_prior_state_legacy_missing_fields_stay_unknown():
+    prior = PriorControlState.from_dict(
+        {"mode": "colour", "is_on": False, "brightness_pct": 37, "rgb_color": [1, 2, 3]}
+    )
+    assert prior.music_body is prior.segment_colors is prior.segment_brightness is None
+    assert not {"music_body", "segment_colors", "segment_brightness"} & prior.to_dict().keys()
+
+
 def test_deployment_round_trip_preserves_prior_state_and_verification_confidence() -> None:
     prior_state = PriorControlState(
         mode="video",
@@ -444,10 +479,14 @@ def test_deployment_round_trip_preserves_prior_state_and_verification_confidence
         brightness_pct=72,
         rgb_color=(1, 2, 3),
         color_temp_kelvin=4000,
+        segment_colors=((1, 2, 3),) * 14 + ((3, 2, 1),),
+        segment_brightness=(30,) * 14 + (70,),
         effect="forest",
         scene_code=2163,
         diy_code=800,
         music_mode="separation",
+        music_model="H617A",
+        music_body=bytes.fromhex("3205ff7f00ff0000ffff000000ff00ff0001015e0000000000000000000000"),
         video_mode="game",
         music_sensitivity=50,
         music_calm=True,

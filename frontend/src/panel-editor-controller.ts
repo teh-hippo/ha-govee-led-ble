@@ -99,6 +99,11 @@ export class PanelEditorController {
   public selectCustomEffectEntry(entry: CustomEffectListEntry): void {
     if (entry.kind === "saved") {
       this.options.selectItem(entry.item.id);
+    } else if (entry.kind === "native-diy") {
+      const template = this.model.modelCatalogue?.templates?.find((template) => template.id === entry.key);
+      if (template?.content.kind !== "advanced") return;
+      this.openEditableTemplate(entry.label, cloneEditableEffect(template.content), entry.key,
+        { section: "custom", category: "advanced" }, true);
     } else if (entry.kind === "music") {
       this.openMusicTemplate(entry.mode, entry.label, true);
     } else if (entry.kind === "paint") {
@@ -191,6 +196,10 @@ export class PanelEditorController {
       this.beginSelectionTransition();
     }
     const installed = cloneEditableEffect(content);
+    if (installed.kind === "h617a_painted" && installed.addressing === "physical_ic") {
+      this.model.paintColour = [255, 0, 0];
+      this.model.paintBrushOff = false;
+    }
     this.model.patch({
       currentItem: undefined,
       editorSource: {
@@ -381,6 +390,9 @@ export class PanelEditorController {
     );
     if (!content) return;
     const name = initial?.name ?? `New ${customKindLabel(kind)} effect`;
+    if (content.kind === "h617a_painted" && content.addressing === "physical_ic") {
+      this.model.paintColour = [255, 0, 0];
+    }
     const owner: EditorOwner = {
       section: "custom",
       category:
@@ -708,6 +720,7 @@ export class PanelEditorController {
         ...blankCustomEffect("h617a_painted", catalogue),
         speed: Math.max(catalogue.limits.speed_min, Math.min(current.speed, catalogue.limits.speed_max)),
       };
+      if (next.addressing === "physical_ic") this.model.paintColour = [255, 0, 0];
     } else if (current.kind === "h617a_painted") {
       const paintedPalette = uniquePaintedPalette(current);
       if (kind === "h617a_single") {

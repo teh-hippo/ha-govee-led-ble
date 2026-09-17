@@ -115,6 +115,10 @@ export function effectContentEligible(
   model: string,
   segmentCount: number,
 ): boolean {
+  if (content.kind === "advanced" && content.native_diy !== undefined) {
+    return catalogue?.sku === model && catalogue?.templates?.some((template) =>
+      template.content.kind === "advanced" && template.content.native_diy === content.native_diy) === true;
+  }
   if (content.kind === "music_profile") {
     if (!catalogue || catalogue.sku !== model || content.model !== model ||
         !catalogue.music_modes.some((mode) => mode.id === content.mode)) return false;
@@ -126,6 +130,10 @@ export function effectContentEligible(
     if (content.colour !== null && (!settings.colour || content.colour.length !== 3 ||
         !content.colour.every((channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255))) return false;
     if (Object.keys(content.parameters).some((key) => !Object.hasOwn(settings.parameters, key))) return false;
+    if (content.palette !== undefined && (!settings.palette ||
+        content.palette.length < settings.palette.min || content.palette.length > settings.palette.max ||
+        !content.palette.every(rgb => rgb.length === 3 && rgb.every(channel =>
+          Number.isInteger(channel) && channel >= 0 && channel <= 255)))) return false;
     return Object.entries(settings.parameters).every(([key, spec]) => {
       const value = Object.hasOwn(content.parameters, key) ? content.parameters[key] : spec.default;
       if (spec.kind === "number") return typeof value === "number" && Number.isInteger(value) && value >= spec.min && value <= spec.max;
@@ -143,7 +151,8 @@ export function effectContentEligible(
     return (
       catalogue.apply.painted === "supported" &&
       catalogue.painted_effects.some((effect) => effect.id === content.effect) &&
-      content.segments.length === segmentCount &&
+      (content.addressing ?? "segments") === (catalogue.painted_addressing ?? "segments") &&
+      content.segments.length === (catalogue.painted_addressing === "physical_ic" ? catalogue.physical_ic_count : segmentCount) &&
       content.speed >= limits.speed_min && content.speed <= limits.speed_max &&
       content.brightness >= limits.brightness_min && content.brightness <= limits.brightness_max
     );
@@ -165,7 +174,8 @@ export function effectContentEligible(
       family !== undefined &&
       family.variations.some((variation) => variation.variant === pair.variant) &&
       (content.kind !== "h617a_multi" || family.supports_multi) &&
-      content.speed >= family.rate_min && content.speed <= family.rate_max
+      content.palette.length <= (family.palette_max ?? limits.palette_max) &&
+      content.speed >= (content.kind === "h617a_multi" ? family.multi_rate_min ?? family.rate_min : family.rate_min) && content.speed <= family.rate_max
     );
   });
 }
@@ -203,6 +213,11 @@ export function blankCustomEffect(
     if (!effect) throw new Error("The target catalogue has no painted effects.");
     return {
       ...blankPainted(), effect: effect.id,
+      ...(catalogue.painted_addressing === "physical_ic" ? {
+        addressing: "physical_ic" as const,
+        background: cloneRgb(catalogue.painted_background ?? [255, 255, 255]),
+        segments: Array.from({ length: catalogue.physical_ic_count ?? 0 }, () => null),
+      } : {}),
       speed: Math.max(catalogue.limits.speed_min, Math.min(50, catalogue.limits.speed_max)),
       brightness: catalogue.limits.brightness_max,
     };
@@ -245,7 +260,7 @@ export function blankCustomEffect(
       kind,
       ...pair,
       speed: Math.max(first.rate_min, Math.min(50, first.rate_max)),
-      palette: defaultPalette(catalogue),
+      palette: first.palette_max === 3 ? [[255, 0, 0], [0, 255, 0], [0, 0, 255]] : defaultPalette(catalogue).slice(0, first.palette_max),
     };
   }
   return {
@@ -286,6 +301,7 @@ export function blankPaletteDiy(
 function clonePainted(content: PaintedContent): PaintedContent {
   return {
     ...content,
+    ...(content.background ? { background: cloneRgb(content.background) } : {}),
     segments: content.segments.map((segment) =>
       segment === null ? null : cloneRgb(segment),
     ),

@@ -88,6 +88,7 @@ class PriorControlState:
     brightness_pct: int
     rgb_color: tuple[int, int, int]
     color_temp_kelvin: int | None = None
+    static_gradual: bool | None = None
     effect: str | None = None
     scene_code: int | None = None
     diy_code: int | None = None
@@ -95,7 +96,9 @@ class PriorControlState:
     music_model: str | None = None
     # None is a legacy snapshot: read its named fields. An explicit mapping wins.
     music_parameters: Mapping[str, int | bool | str] | None = None
+    music_palette: tuple[tuple[int, int, int], ...] | None = None
     video_mode: str = "off"
+    video_parameters: Mapping[str, int | bool | str] | None = None
     music_sensitivity: int = 100
     music_calm: bool = False
     music_color: tuple[int, int, int] | None = None
@@ -113,6 +116,11 @@ class PriorControlState:
     video_sound_effects_softness: int = 100
     white_balance_red: int | None = None
     white_balance_blue: int | None = None
+    # Absent in legacy snapshots: the original auto/manual mode cannot be reconstructed.
+    white_balance_flag: int | None = None
+    white_balance_default_flag: int | None = None
+    white_balance_default_red: int | None = None
+    white_balance_default_blue: int | None = None
     white_balance_scalar: int | None = None
     relative_brightness: int | None = None
     relative_brightness_left: int | None = None
@@ -122,12 +130,59 @@ class PriorControlState:
     relative_brightness_strip_left: int | None = None
     relative_brightness_strip_right: int | None = None
     blank_screen: bool | None = None
+    black_border: bool | None = None
     blank_screen_detection: int | None = None
     blank_screen_low_brightness_duration_seconds: int | None = None
     blank_screen_same_tone_duration_seconds: int | None = None
     video_restore_controls: tuple[str, ...] | None = None
+    # Missing legacy/unobserved layouts cannot be reconstructed from aggregate RGB.
+    segment_colors: tuple[tuple[int, int, int], ...] | None = None
+    segment_brightness: tuple[int, ...] | None = None
+    music_body: bytes | None = None
 
     def __post_init__(self) -> None:
+        if self.static_gradual is not None and type(self.static_gradual) is not bool:
+            raise EffectStorageError("prior static gradual must be a boolean or null")
+        if self.video_parameters is not None:
+            if not isinstance(self.video_parameters, Mapping):
+                raise EffectStorageError("prior video parameters must be a mapping")
+            validate_json_document(
+                dict(self.video_parameters),
+                "prior video parameters",
+                maximum_bytes=MAX_EFFECT_DOCUMENT_BYTES,
+                error_type=EffectStorageError,
+            )
+            if any(
+                not isinstance(key, str) or type(value) not in (int, bool, str)
+                for key, value in self.video_parameters.items()
+            ):
+                raise EffectStorageError("invalid prior video parameter")
+        if self.music_body is not None:
+            from .music_commands import validate_music_body
+
+            if self.music_model not in MODEL_PROFILES:
+                raise EffectStorageError("prior music body requires a known model")
+            try:
+                validate_music_body(self.music_body, self.music_mode, profile=MODEL_PROFILES[self.music_model])
+            except ValueError as error:
+                raise EffectStorageError("invalid prior music body") from error
+        if self.segment_colors is not None or self.segment_brightness is not None:
+            if (
+                not isinstance(self.segment_colors, tuple)
+                or not isinstance(self.segment_brightness, tuple)
+                or not 1 <= len(self.segment_colors) <= 16
+                or len(self.segment_colors) != len(self.segment_brightness)
+            ):
+                raise EffectStorageError("prior segment layout must contain matching 1 to 16 element tuples")
+            for rgb in self.segment_colors:
+                _validate_rgb(rgb, "prior segment colour")
+            if any(type(value) is not int or not 0 <= value <= 100 for value in self.segment_brightness):
+                raise EffectStorageError("prior segment brightness must be from 0 to 100")
+        if self.music_palette is not None:
+            if not isinstance(self.music_palette, tuple) or not 1 <= len(self.music_palette) <= 8:
+                raise EffectStorageError("prior music palette must contain 1 to 8 colours")
+            for rgb in self.music_palette:
+                _validate_rgb(rgb, "prior music palette colour")
         if self.music_parameters is not None:
             if not isinstance(self.music_parameters, Mapping):
                 raise EffectStorageError("prior music parameters must be a mapping")
@@ -155,6 +210,8 @@ class PriorControlState:
                     "white_balance",
                     "relative_brightness",
                     "blank_screen",
+                    "blank_screen_policy",
+                    "black_border",
                 }
                 for control in self.video_restore_controls
             )
@@ -209,7 +266,12 @@ class PriorControlState:
             _validate_rgb(self.music_color, "prior music colour")
         numeric_values: tuple[tuple[int, str, int, int], ...] = (
             (self.video_saturation, "prior video saturation", 0, 100),
-            (self.video_sound_effects_softness, "prior video sound-effects softness", 1, 100),
+            (
+                self.video_sound_effects_softness,
+                "prior video sound-effects softness",
+                0 if self.video_parameters else 1,
+                100,
+            ),
         )
         if self.music_parameters is None:
             # Only legacy snapshots use these fields; mappings use variant validation before writes.
@@ -248,14 +310,18 @@ class PriorControlState:
         optional_numeric_values: tuple[tuple[int | None, str, int, int], ...] = (
             (self.white_balance_red, "prior white-balance red", 0, 255),
             (self.white_balance_blue, "prior white-balance blue", 0, 255),
+            (self.white_balance_flag, "prior white-balance flag", 0, 255),
+            (self.white_balance_default_flag, "prior white-balance default flag", 0, 255),
+            (self.white_balance_default_red, "prior white-balance default red", 0, 255),
+            (self.white_balance_default_blue, "prior white-balance default blue", 0, 255),
             (self.white_balance_scalar, "prior scalar white balance", 0, 255),
-            (self.relative_brightness_strip_left, "prior strip-left brightness", 1, 100),
-            (self.relative_brightness_strip_right, "prior strip-right brightness", 1, 100),
-            (self.relative_brightness, "prior relative brightness", 1, 100),
-            (self.relative_brightness_left, "prior left relative brightness", 1, 100),
-            (self.relative_brightness_top, "prior top relative brightness", 1, 100),
-            (self.relative_brightness_right, "prior right relative brightness", 1, 100),
-            (self.relative_brightness_bottom, "prior bottom relative brightness", 1, 100),
+            (self.relative_brightness_strip_left, "prior strip-left brightness", 0, 100),
+            (self.relative_brightness_strip_right, "prior strip-right brightness", 0, 100),
+            (self.relative_brightness, "prior relative brightness", 0, 100),
+            (self.relative_brightness_left, "prior left relative brightness", 0, 100),
+            (self.relative_brightness_top, "prior top relative brightness", 0, 100),
+            (self.relative_brightness_right, "prior right relative brightness", 0, 100),
+            (self.relative_brightness_bottom, "prior bottom relative brightness", 0, 100),
             (self.blank_screen_detection, "prior blank-screen detection", 0, 255),
             (
                 self.blank_screen_low_brightness_duration_seconds,
@@ -279,6 +345,8 @@ class PriorControlState:
                 raise EffectStorageError(f"{optional_name} must be from {minimum} to {maximum}")
         if self.blank_screen is not None and not isinstance(self.blank_screen, bool):
             raise EffectStorageError("prior blank-screen state must be a boolean or null")
+        if self.black_border is not None and type(self.black_border) is not bool:
+            raise EffectStorageError("prior black-border state must be a boolean or null")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -292,13 +360,25 @@ class PriorControlState:
             "brightness_pct": self.brightness_pct,
             "rgb_color": list(self.rgb_color),
             "color_temp_kelvin": self.color_temp_kelvin,
+            **({"static_gradual": self.static_gradual} if self.static_gradual is not None else {}),
+            **(
+                {
+                    "segment_colors": [list(rgb) for rgb in self.segment_colors],
+                    "segment_brightness": list(self.segment_brightness),
+                }
+                if self.segment_colors is not None and self.segment_brightness is not None
+                else {}
+            ),
             "effect": self.effect,
             "scene_code": self.scene_code,
             "diy_code": self.diy_code,
             "music_mode": self.music_mode,
             "music_model": self.music_model,
             **({"music_parameters": dict(self.music_parameters)} if self.music_parameters is not None else {}),
+            **({"music_palette": [list(rgb) for rgb in self.music_palette]} if self.music_palette is not None else {}),
+            **({"music_body": self.music_body.hex()} if self.music_body is not None else {}),
             "video_mode": self.video_mode,
+            **({"video_parameters": dict(self.video_parameters)} if self.video_parameters is not None else {}),
             "music_sensitivity": self.music_sensitivity,
             "music_calm": self.music_calm,
             "music_color": list(self.music_color) if self.music_color is not None else None,
@@ -316,6 +396,10 @@ class PriorControlState:
             "video_sound_effects_softness": self.video_sound_effects_softness,
             "white_balance_red": self.white_balance_red,
             "white_balance_blue": self.white_balance_blue,
+            "white_balance_flag": self.white_balance_flag,
+            "white_balance_default_flag": self.white_balance_default_flag,
+            "white_balance_default_red": self.white_balance_default_red,
+            "white_balance_default_blue": self.white_balance_default_blue,
             **({"white_balance_scalar": self.white_balance_scalar} if self.white_balance_scalar is not None else {}),
             **(
                 {
@@ -331,6 +415,7 @@ class PriorControlState:
             "relative_brightness_right": self.relative_brightness_right,
             "relative_brightness_bottom": self.relative_brightness_bottom,
             "blank_screen": self.blank_screen,
+            **({"black_border": self.black_border} if self.black_border is not None else {}),
             "blank_screen_detection": self.blank_screen_detection,
             "blank_screen_low_brightness_duration_seconds": self.blank_screen_low_brightness_duration_seconds,
             "blank_screen_same_tone_duration_seconds": self.blank_screen_same_tone_duration_seconds,
@@ -338,6 +423,26 @@ class PriorControlState:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> PriorControlState:
+        music_body = raw.get("music_body")
+        if music_body is not None:
+            if not isinstance(music_body, str) or not 0 < len(music_body) <= 2 * (255 * 17 - 3):
+                raise EffectStorageError("invalid prior music body hex")
+            try:
+                music_body = bytes.fromhex(music_body)
+            except ValueError as error:
+                raise EffectStorageError("invalid prior music body hex") from error
+        segment_colors = raw.get("segment_colors")
+        segment_brightness = raw.get("segment_brightness")
+        if segment_colors is not None or segment_brightness is not None:
+            if not isinstance(segment_colors, list) or not isinstance(segment_brightness, list):
+                raise EffectStorageError("invalid prior segment layout")
+            segment_colors = tuple(_required_rgb({"rgb": rgb}, "rgb") for rgb in segment_colors)
+            segment_brightness = tuple(segment_brightness)
+        palette = raw.get("music_palette")
+        if palette is not None:
+            if not isinstance(palette, list) or not 1 <= len(palette) <= 8:
+                raise EffectStorageError("invalid prior music palette")
+            palette = tuple(_required_rgb({"rgb": rgb}, "rgb") for rgb in palette)
         model = _optional_str(raw, "music_model")
         parameters = _required_mapping(raw, "music_parameters") if "music_parameters" in raw else None
         # Legacy records have no model and retain their shipped defaults. New records
@@ -364,13 +469,19 @@ class PriorControlState:
             brightness_pct=_required_int(raw, "brightness_pct"),
             rgb_color=_required_rgb(raw, "rgb_color"),
             color_temp_kelvin=_optional_int(raw, "color_temp_kelvin"),
+            static_gradual=_optional_bool(raw, "static_gradual"),
+            segment_colors=segment_colors,
+            segment_brightness=segment_brightness,
             effect=_optional_str(raw, "effect"),
             scene_code=_optional_int(raw, "scene_code"),
             diy_code=_optional_int(raw, "diy_code"),
             music_mode=_optional_str(raw, "music_mode") or "off",
             music_model=model,
             music_parameters=parameters,
+            music_palette=palette,
+            music_body=music_body,
             video_mode=_optional_str(raw, "video_mode") or "off",
+            video_parameters=_required_mapping(raw, "video_parameters") if "video_parameters" in raw else None,
             music_sensitivity=_optional_int(raw, "music_sensitivity", default=100),
             music_calm=_optional_bool(raw, "music_calm", default=False),
             music_color=_optional_rgb(raw, "music_color"),
@@ -404,6 +515,10 @@ class PriorControlState:
             video_sound_effects_softness=_optional_int(raw, "video_sound_effects_softness", default=100),
             white_balance_red=_optional_int(raw, "white_balance_red"),
             white_balance_blue=_optional_int(raw, "white_balance_blue"),
+            white_balance_flag=_optional_int(raw, "white_balance_flag"),
+            white_balance_default_flag=_optional_int(raw, "white_balance_default_flag"),
+            white_balance_default_red=_optional_int(raw, "white_balance_default_red"),
+            white_balance_default_blue=_optional_int(raw, "white_balance_default_blue"),
             white_balance_scalar=_optional_int(raw, "white_balance_scalar"),
             relative_brightness_strip_left=_optional_int(raw, "relative_brightness_strip_left"),
             relative_brightness_strip_right=_optional_int(raw, "relative_brightness_strip_right"),
@@ -413,6 +528,7 @@ class PriorControlState:
             relative_brightness_right=_optional_int(raw, "relative_brightness_right"),
             relative_brightness_bottom=_optional_int(raw, "relative_brightness_bottom"),
             blank_screen=_optional_bool(raw, "blank_screen"),
+            black_border=_optional_bool(raw, "black_border"),
             blank_screen_detection=_optional_int(raw, "blank_screen_detection"),
             blank_screen_low_brightness_duration_seconds=_optional_int(
                 raw,

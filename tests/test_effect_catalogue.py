@@ -65,7 +65,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
 
     assert catalogue["schema_version"] == EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION
     assert catalogue["sku"] == LEGACY_CATALOGUE_SKU
-    assert set(catalogue["models"]) == {"H617A", "H617E", "H6199"}
+    assert set(catalogue["models"]) == {"H6099", "H6102", "H617A", "H617E", "H6199"}
     assert catalogue["models"] == {sku: model.to_dict() for sku, model in MODEL_EFFECT_CATALOGUES.items()}
     assert catalogue["painted_effects"] == list(H617A_PAINTED_EFFECTS)
     assert catalogue["effects"] == [family.to_dict() for family in H617A_TYPE04_FAMILIES]
@@ -146,7 +146,11 @@ def test_h617e_model_catalogue_reuses_h617a_effects_with_h617e_profiles() -> Non
 
     assert catalogue["sku"] == "H617E"
     assert catalogue["painted_effects"] == list(H617A_PAINTED_EFFECTS)
-    assert catalogue["effects"] == [family.to_dict() for family in H617A_TYPE04_FAMILIES]
+    assert catalogue["effects"] == [
+        {key: value for key, value in family.to_dict().items() if key != "palette_max"}
+        for family in H617A_TYPE04_FAMILIES
+    ]
+    assert not any(template["content"].get("native_diy") for template in templates)
     assert {
         template["content"]["model"] for template in templates if template["content"]["kind"] == "music_profile"
     } == {"H617E"}
