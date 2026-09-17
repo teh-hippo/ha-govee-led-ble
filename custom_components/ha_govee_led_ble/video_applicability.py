@@ -4,7 +4,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from .const import ModelProfile
+from .const import ModelProfile, ReadDomain
 from .effect_contracts import CapabilityState
 from .effect_domain import VideoProfile
 
@@ -95,12 +95,27 @@ def video_control_states(profile: ModelProfile, identity: object) -> dict[str, C
             ("black_border", profile.supports_black_border),
         )
     }
+    return _apply_video_conditions(profile, identity, states)
+
+
+def white_balance_readback_state(profile: ModelProfile, identity: object) -> CapabilityState:
+    states = {
+        "white_balance": CapabilityState.SUPPORTED
+        if profile.supports_white_balance_readback and profile.can_read(ReadDomain.DISPLAY_SETTING)
+        else CapabilityState.UNSUPPORTED
+    }
+    return _apply_video_conditions(profile, identity, states)["white_balance"]
+
+
+def _apply_video_conditions(
+    profile: ModelProfile, identity: object, states: dict[str, CapabilityState]
+) -> dict[str, CapabilityState]:
     if profile.video_revision_policy == "H6199":
         for control, state in _h6199_video_states(identity).items():
-            if states[control] is CapabilityState.SUPPORTED:
+            if states.get(control) is CapabilityState.SUPPORTED:
                 states[control] = state
     for condition in profile.video_firmware_conditions:
-        if states[condition.control] is not CapabilityState.SUPPORTED:
+        if states.get(condition.control) is not CapabilityState.SUPPORTED:
             continue
         version = identity_version(getattr(identity, condition.identity_field, None))
         if version is None:
@@ -138,8 +153,25 @@ def require_video_controls(profile: ModelProfile, identity: object, controls: It
             raise ValueError(f"video setting {control} is {states[control].value} for this device")
 
 
+class CameraUnavailableError(ValueError):
+    def __init__(self, state: str) -> None:
+        self.state = state
+        super().__init__(f"Camera is {state}; video mode is unavailable")
+
+
+def require_video_mode(profile: ModelProfile, identity: object) -> None:
+    state = "unknown"
+    if profile.can_read(ReadDomain.CAMERA_HEALTH):
+        state = getattr(identity, "camera_health", "unknown")
+    elif h6199_camera_controls_state(getattr(identity, "model", ""), identity) is CapabilityState.SUPPORTED:
+        state = getattr(identity, "camera_status", "unknown")
+    if state in {"absent", "incompatible"}:
+        raise CameraUnavailableError(state)
+
+
 def validate_video_request(coordinator: Any, content: object) -> None:
     if isinstance(content, VideoProfile):
+        require_video_mode(coordinator.profile, coordinator)
         if content.saturation is not None:
             coordinator.profile.validate_video_saturation(content.saturation)
         require_video_controls(coordinator.profile, coordinator, requested_video_controls(content))

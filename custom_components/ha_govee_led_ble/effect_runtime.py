@@ -70,7 +70,7 @@ from .native_profile_controls import (
     prepare_video_mode,
 )
 from .scenes import canonical_scene_key, resolve_scene_identity, scene_code_is_ambiguous
-from .video_applicability import requested_video_controls, require_video_controls
+from .video_applicability import requested_video_controls, require_video_controls, require_video_mode
 
 ACTIVATION_ATTEMPTS = 2
 VERIFICATION_ATTEMPTS = 2
@@ -118,6 +118,7 @@ async def async_apply_compiled_profile(
 
     profile = coordinator.profile
     await async_require_video_controls(coordinator, requested_video_controls(compiled))
+    require_video_mode(coordinator.profile, coordinator)
     underlying_writer = writer
     requested_controls = requested_video_controls(compiled)
 
@@ -290,6 +291,7 @@ class EffectDeploymentEngine:
             await async_require_video_controls(
                 coordinator, requested_video_controls(compiled), intent=ControlIntent.APPLY
             )
+            require_video_mode(coordinator.profile, coordinator)
         record = self._new_record(
             compiled,
             config_entry_id=config_entry_id,
@@ -491,6 +493,7 @@ class EffectDeploymentEngine:
                     # Admit APPLY before persistence yields, so later previews remain newer.
                     await self._deployments.async_put(record, expected_version=None)
                     if isinstance(compiled, CompiledVideoProfile):
+                        require_video_mode(coordinator.profile, coordinator)
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
                     validate_compiled_geometry(compiled, coordinator.profile)

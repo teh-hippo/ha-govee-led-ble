@@ -108,7 +108,8 @@ def test_h617a_direct_register_replay_not_app_captures(hass) -> None:
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url=None)
     coordinator.install_static_color(kelvin=4000)
     static = bytes.fromhex("aa051500000000000000000000000000000000ba")
-    assert _parse(StatusReply, static).body.mode_body.padding == [0] * 15
+    detail = _parse(StatusReply, static).body.mode_body
+    assert detail.kelvin == 0 and detail.unknown_tail == bytes(13)
     coordinator._notify_callback(None, bytearray(static))
     # Both AA0500 and AA0501 returned this mode-only reply after a 4000 K write.
     pages = [
@@ -149,12 +150,8 @@ def test_h617a_direct_register_replay_not_app_captures(hass) -> None:
 
 def test_h617a_apk_schema_counterexamples_are_synthetic() -> None:
     """Document current parser limits, without claiming these replies occurred live."""
-    for root, raw in (
-        (StatusQuery, "aa050100000000000000000000000000000000ae"),
-        (StatusReply, "aa0515000fa00000000000000000000000000015"),
-    ):
-        with pytest.raises(KaitaiStructError):
-            _parse(root, bytes.fromhex(raw))
+    with pytest.raises(KaitaiStructError):
+        _parse(StatusQuery, bytes.fromhex("aa050100000000000000000000000000000000ae"))
     hopping = _parse(MusicBody, bytes.fromhex("0102413301ff0000ff0000326101030206"))
     assert hopping.tail.speed == 0x61
     assert (hopping.tail.piece_length_min, hopping.tail.piece_length_max) == (1, 3)
@@ -650,7 +647,9 @@ async def test_direct_rgb_verification_rejects_segment_only_evidence(static_coor
 def test_static_readback_requires_qualified_fields_and_valid_kelvin(static_coordinator):
     coord = static_coordinator
     coord._notify_callback(None, _static_reply(kelvin=0))
-    assert not coord._field_revisions
+    assert coord.color_mode is ParsedMode.COLOUR
+    assert "color_temp_kelvin" not in coord._field_revisions
+    coord._notify_callback(None, _static_reply(kelvin=1))
     assert coord.packet_log[-1]["reason"] == "semantic_rejected"
     coord.profile = replace(coord.profile, static_readback_echoes_color=False, static_readback_kelvin=False)
     coord._notify_callback(None, _static_reply(rgb=(1, 2, 3), kelvin=4200))

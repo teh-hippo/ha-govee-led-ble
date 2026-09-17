@@ -526,9 +526,11 @@ def _video_grammar(model: str) -> str:
 
 def build_white_balance_query(model: str) -> bytes:
     profile = get_profile(model)
-    if not profile.supports_white_balance:
-        raise ValueError(f"{model} does not support white balance")
-    if (grammar := _video_grammar(model)) in {"H6099", "H6199"}:
+    if not profile.supports_white_balance_readback or not profile.can_read(ReadDomain.DISPLAY_SETTING):
+        raise ValueError(f"{model} does not support white-balance readback")
+    if (grammar := profile.command_grammar) in {"H6099", "H6199"} or (
+        grammar == "H617A" and profile.video_white_balance_representation == "scalar"
+    ):
         setting = "scalar_white_balance" if profile.video_white_balance_representation == "scalar" else "white_balance"
         return _build_status_query("display_setting", grammar, display_setting=setting)
     raise ValueError(f"{model} has no generated white-balance query grammar")

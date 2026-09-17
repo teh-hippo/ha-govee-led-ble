@@ -127,7 +127,7 @@ def test_static_writes_kelvin_readback_and_diy_selector() -> None:
         decoded = decode_status_frame(frame(f"aa051501{kelvin:04x}"), "H6099")
         assert decoded is not None
         parsed = parse_color_mode(decoded.generated, "H6099")
-        assert parsed.mode is ParsedMode.COLOUR and parsed.color_temp_kelvin == kelvin
+        assert parsed.mode is ParsedMode.COLOUR and parsed.color_temp_kelvin == (kelvin or None)
         assert parsed.rgb_color is None and parsed.multi_effect_flag == 1
     bad = decode_status_frame(frame("aa0515010001"), "H6099")
     assert bad is not None
@@ -289,4 +289,4 @@ def test_coordinator_consumes_exact_read_domains(hass: HomeAssistant) -> None:
         coordinator._notify_callback(None, bytearray(frame("aa0513332a0101010203")))
         assert coordinator.music_color == (9, 8, 7)
         coordinator._notify_callback(None, bytearray(frame("aa0515010000")))
-        assert coordinator.color_temp_kelvin is None
+        assert coordinator.color_temp_kelvin == 4500

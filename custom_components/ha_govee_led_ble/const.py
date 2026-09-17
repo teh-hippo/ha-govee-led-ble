@@ -134,6 +134,7 @@ class ModelProfile:
     supports_advanced_effects: bool = False
     supports_multi_layered_effects: bool = False
     supports_white_balance: bool = False
+    supports_white_balance_readback: bool = False
     video_white_balance_default: int = 17
     video_white_balance_representation: str = "position"
     video_white_balance_min: int = 1
@@ -213,11 +214,12 @@ class ModelProfile:
             or self.supports_black_border
         ) and not self.supports_video_mode:
             raise ValueError("video settings require video-mode support")
-        if self.supports_white_balance:
+        if self.supports_white_balance or self.supports_white_balance_readback:
             if self.video_white_balance_representation not in {"position", "scalar"}:
                 raise ValueError("unknown white-balance representation")
             if not self.video_white_balance_min <= self.video_white_balance_default <= self.video_white_balance_max:
                 raise ValueError("white-balance default is outside its range")
+        if self.supports_white_balance:
             if (
                 len(self.video_white_balance_calibration)
                 != self.video_white_balance_max - self.video_white_balance_min + 1
@@ -388,6 +390,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         video_saturation_min=1,
         supports_video_sound_effects=True,
         supports_white_balance=True,
+        supports_white_balance_readback=True,
         video_white_balance_representation="scalar",
         video_white_balance_default=50,
         video_white_balance_max=100,
@@ -509,6 +512,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_video_sound_effects=True,
         # These independently captured video registers have byte-exact builders.
         supports_white_balance=True,
+        supports_white_balance_readback=True,
         video_white_balance_calibration=WHITE_BALANCE_POSITIONS,
         video_brightness_zones=("left", "top", "right", "bottom"),
         supports_relative_brightness=True,

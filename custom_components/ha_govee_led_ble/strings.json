@@ -61,6 +61,12 @@
     "device_command_failed": {
       "message": "The device command failed."
     },
+    "camera_absent": {
+      "message": "Video mode is unavailable because the camera is absent. Connect the camera and try again."
+    },
+    "camera_incompatible": {
+      "message": "Video mode is unavailable because the connected camera is incompatible."
+    },
     "invalid_control_request": {
       "message": "The requested control settings are invalid or unsupported."
     },

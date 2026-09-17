@@ -25,6 +25,7 @@ seq:
         'query_domain::hardware': hardware_query_body
         'query_domain::light_count': zero_body
         'query_domain::segments': segment_query_body
+        'query_domain::display_setting': display_setting_query_body
   - id: checksum
     type: u1
 enums:
@@ -36,7 +37,21 @@ enums:
     0x07: hardware
     0x0f: light_count
     0xa5: segments
+    0xa9: display_setting
+  display_setting:
+    0x06: scalar_white_balance
 types:
+  display_setting_query_body:
+    doc: Scalar readback query evidenced in issue 303; model qualification is independent.
+    seq:
+      - id: setting
+        type: u1
+        enum: display_setting
+        valid: display_setting::scalar_white_balance
+      - id: zeros
+        type: u1
+        valid: 0
+        repeat: eos
   zero_body:
     seq:
       - id: zeros

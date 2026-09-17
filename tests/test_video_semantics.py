@@ -38,6 +38,7 @@ def alternate(monkeypatch: pytest.MonkeyPatch) -> ModelProfile:
         supports_video_mode=True,
         video_modes=("movie", "game"),
         supports_white_balance=True,
+        supports_white_balance_readback=True,
         supports_relative_brightness=True,
         video_white_balance_representation="scalar",
         video_white_balance_min=0,

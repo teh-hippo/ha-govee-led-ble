@@ -103,6 +103,7 @@ from .video_applicability import (
     identity_version,
     video_control_states,
     video_identity_fields,
+    white_balance_readback_state,
 )
 
 EFFECT_SEQUENCE_ATTEMPTS = 3
@@ -1404,7 +1405,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             if parsed.rgb_color is not None and self.profile.static_readback_echoes_color:
                 static_values["rgb_color"] = parsed.rgb_color
             if parsed.color_temp_kelvin is not None and self.profile.static_readback_kelvin:
-                static_values["color_temp_kelvin"] = parsed.color_temp_kelvin or None
+                static_values["color_temp_kelvin"] = parsed.color_temp_kelvin
             accepted_values = dict(static_values)
             if "rgb_color" in static_values and "color_temp_kelvin" not in static_values:
                 kelvin = self.color_temp_kelvin
@@ -1788,7 +1789,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             full_query = query_power and query_brightness and query_color_mode
             if (
                 self.profile.can_read(ReadDomain.DISPLAY_SETTING)
-                and states["white_balance"] is CapabilityState.SUPPORTED
+                and white_balance_readback_state(self.profile, self) is CapabilityState.SUPPORTED
                 and (query_white_balance if query_white_balance is not None else full_query)
             ):
                 queries.append(
@@ -2276,6 +2277,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             if generation != self._profile_generation:
                 return False
             states = video_control_states(self.profile, self)
+            states["white_balance"] = white_balance_readback_state(self.profile, self)
             requested_registers = display_settings | {
                 control
                 for control, requested in (
@@ -2333,7 +2335,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     display_fields: list[str] = []
                     if query_black_border and "black_border" in display_settings:
                         display_fields.append("black_border")
-                    if self.profile.supports_white_balance and "white_balance" in display_settings:
+                    if query_white_balance and "white_balance" in display_settings:
                         display_fields.extend(
                             ("white_balance_scalar",)
                             if self.profile.video_white_balance_representation == "scalar"

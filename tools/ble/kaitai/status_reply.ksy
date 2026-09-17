@@ -94,10 +94,10 @@ types:
     seq:
       - id: sub
         type: u1
-      - id: padding
-        type: u1
-        valid: 0
-        repeat: eos
+      - id: kelvin
+        type: u2be
+      - id: unknown_tail
+        size-eos: true
   cm_scene:
     seq:
       - id: scene_id

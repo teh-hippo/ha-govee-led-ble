@@ -70,6 +70,7 @@ async def async_get_config_entry_diagnostics(
         "supports_video_saturation": coordinator.profile.supports_video_saturation,
         "supports_video_sound_effects": coordinator.profile.supports_video_sound_effects,
         "supports_white_balance": coordinator.profile.supports_white_balance,
+        "supports_white_balance_readback": coordinator.profile.supports_white_balance_readback,
         "supports_relative_brightness": coordinator.profile.supports_relative_brightness,
         "supports_blank_screen": coordinator.profile.supports_blank_screen,
         "supports_music_mode": coordinator.profile.supports_music_mode,

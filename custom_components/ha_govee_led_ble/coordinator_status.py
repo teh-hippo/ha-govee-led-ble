@@ -133,13 +133,9 @@ def parse_color_mode(generated: Any, model: str) -> ParsedColorModeResponse:
     if mode_name in {"static", "static_colour"}:
         detail = getattr(body, "mode_body", getattr(body, "detail", None))
         rgb = getattr(detail, "rgb", None)
-        kelvin = getattr(detail, "kelvin", None)
+        kelvin = getattr(detail, "kelvin", None) or None
         profile = get_profile(model)
-        if (
-            kelvin is not None
-            and not (profile.status_grammar == "H6099" and kelvin == 0)
-            and not profile.min_color_temp_kelvin <= int(kelvin) <= profile.max_color_temp_kelvin
-        ):
+        if kelvin is not None and not profile.min_color_temp_kelvin <= int(kelvin) <= profile.max_color_temp_kelvin:
             raise ValueError("static Kelvin outside profile range")
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,

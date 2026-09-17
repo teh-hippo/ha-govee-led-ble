@@ -65,9 +65,9 @@ def test_baseline_and_absent_music_fields(device):
     notify(device, "aa0515011194")
     assert device.color_temp_kelvin == 4500
     notify(device, "aa0515010000")
-    assert device.color_mode is ParsedMode.COLOUR and device.color_temp_kelvin is None
+    assert device.color_mode is ParsedMode.COLOUR and device.color_temp_kelvin == 4500
     assert device.color_temp_kelvin_source == "observed"
-    assert device._field_revisions["color_temp_kelvin"] == 2
+    assert device._field_revisions["color_temp_kelvin"] == 1
     device.music_color = (1, 2, 3)
     device.music_calm = True
     notify(device, "aa0513302a0101010203")

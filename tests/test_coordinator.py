@@ -1921,7 +1921,10 @@ def test_video_grammar_owns_writers_and_ack_independently_of_basic_grammars(
     )
 
     assert build_video_mode("game", False, 42, True, 55, model) == build_h6199_video(False, True, 42, True, 55)
-    queries = (build_white_balance_query, build_blank_screen_query, build_relative_brightness_query)
+    # White-balance reads require their own capability and use the command query grammar.
+    with pytest.raises(ValueError, match="readback"):
+        build_white_balance_query(model)
+    queries = (build_blank_screen_query, build_relative_brightness_query)
     expected_queries = [build("H6199") for build in queries]
     # Video grammar keys must not be resolved through the H6199 model profile.
     monkeypatch.setitem(

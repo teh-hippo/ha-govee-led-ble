@@ -88,7 +88,13 @@ from .native_profile_controls import _send_video_setting, async_require_video_co
 from .native_profile_controls import apply_active_video_mode as apply_active_video_mode
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES
-from .video_applicability import requested_video_controls, require_video_controls, validate_video_request
+from .video_applicability import (
+    CameraUnavailableError,
+    requested_video_controls,
+    require_video_controls,
+    require_video_mode,
+    validate_video_request,
+)
 
 # fmt: on
 
@@ -298,7 +304,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 raise
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
-                translation_key="device_command_failed",
+                translation_key=f"camera_{err.state}"
+                if isinstance(err, CameraUnavailableError)
+                else "device_command_failed",
             ) from err
 
     @property
@@ -461,6 +469,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return True
 
         video_modes = self.coordinator.profile.video_modes
+        try:
+            require_video_mode(self.coordinator.profile, self.coordinator)
+        except CameraUnavailableError:
+            video_modes = ()
         if self._effect_backend is not None and self._config_entry_id is not None:
             video_modes = tuple(
                 mode

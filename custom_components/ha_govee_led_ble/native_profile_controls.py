@@ -14,7 +14,7 @@ from .generated_protocol_adapter import (
     build_video_mode,
     build_white_balance,
 )
-from .video_applicability import require_video_controls, video_control_states
+from .video_applicability import require_video_controls, require_video_mode, video_control_states
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
@@ -53,6 +53,7 @@ def prepare_video_mode(
     parameters: Mapping[str, Any] | None = None,
 ) -> tuple[bytes, dict[str, Any], frozenset[str], Callable[[], None]]:
     """Compile the complete mode before any control side effect, then guard retention."""
+    require_video_mode(coordinator.profile, coordinator)
     requested_values = dict(requested_values)
     parameters = dict(parameters) if parameters is not None else None
     if requested_values.keys() - {"full_screen", "saturation", "sound_effects", "sound_effects_softness"}:
@@ -78,6 +79,7 @@ def prepare_video_mode(
     token = getattr(coordinator, "_notification_token", None)
 
     def check_retained() -> None:
+        require_video_mode(coordinator.profile, coordinator)
         if coordinator.profile != profile:
             raise ValueError("Video profile changed before write; refresh and retry")
         coordinator.profile.validate_video_saturation(values["saturation"])

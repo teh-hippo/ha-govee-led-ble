@@ -67,7 +67,7 @@ from .generated_protocol_adapter import build_power
 from .native_profile_controls import async_require_video_controls
 from .native_scenes import build_native_scene_packets, encode_authored_scene_body, resolve_native_scene_body
 from .scenes import canonical_scene_key, scene_code_is_ambiguous
-from .video_applicability import requested_video_controls, validate_video_request
+from .video_applicability import requested_video_controls, require_video_mode, validate_video_request
 
 PREVIEW_VERIFY_DELAY = 0.75
 PREVIEW_VERIFY_TIMEOUT = 4.0
@@ -491,6 +491,7 @@ class EffectPreviewManager:
             await async_require_video_controls(
                 coordinator, requested_video_controls(compiled), intent=ControlIntent.PREVIEW
             )
+            require_video_mode(coordinator.profile, coordinator)
         if (
             persist_default
             and item.origin.kind is SourceKind.CATALOGUE_TEMPLATE
@@ -893,6 +894,7 @@ class EffectPreviewManager:
                 await async_require_video_controls(
                     coordinator, requested_video_controls(compiled), intent=ControlIntent.PREVIEW
                 )
+                require_video_mode(coordinator.profile, coordinator)
         except Exception as exc:
             self._diagnostics.record(
                 DiagnosticStage.COMPILATION,
