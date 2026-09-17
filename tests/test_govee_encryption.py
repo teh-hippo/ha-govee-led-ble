@@ -92,6 +92,10 @@ async def negotiate(version=1, *, confirm=True):
     [
         (False, None, 0),
         (True, None, 1),
+        (False, b"\x01\0", 0),
+        (False, b"\x02\0\0\0\0\0", 0),
+        (True, b"\x01\0", 1),
+        (True, b"\x02\0\0\0\0\0", 1),
         (False, b"\x01\x01", 1),
         (True, b"\x01\x02", 2),
         (False, b"\x02\x02\0\x01\x02\x03", 2),
@@ -106,15 +110,31 @@ async def test_selection_without_probe(advertised, marker, version):
     if marker is None:
         device.read_gatt_char.assert_not_awaited()
     if version == 0:
+        assert session.ready and session.last_result == "plaintext"
         await session.async_negotiate(device)
         assert session.encode(build_power(True)) == build_power(True)
+        assert session.decode(build_power(True)) == build_power(True)
         device.write_gatt_char.assert_not_awaited()
     else:
         with pytest.raises(GoveeCryptoError):
             session.encode(build_power(True))
 
 
-@pytest.mark.parametrize("marker", [b"", b"\x01", b"\x02\x02", b"\x01\0", b"\x03\x01", b"\x01\x03"])
+@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("marker", [b"\x01\0", b"\x02\0\0\0\0\0"])
+async def test_zero_marker_preserves_previous_encryption_requirement(version, marker):
+    session = GoveeEncryptionSession()
+    await session.async_select(client(bytes((1, version))), advertised=False)
+    device = client(marker)
+    await session.async_select(device, advertised=False)
+    assert session.version == session.required_version == version
+    assert not session.ready
+    with pytest.raises(GoveeCryptoError, match="session_not_ready"):
+        session.encode(build_power(True))
+    device.write_gatt_char.assert_not_awaited()
+
+
+@pytest.mark.parametrize("marker", [b"", b"\x01", b"\x02\x02", b"\x02\0", b"\x03\x01", b"\x01\x03"])
 async def test_invalid_marker_never_becomes_plaintext(marker):
     session, device = GoveeEncryptionSession(), client(marker)
     with pytest.raises(GoveeCryptoError, match="selection_failed"):
