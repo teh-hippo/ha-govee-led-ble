@@ -1,4 +1,4 @@
-"""MovieFeastV2 semantics over exact-H6099 generated wire structures.
+"""MovieFeastV2 semantics over explicitly compatible generated wire structures.
 
 Selectively reuses issue #257's immutable member model and group framing, not
 its default cmd_ver, digest, camera assumptions or active member identification.
@@ -24,10 +24,15 @@ Group = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamvi
 DREAMVIEW_READ_SETTINGS = tuple(command.name for command in Frame.Command if command != Frame.Command.delete_group)
 
 
-def require_dreamview(profile: ModelProfile) -> None:
+def require_dreamview(
+    profile: ModelProfile, operation: str, *, read: bool = False, member_count: int | None = None
+) -> None:
     """No related-model or camera-based capability inference."""
-    if profile.dreamview_max_sub_devices != 7 or profile.command_grammar != "H6099":
-        raise ValueError("MovieFeastV2 is not supported by this profile")
+    operations = profile.dreamview_reads if read else profile.dreamview_operations
+    if profile.dreamview_grammar != "H6099" or operation not in operations:
+        raise ValueError("DreamView operation is not supported by this profile")
+    if member_count is not None and not 1 <= member_count <= profile.dreamview_max_sub_devices:
+        raise ValueError("DreamView member count exceeds this profile's capacity; use explicit delete for removal")
 
 
 def integer(value: Any, maximum: int = 255) -> int:
@@ -83,9 +88,7 @@ class DreamviewMember:
 
 def build_dreamview_group(members: Sequence[DreamviewMember], profile: ModelProfile) -> tuple[bytes, ...]:
     """Build the entire bounded upload before any device-control side effect."""
-    require_dreamview(profile)
-    if not 1 <= len(members) <= profile.dreamview_max_sub_devices:
-        raise ValueError("H6099 requires 1..7 members; use explicit delete for removal")
+    require_dreamview(profile, "replace_group", member_count=len(members))
     seen: set[tuple[str | None, str | None]] = set()
     root = Group()
     root.num_members = len(members)
@@ -116,7 +119,7 @@ def build_dreamview_group(members: Sequence[DreamviewMember], profile: ModelProf
 
 def build_dreamview_command(setting: str, values: Mapping[str, Any], profile: ModelProfile) -> bytes:
     """Serialize only individually evidenced settings, with complete validation."""
-    require_dreamview(profile)
+    require_dreamview(profile, setting)
     fields: dict[str, dict[str, Any]] = {
         "switch_group": {"enabled": bool},
         "member_brightness": {"level": 100, "index": profile.dreamview_max_sub_devices - 1},
@@ -147,9 +150,7 @@ def build_dreamview_command(setting: str, values: Mapping[str, Any], profile: Mo
 
 
 def build_dreamview_query(setting: str, profile: ModelProfile) -> bytes:
-    require_dreamview(profile)
-    if profile.status_grammar != "H6099":
-        raise ValueError("MovieFeastV2 status grammar is unavailable")
+    require_dreamview(profile, setting, read=True)
     if setting not in DREAMVIEW_READ_SETTINGS:
         raise ValueError("Unsupported DreamView read")
     root = Frame(True)

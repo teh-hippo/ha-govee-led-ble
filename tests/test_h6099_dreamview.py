@@ -83,7 +83,7 @@ def test_exact_group_both_identities_and_capacity() -> None:
     for invalid in ((), (*seven, member()), (member(), member(address="11:22:33:44:55:66"))):
         with pytest.raises(ValueError):
             build_dreamview_group(invalid, PROFILE)
-    for profile in (get_profile("H6199"), replace(PROFILE, command_grammar="unknown")):
+    for profile in (get_profile("H6199"), replace(PROFILE, dreamview_grammar="unknown")):
         with pytest.raises(ValueError):
             build_dreamview_group((member(),), profile)
     assert "11:22" not in repr(member())
@@ -172,14 +172,14 @@ def test_individual_queries_and_truthful_raw_status() -> None:
         with pytest.raises(ValueError):
             build_dreamview_query(setting, PROFILE)
     with pytest.raises(ValueError):
-        build_dreamview_query("sample", replace(PROFILE, status_grammar="unknown"))
+        build_dreamview_query("sample", replace(PROFILE, dreamview_grammar="unknown"))
 
 
-def coordinator(hass) -> Any:
+def coordinator(hass, model="H6099") -> Any:
     entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="dreamview-entry")
     entry.add_to_hass(hass)
     with current_entry.set(entry):
-        c = GoveeBLECoordinator(hass, "00:00:00:00:00:01", "H6099", configuration_url="http://example.test")
+        c = GoveeBLECoordinator(hass, "00:00:00:00:00:01", model, configuration_url="http://example.test")
     return c
 
 
@@ -319,7 +319,7 @@ async def test_shutdown_cannot_defer_membership_persistence(hass) -> None:
     [
         ("replace_dreamview_group", {"members": [{"address": "private", "zones": [1], "is_rgbic": True}]}),
         ("replace_dreamview_group", {"members": [member().as_dict()] * 2}),
-        ("set_dreamview_member_brightness", {"index": 7, "level": 50}),
+        ("set_dreamview_member_brightness", {"index": 256, "level": 50}),
         ("set_dreamview_member_brightness", {"index": 1.5, "level": 50}),
         ("set_dreamview_member_connect", {"index": True, "connected": True}),
         ("set_dreamview_sound_effects", {"enabled": True}),

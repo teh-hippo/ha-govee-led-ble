@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import copy
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from homeassistant.helpers.storage import Store
 from homeassistant.util.file import WriteError
 from homeassistant.util.json import SerializationError
 
-from .const import DOMAIN
+from .const import DOMAIN, ModelProfile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .dreamview import (
@@ -65,12 +65,14 @@ class _DreamviewMixin(_CoordinatorBase):
 
     def _handle_dreamview_notification(self, frame: bytes) -> bool:
         """Call after decryption, before generic status routing; ACKs are ignored."""
-        if not self.profile.dreamview_max_sub_devices or self.profile.status_grammar != "H6099":
+        if self.profile.dreamview_grammar != "H6099":
             return False
         observed = parse_dreamview_status(frame)
         if observed is None:
             return False
         setting, values = observed
+        if setting not in self.profile.dreamview_reads:
+            return False
         self._dreamview_observed[setting] = values
         return True
 
@@ -83,7 +85,14 @@ class _DreamviewMixin(_CoordinatorBase):
 
     async def async_replace_dreamview_group(self, members: Sequence[DreamviewMember]) -> None:
         """Explicit replacement, not merge. Persist intent, never confirmed membership."""
+        members = tuple(members)
         packets = build_dreamview_group(members, self.profile)
+
+        def validate(packet: bytes, profile: ModelProfile) -> None:
+            require_dreamview(profile, "replace_group", member_count=len(members))
+            if packet not in packets:
+                raise ValueError("Packet is not part of the validated DreamView group")
+
         authored = {"operation": "replace", "members": [member.as_dict() for member in members]}
         async with async_control_intent(self, ControlIntent.USER):
             await self._async_load_dreamview()
@@ -93,16 +102,19 @@ class _DreamviewMixin(_CoordinatorBase):
             self._dreamview_authored = authored
             self._dreamview_private_write = True
             try:
-                await self._async_write_dreamview(packets)
+                await self._async_write_dreamview(packets, validate)
             finally:
                 self._dreamview_private_write = False
 
     async def async_set_dreamview(self, setting: str, values: Mapping[str, Any]) -> None:
+        values = dict(values)
         packet = build_dreamview_command(setting, values, self.profile)
         if setting == "delete_group":
             raise ValueError("Use explicit delete_dreamview_group")
         async with async_control_intent(self, ControlIntent.USER):
-            await self._async_write_dreamview((packet,))
+            await self._async_write_dreamview(
+                (packet,), lambda packet, profile: self._validate_dreamview_command(packet, setting, values, profile)
+            )
 
     async def async_delete_dreamview_group(self) -> None:
         """Keep the last authored members for recovery, mark only deletion intent."""
@@ -113,16 +125,29 @@ class _DreamviewMixin(_CoordinatorBase):
             authored = {**(self._dreamview_authored or {}), "operation": "delete"}
             await self._dreamview_store.async_save(authored)
             self._dreamview_authored = authored
-            await self._async_write_dreamview((packet,))
+            await self._async_write_dreamview(
+                (packet,), lambda packet, profile: self._validate_dreamview_command(packet, "delete_group", {}, profile)
+            )
 
-    async def _async_write_dreamview(self, packets: Sequence[bytes]) -> None:
+    @staticmethod
+    def _validate_dreamview_command(
+        packet: bytes, setting: str, values: Mapping[str, Any], profile: ModelProfile
+    ) -> None:
+        if packet != build_dreamview_command(setting, values, profile):
+            raise ValueError("Packet does not match the validated DreamView command")
+
+    async def _async_write_dreamview(
+        self, packets: Sequence[bytes], validator: Callable[[bytes, ModelProfile], None]
+    ) -> None:
         self._dreamview_last_write = "not_attempted"
 
         def guard() -> None:
-            require_dreamview(self.profile)
+            validator(packets[0], self.profile)
             self._dreamview_last_write = "attempted_unconfirmed"
 
-        await self.async_write_effect_sequence(packets, intent=ControlIntent.USER, write_guard=guard)
+        await self.async_write_effect_sequence(
+            packets, intent=ControlIntent.USER, write_guard=guard, packet_validator=validator
+        )
         self._dreamview_last_write = "sent_unconfirmed"
 
     async def async_read_dreamview_state(self, *, timeout: float = 2.0) -> dict[str, Any]:
@@ -131,18 +156,23 @@ class _DreamviewMixin(_CoordinatorBase):
         The protocol has no request IDs. Responses received after dispatch are
         observations, not proof they were caused by that request or any write.
         """
-        require_dreamview(self.profile)
         if not 0 <= timeout <= 10:
             raise ValueError("DreamView read timeout must be 0..10 seconds")
-        packets = tuple(build_dreamview_query(setting, self.profile) for setting in DREAMVIEW_READ_SETTINGS)
+        settings = tuple(setting for setting in DREAMVIEW_READ_SETTINGS if setting in self.profile.dreamview_reads)
+        if not settings:
+            raise ValueError("No DreamView reads are supported by this profile")
+        queries = {build_dreamview_query(setting, self.profile): setting for setting in settings}
+
+        def validate(packet: bytes, profile: ModelProfile) -> None:
+            if packet not in queries or packet != build_dreamview_query(queries[packet], profile):
+                raise ValueError("Packet does not match a validated DreamView query")
+
         async with async_control_intent(self, ControlIntent.USER):
             await self._async_load_dreamview()
             self._dreamview_observed.clear()
-            await self.async_write_effect_sequence(
-                packets, intent=ControlIntent.USER, write_guard=lambda: require_dreamview(self.profile)
-            )
+            await self.async_write_effect_sequence(tuple(queries), intent=ControlIntent.USER, packet_validator=validate)
             deadline = asyncio.get_running_loop().time() + timeout
-            while not set(DREAMVIEW_READ_SETTINGS) <= self._dreamview_observed.keys():
+            while not set(settings) <= self._dreamview_observed.keys():
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
                     break
@@ -154,6 +184,7 @@ class _DreamviewMixin(_CoordinatorBase):
                 "membership_readback": "unavailable",
                 "last_write": self._dreamview_last_write,
                 "observed": copy.deepcopy(self._dreamview_observed),
-                "missing_reads": sorted(set(DREAMVIEW_READ_SETTINGS) - self._dreamview_observed.keys()),
+                "missing_reads": sorted(set(settings) - self._dreamview_observed.keys()),
+                "unsupported_reads": sorted(set(DREAMVIEW_READ_SETTINGS) - set(settings)),
                 "slot_identities": "unknown",
             }

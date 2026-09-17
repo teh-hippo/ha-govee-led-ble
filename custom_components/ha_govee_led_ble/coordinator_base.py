@@ -81,6 +81,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             require_upload_ack: bool = False,
             upload_ack_index: int | None = None,
             writer: ProfileWriter | None = None,
+            packet_validator: Callable[[bytes, ModelProfile], None] = ...,
         ) -> None: ...
 
         async def refresh_state(

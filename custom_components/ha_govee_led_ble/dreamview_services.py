@@ -1,4 +1,4 @@
-"""Validated entity services for the exact-H6099 DreamView candidate."""
+"""Validated entity services for explicitly declared DreamView operations."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import service
 
 from .const import DOMAIN
-from .dreamview import DreamviewMember, build_dreamview_command, build_dreamview_group, integer, require_dreamview
+from .dreamview import DreamviewMember, build_dreamview_command, build_dreamview_group, integer
 
 
 def _integer(maximum: int) -> Callable[[Any], int]:
@@ -43,7 +43,7 @@ def _members(value: Any) -> list[dict[str, Any]]:
                     vol.Optional("name"): str,
                 }
             ],
-            vol.Length(min=1, max=7),
+            vol.Length(min=1, max=255),
         )
     )
     try:
@@ -63,12 +63,12 @@ DREAMVIEW_SERVICES: dict[str, tuple[str, dict[Any, Any]]] = {
     "set_dreamview_switch": ("switch_group", {vol.Required("enabled"): _boolean}),
     "set_dreamview_member_brightness": (
         "member_brightness",
-        {vol.Required("level"): _integer(100), vol.Required("index"): _integer(6)},
+        {vol.Required("level"): _integer(100), vol.Required("index"): _integer(255)},
     ),
     "set_dreamview_same_brightness": ("same_brightness", {vol.Required("enabled"): _boolean}),
     "set_dreamview_member_connect": (
         "member_connect",
-        {vol.Required("index"): _integer(6), vol.Required("connected"): _boolean},
+        {vol.Required("index"): _integer(255), vol.Required("connected"): _boolean},
     ),
     "set_dreamview_saturation": ("saturation", {vol.Required("saturation"): _integer(100)}),
     "set_dreamview_sample": (
@@ -88,7 +88,6 @@ async def _async_dreamview_service(entity: Any, call: ServiceCall, *, name: str)
     setting, schema = DREAMVIEW_SERVICES[name]
     try:
         values = vol.Schema(schema)(service.remove_entity_service_fields(call))
-        require_dreamview(c.profile)
         members: tuple[DreamviewMember, ...] = ()
         if setting == "replace":
             members = tuple(DreamviewMember(**{**item, "zones": tuple(item["zones"])}) for item in values["members"])

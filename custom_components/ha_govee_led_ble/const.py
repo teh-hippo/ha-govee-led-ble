@@ -112,6 +112,9 @@ class ModelProfile:
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
     video_grammar: str | None = None
+    dreamview_grammar: str | None = None
+    dreamview_operations: frozenset[str] = frozenset()
+    dreamview_reads: frozenset[str] = frozenset()
     dreamview_max_sub_devices: int = 0
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     # Exact-product revision policy, independent of compatible wire grammars.
@@ -168,6 +171,8 @@ class ModelProfile:
     effect_readback: str = "none"
 
     def __post_init__(self) -> None:
+        if type(self.dreamview_max_sub_devices) is not int or not 0 <= self.dreamview_max_sub_devices <= 255:
+            raise ValueError("DreamView member capacity must be from 0 to 255")
         if self.physical_ic_count is not None and (
             type(self.physical_ic_count) is not int or self.physical_ic_count <= 0
         ):
@@ -246,7 +251,7 @@ class ModelProfile:
 
     @property
     def requires_notifications(self) -> bool:
-        return bool(self.read_domains)
+        return bool(self.read_domains or self.dreamview_reads)
 
     @property
     def state_readable(self) -> bool:
@@ -359,6 +364,31 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H6099",
         effect_grammar="H6099",
         video_grammar="H6099",
+        dreamview_grammar="H6099",
+        dreamview_operations=frozenset(
+            {
+                "replace_group",
+                "delete_group",
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "sample",
+                "sound",
+            }
+        ),
+        dreamview_reads=frozenset(
+            {
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "sample",
+                "sound",
+            }
+        ),
         dreamview_max_sub_devices=7,
         video_firmware_conditions=(VideoFirmwareCondition("black_border", "subordinate_21_version", "1.00.11"),),
         read_domains=frozenset(

@@ -271,6 +271,14 @@ alone would not make H6199 safe to route through these fixed serializers.
 Sources: `custom_components/ha_govee_led_ble/dreamview.py:22-30,149-190`,
 `coordinator_dreamview.py:66-75`, `dreamview_services.py:34-91`.
 
+Resolved in #306 for compatible consumers: explicit `dreamview_grammar`,
+independent write/read declarations, and target-specific capacity replace
+these indirect guards. Capacity gates only replacement and indexed writes;
+basic grammar restrictions do not authorize or block DreamView transactions.
+Synthetic exact-profile tests cover partial reads, notifications, physical
+authorization and reduced capabilities after preparation. This does not
+qualify another product or implement H6199's incompatible legacy protocol.
+
 ### 13. Transport completion and operation-deadline gaps
 
 **Code/APK difference; physical failure not reproduced.**
@@ -432,7 +440,7 @@ or explicitly excluded; publishing a candidate does not close it.
 | 9. Basic/Mixed DIY | Additional combinations/uploads remain unavailable; existing capture-backed catalogue unchanged | Existing effect catalogue/compiler tests; requires complete payload/activation qualification and separately approved restoration source for resident content. |
 | 10. Segment temperature authoring | Deferred authoring convenience; existing RGB painting retained; no native Kelvin persistence claim | Existing segment builder/service tests retain RGB/brightness contract. Needs explicit temperature-input contract and generated masked writer/readback tests before exposure. |
 | 11. Revision/Pact | Retain Pact in diagnostics; effective APK revision gates apply to queries, writes and recovery; optional newer silence cannot fail basic setup | `tests/test_h6199_capabilities.py`: older/unknown identity, missing basic replies, delayed fresh requalification, H6099 regression. Physical older HW remains unavailable. |
-| 12. DreamView protocol/capacity | Deferred until second wire family is implemented; existing guards retained rather than relaxed | `tests/test_h6099_dreamview.py` preserves fixed serializer limits; do not infer protocol from count or enable H6199 with a boolean. |
+| 12. DreamView protocol/capacity | Resolved for compatible consumers in #306 via explicit codec, operation/read subsets and product capacity; no second wire family required | `tests/test_dreamview_profiles.py` proves independent basic grammars, partial reads and physical authorization; `tests/test_h6099_dreamview.py` preserves exact bytes and membership uncertainty. H6199 legacy DreamView remains deferred. |
 | 13. ACK/deadlines | New native writes require fresh register replies, not ACKs. Identity reply waiting and segment reconciliation are bounded. No blanket pacing/ACK transaction rewrite | Native-control tests reject ACK-only/missing confirmation; existing sequence tests cover retries. Underlying general refresh GATT writes still depend on transport/caller timeouts; negative upload ACKs and hung production radio remain unqualified. |
 
 The narrowed/withdrawn claims above remain withdrawn. No query-discriminator,

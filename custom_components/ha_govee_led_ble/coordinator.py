@@ -33,6 +33,7 @@ from .ble_device_resolver import BLEDeviceResolver
 from .const import (
     DOMAIN,
     MUSIC_MODE_SLUGS,
+    ModelProfile,
     ReadDomain,
     default_effect_categories,
     default_effect_families,
@@ -1677,12 +1678,13 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
         cleanup_deadline: float | None = None,
+        packet_validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
     ) -> None:
         """Write on the caller's connection without changing its transaction policy."""
         if arm_expected and self._segment_query_incomplete:
             # The caller owns reconnect/retry policy; never write across an abandoned query.
             raise BleakError("Incomplete segment query requires a new connection")
-        require_profile_packet(packet, self.profile)
+        packet_validator(packet, self.profile)
         wire_packet = packet
         if (transform := self.profile.outbound_transform) is not None:
             wire_packet = transform(packet)
@@ -1694,7 +1696,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             wire_packet = self._encryption.encode(wire_packet)
         if before_write is not None:
             before_write()
-        require_profile_packet(packet, self.profile)
+        packet_validator(packet, self.profile)
         if state_values is not None:
             for field, value in state_values.items():
                 setattr(self, field, value)
@@ -2518,6 +2520,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         require_upload_ack: bool = False,
         upload_ack_index: int | None = None,
         writer: ProfileWriter | None = None,
+        packet_validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
     ) -> None:
         """Write a transaction; an injected writer owns its connection and never retries.
 
@@ -2603,6 +2606,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                                     before_write=guard,
                                     state_values=values,
                                     expected_values=expected_values,
+                                    packet_validator=packet_validator,
                                 )
                             else:
                                 await writer(

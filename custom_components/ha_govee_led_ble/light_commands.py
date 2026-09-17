@@ -145,7 +145,7 @@ class ParsedStaticWrite:
 def parse_static_write(packet: bytes, model: str = "H617A") -> ParsedStaticWrite | None:
     """Convert a generated static command into optimistic semantic state."""
     generated = parse_command(packet, model)
-    if generated is None:
+    if generated is None or not hasattr(generated.opcode, "name"):
         return None
     whole_device_mask = get_profile(model).whole_device_mask
     if get_profile(model).command_grammar in {"H6099", "H6199"}:
