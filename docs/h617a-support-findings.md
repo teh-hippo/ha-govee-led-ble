@@ -17,8 +17,8 @@ GATT-cache and idle-polling fixes.
 | R1/R2 | Fresh pre-write power, mode, master brightness and static segments; persisted complete layout; faithful on/off restoration and fresh verification | Pending |
 | R3/R4 | Mixed segments invalidate incompatible Kelvin; physical-attempt rollback preserves fresh observations and reconciles ambiguous writes | RC2 Kelvin-to-masked-RGB passed; ambiguous failures remain software-qualified |
 | R5/R6 | Exact-mode fixed-colour permissions, mode/sensitivity-only new replies, complete known-body retention/replay and explicit uncertainty for unreadable settings | RC2 fixed-colour UI/readback passed; failed-application body restoration remains software-qualified |
-| Music controls | Seven palettes, Piano gradient and Hopping background/no-colour; field-specific physical-IC gates | Experimental; rendering and sound pending |
-| Native DIY | Templates 501–507 retain their own identity and use subtype 02 upload, positive result, then their own selector | Experimental; rendering pending |
+| Music controls | Seven palettes, Piano gradient and Hopping background/no-colour; field-specific physical-IC gates | RC3 API matrix and representative owner-observed rendering/sound passed; detailed limits below |
+| Native DIY | Templates 501–507 retain their own identity and use subtype 02 upload, positive result, then their own selector | RC3 API matrix passed; Stack rendering owner-confirmed; other templates not individually visually certified |
 | Segment Kelvin / light count | Whole-layout preservation checked; AA0F is optional passive diagnostic evidence, never physical geometry | RC2 exact service passed; AA0F remained absent |
 
 Correctness and APK/Kaitai reviews found six issues; all were fixed and their
@@ -37,9 +37,9 @@ transaction ID. Unknown physical IC count still gates only dependent controls.
 
 The owner authorised automated qualification of **cupboard skirt only** and
 replacement of unreadable resident music/DIY customisations with a known test
-baseline. Human animation and sound checks await a later testing window.
-**Every Home Assistant restart requires fresh owner approval.** Stable publication
-remains gated on the outstanding qualification. Detailed implementation evidence is in
+baseline. The agreed representative animation/sound session and restart-persistence
+checks are complete; the owner requested release with the limits below.
+**Every Home Assistant restart requires fresh owner approval.** Detailed implementation evidence is in
 [music](h617a-music-implementation.md) and [native DIY](h617a-diy-implementation.md).
 
 ### RC1 installed results and RC2 timing correction
@@ -127,10 +127,42 @@ Final RC3 `make check` passed **2,810 Python tests (79 skipped), 269 frontend un
 tests, 33 browser tests**, and the protocol/type/lint/generated-output gates.
 Independent correctness/Ponytail re-review closed both races, including 312
 focused tests and independent pre-/post-write cancellation and storage-failure
-probes. Installed RC3 race qualification remains pending.
+probes. Installed RC3 qualification and release acceptance follow below.
 
-Remaining release gates include owner-observed rendering/sound, broader control
-coverage, separately approved restart-persistence checks and a normal-use window.
+### RC3 qualification and release acceptance
+
+Published `v7.7.0-rc.3.h617a` at
+`bec21f31eaf8c04455b03aaacc76a7147ea51402`, package SHA-256
+`d09f1470834aa1c8684b622d4ec87c19b0980900b96aab8524c636e9f6acdab8`.
+HACS installation, individually approved restart and diagnostics established the
+running candidate. Evidence summaries are recorded on [PR #301](https://github.com/teh-hippo/ha-govee-led-ble/pull/301).
+
+- All eleven music modes and seven native-DIY carriers repeated the RC2 API matrix:
+  54 confirmed Applies, 18 Previews and 90 fresh workflow readbacks. All 56 inspected
+  uploads received a positive result before activation. Readback limits remain as above.
+- Installed-browser overlapping Live Apply/edit passed five times, with the newer
+  preview completing last. Piano, Meteor and Stack named edits/save/reopen/apply and
+  overlapping previews passed. This is representative browser coverage, not every control.
+- The owner confirmed Spectrum/Rolling noise response, Hopping blue background with
+  red sound response, Piano sound response and Stack's moving/stacking animation.
+  Piano's Gradient toggle was accepted with a tentative grouping-change observation,
+  not proof of colour interpolation. Hopping no-colour and black both showed
+  palette-coloured idle breathing; no visual distinction between them was established.
+- A separately approved restart preserved two version-2 saved Hopping/Stack documents
+  exactly (content/hash/version). Before control writes, fresh replies confirmed off,
+  master 15% and hidden Stack selector 507. Both saved items reapplied successfully.
+- All temporary effects were deleted and fresh replies verified restoration to off,
+  master 5%, warm RGB `(255,177,109)` and all relative levels 100%.
+- The owner requested **release** after these checks. The proposed 24-hour normal-use
+  window was not completed and is not claimed. Visual coverage was explicitly agreed
+  as representative; broader ranges and geometry-dependent controls remain unqualified.
+
+Before release, master dependency updates through `7d20040` were incorporated.
+The combined final `make check` passed **2,810 Python tests (79 skipped), 269 frontend
+unit tests, 33 browser tests and 132 protocol replays**, with **89.62%** coverage.
+The rebuilt package matched RC3 byte-for-byte for every runtime file except the
+manifest version. Semantic-release calculated **7.7.0**.
+
 Production failed-application restoration and ambiguous-write faults remain
 software-qualified; successful runner cleanup is not proof of those paths.
 Official-app captures and exact-device geometry are still absent; speculative
