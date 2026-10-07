@@ -502,6 +502,15 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         legacy_scene_catalogue_sku="H617A",
         advanced_scene_carrier=(29884, 41599),
     ),
+    "H617C": replace(
+        _H617A_PROFILE,
+        name="H617C LED Strip",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        command_grammar="H617A",
+        status_grammar="H617A",
+        effect_grammar="H617A",
+        scene_catalogue_sku="H617A",
+    ),
     "H617F": replace(
         _H617A_PROFILE,
         name="H617F LED Strip",
@@ -657,7 +666,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
-BLE_DISCOVERABLE_MODELS = frozenset({"H6076", "H617A", "H617E", "H617F", "H6199"})
+BLE_DISCOVERABLE_MODELS = frozenset({"H6076", "H617A", "H617C", "H617E", "H617F", "H6199"})
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
@@ -710,7 +719,7 @@ def model_from_ble_name(name: str) -> str | None:
 def protocol_model(model: str) -> str | None:
     """Resolve legacy runtime policy identity, not effect-grammar compatibility."""
     resolved = resolve_model(model)
-    return "H617A" if resolved in {"H617A", "H617E", "H617F"} else resolved
+    return "H617A" if resolved in {"H617A", "H617C", "H617E", "H617F"} else resolved
 
 
 def get_profile(model: str) -> ModelProfile:
