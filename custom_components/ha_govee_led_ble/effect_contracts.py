@@ -480,6 +480,7 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
+    *(replace(capability, model="H617F") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
 )
 
