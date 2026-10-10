@@ -100,6 +100,7 @@ async def negotiate(version=1, *, confirm=True):
     [
         (False, None, 0),
         (True, None, 1),
+        (False, b"\0", 0),
         (False, b"\x01\0", 0),
         (False, b"\x02\0\0\0\0\0", 0),
         (True, b"\x01\0", 1),
@@ -139,6 +140,17 @@ async def test_zero_marker_preserves_previous_encryption_requirement(version, ma
     assert not session.ready
     with pytest.raises(GoveeCryptoError, match="session_not_ready"):
         session.encode(build_power(True))
+    device.write_gatt_char.assert_not_awaited()
+
+
+@pytest.mark.parametrize("advertised", [False, True])
+async def test_single_byte_zero_cannot_override_encryption_evidence(advertised):
+    session, device = GoveeEncryptionSession(), client(b"\0")
+    if not advertised:
+        await session.async_select(client(b"\x01\x01"), advertised=False)
+    with pytest.raises(GoveeCryptoError, match="selection_failed"):
+        await session.async_select(device, advertised=advertised)
+    assert not session.ready
     device.write_gatt_char.assert_not_awaited()
 
 

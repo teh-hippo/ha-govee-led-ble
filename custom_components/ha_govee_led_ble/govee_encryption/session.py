@@ -75,11 +75,17 @@ class GoveeEncryptionSession:
                 data = await client.read_gatt_char(ENCRYPTION_UUID)
                 if not isinstance(data, (bytes, bytearray)):
                     raise GoveeCryptoError("invalid_marker")
-                marker = parse_wire("Marker", bytes(data))
-                if marker.format not in (1, 2) or marker.version not in (0, 1, 2):
-                    raise GoveeCryptoError("invalid_marker")
-                # Version zero permits plaintext only without positive encryption evidence.
-                self.version = marker.version or self.required_version
+                raw_marker = bytes(data)
+                if raw_marker == b"\x00":
+                    if self.required_version:
+                        raise GoveeCryptoError("invalid_marker")
+                    self.version = 0
+                else:
+                    marker = parse_wire("Marker", raw_marker)
+                    if marker.format not in (1, 2) or marker.version not in (0, 1, 2):
+                        raise GoveeCryptoError("invalid_marker")
+                    # Version zero permits plaintext only without positive encryption evidence.
+                    self.version = marker.version or self.required_version
                 self._selection_failed = False
             if self.version:
                 self.required_version = self.version
