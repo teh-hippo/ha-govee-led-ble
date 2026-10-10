@@ -637,19 +637,39 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         expected_video_sound_effects_softness: int | None = None,
         retry_command: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
-        if not self.coordinator.profile.state_readable:
+        profile = self.coordinator.profile
+        expectations = {
+            field: value
+            for field, value, readable in (
+                ("expected_on", expected_on, profile.can_read(ReadDomain.POWER)),
+                ("expected_brightness", expected_brightness, profile.can_read(ReadDomain.BRIGHTNESS)),
+                (
+                    "expected_rgb_color",
+                    expected_rgb_color,
+                    profile.supports_color_mode_readback and profile.static_readback_echoes_color,
+                ),
+                (
+                    "expected_color_temp_kelvin",
+                    expected_color_temp_kelvin,
+                    profile.supports_color_mode_readback and profile.static_readback_kelvin,
+                ),
+                ("expected_video_mode", expected_video_mode, profile.supports_color_mode_readback),
+                ("expected_video_full_screen", expected_video_full_screen, profile.supports_color_mode_readback),
+                ("expected_video_saturation", expected_video_saturation, profile.supports_color_mode_readback),
+                ("expected_video_sound_effects", expected_video_sound_effects, profile.supports_color_mode_readback),
+                (
+                    "expected_video_sound_effects_softness",
+                    expected_video_sound_effects_softness,
+                    profile.supports_color_mode_readback,
+                ),
+            )
+            if value is not None and readable
+        }
+        if not expectations:
             return
         confirm = partial(
             self.coordinator.refresh_state,
-            expected_on=expected_on,
-            expected_brightness=expected_brightness,
-            expected_rgb_color=expected_rgb_color,
-            expected_color_temp_kelvin=expected_color_temp_kelvin,
-            expected_video_mode=expected_video_mode,
-            expected_video_full_screen=expected_video_full_screen,
-            expected_video_saturation=expected_video_saturation,
-            expected_video_sound_effects=expected_video_sound_effects,
-            expected_video_sound_effects_softness=expected_video_sound_effects_softness,
+            **expectations,
         )
         if await confirm():
             return

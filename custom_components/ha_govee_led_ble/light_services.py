@@ -180,7 +180,10 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
-        self._require_support("paint_segments", supported=self.coordinator.profile.supports_segments)
+        self._require_support(
+            "paint_segments",
+            supported=self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb,
+        )
         try:
             resolved: list[SegmentColorGroup] = [
                 (list(group.get("segments", [])), group["rgb_color"]) for group in groups
@@ -216,7 +219,11 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         c = self.coordinator
         self._require_support(
             "set_segment_color_temp",
-            supported=c.profile.supports_segments and c.profile.supports_color_temperature,
+            supported=(
+                c.profile.supports_segments
+                and c.profile.supports_color_temperature
+                and c.profile.supports_segment_color_temperature
+            ),
         )
         try:
             segments = list(segments)
@@ -256,7 +263,12 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             ) from err
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
-        self._require_support("set_segment_brightness", supported=self.coordinator.profile.supports_segments)
+        self._require_support(
+            "set_segment_brightness",
+            supported=(
+                self.coordinator.profile.supports_segments and self.coordinator.profile.supports_segment_brightness
+            ),
+        )
         try:
             segments = list(segments)
             build_segment_brightness(segments, brightness, self.coordinator.model, profile=self.coordinator.profile)
