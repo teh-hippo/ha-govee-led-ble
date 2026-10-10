@@ -98,7 +98,7 @@ from .video_applicability import (
 
 # fmt: on
 
-PARALLEL_UPDATES = 0
+PARALLEL_UPDATES = 1
 
 _LOGGER = logging.getLogger(__name__)
 

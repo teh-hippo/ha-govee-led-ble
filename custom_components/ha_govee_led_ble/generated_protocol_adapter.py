@@ -220,6 +220,7 @@ _STATUS_ROOTS = {
     "H6199": ("h6199_status_reply", H6199StatusReply),
 }
 _COMMAND_ROOTS = {
+    "H601C": ("command_write", CommandWrite),
     "H6099": ("h6099_command_write", H6099CommandWrite),
     "H617A": ("command_write", CommandWrite),
     "H6199": ("h6199_command_write", H6199CommandWrite),
@@ -401,9 +402,9 @@ def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         return root_type, root_type.PowerBody, root_type.BrightnessBody
-    if resolved != "H617A":
-        raise ValueError(f"{model} has no generated command grammar")
-    return CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
+    if resolved in {"H617A", "H601C"}:
+        return CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
+    raise ValueError(f"{model} has no generated command grammar")
 
 
 def new_child(struct_type: Any, parent: Any) -> Any:
@@ -971,6 +972,25 @@ def _build_h617a_static_colour(
     return _serialize_xor(root)
 
 
+def _build_bulb_manual_colour(red: int, green: int, blue: int) -> bytes:
+    r = max(0, min(255, red))
+    g = max(0, min(255, green))
+    b = max(0, min(255, blue))
+    payload = bytearray([0x33, 0x05, 0x0D, r, g, b, 0x00, 0x00])
+    payload.extend(bytes(19 - len(payload)))
+    payload.append(xor_checksum(payload))
+    return bytes(payload)
+
+
+def _build_bulb_colour_temperature(kelvin: int, preview: tuple[int, int, int]) -> bytes:
+    k_hi = (kelvin >> 8) & 0xFF
+    k_lo = kelvin & 0xFF
+    payload = bytearray([0x33, 0x05, 0x0D, 0xFF, 0xFF, 0xFF, k_hi, k_lo])
+    payload.extend(bytes(19 - len(payload)))
+    payload.append(xor_checksum(payload))
+    return bytes(payload)
+
+
 def build_segment_colour(
     mask: int,
     red: int,
@@ -981,6 +1001,8 @@ def build_segment_colour(
     profile: ModelProfile | None = None,
 ) -> bytes:
     resolved = (profile or get_profile(model)).command_grammar
+    if resolved == "H601C":
+        return _build_bulb_manual_colour(red, green, blue)
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
@@ -1020,6 +1042,8 @@ def build_colour_temperature(
 ) -> bytes:
     value = max(2000, min(9000, kelvin))
     resolved = (profile or get_profile(model)).command_grammar
+    if resolved == "H601C":
+        return _build_bulb_colour_temperature(value, preview)
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
@@ -1058,6 +1082,8 @@ def build_segment_brightness(
 ) -> bytes:
     value = max(0, min(100, percent))
     resolved = (profile or get_profile(model)).command_grammar
+    if resolved == "H601C":
+        return build_brightness(value, model, profile=profile)
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()

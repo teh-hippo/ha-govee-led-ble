@@ -133,6 +133,10 @@ def _expected_color_mode(
     profile: ModelProfile | None = None,
 ) -> tuple[ParsedMode, int | None] | None:
     profile = profile or get_profile(model)
+    if profile.command_grammar == "H601C":
+        if getattr(generated.opcode, "name", None) == "multi" and getattr(generated.body, "sub", None) in (2, 0x0D):
+            return ParsedMode.COLOUR, None
+        return None
     if profile.command_grammar in {"H6099", "H6199"}:
         if generated.opcode.name != "mode":
             return None

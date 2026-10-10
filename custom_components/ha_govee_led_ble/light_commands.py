@@ -162,6 +162,29 @@ def parse_static_write(
     if generated is None or not hasattr(generated.opcode, "name"):
         return None
     whole_device_mask = profile.whole_device_mask
+    if profile.command_grammar == "H601C":
+        sub = getattr(generated.body, "sub", None)
+        if generated.opcode.name != "multi" or sub not in (2, 0x0D):
+            return None
+        payload = generated.body.sub_body
+        if not isinstance(payload, bytes | bytearray) or len(payload) < 5:
+            return None
+        kelvin = (payload[3] << 8) | payload[4] if len(payload) >= 5 and ((payload[3] << 8) | payload[4]) > 0 else None
+        if kelvin is not None or (payload[0] == 0xFF and payload[1] == 0xFF and payload[2] == 0xFF):
+            return ParsedStaticWrite(
+                operation=int(sub),
+                segment_mask=whole_device_mask,
+                whole_device_mask=whole_device_mask,
+                kelvin=kelvin,
+                kelvin_companion_rgb=(255, 255, 255),
+            )
+        rgb = (int(payload[0]), int(payload[1]), int(payload[2]))
+        return ParsedStaticWrite(
+            operation=int(sub),
+            segment_mask=whole_device_mask,
+            whole_device_mask=whole_device_mask,
+            rgb=rgb,
+        )
     if profile.command_grammar in {"H6099", "H6199"}:
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
             return None

@@ -502,6 +502,17 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         legacy_scene_catalogue_sku="H617A",
         advanced_scene_carrier=(29884, 41599),
     ),
+    "H601C": ModelProfile(
+        "H601C Recessed Downlight",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        command_grammar="H601C",
+        supports_rgb=True,
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        whole_device_mask=0x0001,
+        connection_idle_timeout=0.1,
+    ),
     "H6076": ModelProfile(
         "H6076 Lyra Floor Lamp",
         support_quality=SupportQuality.PARTIAL,
@@ -648,7 +659,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
-BLE_DISCOVERABLE_MODELS = frozenset({"H6076", "H617A", "H617E", "H6199"})
+BLE_DISCOVERABLE_MODELS = frozenset({"H601C", "H6076", "H617A", "H617E", "H6199"})
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
