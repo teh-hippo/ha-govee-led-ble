@@ -39,6 +39,8 @@ def segments_to_mask(segments: Iterable[int], profile: ModelProfile | None = Non
         mask |= 1 << (segment - 1)
     if not mask:
         raise ValueError("no segments selected")
+    if profile is not None and mask & ~profile.whole_device_mask:
+        raise ValueError("segment mask outside profile geometry")
     return mask
 
 
@@ -52,7 +54,10 @@ def build_segment_color(
     profile: ModelProfile | None = None,
 ) -> bytes:
     profile = profile or get_profile(model)
-    return build_segment_colour(segments_to_mask(segments, profile), red, green, blue, model, profile=profile)
+    mask = segments_to_mask(segments, profile)
+    if not profile.supports_rgb:
+        raise ValueError(f"{profile.name} does not support RGB colour")
+    return build_segment_colour(mask, red, green, blue, model, profile=profile)
 
 
 def build_segment_brightness(
@@ -63,7 +68,10 @@ def build_segment_brightness(
     profile: ModelProfile | None = None,
 ) -> bytes:
     profile = profile or get_profile(model)
-    return build_segment_brightness_mask(segments_to_mask(segments, profile), percent, model, profile=profile)
+    mask = segments_to_mask(segments, profile)
+    if not profile.supports_segment_brightness:
+        raise ValueError(f"{profile.name} does not support segment brightness")
+    return build_segment_brightness_mask(mask, percent, model, profile=profile)
 
 
 def build_segment_paint(
@@ -91,6 +99,8 @@ def build_color_rgb(
     profile: ModelProfile | None = None,
 ) -> bytes:
     profile = profile or get_profile(model)
+    if not profile.supports_rgb:
+        raise ValueError(f"{profile.name} does not support RGB colour")
     return build_segment_colour(profile.whole_device_mask, red, green, blue, model, profile=profile)
 
 
@@ -108,6 +118,8 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
 
 def build_color_temp(kelvin: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
     profile = profile or get_profile(model)
+    if not profile.supports_color_temperature:
+        raise ValueError(f"{profile.name} does not support colour temperature")
     value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
     return build_colour_temperature(value, kelvin_to_rgb(value), profile.whole_device_mask, model, profile=profile)
 
@@ -124,6 +136,8 @@ def build_segment_color_temp(
     mask = segments_to_mask(segments, profile)
     if not profile.supports_color_temperature:
         raise ValueError(f"{profile.name} does not support colour temperature")
+    if not profile.supports_segment_color_temperature:
+        raise ValueError(f"{profile.name} does not support segment colour temperature")
     if isinstance(kelvin, bool) or not isinstance(kelvin, int):
         raise ValueError("Kelvin must be an integer")
     if not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:

@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.restore_state import RestoredExtraData
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
@@ -295,6 +295,105 @@ async def test_power(light, mock_coordinator, on):
     await (light.async_turn_on() if on else light.async_turn_off())
     mock_coordinator.send_command.assert_called_with(build_power(on))
     assert mock_coordinator.is_on is on
+
+
+@pytest.mark.parametrize("operation", ["brightness", "power_on", "power_off"])
+@pytest.mark.parametrize("mixed", [False, True])
+async def test_write_only_control_completes_without_confirmation_or_retry(light, mock_coordinator, operation, mixed):
+    readable = ReadDomain.POWER if operation == "brightness" else ReadDomain.BRIGHTNESS
+    mock_coordinator.profile = ModelProfile(
+        "Synthetic mixed read/write light",
+        command_grammar="H617A",
+        status_grammar="H617A",
+        supports_rgb=True,
+        read_domains=frozenset({readable}) if mixed else frozenset(),
+    )
+    mock_coordinator.is_on = operation != "power_on"
+    mock_coordinator.refresh_state.side_effect = AssertionError("write-only controls must not query")
+    revisions = dict(mock_coordinator._field_revisions)
+
+    if operation == "brightness":
+        await light.async_turn_on(brightness=128)
+        packet = build_brightness(50)
+        assert mock_coordinator.brightness_pct == 50
+    else:
+        on = operation == "power_on"
+        await (light.async_turn_on() if on else light.async_turn_off())
+        packet = build_power(on)
+        assert mock_coordinator.is_on is on
+
+    mock_coordinator.send_command.assert_awaited_once_with(packet)
+    mock_coordinator.refresh_state.assert_not_awaited()
+    assert mock_coordinator._field_revisions == revisions
+    light.async_write_ha_state.assert_called_once_with()
+
+
+@pytest.mark.parametrize("domain", [ReadDomain.POWER, ReadDomain.BRIGHTNESS])
+@pytest.mark.parametrize("replies", [(True,), (False, True), (False, False)])
+async def test_mixed_confirmation_keeps_readable_expectation_strict(light, mock_coordinator, domain, replies):
+    mock_coordinator.profile = ModelProfile(
+        "Synthetic mixed confirmation",
+        command_grammar="H617A",
+        status_grammar="H617A",
+        read_domains=frozenset({domain}),
+    )
+    mock_coordinator.refresh_state.side_effect = replies
+    retry = AsyncMock()
+    kwargs = {"expected_on": False, "expected_brightness": 50, "retry_command": retry}
+
+    if replies[-1]:
+        await light._refresh_with_retry(**kwargs)
+    else:
+        with pytest.raises(RuntimeError, match="Failed to confirm state"):
+            await light._refresh_with_retry(**kwargs)
+
+    expected = {"expected_on": False} if domain is ReadDomain.POWER else {"expected_brightness": 50}
+    assert [call.kwargs for call in mock_coordinator.refresh_state.await_args_list] == [expected] * len(replies)
+    assert retry.await_count == len(replies) - 1
+
+
+@pytest.mark.parametrize("operation", ["brightness", "power_on", "power_off"])
+async def test_readable_control_confirmation_failure_retries_and_rolls_back(light, mock_coordinator, operation):
+    mock_coordinator.is_on = operation != "power_on"
+    before = (mock_coordinator.is_on, mock_coordinator.brightness_pct)
+    mock_coordinator.refresh_state.return_value = False
+
+    with pytest.raises(HomeAssistantError) as exc:
+        if operation == "brightness":
+            expected = {"expected_brightness": 50}
+            await light.async_turn_on(brightness=128)
+        else:
+            on = operation == "power_on"
+            expected = {"expected_on": on}
+            await (light.async_turn_on() if on else light.async_turn_off())
+
+    assert exc.value.translation_key == "device_command_failed"
+    assert (mock_coordinator.is_on, mock_coordinator.brightness_pct) == before
+    assert mock_coordinator.send_command.await_count == 2
+    assert [call.kwargs for call in mock_coordinator.refresh_state.await_args_list] == [expected, expected]
+    light.async_write_ha_state.assert_not_called()
+
+
+@pytest.mark.parametrize("operation", ["brightness", "power_on", "power_off"])
+async def test_write_only_control_transport_failure_still_rolls_back(light, mock_coordinator, operation):
+    mock_coordinator.profile = ModelProfile("Synthetic write-only light", command_grammar="H617A", supports_rgb=True)
+    mock_coordinator.is_on = operation != "power_on"
+    before = (mock_coordinator.is_on, mock_coordinator.brightness_pct)
+    mock_coordinator._client.write_gatt_char.side_effect = BleakError("transport failed")
+
+    with pytest.raises(HomeAssistantError) as exc:
+        if operation == "brightness":
+            await light.async_turn_on(brightness=128)
+        elif operation == "power_on":
+            await light.async_turn_on()
+        else:
+            await light.async_turn_off()
+
+    assert exc.value.translation_key == "device_command_failed"
+    assert (mock_coordinator.is_on, mock_coordinator.brightness_pct) == before
+    mock_coordinator.send_command.assert_awaited_once()
+    mock_coordinator.refresh_state.assert_not_awaited()
+    light.async_write_ha_state.assert_not_called()
 
 
 async def test_turn_on_variants(light, mock_coordinator):

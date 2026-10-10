@@ -320,7 +320,9 @@ def boolean_control_is_authorized(control: str, profile: ModelProfile) -> bool:
 
 
 def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
-    """Enforce boolean authorization even when ordinary operations are unrestricted."""
+    """Revalidate operation capabilities and geometry at each physical attempt."""
+    from .light_commands import parse_static_write
+
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
@@ -329,9 +331,46 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             if boolean_control_is_authorized(control, profile):
                 return
             raise ValueError(f"{profile.name} does not support boolean control {control}")
-        if profile.command_operations is None or operation in profile.command_operations:
-            return
-        if "static" in profile.command_operations and getattr(command, "is_static", False):
+        if (
+            profile.command_operations is None
+            or operation in profile.command_operations
+            or "static" in profile.command_operations
+            and getattr(command, "is_static", False)
+        ):
+            static = parse_static_write(frame, profile=profile)
+            if static is None and getattr(command, "is_static", False) and profile.command_grammar == "H617A":
+                levels = getattr(command.body.sub_body.static_body, "segment_percent", None)
+                if levels is not None:
+                    if not profile.supports_segments or not profile.supports_segment_brightness:
+                        raise ValueError(f"{profile.name} does not support segment brightness")
+                    if len(levels) != profile.segment_count or ((1 << len(levels)) - 1) & ~profile.whole_device_mask:
+                        raise ValueError("segment brightness outside profile geometry")
+            if static is not None:
+                if not static.segment_mask:
+                    raise ValueError("no segments selected")
+                if not static.whole_strip or (
+                    static.brightness_pct is not None and not profile.supports_white_brightness
+                ):
+                    if not profile.supports_segments:
+                        raise ValueError(f"{profile.name} does not support per-segment control")
+                    if static.segment_mask & ~((1 << min(15, profile.segment_count)) - 1) or (
+                        static.segment_mask & ~profile.whole_device_mask
+                    ):
+                        raise ValueError("segment mask outside profile geometry")
+                if static.rgb is not None and not profile.supports_rgb:
+                    raise ValueError(f"{profile.name} does not support RGB colour")
+                if static.kelvin is not None:
+                    if not profile.supports_color_temperature:
+                        raise ValueError(f"{profile.name} does not support colour temperature")
+                    if not static.whole_strip and not profile.supports_segment_color_temperature:
+                        raise ValueError(f"{profile.name} does not support segment colour temperature")
+                if static.brightness_pct is not None and not (
+                    profile.supports_segments
+                    and profile.supports_segment_brightness
+                    or static.whole_strip
+                    and profile.supports_white_brightness
+                ):
+                    raise ValueError(f"{profile.name} does not support segment brightness")
             return
     query = _parse_xor_frame(
         frame,

@@ -30,7 +30,7 @@ jobs:
           VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: git checkout -B master "$VALIDATED_SHA"
 
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Python Semantic Release
         id: semantic_release
@@ -53,14 +53,14 @@ jobs:
             gh release edit "$RELEASE_TAG" --notes-file "$notes_file"
           fi
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
         with:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5
         if: ${{ steps.semantic_release.outputs.released == 'true' }}
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
