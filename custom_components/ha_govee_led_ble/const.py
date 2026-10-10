@@ -383,6 +383,56 @@ _H617A_PROFILE = ModelProfile(
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "H60A1": ModelProfile(
+        "H60A1 Ceiling Light",
+        command_grammar="H617A",
+        status_grammar="H60A1",
+        command_operations=frozenset({"power", "brightness", "static"}),
+        read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        whole_device_mask=0x3FFF,
+        segment_count=14,
+        segment_group_size=4,
+        # RGB/segment reads require revision evidence in device_profile. Panel
+        # brightness is write-only; segment brightness ACKs but is not rendered.
+        # Kelvin is withheld: app sentinels/table differ from the H617A writer,
+        # and masked H60A1 Kelvin changes the sibling zone (reporter fork).
+    ),
+    "H60A6": ModelProfile(
+        "H60A6 Ceiling Light Pro",
+        command_grammar="H617A",
+        status_grammar="H60A6",
+        command_operations=frozenset({"power", "brightness", "static"}),
+        read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        whole_device_mask=0x1FFF,
+        segment_count=13,
+        segment_group_size=4,
+        # Support.java:209-213,345-346,489-498: Pact 1/1 has one zone;
+        # 1/2+ has thirteen. 1/3 adds masked Kelvin, still unqualified here.
+    ),
+    "H601C": ModelProfile(
+        "H601C Ceiling Light",
+        command_grammar="H601C",
+        status_grammar="H601C",
+        command_operations=frozenset({"power", "brightness", "static"}),
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        whole_device_mask=1,
+        static_readback_echoes_color=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+    ),
     "H6099": ModelProfile(
         "H6099 TV Backlight 3 Lite",
         support_quality=SupportQuality.EXPERIMENTAL,
@@ -682,7 +732,38 @@ def device_profile(
     firmware: str | None = None,
     hardware: str | None = None,
 ) -> ModelProfile:
-    """Restrict positively identified Pact 1 only; unknown is not proof of Pact 2."""
+    """Resolve exact-product capabilities from evidenced revision context."""
+    if model in {"H60A1", "H60A6"}:
+        from .firmware_version import FirmwareVersion
+
+        profile = get_profile(model)
+        if model == "H60A6" and (pact_type, pact_code) == (1, 1):
+            return replace(profile, segment_count=1, whole_device_mask=1)
+        hw = FirmwareVersion.parse(hardware)
+        # Android KelvinConfig.S2: HW >=1.04.03 uses the 2700 K table;
+        # older hardware uses 2200 K. Unknown retains conservative bounds.
+        if model == "H60A1" and hw is not None and hw.identity_number() < 10403:
+            profile = replace(profile, min_color_temp_kelvin=2200)
+        # Android 7.6.01 pact_h60a0/pact/Support.java and reporter fork
+        # f8d4267 docs/h60a-support-findings.md. An exact tuple can qualify
+        # absent Pact metadata or H60A1's supported 1/1 route. H60A6 1/1
+        # positively identifies the incompatible one-zone topology.
+        segmented = (
+            (pact_type == 2 and pact_code == 1)
+            if model == "H60A1"
+            else (pact_type == 1 and type(pact_code) is int and pact_code >= 2)
+        )
+        captured_firmware = "1.02.20" if model == "H60A1" else "1.00.41"
+        if (pact_type, pact_code) == (None, None) or model == "H60A1" and (pact_type, pact_code) == (1, 1):
+            segmented = (hardware, firmware) == ("1.04.03", captured_firmware)
+        if segmented:
+            return replace(
+                profile,
+                supports_rgb=True,
+                supports_segment_writes=True,
+                read_domains=profile.read_domains | {ReadDomain.SEGMENTS},
+            )
+        return profile
     if model == "H6199" and (pact_type, pact_code) == (1, 1):
         return H6199_PACT1_PROFILE
     if model == "H6102":

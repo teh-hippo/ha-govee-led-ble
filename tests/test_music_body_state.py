@@ -375,7 +375,7 @@ def test_profile_change_clears_complete_body_with_palette(hass, monkeypatch):
     )
     monkeypatch.setattr(
         "custom_components.ha_govee_led_ble.coordinator.device_profile",
-        lambda *args: replace(c.profile, supports_music_color=not c.profile.supports_music_color),
+        lambda *args, **kwargs: replace(c.profile, supports_music_color=not c.profile.supports_music_color),
     )
     c._note_advertisement(SimpleNamespace(manufacturer_data={}))
     assert c._music_body is None and c._music_palette is None

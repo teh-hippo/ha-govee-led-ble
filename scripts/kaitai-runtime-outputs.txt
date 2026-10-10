@@ -7,6 +7,10 @@ govee_encryption.py
 govee_segment_page.py
 govee_shared.py
 h6102_status_reply.py
+h601c_command_write.py
+h601c_status_reply.py
+h60a1_status_reply.py
+h60a6_status_reply.py
 h6099_command_write.py
 h6099_command_ack.py
 h6099_dreamview_frame.py

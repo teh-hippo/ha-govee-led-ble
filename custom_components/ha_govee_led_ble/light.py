@@ -77,7 +77,7 @@ from .effect_storage import (
     LibrarySnapshot,
 )
 from .entity import GoveeBLEEntity
-from .generated_protocol_adapter import build_brightness, build_power
+from .generated_protocol_adapter import build_brightness, build_power, require_profile_packet
 from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
 from .light_services import (
     _GoveeLightServicesMixin,
@@ -321,7 +321,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             modes.add(ColorMode.RGB)
         if profile.supports_color_temperature:
             modes.add(ColorMode.COLOR_TEMP)
-        return modes or {ColorMode.BRIGHTNESS if self.coordinator.model == "H6102" else ColorMode.ONOFF}
+        return modes or {
+            ColorMode.BRIGHTNESS
+            if profile.can_read(ReadDomain.BRIGHTNESS) or "brightness" in (profile.command_operations or ())
+            else ColorMode.ONOFF
+        }
 
     @property
     def assumed_state(self) -> bool:
@@ -437,6 +441,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             self._library_updated(application.library_snapshot())
         await self._async_restore_static_color()
         await self._async_restore_segments()
+        await self._async_restore_brightness()
+
+    async def _async_restore_brightness(self) -> None:
+        coordinator = self.coordinator
+        if (
+            coordinator.profile.can_read(ReadDomain.BRIGHTNESS)
+            or "brightness" not in (coordinator.profile.command_operations or ())
+            or coordinator.control_write_attempts
+        ):
+            return
+        if (last_state := await self.async_get_last_state()) is None or coordinator.control_write_attempts:
+            return
+        value = last_state.attributes.get(ATTR_BRIGHTNESS)
+        if type(value) is int and 0 <= value <= 255:
+            coordinator.brightness_pct = round(value * 100 / 255)
 
     def _library_updated(self, snapshot: LibrarySnapshot) -> None:
         self._library_snapshot = snapshot
@@ -840,6 +859,22 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 self._attr_color_mode = ColorMode.RGB
             await coordinator.send_command(packet)
 
+    def _validate_basic_request(self, kwargs: Mapping[str, Any]) -> None:
+        profile = self.coordinator.profile
+        model = self.coordinator.model
+        with self._rollback():
+            if ATTR_BRIGHTNESS in kwargs:
+                self._require_support("brightness", supported=self.supported_color_modes != {ColorMode.ONOFF})
+                pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
+                require_profile_packet(build_brightness(pct, model, profile=profile), profile)
+            if ATTR_RGB_COLOR in kwargs:
+                red, green, blue = kwargs[ATTR_RGB_COLOR]
+                require_profile_packet(build_color_rgb(red, green, blue, model, profile=profile), profile)
+            if ATTR_COLOR_TEMP_KELVIN in kwargs:
+                require_profile_packet(
+                    build_color_temp(kwargs[ATTR_COLOR_TEMP_KELVIN], model, profile=profile), profile
+                )
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         if ATTR_EFFECT in kwargs:
             await async_require_video_controls(self.coordinator, ())
@@ -849,6 +884,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             async with async_control_intent(self.coordinator, ControlIntent.USER):
                 await self._async_turn_off(clear_workspace_on_success=active_workspace is not None)
             return
+        self._validate_basic_request(kwargs)
         custom_requested = (
             ATTR_EFFECT in kwargs
             and normalise_effect_name(str(kwargs[ATTR_EFFECT])) == normalise_effect_name("Custom")
@@ -1054,6 +1090,8 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         video_write_guard: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> None:
+        self._validate_basic_request(kwargs)
+
         async def send(packet: bytes) -> None:
             if video_write_guard is None:
                 await self.coordinator.send_command(packet)
@@ -1073,7 +1111,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         with self._rollback():
             if not self.coordinator.is_on:
                 await power_on()
-                self.coordinator.is_on = True
                 await self._refresh_with_retry(expected_on=True, retry_command=power_on)
             if ATTR_BRIGHTNESS in kwargs:
                 pct = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
@@ -1082,7 +1119,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     await send(build_brightness(pct, self.coordinator.model))
 
                 await apply_brightness()
-                self.coordinator.brightness_pct = pct
                 await self._refresh_with_retry(
                     expected_brightness=pct,
                     retry_command=apply_brightness,
@@ -1157,7 +1193,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         with self._rollback():
             await power_off()
-            self.coordinator.is_on = False
             await self._refresh_with_retry(expected_on=False, retry_command=power_off)
         if clear_workspace_on_success:
             self._clear_active_workspace()

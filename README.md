@@ -17,6 +17,9 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | **H617E** | Compatible | H617A-compatible controls, effects and music modes with its exact 240-scene catalogue and retained legacy scene-name compatibility; exact-model protocol documentation remains incomplete |
 | **H6076** | Partial | Power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable |
 | **H6102** | Experimental | Revision-aware candidate: basic controls, RGB/Kelvin and 15 segments, 240 exact-model scenes, DIY and Effect Studio; hardware/firmware/Pact determine available controls. [Evidence and limits](docs/h6102-application-findings.md). |
+| **H60A1** | Experimental | Power and write-only front-panel brightness; qualifying Pact or exact hardware/firmware enables RGB and 14 segments. Kelvin, segment brightness and effects unavailable. [Evidence and owner checks](docs/ceiling-support.md). |
+| **H60A6** | Experimental | Power and write-only front-panel brightness; qualifying Pact or exact hardware/firmware enables RGB and 13 segments. Pact 1/1 stays restricted. Kelvin, segment brightness and effects unavailable. [Evidence and owner checks](docs/ceiling-support.md). |
+| **H601C** | Experimental | App-derived power, brightness, RGB and 2700–6500 K in 100 K steps; basic readback candidate. No segments or effects; physical qualification outstanding. [Evidence and owner checks](docs/ceiling-support.md). |
 
 **Experimental** is a model-specific prerelease awaiting owner confirmation.  **Partial** has confirmed controls plus known disabled gaps.  **Compatible** has no known issue in its exposed feature set but incomplete documentation.  **Supported** is fully documented, with every known feature implemented or explicitly excluded and evidence-backed Kaitai coverage for every enabled wire path.  See [CONTRIBUTING.md](CONTRIBUTING.md) for the request, speculative-schema, prerelease and promotion process.
 
@@ -82,6 +85,9 @@ Restart Home Assistant after updating this integration through HACS or replacing
 
 The integration auto-discovers H617A, H617E, H6076 and H6199. H6099 requires
 manual addition or reconfiguration and is included as Experimental in 7.6.0.
+H60A1, H60A6 and H601C also require manual addition or **Reconfigure** with their
+exact model selected, using the ceiling-light prerelease. H601C is distinct from
+H60C1. Restart Home Assistant after installing the prerelease.
 
 To add manually in Home Assistant:
 
