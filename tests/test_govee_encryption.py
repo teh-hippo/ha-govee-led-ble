@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 from dataclasses import replace
 from types import SimpleNamespace
@@ -128,6 +129,26 @@ async def test_selection_without_probe(advertised, marker, version):
             session.encode(build_power(True))
 
 
+async def test_marker_debug_log_reports_presence_and_bounded_value(caplog):
+    caplog.set_level(logging.DEBUG, logger=session_module.__name__)
+    session, device = GoveeEncryptionSession(), client(b"\x01\x02")
+
+    await session.async_select(device, advertised=False)
+
+    assert "Encryption marker characteristic: present" in caplog.text
+    assert "length=2 value_hex=0102" in caplog.text
+
+
+async def test_marker_absence_is_logged_only_at_debug(caplog):
+    caplog.set_level(logging.INFO, logger=session_module.__name__)
+    await GoveeEncryptionSession().async_select(client(), advertised=False)
+    assert caplog.records == []
+
+    caplog.set_level(logging.DEBUG, logger=session_module.__name__)
+    await GoveeEncryptionSession().async_select(client(), advertised=False)
+    assert "Encryption marker characteristic: absent" in caplog.text
+
+
 @pytest.mark.parametrize("version", [1, 2])
 @pytest.mark.parametrize("marker", [b"\x01\0", b"\x02\0\0\0\0\0"])
 async def test_zero_marker_preserves_previous_encryption_requirement(version, marker):
@@ -155,13 +176,16 @@ async def test_invalid_marker_never_becomes_plaintext(marker):
     device.write_gatt_char.assert_not_awaited()
 
 
-async def test_read_failure_has_no_raw_error_or_fallback():
+async def test_read_failure_has_no_raw_error_or_fallback(caplog):
+    caplog.set_level(logging.DEBUG, logger=session_module.__name__)
     session, device = GoveeEncryptionSession(), client(b"\x01\x02")
     device.read_gatt_char.side_effect = RuntimeError("secret address/key payload")
     with pytest.raises(GoveeCryptoError) as err:
         await session.async_select(device, advertised=False)
     assert "secret" not in str(err.value)
     assert "secret" not in json.dumps(session.diagnostics())
+    assert "Encryption marker read failed" in caplog.text
+    assert "secret" not in caplog.text
     assert not session.ready
 
 

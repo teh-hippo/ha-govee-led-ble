@@ -1,6 +1,7 @@
 """Evidence-selected, fail-closed encryption for one BLE connection at a time."""
 
 import asyncio
+import logging
 import os
 import warnings
 from typing import Any
@@ -20,6 +21,7 @@ from . import (
 )
 
 HANDSHAKE_TIMEOUT = 6.0  # EncryptionManager: both key and confirmation waits.
+_LOGGER = logging.getLogger(__name__)
 
 
 class GoveeEncryptionSession:
@@ -62,17 +64,38 @@ class GoveeEncryptionSession:
         self.version = 0
         if advertised and not self.required_version:
             self.required_version = 1
+        debug_enabled = _LOGGER.isEnabledFor(logging.DEBUG)
         try:
             # Enumerate discovered services: absence alone never causes a read or probe.
             characteristic = next(
                 (c for service in client.services for c in service.characteristics if c.uuid == ENCRYPTION_UUID), None
             )
+            if debug_enabled:
+                _LOGGER.debug("Encryption marker characteristic: %s", "present" if characteristic else "absent")
             if characteristic is None:
                 if self._selection_failed:
                     raise GoveeCryptoError("previous_selection_failed")
                 self.version = self.required_version or (1 if advertised else 0)
             else:
-                data = await client.read_gatt_char(ENCRYPTION_UUID)
+                try:
+                    data = await client.read_gatt_char(ENCRYPTION_UUID)
+                except Exception:
+                    if debug_enabled:
+                        _LOGGER.debug("Encryption marker read failed")
+                    raise
+                if debug_enabled:
+                    if isinstance(data, (bytes, bytearray)):
+                        marker_bytes = bytes(data)
+                        marker_hex = marker_bytes[:16].hex()
+                        truncated = " (truncated)" if len(marker_bytes) > 16 else ""
+                        _LOGGER.debug(
+                            "Encryption marker read succeeded: length=%d value_hex=%s%s",
+                            len(marker_bytes),
+                            marker_hex,
+                            truncated,
+                        )
+                    else:
+                        _LOGGER.debug("Encryption marker read returned an unsupported value type")
                 if not isinstance(data, (bytes, bytearray)):
                     raise GoveeCryptoError("invalid_marker")
                 marker = parse_wire("Marker", bytes(data))
