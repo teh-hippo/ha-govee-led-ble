@@ -84,6 +84,7 @@ async def async_get_config_entry_diagnostics(
         "connected": bool(client and client.is_connected),
         "encryption": encryption.diagnostics() if (encryption := getattr(coordinator, "_encryption", None)) else None,
         "advertised_encryption": getattr(coordinator, "_advertised_encryption", False),
+        "advertised_plaintext": getattr(coordinator, "_advertised_plaintext", False),
         "fresh_services_required": coordinator.fresh_services_required,
         "fresh_service_discovery_forced": coordinator.fresh_service_discovery_forced,
         "last_connected_at": coordinator.last_connected_at,
