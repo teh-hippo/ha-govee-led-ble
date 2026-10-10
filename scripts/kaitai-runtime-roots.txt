@@ -2,6 +2,10 @@ command_write
 diy_type03
 diy_type04
 speculative/h6102_status_reply
+speculative/h601c_command_write
+speculative/h601c_status_reply
+speculative/h60a1_status_reply
+speculative/h60a6_status_reply
 speculative/govee_encryption
 speculative/h6099_command_write
 speculative/h6099_command_ack

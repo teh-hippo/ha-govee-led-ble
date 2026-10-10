@@ -781,6 +781,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if state.mode != "colour":
             return False
         if self.profile.supports_segments:
+            if not self.profile.supports_segment_brightness or not self.profile.supports_color_mode_readback:
+                # Incomplete state cannot safely reproduce the original emitter mode.
+                return False
             if (
                 state.segment_colors is None
                 or state.segment_brightness is None
@@ -879,7 +882,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             self.hw_version, changed = hw_version, True
         if not changed:
             return
-        if self.model == "H6102":
+        if self.model in {"H60A1", "H60A6", "H6102"}:
             self._resolve_device_profile()
         assert self.config_entry is not None
         registry = dr.async_get(self.hass)
@@ -957,7 +960,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     self._encryption.reset()
 
     def _resolve_device_profile(self) -> None:
-        if self.model not in {"H6102", "H6199"}:
+        if self.model not in {"H60A1", "H60A6", "H6102", "H6199"}:
             return
         if self.model == "H6102":
             context = (self.pact_type, self.pact_code, self.fw_version, self.hw_version, self.profile.physical_ic_count)
@@ -977,7 +980,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             profile = resolution.profile
         else:
             context_changed = False
-            profile = device_profile(self.model, self.pact_type, self.pact_code)
+            profile = device_profile(
+                self.model, self.pact_type, self.pact_code, firmware=self.fw_version, hardware=self.hw_version
+            )
         if profile == self.profile:
             if context_changed:
                 self._profile_generation += 1
@@ -989,7 +994,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         }
         self._profile_generation += 1
         self._expected_state.clear()
-        self.brightness_pct = 100
+        if self.model not in {"H60A1", "H60A6"}:
+            self.brightness_pct = 100
         self.color_mode = None
         self.effect = self.diy_code = self._scene_code = None
         self.music_mode = self.video_mode = "off"
@@ -1107,6 +1113,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             setattr(self, field, None)
         if self.model == "H6102":
             self.profile = replace(self.profile, physical_ic_count=None)
+        if self.model in {"H60A1", "H60A6", "H6102"}:
             self._resolve_device_profile()
         self.boolean_control_state.clear()
         self.installation_direction, self.camera_health = None, "unknown"
@@ -1559,6 +1566,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 if kelvin is None or static_values["rgb_color"] != kelvin_to_rgb(kelvin):
                     accepted_values["color_temp_kelvin"] = None
             if self._accept_expected_values(accepted_values):
+                if (
+                    self.profile.status_grammar == "H601C"
+                    and parsed.color_temp_kelvin is not None
+                    and self.rgb_color_source == "observed"
+                ):
+                    self.rgb_color_source = "retained"
                 for attr, value in accepted_values.items():
                     setattr(self, attr, value)
                     setattr(self, f"{attr}_source", "observed" if attr in static_values else "initial")
@@ -1854,6 +1867,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         requested = expectations_from_packet(packet, self.model, profile=self.profile)
         if (music_mode := requested.get("music_mode")) is not None and music_mode not in self.profile.music_modes:
             raise ValueError("Device profile does not support the requested music mode")
+        if arm_expected:
+            for field in ("is_on", "brightness_pct"):
+                if field in requested:
+                    setattr(self, field, requested[field])
         if state_values is not None:
             for field, value in state_values.items():
                 setattr(self, field, value)
@@ -2216,7 +2233,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
     def _authorization_identity_fields(self) -> frozenset[str]:
         return (
             frozenset({"fw_version", "hw_version"})
-            if self.model == "H6102"
+            if self.model in {"H60A1", "H60A6", "H6102"}
             else frozenset(video_identity_fields(self.profile))
         )
 

@@ -176,6 +176,30 @@ def parse_static_write(
     if generated is None or not hasattr(generated.opcode, "name"):
         return None
     whole_device_mask = profile.whole_device_mask
+    if profile.command_grammar == "H601C":
+        if not generated.is_static:
+            return None
+        detail = generated.body.detail
+        rgb = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
+        kelvin = int(detail.kelvin)
+        if kelvin and rgb != (255, 255, 255):
+            raise ValueError("H601C Kelvin requires direct white RGB")
+        if kelvin and (kelvin - 2700) % 100:
+            raise ValueError("H601C Kelvin must use 100 K steps from 2700 to 6500")
+        return ParsedStaticWrite(
+            operation=int(generated.body.sub_mode),
+            segment_mask=whole_device_mask,
+            whole_device_mask=whole_device_mask,
+            rgb=None if kelvin else rgb,
+            kelvin=kelvin or None,
+            kelvin_companion_rgb=(
+                int(detail.companion_rgb.red),
+                int(detail.companion_rgb.green),
+                int(detail.companion_rgb.blue),
+            )
+            if kelvin
+            else None,
+        )
     if profile.command_grammar in {"H6099", "H6199"}:
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
             return None

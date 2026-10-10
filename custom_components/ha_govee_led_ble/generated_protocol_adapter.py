@@ -92,6 +92,22 @@ H6102StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_status_reply").H6102StatusReply,
 )
+H601cCommandWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h601c_command_write").H601cCommandWrite,
+)
+H601cStatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h601c_status_reply").H601cStatusReply,
+)
+H60a1StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a1_status_reply").H60a1StatusReply,
+)
+H60a6StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_status_reply").H60a6StatusReply,
+)
 DiyType03 = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type03").DiyType03,
@@ -214,12 +230,16 @@ def _serialize_xor(root: Any, length: int = 20) -> bytes:
 
 
 _STATUS_ROOTS = {
+    "H60A1": ("h60a1_status_reply", H60a1StatusReply),
+    "H60A6": ("h60a6_status_reply", H60a6StatusReply),
+    "H601C": ("h601c_status_reply", H601cStatusReply),
     "H6102": ("h6102_status_reply", H6102StatusReply),
     "H6099": ("h6099_status_reply", H6099StatusReply),
     "H617A": ("status_reply", StatusReply),
     "H6199": ("h6199_status_reply", H6199StatusReply),
 }
 _COMMAND_ROOTS = {
+    "H601C": ("h601c_command_write", H601cCommandWrite),
     "H6099": ("h6099_command_write", H6099CommandWrite),
     "H617A": ("command_write", CommandWrite),
     "H6199": ("h6199_command_write", H6199CommandWrite),
@@ -346,6 +366,12 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                     if len(levels) != profile.segment_count or ((1 << len(levels)) - 1) & ~profile.whole_device_mask:
                         raise ValueError("segment brightness outside profile geometry")
             if static is not None:
+                if profile.command_grammar == "H601C":
+                    detail = command.body.detail
+                    companion = bytes((detail.companion_rgb.red, detail.companion_rgb.green, detail.companion_rgb.blue))
+                    expected_companion = _H601C_KELVIN_RGB.get(static.kelvin or 0, bytes(3))
+                    if companion != expected_companion:
+                        raise ValueError("H601C authored companion RGB does not match Kelvin")
                 if not static.segment_mask:
                     raise ValueError("no segments selected")
                 if not static.whole_strip or (
@@ -364,6 +390,8 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                         raise ValueError(f"{profile.name} does not support colour temperature")
                     if not static.whole_strip and not profile.supports_segment_color_temperature:
                         raise ValueError(f"{profile.name} does not support segment colour temperature")
+                    if not profile.min_color_temp_kelvin <= static.kelvin <= profile.max_color_temp_kelvin:
+                        raise ValueError("static Kelvin outside profile range")
                 if static.brightness_pct is not None and not (
                     profile.supports_segments
                     and profile.supports_segment_brightness
@@ -376,6 +404,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
         frame,
         profile.command_grammar,
         {
+            "H601C": ("status_query", StatusQuery),
             "H6199": ("h6199_status_query", H6199StatusQuery),
             "H6099": ("h6099_status_query", H6099StatusQuery),
             "H617A": ("status_query", StatusQuery),
@@ -437,7 +466,7 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
 
 def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any, Any, Any]:
     resolved = (profile or get_profile(model)).command_grammar
-    if resolved in {"H6099", "H6199"}:
+    if resolved in {"H601C", "H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         return root_type, root_type.PowerBody, root_type.BrightnessBody
     if resolved != "H617A":
@@ -461,9 +490,11 @@ def _build_status_query(
     segment_group: int | None = None,
     colour_mode_selector: int = 0,
 ) -> bytes:
-    if grammar not in {"H617A", "H6099", "H6199"}:
+    if grammar not in {"H601C", "H617A", "H6099", "H6199"}:
         raise ValueError(f"{grammar} has no generated status-query grammar")
-    root_type = {"H617A": StatusQuery, "H6099": H6099StatusQuery, "H6199": H6199StatusQuery}[grammar]
+    root_type = {"H601C": StatusQuery, "H617A": StatusQuery, "H6099": H6099StatusQuery, "H6199": H6199StatusQuery}[
+        grammar
+    ]
     root = root_type()
     root.header = b"\xaa"
     root.domain = getattr(root_type.QueryDomain, domain)
@@ -487,7 +518,7 @@ def _build_status_query(
         body = _child(root_type.ColourModeQueryBody, root)
         body.selector = b"\x01"
         body.zeros = [0] * 16
-    elif domain == "colour_mode" and grammar == "H617A":
+    elif domain == "colour_mode" and grammar in {"H601C", "H617A"}:
         body = _child(root_type.ColourModeQueryBody, root)
         body.selector = colour_mode_selector
         body.zeros = [0] * 16
@@ -506,13 +537,16 @@ def build_brightness_query(model: str = "H617A", *, profile: ModelProfile | None
     return _build_status_query("brightness", (profile or get_profile(model)).command_grammar)
 
 
-def build_colour_mode_query(model: str = "H617A", *, profile: ModelProfile | None = None, selector: int = 0) -> bytes:
-    """Select shared AA05 query form; the established default remains AA0500."""
+def build_colour_mode_query(
+    model: str = "H617A", *, profile: ModelProfile | None = None, selector: int | None = None
+) -> bytes:
+    """Select the grammar's AA05 query form, with an explicit override."""
+    profile = profile or get_profile(model)
+    if selector is None:
+        selector = 1 if profile.command_grammar == "H601C" else 0
     if type(selector) is not int or selector not in (0, 1):
         raise ValueError("colour-mode query selector must be 0 or 1")
-    return _build_status_query(
-        "colour_mode", (profile or get_profile(model)).command_grammar, colour_mode_selector=selector
-    )
+    return _build_status_query("colour_mode", profile.command_grammar, colour_mode_selector=selector)
 
 
 def build_firmware_query(model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
@@ -968,6 +1002,8 @@ def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None 
     root.opcode = root_type.CommandOp.power
     body = power_type(None, root, root._root)
     body.is_on = int(on)
+    if root_type is H601cCommandWrite:
+        body.padding = bytes(16)
     root.body = body
     return _serialize_xor(root)
 
@@ -979,6 +1015,8 @@ def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfil
     root.opcode = root_type.CommandOp.brightness
     body = brightness_type(None, root, root._root)
     body.percent = max(0, min(100, percent))
+    if root_type is H601cCommandWrite:
+        body.padding = bytes(16)
     root.body = body
     return _serialize_xor(root)
 
@@ -1010,6 +1048,43 @@ def _build_h617a_static_colour(
     return _serialize_xor(root)
 
 
+# Android 7.6.01 Constant.java:469-546, getTemColorByKelvin:1061-1074.
+# Complete first-match lookup in H601C's supported 2700..6500 range; no interpolation.
+_H601C_KELVIN_RGB = {
+    2700 + index * 100: bytes.fromhex(rgb)
+    for index, rgb in enumerate(
+        (
+            "ffae54 ffb25b ffb662 ffb969 ffbd6f ffc076 ffc37c ffc682 ffc987 ffcb8d "
+            "ffce92 ffd097 ffd39c ffd5a1 ffd7a6 ffd9ab ffdbaf ffddb4 ffdfb8 ffe1bc "
+            "ffe2c0 ffe4c4 ffe5c8 ffe7cc ffe8d0 ffead3 ffebd7 ffedda ffeede ffefe1 "
+            "fff0e4 fff1e7 fff3ea fff4ed fff5f0 fff6f3 fff7f7 fff8f8 fff9fb"
+        ).split()
+    )
+}
+
+
+def _build_h601c_static_colour(mask: int, direct: tuple[int, int, int], kelvin: int, profile: ModelProfile) -> bytes:
+    if mask != profile.whole_device_mask or not mask:
+        raise ValueError("H601C supports whole-device colour only")
+    if kelvin and not 2700 <= kelvin <= 6500:
+        raise ValueError("H601C Kelvin outside 2700..6500")
+    if kelvin and kelvin not in _H601C_KELVIN_RGB:
+        raise ValueError("H601C Kelvin must use 100 K steps from 2700 to 6500")
+    root = H601cCommandWrite()
+    root.header = b"\x33"
+    root.opcode = H601cCommandWrite.CommandOp.mode
+    mode = _child(H601cCommandWrite.ModeBody, root)
+    mode.sub_mode = H601cCommandWrite.ModeSel.static_colour
+    detail = _child(H601cCommandWrite.StaticColourBody, mode)
+    detail.rgb = _rgb(detail, *direct)
+    detail.kelvin = kelvin
+    detail.companion_rgb = _rgb(detail, *_H601C_KELVIN_RGB.get(kelvin, bytes(3)))
+    detail.padding = bytes(8)
+    mode.detail = detail
+    root.body = mode
+    return _serialize_xor(root)
+
+
 def build_segment_colour(
     mask: int,
     red: int,
@@ -1019,7 +1094,10 @@ def build_segment_colour(
     *,
     profile: ModelProfile | None = None,
 ) -> bytes:
-    resolved = (profile or get_profile(model)).command_grammar
+    profile = profile or get_profile(model)
+    resolved = profile.command_grammar
+    if resolved == "H601C":
+        return _build_h601c_static_colour(mask, (red, green, blue), 0, profile)
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
@@ -1058,7 +1136,10 @@ def build_colour_temperature(
     profile: ModelProfile | None = None,
 ) -> bytes:
     value = max(2000, min(9000, kelvin))
-    resolved = (profile or get_profile(model)).command_grammar
+    profile = profile or get_profile(model)
+    resolved = profile.command_grammar
+    if resolved == "H601C":
+        return _build_h601c_static_colour(mask, (255, 255, 255), kelvin, profile)
     if resolved in {"H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()

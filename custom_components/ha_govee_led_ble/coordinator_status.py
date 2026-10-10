@@ -156,7 +156,9 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             raise ValueError("static Kelvin outside profile range")
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,
-            rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue)) if rgb is not None else None,
+            rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue))
+            if rgb is not None and not (profile.status_grammar == "H601C" and kelvin is not None)
+            else None,
             color_temp_kelvin=int(kelvin) if kelvin is not None else None,
             multi_effect_flag=getattr(detail, "sub", None),
         )
