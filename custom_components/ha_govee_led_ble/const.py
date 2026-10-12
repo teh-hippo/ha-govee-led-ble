@@ -765,9 +765,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
-BLE_DISCOVERABLE_MODELS = frozenset(
-    {"H601C", "H6076", "H6179", "H617A", "H617C", "H617E", "H617F", "H6199"}
-)
+BLE_DISCOVERABLE_MODELS = frozenset({"H601C", "H6076", "H6179", "H617A", "H617C", "H617E", "H617F", "H6199"})
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
