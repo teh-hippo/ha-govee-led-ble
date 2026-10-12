@@ -3,6 +3,18 @@
     "name": "Govee LED BLE",
     "bluetooth": [
         {
+            "local_name": "ihoment_H601C*"
+        },
+        {
+            "local_name": "Govee_H601C*"
+        },
+        {
+            "local_name": "GBK_H601C*"
+        },
+        {
+            "local_name": "GVH_H601C*"
+        },
+        {
             "local_name": "ihoment_H617A*"
         },
         {

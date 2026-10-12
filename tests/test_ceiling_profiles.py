@@ -24,10 +24,11 @@ from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, b
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6", "H601C"])
-def test_manual_exact_experimental_profiles_have_no_catalogue_inheritance(model):
+def test_exact_experimental_profiles_have_no_catalogue_inheritance(model):
     p = get_profile(model)
     assert resolve_model(model.lower()) == model and p.support_quality is SupportQuality.EXPERIMENTAL
-    assert model_from_ble_name(f"Govee_{model}_test") is None
+    expected_discovery = "H601C" if model == "H601C" else None
+    assert model_from_ble_name(f"Govee_{model}_test") == expected_discovery
     assert p.command_operations == {"power", "brightness", "static"}
     assert supported_effect_categories(model) == ()
     assert p.effect_grammar is None and p.scene_catalogue_sku is None

@@ -212,6 +212,12 @@ def test_h6102_candidate_uses_complete_exact_snapshot():
     ("sku", "categories", "effects", "digest"),
     [
         (
+            "H601C",
+            6,
+            66,
+            "0f927f46ad370439a00064a9f332ebf650ce5292234f1455f229db6f571baa04",
+        ),
+        (
             "H6076",
             6,
             110,

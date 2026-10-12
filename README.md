@@ -83,11 +83,11 @@ Restart Home Assistant after updating this integration through HACS or replacing
 
 ## Configuration
 
-The integration auto-discovers H617A, H617E, H6076 and H6199. H6099 requires
+The integration auto-discovers H601C, H617A, H617E, H6076 and H6199.  H6099 requires
 manual addition or reconfiguration and is included as Experimental in 7.6.0.
-H60A1, H60A6 and H601C also require manual addition or **Reconfigure** with their
-exact model selected, using the ceiling-light prerelease. H601C is distinct from
-H60C1. Restart Home Assistant after installing the prerelease.
+H60A1 and H60A6 also require manual addition or **Reconfigure** with their
+exact model selected, using the ceiling-light prerelease.  H601C is distinct from
+H60C1.  Restart Home Assistant after installing the prerelease.
 
 To add manually in Home Assistant:
 

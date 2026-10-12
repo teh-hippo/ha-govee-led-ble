@@ -27,6 +27,7 @@ independently attributable raw capture artifact. Fixture attribution remains par
 | H601C companion table | `com/govee/base2home/Constant.java:469–546,1061–1074` | All 39 first ordered entries, 2700–6500 in 100 K steps; off-table requests rejected before writes, no interpolation |
 | H601C mode query | `com/govee/base2light/ble/controller/AbsModeController.java`, `p()`; `bulblightv3/ble/Mode.java` | `aa 05 01`; static `0d` only interpreted, other modes remain opaque |
 | Basic power/brightness/identity | `com/govee/base2light/ble/controller/{SwitchController,BrightnessController,SoftVersionController,HardVersionController,AbsSingleController}.java` | Shared generated query envelope; exact H601C command/status roots; identity response presence remains candidate |
+| H601C reported hardware check | Contributor report in [PR #330](https://github.com/teh-hippo/ha-govee-led-ble/pull/330): HW 1.00.01 / FW 1.00.07 | Reports live `33 05 00` ACK and `aa 05 0d` register confirmation; no attributable raw capture or independently verified visible-output result, so this does not qualify the model |
 | H60A geometry | `com/govee/pact_h60a0/pact/Support.java:185–214,238–240,345–346,489–498` | Four records/page; H60A1 14, qualified H60A6 13; geometry authorization separate from schema presence |
 | Meaningful page records | `com/govee/base2light/kt/general_controller/Controller4ColorInfoByGroup.java:173–187` and reporter literals | Complete four-page collection required; zero-valued records count, unused slots opaque |
 | H60A brightness | Reporter front-panel-only `33 04 PP`; H60A6 `aa04` always 01; masked brightness ACK/readback without rendering | One panel write; no brightness queries/retry verification; stored level retained locally, never BLE observation |
@@ -44,7 +45,7 @@ independently attributable raw capture artifact. Fixture attribution remains par
 | H60A6 Pact 1/2 or later code | `device_profile`, `Support.supportPartColor4H60A6` | 13-segment candidate; later codes not exhaustive hardware proof |
 | H60A6 absent Pact, HW 1.04.03 + FW 1.00.41 | Exact reporter tuple | 13-segment candidate |
 | H60A6 Pact 1/1, partial/other Pact, or unmatched tuple | Restricted exact profile | Power/panel brightness only; known 1/1 has one-zone geometry, other contexts retain candidate metadata |
-| H601C basic identifiable variants | `bulblightv3` goods 111 basic producer | RGB/Kelvin/power/brightness candidate; no physical variant has been qualified here |
+| H601C basic identifiable variants | `bulblightv3` goods 111 basic producer; PR #330 reports one HW/FW combination above | RGB/Kelvin/power/brightness candidate; the reported ACK/register result does not establish visible output or qualify other variants |
 | H601C Matter branch: BLE + Wi-Fi FW >=1.01.05, HW exactly 1.07.02 | `bulblightv3/newdetail/config/MatterSupport.java:142–166` | Matter eligibility only; does not change basic encoding or qualify BLE operation |
 
 Fresh BLE identity invalidates/requalifies tuple-dependent H60A capabilities at reconnect.
@@ -71,7 +72,12 @@ brightness is rejected semantically. ASCII terminated identity strings are a con
 query-layout hypothesis; nonterminated or differently encoded identity remains unqualified.
 
 Effects, music, scenes, DIY/Workshop, separate zone power and H60A6 133-point paint are
-unavailable. Thirteen logical H60A6 segments are not its 133 paint points. The reporter
+unavailable.  The exact-SKU [H601C catalogue](../custom_components/ha_govee_led_ble/scene_catalogues/H601C.json)
+retains all 66 vendor scene entries across six categories as inert metadata.
+It is refreshable through the existing catalogue tool but is not loaded into runtime
+scene selectors or Effect Studio.  Catalogue data does not qualify BLE upload,
+activation or readback; these paths remain disabled.
+Thirteen logical H60A6 segments are not its 133 paint points. The reporter
 paint upload, activation, point mapping and rendering need independent KSY and owner
 qualification. H60A Kelvin and segment brightness remain disabled due to known rendering
 or sibling-zone failures. App clock/session setup, bulk status, Wi-Fi/Matter provisioning,
