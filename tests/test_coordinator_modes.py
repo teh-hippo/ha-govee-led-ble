@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_h6199_video,
     build_music_mode,
     build_power,
+    build_scene_activation,
 )
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -22,7 +23,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.light_services import apply_active_video_mode
 from custom_components.ha_govee_led_ble.music_commands import build_music_params
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
-from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.test_music_commands import _music_transport
 
@@ -95,6 +96,31 @@ async def test_native_scene_application_requires_exact_capability_and_grammar(
     await coord.async_apply_native_scene("synthetic", writer=writer, verify=False, intent=intent)
     assert _sent(writer) == [build_power(True, model), *packets]
     assert coord.effect == "synthetic"
+
+
+async def test_h6179_native_scene_uses_wire_selector_for_verification_and_state(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:77",
+        "H6179",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    scene = MODEL_SCENES["H6179"]["karst cave"]
+    selector = scene_selector_code("H6179", scene)
+    coordinator.is_on = True
+    writer = AsyncMock()
+
+    with patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh:
+        await coordinator.async_apply_native_scene(
+            "karst cave",
+            scene_entry=scene,
+            writer=writer,
+            verify=True,
+        )
+
+    assert _sent(writer) == [build_scene_activation("H6179", selector)]
+    refresh.assert_awaited_once_with(expected_scene_code=selector)
+    assert coordinator._scene_code == selector
 
 
 async def test_select_music_slug_sends_power_then_music_and_sets_state(coord):

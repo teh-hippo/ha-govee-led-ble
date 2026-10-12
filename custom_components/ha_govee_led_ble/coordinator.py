@@ -111,7 +111,13 @@ from .native_profile_controls import (
     apply_relative_brightness,
     apply_white_balance,
 )
-from .scenes import MODEL_SCENES, canonical_scene_key, resolve_scene_code, scene_code_is_ambiguous
+from .scenes import (
+    MODEL_SCENES,
+    canonical_scene_key,
+    resolve_scene_code,
+    scene_code_is_ambiguous,
+    scene_selector_code,
+)
 from .transport import READ_UUID, WRITE_UUID
 from .video_applicability import (
     h6199_camera_controls_state,
@@ -691,13 +697,14 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 scene = candidate
             else:
                 return False
+            selector = scene_selector_code(self.model, scene)
             await self.send_command(build_power(True, self.model))
             await self.send_command(build_brightness(state.brightness_pct, self.model))
             # A catalogue body/default speed is not the original authored resident body.
-            await self.send_command(build_scene_activation(self.model, scene.code, scene.music_code))
+            await self.send_command(build_scene_activation(self.model, selector, scene.music_code))
             return (
                 await self.refresh_state(
-                    expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=scene.code
+                    expected_on=True, expected_brightness=state.brightness_pct, expected_scene_code=selector
                 )
                 is True
                 and not scene.param

@@ -5,11 +5,14 @@ from typing import cast
 import pytest
 from kaitaistruct import KaitaiStructError
 
+from custom_components.ha_govee_led_ble.const import get_profile
+from custom_components.ha_govee_led_ble.effect_compiler import require_native_scenes
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     _check_tree,
     _write,
     build_h617a_scene,
+    build_scene_activation,
     parse_scene_body_param,
 )
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
@@ -92,7 +95,11 @@ def test_h6179_scene_catalogue_uses_unique_one_byte_selectors() -> None:
 
     assert len(selectors) == len(set(selectors)) == 83
     assert all(scene.selector_only for scene in entries)
-    assert all(len(build_native_scene_packets("H6179", scene)) == 1 for scene in entries)
+    assert all(
+        build_native_scene_packets("H6179", scene) == [build_scene_activation("H6179", selector)]
+        for scene, selector in zip(entries, selectors, strict=True)
+    )
+    require_native_scenes("H6179", get_profile("H6179"))
 
 
 def test_h617e_uses_its_exact_catalogue_with_the_shared_wire_adapter():

@@ -548,7 +548,7 @@ def release_capability(model: str, workflow: CapabilityWorkflow) -> ReleaseCapab
 
 
 def require_effect_route(
-    model: str, workflow: CapabilityWorkflow, grammars: tuple[str, ...] = ("H617A", "H6199", "H6099")
+    model: str, workflow: CapabilityWorkflow, grammars: tuple[str, ...] = ("H617A", "H6199", "H6099", "H6179")
 ) -> str:
     """Require exact-model workflow authorization and matching effect/command grammar."""
     capability = release_capability(model, workflow)

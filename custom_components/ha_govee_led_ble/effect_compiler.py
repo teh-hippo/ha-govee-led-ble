@@ -568,7 +568,7 @@ def compile_scene_effect(item: LibraryItem, model: str, *, profile: ModelProfile
         scene_type = 1
         payload, _speed = encode_authored_scene_body(content, entry)
         upload = tuple(fragment_a3(scene_type, payload))
-        activation = build_scene_activation(model, entry.code, entry.music_code)
+        activation = build_scene_activation(model, scene_selector_code(model, entry), entry.music_code)
         evidence_codes.append("scene_payload_readback_unavailable")
     elif isinstance(content, LayeredScene):
         content_kind = "scene_layered"
@@ -576,7 +576,7 @@ def compile_scene_effect(item: LibraryItem, model: str, *, profile: ModelProfile
         scene_type = 2
         payload, _speed = encode_authored_scene_body(content, entry)
         upload = tuple(fragment_a3(scene_type, payload))
-        activation = build_scene_activation(model, entry.code, entry.music_code)
+        activation = build_scene_activation(model, scene_selector_code(model, entry), entry.music_code)
         evidence_codes.extend(
             (
                 "scene_payload_readback_unavailable",
@@ -601,7 +601,7 @@ def compile_scene_effect(item: LibraryItem, model: str, *, profile: ModelProfile
             )
         )
         upload = tuple(fragment_a3(scene_type, payload))
-        activation = build_scene_activation(model, entry.code, entry.music_code)
+        activation = build_scene_activation(model, scene_selector_code(model, entry), entry.music_code)
     else:
         raise ValueError("unsupported scene effect content")
 

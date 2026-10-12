@@ -24,7 +24,7 @@ from .music_protocol import music_code_for, music_mode_supports_style
 from .music_semantics import music_parameters_depend_on_ic, music_params_for_mode, music_variant
 from .native_profile_controls import ProfileWriter
 from .native_scenes import build_native_scene_packets
-from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key
+from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key, scene_selector_code
 
 
 @dataclass(frozen=True)
@@ -163,6 +163,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             scene = scene_entry
         if scene is None:
             raise ValueError(f"unknown native scene {scene_name!r}")
+        selector = scene_selector_code(self.model, scene)
         packets = build_native_scene_packets(
             self.model,
             scene,
@@ -208,13 +209,13 @@ class _ActiveModeMixin(_CoordinatorBase):
         qualified()
         if power_in_sequence:
             self.is_on = True
-        if verify and self.profile.state_readable and not await self.refresh_state(expected_scene_code=scene.code):
+        if verify and self.profile.state_readable and not await self.refresh_state(expected_scene_code=selector):
             await apply()
-            if not await self.refresh_state(expected_scene_code=scene.code):
+            if not await self.refresh_state(expected_scene_code=selector):
                 raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
         self.color_mode = ParsedMode.SCENE
         self.effect = scene_name
-        self._scene_code = scene.code
+        self._scene_code = selector
         self.diy_code = None
         self.music_mode = self.video_mode = "off"
         self.async_set_updated_data(self.data or {})

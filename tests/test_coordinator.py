@@ -75,7 +75,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     kelvin_to_rgb,
 )
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
-from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
+from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
@@ -659,6 +659,39 @@ async def test_restore_effect_control_state_reapplies_h6199_scene(h6199):
         call(build_scene_activation("H6199", scene.code, scene.music_code)),
     ]
     refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=scene.code)
+
+
+async def test_restore_h6179_scene_converts_legacy_catalogue_code_to_wire_selector(hass):
+    coordinator = GoveeBLECoordinator(
+        hass,
+        "22:33:44:55:66:78",
+        "H6179",
+        configuration_url=_CONFIGURATION_URL,
+    )
+    scene = MODEL_SCENES["H6179"]["karst cave"]
+    selector = scene_selector_code("H6179", scene)
+    state = PriorControlState(
+        mode="scene",
+        is_on=True,
+        brightness_pct=72,
+        rgb_color=(1, 2, 3),
+        effect="karst cave",
+        scene_code=scene.code,
+    )
+
+    with (
+        patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        recovered = await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+
+    assert recovered is False
+    assert send.await_args_list == [
+        call(build_power(True, "H6179")),
+        call(build_brightness(72, "H6179")),
+        call(build_scene_activation("H6179", selector, scene.music_code)),
+    ]
+    refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=selector)
 
 
 async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):

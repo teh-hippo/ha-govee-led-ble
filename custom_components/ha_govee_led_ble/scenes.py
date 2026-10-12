@@ -260,14 +260,14 @@ def resolve_scene_code(
     legacy_model = MODEL_PROFILES[model].legacy_scene_catalogue_sku
     if preferred_key is not None:
         preferred = OFFICIAL_MODEL_SCENES.get(model, {}).get(preferred_key)
-        if preferred is not None and preferred.code == scene_code:
+        if preferred is not None and scene_selector_code(model, preferred) == scene_code:
             return preferred_key, preferred
         legacy = MODEL_SCENES.get(legacy_model or "", {}).get(preferred_key)
         if legacy is not None and legacy.code == scene_code:
             return preferred_key, legacy
         canonical_key = canonical_scene_key(model, preferred_key)
         canonical = OFFICIAL_MODEL_SCENES.get(model, {}).get(canonical_key)
-        if canonical is not None and canonical.code == scene_code:
+        if canonical is not None and scene_selector_code(model, canonical) == scene_code:
             return canonical_key, canonical
 
     resolved = next(
@@ -278,6 +278,11 @@ def resolve_scene_code(
         ),
         None,
     )
+    if resolved is None:
+        resolved = next(
+            ((key, entry) for key, entry in MODEL_SCENES.get(model, {}).items() if entry.code == scene_code),
+            None,
+        )
     if resolved is not None:
         return resolved
     return next(
