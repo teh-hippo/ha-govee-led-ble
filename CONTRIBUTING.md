@@ -101,6 +101,10 @@ Release 7.8.0 has an explicit maintainer-approved exception for H6102 after
 shared-workflow regression qualification on H617A and H6199. H6102 remains
 Experimental pending its owner's physical qualification; stable inclusion does
 not promote its support status or speculative protocol evidence.
+Release 7.12.0 has an explicit maintainer-approved exception for H6125 after
+shared-workflow load and refresh checks on H617A and H6199. H6125 remains
+Experimental pending its owner's physical qualification; stable inclusion does
+not promote its support status or speculative protocol evidence.
 Prerelease versions are stamped only in the packaged artifact; feature branches retain the current stable source version so release-candidate metadata cannot leak into master.
 
 ## Device-owner validation
