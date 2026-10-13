@@ -1,5 +1,6 @@
 import ast
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import AsyncMock
@@ -146,8 +147,9 @@ def test_register_range_requires_the_transform_that_encodes_it():
         ModelProfile("x", brightness_wire_range=(0, 254), outbound_transform=lambda packet: packet)
 
 
-def test_h6076_profile_is_basic_and_fail_closed():
-    profile = MODEL_PROFILES["H6076"]
+def test_h6076_profile_is_basic_and_fail_closed_until_identity_qualifies_music():
+    profile = device_profile("H6076", None, None)
+    assert profile is const._H6076_PROFILE
     assert profile.support_quality is SupportQuality.PARTIAL
     assert profile.state_readable
     assert profile.read_domains == {
@@ -168,6 +170,61 @@ def test_h6076_profile_is_basic_and_fail_closed():
     assert profile.command_grammar == profile.status_grammar == "H617A"
     assert protocol_model("H6076") == "H6076"
     assert profile.effect_grammar is None
+
+
+def test_h6076_registry_profile_is_the_music_ceiling_of_the_basic_profile():
+    ceiling = MODEL_PROFILES["H6076"]
+
+    assert ceiling.music_grammar == "H6076"
+    assert ceiling.music_upload_before_selector and ceiling.music_requires_upload_ack
+    assert [slug for slug in ceiling.music_modes] == [
+        "energetic",
+        "rhythm",
+        "bounce",
+        "hopping",
+        "beat",
+        "spray",
+        "skittles",
+        "torch",
+        "candy_crush",
+        "fusion",
+        "shiny",
+        "separation",
+    ]
+    assert (
+        replace(
+            ceiling,
+            music_grammar=None,
+            music_modes=(),
+            music_variants=(),
+            supports_music_color=False,
+            music_upload_before_selector=False,
+            music_requires_upload_ack=False,
+        )
+        == const._H6076_PROFILE
+    )
+    assert supported_effect_categories("H6076") == ("reactive",)
+
+
+@pytest.mark.parametrize(
+    ("pact", "firmware", "qualified"),
+    [
+        ((1, 1), "1.02.00", True),
+        ((2, 1), "1.04.05", True),
+        ((1, 1), "1.04.08", True),
+        ((1, 1), "1.01.99", False),
+        ((1, 1), "1.2.0", False),
+        ((1, 1), None, False),
+        ((1, 2), "1.04.05", False),
+        ((3, 1), "1.04.05", False),
+        ((None, None), "1.04.05", False),
+    ],
+)
+def test_h6076_music_needs_a_known_pact_and_software_1_02_or_newer(pact, firmware, qualified):
+    profile = device_profile("H6076", *pact, firmware=firmware, hardware="3.05.00")
+
+    assert (profile is MODEL_PROFILES["H6076"]) is qualified
+    assert (profile is const._H6076_PROFILE) is not qualified
 
 
 def test_h6102_static_candidate_is_exact_and_manual_only():

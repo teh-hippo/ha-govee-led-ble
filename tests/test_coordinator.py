@@ -318,6 +318,66 @@ async def test_h6125_reconnect_revokes_the_qualified_profile_until_identity_retu
         await h6125._ensure_connected()
 
 
+@pytest.fixture
+def h6076(hass):
+    return GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H6076", configuration_url=None)
+
+
+def test_h6076_music_follows_advertised_pact_and_notified_software(h6076):
+    h6076.config_entry = MagicMock(entry_id="test-entry")
+    assert not h6076.profile.music_modes
+    h6076._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))}))
+    assert (h6076.pact_type, h6076.pact_code) == (1, 1) and not h6076.profile.music_modes
+    h6076._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.01.99\0"))))
+    assert not h6076.profile.music_modes
+    generation = h6076._profile_generation
+    h6076._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.04.05\0"))))
+    assert h6076.profile is MODEL_PROFILES["H6076"] and h6076._profile_generation == generation + 1
+    h6076._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.01.00\0"))))
+    assert not h6076.profile.music_modes and h6076._profile_generation == generation + 2
+
+
+def test_h6076_effect_studio_link_follows_the_effective_profile(hass):
+    coordinator = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H6076", configuration_url=_CONFIGURATION_URL)
+    assert coordinator.configuration_url is None
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator.fw_version = "1.04.05"
+    coordinator._resolve_device_profile()
+    assert coordinator.configuration_url == _CONFIGURATION_URL
+
+
+def test_h6076_registered_effect_studio_link_follows_late_identity(hass):
+    coordinator = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H6076", configuration_url=_CONFIGURATION_URL)
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=coordinator.address)
+    entry.add_to_hass(hass)
+    coordinator.config_entry = entry
+    registry = dr.async_get(hass)
+    device = registry.async_get_or_create(config_entry_id=entry.entry_id, **coordinator.device_info)
+    assert device.configuration_url is None
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.04.05\0"))))
+    assert str(registry.async_get(device.id).configuration_url) == _CONFIGURATION_URL
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.01.00\0"))))
+    assert registry.async_get(device.id).configuration_url is None
+
+
+async def test_h6076_reconnect_revokes_music_until_identity_returns(h6076, monkeypatch):
+    h6076.pact_type, h6076.pact_code = 2, 1
+    h6076.fw_version, h6076.hw_version = "1.04.05", "3.05.00"
+    h6076._resolve_device_profile()
+    assert h6076.profile.music_modes
+
+    async def establish(*args, **kwargs):
+        assert h6076.fw_version is None and h6076.hw_version is None
+        assert not h6076.profile.music_modes
+        raise RuntimeError("stop before connecting")
+
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", establish)
+    with pytest.raises(RuntimeError, match="stop before connecting"):
+        await h6076._ensure_connected()
+
+
 def test_h6179_notifications_update_power_brightness_and_diy_mode(h6179):
     h6179._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
     h6179._notify_callback(None, bytearray(_packet(0xAA, 0x04, [0x88])))

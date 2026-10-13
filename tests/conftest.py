@@ -10,6 +10,7 @@ from custom_components.ha_govee_led_ble.const import (
     ModelProfile,
     default_effect_categories,
     default_effect_families,
+    device_profile,
 )
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -269,7 +270,7 @@ def mock_h6076_coordinator():
     return _make_coord(
         address="22:33:44:55:66:77",
         model="H6076",
-        profile=MODEL_PROFILES["H6076"],
+        profile=device_profile("H6076", None, None),
         is_on=False,
         effect=None,
         segment_colors=[],

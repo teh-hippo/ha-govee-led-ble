@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from importlib import import_module
 from math import ceil
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -43,6 +44,9 @@ class MusicVariant:
     supports_fixed_colour: bool = True
     physical_defaults: str | None = None
 
+
+# Layouts whose A3 companion carries the effect's parameters; their selectors omit style and fixed colour.
+COMPANION_MUSIC_LAYOUTS = frozenset({"music_body", "h6076_music_body", "h6099_music_parameters"})
 
 # Captured values, not values calculated from logical colour zones or guessed IC counts.
 H617A_MUSIC_VARIANTS = (
@@ -388,6 +392,56 @@ H6102_MUSIC_VARIANTS = (
 # dreamcolorlightv1 route; only the selector submode differs, and the transform owns that.
 H6125_MUSIC_VARIANTS = H6102_MUSIC_VARIANTS
 
+_H6076_MODE = import_module(
+    "custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write"
+).H6076MusicWrite.MusicMode
+# The app's default seven-colour palette; the capture-backed Torch body carries it unchanged.
+_H6076_PALETTE = "ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+
+
+def _h6076_body(mode: int, tail: str = "") -> bytes:
+    body = bytes((mode, 7)) + bytes.fromhex(_H6076_PALETTE + tail)
+    return body + bytes(31 - len(body))
+
+
+# Legacy selectors keep their parameters in the selector; companion-backed effects upload an A3 body first.
+H6076_MUSIC_VARIANTS = (
+    *(
+        MusicVariant(int(mode), f"H6076 {mode.name}: fixed-colour flag and RGB in the selector; {evidence}")
+        for mode, evidence in (
+            (_H6076_MODE.energetic, "captured"),
+            (_H6076_MODE.bounce, "capture and app producer"),
+            (_H6076_MODE.hopping, "capture and app producer"),
+            (_H6076_MODE.beat, "capture and app producer"),
+            (_H6076_MODE.spray, "capture and app producer"),
+        )
+    ),
+    MusicVariant(int(_H6076_MODE.rhythm), "H6076 capture and app producer: Dynamic/Calm byte", supports_style=True),
+    MusicVariant(
+        int(_H6076_MODE.separation),
+        "H6076 capture: default Separation companion, point 2 and gradient off",
+        "h6076_music_body",
+        _h6076_body(int(_H6076_MODE.separation), "020061"),
+        supports_fixed_colour=False,
+    ),
+    *(
+        MusicVariant(
+            int(mode),
+            f"H6076 {mode.name} default companion; {evidence}",
+            "h6076_music_body",
+            _h6076_body(int(mode)),
+            supports_fixed_colour=False,
+        )
+        for mode, evidence in (
+            (_H6076_MODE.torch, "captured"),
+            (_H6076_MODE.skittles, "app producer and reporter LAN replay"),
+            (_H6076_MODE.candy_crush, "app producer and reporter LAN replay"),
+            (_H6076_MODE.fusion, "app producer and reporter LAN replay"),
+            (_H6076_MODE.shiny, "app producer and reporter LAN replay"),
+        )
+    ),
+)
+
 
 def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
     variant = next((variant for variant in profile.music_variants if variant.mode_code == mode_code), None)
@@ -485,7 +539,7 @@ def music_params_for_mode(mode_code: int, profile: ModelProfile) -> tuple[MusicP
             if not spec.requires_physical_ic_count or profile.physical_ic_count is not None
         )
         if variant is not None
-        and variant.layout in {"music_body", "h6099_music_parameters"}
+        and variant.layout in COMPANION_MUSIC_LAYOUTS
         and music_parameters_available(profile, variant)
         else ()
     )
@@ -515,11 +569,11 @@ def compile_music_parameters(
 
 def capture_music_parameters(source: object, profile: ModelProfile, mode: str) -> dict[str, int | bool | str]:
     """New snapshots always carry a mapping; only legacy persisted snapshots omit it."""
-    from .const import MUSIC_MODE_SLUGS
+    from .music_protocol import music_codebook
 
     if mode not in profile.music_modes:
         return {}
-    mode_code = MUSIC_MODE_SLUGS.get(mode)
+    mode_code = music_codebook(profile).get(mode)
     if mode_code is None:
         return {}
     return {

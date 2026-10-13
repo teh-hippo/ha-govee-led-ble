@@ -8,7 +8,7 @@ import pytest
 from bleak import BleakError
 
 from custom_components.ha_govee_led_ble import coordinator as coordinator_module
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
@@ -20,8 +20,11 @@ from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEn
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_scene_activation,
     parse_command_ack_result,
+    upload_ack_mode,
+    upload_ack_subtype,
     upload_ack_success,
 )
+from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _manager, _open
@@ -102,6 +105,25 @@ def test_generated_ack_offsets_and_subtype(prefix, subtype, expected):
     assert result.parser == "h617a_command_ack"
     assert type(result.parsed).__module__.endswith(".h617a_command_ack")
     assert upload_ack_success(result.parsed, subtype) is expected
+
+
+@pytest.mark.parametrize(
+    ("prefix", "expected"),
+    [("a3415000", True), ("a3415001", False), ("a3414d00", None), ("a3415100", None), ("a3425000", None)],
+)
+def test_h6076_ack_must_repeat_the_uploaded_mode(prefix, expected):
+    # Issue #343: the lamp answers a Torch (0x50) companion with `a3 41 50 00`.
+    profile = device_profile("H6076", 1, 1, firmware="1.04.05")
+    *upload, selector = prepare_music_request("H6076", "torch", 99, None, False, {}, profile=profile)[1:]
+    assert selector[:3] == b"\x33\x05\x0f"
+    index = len(upload) - 1
+    assert upload_ack_subtype(upload, index, "H6076", profile=profile) == 0x41
+    assert upload_ack_mode(upload, index, "H6076", profile=profile) == 0x50
+    result = parse_command_ack_result(frame(prefix), "H6076", profile=profile)
+    assert result.parser == "h6076_music_ack"
+    assert upload_ack_success(result.parsed, 0x41, 0x50) is expected
+    assert upload_ack_success(result.parsed, 0x41) is None
+    assert parse_command_ack_result(frame("330100"), "H6076", profile=profile).parser == "h617a_command_ack"
 
 
 def test_ack_uses_command_grammar_independently_of_video(monkeypatch):

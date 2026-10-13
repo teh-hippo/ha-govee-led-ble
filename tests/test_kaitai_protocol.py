@@ -57,6 +57,8 @@ H6179StatusQuery = _generated("h6179_status_query", "H6179StatusQuery")
 H6179StatusReply = _generated("h6179_status_reply", "H6179StatusReply")
 H6125StatusReply = _generated("h6125_status_reply", "H6125StatusReply")
 H6125WireWrite = _generated("h6125_wire_write", "H6125WireWrite")
+H6076MusicBody = _generated("h6076_music_body", "H6076MusicBody")
+H6076MusicWrite = _generated("h6076_music_write", "H6076MusicWrite")
 H6179ScheduleWrite = _generated("h6179_schedule_write", "H6179ScheduleWrite") if _GENERATED_DIR else None
 DiyType03 = _generated("diy_type03", "DiyType03")
 DiyType04 = _generated("diy_type04", "DiyType04")
@@ -77,6 +79,14 @@ H6125_BRIGHTNESS_REPLY = bytes.fromhex("aa041400000000000000000000000000000000ba
 # Submode 0x11 layouts follow the app producer; no identified H6125 capture exists.
 H6125_MUSIC_WRITE = bytes.fromhex("33051111320101ff0000000000000000000000fb")
 H6125_MUSIC_STATUS = bytes.fromhex("aa051111320101ff000000000000000000000062")
+# Issue #343 reporter's decrypted HCI frames.  The selector fields were listed before padding and checksum.
+H6076_ENERGETIC = bytes.fromhex("33050f006301ff000000000000000000000000a4")
+H6076_RHYTHM_AT_LEFT = bytes.fromhex("33050f040001000000000000000000000000003c")
+H6076_TORCH_SELECTOR = bytes.fromhex("33050f506300000000000000000000000000000a")
+H6076_TORCH_BODY = (
+    bytes.fromhex("a3000102415007ff0000ff7f00ffff0000ff0036"),
+    bytes.fromhex("a3ff0000ff00ffff8b00ff0000000000000000d7"),
+)
 STATUS_SEGMENTS = bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010")
 H617A_SEGMENT_QUERY = bytes.fromhex("aaa505000000000000000000000000000000000a")
 H6199_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
@@ -982,6 +992,34 @@ def test_h6125_wire_and_status_fields_are_meaningful() -> None:
     assert status.mode.name == "music" and status.mode_body.mode_id.name == "rhythm"
     assert (status.mode_body.is_legacy, status.mode_body.style, status.mode_body.has_fixed_colour) == (True, 1, 1)
     assert status.mode_body.rgb.red == 255
+
+
+def test_h6076_selector_and_companion_fields_match_the_reporter_capture() -> None:
+    energetic = _parse(H6076MusicWrite, H6076_ENERGETIC).selector
+    assert (energetic.mode_id.name, energetic.sensitivity, energetic.settings.has_fixed_colour) == ("energetic", 99, 1)
+    assert (energetic.settings.rgb.red, energetic.settings.rgb.green, energetic.settings.rgb.blue) == (255, 0, 0)
+
+    rhythm = _parse(H6076MusicWrite, H6076_RHYTHM_AT_LEFT).selector
+    assert (rhythm.mode_id.name, rhythm.sensitivity) == ("rhythm", 0)
+    assert (rhythm.settings.dynamic, rhythm.settings.has_fixed_colour) == (1, 0)
+
+    torch = _parse(H6076MusicWrite, H6076_TORCH_SELECTOR).selector
+    assert (torch.mode_id.name, torch.sensitivity) == ("torch", 99)
+    assert type(torch.settings).__name__ == "OpaqueSettings"
+
+    for frame in H6076_TORCH_BODY:
+        assert len(frame) == 20 and xor_checksum(frame) == 0
+    body = _parse(H6076MusicBody, b"".join(frame[2:19] for frame in H6076_TORCH_BODY))
+    assert (body.mode.name, body.num_palette, body.tail) == ("torch", 7, b"")
+    assert [(rgb.red, rgb.green, rgb.blue) for rgb in body.palette] == [
+        (255, 0, 0),
+        (255, 127, 0),
+        (255, 255, 0),
+        (0, 255, 0),
+        (0, 0, 255),
+        (0, 255, 255),
+        (139, 0, 255),
+    ]
 
 
 def test_command_and_status_fields_are_meaningful() -> None:

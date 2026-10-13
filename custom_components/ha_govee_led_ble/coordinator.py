@@ -38,6 +38,7 @@ from .const import (
     default_effect_families,
     device_profile,
     get_profile,
+    supported_effect_categories,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_dreamview import _DreamviewMixin
@@ -80,6 +81,7 @@ from .generated_protocol_adapter import (
     parse_h6199_control,
     parse_physical_ic_count,
     require_profile_packet,
+    upload_ack_mode,
     upload_ack_subtype,
     upload_ack_success,
 )
@@ -103,7 +105,7 @@ from .light_commands import (
 )
 from .music_commands import prepare_music_profile_writes
 from .music_protocol import music_code_for
-from .music_semantics import capture_music_parameters, music_params_for_mode, music_variant
+from .music_semantics import COMPANION_MUSIC_LAYOUTS, capture_music_parameters, music_params_for_mode, music_variant
 from .native_profile_controls import (
     ProfileWriter,
     apply_active_video_mode,
@@ -145,7 +147,7 @@ PACKET_LOG_RAW_BYTES_LIMIT = 512
 EXPECTED_STATE_TTL = 2.0
 AVAILABILITY_UNAVAILABLE_DATA_KEY = "availability_unavailable"
 # Models whose effective profile is qualified by fresh firmware and hardware identity.
-_IDENTITY_QUALIFIED_MODELS = frozenset({"H60A1", "H60A6", "H6102", "H6125"})
+_IDENTITY_QUALIFIED_MODELS = frozenset({"H60A1", "H60A6", "H6076", "H6102", "H6125"})
 
 _CORE_STATE_FIELDS = (
     "is_on",
@@ -237,7 +239,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._advertised_plaintext = False
         self._connection_initializing = False
         self._notification_token: object | None = None
-        self._upload_ack: tuple[BleakClient, object | None, int, int, asyncio.Future[bool]] | None = None
+        self._upload_ack: tuple[BleakClient, object | None, int, int, int | None, asyncio.Future[bool]] | None = None
         self._lock = asyncio.Lock()
         self._control_arbiter = BLEControlArbiter()
         self._control_lock = self._control_arbiter
@@ -345,12 +347,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             if h6102_pact is not None:
                 self.pact_type, self.pact_code = H6102_PACTS[h6102_pact]
             self._resolve_device_profile()
-        elif model == "H6125":
+        elif model in {"H6076", "H6125"}:
             self._resolve_device_profile()
 
     @property
     def configuration_url(self) -> str | None:
-        return self._configuration_url if self.profile.supports_custom_effects or self.profile.supports_scenes else None
+        return self._configuration_url if supported_effect_categories(self.model, profile=self.profile) else None
 
     @property
     def device_info(self) -> dr.DeviceInfo:
@@ -476,7 +478,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             # Legacy snapshots retain style across modes even when the active selector
             # has no style byte semantics. Do not reinterpret that retained value.
             music_calm = state.music_calm if variant and variant.supports_style else False
-            if variant and variant.layout in {"music_body", "h6099_music_parameters"}:
+            if variant and variant.layout in COMPANION_MUSIC_LAYOUTS:
                 if state.music_body is None:
                     # The selector cannot recover resident companions; presets are not a backup.
                     return False
@@ -901,6 +903,15 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if device is not None:
             registry.async_update_device(device.id, sw_version=self.fw_version, hw_version=self.hw_version)
 
+    def _sync_device_configuration_url(self) -> None:
+        """Entities snapshot device_info at construction, so profile changes to Effect Studio access are pushed."""
+        if self.config_entry is None:
+            return
+        registry = dr.async_get(self.hass)
+        device = registry.async_get_device_by_identifier((DOMAIN, self.address), self.config_entry.entry_id)
+        if device is not None:
+            registry.async_update_device(device.id, configuration_url=self.configuration_url)
+
     @property
     def white_balance(self) -> tuple[int, int] | None:
         """Retained gains only; unknown state is not the calibration-table neutral."""
@@ -973,7 +984,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     self._advertised_plaintext = True
 
     def _resolve_device_profile(self) -> None:
-        if self.model not in {"H60A1", "H60A6", "H6102", "H6125", "H6199"}:
+        if self.model not in {"H60A1", "H60A6", "H6076", "H6102", "H6125", "H6199"}:
             return
         if self.model == "H6102":
             context = (self.pact_type, self.pact_code, self.fw_version, self.hw_version, self.profile.physical_ic_count)
@@ -1007,6 +1018,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         }
         self._profile_generation += 1
         self._expected_state.clear()
+        self._sync_device_configuration_url()
         if self.model not in {"H60A1", "H60A6"}:
             self.brightness_pct = 100
         self.color_mode = None
@@ -1613,8 +1625,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if ack.parsed is not None:
             pending = self._upload_ack
             if pending is not None:
-                client, token, generation, subtype, future = pending
-                ack_success = upload_ack_success(ack.parsed, subtype)
+                client, token, generation, subtype, ack_mode, future = pending
+                ack_success = upload_ack_success(ack.parsed, subtype, ack_mode)
                 if (
                     ack_success is not None
                     and self._client is client
@@ -2859,11 +2871,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             raise ValueError("effect sequence must contain at least one packet")
         if packet_state_values is not None and len(packet_state_values) != len(packets):
             raise ValueError("packet state must match the effect sequence length")
-        subtype = None
+        subtype = ack_mode = None
         if require_upload_ack:
             if type(upload_ack_index) is not int or not 0 <= upload_ack_index < len(packets):
                 raise ValueError("Upload ACK requires a valid final packet index")
             subtype = upload_ack_subtype(packets, upload_ack_index, self.model, profile=self.profile)
+            ack_mode = upload_ack_mode(packets, upload_ack_index, self.model, profile=self.profile)
         elif upload_ack_index is not None:
             raise ValueError("Upload ACK index requires require_upload_ack")
         async with async_control_intent(self, intent):
@@ -2922,7 +2935,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                                     # After transforms and guards, immediately before the
                                     # final physical attempt: synchronous replies are valid.
                                     future = asyncio.get_running_loop().create_future()
-                                    self._upload_ack = (client, token, generation, subtype, future)
+                                    self._upload_ack = (client, token, generation, subtype, ack_mode, future)
 
                             values = state_values if packet_state_values is None else packet_state_values[index - 1]
                             if writer is None:

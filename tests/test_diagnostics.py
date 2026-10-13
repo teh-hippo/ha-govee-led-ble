@@ -116,7 +116,8 @@ async def test_h6076_diagnostics_expose_basic_capability_boundary(mock_h6076_coo
     assert coord["supports_color_mode_readback"] is False
     assert coord["supports_custom_effects"] is False
     assert coord["supports_segments"] is False
-    assert coord["release_capabilities"]["capabilities"] == []
+    assert coord["music_modes"] == []
+    assert [capability["workflow"] for capability in coord["release_capabilities"]["capabilities"]] == ["native_music"]
 
 
 @pytest.mark.parametrize(

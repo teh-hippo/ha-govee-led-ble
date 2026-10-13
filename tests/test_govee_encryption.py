@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bleak import BleakError
@@ -32,6 +32,7 @@ from custom_components.ha_govee_led_ble.govee_encryption import (
 )
 from custom_components.ha_govee_led_ble.govee_encryption import session as session_module
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
+from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.transport import (
     ENCRYPTION_UUID,
     READ_UUID,
@@ -330,8 +331,9 @@ async def test_coordinator_cancellation_resets_session(hass, phase):
 
 @pytest.mark.parametrize("version", [1, 2])
 async def test_encrypted_write_only_reconnect_transforms_and_stale_notifications(hass, version):
-    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6076", configuration_url=None)
-    packet = build_power(True, "H6076")
+    # An identity-qualified model would re-resolve this substituted profile on reconnect.
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    packet = build_power(True, "H617A")
     logical = []
     coordinator.profile = replace(
         coordinator.profile,
@@ -650,3 +652,54 @@ async def test_encrypted_write_retries_reconnect_with_fresh_session(hass, versio
         assert session_keys == [None, None]  # Keys aren't installed before confirmation returns.
     assert "private" not in json.dumps(coordinator._encryption.diagnostics())
     await coordinator.disconnect()
+
+
+async def test_h6076_identity_and_music_travel_over_v1_and_the_companion_is_acknowledged(hass):
+    # Issue #343: the reporter's lamp negotiated V1 and acknowledged each companion with an A3 reply.
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6076", configuration_url=None)
+    coordinator.config_entry = MagicMock(entry_id="test-entry")
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._resolve_device_profile()
+    assert not coordinator.profile.music_modes
+    device, phase, plain_writes, wire_writes = client(bytes((1, 1))), 0, [], []
+
+    def reply(payload):
+        frame = payload.ljust(19, b"\0")
+        frame += bytes((xor_checksum(frame),))
+        device.start_notify.call_args.args[1](None, bytearray(v1_transform(frame, KEY, encrypt=True)))
+
+    async def write(_uuid, frame, **_kwargs):
+        nonlocal phase
+        phase += 1
+        if phase <= 2:
+            device.start_notify.call_args.args[1](None, bytearray(v1_reply(phase)))
+            return
+        plain = v1_transform(frame, KEY, encrypt=False)
+        wire_writes.append(frame)
+        plain_writes.append(plain)
+        if plain[:2] == b"\xaa\x07":
+            reply(b"\xaa\x07\x03" + b"3.05.00\0")
+        elif plain[:2] == b"\xaa\x06":
+            reply(b"\xaa\x06" + b"1.04.05\0")
+        elif plain[:2] == b"\xa3\xff":
+            reply(b"\xa3\x41\x4d\x00")  # A late acknowledgement for a different mode must be ignored.
+            assert not coordinator._upload_ack[-1].done()
+            reply(b"\xa3\x41\x50\x00")
+
+    device.write_gatt_char.side_effect = write
+    with patch(f"{M}.async_establish_ble_connection", return_value=device):
+        try:
+            await coordinator._ensure_connected()
+            assert coordinator.profile.music_modes
+            expected = prepare_music_request(
+                "H6076", "torch", coordinator.music_sensitivity, None, False, {}, profile=coordinator.profile
+            )
+            assert [packet[0] for packet in expected] == [0x33, 0xA3, 0xA3, 0x33]
+            await coordinator.async_select_music_slug("torch")
+        finally:
+            await coordinator.disconnect()
+
+    assert [plain[:2] for plain in plain_writes[:2]] == [b"\xaa\x07", b"\xaa\x06"]
+    assert plain_writes[2:] == list(expected)
+    assert all(frame != plain for frame, plain in zip(wire_writes, plain_writes, strict=True))
+    assert coordinator.music_mode == "torch" and coordinator._encryption.version == 1

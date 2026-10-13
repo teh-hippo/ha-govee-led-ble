@@ -6,7 +6,7 @@ from typing import Any
 
 from kaitaistruct import KaitaiStructError
 
-from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile
+from .const import ModelProfile, get_profile
 from .generated_protocol_adapter import (
     build_music_mode,
     build_power,
@@ -14,8 +14,9 @@ from .generated_protocol_adapter import (
     music_default_palette,
     parse_music_parameters,
 )
-from .music_protocol import music_code_for, music_mode_has_parameter_write
+from .music_protocol import music_code_for, music_codebook, music_mode_has_parameter_write
 from .music_semantics import (
+    COMPANION_MUSIC_LAYOUTS,
     compile_music_parameters,
     music_parameters_available,
     music_params_for_mode,
@@ -33,7 +34,7 @@ def build_music_params(
     profile: ModelProfile,
     calm: bool = False,
 ) -> list[bytes]:
-    if type(mode) is not int or mode not in (MUSIC_MODE_SLUGS[slug] for slug in profile.music_modes):
+    if type(mode) is not int or mode not in (music_codebook(profile)[slug] for slug in profile.music_modes):
         raise ValueError("unsupported music mode")
     if not isinstance(calm, bool):
         raise ValueError("music style must be a boolean")
@@ -166,7 +167,7 @@ def prepare_music_profile_writes(
     }
     mode_code = music_code_for(model, mode)
     variant = music_variant(profile, mode_code)
-    if variant and variant.layout in {"music_body", "h6099_music_parameters"}:
+    if variant and variant.layout in COMPANION_MUSIC_LAYOUTS:
         # New selectors carry neither style nor fixed colour, even without an upload.
         del states[selector_index]["music_calm"]
         del states[selector_index]["music_color"]
@@ -217,7 +218,7 @@ def prepare_music_profile_writes(
 
 def validate_music_body(body: bytes, mode: str, *, profile: ModelProfile) -> Any:
     """Validate restored bytes structurally; authoring bounds cannot discard original companions."""
-    variant = music_variant(profile, MUSIC_MODE_SLUGS.get(mode, -1))
+    variant = music_variant(profile, music_codebook(profile).get(mode, -1))
     if mode not in profile.music_modes or variant is None or not variant.evidence:
         raise ValueError("music body mode is unqualified")
     try:
@@ -248,7 +249,7 @@ def edit_music_body(
 ) -> bytes:
     """Overlay only requested fields on a validated original, never fill missing fields from defaults."""
     validate_music_body(body, mode, profile=profile)
-    mode_code = MUSIC_MODE_SLUGS[mode]
+    mode_code = music_codebook(profile)[mode]
     profile = retained_music_profile(profile, mode_code)
     variant = music_variant(profile, mode_code)
     assert variant is not None
@@ -268,7 +269,7 @@ def edit_music_body(
 def music_body_parameters(body: bytes, mode: str, *, profile: ModelProfile) -> dict[str, int | bool | str]:
     """Read declared fields from the known body so an edit can distinguish unchanged siblings."""
     root = validate_music_body(body, mode, profile=profile)
-    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
+    variant = music_variant(profile, music_codebook(profile)[mode])
     assert variant is not None
     result: dict[str, int | bool | str] = {}
     # Decoding known fields does not require permission to author geometry-dependent values.
@@ -295,7 +296,7 @@ def music_body_parameters(body: bytes, mode: str, *, profile: ModelProfile) -> d
 def music_body_style(body: bytes, mode: str, *, profile: ModelProfile) -> bool | None:
     """Only recognized companion pairs establish a style; unknown pairs stay unknown."""
     root = validate_music_body(body, mode, profile=profile)
-    variant = music_variant(profile, MUSIC_MODE_SLUGS[mode])
+    variant = music_variant(profile, music_codebook(profile)[mode])
     if variant is None or not variant.supports_style:
         return None
     if hasattr(root.tail, "rhythm_speed") and root.tail.no_rhythm_speed == 10:

@@ -2,6 +2,7 @@
 
 import pytest
 
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
 from custom_components.ha_govee_led_ble.music_protocol import (
     MUSIC_MODE_CODES_BY_MODEL,
     music_code_for,
@@ -84,3 +85,33 @@ def test_music_parameter_writes_are_model_specific() -> None:
     assert not any(music_mode_has_parameter_write("H6199", code) for code in _H617A_CODES.values())
     assert not music_mode_has_parameter_write("H6179", 0x00)
     assert not music_mode_has_parameter_write("H6179", 0x01)
+
+
+def test_h6076_codebook_is_its_own_numbering_not_the_h617a_one() -> None:
+    codes = {
+        "energetic": 0x00,
+        "hopping": 0x02,
+        "rhythm": 0x04,
+        "beat": 0x06,
+        "spray": 0x07,
+        "bounce": 0x08,
+        "separation": 0x32,
+        "skittles": 0x4D,
+        "candy_crush": 0x4E,
+        "fusion": 0x4F,
+        "torch": 0x50,
+        "shiny": 0x51,
+    }
+    assert MUSIC_MODE_CODES_BY_MODEL["H6076"] == codes
+    assert set(MODEL_PROFILES["H6076"].music_modes) == set(codes)
+    assert music_code_for("H6076", "shiny") == 0x51 != music_code_for("H617A", "shiny")
+    assert music_slug_for("H6076", 0x06) == "beat" and music_slug_for("H617A", 0x06) == "rolling"
+    assert [code for code in codes.values() if music_mode_supports_style("H6076", code)] == [0x04]
+    assert {code for code in codes.values() if music_mode_has_parameter_write("H6076", code)} == {
+        0x32,
+        0x4D,
+        0x4E,
+        0x4F,
+        0x50,
+        0x51,
+    }

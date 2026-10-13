@@ -470,13 +470,14 @@ async def test_options_flow_aborts_for_unsupported_model(hass: HomeAssistant):
 @pytest.mark.parametrize(
     ("data", "address"),
     [
+        ({CONF_MODEL: "H601C"}, SVC_H6076.address),
         ({CONF_MODEL: "H6076"}, SVC_H6076.address),
         ({CONF_MODEL: "H6102"}, SVC_H6102.address),
         ({CONF_MODEL: "H6102", CONF_H6102_APP_FIRMWARE: "1.03.00"}, SVC_H6102.address),
         ({CONF_MODEL: "H6102", CONF_H6102_APP_FIRMWARE: "1.03.01"}, SVC_H6102.address),
     ],
 )
-async def test_options_flow_aborts_when_model_has_no_effect_options(
+async def test_options_flow_aborts_only_when_model_has_no_effect_options(
     hass: HomeAssistant,
     data: dict[str, str],
     address: str,
@@ -486,11 +487,11 @@ async def test_options_flow_aborts_when_model_has_no_effect_options(
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    if data[CONF_MODEL] == "H6102":
-        assert result["type"] is FlowResultType.FORM
-    else:
+    if data[CONF_MODEL] == "H601C":
         assert result["type"] is FlowResultType.ABORT
         assert result["reason"] == "no_options"
+    else:
+        assert result["type"] is FlowResultType.FORM
 
 
 async def test_reconfigure_h6076_preserves_entry_identity(hass: HomeAssistant):

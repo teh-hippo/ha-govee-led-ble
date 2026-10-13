@@ -4,13 +4,14 @@ import asyncio
 from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from bleak import BleakError
 from homeassistant.core import CoreState
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, get_profile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, NativeModeOption
@@ -417,6 +418,116 @@ def test_music_parameter_templates_reproduce_captured_bodies(model) -> None:
         assert _assemble(
             build_music_params(mode, parameters, profile=replace(get_profile(model), physical_ic_count=15), calm=calm)
         ) == H(body)
+
+
+_H6076 = device_profile("H6076", 1, 1, firmware="1.04.05")
+_H6076_PALETTE = "ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+
+
+def _h6076_selector(fields: str) -> bytes:
+    frame = H(fields).ljust(19, b"\x00")
+    return frame + bytes((xor_checksum(frame),))
+
+
+def test_h6076_torch_uploads_the_reporters_captured_frames_before_its_selector() -> None:
+    # Issue #343: the app's Torch effect at full sensitivity, as decrypted from an HCI snoop.
+    captured = (
+        H("a3000102415007ff0000ff7f00ffff0000ff0036"),
+        H("a3ff0000ff00ffff8b00ff0000000000000000d7"),
+    )
+    assert prepare_music_request("H6076", "torch", 99, None, False, {}, profile=_H6076) == (
+        build_power(True, "H6076"),
+        *captured,
+        _h6076_selector("33050f506300"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("mode", "code", "tail"),
+    [
+        ("skittles", "4d", ""),
+        ("candy_crush", "4e", ""),
+        ("fusion", "4f", ""),
+        ("torch", "50", ""),
+        ("shiny", "51", ""),
+        ("separation", "32", "020061"),
+    ],
+)
+def test_h6076_companions_carry_the_default_palette_and_only_separation_has_a_tail(mode, code, tail) -> None:
+    *upload, selector = prepare_music_request("H6076", mode, 50, None, False, {}, profile=_H6076)[1:]
+    body = H("010241" + code + "07" + _H6076_PALETTE + tail).ljust(34, b"\x00")
+    assert _assemble(upload) == body
+    assert selector == _h6076_selector(f"33050f{code}3200")
+
+
+@pytest.mark.parametrize(
+    ("mode", "colour", "calm", "fields"),
+    [
+        ("energetic", (255, 0, 0), False, "33050f006301ff0000"),
+        ("energetic", None, False, "33050f0063" + "00"),
+        ("hopping", (1, 2, 3), False, "33050f026301010203"),
+        ("beat", None, False, "33050f066300"),
+        ("spray", None, False, "33050f076300"),
+        ("bounce", None, False, "33050f086300"),
+        ("rhythm", None, False, "33050f04630100"),
+        ("rhythm", None, True, "33050f04630000"),
+        ("rhythm", (255, 0, 0), True, "33050f046300" + "01ff0000"),
+    ],
+)
+def test_h6076_legacy_effects_carry_their_parameters_in_the_selector(mode, colour, calm, fields) -> None:
+    assert prepare_music_request("H6076", mode, 99, colour, calm, {}, profile=_H6076) == (
+        build_power(True, "H6076"),
+        _h6076_selector(fields),
+    )
+
+
+def test_h6076_rejects_what_the_selector_cannot_carry() -> None:
+    for mode in ("torch", "separation"):
+        with pytest.raises(ValueError, match="fixed music colour"):
+            prepare_music_request("H6076", mode, 99, (1, 2, 3), False, {}, profile=_H6076)
+        with pytest.raises(ValueError, match="style"):
+            prepare_music_request("H6076", mode, 99, None, True, {}, profile=_H6076)
+    with pytest.raises(ValueError, match="style"):
+        prepare_music_request("H6076", "bounce", 99, None, True, {}, profile=_H6076)
+    with pytest.raises(ValueError, match="sensitivity"):
+        prepare_music_request("H6076", "bounce", 100, None, False, {}, profile=_H6076)
+    with pytest.raises(ValueError, match="does not support music mode"):
+        prepare_music_request("H6076", "bloom", 99, None, False, {}, profile=_H6076)
+    with pytest.raises(ValueError, match="palette"):
+        prepare_music_request("H6076", "torch", 99, None, False, {}, profile=_H6076, palette=((1, 2, 3),))
+
+
+def test_h6076_studio_native_music_follows_the_effective_profile() -> None:
+    catalogue = MODEL_EFFECT_CATALOGUES["H6076"]
+    settings = cast(dict[str, dict[str, Any]], catalogue.to_dict(profile=_H6076)["music_settings"])
+    assert [mode.id for mode in catalogue.music_modes] == list(MODEL_PROFILES["H6076"].music_modes)
+    assert {mode for mode, setting in settings.items() if setting["style"]} == {"rhythm"}
+    assert {mode for mode, setting in settings.items() if setting["colour"]} == {
+        "energetic",
+        "rhythm",
+        "bounce",
+        "hopping",
+        "beat",
+        "spray",
+    }
+    assert all(setting["available"] and not setting["parameters"] for setting in settings.values())
+    assert catalogue.to_dict(profile=device_profile("H6076", None, None))["music_modes"] == []
+
+    item = LibraryItem.new("Torch", MusicProfile("H6076", "torch", 99, None, None, {}))
+    assert compatibility(item, "H6076", profile=_H6076).state is CompatibilityState.COMPATIBLE
+    assert compatibility(item, "H6076", profile=device_profile("H6076", None, None)).state is (
+        CompatibilityState.INCOMPATIBLE
+    )
+    assert compile_music_profile(item, "H6076", profile=_H6076).packets[-1] == _h6076_selector("33050f506300")
+
+
+def test_h6076_companion_state_is_retained_for_recovery_but_selector_state_omits_style_and_colour() -> None:
+    writes = prepare_music_profile_writes("H6076", "separation", 99, None, False, {}, profile=_H6076)
+    *_, (selector, selector_state) = writes
+    assert selector == _h6076_selector("33050f326300")
+    assert selector_state["music_mode"] == "separation"
+    assert "music_calm" not in selector_state and "music_color" not in selector_state
+    assert writes[-2][1]["_music_body"][0] == "separation"
 
 
 def test_music_parameter_overlay_changes_only_named_offsets() -> None:

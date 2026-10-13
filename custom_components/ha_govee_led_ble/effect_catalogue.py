@@ -947,6 +947,10 @@ WORKSHOP_PROTOCOL_FIXTURES: Final = (
 )
 
 H6125_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6125")
+# The selector order follows the app, not the wire codes.
+H6076_NATIVE_MUSIC_MODES: Final = tuple(
+    NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H6076"].music_modes
+)
 
 MODEL_EFFECT_CATALOGUES: Final = {
     "H6102": ModelEffectCatalogue(
@@ -1137,6 +1141,27 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H6199", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H6076": ModelEffectCatalogue(
+        sku="H6076",
+        painted_effects=(),
+        effects=(),
+        music_modes=H6076_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=tuple(_music_template("H6076", mode) for mode in H6076_NATIVE_MUSIC_MODES),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6076", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6076", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6076", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H6076", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6076", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6076", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6076", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6076", CapabilityWorkflow.WORKSHOP),
         ),
     ),
 }

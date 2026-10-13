@@ -10,6 +10,7 @@ from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .music_semantics import (
     H617A_MUSIC_VARIANTS,
     H617E_MUSIC_VARIANTS,
+    H6076_MUSIC_VARIANTS,
     H6099_MUSIC_VARIANTS,
     H6102_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
@@ -160,6 +161,8 @@ class ModelProfile:
     supports_relative_brightness: bool = False
     supports_blank_screen: bool = False
     supports_black_border: bool = False
+    # Selects the music codebook and selector writer when they differ from command_grammar.
+    music_grammar: str | None = None
     music_modes: tuple[str, ...] = ()
     music_variants: tuple[MusicVariant, ...] = ()
     music_upload_before_selector: bool = False
@@ -402,6 +405,53 @@ _H617A_PROFILE = ModelProfile(
 )
 
 
+# The owner-qualified controls.  Music needs software evidence, so it is added by _h6076_profile.
+_H6076_PROFILE = ModelProfile(
+    "H6076 Lyra Floor Lamp",
+    support_quality=SupportQuality.PARTIAL,
+    command_grammar="H617A",
+    status_grammar="H617A",
+    read_domains=frozenset(
+        {
+            ReadDomain.POWER,
+            ReadDomain.BRIGHTNESS,
+            ReadDomain.FIRMWARE,
+            ReadDomain.HARDWARE,
+        }
+    ),
+    setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+    supports_rgb=True,
+    supports_color_temperature=True,
+    min_color_temp_kelvin=2700,
+    max_color_temp_kelvin=6500,
+    whole_device_mask=0x007F,
+    scene_catalogue_sku="H6076",
+)
+
+_H6076_MUSIC_PROFILE = replace(
+    _H6076_PROFILE,
+    music_grammar="H6076",
+    music_modes=(
+        "energetic",
+        "rhythm",
+        "bounce",
+        "hopping",
+        "beat",
+        "spray",
+        "skittles",
+        "torch",
+        "candy_crush",
+        "fusion",
+        "shiny",
+        "separation",
+    ),
+    music_variants=H6076_MUSIC_VARIANTS,
+    supports_music_color=True,
+    # MultipleController4Music uploads the companion before the selector and the lamp acknowledges it.
+    music_upload_before_selector=True,
+    music_requires_upload_ack=True,
+)
+
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H60A1": ModelProfile(
         "H60A1 Ceiling Light",
@@ -591,27 +641,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H617A",
         scene_catalogue_sku="H617F",
     ),
-    "H6076": ModelProfile(
-        "H6076 Lyra Floor Lamp",
-        support_quality=SupportQuality.PARTIAL,
-        command_grammar="H617A",
-        status_grammar="H617A",
-        read_domains=frozenset(
-            {
-                ReadDomain.POWER,
-                ReadDomain.BRIGHTNESS,
-                ReadDomain.FIRMWARE,
-                ReadDomain.HARDWARE,
-            }
-        ),
-        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
-        supports_rgb=True,
-        supports_color_temperature=True,
-        min_color_temp_kelvin=2700,
-        max_color_temp_kelvin=6500,
-        whole_device_mask=0x007F,
-        scene_catalogue_sku="H6076",
-    ),
+    "H6076": _H6076_MUSIC_PROFILE,
     "H6102": ModelProfile(
         "H6102 LED Strip",
         support_quality=SupportQuality.EXPERIMENTAL,
@@ -895,6 +925,16 @@ def _h6125_profile(
     )
 
 
+def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str | None) -> ModelProfile:
+    """Admit the music selector only on pact 1/1 or 2/1 with software 1.02.00 or newer."""
+    from .firmware_version import FirmwareVersion
+
+    fw = FirmwareVersion.parse(firmware)
+    if (pact_type, pact_code) not in {(1, 1), (2, 1)} or fw is None or fw < FirmwareVersion((1, 2)):
+        return _H6076_PROFILE
+    return _H6076_MUSIC_PROFILE
+
+
 def device_profile(
     model: str,
     pact_type: int | None,
@@ -943,6 +983,8 @@ def device_profile(
         return profile
     if model == "H6199" and (pact_type, pact_code) == (1, 1):
         return H6199_PACT1_PROFILE
+    if model == "H6076":
+        return _h6076_profile(pact_type, pact_code, firmware)
     if model == "H6125":
         return _h6125_profile(pact_type, pact_code, firmware, hardware)
     if model == "H6102":

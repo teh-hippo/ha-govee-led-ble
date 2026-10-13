@@ -152,6 +152,15 @@ WorkshopBody = cast(
     import_module("custom_components.ha_govee_led_ble.generated_protocol.workshop_body").WorkshopBody,
 )
 MusicBody = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.music_body").MusicBody)
+H6076MusicAck = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_ack").H6076MusicAck
+)
+H6076MusicBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_body").H6076MusicBody
+)
+H6076MusicWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write").H6076MusicWrite
+)
 H6125StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_status_reply").H6125StatusReply,
@@ -289,6 +298,7 @@ _STATUS_QUERY_ROOTS = {
     "H6179": ("h6179_status_query", H6179StatusQuery),
     "H6199": ("h6199_status_query", H6199StatusQuery),
 }
+_H6076_ACK_ROOTS = {"H6076": ("h6076_music_ack", H6076MusicAck)}
 _COMMAND_ACK_ROOTS = {
     "H6099": ("h6099_command_ack", H6099CommandAck),
     "H617A": ("h617a_command_ack", H617aCommandAck),
@@ -357,11 +367,16 @@ def parse_command_ack_result(frame: bytes, model: str, *, profile: ModelProfile 
         video = _parse_xor_frame(frame, profile.video_grammar, _COMMAND_ACK_ROOTS)
         if video.parsed is not None:
             return video
+    if profile.music_grammar == "H6076":
+        music = _parse_xor_frame(frame, "H6076", _H6076_ACK_ROOTS)
+        if music.parsed is not None:
+            return music
     return _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ACK_ROOTS)
 
 
-def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, profile: ModelProfile | None = None) -> int:
-    """Validate a complete A3 upload ending at index, returning its ACK command."""
+def _complete_a3_upload(
+    packets: Sequence[bytes], index: int, model: str, profile: ModelProfile | None
+) -> tuple[int, bytes]:
     if (profile or get_profile(model)).command_grammar != "H617A":
         raise ValueError("Upload ACK semantics are not qualified for this command grammar")
     roots = {"H617A": ("command_write.upload_frame", CommandWrite.UploadFrame)}
@@ -370,13 +385,34 @@ def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, prof
         if frame is None or (start == index and not frame.is_final):
             break
         if frame.index == 0:
-            reassemble_a3(packets[start : index + 1])
-            return int(frame.body.subtype)
+            return int(frame.body.subtype), reassemble_a3(packets[start : index + 1])
     raise ValueError("Upload ACK index must end a complete A3 upload")
 
 
-def upload_ack_success(parsed: Any, subtype: int) -> bool | None:
+def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, profile: ModelProfile | None = None) -> int:
+    """Validate a complete A3 upload ending at index, returning its ACK command."""
+    return _complete_a3_upload(packets, index, model, profile)[0]
+
+
+def upload_ack_mode(
+    packets: Sequence[bytes], index: int, model: str, *, profile: ModelProfile | None = None
+) -> int | None:
+    """Return the music mode an exact-model acknowledgement must repeat, if its schema carries one."""
+    if (profile or get_profile(model)).music_grammar != "H6076":
+        return None
+    body = H6076MusicBody.from_bytes(_complete_a3_upload(packets, index, model, profile)[1])
+    body._read()
+    return int(body.mode)
+
+
+def upload_ack_success(parsed: Any, subtype: int, mode: int | None = None) -> bool | None:
     """Return a matching upload result, never treating an ordinary ACK as A3."""
+    if isinstance(parsed, H6076MusicAck):
+        return (
+            bool(parsed.is_success)
+            if mode is not None and parsed.opcode == subtype and int(parsed.mode) == mode
+            else None
+        )
     if isinstance(parsed, H617aCommandAck) and parsed.is_upload and parsed.opcode == subtype:
         return bool(parsed.is_success)
     return None
@@ -1904,7 +1940,9 @@ def build_music_mode(
         or any(type(channel) is not int or not 0 <= channel <= 255 for channel in colour)
     ):
         raise ValueError("fixed music colour is unsupported or invalid")
-    resolved = profile.command_grammar
+    resolved = profile.music_grammar or profile.command_grammar
+    if resolved == "H6076":
+        return _build_h6076_music_selector(mode_id, sensitivity, colour, calm)
     if resolved == "H6179":
         root = H6179CommandWrite()
         root.header = b"\x33"
@@ -1996,6 +2034,34 @@ def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
     return _serialize_xor(root)
 
 
+def _build_h6076_music_selector(
+    mode_id: int, sensitivity: int, colour: tuple[int, int, int] | None, calm: bool
+) -> bytes:
+    root = H6076MusicWrite()
+    root.header = b"\x33"
+    root.opcode = b"\x05"
+    root.sub = b"\x0f"
+    selector = _child(H6076MusicWrite.MusicSelector, root)
+    mode = H6076MusicWrite.MusicMode(mode_id)
+    selector.mode_id = mode
+    selector.sensitivity = sensitivity
+    if mode.name in H6076MusicBody.MusicMode.__members__:
+        settings = _child(H6076MusicWrite.OpaqueSettings, selector)
+        settings.padding = bytes(14)
+    else:
+        rhythm = mode == H6076MusicWrite.MusicMode.rhythm
+        settings = _child(H6076MusicWrite.RhythmSettings if rhythm else H6076MusicWrite.ColourSettings, selector)
+        if rhythm:
+            settings.dynamic = int(not calm)
+        settings.has_fixed_colour = int(colour is not None)
+        if colour is not None:
+            settings.rgb = _rgb(settings, *colour)
+        settings.padding = bytes(14 - (2 if rhythm else 1) - (3 if colour is not None else 0))
+    selector.settings = settings
+    root.selector = selector
+    return _serialize_xor(root)
+
+
 def _h6125_wire_music(selector: Any) -> bytes:
     root = H6125WireWrite()
     root.header = b"\x33"
@@ -2071,8 +2137,9 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
             "custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters"
         ).H6099MusicParameters
         root = root_type.from_bytes(body)
-    elif variant.layout == "music_body":
-        root = MusicBody.from_bytes(b"\x01\x02\x41" + body)
+    elif variant.layout in {"music_body", "h6076_music_body"}:
+        root_type = H6076MusicBody if variant.layout == "h6076_music_body" else MusicBody
+        root = root_type.from_bytes(b"\x01\x02\x41" + body)
     else:
         raise ValueError("music palette layout is unqualified")
     root._read()
@@ -2095,7 +2162,7 @@ def encode_music_parameters(
         return _encode_h6099_music_parameters(
             variant, parameters, palette, calm, physical_ic_count, preserve_companions
         )
-    if variant.layout != "music_body" or not variant.evidence or not variant.template:
+    if variant.layout not in {"music_body", "h6076_music_body"} or not variant.evidence or not variant.template:
         raise ValueError("music parameter layout is unqualified")
     root = parse_music_parameters(variant, variant.template)
     length = len(variant.template) + 3

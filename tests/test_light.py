@@ -15,7 +15,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.restore_state import RestoredExtraData
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, ReadDomain
+from custom_components.ha_govee_led_ble.const import (
+    MODEL_PROFILES,
+    ModelProfile,
+    ReadDomain,
+    default_effect_categories,
+    default_effect_families,
+    device_profile,
+)
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
@@ -278,6 +285,35 @@ async def test_h6076_exposes_only_basic_colour_controls(mock_h6076_coordinator):
     mock_h6076_coordinator.is_on = True
     await light.async_turn_on(color_temp_kelvin=2000)
     mock_h6076_coordinator.send_command.assert_awaited_once_with(build_color_temp(2700, "H6076"))
+
+
+async def test_qualified_h6076_projects_its_twelve_music_effects(mock_h6076_coordinator):
+    coordinator = mock_h6076_coordinator
+    coordinator.profile = device_profile("H6076", 1, 1, firmware="1.04.05")
+    coordinator.effect_categories = frozenset(default_effect_categories("H6076"))
+    coordinator.effect_families = default_effect_families("H6076")
+    coordinator.music_sensitivity = 99
+    coordinator.is_on = True
+    light = GoveeBLELight(coordinator)
+    light.async_write_ha_state = MagicMock()
+
+    assert light.effect_list == [
+        "off",
+        "Beat",
+        "Bounce",
+        "Candy Crush",
+        "Energetic",
+        "Fusion",
+        "Hopping",
+        "Rhythm",
+        "Separation",
+        "Shiny",
+        "Skittles",
+        "Spray",
+        "Torch",
+    ]
+    await light.async_turn_on(effect="Music: Candy Crush")
+    coordinator.async_select_music_slug.assert_awaited_once_with("candy_crush")
 
 
 def test_hidden_scene_family_does_not_project_internal_scene_state(

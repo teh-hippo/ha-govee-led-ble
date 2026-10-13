@@ -5,11 +5,20 @@ from importlib import import_module
 from types import MappingProxyType
 from typing import Any, Final, cast
 
-from .const import MUSIC_MODE_SLUGS, get_profile
+from .const import MUSIC_MODE_SLUGS, ModelProfile, get_profile
 
 H6179CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_command_write").H6179CommandWrite,
+)
+
+H6076MusicBody = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_body").H6076MusicBody,
+)
+H6076MusicWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write").H6076MusicWrite,
 )
 
 H6125StatusReply = cast(
@@ -20,6 +29,9 @@ H6125StatusReply = cast(
 _H617A_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(MUSIC_MODE_SLUGS)
 _H6179_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(
     {mode.name: int(mode) for mode in H6179CommandWrite.MusicEffect}
+)
+_H6076_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(
+    {mode.name: int(mode) for mode in H6076MusicWrite.MusicMode}
 )
 # Replies use the submode 0x11 numbering; commands keep the shared H617A logical codes.
 _H6125_STATUS_MODE_SLUGS: Final[Mapping[int, str]] = MappingProxyType(
@@ -41,6 +53,7 @@ MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxy
         "H6099": _H617A_MODE_CODES,
         "H6102": _H617A_MODE_CODES,
         "H6125": _H617A_MODE_CODES,
+        "H6076": _H6076_MODE_CODES,
         "H6179": _H6179_MODE_CODES,
         "H6199": _H6199_MODE_CODES,
     }
@@ -59,6 +72,7 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
         "H6099": frozenset({0x03, 0x30, 0x31}),
         "H6102": frozenset({0x03, 0x30, 0x31}),
         "H6125": frozenset({0x03, 0x30, 0x31}),
+        "H6076": frozenset({int(H6076MusicWrite.MusicMode.rhythm)}),
         "H6179": frozenset(),
         "H6199": frozenset({0x03}),
     }
@@ -70,6 +84,7 @@ _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = Map
         "H6099": frozenset({0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37}),
         "H6102": frozenset({0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37}),
         "H6125": frozenset({0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37}),
+        "H6076": frozenset(int(mode) for mode in H6076MusicBody.MusicMode),
         "H6179": frozenset(),
         "H6199": frozenset(),
     }
@@ -81,6 +96,15 @@ def _protocol_model(model: str, direction: str = "command") -> str | None:
         return model
     grammar = getattr(get_profile(model), f"{direction}_grammar")
     return grammar if grammar in MUSIC_MODE_CODES_BY_MODEL else None
+
+
+def music_codebook(profile: ModelProfile) -> Mapping[str, int]:
+    """Return the mode codebook selected by the profile's music grammar."""
+    grammar = profile.music_grammar or profile.command_grammar
+    codebook = MUSIC_MODE_CODES_BY_MODEL.get(grammar) if grammar is not None else None
+    if codebook is None:
+        raise ValueError(f"{profile.name} has no music mode codebook")
+    return codebook
 
 
 def music_code_for(model: str, slug: str) -> int:
@@ -118,6 +142,7 @@ def music_mode_has_parameter_write(model: str, code: int) -> bool:
 
 __all__ = (
     "MUSIC_MODE_CODES_BY_MODEL",
+    "music_codebook",
     "music_code_for",
     "music_mode_has_parameter_write",
     "music_mode_supports_style",

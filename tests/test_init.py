@@ -90,7 +90,7 @@ async def test_setup_entry(hass: HomeAssistant):
 
 
 @pytest.mark.parametrize("model", ["H6076", "H6102"])
-async def test_setup_entry_omits_editor_link_for_basic_models(hass: HomeAssistant, model: str):
+async def test_setup_entry_links_effect_studio_for_models_with_effects(hass: HomeAssistant, model: str):
     entry = _entry(data={CONF_MODEL: model})
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
@@ -102,7 +102,7 @@ async def test_setup_entry_omits_editor_link_for_basic_models(hass: HomeAssistan
 
         assert await async_setup_entry(hass, entry) is True
 
-    assert (cls.call_args.kwargs["configuration_url"] is None) == (model == "H6076")
+    assert cls.call_args.kwargs["configuration_url"] is not None
 
 
 async def test_setup_entry_passes_configured_h6102_firmware_context(hass: HomeAssistant):
@@ -404,7 +404,7 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
     ("models", "disabled", "visible"),
     [
         ([], set(), False),
-        (["H6076"], set(), False),
+        (["H6076"], set(), True),
         (["H6102"], set(), True),
         (["H617A"], set(), True),
         (["H6076", "H6199"], set(), True),

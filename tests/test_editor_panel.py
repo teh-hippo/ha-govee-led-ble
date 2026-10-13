@@ -19,7 +19,7 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import async_setup
-from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, get_profile
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.editor import (
     _EDITOR_MANIFEST,
@@ -93,7 +93,7 @@ async def test_process_setup_panel_follows_exact_candidate_capabilities(
 
     assert await async_setup(hass, {})
 
-    assert frontend.async_panel_exists(hass, EDITOR_PANEL_PATH) is (model == "H6102")
+    assert frontend.async_panel_exists(hass, EDITOR_PANEL_PATH) is (model in {"H6076", "H6102"})
 
 
 async def test_panel_registration_is_idempotent_and_updates_configuration(
@@ -229,7 +229,7 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         entry_id="h6076-entry",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H6076", profile=get_profile("H6076")),
+        runtime_data=SimpleNamespace(model="H6076", profile=device_profile("H6076", None, None)),
     )
     registry_entry = MockConfigEntry(domain=DOMAIN, entry_id=entry.entry_id)
     registry_entry.add_to_hass(hass)

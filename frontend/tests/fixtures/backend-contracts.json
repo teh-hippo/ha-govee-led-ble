@@ -817,6 +817,341 @@
         "speed_min": 0
       },
       "models": {
+        "H6076": {
+          "apply": {
+            "multi": "unsupported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "unsupported",
+            "workshop": "unsupported"
+          },
+          "effects": [],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            }
+          ],
+          "music_settings": {
+            "beat": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H6076 beat: fixed-colour flag and RGB in the selector; capture and app producer",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "bounce": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H6076 bounce: fixed-colour flag and RGB in the selector; capture and app producer",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "candy_crush": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H6076 candy_crush default companion; app producer and reporter LAN replay",
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            },
+            "energetic": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H6076 energetic: fixed-colour flag and RGB in the selector; captured",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "fusion": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H6076 fusion default companion; app producer and reporter LAN replay",
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H6076 hopping: fixed-colour flag and RGB in the selector; capture and app producer",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H6076 capture and app producer: Dynamic/Calm byte",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H6076 capture: default Separation companion, point 2 and gradient off",
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            },
+            "shiny": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H6076 shiny default companion; app producer and reporter LAN replay",
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            },
+            "skittles": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H6076 skittles default companion; app producer and reporter LAN replay",
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            },
+            "spray": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H6076 spray: fixed-colour flag and RGB in the selector; capture and app producer",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "torch": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H6076 torch default companion; captured",
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_effects": [],
+          "sku": "H6076",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "unsupported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "bounce",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:bounce",
+              "label": "Bounce"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "beat",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:beat",
+              "label": "Beat"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spray",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spray",
+              "label": "Spray"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "skittles",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:skittles",
+              "label": "Skittles"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "torch",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:torch",
+              "label": "Torch"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "candy_crush",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:candy_crush",
+              "label": "Candy Crush"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "fusion",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:fusion",
+              "label": "Fusion"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "shiny",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:shiny",
+              "label": "Shiny"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H6076",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            }
+          ],
+          "workshop_templates": []
+        },
         "H6099": {
           "apply": {
             "multi": "supported",
@@ -11311,6 +11646,42 @@
         "readback": "scene_selector_for_user_effects",
         "segment_count": 15,
         "support_quality": "supported"
+      },
+      {
+        "active_state": null,
+        "config_entry_id": "h6076-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "unsupported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "unsupported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H6076 Lyra Floor Lamp",
+        "effect_categories": [
+          "reactive"
+        ],
+        "light_entity_id": null,
+        "model": "H6076",
+        "physical_ic_count": null,
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h6076-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "unsupported"
+        },
+        "readback": "none",
+        "segment_count": 0,
+        "support_quality": "partial"
       }
     ],
     "editor_info": {
@@ -11458,6 +11829,45 @@
       "write_disposition": "unknown"
     },
     "scene_catalogues": {
+      "H6076": {
+        "categories": [
+          {
+            "id": 146,
+            "name": "Life"
+          }
+        ],
+        "enabled": false,
+        "scenes": [
+          {
+            "category": "Life",
+            "category_id": 146,
+            "display_name": "Movie",
+            "effect_id": 1317,
+            "name": "Movie",
+            "parameter_kind": "layers",
+            "scene_id": 1242,
+            "scene_type": 2,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Life",
+            "category_id": 146,
+            "display_name": "Night Light",
+            "effect_id": 1320,
+            "name": "Night Light",
+            "parameter_kind": "none",
+            "scene_id": 1245,
+            "scene_type": 0,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H6076"
+      },
       "H6099": {
         "categories": [
           {
