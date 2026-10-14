@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from bleak import BleakError
 from homeassistant.config_entries import current_entry
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
@@ -19,7 +20,12 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectStorageError
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_scene_activation,
+    decode_wire_brightness,
+    encode_wire_brightness,
+)
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
@@ -45,6 +51,9 @@ async def radio(hass, monkeypatch):
         "gradual": True,
         "on": True,
         "brightness": 50,
+        "register_brightness": False,
+        "fault_brightness": False,
+        "brightness_reply_override": None,
         "accept_kelvin": True,
         "register_reply": True,
         "colours": [kelvin_to_rgb(4500)] * 15,
@@ -79,7 +88,14 @@ async def radio(hass, monkeypatch):
             elif packet[:2] == bytes.fromhex("aa01"):
                 reply = "aa01" + ("01" if state["on"] else "00")
             elif packet[:2] == bytes.fromhex("aa04"):
-                reply = "aa04" + bytes([state["brightness"]]).hex()
+                value = (
+                    encode_wire_brightness(state["brightness"], (20, 254))
+                    if state["register_brightness"]
+                    else state["brightness"]
+                )
+                if state["brightness_reply_override"] is not None:
+                    value = state["brightness_reply_override"]
+                reply = "aa04" + bytes([value]).hex()
             elif packet[:2] == bytes.fromhex("aa05"):
                 reply = "aa05" + state["mode"]
             elif packet[:2] == bytes.fromhex("aaa5"):
@@ -94,7 +110,11 @@ async def radio(hass, monkeypatch):
             elif packet[:2] == bytes.fromhex("3301"):
                 state["on"] = bool(packet[2])
             elif packet[:2] == bytes.fromhex("3304"):
-                state["brightness"] = packet[2]
+                if state["fault_brightness"]:
+                    raise BleakError("brightness write failed")
+                state["brightness"] = (
+                    decode_wire_brightness(packet[2], (20, 254)) if state["register_brightness"] else packet[2]
+                )
             elif packet[:2] == bytes.fromhex("33a3"):
                 state["gradual"] = bool(packet[2])
                 state["mode"] = "15" + bytes([packet[2]]).hex() + state["kelvin"].to_bytes(2, "big").hex()
@@ -293,7 +313,7 @@ async def test_authored_selector_recovery_is_selection_only(radio, code):
 async def test_qualified_pact1_static_has_complete_readback(radio):
     c, state, packets, _ = radio
     c.pact_type, c.pact_code = 1, 1
-    state.update(hw="1.00.03", fw="1.06.00")
+    state.update(hw="1.00.03", fw="1.06.00", register_brightness=True)
     c.fw_version, c.hw_version = state["fw"], state["hw"]
     c._resolve_device_profile()
     assert c.profile.can_read(ReadDomain.COLOUR_MODE) and c.profile.can_read(ReadDomain.SEGMENTS)
@@ -301,6 +321,82 @@ async def test_qualified_pact1_static_has_complete_readback(radio):
     await c.send_command(build_color_rgb(1, 2, 3, c.model, profile=c.profile))
     assert await c.async_refresh_segments()
     assert {packet[2] for packet in packets if packet[:2] == bytes.fromhex("aaa5")} == {1, 2, 3, 4, 5}
+
+
+@pytest.mark.parametrize("identity", [False, True])
+async def test_issue310_setup_control_and_reconnect_use_brightness_register(radio, identity):
+    from types import SimpleNamespace
+
+    c, state, packets, clients = radio
+    c._note_advertisement(SimpleNamespace(manufacturer_data={34817: bytes.fromhex("ec000101")}))
+    state.update(
+        fw="1.08.08" if identity else None,
+        hw="1.00.03" if identity else None,
+        register_brightness=True,
+        brightness=92,
+    )
+    snapshot = await c._async_update_data()
+    assert snapshot["brightness_pct"] == 92
+    owner_frame = "aa04eb0000000000000000000000000000000045"
+    assert any(entry["raw"] == owner_frame and entry["outcome"] == "parsed" for entry in c.packet_log)
+    assert c.profile.brightness_wire_range == (20, 254)
+    assert c.profile.supports_rgb is identity
+    light = GoveeBLELight(c)
+    light.async_write_ha_state = MagicMock()
+    for value, register, percent in ((26, 41, 10), (128, 136, 50), (255, 254, 100)):
+        await light.async_turn_on(brightness=value)
+        assert state["brightness"] == c.brightness_pct == percent
+        assert frame(f"3304{register:02x}") in packets
+        assert "brightness_pct" in c._field_revisions
+    if identity:
+        await light.async_turn_on(rgb_color=(1, 2, 3))
+        assert state["colours"] == [(1, 2, 3)] * 15
+        assert frame("aa0501") in packets
+    await light.async_turn_off()
+    assert not state["on"] and not c.is_on
+    await c.disconnect()
+    assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+    assert c.profile.brightness_wire_range == (20, 254) and c.brightness_pct == 100
+    assert len(clients) >= 2
+
+
+@pytest.mark.parametrize("fault", ["write", "stale_readback"])
+async def test_issue310_failed_register_command_does_not_confirm_brightness(radio, fault):
+    c, state, packets, _ = radio
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    state.update(fw=None, hw=None, register_brightness=True, brightness=92)
+    assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
+    revision = c._field_revisions["brightness_pct"]
+    state["fault_brightness"] = fault == "write"
+    state["brightness_reply_override"] = 235 if fault == "stale_readback" else None
+    with pytest.raises(HomeAssistantError) as error:
+        await GoveeBLELight(c).async_turn_on(brightness=128)
+    assert error.value.translation_key == "device_command_failed"
+    assert c.brightness_pct == 92 and c._field_revisions["brightness_pct"] == revision
+    if fault == "write":
+        assert state["brightness"] == 92
+        assert not any(entry["dir"] == "tx" and entry["raw"] == frame("330488").hex() for entry in c.packet_log)
+    else:
+        assert state["brightness"] == 50
+
+
+async def test_pact1_static_recovery_preserves_register_transport_without_confirming_unknown_controls(radio):
+    c, state, packets, _ = radio
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    state.update(hw="1.00.03", fw="1.08.08", register_brightness=True)
+    assert await c.refresh_state(refresh_all=True)
+    prior = c.capture_effect_control_state()
+    light = GoveeBLELight(c)
+    light.async_write_ha_state = MagicMock()
+    await light.async_turn_on(brightness=255, rgb_color=(1, 2, 3))
+    packets.clear()
+    assert prior.static_gradual is True and "gradual" not in c.profile.boolean_controls
+    assert not await c.async_restore_effect_control_state(prior, overwritten_diy_code=None)
+    assert state["brightness"] == c.brightness_pct == prior.brightness_pct == 50
+    assert frame("330488") in packets
+    assert state["kelvin"] == prior.color_temp_kelvin == 4500
 
 
 def test_legacy_static_snapshot_keeps_new_fields_unknown():

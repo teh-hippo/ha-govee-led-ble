@@ -617,6 +617,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         support_quality=SupportQuality.EXPERIMENTAL,
         command_grammar="H617A",
         status_grammar="H6102",
+        colour_mode_query_selector=1,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
         static_readback_gradual=True,
