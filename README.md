@@ -49,6 +49,9 @@ alone does not establish extended RGB or DIY compatibility. Unknown Pact retains
 power, brightness and identity reads. Physical-IC-dependent authoring requires
 known geometry; fifteen logical segments are not a physical IC count. Saved
 H617A scene references are preserved but are not silently relabelled H6102.
+Pact 1 master brightness uses a scaled 20–254 register, while Pact 10 uses
+percentages.  Both writes and readback follow the selected route; physical
+brightness and reply freshness on the older #310 revision remain under qualification.
 
 ## Effect Studio
 

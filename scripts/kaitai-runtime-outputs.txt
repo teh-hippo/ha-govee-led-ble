@@ -7,6 +7,7 @@ govee_encryption.py
 govee_segment_page.py
 govee_shared.py
 h6102_status_reply.py
+h6102_wire_write.py
 h6125_status_reply.py
 h6125_wire_write.py
 h601c_command_write.py
