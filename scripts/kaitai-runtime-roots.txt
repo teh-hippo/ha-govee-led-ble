@@ -2,6 +2,7 @@ command_write
 diy_type03
 diy_type04
 speculative/h6102_status_reply
+speculative/h6102_wire_write
 speculative/h6125_status_reply
 speculative/h6125_modern_status_reply
 speculative/h6125_legacy_status_reply

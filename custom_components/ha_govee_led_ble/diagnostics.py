@@ -103,6 +103,7 @@ async def async_get_config_entry_diagnostics(
         "lock_locked": lock.locked(),
         "is_on": coordinator.is_on,
         "brightness_pct": coordinator.brightness_pct,
+        "brightness_wire_range": coordinator.profile.brightness_wire_range,
         "rgb_color": coordinator.rgb_color,
         "segment_colors": coordinator.segment_colors,
         "segment_brightness": coordinator.segment_brightness

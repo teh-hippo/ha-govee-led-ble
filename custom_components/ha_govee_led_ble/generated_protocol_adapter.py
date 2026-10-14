@@ -103,6 +103,10 @@ StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.status_reply").StatusReply,
 )
+H6102WireWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_wire_write").H6102WireWrite,
+)
 H6199StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
@@ -2149,11 +2153,11 @@ def _h6125_wire_music(selector: Any, *, legacy: bool = False) -> bytes:
     return _serialize_xor(root)
 
 
-def _h6125_wire_brightness(percent: int, wire_range: tuple[int, int]) -> bytes:
-    root = H6125WireWrite()
+def _register_brightness(root_type: Any, percent: int, wire_range: tuple[int, int]) -> bytes:
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H6125WireWrite.CommandOp.brightness
-    body = _child(H6125WireWrite.BrightnessBody, root)
+    root.opcode = root_type.CommandOp.brightness
+    body = _child(root_type.BrightnessBody, root)
     body.register = encode_wire_brightness(percent, wire_range)
     body.padding = bytes(16)
     root.body = body
@@ -2178,6 +2182,14 @@ def _h6125_wire_colour(static: Any) -> bytes:
     return _serialize_xor(root)
 
 
+def h6102_outbound_transform(packet: bytes) -> bytes:
+    """Pact 1 rescales master brightness without changing static RGB or upload framing."""
+    parsed = parse_command_result(packet, "H617A").parsed
+    if parsed is not None and parsed.opcode.name == "brightness":
+        return _register_brightness(H6102WireWrite, int(parsed.body.percent), (20, 254))
+    return packet
+
+
 @cache
 def h6125_outbound_transform(
     wire_range: tuple[int, int], *, legacy_colour: bool = False, legacy_music: bool = False
@@ -2198,7 +2210,7 @@ def h6125_outbound_transform(
         if parsed is None:
             return packet
         if parsed.opcode.name == "brightness":
-            return _h6125_wire_brightness(int(parsed.body.percent), wire_range)
+            return _register_brightness(H6125WireWrite, int(parsed.body.percent), wire_range)
         if parsed.opcode.name == "multi" and parsed.body.sub.name == "music":
             return _h6125_wire_music(parsed.body.sub_body, legacy=legacy_music)
         if legacy_colour and parsed.opcode.name == "multi" and parsed.body.sub.name == "static":

@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import ModelProfile, get_profile
+from custom_components.ha_govee_led_ble.const import ModelProfile, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_commands import build_h617a_diy_single
@@ -22,6 +22,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power_query,
     build_scene_activation,
     build_segment_query,
+    decode_wire_brightness,
     parse_a3_effect_envelope,
     parse_boolean_control,
     parse_command_ack_result,
@@ -140,7 +141,7 @@ def test_effective_profile_reaches_builders_parsers_and_expectations() -> None:
         parse_a3_effect_envelope(envelope, "H9901", profile=restricted)
 
 
-def test_shared_queries_keep_default_and_expose_apk_selector() -> None:
+def test_shared_queries_use_exact_profile_mode_selector() -> None:
     profile = get_profile("H6102")
     for builder, prefix in (
         (build_power_query, "aa01"),
@@ -149,13 +150,36 @@ def test_shared_queries_keep_default_and_expose_apk_selector() -> None:
         (build_hardware_query, "aa0703"),
     ):
         assert builder("H9901", profile=profile) == _frame(prefix)
-    assert build_colour_mode_query("H6102") == _frame("aa0500")
-    assert build_colour_mode_query("H6102", selector=1) == _frame("aa0501")
+    assert build_colour_mode_query("H6102") == _frame("aa0501")
+    assert build_colour_mode_query("H617A") == _frame("aa0500")
+    assert build_colour_mode_query("H6102", selector=0) == _frame("aa0500")
     restricted = replace(profile, command_operations=frozenset({"power", "brightness"}))
     for selector in (0, 1):
         require_profile_packet(build_colour_mode_query("H9901", profile=restricted, selector=selector), restricted)
     with pytest.raises(ValueError, match="selector"):
         build_colour_mode_query("H6102", selector=2)
+
+
+@pytest.mark.parametrize("pact_code", [1, 2])
+def test_pact1_brightness_register_is_independent_of_static_revision(pact_code):
+    profile = device_profile("H6102", 1, pact_code)
+    assert profile.brightness_wire_range == (20, 254)
+    assert profile.outbound_transform is not None
+    for percent, register in ((1, 20), (10, 41), (50, 136), (100, 254)):
+        packet = build_brightness(percent, "H6102", profile=profile)
+        assert packet == _frame(f"3304{percent:02x}")
+        assert expectations_from_packet(packet, "H6102", profile=profile)["brightness_pct"] == percent
+        wire = profile.outbound_transform(packet)
+        assert wire == _frame(f"3304{register:02x}")
+        assert decode_wire_brightness(register, profile.brightness_wire_range) == percent
+    for packet in (build_power(True), build_brightness_query("H6102"), build_colour_mode_query("H6102")):
+        assert profile.outbound_transform(packet) == packet
+    qualified = device_profile("H6102", 1, pact_code, firmware="1.08.08", hardware="1.00.03")
+    assert qualified.supports_rgb and qualified.brightness_wire_range == profile.brightness_wire_range
+    modern = device_profile("H6102", 10, pact_code)
+    assert modern.brightness_wire_range is None and modern.outbound_transform is None
+    unknown = device_profile("H6102", None, None)
+    assert unknown.brightness_wire_range is None and unknown.outbound_transform is None
 
 
 @pytest.mark.parametrize(("control", "opcode"), [("gradual", "a3"), ("limit", "0e")])

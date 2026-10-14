@@ -171,6 +171,22 @@ def test_h6102_unknown_context_bootstraps_identity_with_notifications(h6102):
     assert h6102.update_interval == timedelta(seconds=30)
 
 
+@pytest.mark.parametrize(("pact", "register", "expected"), [(1, 235, 92), (1, 19, None), (10, 235, None), (10, 50, 50)])
+def test_h6102_register_readback_uses_pact_not_payload_value(h6102, pact, register, expected):
+    from tests.test_h6199_pact1 import advertise
+
+    advertise(h6102, pact)
+    frame = bytearray.fromhex(f"aa04{register:02x}" + "00" * 16 + "00")
+    frame[-1] = xor_checksum(frame[:-1])
+    h6102._notify_callback(None, frame)
+    if expected is None:
+        assert "brightness_pct" not in h6102._field_revisions
+        assert h6102.packet_log[-1]["reason"] == "semantic_rejected"
+    else:
+        assert h6102.brightness_pct == expected
+        assert h6102._field_revisions["brightness_pct"] == 1
+
+
 def test_h6102_configured_firmware_does_not_invent_pact(hass):
     coordinator = GoveeBLECoordinator(
         hass,
@@ -1062,6 +1078,17 @@ async def test_send_command(coord, transform):
     assert len(coord.packet_log) == 1
     if transform_mock is not None:
         assert transform_mock.call_args_list == [call(packet)] * 6
+
+
+@pytest.mark.parametrize("private", [False, True])
+async def test_successful_tx_debug_uses_redacted_packet_log(coord, caplog, private):
+    packet = build_power(True)
+    coord._dreamview_private_write = private
+    caplog.set_level("DEBUG", logger=M)
+    await coord._async_write_packet(_c(write_gatt_char=AsyncMock()), packet)
+    messages = [record.message for record in caplog.records if record.message.startswith("tx ")]
+    assert messages == [f"tx H617A raw={'' if private else packet.hex()}"]
+    assert coord.address not in messages[0]
 
 
 @pytest.mark.parametrize("transform", [None, _transform_packet])

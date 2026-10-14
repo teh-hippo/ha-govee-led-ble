@@ -1853,10 +1853,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     if isinstance(generated, ParsedH6179Status)
                     else int(generated.body.percent)
                     if self.profile.status_grammar in {"H6099", "H6199"}
-                    else decode_wire_brightness(int(generated.body.register), self.profile.brightness_wire_range)
-                    if self.profile.brightness_wire_range is not None
+                    else int(generated.body.register)
+                    if hasattr(generated.body, "register")
                     else int(generated.body.brightness_pct)
                 )
+                if self.profile.brightness_wire_range is not None:
+                    brightness_value = decode_wire_brightness(brightness_value, self.profile.brightness_wire_range)
                 if not 0 <= brightness_value <= 100:
                     raise ValueError("brightness outside percentage range")
                 if self._accept_expected("brightness_pct", brightness_value):
@@ -2089,7 +2091,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     raise BleakError("encrypted_write_failed") from None
                 raise GoveeCryptoError("encrypted_write_failed") from None
             raise
-        self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
+        packet_entry = self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
+        _LOGGER.debug("tx %s raw=%s", self.model, packet_entry["raw"])
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed during control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
