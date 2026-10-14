@@ -233,8 +233,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         self._attr_unique_id = coordinator.address.replace(":", "").lower()
         self._attr_device_info = coordinator.device_info
         supported_color_modes = self.supported_color_modes
-        self._attr_min_color_temp_kelvin = coordinator.profile.min_color_temp_kelvin
-        self._attr_max_color_temp_kelvin = coordinator.profile.max_color_temp_kelvin
         self._attr_color_mode = (
             ColorMode.RGB
             if ColorMode.RGB in supported_color_modes
@@ -357,6 +355,14 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         return self.coordinator.rgb_color if self.color_mode == ColorMode.RGB else None
 
     @property
+    def min_color_temp_kelvin(self) -> int:
+        return self.coordinator.profile.min_color_temp_kelvin
+
+    @property
+    def max_color_temp_kelvin(self) -> int:
+        return self.coordinator.profile.max_color_temp_kelvin
+
+    @property
     def color_temp_kelvin(self) -> int | None:
         return self.coordinator.color_temp_kelvin if self.color_mode == ColorMode.COLOR_TEMP else None
 
@@ -433,7 +439,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
     @callback
     def _handle_coordinator_update(self) -> None:
         if self.coordinator.color_mode is ParsedMode.COLOUR:
-            supported = self._attr_supported_color_modes or set()
+            supported = self.supported_color_modes
             if self.coordinator.color_temp_kelvin is not None and ColorMode.COLOR_TEMP in supported:
                 self._attr_color_mode = ColorMode.COLOR_TEMP
             elif ColorMode.RGB in supported:

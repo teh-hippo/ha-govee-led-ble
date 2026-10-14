@@ -20,7 +20,12 @@ from custom_components.ha_govee_led_ble.const import (
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, require_profile_packet
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
-from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_segment_color
+from custom_components.ha_govee_led_ble.light_commands import (
+    build_color_rgb,
+    build_color_temp,
+    build_segment_color,
+    build_segment_color_temp,
+)
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6", "H601C"])
@@ -65,18 +70,30 @@ def test_exact_experimental_profiles_have_no_catalogue_inheritance(model):
 def test_geometry_requires_positive_revision_evidence(model, pact, hardware, firmware, segmented):
     p = device_profile(model, *pact, hardware=hardware, firmware=firmware)
     assert p.supports_segments is segmented and p.supports_rgb is segmented
+    assert p.supports_color_temperature is segmented
+    expected_seg_kelvin = (
+        segmented and model == "H60A6" and (pact == (1, 3) or (hardware, firmware) == ("1.04.03", "1.00.41"))
+    )
+    assert p.supports_segment_color_temperature is expected_seg_kelvin
     assert p.can_read(ReadDomain.SEGMENTS) is segmented
     assert p.segment_count == (14 if model == "H60A1" else 1 if pact == (1, 1) else 13)
     assert p.segment_group_count == (4 if segmented else 0)
     assert not p.can_read(ReadDomain.BRIGHTNESS) and not p.supports_color_mode_readback
-    assert not p.supports_color_temperature and not p.supports_segment_color_temperature
     if segmented:
+        require_profile_packet(build_color_temp(4000, model, profile=p), p)
         require_profile_packet(build_segment_color([p.segment_count], 1, 2, 3, model, profile=p), p)
+        if expected_seg_kelvin:
+            require_profile_packet(build_segment_color_temp([p.segment_count], 4000, model, profile=p), p)
+        else:
+            with pytest.raises(ValueError, match="segment colour temperature"):
+                build_segment_color_temp([p.segment_count], 4000, model, profile=p)
         with pytest.raises(ValueError, match="out of range"):
             build_segment_color([p.segment_count + 1], 1, 2, 3, model, profile=p)
     else:
         with pytest.raises(ValueError, match="RGB"):
             build_color_rgb(1, 2, 3, model, profile=p)
+        with pytest.raises(ValueError, match="colour temperature"):
+            build_color_temp(4000, model, profile=p)
         with pytest.raises(ValueError, match="per-segment"):
             build_segment_color([1], 1, 2, 3, model, profile=p)
 
@@ -84,10 +101,19 @@ def test_geometry_requires_positive_revision_evidence(model, pact, hardware, fir
 @pytest.mark.parametrize(
     ("hardware", "minimum"), [(None, 2700), ("bad", 2700), ("1.04.02", 2200), ("1.04.03", 2700), ("1.05.00", 2700)]
 )
-def test_h60a1_kelvin_bounds_track_hardware_without_authorizing_writes(hardware, minimum):
+def test_h60a1_kelvin_bounds_track_hardware(hass, hardware, minimum):
     p = device_profile("H60A1", 2, 1, hardware=hardware)
     assert (p.min_color_temp_kelvin, p.max_color_temp_kelvin) == (minimum, 6500)
-    assert not p.supports_color_temperature
+    assert p.supports_color_temperature and not p.supports_segment_color_temperature
+    unqualified = device_profile("H60A1", 1, 1, hardware=hardware)
+    assert (unqualified.min_color_temp_kelvin, unqualified.max_color_temp_kelvin) == (minimum, 6500)
+    assert not unqualified.supports_color_temperature
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H60A1", configuration_url=None)
+    light = GoveeBLELight(c)
+    assert (light.min_color_temp_kelvin, light.max_color_temp_kelvin) == (2700, 6500)
+    c.pact_type, c.pact_code, c.hw_version = 2, 1, hardware
+    c._resolve_device_profile()
+    assert (light.min_color_temp_kelvin, light.max_color_temp_kelvin) == (minimum, 6500)
 
 
 @pytest.mark.parametrize("pact", [(None, None), (1, 1), (2, 1), (2, 2), (3, 1)])
@@ -161,7 +187,9 @@ async def test_ceiling_entity_panel_brightness_is_one_write_without_readback(has
     monkeypatch.setattr(c, "refresh_state", AsyncMock(side_effect=AssertionError("brightness is write-only")))
     light = GoveeBLELight(c)
     light.async_write_ha_state = MagicMock()
-    assert light.supported_color_modes == {ColorMode.RGB if qualified else ColorMode.BRIGHTNESS}
+    assert light.supported_color_modes == (
+        {ColorMode.RGB, ColorMode.COLOR_TEMP} if qualified else {ColorMode.BRIGHTNESS}
+    )
     assert light.color_mode in light.supported_color_modes
     await light.async_turn_on(brightness=128)
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [build_brightness(50, model)]

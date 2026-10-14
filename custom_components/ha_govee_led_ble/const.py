@@ -415,10 +415,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         whole_device_mask=0x3FFF,
         segment_count=14,
         segment_group_size=4,
-        # RGB/segment reads require revision evidence in device_profile. Panel
-        # brightness is write-only; segment brightness ACKs but is not rendered.
-        # Kelvin is withheld: app sentinels/table differ from the H617A writer,
-        # and masked H60A1 Kelvin changes the sibling zone (reporter fork).
+        # RGB, whole-device Kelvin, and segment reads require revision evidence in
+        # device_profile. Panel brightness is write-only; segment brightness ACKs
+        # without rendering, and masked H60A1 Kelvin blanks the sibling zone.
     ),
     "H60A6": ModelProfile(
         "H60A6 Ceiling Light Pro",
@@ -433,7 +432,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_count=13,
         segment_group_size=4,
         # Support.java:209-213,345-346,489-498: Pact 1/1 has one zone;
-        # 1/2+ has thirteen. 1/3 adds masked Kelvin, still unqualified here.
+        # 1/2+ has thirteen with whole-device Kelvin; 1/3 and the owner-qualified
+        # 1.00.41/1.04.03 revision add per-segment Kelvin.
     ),
     "H601C": ModelProfile(
         "H601C Recessed Downlight",
@@ -928,10 +928,16 @@ def device_profile(
         if (pact_type, pact_code) == (None, None) or model == "H60A1" and (pact_type, pact_code) == (1, 1):
             segmented = (hardware, firmware) == ("1.04.03", captured_firmware)
         if segmented:
+            segmented_kelvin = model == "H60A6" and (
+                (pact_type == 1 and type(pact_code) is int and pact_code >= 3)
+                or (hardware, firmware) == ("1.04.03", "1.00.41")
+            )
             return replace(
                 profile,
                 supports_rgb=True,
+                supports_color_temperature=True,
                 supports_segment_writes=True,
+                supports_segment_color_temperature=segmented_kelvin,
                 read_domains=profile.read_domains | {ReadDomain.SEGMENTS},
             )
         return profile

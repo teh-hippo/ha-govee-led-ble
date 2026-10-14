@@ -32,7 +32,7 @@ independently attributable raw capture artifact. Fixture attribution remains par
 | H60A geometry | `com/govee/pact_h60a0/pact/Support.java:185–214,238–240,345–346,489–498` | Four records/page; H60A1 14, qualified H60A6 13; geometry authorization separate from schema presence |
 | Meaningful page records | `com/govee/base2light/kt/general_controller/Controller4ColorInfoByGroup.java:173–187` and reporter literals | Complete four-page collection required; zero-valued records count, unused slots opaque |
 | H60A brightness | Reporter front-panel-only `33 04 PP`; H60A6 `aa04` always 01; masked brightness ACK/readback without rendering | One panel write; no brightness queries/retry verification; stored level retained locally, never BLE observation |
-| H60A Kelvin | `pact_h60a0/ble/v1/SubModeColorV1.java`; `base2light/pact/newdetail/config/fuc/KelvinConfig.java`, `S2`; reporter sibling-zone failure | Disabled independently of RGB geometry; app table/sentinel differs from generic RGB writer |
+| H60A Kelvin | `pact_h60a0/pact/Support.java:495–498`; `pact_h60a0/adjust/h60a1/ColorMode.java:49–51`; `base2light/pact/newdetail/config/fuc/color/Bytes.java:185–240`; `KelvinConfig.java`, `S2`; owner hardware test ([#339](https://github.com/teh-hippo/ha-govee-led-ble/issues/339#issuecomment-6125571117)) | Whole-device `33 05 15 01` Kelvin enabled on qualified H60A1 and H60A6; per-segment Kelvin enabled on H60A6 Pact 1/3+ and owner-qualified HW 1.04.03 / FW 1.00.41, disabled on H60A1 where masked Kelvin blanks the sibling zone |
 | Encryption | Reporter advert flag 0x40, v1 handshake; existing repository transport | Existing advertisement/GATT-selected encryption; no SKU-selected plaintext fallback |
 
 The owner later corrected the earlier `7.8.1-rc.2.lights` test as incomplete and
@@ -44,12 +44,13 @@ source-code regression between those builds.
 
 | Exact product/context | Candidate owner | Enabled scope / outstanding evidence |
 | --- | --- | --- |
-| H60A1 Pact 2/1 | `device_profile`, app Pact branch + 14-record geometry | RGB/segments candidate; each actual hardware revision still needs qualification |
-| H60A1 absent Pact, or Pact 1/1, HW 1.04.03 + FW 1.02.20 | `device_profile`, exact reporter tuple | RGB/segments candidate; literals partially attributable, package not physically qualified |
+| H60A1 Pact 2/1 | `device_profile`, app Pact branch + 14-record geometry | RGB, whole-device Kelvin, and segments candidate; per-segment Kelvin remains disabled |
+| H60A1 absent Pact, or Pact 1/1, HW 1.04.03 + FW 1.02.20 | `device_profile`, exact reporter tuple | Owner-verified power, RGB, whole-device Kelvin (2700–6500 K), and 14-segment RGB; per-segment Kelvin remains disabled |
 | H60A1 any other/partial Pact or tuple | Restricted exact profile | Power/panel brightness only; app may describe wider geometry, deliberately not authorized by this candidate |
-| H60A1 HW below 1.04.03 | App `KelvinConfig.S2` | 2200 K metadata bound; Kelvin remains disabled |
-| H60A6 Pact 1/2 or later code | `device_profile`, `Support.supportPartColor4H60A6` | 13-segment candidate; later codes not exhaustive hardware proof |
-| H60A6 absent Pact, HW 1.04.03 + FW 1.00.41 | Exact reporter tuple | 13-segment candidate |
+| H60A1 HW below 1.04.03 | App `KelvinConfig.S2` | 2200 K lower bound when Pact-qualified; unqualified revisions keep Kelvin disabled |
+| H60A6 Pact 1/2 | `device_profile`, `Support.supportPartColor4H60A6` | 13-segment RGB and whole-device Kelvin candidate; per-segment Kelvin requires Pact 1/3+ or owner-qualified tuple |
+| H60A6 Pact 1/3 or later code | `device_profile`, `Support.supportSegmentedTem4H60A6` | 13-segment RGB, whole-device Kelvin, and per-segment Kelvin candidate |
+| H60A6 absent Pact, HW 1.04.03 + FW 1.00.41 | Exact reporter tuple | Owner-verified power, RGB, whole-device Kelvin (2700–6500 K), and 13-segment RGB/Kelvin |
 | H60A6 Pact 1/1, partial/other Pact, or unmatched tuple | Restricted exact profile | Power/panel brightness only; known 1/1 has one-zone geometry, other contexts retain candidate metadata |
 | H601C basic identifiable variants | `bulblightv3` goods 111 basic producer; PR #330 reports one HW/FW combination above | RGB/Kelvin/power/brightness candidate; the reported ACK/register result does not establish visible output or qualify other variants |
 | H601C Matter branch: BLE + Wi-Fi FW >=1.01.05, HW exactly 1.07.02 | `bulblightv3/newdetail/config/MatterSupport.java:142–166` | Matter eligibility only; does not change basic encoding or qualify BLE operation |
@@ -61,10 +62,14 @@ reporter-tuple route.
 
 ## Candidate support scope
 
-H60A1/H60A6 expose power and front-panel brightness initially, RGB and segment actions
-only with the above qualification. Front panel is segment 14/13; the preceding 13/12
-segments are the ring. Master brightness does not dim the ring. Segment register
-brightness is decoded but never offered as a rendered brightness control.
+H60A1/H60A6 expose power and front-panel brightness initially, and add RGB, whole-device
+colour temperature (`ColorMode.COLOR_TEMP`), and segment RGB actions once qualified.
+Qualified H60A6 (`Pact 1/3+` or `HW 1.04.03` + `FW 1.00.41`) also exposes per-segment
+colour temperature (`set_segment_color_temp`), whereas H60A1 keeps per-segment colour
+temperature disabled because masked Kelvin writes blank the unselected zone. Front panel
+is segment 14/13; the preceding 13/12 segments are the ring. Master brightness does not
+dim the ring. Segment register brightness is decoded but never offered as a rendered
+brightness control.
 
 H601C exposes whole-device RGB, 100 K-step Kelvin, brightness and power using
 optimistic state only. Status queries are not enabled because the owner reports no
@@ -86,8 +91,8 @@ scene selectors or Effect Studio.  Catalogue data does not qualify BLE upload,
 activation or readback; these paths remain disabled.
 Thirteen logical H60A6 segments are not its 133 paint points. The reporter
 paint upload, activation, point mapping and rendering need independent KSY and owner
-qualification. H60A Kelvin and segment brightness remain disabled due to known rendering
-or sibling-zone failures. App clock/session setup, bulk status, Wi-Fi/Matter provisioning,
+qualification. H60A segment brightness and H60A1 per-segment Kelvin remain disabled due
+to known rendering or sibling-zone failures. App clock/session setup, bulk status, Wi-Fi/Matter provisioning,
 timers and firmware updates are outside this candidate; repository non-goals still apply.
 
 ## Model-specific changes and owner checks

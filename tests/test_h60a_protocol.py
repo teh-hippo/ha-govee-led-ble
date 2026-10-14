@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -18,7 +19,13 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_status_result,
     require_profile_packet,
 )
-from custom_components.ha_govee_led_ble.light_commands import build_color_temp, build_segment_color
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from custom_components.ha_govee_led_ble.light_commands import (
+    build_color_temp,
+    build_segment_color,
+    build_segment_color_temp,
+    kelvin_to_rgb,
+)
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 CAPTURED_PAGES = {
@@ -146,8 +153,37 @@ async def test_coordinator_real_pages_panel_brightness_and_no_false_verification
         with pytest.raises(ValueError):
             await c._async_write_packet(client, packet, arm_expected=True)
     assert client.write_gatt_char.await_count == calls and c.capture_effect_control_state() == before
-    with pytest.raises(ValueError, match="colour temperature"):
-        build_color_temp(4000, model, profile=c.profile)
+    kelvin_packet = build_color_temp(4000, model, profile=c.profile)
+    require_profile_packet(kelvin_packet, c.profile)
+    light = GoveeBLELight(c)
+    light.async_write_ha_state = MagicMock()
+    c.is_on = True
+    await light.async_turn_on(color_temp_kelvin=4000)
+    assert client.write_gatt_char.await_args.args[1] == kelvin_packet
+    assert light.color_temp_kelvin == 4000
+    assert c.segment_colors == [kelvin_to_rgb(4000)] * c.profile.segment_count
+    companion_hex = bytes((100, *kelvin_to_rgb(4000))).hex()
+    replies.update(
+        {
+            build_segment_query(group, model, profile=c.profile): frame(f"aaa5{group:02x}" + companion_hex * 4)
+            for group in range(1, 5)
+        }
+    )
+    assert await c.async_refresh_segments(timeout=0.1)
+    assert light.color_temp_kelvin == 4000
+    if model == "H60A6":
+        seg_packet = build_segment_color_temp([13], 6500, model, profile=c.profile)
+        require_profile_packet(seg_packet, c.profile)
+        panel_hex = bytes((100, *kelvin_to_rgb(6500))).hex()
+        replies[build_segment_query(4, model, profile=c.profile)] = frame("aaa504" + panel_hex)
+        await light.async_set_segment_color_temp([13], 6500)
+        assert c.segment_colors[12] == kelvin_to_rgb(6500)
+        assert c.segment_colors[:12] == [kelvin_to_rgb(4000)] * 12
+    else:
+        with pytest.raises(ValueError, match="segment colour temperature"):
+            build_segment_color_temp([14], 6500, model, profile=c.profile)
+        with pytest.raises(ServiceValidationError):
+            await light.async_set_segment_color_temp([14], 6500)
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6"])
