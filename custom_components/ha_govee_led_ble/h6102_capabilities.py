@@ -92,6 +92,10 @@ def resolve_h6102_capabilities(
     # Pact 1 DIY uses A1, not the modern A3 route. Its separate RGB opcode
     # qualification does not grant static subcommands or other effect families.
     profile = _BOOTSTRAP_PROFILE
+    if pact_type == 1 and pact_code in (1, 2):
+        from .generated_protocol_adapter import h6102_outbound_transform
+
+        profile = replace(profile, brightness_wire_range=(20, 254), outbound_transform=h6102_outbound_transform)
     if variant is H6102RgbVariant.EXTENDED:
         profile = replace(
             profile,

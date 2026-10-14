@@ -59,6 +59,8 @@ H6125StatusReply = _generated("h6125_status_reply", "H6125StatusReply")
 H6125WireWrite = _generated("h6125_wire_write", "H6125WireWrite")
 H6076MusicBody = _generated("h6076_music_body", "H6076MusicBody")
 H6076MusicWrite = _generated("h6076_music_write", "H6076MusicWrite")
+H6102StatusReply = _generated("h6102_status_reply", "H6102StatusReply")
+H6102WireWrite = _generated("h6102_wire_write", "H6102WireWrite")
 H6179ScheduleWrite = _generated("h6179_schedule_write", "H6179ScheduleWrite") if _GENERATED_DIR else None
 DiyType03 = _generated("diy_type03", "DiyType03")
 DiyType04 = _generated("diy_type04", "DiyType04")
@@ -136,6 +138,17 @@ def _parse(root_type: type[Any], data: bytes) -> Any:
     parsed._read()
     assert stream.pos() == len(data)
     return parsed
+
+
+def test_h6102_owner_register_reply_and_candidate_write():
+    reply = bytes.fromhex("aa04eb0000000000000000000000000000000045")
+    assert xor_checksum(reply) == 0
+    parsed = _parse(H6102StatusReply, reply)
+    assert parsed.body.register == 235
+    assert parsed.body.unknown_tail == bytes(16)
+    write = bytes.fromhex("33048800000000000000000000000000000000bf")
+    assert xor_checksum(write) == 0
+    assert _parse(H6102WireWrite, write).body.register == 136
 
 
 @pytest.mark.parametrize("selector", [0, 1])
