@@ -379,15 +379,16 @@ stale segment rollback. Their fixes and qualification limits remain recorded
 below. Expanded DIY, legacy DreamView and cloud firmware checks are separate
 work, not prerequisites for resolving this setup failure.
 
-Remaining gate: an owner test on the older hardware with an exact candidate
-build. If setup still fails, identify missing/rejected basic replies and the
-actual GATT characteristics from that attempt. Pact 1 differs in brightness,
-colour, music and segment formats, not just segment readback. Positively
-identified Pact 1/1 therefore selects the [power-only profile](h6199-pact1.md);
-the reporter's hardware version alone does not select it. The exact-version
-test above uses synthetic percentage/static-mode replies and establishes setup
-policy, not qualification of the older wire formats. The claimed `AA 14`
-handshake, three-second watchdog and need for a longer timeout remain hypotheses.
+An owner-provided iPhone PacketLogger capture now identifies the older device as
+Pact 1/1 and shows the official app's whole-strip static RGB writes (`33 05 0b`)
+and brightness writes (`33 04`). Pact 1/1 therefore selects the
+[legacy RGB profile](h6199-pact1.md); the reporter's hardware version alone
+does not select it. RGB and brightness writes are implemented from that
+capture, while their state readback, other Pact 1 revisions, music, segments
+and effects remain unqualified. The exact-version setup test above still uses
+synthetic percentage/static-mode replies and establishes setup policy only.
+The claimed `AA 14` handshake, three-second watchdog and need for a longer
+timeout remain hypotheses.
 
 ### Independent RC Review
 

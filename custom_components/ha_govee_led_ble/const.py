@@ -170,6 +170,7 @@ class ModelProfile:
     music_sensitivity_max: int = 99
     supports_music_color: bool = False
     supports_white_brightness: bool = False
+    legacy_h6199_static_rgb: bool = False
     static_readback_echoes_color: bool = False
     static_readback_kelvin: bool = False
     static_readback_zero_kelvin_is_rgb: bool = False
@@ -837,14 +838,35 @@ BLE_DISCOVERABLE_MODELS = frozenset({"H601C", "H6076", "H6125", "H6179", "H617A"
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
+
+def _h6199_pact1_brightness_wire(packet: bytes) -> bytes:
+    """Map the shared logical percent frame to Pact 1's observed 1..253 register."""
+    if len(packet) != 20 or packet[:2] != b"\x33\x04":
+        return packet
+    percent = packet[2]
+    raw = (100 + (percent - 1) * 255) // 100
+    wire = bytearray(packet)
+    wire[2] = max(1, min(253, raw))
+    checksum = 0
+    for value in wire[:-1]:
+        checksum ^= value
+    wire[-1] = checksum
+    return bytes(wire)
+
+
 H6199_PACT1_PROFILE = ModelProfile(
-    "H6199 Pact 1 (power only)",
+    "H6199 Pact 1 (legacy RGB)",
     support_quality=SupportQuality.PARTIAL,
     command_grammar="H6199",
-    command_operations=frozenset({"power"}),
+    command_operations=frozenset({"power", "brightness", "static"}),
     status_grammar="H6199",
     read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
     setup_required_read_domains=frozenset({ReadDomain.POWER}),
+    supports_rgb=True,
+    legacy_h6199_static_rgb=True,
+    whole_device_mask=0x7FFF,
+    brightness_wire_range=(1, 253),
+    outbound_transform=lambda packet: _h6199_pact1_brightness_wire(packet),
 )
 
 

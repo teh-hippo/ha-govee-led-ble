@@ -557,6 +557,14 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     """Revalidate operation capabilities and geometry at each physical attempt."""
     from .light_commands import parse_static_write
 
+    if profile.legacy_h6199_static_rgb and frame[:2] == b"\x33\x05":
+        if frame[:3] != b"\x33\x05\x0b":
+            raise ValueError(f"{profile.name} does not support this static-colour format")
+        static = parse_static_write(frame, profile=profile)
+        if static is None or static.rgb is None or not profile.supports_rgb:
+            raise ValueError(f"{profile.name} does not support this static-colour packet")
+        return
+
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
@@ -1382,6 +1390,15 @@ def build_segment_colour(
 ) -> bytes:
     profile = profile or get_profile(model)
     resolved = profile.command_grammar
+    if profile.legacy_h6199_static_rgb:
+        if mask != profile.whole_device_mask:
+            raise ValueError("H6199 Pact 1 capture qualifies whole-strip RGB only")
+        frame = bytearray(20)
+        frame[:3] = b"\x33\x05\x0b"
+        frame[3:6] = bytes(max(0, min(255, value)) for value in (red, green, blue))
+        frame[8:10] = profile.whole_device_mask.to_bytes(2, "little")
+        frame[-1] = xor_checksum(frame[:-1])
+        return bytes(frame)
     if resolved == "H601C":
         return _build_h601c_static_colour(mask, (red, green, blue), 0, profile)
     if resolved == "H6179":

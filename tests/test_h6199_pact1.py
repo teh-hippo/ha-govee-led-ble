@@ -72,7 +72,6 @@ def test_generated_guard_permits_power_and_main_identity(builder):
 @pytest.mark.parametrize(
     "packet",
     [
-        build_brightness(50, "H6199"),
         build_brightness_query("H6199"),
         build_colour_mode_query("H6199"),
         build_color_rgb(1, 2, 3, "H6199"),
@@ -110,7 +109,7 @@ async def test_known_pact1_real_setup_and_power(pact_lifecycle):  # noqa: F811
     # Main identity replies may arrive just after the power reply; neither is mandatory.
     assert c.hw_version == "1.00.01" and c.fw_version == "1.07.02"
     light = GoveeBLELight(c)
-    assert light.supported_color_modes == {ColorMode.ONOFF} and light.brightness is None
+    assert light.supported_color_modes == {ColorMode.RGB} and light.brightness is not None
     before = c.capture_effect_control_state()
     for reply in ("aa04fe", "aa0513046400012060a0", "aaa90006011003001505", "aaae0104141e2832"):
         c._notify_callback(None, bytearray(frame(reply)))
@@ -130,7 +129,7 @@ async def test_late_pact_changes_capabilities_without_destroying_library(hass, m
     before = [item.to_dict() for item in items]
     c.brightness_pct = 254
     advertise(c, 1)
-    assert c.brightness_pct == 100 and light.brightness is None and light.color_mode is ColorMode.ONOFF
+    assert c.brightness_pct == 100 and light.brightness == 255 and light.color_mode is ColorMode.RGB
     assert light.effect_list == [] and light._selector_entries() == ()
     assert not light.supported_features
     for item in items:
@@ -151,7 +150,7 @@ async def test_late_pact_changes_capabilities_without_destroying_library(hass, m
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
     with pytest.raises(HomeAssistantError):
-        await light._async_turn_on(brightness=200)
+        await light._async_turn_on(color_temp_kelvin=4000)
     client.write_gatt_char.assert_not_awaited()
     advertise(c, 2)
     assert c.profile is MODEL_PROFILES[c.model]
@@ -178,7 +177,7 @@ async def test_editor_excludes_restricted_device(hass, monkeypatch):
 @pytest.mark.parametrize("change_at", ["connect", "guard"])
 async def test_late_pact_identification_blocks_prepared_write(hass, monkeypatch, change_at):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
-    packet = build_brightness(50, c.model)
+    packet = build_video_mode("movie", True, 50, False, 50, c.model)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
 
@@ -214,7 +213,7 @@ async def test_late_pact_does_not_rollback_invalid_state(hass, monkeypatch):
 
     monkeypatch.setattr(c, "_ensure_connected", connect)
     with pytest.raises(HomeAssistantError):
-        await light._async_turn_on(brightness=200)
+        await light._async_turn_on(color_temp_kelvin=4000)
     assert c.brightness_pct == 100
     assert PriorControlState.from_dict(c.capture_effect_control_state().to_dict()).brightness_pct == 100
     client.write_gatt_char.assert_not_awaited()
