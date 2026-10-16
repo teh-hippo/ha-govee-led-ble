@@ -54,6 +54,8 @@ The shared writer must not reconnect or acquire locks: connection setup itself s
 An exact-model profile may declare a synchronous, stateless `outbound_transform` from logical packet bytes to non-empty wire bytes.
 The default sends the logical packet unchanged.  Transforms reject invalid input with `ValueError`; rejection never falls back to plaintext.
 Each physical attempt transforms the original logical packet, including retries.
+A control-write guard that changes the effective profile must abort before
+installing optimistic state or writing bytes encoded for the previous profile.
 Command expectations are derived from logical bytes after successful transformation and before writing; queries do not arm command expectations.
 Diagnostics record the actual wire bytes only after a successful write.  A successful write does not prove device state or effect activation.
 Prepare requested settings without replacing retained control state. Install packet-specific optimistic state only at its physical-write boundary, after transformation and guards; a failed request with no control-write attempts must not change later command construction. Do not advance observation revisions for these assignments or overwrite fresh notifications after awaiting a write.

@@ -11,7 +11,6 @@ from .generated_protocol_adapter import (
     parse_command,
     parse_h6179_command,
 )
-from .transport import xor_checksum
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
 )
@@ -174,22 +173,6 @@ def parse_static_write(
 ) -> ParsedStaticWrite | None:
     """Convert a generated static command into optimistic semantic state."""
     profile = profile or get_profile(model)
-    if profile.legacy_h6199_static_rgb:
-        if (
-            len(packet) != 20
-            or packet[:3] != b"\x33\x05\x0b"
-            or xor_checksum(packet[:-1]) != packet[-1]
-            or packet[6:8] != b"\x00\x00"
-            or int.from_bytes(packet[8:10], "little") != profile.whole_device_mask
-            or packet[10:19] != bytes(9)
-        ):
-            return None
-        return ParsedStaticWrite(
-            operation=1,
-            segment_mask=profile.whole_device_mask,
-            whole_device_mask=profile.whole_device_mask,
-            rgb=(packet[3], packet[4], packet[5]),
-        )
     if profile.command_grammar == "H6179":
         command = parse_h6179_command(packet)
         if command is None or command.operation != "mode" or command.values.get("mode") != "static":

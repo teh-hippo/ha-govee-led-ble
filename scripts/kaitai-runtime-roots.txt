@@ -4,6 +4,7 @@ diy_type04
 speculative/h6102_status_reply
 speculative/h6125_status_reply
 speculative/h6125_wire_write
+speculative/h6199_pact1_wire_write
 speculative/h601c_command_write
 speculative/h601c_status_reply
 speculative/h60a1_status_reply

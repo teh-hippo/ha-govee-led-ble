@@ -1883,6 +1883,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             # The caller owns reconnect/retry policy; never write across an abandoned query.
             raise BleakError("Incomplete segment query requires a new connection")
         packet_validator(packet, self.profile)
+        generation = self._profile_generation
         wire_packet = packet
         if (transform := self.profile.outbound_transform) is not None:
             wire_packet = transform(packet)
@@ -1895,6 +1896,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if before_write is not None:
             before_write()
         packet_validator(packet, self.profile)
+        if arm_expected and generation != self._profile_generation:
+            raise ValueError("Device profile changed before control write; refresh and retry")
         requested = expectations_from_packet(packet, self.model, profile=self.profile)
         if (music_mode := requested.get("music_mode")) is not None and music_mode not in self.profile.music_modes:
             raise ValueError("Device profile does not support the requested music mode")
@@ -1931,7 +1934,6 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         ],
                     )
                 self._enter_static_mode()
-        generation = self._profile_generation
         try:
             await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
         except asyncio.CancelledError:

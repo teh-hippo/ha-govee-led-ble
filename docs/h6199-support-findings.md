@@ -379,14 +379,16 @@ stale segment rollback. Their fixes and qualification limits remain recorded
 below. Expanded DIY, legacy DreamView and cloud firmware checks are separate
 work, not prerequisites for resolving this setup failure.
 
-An owner-provided iPhone PacketLogger capture now identifies the older device as
-Pact 1/1 and shows the official app's whole-strip static RGB writes (`33 05 0b`)
-and brightness writes (`33 04`). Pact 1/1 therefore selects the
-[legacy RGB profile](h6199-pact1.md); the reporter's hardware version alone
-does not select it. RGB and brightness writes are implemented from that
-capture, while their state readback, other Pact 1 revisions, music, segments
-and effects remain unqualified. The exact-version setup test above still uses
-synthetic percentage/static-mode replies and establishes setup policy only.
+Positively identified Pact 1/1 selects the [legacy RGB profile](h6199-pact1.md);
+the reporter's hardware version alone does not select it.  The candidate
+uses the legacy whole-strip RGB selector `33 05 0b` and brightness register
+range `20..254`, including `0xfe` at maximum brightness.  Shared logical
+H6199 commands are re-encoded through exact-model speculative Kaitai, rather
+than bypassing the command grammar.  Independent official-app captures at
+known brightness percentages and owner qualification remain outstanding.
+Their state readback, other Pact 1 revisions, music, segments and effects
+remain unqualified.  The exact-version setup test above still uses synthetic
+percentage/static-mode replies and establishes setup policy only.
 The claimed `AA 14` handshake, three-second watchdog and need for a longer
 timeout remain hypotheses.
 

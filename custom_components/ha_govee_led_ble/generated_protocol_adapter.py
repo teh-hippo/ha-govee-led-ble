@@ -14,7 +14,7 @@ from typing import Any, cast
 
 from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
 
-from .const import ModelProfile, ReadDomain, get_profile
+from .const import H6199_PACT1_PROFILE, ModelProfile, ReadDomain, get_profile
 from .music_protocol import music_slug_for
 from .music_semantics import MusicVariant, music_variant
 from .transport import A3_CHUNK_SIZE, reassemble_a3, xor_checksum
@@ -54,6 +54,10 @@ H617aControlPayload = cast(
 H6199CommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
+)
+H6199Pact1WireWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_pact1_wire_write").H6199Pact1WireWrite,
 )
 H6179CommandWrite = cast(
     Any,
@@ -298,7 +302,8 @@ def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
     if parser == "command_write" and parsed.opcode.name == "multi":
         return getattr(parsed.body.sub, "name", None) is None
     if parser == "h6199_command_write" and parsed.opcode.name == "mode":
-        return getattr(parsed.body.sub_mode, "name", None) is None
+        mode = getattr(parsed.body.sub_mode, "name", None)
+        return mode is None or (mode == "static_colour" and getattr(parsed.body.detail.operation, "name", None) is None)
     return False
 
 
@@ -557,14 +562,6 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     """Revalidate operation capabilities and geometry at each physical attempt."""
     from .light_commands import parse_static_write
 
-    if profile.legacy_h6199_static_rgb and frame[:2] == b"\x33\x05":
-        if frame[:3] != b"\x33\x05\x0b":
-            raise ValueError(f"{profile.name} does not support this static-colour format")
-        static = parse_static_write(frame, profile=profile)
-        if static is None or static.rgb is None or not profile.supports_rgb:
-            raise ValueError(f"{profile.name} does not support this static-colour packet")
-        return
-
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
@@ -573,13 +570,13 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             if boolean_control_is_authorized(control, profile):
                 return
             raise ValueError(f"{profile.name} does not support boolean control {control}")
+        static = parse_static_write(frame, profile=profile)
         if (
             profile.command_operations is None
             or operation in profile.command_operations
             or "static" in profile.command_operations
-            and getattr(command, "is_static", False)
+            and (static is not None or getattr(command, "is_static", False))
         ):
-            static = parse_static_write(frame, profile=profile)
             if static is None and getattr(command, "is_static", False) and profile.command_grammar == "H617A":
                 levels = getattr(command.body.sub_body.static_body, "segment_percent", None)
                 if levels is not None:
@@ -1390,15 +1387,6 @@ def build_segment_colour(
 ) -> bytes:
     profile = profile or get_profile(model)
     resolved = profile.command_grammar
-    if profile.legacy_h6199_static_rgb:
-        if mask != profile.whole_device_mask:
-            raise ValueError("H6199 Pact 1 capture qualifies whole-strip RGB only")
-        frame = bytearray(20)
-        frame[:3] = b"\x33\x05\x0b"
-        frame[3:6] = bytes(max(0, min(255, value)) for value in (red, green, blue))
-        frame[8:10] = profile.whole_device_mask.to_bytes(2, "little")
-        frame[-1] = xor_checksum(frame[:-1])
-        return bytes(frame)
     if resolved == "H601C":
         return _build_h601c_static_colour(mask, (red, green, blue), 0, profile)
     if resolved == "H6179":
@@ -1972,6 +1960,39 @@ def build_music_mode(
         raise ValueError("new H617A music selectors omit fixed colour")
     multi.sub_body = selector
     root.body = multi
+    return _serialize_xor(root)
+
+
+def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
+    """Re-encode authorised logical H6199 brightness and RGB through the legacy wire root."""
+    profile = H6199_PACT1_PROFILE
+    require_profile_packet(packet, profile)
+    parsed = parse_command(packet, profile=profile)
+    if parsed is None or parsed.opcode.name == "power":
+        return packet
+
+    root = H6199Pact1WireWrite()
+    root.header = b"\x33"
+    if parsed.opcode.name == "brightness":
+        root.opcode = H6199Pact1WireWrite.CommandOp.brightness
+        body = _child(H6199Pact1WireWrite.BrightnessBody, root)
+        wire_range = profile.brightness_wire_range
+        if wire_range is None:
+            raise ValueError("H6199 Pact 1 brightness register range is not declared")
+        body.register = encode_wire_brightness(int(parsed.body.percent), wire_range)
+        body.unknown_tail = bytes(16)
+    else:
+        root.opcode = H6199Pact1WireWrite.CommandOp.mode
+        body = _child(H6199Pact1WireWrite.ModeBody, root)
+        body.sub_mode = H6199Pact1WireWrite.ModeSel.static_colour
+        detail = _child(H6199Pact1WireWrite.StaticColourBody, body)
+        colour = parsed.body.detail
+        detail.rgb = _rgb(detail, int(colour.red), int(colour.green), int(colour.blue))
+        detail.kelvin = 0
+        detail.segment_mask = int(colour.segment_mask)
+        detail.unknown_tail = bytes(9)
+        body.detail = detail
+    root.body = body
     return _serialize_xor(root)
 
 

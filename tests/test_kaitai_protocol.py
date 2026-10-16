@@ -50,6 +50,7 @@ StatusQuery = _generated("status_query", "StatusQuery")
 H6199StatusQuery = _generated("h6199_status_query", "H6199StatusQuery")
 H6199StatusReply = _generated("h6199_status_reply", "H6199StatusReply")
 H6199CommandAck = _generated("h6199_command_ack", "H6199CommandAck")
+H6199Pact1WireWrite = _generated("h6199_pact1_wire_write", "H6199Pact1WireWrite")
 H6179CommandWrite = _generated("h6179_command_write", "H6179CommandWrite")
 H6179DiyBody = _generated("h6179_diy_body", "H6179DiyBody")
 H6179StatusQuery = _generated("h6179_status_query", "H6179StatusQuery")
@@ -91,6 +92,9 @@ H6179_DIY = bytes.fromhex("feff003206ff00000000ff0400000200")
 H6179_SCHEDULE = bytes.fromhex("33091314040401091e000000000000000000002b")
 # Issue #115: identical H6199 notification observed three times on 2026-09-17.
 H6199_DIY_UPLOAD_ACK = bytes.fromhex("a3040000000000000000000000000000000000a7")
+# H6199 Pact 1 producer fixtures, not physical-device captures.
+H6199_PACT1_BRIGHTNESS_WRITE = bytes.fromhex("33048800000000000000000000000000000000bf")
+H6199_PACT1_RGB_WRITE = bytes.fromhex("33050b2060a00000ff7f0000000000000000005d")
 TYPE03_PAINTED = bytes.fromhex(
     "0105030900640101010f01ff7f000001ff9a000101ffb0000201ffc3000301ffd4000401ffe3000501fff2000601ffff000701eeff000801dbff000901c6ff000a01adff000b0190ff000c0169ff000d0100ff000e"
 )
@@ -787,6 +791,18 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(H6199StatusQuery, H6199_SEGMENT_QUERY, id="H6199 segment query"),
     pytest.param(H6199CommandAck, H6199_DISPLAY_ACK, id="H6199 command acknowledgement"),
     pytest.param(H6199CommandAck, H6199_DIY_UPLOAD_ACK, id="H6199 DIY upload acknowledgement"),
+    pytest.param(H6199Pact1WireWrite, H6199_PACT1_BRIGHTNESS_WRITE, id="H6199 Pact 1 brightness producer fixture"),
+    pytest.param(H6199Pact1WireWrite, H6199_PACT1_RGB_WRITE, id="H6199 Pact 1 RGB producer fixture"),
+    pytest.param(
+        H6199Pact1WireWrite,
+        bytes.fromhex("33050b2060a00000ff7f0102030405060708095c"),
+        id="H6199 Pact 1 synthetic unknown RGB tail",
+    ),
+    pytest.param(
+        H6199Pact1WireWrite,
+        bytes.fromhex("3304880102030405060708090a0b0c0d0e0f10af"),
+        id="H6199 Pact 1 synthetic unknown brightness tail",
+    ),
     pytest.param(H6179CommandWrite, H6179_STATIC, id="H6179 command"),
     pytest.param(H6179CommandWrite, H6179_LEGACY_COLOUR, id="H6179 legacy colour evidence"),
     pytest.param(H6179DiyBody, H6179_DIY, id="H6179 DIY"),
@@ -939,6 +955,16 @@ def test_missing_or_unknown_grammar_fails_closed_only_in_its_direction(monkeypat
     else:
         assert generated_protocol_adapter.build_power(True) == bytes.fromhex("3301010000000000000000000000000000000033")
         assert generated_protocol_adapter.build_segment_query(5) == H617A_SEGMENT_QUERY
+
+
+def test_h6199_pact1_wire_fields_are_meaningful() -> None:
+    brightness = _parse(H6199Pact1WireWrite, H6199_PACT1_BRIGHTNESS_WRITE)
+    assert (brightness.opcode.name, brightness.body.register) == ("brightness", 136)
+    colour = _parse(H6199Pact1WireWrite, H6199_PACT1_RGB_WRITE)
+    assert colour.opcode.name == "mode" and colour.body.sub_mode.name == "static_colour"
+    detail = colour.body.detail
+    assert (detail.rgb.red, detail.rgb.green, detail.rgb.blue) == (32, 96, 160)
+    assert detail.kelvin == 0 and detail.segment_mask == 0x7FFF
 
 
 def test_h6125_wire_and_status_fields_are_meaningful() -> None:

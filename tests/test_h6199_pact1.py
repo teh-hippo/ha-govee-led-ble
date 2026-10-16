@@ -16,6 +16,8 @@ from custom_components.ha_govee_led_ble.const import (
 )
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import compatibility, compile_application
 from custom_components.ha_govee_led_ble.effect_contracts import device_effect_capabilities
@@ -39,7 +41,13 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
-from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
+from custom_components.ha_govee_led_ble.light_commands import (
+    build_color_rgb,
+    build_color_temp,
+    build_segment_brightness,
+    build_segment_color,
+)
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.test_h6199_capabilities import lifecycle as pact_lifecycle  # noqa: F401
 from tests.test_h6199_native_controls import frame
 
@@ -66,7 +74,34 @@ def test_only_exact_model_and_positive_pact_select_restriction(model):
     ],
 )
 def test_generated_guard_permits_power_and_main_identity(builder):
-    require_profile_packet(builder(), H6199_PACT1_PROFILE)
+    packet = builder()
+    require_profile_packet(packet, H6199_PACT1_PROFILE)
+    transform = H6199_PACT1_PROFILE.outbound_transform
+    assert transform is not None and transform(packet) == packet
+
+
+@pytest.mark.parametrize(("percent", "register"), [(1, 20), (50, 136), (100, 254)])
+def test_brightness_reencodes_the_register_without_changing_logical_expectations(percent, register):
+    profile = H6199_PACT1_PROFILE
+    packet = build_brightness(percent, "H6199", profile=profile)
+    transform = profile.outbound_transform
+    assert transform is not None
+    assert transform(packet) == frame(f"3304{register:02x}")
+    assert expectations_from_packet(packet, "H6199", profile=profile) == {"brightness_pct": percent}
+
+
+def test_rgb_reuses_the_shared_logical_command_and_expectations():
+    profile = H6199_PACT1_PROFILE
+    packet = build_color_rgb(32, 96, 160, "H6199", profile=profile)
+    assert packet == build_color_rgb(32, 96, 160, "H6199")
+    require_profile_packet(packet, profile)
+    transform = profile.outbound_transform
+    assert transform is not None
+    assert transform(packet) == bytes.fromhex("33050b2060a00000ff7f0000000000000000005d")
+    assert expectations_from_packet(packet, "H6199", profile=profile) == {
+        "color_mode": (ParsedMode.COLOUR, None),
+        "rgb_color": (32, 96, 160),
+    }
 
 
 @pytest.mark.parametrize(
@@ -74,7 +109,13 @@ def test_generated_guard_permits_power_and_main_identity(builder):
     [
         build_brightness_query("H6199"),
         build_colour_mode_query("H6199"),
-        build_color_rgb(1, 2, 3, "H6199"),
+        build_color_temp(4000, "H6199"),
+        build_segment_color([1], 1, 2, 3, "H6199"),
+        build_segment_brightness([1], 50, "H6199"),
+        frame("330515ff"),
+        build_brightness(0, "H6199"),
+        frame("330465"),
+        build_brightness(50, "H6199")[:-1] + b"\x00",
         build_video_mode("movie", True, 50, False, 50, "H6199"),
         build_h6199_control("gradient", 1),
         build_white_balance(21, 5, "H6199"),
@@ -90,14 +131,14 @@ async def test_physical_boundary_rejects_before_optimism(hass, monkeypatch, pack
     c._client = client
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     before = c.capture_effect_control_state()
-    with pytest.raises(ValueError, match="does not support this operation"):
+    with pytest.raises(ValueError):
         await c.async_write_effect_sequence((packet,), intent=ControlIntent.USER, state_values={"brightness_pct": 254})
     assert c.capture_effect_control_state() == before
     assert c.control_write_attempts == 0 and not c._expected_state
     client.write_gatt_char.assert_not_awaited()
 
 
-async def test_known_pact1_real_setup_and_power(pact_lifecycle):  # noqa: F811
+async def test_known_pact1_real_setup_and_basic_controls(pact_lifecycle, monkeypatch):  # noqa: F811
     c, replies, clients, packets = pact_lifecycle
     advertise(c, 1)
     replies[build_hardware_query(c.model)] = frame("aa0703" + b"1.00.01".hex())
@@ -111,10 +152,23 @@ async def test_known_pact1_real_setup_and_power(pact_lifecycle):  # noqa: F811
     light = GoveeBLELight(c)
     assert light.supported_color_modes == {ColorMode.RGB} and light.brightness is not None
     before = c.capture_effect_control_state()
-    for reply in ("aa04fe", "aa0513046400012060a0", "aaa90006011003001505", "aaae0104141e2832"):
+    for reply in ("aa040a", "aa04fe", "aa0513046400012060a0", "aaa90006011003001505", "aaae0104141e2832"):
         c._notify_callback(None, bytearray(frame(reply)))
     assert c.capture_effect_control_state() == before
     assert PriorControlState.from_dict(before.to_dict()) == before
+    monkeypatch.setattr(light, "_notify_state_changed", MagicMock())
+    packets.clear()
+    await light._async_turn_on(brightness=128, rgb_color=(32, 96, 160))
+    assert [packet for packet in packets if packet[0] == 0x33] == [
+        frame("330488"),
+        bytes.fromhex("33050b2060a00000ff7f0000000000000000005d"),
+    ]
+    assert all(packet[:2] not in (b"\xaa\x04", b"\xaa\x05", b"\xaa\xa5") for packet in packets)
+    assert c.brightness_pct == 50 and c.rgb_color == (32, 96, 160)
+    assert c.rgb_color_source == "optimistic" and c.color_mode is ParsedMode.COLOUR
+    assert c._expected_state["brightness_pct"][0] == 50
+    assert c._expected_state["rgb_color"][0] == (32, 96, 160)
+    assert c._field_revisions.get("rgb_color", 0) == 0
     await c.send_command(build_power(False, c.model))
     assert packets[-1] == build_power(False, c.model)
 
@@ -197,6 +251,36 @@ async def test_late_pact_identification_blocks_prepared_write(hass, monkeypatch,
         )
     assert c.brightness_pct == 100 and c.control_write_attempts == 0
     client.write_gatt_char.assert_not_awaited()
+
+
+async def test_prepared_rgb_reencodes_after_pact_identification_during_connect(hass, monkeypatch):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    packet = build_color_rgb(32, 96, 160, c.model)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    c._client = client
+
+    async def connect():
+        advertise(c, 1)
+        return client
+
+    monkeypatch.setattr(c, "_ensure_connected", connect)
+    await c.send_command(packet)
+    client.write_gatt_char.assert_awaited_once_with(
+        WRITE_UUID, bytes.fromhex("33050b2060a00000ff7f0000000000000000005d"), response=False
+    )
+    assert c.rgb_color == (32, 96, 160) and c.rgb_color_source == "optimistic"
+
+
+@pytest.mark.parametrize("packet", [build_brightness(50, "H6199"), build_color_rgb(32, 96, 160, "H6199")])
+async def test_pact_change_after_encoding_rejects_before_optimism(hass, packet):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    c._client = client
+    with pytest.raises(ValueError, match="profile changed"):
+        await c._async_write_packet(client, packet, arm_expected=True, before_write=lambda: advertise(c, 1))
+    client.write_gatt_char.assert_not_awaited()
+    assert c.control_write_attempts == 0 and not c._expected_state
+    assert c.brightness_pct == 100 and c.rgb_color_source == "initial"
 
 
 async def test_late_pact_does_not_rollback_invalid_state(hass, monkeypatch):
