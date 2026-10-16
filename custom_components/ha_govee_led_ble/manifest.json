@@ -109,6 +109,18 @@
         },
         {
             "local_name": "GVH_H6199*"
+        },
+        {
+            "local_name": "ihoment_H7020*"
+        },
+        {
+            "local_name": "Govee_H7020*"
+        },
+        {
+            "local_name": "GBK_H7020*"
+        },
+        {
+            "local_name": "GVH_H7020*"
         }
     ],
     "codeowners": [

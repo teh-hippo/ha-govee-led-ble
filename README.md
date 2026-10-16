@@ -16,6 +16,7 @@ Local BLE control and effect authoring for supported Govee lights from Home Assi
 | **H6199** | Supported | Power, brightness, RGB, colour temperature, 15 segments, 240 scenes, video and music modes, advanced controls and Effect Studio |
 | **H617E** | Compatible | H617A-compatible controls, effects and music modes with its exact 240-scene catalogue and retained legacy scene-name compatibility; exact-model protocol documentation remains incomplete |
 | **H6076** | Partial | Power, brightness, RGB and 2700–6500 K colour temperature; colour-mode readback, segments and scenes remain unavailable.  Software 1.02.00 or newer on pact 1/1 or 2/1 adds 12 music effects under an explicit stable-inclusion exception; physical qualification remains outstanding.  [Evidence and owner checks](docs/h6076-music-support.md). |
+| **H7020** | Partial | Power, percent brightness, RGB and 2300–6700 K warm-white colour temperature for all fifteen bulbs; colour-mode readback, segments, scenes, music and Effect Studio remain unavailable. [Evidence and owner checks](docs/h7020-support.md). |
 | **H6102** | Experimental | Revision-aware candidate: basic controls, RGB/Kelvin and 15 segments, 240 exact-model scenes, DIY and Effect Studio; hardware/firmware/Pact determine available controls. [Evidence and limits](docs/h6102-application-findings.md). |
 | **H6125** | Experimental | Pact 1 with software 1.07.00 or newer and hardware 1.00.03 or newer only; other controller generations stay power only.  Brightness, RGB, colour temperature, 15 segments, 240 scenes, 11 music modes and Effect Studio single and multi effects. [Evidence and owner checks](docs/h6125-support.md). |
 | **H6179** | Experimental | Power, raw brightness, RGB, colour temperature, 83 scenes, two device-microphone music modes and Effect Studio single/mixed DIY using an explicitly approved disposable slot. |
@@ -87,7 +88,7 @@ Restart Home Assistant after updating this integration through HACS or replacing
 
 ## Configuration
 
-The integration auto-discovers H601C, H617A, H617E, H6076 and H6199.  H6099 requires
+The integration auto-discovers H601C, H617A, H617E, H6076, H6199 and H7020.  H6099 requires
 manual addition or reconfiguration and is included as Experimental in 7.6.0.
 H60A1 and H60A6 also require manual addition or **Reconfigure** with their
 exact model selected, using the ceiling-light prerelease.  H601C is distinct from
