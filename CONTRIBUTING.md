@@ -216,6 +216,11 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
+After switching branches, protocol verification can report obsolete ignored
+modules.  `make clean` only knows the current runtime output list.  Remove only
+the reported ignored files absent from `scripts/kaitai-runtime-outputs.txt`,
+then rerun the gate.
+
 Keep Conventional Commit merge parsing enabled in semantic-release so release-bearing merges still trigger releases when the branch commits are fixups.
 
 For live qualification, distinguish optimistic entity state from fresh BLE readback.
