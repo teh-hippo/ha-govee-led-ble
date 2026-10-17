@@ -90,7 +90,8 @@ def resolve_h6102_capabilities(
         )
         return H6102CapabilityResolution(profile, variant, firmware_source, None)
     # Pact 1 DIY uses A1, not the modern A3 route. Its separate RGB opcode
-    # qualification does not grant static subcommands or other effect families.
+    # qualification grants only owner-confirmed whole-strip 15/01 RGB; Kelvin,
+    # segments and AA05 readback remain unqualified on Pact 1.
     profile = _BOOTSTRAP_PROFILE
     if pact_type == 1 and pact_code in (1, 2):
         from .generated_protocol_adapter import h6102_outbound_transform
@@ -101,13 +102,7 @@ def resolve_h6102_capabilities(
             profile,
             command_operations=frozenset({"power", "brightness", "static"}),
             supports_rgb=True,
-            supports_color_temperature=True,
             whole_device_mask=0x7FFF,
-            segment_count=15,
-            segment_group_size=3,
-            supports_segment_writes=True,
-            read_domains=_BASE_PROFILE.read_domains,
-            setup_required_read_domains=_BASE_PROFILE.setup_required_read_domains,
         )
     return H6102CapabilityResolution(
         profile,
