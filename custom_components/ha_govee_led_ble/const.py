@@ -432,8 +432,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         segment_count=13,
         segment_group_size=4,
         # Support.java:209-213,345-346,489-498: Pact 1/1 has one zone;
-        # 1/2+ has thirteen with whole-device Kelvin; 1/3 and the owner-qualified
-        # 1.00.41/1.04.03 revision add per-segment Kelvin.
+        # 1/2+ has thirteen with whole-device Kelvin; 1/3 and the owner-reported
+        # 1.00.41/1.04.03 revision add candidate per-segment Kelvin.
     ),
     "H601C": ModelProfile(
         "H601C Recessed Downlight",
