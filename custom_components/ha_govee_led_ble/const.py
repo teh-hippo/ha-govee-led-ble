@@ -725,6 +725,27 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
     ),
+    "H7020": ModelProfile(
+        "H7020 Outdoor String Lights",
+        support_quality=SupportQuality.PARTIAL,
+        command_grammar="H617A",
+        status_grammar="H617A",
+        # Owner-confirmed: brightness is a percent register, so no brightness_wire_range.
+        # Pact 1/1 with an unencrypted advertisement. Segments, scenes and music remain
+        # unavailable until each is confirmed on the device.
+        command_operations=frozenset({"power", "brightness", "static"}),
+        read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        supports_rgb=True,
+        # The bulbs carry a separate warm-white channel, driven by the Kelvin static write.
+        # The app reports 2300 K to 6700 K (homebridge-govee #570).
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2300,
+        max_color_temp_kelvin=6700,
+        # Fifteen bulbs, addressed through one whole-device mask.
+        whole_device_mask=0x7FFF,
+        connection_idle_timeout=3.0,
+    ),
     "H6179": ModelProfile(
         "H6179 RGB TV Backlight",
         support_quality=SupportQuality.EXPERIMENTAL,
@@ -833,7 +854,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
-BLE_DISCOVERABLE_MODELS = frozenset({"H601C", "H6076", "H6125", "H6179", "H617A", "H617C", "H617E", "H617F", "H6199"})
+BLE_DISCOVERABLE_MODELS = frozenset(
+    {"H601C", "H6076", "H6125", "H6179", "H617A", "H617C", "H617E", "H617F", "H6199", "H7020"}
+)
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 

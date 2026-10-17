@@ -57,6 +57,16 @@ def test_h6076_uses_its_whole_device_mask_and_kelvin_range() -> None:
     assert build_white_brightness(50, "H6076") == H("33051502327f000000000000000000000000006c")
 
 
+def test_h7020_sends_percent_brightness_and_whole_string_static_commands() -> None:
+    assert build_brightness(100, "H7020") == H("3304640000000000000000000000000000000053")
+    assert build_color_rgb(255, 0, 0, "H7020") == H("33051501ff00000000000000ff7f00000000005d")
+    parsed = parse_static_write(build_color_rgb(10, 20, 30, "H7020"), "H7020")
+    assert parsed is not None and parsed.whole_strip
+    assert build_color_temp(2300, "H7020") == H("3305150100000008fcff9632ff7f00000000000d")
+    assert build_color_temp(2000, "H7020")[7:9] == (2300).to_bytes(2, "big")
+    assert build_color_temp(9000, "H7020")[7:9] == (6700).to_bytes(2, "big")
+
+
 def test_h6179_uses_exact_raw_brightness_and_whole_device_static_commands() -> None:
     assert build_power(True, "H6179") == H("3301010000000000000000000000000000000033")
     assert build_brightness(100, "H6179") == H("3304fe00000000000000000000000000000000c9")
