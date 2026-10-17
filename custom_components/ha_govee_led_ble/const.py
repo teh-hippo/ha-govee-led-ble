@@ -20,6 +20,7 @@ from .music_semantics import (
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
 CONF_H6102_APP_FIRMWARE = "h6102_app_firmware"
+CONF_H6102_APP_HARDWARE = "h6102_app_hardware"
 CONF_H6102_PACT = "h6102_pact"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
