@@ -19,6 +19,7 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_CONNECTION_MODE,
     CONF_EFFECT_CATEGORIES,
     CONF_H6102_APP_FIRMWARE,
+    CONF_H6102_APP_HARDWARE,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
     CONNECTION_MODE_HOLD,
@@ -236,13 +237,14 @@ async def test_user_step_stores_valid_h6102_firmware(hass: HomeAssistant):
 
     result = await hass.config_entries.flow.async_configure(
         firmware["flow_id"],
-        {CONF_H6102_APP_FIRMWARE: "1.03.01"},
+        {CONF_H6102_APP_FIRMWARE: "1.03.01", CONF_H6102_APP_HARDWARE: "1.00.03"},
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
         CONF_MODEL: "H6102",
         CONF_H6102_APP_FIRMWARE: "1.03.01",
+        CONF_H6102_APP_HARDWARE: "1.00.03",
     }
 
 
@@ -260,8 +262,12 @@ async def test_h6102_firmware_step_rechecks_duplicate(hass: HomeAssistant):
     assert result["reason"] == "already_configured"
 
 
+@pytest.mark.parametrize(
+    ("field", "error"),
+    [(CONF_H6102_APP_FIRMWARE, "invalid_firmware"), (CONF_H6102_APP_HARDWARE, "invalid_hardware")],
+)
 @pytest.mark.parametrize("firmware", ["1..3", "1. 3", "+1.03.01", "version 1.03.01", "3.2.2", "1.3"])
-async def test_user_step_rejects_invalid_h6102_firmware(hass: HomeAssistant, firmware: str):
+async def test_user_step_rejects_invalid_h6102_firmware(hass: HomeAssistant, firmware: str, field: str, error: str):
     result = await _init(
         hass,
         config_entries.SOURCE_USER,
@@ -270,12 +276,12 @@ async def test_user_step_rejects_invalid_h6102_firmware(hass: HomeAssistant, fir
 
     invalid = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {CONF_H6102_APP_FIRMWARE: firmware},
+        {field: firmware},
     )
 
     assert invalid["type"] is FlowResultType.FORM
     assert invalid["step_id"] == "h6102_firmware"
-    assert invalid["errors"] == {CONF_H6102_APP_FIRMWARE: "invalid_firmware"}
+    assert invalid["errors"] == {field: error}
     assert not hass.config_entries.async_entries(DOMAIN)
 
     cleared = await hass.config_entries.flow.async_configure(invalid["flow_id"], {})
@@ -582,27 +588,33 @@ async def test_reconfigure_preserves_entry_identity_and_clears_effect_options(ha
 
 
 @pytest.mark.parametrize(
-    ("initial_model", "initial_firmware", "submitted", "expected_firmware"),
+    ("initial_model", "initial", "submitted"),
     [
-        pytest.param("H617A", None, {CONF_H6102_APP_FIRMWARE: "1.03.01"}, "1.03.01", id="set"),
-        pytest.param("H6102", "1.03.01", {CONF_H6102_APP_FIRMWARE: "1.10.00"}, "1.10.00", id="change"),
-        pytest.param("H6102", "1.03.01", {CONF_H6102_APP_FIRMWARE: ""}, None, id="clear"),
+        pytest.param("H617A", {}, {CONF_H6102_APP_FIRMWARE: "1.03.01"}, id="set"),
+        pytest.param(
+            "H6102",
+            {CONF_H6102_APP_FIRMWARE: "1.03.01"},
+            {CONF_H6102_APP_FIRMWARE: "1.10.00", CONF_H6102_APP_HARDWARE: "1.00.03"},
+            id="change",
+        ),
+        pytest.param(
+            "H6102",
+            {CONF_H6102_APP_FIRMWARE: "1.03.01", CONF_H6102_APP_HARDWARE: "1.00.03"},
+            {CONF_H6102_APP_FIRMWARE: "", CONF_H6102_APP_HARDWARE: ""},
+            id="clear",
+        ),
     ],
 )
 async def test_reconfigure_h6102_firmware_preserves_identity(
     hass: HomeAssistant,
     initial_model: str,
-    initial_firmware: str | None,
+    initial: dict[str, str],
     submitted: dict[str, str],
-    expected_firmware: str | None,
 ):
-    data = {CONF_MODEL: initial_model}
-    if initial_firmware is not None:
-        data[CONF_H6102_APP_FIRMWARE] = initial_firmware
     entry = MockConfigEntry(
         domain=DOMAIN,
         title=f"Govee {initial_model}",
-        data=data,
+        data={CONF_MODEL: initial_model, **initial},
         options={
             CONF_EFFECT_CATEGORIES: ["scenes", "effects"],
             CONF_PREFIX_EFFECT_NAMES: True,
@@ -636,10 +648,7 @@ async def test_reconfigure_h6102_firmware_preserves_identity(
     assert entry.entry_id == original_entry_id
     assert entry.unique_id == SVC_H6102.address
     assert entry.title == "Govee H6102"
-    assert entry.data == {
-        CONF_MODEL: "H6102",
-        **({CONF_H6102_APP_FIRMWARE: expected_firmware} if expected_firmware is not None else {}),
-    }
+    assert entry.data == {CONF_MODEL: "H6102", **{key: value for key, value in submitted.items() if value}}
     assert entry.options == {}
     current_entity = er.async_get(hass).async_get(original_entity_id)
     assert current_entity is not None

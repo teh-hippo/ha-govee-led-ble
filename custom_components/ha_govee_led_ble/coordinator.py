@@ -201,6 +201,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         device_resolver: BLEDeviceResolver | None = None,
         h6102_firmware: str | None = None,
         h6102_firmware_source: H6102FirmwareSource | None = None,
+        h6102_hardware: str | None = None,
         h6102_pact: str | None = None,
     ) -> None:
         profile = get_profile(model)
@@ -222,6 +223,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             resolution.capability_resolution_reason if resolution is not None else None
         )
         self._configured_h6102_firmware = h6102_firmware if h6102_firmware_source == "configured" else None
+        self._configured_h6102_hardware = h6102_hardware
         if h6102_pact is not None and h6102_pact not in H6102_PACTS:
             raise ValueError("Unknown H6102 Pact context")
         self._profile_generation = 0
@@ -1049,7 +1051,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             resolution = resolve_h6102_capabilities(
                 self.fw_version or self._configured_h6102_firmware,
                 "ble" if self.fw_version else "configured" if self._configured_h6102_firmware else None,
-                hardware=self.hw_version,
+                hardware=self.hw_version or self._configured_h6102_hardware,
                 pact_type=self.pact_type,
                 pact_code=self.pact_code,
                 physical_ic_count=self.profile.physical_ic_count,

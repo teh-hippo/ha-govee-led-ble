@@ -44,16 +44,19 @@
         "description": "Pact is normally read from Bluetooth advertisements. If it is missing, select a Pact only when identified with the maintainer using device evidence. Firmware alone cannot identify Pact. Unknown context permits power, brightness and identity reads. Observed Bluetooth context takes precedence.",
         "data": {
           "h6102_app_firmware": "App-reported software version",
+          "h6102_app_hardware": "App-reported hardware version",
           "h6102_pact": "Owner-qualified Pact context"
         },
         "data_description": {
-          "h6102_app_firmware": "Use the exact value shown by Govee Home, for example 1.03.01. Leave blank to store no firmware context."
+          "h6102_app_firmware": "Use the exact value shown by Govee Home, for example 1.03.01. Leave blank to store no firmware context.",
+          "h6102_app_hardware": "Use the exact value shown by Govee Home, for example 1.00.03. Leave blank to store no hardware context."
         }
       }
     },
     "error": {
       "invalid_address": "Enter a valid 12-digit BLE MAC address.",
       "invalid_firmware": "Enter the exact dotted-decimal software version shown by Govee Home, for example 1.03.01.",
+      "invalid_hardware": "Enter the exact dotted-decimal hardware version shown by Govee Home, for example 1.00.03.",
       "invalid_pact": "Select a known Pact or leave it automatic.",
       "cannot_connect": "Unable to connect to the device.",
       "model_mismatch": "The device at this address advertises a different supported model.",
