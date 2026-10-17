@@ -777,7 +777,7 @@ async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnecti
         # The existing apply path compiles the complete body before acquiring control,
         # then guards its captured revision at each physical write.
         await coordinator.async_apply_music_params(
-            music_code_for(coordinator.model, msg["mode"]),
+            music_code_for(coordinator.model, msg["mode"], profile=coordinator.profile),
             parameters=msg["parameters"],
             calm=msg.get("calm")
             if "calm" in msg or coordinator.music_body is None

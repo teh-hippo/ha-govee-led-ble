@@ -1923,7 +1923,7 @@ def build_music_mode(
     profile: ModelProfile | None = None,
 ) -> bytes:
     profile = profile or get_profile(model)
-    if type(mode_id) is not int or music_slug_for(model, mode_id) not in profile.music_modes:
+    if type(mode_id) is not int or music_slug_for(model, mode_id, profile=profile) not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode_id}")
     if (
         type(sensitivity) is not int

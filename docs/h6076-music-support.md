@@ -4,7 +4,7 @@
 
 Issue [#343](https://github.com/teh-hippo/ha-govee-led-ble/issues/343) reports the H6076 music selector and companion bodies from two decrypted Android Bluetooth snoop logs of the Govee app, taken on hardware 3.05.00 with software 1.04.05.  That session used the V1 encrypted transport.  The reporter replayed the plaintext frames over the LAN API and offered to test a prerelease over Bluetooth.  An earlier owner report in [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247) shows a plaintext H6076 on hardware 3.01.01 with software 1.04.08, so both transports exist in the field.
 
-Music is a prerelease-only capability of the Partial H6076 profile until an owner confirms it.  Installation and promotion follow [CONTRIBUTING.md](../CONTRIBUTING.md).
+Music is an unqualified capability of the Partial H6076 profile.  It has explicit maintainer approval for stable inclusion before owner qualification, without changing the model's support label or promoting its speculative protocol evidence.  Physical qualification remains outstanding.
 
 ## Research findings
 
@@ -47,6 +47,6 @@ The owner installs the prerelease through HACS and restarts Home Assistant.  The
 
 If anything fails, the owner exports diagnostics straight afterwards.  The diagnostics show the pact, software and hardware versions, the transport, and the lamp's replies, which is enough to tell a gate problem from a wire problem.
 
-The fixed colour, Calm and the four effects not captured over Bluetooth (Skittles, Candy Crush, Fusion and Shiny) are the least certain parts, so reports on those matter most.  If an effect keeps timing out, the `a3` reply lines in the diagnostics packet log show whether the lamp repeats the mode, because a reply that does not is ignored.  Reports that the basics work and that effects react are the bar for moving music from a prerelease capability to a stable Partial one.  A second owner on hardware 3.01.01 with plaintext, as in [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247), would show whether the mode reply holds there too.
+The fixed colour, Calm and the four effects not captured over Bluetooth (Skittles, Candy Crush, Fusion and Shiny) are the least certain parts, so reports on those matter most.  If an effect keeps timing out, the `a3` reply lines in the diagnostics packet log show whether the lamp repeats the mode, because a reply that does not is ignored.  Reports that the basics work and that effects react are the bar for physically qualifying the music addition.  Until then, the existing Partial model label and speculative evidence remain unchanged.  A second owner on hardware 3.01.01 with plaintext, as in [#247](https://github.com/teh-hippo/ha-govee-led-ble/issues/247), would show whether the mode reply holds there too.
 
 Tests establish software boundaries, not hardware compatibility.

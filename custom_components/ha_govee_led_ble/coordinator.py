@@ -474,7 +474,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 raise ValueError("music recovery model does not match device")
             if state.music_mode not in self.profile.music_modes:
                 return False
-            variant = music_variant(self.profile, music_code_for(self.model, state.music_mode))
+            variant = music_variant(
+                self.profile,
+                music_code_for(self.model, state.music_mode, profile=self.profile),
+            )
             # Legacy snapshots retain style across modes even when the active selector
             # has no style byte semantics. Do not reinterpret that retained value.
             music_calm = state.music_calm if variant and variant.supports_style else False
@@ -731,7 +734,11 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             def guard_music_recovery() -> None:
                 if (
                     state.music_mode not in self.profile.music_modes
-                    or music_variant(self.profile, music_code_for(self.model, state.music_mode)) != variant
+                    or music_variant(
+                        self.profile,
+                        music_code_for(self.model, state.music_mode, profile=self.profile),
+                    )
+                    != variant
                 ):
                     raise ValueError("Music variant changed before recovery; refresh and retry")
 
@@ -740,7 +747,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             )
             await self.async_write_music_sequence(
                 music_writes,
-                mode_code=music_code_for(self.model, state.music_mode),
+                mode_code=music_code_for(self.model, state.music_mode, profile=self.profile),
                 physical_ic_count=physical_ic_count,
                 intent=ControlIntent.APPLY,
             )

@@ -194,7 +194,10 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
     if isinstance(compiled, CompiledMusicProfile):
         if compiled.mode not in profile.music_modes:
             raise ValueError("Device profile no longer supports the compiled music mode")
-        variant = music_variant(profile, music_code_for(compiled.model, compiled.mode))
+        variant = music_variant(
+            profile,
+            music_code_for(compiled.model, compiled.mode, profile=profile),
+        )
         dependent = music_parameters_depend_on_ic(variant, compiled.parameters)
     if dependent and compiled.physical_ic_count != profile.physical_ic_count:
         raise ValueError("Physical IC count changed since compilation; refresh and retry")

@@ -108,6 +108,10 @@ Release 7.12.0 has an explicit maintainer-approved exception for H6125 after
 shared-workflow load and refresh checks on H617A and H6199. H6125 remains
 Experimental pending its owner's physical qualification; stable inclusion does
 not promote its support status or speculative protocol evidence.
+H6076 music and the H60A1/H60A6 colour-temperature additions also have explicit
+maintainer approval for stable inclusion before owner qualification. Their
+existing model support labels and speculative protocol evidence remain unchanged;
+physical qualification of these additions is still outstanding.
 Prerelease versions are stamped only in the packaged artifact; feature branches retain the current stable source version so release-candidate metadata cannot leak into master.
 
 ## Device-owner validation

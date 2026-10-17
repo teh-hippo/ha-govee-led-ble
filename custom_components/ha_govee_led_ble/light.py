@@ -841,7 +841,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 if video_guards is not None:
                     video_guards.append(lambda: validate_compiled_geometry(compiled, coordinator.profile))
                 return partial(async_apply_compiled_profile, coordinator, compiled)
-            variant = music_variant(coordinator.profile, music_code_for(coordinator.model, selected.value))
+            variant = music_variant(
+                coordinator.profile,
+                music_code_for(coordinator.model, selected.value, profile=coordinator.profile),
+            )
             prepare_music_request(
                 coordinator.model,
                 selected.value,

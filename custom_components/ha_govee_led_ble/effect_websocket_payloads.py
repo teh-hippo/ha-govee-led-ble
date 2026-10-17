@@ -31,7 +31,10 @@ def retained_music_edit(coordinator: Any) -> dict[str, Any] | None:
     if not isinstance(body, bytes) or mode not in coordinator.profile.music_modes:
         return None
     try:
-        profile = retained_music_profile(coordinator.profile, music_code_for(coordinator.model, mode))
+        profile = retained_music_profile(
+            coordinator.profile,
+            music_code_for(coordinator.model, mode, profile=coordinator.profile),
+        )
         settings = device_music_settings(coordinator.model, profile=profile)["music_settings"][mode]
         parameters = music_body_parameters(body, mode, profile=profile)
         return {

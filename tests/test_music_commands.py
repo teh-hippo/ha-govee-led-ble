@@ -442,6 +442,23 @@ def test_h6076_torch_uploads_the_reporters_captured_frames_before_its_selector()
     )
 
 
+def test_music_grammar_selects_h6076_codec_for_a_synthetic_exact_model(monkeypatch) -> None:
+    model = "TEST-H6076-MUSIC"
+    profile = replace(_H6076, name="Synthetic H6076 music", music_modes=("torch",))
+    monkeypatch.setitem(MODEL_PROFILES, model, profile)
+
+    packets = prepare_music_request(model, "torch", 99, None, False, {}, profile=profile)
+    expected = prepare_music_request("H6076", "torch", 99, None, False, {}, profile=_H6076)
+    compiled = compile_music_profile(
+        LibraryItem.new("Torch", MusicProfile(model, "torch", 99, None, None, {})),
+        model,
+        profile=profile,
+    )
+
+    assert packets[1:] == expected[1:]
+    assert compiled.packets == packets
+
+
 @pytest.mark.parametrize(
     ("mode", "code", "tail"),
     [

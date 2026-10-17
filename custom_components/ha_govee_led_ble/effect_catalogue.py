@@ -239,7 +239,7 @@ class ModelEffectCatalogue:
                 mode.id: {
                     "available": music_default_available(self.sku, mode.id, profile=profile),
                     "style": bool(
-                        (variant := music_variant(profile, music_code_for(self.sku, mode.id)))
+                        (variant := music_variant(profile, music_code_for(self.sku, mode.id, profile=profile)))
                         and variant.supports_style
                     ),
                     "calm_default": variant.calm_default if variant else False,
@@ -265,7 +265,10 @@ class ModelEffectCatalogue:
                             "max": spec.max_value,
                             "options": list(spec.options),
                         }
-                        for spec in music_params_for_mode(music_code_for(self.sku, mode.id), profile)
+                        for spec in music_params_for_mode(
+                            music_code_for(self.sku, mode.id, profile=profile),
+                            profile,
+                        )
                     },
                 }
                 for mode in self.music_modes
@@ -731,7 +734,7 @@ def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
 
 def _music_template(model: str, mode: NativeModeOption) -> CatalogueTemplate:
     profile = MODEL_PROFILES[model]
-    variant = music_variant(profile, music_code_for(model, mode.id))
+    variant = music_variant(profile, music_code_for(model, mode.id, profile=profile))
     return CatalogueTemplate(
         id=f"template:music:{mode.id}",
         label=mode.label,

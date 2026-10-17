@@ -103,7 +103,7 @@ async def async_apply_compiled_profile(
 
         await coordinator.async_write_music_sequence(
             writes,
-            mode_code=music_code_for(compiled.model, compiled.mode),
+            mode_code=music_code_for(compiled.model, compiled.mode, profile=coordinator.profile),
             physical_ic_count=compiled.physical_ic_count,
             intent=ControlIntent.APPLY,
             writer=writer,
@@ -1401,7 +1401,10 @@ def compiled_observation(
         # H617A settings are not confirmed by the shipped readback evidence.
         if profile.status_grammar in {"H6099", "H6199"}:
             expectations["music_sensitivity"] = compiled.sensitivity
-            variant = music_variant(profile, music_code_for(compiled.model, compiled.mode))
+            variant = music_variant(
+                profile,
+                music_code_for(compiled.model, compiled.mode, profile=profile),
+            )
             if profile.supports_music_color and (variant is None or variant.supports_fixed_colour):
                 expectations["music_color"] = compiled.colour
             if compiled.mode == "rhythm" and variant and variant.supports_style:

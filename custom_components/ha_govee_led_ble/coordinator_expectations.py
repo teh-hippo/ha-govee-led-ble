@@ -68,7 +68,7 @@ def expectations_from_packet(
         mode = getattr(generated.body.sub_mode, "name", None)
         detail = generated.body.detail
         if mode == "music":
-            music_mode = music_slug_for(model, int(detail.mode))
+            music_mode = music_slug_for(model, int(detail.mode), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
             if not getattr(detail, "is_legacy", True):
@@ -103,7 +103,7 @@ def expectations_from_packet(
         mode = getattr(generated.body.sub, "name", None)
         detail = generated.body.sub_body
         if mode == "music":
-            music_mode = music_slug_for(model, int(detail.mode_id))
+            music_mode = music_slug_for(model, int(detail.mode_id), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
             if not detail.is_legacy:

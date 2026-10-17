@@ -91,10 +91,16 @@ _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = Map
 )
 
 
-def _protocol_model(model: str, direction: str = "command") -> str | None:
-    if model in MUSIC_MODE_CODES_BY_MODEL:
-        return model
-    grammar = getattr(get_profile(model), f"{direction}_grammar")
+def _protocol_model(
+    model: str,
+    direction: str = "command",
+    *,
+    profile: ModelProfile | None = None,
+) -> str | None:
+    profile = get_profile(model) if profile is None else profile
+    grammar = profile.status_grammar
+    if direction == "command":
+        grammar = profile.music_grammar or profile.command_grammar
     return grammar if grammar in MUSIC_MODE_CODES_BY_MODEL else None
 
 
@@ -107,9 +113,9 @@ def music_codebook(profile: ModelProfile) -> Mapping[str, int]:
     return codebook
 
 
-def music_code_for(model: str, slug: str) -> int:
+def music_code_for(model: str, slug: str, *, profile: ModelProfile | None = None) -> int:
     """Return the raw mode code used by a model."""
-    protocol_model = _protocol_model(model)
+    protocol_model = _protocol_model(model, profile=profile)
     codebook = MUSIC_MODE_CODES_BY_MODEL.get(protocol_model) if protocol_model is not None else None
     if codebook is None:
         raise ValueError(f"{model} has no music mode codebook")
@@ -119,24 +125,31 @@ def music_code_for(model: str, slug: str) -> int:
         raise ValueError(f"{model} does not support music mode {slug!r}") from None
 
 
-def music_slug_for(model: str, code: int, *, direction: str = "command") -> str | None:
+def music_slug_for(
+    model: str,
+    code: int,
+    *,
+    direction: str = "command",
+    profile: ModelProfile | None = None,
+) -> str | None:
     """Return the model-specific slug for a raw mode code."""
-    if direction == "status" and get_profile(model).status_grammar == "H6125":
+    profile = get_profile(model) if profile is None else profile
+    if direction == "status" and profile.status_grammar == "H6125":
         return _H6125_STATUS_MODE_SLUGS.get(code)
-    protocol_model = _protocol_model(model, direction)
+    protocol_model = _protocol_model(model, direction, profile=profile)
     codebook = _MUSIC_MODE_SLUGS_BY_MODEL.get(protocol_model) if protocol_model is not None else None
     return codebook.get(code) if codebook is not None else None
 
 
-def music_mode_supports_style(model: str, code: int) -> bool:
+def music_mode_supports_style(model: str, code: int, *, profile: ModelProfile | None = None) -> bool:
     """Return whether the mode's primary command carries Dynamic/Calm style."""
-    protocol_model = _protocol_model(model)
+    protocol_model = _protocol_model(model, profile=profile)
     return protocol_model is not None and code in _MUSIC_STYLE_CODES_BY_MODEL.get(protocol_model, ())
 
 
-def music_mode_has_parameter_write(model: str, code: int) -> bool:
+def music_mode_has_parameter_write(model: str, code: int, *, profile: ModelProfile | None = None) -> bool:
     """Return whether the mode requires a companion parameter write."""
-    protocol_model = _protocol_model(model)
+    protocol_model = _protocol_model(model, profile=profile)
     return protocol_model is not None and code in _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL.get(protocol_model, ())
 
 

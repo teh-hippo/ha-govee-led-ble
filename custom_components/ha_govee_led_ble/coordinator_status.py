@@ -168,9 +168,10 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             return ParsedColorModeResponse(
                 mode=ParsedMode.MUSIC,
                 music_mode=music_slug_for(
-                    profile.status_grammar or model,
+                    model,
                     int(values["music_mode_id"]),
                     direction="status",
+                    profile=profile,
                 ),
                 music_sensitivity=int(values["sensitivity"]),
                 music_color=music_color,
@@ -201,7 +202,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
     if mode_name == "music":
         detail = getattr(body, "detail", getattr(body, "mode_body", None))
         mode_id = int(getattr(detail, "mode", getattr(detail, "mode_id", -1)))
-        music_mode = music_slug_for(profile.status_grammar or model, mode_id, direction="status")
+        music_mode = music_slug_for(model, mode_id, direction="status", profile=profile)
         if music_mode not in profile.music_modes:
             raise ValueError("music selector is unsupported for model")
     if mode_name in {"static", "static_colour"}:

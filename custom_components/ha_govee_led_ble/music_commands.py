@@ -72,7 +72,7 @@ def prepare_music_request(
     profile = get_profile(model) if profile is None else profile
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
-    mode_code = music_code_for(model, mode)
+    mode_code = music_code_for(model, mode, profile=profile)
     variant = music_variant(profile, mode_code)
     if palette is not None and (variant is None or variant.palette_bounds is None):
         raise ValueError("music mode does not support an authored palette")
@@ -82,7 +82,7 @@ def prepare_music_request(
         build_music_params(
             mode_code, parameters, None if palette is None else list(palette), profile=profile, calm=calm
         )
-        if include_parameters and music_mode_has_parameter_write(model, mode_code)
+        if include_parameters and music_mode_has_parameter_write(model, mode_code, profile=profile)
         else []
     )
     selector = build_music_mode(mode_code, sensitivity, colour, calm, model, profile=profile)
@@ -105,7 +105,7 @@ def resolve_music_profile(
     profile = get_profile(model) if profile is None else profile
     if mode not in profile.music_modes:
         raise ValueError(f"{model} does not support music mode {mode}")
-    mode_code = music_code_for(model, mode)
+    mode_code = music_code_for(model, mode, profile=profile)
     variant = music_variant(profile, mode_code)
     if calm is not None and (variant is None or not variant.supports_style):
         raise ValueError(f"music mode {mode} does not support a style setting")
@@ -165,7 +165,7 @@ def prepare_music_profile_writes(
         "effect": None,
         "diy_code": None,
     }
-    mode_code = music_code_for(model, mode)
+    mode_code = music_code_for(model, mode, profile=profile)
     variant = music_variant(profile, mode_code)
     if variant and variant.layout in COMPANION_MUSIC_LAYOUTS:
         # New selectors carry neither style nor fixed colour, even without an upload.
