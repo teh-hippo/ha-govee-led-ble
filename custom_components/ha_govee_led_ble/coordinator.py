@@ -201,6 +201,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         device_resolver: BLEDeviceResolver | None = None,
         h6102_firmware: str | None = None,
         h6102_firmware_source: H6102FirmwareSource | None = None,
+        h6102_hardware: str | None = None,
         h6102_pact: str | None = None,
     ) -> None:
         profile = get_profile(model)
@@ -222,6 +223,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             resolution.capability_resolution_reason if resolution is not None else None
         )
         self._configured_h6102_firmware = h6102_firmware if h6102_firmware_source == "configured" else None
+        self._configured_h6102_hardware = h6102_hardware
         if h6102_pact is not None and h6102_pact not in H6102_PACTS:
             raise ValueError("Unknown H6102 Pact context")
         self._profile_generation = 0
@@ -1000,7 +1002,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             resolution = resolve_h6102_capabilities(
                 self.fw_version or self._configured_h6102_firmware,
                 "ble" if self.fw_version else "configured" if self._configured_h6102_firmware else None,
-                hardware=self.hw_version,
+                hardware=self.hw_version or self._configured_h6102_hardware,
                 pact_type=self.pact_type,
                 pact_code=self.pact_code,
                 physical_ic_count=self.profile.physical_ic_count,
@@ -1754,10 +1756,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     if isinstance(generated, ParsedH6179Status)
                     else int(generated.body.percent)
                     if self.profile.status_grammar in {"H6099", "H6199"}
-                    else decode_wire_brightness(int(generated.body.register), self.profile.brightness_wire_range)
-                    if self.profile.status_grammar == "H6125"
+                    else int(generated.body.register)
+                    if self.profile.status_grammar in {"H6102", "H6125"}
                     else int(generated.body.brightness_pct)
                 )
+                if self.profile.brightness_wire_range is not None:
+                    brightness_value = decode_wire_brightness(brightness_value, self.profile.brightness_wire_range)
                 if not 0 <= brightness_value <= 100:
                     raise ValueError("brightness outside percentage range")
                 if self._accept_expected("brightness_pct", brightness_value):
@@ -1979,7 +1983,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     raise BleakError("encrypted_write_failed") from None
                 raise GoveeCryptoError("encrypted_write_failed") from None
             raise
-        self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
+        packet_entry = self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
+        _LOGGER.debug("tx %s raw=%s", self.model, packet_entry["raw"])
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed during control write; refresh and retry")
 

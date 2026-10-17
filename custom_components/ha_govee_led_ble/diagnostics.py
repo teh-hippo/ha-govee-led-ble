@@ -7,7 +7,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
-from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_PACT
+from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_APP_HARDWARE, CONF_H6102_PACT
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
@@ -100,6 +100,7 @@ async def async_get_config_entry_diagnostics(
         "lock_locked": lock.locked(),
         "is_on": coordinator.is_on,
         "brightness_pct": coordinator.brightness_pct,
+        "brightness_wire_range": coordinator.profile.brightness_wire_range,
         "rgb_color": coordinator.rgb_color,
         "segment_colors": coordinator.segment_colors,
         "segment_brightness": coordinator.segment_brightness,
@@ -178,6 +179,7 @@ def _h6102_capability_resolution(
     profile = coordinator.profile
     data: dict[str, Any] = {
         "configured_app_firmware": entry.data.get(CONF_H6102_APP_FIRMWARE),
+        "configured_app_hardware": entry.data.get(CONF_H6102_APP_HARDWARE),
         "configured_pact": entry.data.get(CONF_H6102_PACT),
         "pact_type": coordinator.pact_type,
         "pact_code": coordinator.pact_code,

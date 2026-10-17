@@ -20,6 +20,7 @@ from .music_semantics import (
 DOMAIN = "ha_govee_led_ble"
 CONF_MODEL = "model"
 CONF_H6102_APP_FIRMWARE = "h6102_app_firmware"
+CONF_H6102_APP_HARDWARE = "h6102_app_hardware"
 CONF_H6102_PACT = "h6102_pact"
 CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
@@ -647,6 +648,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         support_quality=SupportQuality.EXPERIMENTAL,
         command_grammar="H617A",
         status_grammar="H6102",
+        colour_mode_query_selector=1,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
         static_readback_gradual=True,

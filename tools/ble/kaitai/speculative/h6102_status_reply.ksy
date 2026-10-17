@@ -10,7 +10,7 @@ doc: |
   SPECULATIVE H6102, issue #115.
   Evidence source class: reachable Android 7.6.01 producer/consumer code.
   Compatibility hypothesis: the modern
-  DreamColor route uses the shared power/brightness/identity/mode fields and
+  DreamColor route uses the shared power/identity/mode fields and
   fifteen logical segments in five three-record A5 pages. No official-app BLE
   capture or complete owner readback qualification is available.
   Android 7.6.01 sources, relative to full/sources/com/govee/:
@@ -33,6 +33,9 @@ doc: |
   Unresolved assumptions: physical mapping/IC count, firmware-specific response presence,
   legacy mode/readback layouts, unknown mode selectors and all unused bytes.
   Preserve these bytes; this root does not enable legacy RGB or A1 DIY writes.
+  Issue #310 supplies AA04 register EB from a Pact 1 device. Master brightness
+  is a raw 20..254 register for Pact 1 and a percentage for Pact 10; the
+  effective profile selects the semantic conversion, not the reply value.
 seq:
   - id: header
     contents: [0xaa]
@@ -78,7 +81,7 @@ types:
         size-eos: true
   brightness_body:
     seq:
-      - id: brightness_pct
+      - id: register
         type: u1
       - id: unknown_tail
         size-eos: true
