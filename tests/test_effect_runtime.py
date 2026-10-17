@@ -63,7 +63,7 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_cata
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_effect_preview import _manager, _open
+from tests.test_effect_preview import _manager, _open, _queue
 from tests.test_music_commands import _music_transport
 
 
@@ -1273,14 +1273,7 @@ async def test_preview_admitted_during_apply_persistence_writes_latest_intent(ha
         try:
             async with asyncio.timeout(5):
                 await persisting.wait()
-                accepted = await manager.async_queue_snapshot(
-                    session_id=session_id,
-                    owner=owner,
-                    config_entry_id="entry-a",
-                    sequence=1,
-                    updated_at="2026-09-17T00:00:01Z",
-                    item=preview_item,
-                )
+                accepted = await _queue(manager, owner, session_id, preview_item, updated_at="2026-09-17T00:00:01Z")
                 await preflighting.wait()
                 assert accepted.accepted and not task.done()
                 physical.assert_not_awaited()
@@ -1354,14 +1347,7 @@ async def test_cancelled_apply_waiter_preserves_newer_preview(hass, monkeypatch,
                 async with asyncio.timeout(2):
                     await admitted.wait()
                     assert not task.done()
-                    accepted = await manager.async_queue_snapshot(
-                        session_id=session_id,
-                        owner=owner,
-                        config_entry_id="entry-a",
-                        sequence=1,
-                        updated_at="2026-09-17T00:00:01Z",
-                        item=preview_item,
-                    )
+                    accepted = await _queue(manager, owner, session_id, preview_item, updated_at="2026-09-17T00:00:01Z")
                     assert accepted.accepted
                     generation = coordinator._control_arbiter.preview_generation
                     task.cancel()
@@ -1518,10 +1504,11 @@ async def test_reconciliation_matches_only_latest_confirmed_selector(
     coordinator = _coordinator()
     coordinator.diy_code = 800
 
-    matched = await EffectDeploymentEngine(repository, cache).async_reconcile(
+    matched = EffectDeploymentEngine(repository, cache).reconcile_current(
         coordinator,
         config_entry_id="entry-a",
         observed_at="2026-08-11T00:01:00Z",
+        refreshed=True,
     )
 
     assert matched.confidence is ObservationConfidence.ACTIVATION_MATCH
@@ -1546,10 +1533,11 @@ async def test_reconciliation_matches_only_latest_confirmed_selector(
     )
     await repository.async_put(uncertain, expected_version=None)
 
-    unmatched = await EffectDeploymentEngine(repository, cache).async_reconcile(
+    unmatched = EffectDeploymentEngine(repository, cache).reconcile_current(
         coordinator,
         config_entry_id="entry-a",
         observed_at="2026-08-11T00:03:00Z",
+        refreshed=True,
     )
 
     assert unmatched.confidence is ObservationConfidence.UNKNOWN
@@ -1559,10 +1547,11 @@ async def test_reconciliation_matches_only_latest_confirmed_selector(
     assert unmatched.active_effect.confidence is ObservationConfidence.UNKNOWN
 
     coordinator.diy_code = 801
-    changed = await EffectDeploymentEngine(repository, cache).async_reconcile(
+    changed = EffectDeploymentEngine(repository, cache).reconcile_current(
         coordinator,
         config_entry_id="entry-a",
         observed_at="2026-08-11T00:04:00Z",
+        refreshed=True,
     )
 
     assert changed.active_effect is None
@@ -1598,10 +1587,11 @@ async def test_reconciliation_matches_scene_deployments_by_raw_selector_code(
     coordinator.effect = None
     coordinator.scene_code = legacy.code
 
-    observed = await EffectDeploymentEngine(repository, cache, active_workspaces).async_reconcile(
+    observed = EffectDeploymentEngine(repository, cache, active_workspaces).reconcile_current(
         coordinator,
         config_entry_id="entry-a",
         observed_at="2026-08-11T00:01:00Z",
+        refreshed=True,
     )
 
     assert observed.matched_operation_id == confirmed.operation_id
@@ -1632,10 +1622,11 @@ async def test_reconciliation_does_not_fall_back_to_scene_name_when_codes_differ
     coordinator.effect = "forest"
     coordinator.scene_code = exact.code
 
-    observed = await EffectDeploymentEngine(repository, cache).async_reconcile(
+    observed = EffectDeploymentEngine(repository, cache).reconcile_current(
         coordinator,
         config_entry_id="entry-a",
         observed_at="2026-08-11T00:01:00Z",
+        refreshed=True,
     )
 
     assert observed.matched_operation_id is None
@@ -1692,9 +1683,6 @@ async def test_matching_flow_workspace_suppresses_saved_sena_selector_history(
     active_workspaces.set(workspace)
     coordinator = _coordinator()
     coordinator.diy_code = 24
-    repository.latest_for_diy_code = MagicMock(wraps=repository.latest_for_diy_code)
-    repository.latest_for_effect = MagicMock(wraps=repository.latest_for_effect)
-    repository.latest_for_profile = MagicMock(wraps=repository.latest_for_profile)
 
     observed = EffectDeploymentEngine(repository, cache, active_workspaces).reconcile_current(
         coordinator,
@@ -1710,9 +1698,6 @@ async def test_matching_flow_workspace_suppresses_saved_sena_selector_history(
     assert observed.active_effect is None
     assert cache.get("entry-a") == observed
     assert active_workspaces.get("entry-a") == workspace
-    repository.latest_for_diy_code.assert_not_called()
-    repository.latest_for_effect.assert_not_called()
-    repository.latest_for_profile.assert_not_called()
 
 
 async def test_matching_flow_workspace_replaces_persisted_sena_hint_after_restart() -> None:
@@ -1847,20 +1832,21 @@ async def test_reconciliation_preserves_native_mode_with_unknown_confidence(
     coordinator = _coordinator()
     setattr(coordinator, mode_attribute, native_mode)
 
-    observed = await EffectDeploymentEngine(repository, cache).async_reconcile(
+    observed = EffectDeploymentEngine(repository, cache).reconcile_current(
         coordinator,
         config_entry_id="entry-a",
         observed_at="2026-08-11T00:00:00Z",
+        refreshed=True,
     )
 
     assert observed.native_mode == native_mode
     assert observed.confidence is ObservationConfidence.UNKNOWN
 
-    coordinator.refresh_state.return_value = False
-    stale = await EffectDeploymentEngine(repository, cache).async_reconcile(
+    stale = EffectDeploymentEngine(repository, cache).reconcile_current(
         coordinator,
         config_entry_id="entry-a",
         observed_at="2026-08-11T00:01:00Z",
+        refreshed=False,
     )
 
     assert stale.native_mode == native_mode

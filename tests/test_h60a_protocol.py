@@ -26,7 +26,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color_temp,
     kelvin_to_rgb,
 )
-from custom_components.ha_govee_led_ble.transport import xor_checksum
+from tests.ble_frames import frame
 
 CAPTURED_PAGES = {
     "H60A6": {
@@ -38,13 +38,6 @@ CAPTURED_PAGES = {
     },
 }
 POWER = bytes.fromhex("aa010100000000000000000000000000000000aa")
-
-
-def frame(prefix: str) -> bytes:
-    """Synthetic frame helper; the captured literals above never pass through it."""
-    body = bytes.fromhex(prefix).ljust(19, b"\x00")
-    assert len(body) == 19
-    return body + bytes([xor_checksum(body)])
 
 
 def qualified(model):

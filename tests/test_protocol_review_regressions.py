@@ -23,12 +23,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command_ack_result,
     parse_status,
 )
-from custom_components.ha_govee_led_ble.transport import xor_checksum
-
-
-def frame(prefix):
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes((xor_checksum(body),))
+from tests.ble_frames import frame
 
 
 @pytest.mark.parametrize("opcode,control", [("30", "strip_direction"), ("31", "camera_position"), ("a3", "gradient")])

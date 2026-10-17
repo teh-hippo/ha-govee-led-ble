@@ -1,10 +1,9 @@
 """Control helpers for the Govee BLE light."""
 
-from collections.abc import Awaitable, Callable, Mapping
-from contextlib import AbstractContextManager
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.light import ColorMode  # type: ignore[attr-defined]
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -29,10 +28,7 @@ from .light_commands import (
     kelvin_to_rgb,
     segments_to_mask,
 )
-from .native_profile_controls import apply_active_video_mode
 from .schema_compat import vol
-
-__all__ = ("apply_active_video_mode", "async_register_light_services")
 
 
 def _segment(value: int | str) -> int:
@@ -44,6 +40,18 @@ def _segment(value: int | str) -> int:
     except (TypeError, ValueError) as err:
         raise vol.Invalid(str(err)) from err
     return value
+
+
+@contextmanager
+def _segment_command_errors() -> Generator[None]:
+    try:
+        yield
+    except (TypeError, ValueError) as err:
+        raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_segments") from err
+    except HomeAssistantError:
+        raise
+    except Exception as err:
+        raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
 
 
 _PERCENTAGE = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
@@ -114,28 +122,12 @@ def async_register_light_services(hass: HomeAssistant) -> None:
         )
 
 
-class _GoveeLightOwner:
-    """Typed surface the service mixin relies on from ``GoveeBLELight``."""
+class _GoveeLightServicesMixin:
+    """Entity-service methods for the Govee BLE light."""
 
     coordinator: GoveeBLECoordinator
-    _attr_color_mode: ColorMode | None
 
     if TYPE_CHECKING:
-
-        def _rollback(self) -> AbstractContextManager[None]: ...
-
-        async def _refresh_with_retry(
-            self,
-            *,
-            expected_on: bool | None = None,
-            expected_brightness: int | None = None,
-            expected_video_mode: str | None = None,
-            expected_video_full_screen: bool | None = None,
-            expected_video_saturation: int | None = None,
-            expected_video_sound_effects: bool | None = None,
-            expected_video_sound_effects_softness: int | None = None,
-            retry_command: Callable[[], Awaitable[None]] | None = None,
-        ) -> None: ...
 
         def _notify_state_changed(self) -> None: ...
 
@@ -143,48 +135,12 @@ class _GoveeLightOwner:
 
         def _require_support(self, service: str, *, supported: bool) -> None: ...
 
-
-class _GoveeLightServicesMixin(_GoveeLightOwner):
-    """Entity-service methods for the Govee BLE light."""
-
-    # fmt: off
-    async def _async_set_video_mode(self, mode: str, saturation: int = 100,
-            capture_region: str | None = None, full_screen: bool = True,
-            sound_effects: bool = False, sound_effects_softness: int | None = None,
-            *, values: Mapping[str, Any] | None = None) -> None:
-        # fmt: on
-        self._require_support("set_video_mode", supported=self.coordinator.profile.supports_video_mode)
-        if sound_effects:
-            self._require_support(
-                "video sound effects",
-                supported=self.coordinator.profile.supports_video_sound_effects,
-            )
-        with self._rollback():
-            c = self.coordinator
-            requested_fs = full_screen if capture_region is None else capture_region == "full"
-            resolved_fs = requested_fs if c.profile.supports_video_capture_region else c.video_full_screen
-            resolved_saturation = saturation if c.profile.supports_video_saturation else c.video_saturation
-            c.profile.validate_video_saturation(resolved_saturation)
-            supports_sound = c.profile.supports_video_sound_effects
-            resolved_sound = sound_effects and supports_sound
-            resolved_softness = (
-                c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
-            )
-            requested = {
-                field: value for field, value in (
-                    ("full_screen", resolved_fs), ("saturation", resolved_saturation),
-                    ("sound_effects", resolved_sound), ("sound_effects_softness", resolved_softness),
-                ) if value != getattr(c, f"video_{field}")
-            }
-            await apply_active_video_mode(c, mode=mode, requested_values=requested, parameters=values)
-        self._notify_state_changed()
-
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
         self._require_support(
             "paint_segments",
             supported=self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb,
         )
-        try:
+        with _segment_command_errors():
             resolved: list[SegmentColorGroup] = [
                 (list(group.get("segments", [])), group["rgb_color"]) for group in groups
             ]
@@ -193,18 +149,6 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             await self._async_supersede_preview()
             async with async_control_intent(self.coordinator, ControlIntent.USER):
                 await self.coordinator.async_paint_segments(resolved)
-        except (TypeError, ValueError) as err:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="invalid_segments",
-            ) from err
-        except HomeAssistantError:
-            raise
-        except Exception as err:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="device_command_failed",
-            ) from err
 
     async def async_set_segment_color(self, segments: list[int], color: tuple[int, int, int]) -> None:
         group: dict[str, Any] = {"segments": segments, "rgb_color": color}
@@ -225,7 +169,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 and c.profile.supports_segment_color_temperature
             ),
         )
-        try:
+        with _segment_command_errors():
             segments = list(segments)
             packet = build_segment_color_temp(segments, color_temp_kelvin, c.model, profile=c.profile)
             expected = kelvin_to_rgb(color_temp_kelvin)
@@ -249,18 +193,6 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                         raise RuntimeError("Failed to confirm segment colour temperature")
                 finally:
                     self._notify_state_changed()
-        except (TypeError, ValueError) as err:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="invalid_segments",
-            ) from err
-        except HomeAssistantError:
-            raise
-        except Exception as err:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="device_command_failed",
-            ) from err
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
         self._require_support(
@@ -269,22 +201,10 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
                 self.coordinator.profile.supports_segments and self.coordinator.profile.supports_segment_brightness
             ),
         )
-        try:
+        with _segment_command_errors():
             segments = list(segments)
             build_segment_brightness(segments, brightness, self.coordinator.model, profile=self.coordinator.profile)
             await self._async_supersede_preview()
             async with async_control_intent(self.coordinator, ControlIntent.USER):
                 await self.coordinator.async_set_segment_brightness(segments, brightness)
                 self._notify_state_changed()
-        except (TypeError, ValueError) as err:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="invalid_segments",
-            ) from err
-        except HomeAssistantError:
-            raise
-        except Exception as err:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="device_command_failed",
-            ) from err

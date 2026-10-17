@@ -47,6 +47,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache, ObservedDeviceState
 from custom_components.ha_govee_led_ble.effect_preview import (
     EffectPreviewManager,
+    PreviewAcceptance,
     PreviewError,
     PreviewHealthPhase,
     PreviewHealthStatus,
@@ -192,7 +193,7 @@ async def _manager(
 
 
 def _open(manager: EffectPreviewManager, owner: object, events: list[PreviewStatus]) -> str:
-    session_id = manager.open_session(owner=owner)
+    session_id = str(uuid4())
     manager.subscribe(
         session_id=session_id,
         owner=owner,
@@ -200,6 +201,28 @@ def _open(manager: EffectPreviewManager, owner: object, events: list[PreviewStat
         listener=events.append,
     )
     return session_id
+
+
+async def _queue(
+    manager: EffectPreviewManager,
+    owner: object,
+    session_id: str,
+    item: LibraryItem,
+    *,
+    sequence: int = 1,
+    updated_at: str = "2026-08-17T00:00:00Z",
+    config_entry_id: str = "entry-a",
+    **options: Any,
+) -> PreviewAcceptance:
+    return await manager.async_queue_snapshot(
+        session_id=session_id,
+        owner=owner,
+        config_entry_id=config_entry_id,
+        sequence=sequence,
+        updated_at=updated_at,
+        item=item,
+        **options,
+    )
 
 
 async def test_worker_preflights_all_but_writes_only_newest_pending_request(
@@ -235,31 +258,10 @@ async def test_worker_preflights_all_but_writes_only_newest_pending_request(
 
     monkeypatch.setattr(effect_preview, "compile_application", compile_recording)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("first", 10),
-    )
+    await _queue(manager, owner, session_id, _item("first", 10))
     await first_started.wait()
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=2,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("second", 20),
-    )
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=3,
-        updated_at="2026-08-17T00:00:02Z",
-        item=_item("third", 30),
-    )
+    await _queue(manager, owner, session_id, _item("second", 20), sequence=2, updated_at="2026-08-17T00:00:01Z")
+    await _queue(manager, owner, session_id, _item("third", 30), sequence=3, updated_at="2026-08-17T00:00:02Z")
     release_first.set()
     await manager.async_wait_idle("entry-a")
 
@@ -304,30 +306,11 @@ async def test_newest_request_can_return_to_the_active_state(
 
     monkeypatch.setattr(effect_preview, "compile_application", compile_recording)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("state-a", 10),
-    )
+    await _queue(manager, owner, session_id, _item("state-a", 10))
     await first_started.wait()
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=2,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("state-b", 20),
-    )
-    acceptance = await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=3,
-        updated_at="2026-08-17T00:00:02Z",
-        item=_item("state-a", 10),
+    await _queue(manager, owner, session_id, _item("state-b", 20), sequence=2, updated_at="2026-08-17T00:00:01Z")
+    acceptance = await _queue(
+        manager, owner, session_id, _item("state-a", 10), sequence=3, updated_at="2026-08-17T00:00:02Z"
     )
     release_first.set()
     await manager.async_wait_idle("entry-a")
@@ -350,14 +333,7 @@ async def test_session_ownership_is_enforced_without_rejecting_rapid_updates(
         manager.require_owner(session_id, object())
 
     for sequence in range(1, 101):
-        acceptance = await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=sequence,
-            updated_at="2026-08-17T00:00:00Z",
-            item=_item(f"request-{sequence}", sequence),
-        )
+        acceptance = await _queue(manager, owner, session_id, _item(f"request-{sequence}", sequence), sequence=sequence)
         assert acceptance.accepted
     await manager.async_wait_idle("entry-a")
     await manager.async_shutdown()
@@ -417,27 +393,13 @@ async def test_failed_sequence_can_retry_same_desired_revision(
     session_id = _open(manager, owner, events)
     item = _item("retry")
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=item,
-    )
+    await _queue(manager, owner, session_id, item)
     await manager.async_wait_idle("entry-a")
     failed_status = events[-1]
     assert failed_status.phase is PreviewPhase.FAILED
 
     coordinator.async_preview_write.side_effect = lambda packet: coordinator.writes.append(packet)
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:01Z",
-        item=item,
-    )
+    await _queue(manager, owner, session_id, item, updated_at="2026-08-17T00:00:01Z")
     await manager.async_wait_idle("entry-a")
 
     written_status = events[-1]
@@ -459,14 +421,7 @@ async def test_status_subscription_is_filtered_to_its_session(
     first_session = _open(manager, first_owner, first_events)
     _open(manager, second_owner, second_events)
 
-    await manager.async_queue_snapshot(
-        session_id=first_session,
-        owner=first_owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("first"),
-    )
+    await _queue(manager, first_owner, first_session, _item("first"))
     await manager.async_wait_idle("entry-a")
 
     assert first_events
@@ -594,15 +549,7 @@ async def test_committed_scene_snapshot_persists_the_written_canonical_body(
         speed_index=_alternate_speed_index(scene),
     )
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=LibraryItem.new("Edited scene", content),
-        persist_default=True,
-    )
+    await _queue(manager, owner, session_id, LibraryItem.new("Edited scene", content), persist_default=True)
     await manager.async_wait_idle("entry-a")
 
     persisted = manager._scene_defaults.get("entry-a", scene.scene_id, scene.effect_id)
@@ -634,15 +581,7 @@ async def test_committed_catalogue_default_removes_the_stored_override(
         speed_index=_alternate_speed_index(scene),
     )
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=LibraryItem.new("Edited scene", changed),
-        persist_default=True,
-    )
+    await _queue(manager, owner, session_id, LibraryItem.new("Edited scene", changed), persist_default=True)
     await manager.async_wait_idle("entry-a")
     assert manager._scene_defaults.get("entry-a", scene.scene_id, scene.effect_id) is not None
     assert (
@@ -650,13 +589,13 @@ async def test_committed_catalogue_default_removes_the_stored_override(
         == "set"
     )
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
+    await _queue(
+        manager,
+        owner,
+        session_id,
+        LibraryItem.new("Catalogue scene", content),
         sequence=2,
         updated_at="2026-08-17T00:00:01Z",
-        item=LibraryItem.new("Catalogue scene", content),
         persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
@@ -682,13 +621,11 @@ async def test_committed_catalogue_template_snapshot_sets_and_resets_default(
     assert isinstance(template.content, SingleEffect)
     origin = Origin(SourceKind.CATALOGUE_TEMPLATE, template.id)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=LibraryItem.new("Fade", replace(template.content, speed=75), origin=origin),
+    await _queue(
+        manager,
+        owner,
+        session_id,
+        LibraryItem.new("Fade", replace(template.content, speed=75), origin=origin),
         persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
@@ -702,13 +639,13 @@ async def test_committed_catalogue_template_snapshot_sets_and_resets_default(
         == "set"
     )
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
+    await _queue(
+        manager,
+        owner,
+        session_id,
+        LibraryItem.new("Fade", template.content, origin=origin),
         sequence=2,
         updated_at="2026-08-17T00:00:01Z",
-        item=LibraryItem.new("Fade", template.content, origin=origin),
         persist_default=True,
     )
     await manager.async_wait_idle("entry-a")
@@ -742,15 +679,7 @@ async def test_failed_committed_scene_snapshot_does_not_persist(
         speed_index=_alternate_speed_index(scene),
     )
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=LibraryItem.new("Edited scene", content),
-        persist_default=True,
-    )
+    await _queue(manager, owner, session_id, LibraryItem.new("Edited scene", content), persist_default=True)
     await manager.async_wait_idle("entry-a")
 
     assert manager._scene_defaults.get("entry-a", scene.scene_id, scene.effect_id) is None
@@ -783,15 +712,7 @@ async def test_scene_default_storage_failure_is_reported_after_transport(
         speed_index=_alternate_speed_index(scene),
     )
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=LibraryItem.new("Edited scene", content),
-        persist_default=True,
-    )
+    await _queue(manager, owner, session_id, LibraryItem.new("Edited scene", content), persist_default=True)
     await manager.async_wait_idle("entry-a")
 
     assert events[-1].phase is PreviewPhase.FAILED
@@ -868,23 +789,9 @@ async def test_transport_failure_does_not_delay_newest_request(
     owner = object()
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("fails"),
-    )
+    await _queue(manager, owner, session_id, _item("fails"))
     await failed_write_started.wait()
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=2,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("retained", 60),
-    )
+    await _queue(manager, owner, session_id, _item("retained", 60), sequence=2, updated_at="2026-08-17T00:00:01Z")
     release_failure.set()
     async with asyncio.timeout(0.2):
         await manager.async_wait_idle("entry-a")
@@ -913,14 +820,7 @@ async def test_latest_verification_is_read_only_without_holding_control_lock(
     owner = object()
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("verified"),
-    )
+    await _queue(manager, owner, session_id, _item("verified"))
     await manager.async_wait_idle("entry-a")
 
     coordinator.async_observe_effect.assert_awaited_once()
@@ -942,14 +842,7 @@ async def test_silent_preview_remains_written_until_read_only_check_confirms(
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("silent"),
-    )
+    await _queue(manager, owner, session_id, _item("silent"))
     await manager.async_wait_idle("entry-a")
 
     health = manager.health("entry-a")
@@ -1052,24 +945,10 @@ async def test_stale_in_progress_verification_finishes_but_cannot_publish(
     owner = object()
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("first"),
-    )
+    await _queue(manager, owner, session_id, _item("first"))
     await first_observation_started.wait()
     writes_before_newer = coordinator.async_preview_write.await_count
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=2,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("second", 60),
-    )
+    await _queue(manager, owner, session_id, _item("second", 60), sequence=2, updated_at="2026-08-17T00:00:01Z")
     await asyncio.sleep(0)
     assert coordinator.async_preview_write.await_count == writes_before_newer
 
@@ -1117,14 +996,7 @@ async def test_workshop_preview_verifies_evidenced_selector(
     compiled = compile_application(item, model, diy_code=resolve_diy_code(item, model=model))
     assert isinstance(compiled, CompiledEffect)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=item,
-    )
+    await _queue(manager, owner, session_id, item)
     await manager.async_wait_idle("entry-a")
 
     coordinator.async_observe_effect.assert_awaited_once_with(
@@ -1207,7 +1079,7 @@ async def test_snapshot_profile_previews_use_preview_transport(
 
         coordinator._client.write_gatt_char.side_effect = acknowledge_upload
     if model == "H6199":
-        from tests.test_h6099 import frame
+        from tests.ble_frames import frame
         from tests.test_h6199_capabilities import QUALIFIED
 
         vars(coordinator).update(QUALIFIED)
@@ -1227,14 +1099,7 @@ async def test_snapshot_profile_previews_use_preview_transport(
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=item,
-    )
+    await _queue(manager, owner, session_id, item)
     await manager.async_wait_idle("entry-a")
 
     coordinator.async_preview_write.assert_awaited()
@@ -1321,14 +1186,7 @@ async def test_successful_unsaved_preview_invalidates_persistent_observed_match(
     owner = object()
     session_id = _open(manager, owner, [])
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("invalidate"),
-    )
+    await _queue(manager, owner, session_id, _item("invalidate"))
     await manager.async_wait_idle("entry-a")
 
     observed = cache.get("entry-a")
@@ -1367,36 +1225,15 @@ async def test_config_unload_waits_for_atomic_write_and_drops_pending_work(
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
     session_id = _open(manager, owner, [])
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("active"),
-    )
+    await _queue(manager, owner, session_id, _item("active"))
     await write_started.wait()
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=2,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("pending", 60),
-    )
+    await _queue(manager, owner, session_id, _item("pending", 60), sequence=2, updated_at="2026-08-17T00:00:01Z")
 
     unload = asyncio.create_task(manager.async_unload_device("entry-a"))
     await asyncio.sleep(0)
     assert not unload.done()
     with pytest.raises(PreviewError, match="not loaded"):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=3,
-            updated_at="2026-08-17T00:00:02Z",
-            item=_item("rejected", 70),
-        )
+        await _queue(manager, owner, session_id, _item("rejected", 70), sequence=3, updated_at="2026-08-17T00:00:02Z")
     release_write.set()
     await unload
 
@@ -1437,14 +1274,7 @@ async def test_higher_intent_waits_for_complete_atomic_preview_sequence(
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=item,
-    )
+    await _queue(manager, owner, session_id, item)
     await manager.async_wait_idle("entry-a")
     assert foreground is not None
     await foreground
@@ -1491,14 +1321,7 @@ async def test_preview_admitted_during_foreground_intent_applies_after_release(
     foreground = asyncio.create_task(hold_foreground())
     await foreground_acquired.wait()
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("after foreground"),
-    )
+    await _queue(manager, owner, session_id, _item("after foreground"))
     await asyncio.sleep(0)
     coordinator.async_preview_write.assert_not_awaited()
 
@@ -1533,23 +1356,9 @@ async def test_session_cancel_finishes_active_sequence_without_replaying_pending
     owner = object()
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("active"),
-    )
+    await _queue(manager, owner, session_id, _item("active"))
     await write_started.wait()
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=2,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("pending", 60),
-    )
+    await _queue(manager, owner, session_id, _item("pending", 60), sequence=2, updated_at="2026-08-17T00:00:01Z")
 
     await manager.async_cancel(
         session_id=session_id,
@@ -1583,14 +1392,7 @@ async def test_shutdown_marks_active_sequence_incomplete_and_rejects_new_session
     owner = object()
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("shutdown"),
-    )
+    await _queue(manager, owner, session_id, _item("shutdown"))
     await write_started.wait()
 
     shutdown = asyncio.create_task(manager.async_shutdown())
@@ -1605,7 +1407,7 @@ async def test_shutdown_marks_active_sequence_incomplete_and_rejects_new_session
         for event in events
     )
     with pytest.raises(PreviewShutdownError):
-        manager.open_session(owner=object())
+        manager.ensure_session(str(uuid4()), object())
 
 
 async def test_scene_preview_validation_errors(
@@ -1648,7 +1450,7 @@ async def test_scene_preview_validation_errors(
 @pytest.mark.parametrize("fresh", [False, True])
 async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeypatch, fresh):
     from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_blank_screen_query
-    from tests.test_h6099 import frame
+    from tests.ble_frames import frame
 
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6099", configuration_url="test")
     coordinator._notify_callback(None, bytearray(frame("aaa90a0600020a007800")))
@@ -1680,13 +1482,12 @@ async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeyp
     owner, events = object(), []
     session_id = _open(manager, owner, events)
     try:
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
+        await _queue(
+            manager,
+            owner,
+            session_id,
+            LibraryItem.new("Toggle", VideoProfile("H6099", "movie", True, 70, False, 40, None, None, True)),
             updated_at="2026-09-15T00:00:00Z",
-            item=LibraryItem.new("Toggle", VideoProfile("H6099", "movie", True, 70, False, 40, None, None, True)),
         )
         await asyncio.wait_for(manager.async_wait_idle("entry-a"), 1)
         writes = [call.args[1] for call in client.write_gatt_char.await_args_list]
@@ -1708,41 +1509,13 @@ async def test_preview_acceptance_rejects_stale_unloading_and_incompatible_reque
     session_id = _open(manager, owner, [])
 
     with pytest.raises(PreviewSequenceError, match="from 1"):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=0,
-            updated_at="2026-08-17T00:00:00Z",
-            item=_item("zero"),
-        )
+        await _queue(manager, owner, session_id, _item("zero"), sequence=0)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("first"),
-    )
-    retry = await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:01Z",
-        item=_item("same physical state"),
-    )
+    await _queue(manager, owner, session_id, _item("first"))
+    retry = await _queue(manager, owner, session_id, _item("same physical state"), updated_at="2026-08-17T00:00:01Z")
     assert retry.accepted
     with pytest.raises(PreviewSequenceError, match="different desired states"):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-08-17T00:00:01Z",
-            item=_item("different", 60),
-        )
+        await _queue(manager, owner, session_id, _item("different", 60), updated_at="2026-08-17T00:00:01Z")
     await manager.async_wait_idle("entry-a")
 
     incompatible = LibraryItem.new(
@@ -1760,36 +1533,15 @@ async def test_preview_acceptance_rejects_stale_unloading_and_incompatible_reque
         ),
     )
     with pytest.raises(PreviewError, match="not supported"):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=2,
-            updated_at="2026-08-17T00:00:02Z",
-            item=incompatible,
-        )
+        await _queue(manager, owner, session_id, incompatible, sequence=2, updated_at="2026-08-17T00:00:02Z")
 
     await manager.async_unload_device("entry-a")
     with pytest.raises(PreviewError, match="not loaded"):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=2,
-            updated_at="2026-08-17T00:00:02Z",
-            item=_item("unloading"),
-        )
+        await _queue(manager, owner, session_id, _item("unloading"), sequence=2, updated_at="2026-08-17T00:00:02Z")
     await manager.async_load_device("entry-a")
     manager._stopping = True
     with pytest.raises(PreviewShutdownError):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=2,
-            updated_at="2026-08-17T00:00:02Z",
-            item=_item("stopping"),
-        )
+        await _queue(manager, owner, session_id, _item("stopping"), sequence=2, updated_at="2026-08-17T00:00:02Z")
     await manager.async_shutdown()
 
 
@@ -1820,14 +1572,7 @@ async def test_pending_verification_is_cancelled_by_new_work_cancel_unload_and_s
         verification_task=verification,
         verification_request=request,
     )
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("new"),
-    )
+    await _queue(manager, owner, session_id, _item("new"))
     await asyncio.gather(verification, return_exceptions=True)
     await manager.async_wait_idle("entry-a")
 
@@ -1876,14 +1621,7 @@ async def test_compilation_failure_is_reported_without_writing(
 
     monkeypatch.setattr(effect_preview, "compile_application", compile_failure)
     with pytest.raises(PreviewError, match="invalid"):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-08-17T00:00:00Z",
-            item=_item("invalid"),
-        )
+        await _queue(manager, owner, session_id, _item("invalid"))
     await manager.async_wait_idle("entry-a")
 
     coordinator.async_preview_write.assert_not_awaited()
@@ -1902,14 +1640,7 @@ async def test_ineligible_preview_preserves_active_admission(hass, monkeypatch, 
     owner = object()
     session_id = _open(manager, owner, events)
     content = SingleEffect(0, 0, 50, ((255, 0, 0), (0, 0, 255)))
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=LibraryItem.new("Valid", content),
-    )
+    await _queue(manager, owner, session_id, LibraryItem.new("Valid", content))
     pending = manager._devices["entry-a"].pending
     for invalid in (
         replace(content, variant=1),
@@ -1917,14 +1648,7 @@ async def test_ineligible_preview_preserves_active_admission(hass, monkeypatch, 
         replace(content, palette=content.palette[:1]),
     ):
         with pytest.raises(PreviewError):
-            await manager.async_queue_snapshot(
-                session_id=session_id,
-                owner=owner,
-                config_entry_id="entry-a",
-                sequence=2,
-                updated_at="2026-08-17T00:00:00Z",
-                item=LibraryItem.new("Invalid", invalid),
-            )
+            await _queue(manager, owner, session_id, LibraryItem.new("Invalid", invalid), sequence=2)
         assert manager._devices["entry-a"].pending is pending
         assert manager._sessions[session_id].last_sequence == 1
         assert not any(event.phase is PreviewPhase.CANCELLED for event in events)
@@ -1985,14 +1709,7 @@ async def test_h6179_preview_requires_observed_disposable_approval_before_prefli
     session_id = _open(manager, owner, [])
 
     with pytest.raises(PreviewError, match="explicitly approved disposable DIY code"):
-        await manager.async_queue_snapshot(
-            session_id=session_id,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-09-03T00:00:00Z",
-            item=_h6179_item(),
-        )
+        await _queue(manager, owner, session_id, _h6179_item(), updated_at="2026-09-03T00:00:00Z")
 
     coordinator.async_preview_preflight.assert_not_awaited()
     coordinator.async_preview_write.assert_not_awaited()
@@ -2015,15 +1732,7 @@ async def test_h6179_preview_decodes_workspace_and_selects_only_after_upload(
     compiled = compile_application(item, "H6179", diy_code=0x1234)
     assert isinstance(compiled, CompiledEffect)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-09-03T00:00:00Z",
-        item=item,
-        diy_code=0x1234,
-    )
+    await _queue(manager, owner, session_id, item, updated_at="2026-09-03T00:00:00Z", diy_code=0x1234)
     await manager.async_wait_idle("entry-a")
 
     assert coordinator.writes == [*compiled.upload_packets, compiled.activation_packet]
@@ -2062,15 +1771,7 @@ async def test_h6179_preview_revalidates_fresh_mode_before_zero_effect_writes(
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-09-03T00:00:00Z",
-        item=_h6179_item(),
-        diy_code=0x1234,
-    )
+    await _queue(manager, owner, session_id, _h6179_item(), updated_at="2026-09-03T00:00:00Z", diy_code=0x1234)
     await manager.async_wait_idle("entry-a")
 
     assert coordinator.writes == []
@@ -2121,15 +1822,7 @@ async def test_h6179_preview_holds_previews_through_admission_check_before_selec
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-09-03T00:00:00Z",
-        item=item,
-        diy_code=0x1234,
-    )
+    await _queue(manager, owner, session_id, item, updated_at="2026-09-03T00:00:00Z", diy_code=0x1234)
     await manager.async_wait_idle("entry-a")
     assert foreground is not None
     await foreground
@@ -2173,14 +1866,7 @@ async def test_preview_verification_reports_non_successful_readback(
     events: list[PreviewStatus] = []
     session_id = _open(manager, owner, events)
 
-    await manager.async_queue_snapshot(
-        session_id=session_id,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-08-17T00:00:00Z",
-        item=_item("verify"),
-    )
+    await _queue(manager, owner, session_id, _item("verify"))
     await manager.async_wait_idle("entry-a")
 
     assert events[-1].phase is phase

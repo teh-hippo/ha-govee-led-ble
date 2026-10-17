@@ -636,10 +636,6 @@ def test_workshop_compiler_reproduces_fixture_body_with_evidenced_model_activati
     assert compiled.selector_kind == "scene"
     assert compiled.activation_mode.value == "custom"
     if model == "H6199":
-        assert compiled.activation_packet == effect_commands.build_h6199_palette_diy_activation(
-            H6199_WORKSHOP_APPLY_CODE,
-            0,
-        )
         assert compiled.diy_code == H6199_WORKSHOP_APPLY_CODE
         assert compiled.activation_packet == bytes.fromhex("33050492010000000000000000000000000000a1")
     else:

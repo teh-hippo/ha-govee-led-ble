@@ -1,9 +1,7 @@
 import { expect, test } from "vitest";
 
-import {
-  AdvancedEffectEditorController,
-  AUTHORING_LAYER_LIMIT,
-} from "../../src/advanced-effect-editor-controller";
+import { AdvancedEffectEditorController } from "../../src/advanced-effect-editor-controller";
+import { AUTHORING_LAYER_LIMIT } from "../../src/advanced-effect-editor-model";
 import {
   advancedLayerLabels,
   blankAdvancedContent,

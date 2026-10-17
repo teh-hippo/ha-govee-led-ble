@@ -5,7 +5,6 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +14,6 @@ from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.ha_govee_led_ble.const import DOMAIN
-from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
 from custom_components.ha_govee_led_ble.effect_domain import H6179SingleDiyEffect, LibraryItem
 from custom_components.ha_govee_led_ble.effect_services import (
@@ -26,7 +24,7 @@ from custom_components.ha_govee_led_ble.effect_services import (
 )
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
-from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from tests.test_light import _lookup, _stub_light
 
 
 def test_service_registration_uses_home_assistant_entity_targeting(
@@ -80,19 +78,12 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     application.saved_effect_for_apply = saved_effect_for_apply
     apply_saved = AsyncMock(return_value=deployment)
     preview = SimpleNamespace(async_supersede_device=AsyncMock())
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=application,
-            engine=SimpleNamespace(async_apply_saved=apply_saved),
-            preview=preview,
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    entity = GoveeBLELight(
+    entity = _stub_light(
         mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        application=application,
+        engine=SimpleNamespace(async_apply_saved=apply_saved),
+        preview=preview,
+        device_cache=_lookup(),
     )
 
     response = await entity.async_apply_custom_effect(
@@ -121,20 +112,10 @@ async def test_entity_action_requires_one_effect_reference(
     effect: str | None,
     effect_id: str | None,
 ) -> None:
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    entity = GoveeBLELight(
+    entity = _stub_light(
         mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        preview=SimpleNamespace(async_supersede_device=AsyncMock()),
+        device_cache=_lookup(),
     )
 
     with pytest.raises(ServiceValidationError) as error:
@@ -167,20 +148,13 @@ async def test_h6102_custom_effect_action_fails_before_preview_or_deployment(
     apply_saved = AsyncMock()
     preview = SimpleNamespace(async_supersede_device=AsyncMock())
     diagnostics = SimpleNamespace(record=MagicMock())
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=application,
-            engine=SimpleNamespace(async_apply_saved=apply_saved),
-            preview=preview,
-            diagnostics=diagnostics,
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    entity = GoveeBLELight(
+    entity = _stub_light(
         mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        application=application,
+        engine=SimpleNamespace(async_apply_saved=apply_saved),
+        preview=preview,
+        diagnostics=diagnostics,
+        device_cache=_lookup(),
     )
 
     with pytest.raises(ServiceValidationError) as error:

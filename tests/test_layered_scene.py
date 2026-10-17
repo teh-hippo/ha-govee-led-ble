@@ -98,7 +98,7 @@ def _assert_layer_matches(decoded: EffectLayer, parsed: Any) -> None:
         int(parsed.applied_area_start_tenths),
         int(parsed.applied_area_width_tenths),
     )
-    assert (decoded.selection.type, decoded.selection.param_1, decoded.selection.param_2) == (
+    assert (int(decoded.selection.type), decoded.selection.param_1, decoded.selection.param_2) == (
         int(parsed.select_type),
         int(parsed.select_param_1),
         int(parsed.select_param_2),
@@ -108,7 +108,7 @@ def _assert_layer_matches(decoded: EffectLayer, parsed: Any) -> None:
         (
             block.scope_high,
             block.scope_low,
-            block.order,
+            int(block.order),
             block.change_speed,
             block.brightest_retention,
             block.darkest_retention,

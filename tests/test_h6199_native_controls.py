@@ -22,12 +22,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_status,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
-from custom_components.ha_govee_led_ble.transport import xor_checksum
-
-
-def frame(prefix):
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes((xor_checksum(body),))
+from tests.ble_frames import frame
 
 
 def qualify(c):

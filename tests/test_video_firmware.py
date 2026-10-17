@@ -3,6 +3,7 @@
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -178,6 +179,8 @@ async def test_live_payload_changes_with_identity_notifications(hass: HomeAssist
 async def test_preview_rejects_before_admission_and_rechecks_execution(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ):
+    from tests.test_effect_preview import _queue
+
     gated(monkeypatch)
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
     manager = EffectPreviewManager(
@@ -189,32 +192,18 @@ async def test_preview_rejects_before_admission_and_rechecks_execution(
     )
     monkeypatch.setattr(manager, "_loaded_coordinator", lambda _entry: coordinator)
     owner = object()
-    session = manager.open_session(owner=owner)
+    session = str(uuid4())
     statuses: list[PreviewStatus] = []
     manager.subscribe(session_id=session, owner=owner, subscription_id=object(), listener=statuses.append)
     content = VideoProfile("H7000", "movie", None, None, None, None, None, None, None, white_balance_value=1)
     item = LibraryItem.new("Gated", content)
     with pytest.raises(ValueError, match="evidence_gap"):
-        await manager.async_queue_snapshot(
-            session_id=session,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-09-14T00:00:00Z",
-            item=item,
-        )
+        await _queue(manager, owner, session, item, updated_at="2026-09-14T00:00:00Z")
     assert not manager._devices
     coordinator.subordinate_21_version = "9.08.07"
     write = AsyncMock()
     monkeypatch.setattr(coordinator, "async_preview_write", write)
-    await manager.async_queue_snapshot(
-        session_id=session,
-        owner=owner,
-        config_entry_id="entry-a",
-        sequence=1,
-        updated_at="2026-09-14T00:00:00Z",
-        item=item,
-    )
+    await _queue(manager, owner, session, item, updated_at="2026-09-14T00:00:00Z")
     coordinator.subordinate_21_version = None
     await manager.async_wait_idle("entry-a")
     write.assert_not_awaited()
@@ -226,7 +215,7 @@ async def test_preview_rejects_before_admission_and_rechecks_execution(
 async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, change_at):
     import asyncio
 
-    from tests.test_effect_preview import _manager, _open
+    from tests.test_effect_preview import _manager, _open, _queue
 
     gated(monkeypatch)
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
@@ -262,13 +251,8 @@ async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, ch
         coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
     content = VideoProfile("H7000", "movie", None, None, None, None, None, None, None, white_balance_value=1)
     try:
-        await manager.async_queue_snapshot(
-            session_id=session,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-09-14T00:00:00Z",
-            item=LibraryItem.new("Gated preview", content),
+        await _queue(
+            manager, owner, session, LibraryItem.new("Gated preview", content), updated_at="2026-09-14T00:00:00Z"
         )
         await asyncio.wait_for(reached.wait(), timeout=1)
         if change_at == "transport_lock":
@@ -289,7 +273,7 @@ async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, ch
 async def test_preview_forwards_retained_field_guard_to_physical_write(hass, monkeypatch, change_at):
     import asyncio
 
-    from tests.test_effect_preview import _manager, _open
+    from tests.test_effect_preview import _manager, _open, _queue
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     coordinator.profile = replace(
@@ -334,13 +318,8 @@ async def test_preview_forwards_retained_field_guard_to_physical_write(hass, mon
         coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
     content = VideoProfile("H6199", "movie", True, None, False, 50, None, None, None)
     try:
-        await manager.async_queue_snapshot(
-            session_id=session,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-09-14T00:00:00Z",
-            item=LibraryItem.new("Retained preview", content),
+        await _queue(
+            manager, owner, session, LibraryItem.new("Retained preview", content), updated_at="2026-09-14T00:00:00Z"
         )
         await asyncio.wait_for(reached.wait(), timeout=1)
         if change_at == "transport_lock":
@@ -882,7 +861,7 @@ async def test_native_profile_caller_power_and_brightness_keep_whole_guard(hass,
 @pytest.mark.parametrize("route", ["preview", "compiled", "native"])
 async def test_supported_omitted_setting_never_overwrites_new_notification(hass, monkeypatch, route):
     from custom_components.ha_govee_led_ble.transport import xor_checksum
-    from tests.test_effect_preview import _manager, _open
+    from tests.test_effect_preview import _manager, _open, _queue
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     coordinator.is_on = True
@@ -924,14 +903,7 @@ async def test_supported_omitted_setting_never_overwrites_new_notification(hass,
         owner = object()
         statuses = []
         session = _open(manager, owner, statuses)
-        await manager.async_queue_snapshot(
-            session_id=session,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-09-14T00:00:00Z",
-            item=item,
-        )
+        await _queue(manager, owner, session, item, updated_at="2026-09-14T00:00:00Z")
         await manager.async_wait_idle("entry-a")
         assert statuses[-1].phase is PreviewPhase.FAILED
         await manager.async_shutdown()

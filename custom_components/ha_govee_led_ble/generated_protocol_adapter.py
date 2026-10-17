@@ -521,21 +521,6 @@ def parse_h6179_command(frame: bytes) -> ParsedH6179Command | None:
     return ParsedH6179Command(operation=operation, values=values)
 
 
-def parse_h6179_status_query(frame: bytes) -> str | None:
-    """Return the semantic H6179 domain selected by a valid status query."""
-    parsed = _parse_xor_frame(frame, "H6179", _STATUS_QUERY_ROOTS).parsed
-    if parsed is None:
-        return None
-    domain = getattr(parsed.domain, "name", None)
-    if domain is None or not _has_zero_opaque(parsed.body):
-        return None
-    if domain == "mode" and getattr(parsed.body.selector, "name", None) != "current":
-        return None
-    if domain == "hardware" and getattr(parsed.body.selector, "name", None) != "primary":
-        return None
-    return cast(str, domain)
-
-
 def _parse_h6179_status(parsed: Any) -> ParsedH6179Status | None:
     domain = getattr(parsed.domain, "name", None)
     if domain is None:
@@ -575,11 +560,6 @@ def parse_h6179_status_result(frame: bytes) -> ProtocolParseResult:
     if parsed is None:
         return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
     return ProtocolParseResult(parsed, result.parser, None)
-
-
-def parse_h6179_status(frame: bytes) -> ParsedH6179Status | None:
-    """Parse an H6179 reply into stable semantic fields."""
-    return cast(ParsedH6179Status | None, parse_h6179_status_result(frame).parsed)
 
 
 def boolean_control_name(operation: str) -> str | None:

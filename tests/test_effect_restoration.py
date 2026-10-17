@@ -18,13 +18,9 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_
 from custom_components.ha_govee_led_ble.light_commands import parse_static_write
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
-from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import fragment_a3
+from tests.ble_frames import status_frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-
-
-def reply(domain, body):
-    payload = bytes([0xAA, domain, *body]).ljust(19, b"\0")
-    return bytearray(payload + bytes([xor_checksum(payload)]))
 
 
 @pytest.fixture
@@ -60,12 +56,12 @@ def physical(hass, monkeypatch):
             if fault == "stale":
                 return
             if domain == 1 and fault != "missing_power":
-                coordinator._notify_callback(None, reply(1, [int(state["on"])]))
+                coordinator._notify_callback(None, status_frame(1, [int(state["on"])]))
             elif domain == 4 and fault != "missing_brightness":
-                coordinator._notify_callback(None, reply(4, [state["brightness"]]))
+                coordinator._notify_callback(None, status_frame(4, [state["brightness"]]))
             elif domain == 5 and fault != "missing_mode":
                 coordinator._notify_callback(
-                    None, reply(5, [0x13, 0x04, 50, 0, 0, 0, 0, 0] if fault == "mode" else [0x15, 0])
+                    None, status_frame(5, [0x13, 0x04, 50, 0, 0, 0, 0, 0] if fault == "mode" else [0x15, 0])
                 )
             elif domain == 0xA5 and packet[2] == 5:
                 pages = [5, 2, 4, 1, 3] if fault == "reordered" else range(1, 6)
@@ -75,7 +71,7 @@ def physical(hass, monkeypatch):
                     body = [page]
                     for index in range((page - 1) * 3, page * 3):
                         body.extend([state["relative"][index], *state["colours"][index]])
-                    coordinator._notify_callback(None, reply(0xA5, body))
+                    coordinator._notify_callback(None, status_frame(0xA5, body))
 
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit), disconnect=AsyncMock())
     coordinator._client = client

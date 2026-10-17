@@ -55,22 +55,6 @@ DEFAULT_PALETTE: Final = (
 
 
 @dataclass(frozen=True, slots=True)
-class DiyEffectTemplate:
-    id: str
-    label: str
-    family: int
-    variant: int
-
-    def to_dict(self) -> dict[str, JsonValue]:
-        return {
-            "id": self.id,
-            "label": self.label,
-            "family": self.family,
-            "variant": self.variant,
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class DiyEffectVariation:
     id: str
     label: str
@@ -539,63 +523,6 @@ H6179_DIY_FAMILIES: Final = (
 H6179_NATIVE_MUSIC_MODES: Final = (
     NativeModeOption("mode_0", "Mode 1"),
     NativeModeOption("mode_1", "Mode 2"),
-)
-
-H6199_DIY_EFFECTS: Final = (
-    DiyEffectTemplate(
-        "fade",
-        "Fade",
-        0,
-        0,
-    ),
-    DiyEffectTemplate(
-        "jumping",
-        "Jumping",
-        1,
-        0,
-    ),
-    DiyEffectTemplate(
-        "twinkle",
-        "Twinkle",
-        2,
-        0,
-    ),
-    DiyEffectTemplate(
-        "marquee",
-        "Marquee",
-        3,
-        3,
-    ),
-    DiyEffectTemplate(
-        "music",
-        "Music",
-        4,
-        8,
-    ),
-    DiyEffectTemplate(
-        "chasing",
-        "Chasing",
-        8,
-        9,
-    ),
-    DiyEffectTemplate(
-        "chasing_counterclockwise",
-        "Chasing Counterclockwise",
-        8,
-        10,
-    ),
-    DiyEffectTemplate(
-        "rainbow",
-        "Rainbow",
-        9,
-        9,
-    ),
-    DiyEffectTemplate(
-        "crossing",
-        "Crossing",
-        10,
-        0,
-    ),
 )
 
 H6199_PALETTE_DIY_FAMILIES: Final = (

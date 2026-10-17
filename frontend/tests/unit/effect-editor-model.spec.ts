@@ -11,8 +11,6 @@ import {
   installLibraryItemEditorMetadata,
   isEditableEffectContent,
   libraryItemSyncResult,
-  libraryKindPriority,
-  mergedPaintBrushes,
   PAINTED_SEGMENT_COUNT,
   reactiveParameterValueText,
   serialiseEditable,
@@ -267,18 +265,6 @@ test("paint draft defaults every segment to explicit off", () => {
   );
 });
 
-test("paint brushes remove duplicates and retain the eight-colour limit", () => {
-  const brushes = mergedPaintBrushes([
-    [255, 0, 0],
-    [255, 0, 0],
-    [1, 2, 3],
-  ]);
-
-  expect(brushes[0]).toEqual([255, 0, 0]);
-  expect(brushes[1]).toEqual([1, 2, 3]);
-  expect(brushes).toHaveLength(8);
-});
-
 test("editable clones and serialisation isolate nested state", () => {
   const source = {
     kind: "music_profile" as const,
@@ -366,23 +352,6 @@ test("library summaries retain model metadata and stable ordering", () => {
   expect(summaries[0].model).toBe("H617A");
   expect(isEditableEffectContent(item.content)).toBe(true);
   expect(customEffectCategoryForKind(item.content.kind)).toBe("single-layer");
-  const paletteCatalogue = {
-    ...catalogue,
-    apply: {
-      ...catalogue.apply,
-      single: "unsupported",
-      palette_diy: "supported",
-    },
-  } satisfies ModelEffectCatalogue;
-  expect(libraryKindPriority("palette_diy", paletteCatalogue)).toBeLessThan(
-    libraryKindPriority("workshop", paletteCatalogue),
-  );
-  expect(libraryKindPriority("workshop", paletteCatalogue)).toBeLessThan(
-    libraryKindPriority("music_profile", paletteCatalogue),
-  );
-  expect(libraryKindPriority("music_profile", catalogue)).toBeLessThan(
-    libraryKindPriority("workshop", catalogue),
-  );
 });
 
 test("library updates distinguish removal, conflicts, and safe reloads", () => {

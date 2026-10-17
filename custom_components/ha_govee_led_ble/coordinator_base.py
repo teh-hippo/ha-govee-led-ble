@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile
-from .control_arbiter import BLEControlArbiter, ControlIntent
+from .control_arbiter import ControlIntent
 from .coordinator_status import ParsedMode
 
 if TYPE_CHECKING:
@@ -21,23 +21,14 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     mixin type-checks without importing the concrete coordinator. No ``__init__`` here.
     """
 
-    brightness_pct: int
     profile: ModelProfile
-    address: str
     model: str
-    effect_families: frozenset[str]
-    effect_categories: frozenset[str]
-    prefix_effect_names: bool
-    always_include_custom_effects: bool
     is_on: bool
     effect: str | None
-    fw_version: str | None
-    hw_version: str | None
     rgb_color: tuple[int, int, int]
     color_temp_kelvin: int | None
     rgb_color_source: str
     color_temp_kelvin_source: str
-    white_brightness: int
     music_mode: str
     video_mode: str
     music_sensitivity: int
@@ -45,9 +36,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     music_calm: bool
     diy_code: int | None
     color_mode: ParsedMode | None
-    _control_lock: BLEControlArbiter
     _pre_mode_snapshot: PreModeSnapshot
-    segment_colors: list[tuple[int, int, int]]
 
     def install_static_color(
         self, *, rgb: tuple[int, int, int] | None = None, kelvin: int | None = None, source: str = "optimistic"
@@ -91,6 +80,3 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             expected_scene_code: int | None = None,
             expected_on: bool | None = None,
         ) -> bool: ...
-
-        @property
-        def scene_name_set(self) -> frozenset[str]: ...

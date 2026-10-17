@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from collections import Counter
 from dataclasses import replace
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -38,6 +38,7 @@ from custom_components.ha_govee_led_ble.native_scenes import apply_scene_speed, 
 from custom_components.ha_govee_led_ble.palette_scene_decoder import decode_catalogue_palette_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, SceneEntry
 from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
+from tests.test_layered_scene import _assert_layer_matches
 
 _LAYERED_SCENE_TYPE = int(SceneBody.SceneType.scene_v2)
 
@@ -83,63 +84,6 @@ def test_all_legacy_h617e_saved_scenes_remain_compilable() -> None:
         )
 
 
-def _assert_movement(decoded: Any, parsed: Any) -> None:
-    assert decoded.enabled is bool(parsed.enabled)
-    assert decoded.enter_exit is bool(parsed.enter_exit_effect)
-    assert decoded.direction == int(parsed.direction)
-    assert decoded.distance == int(parsed.interval)
-    assert decoded.speed == int(parsed.speed)
-    assert decoded.unknown_flags == int(parsed.unknown_flags)
-
-
-def _assert_layer(decoded: Any, parsed: Any) -> None:
-    assert (decoded.area.start_tenths, decoded.area.width_tenths) == (
-        int(parsed.applied_area_start_tenths),
-        int(parsed.applied_area_width_tenths),
-    )
-    assert (int(decoded.selection.type), decoded.selection.param_1, decoded.selection.param_2) == (
-        int(parsed.select_type),
-        int(parsed.select_param_1),
-        int(parsed.select_param_2),
-    )
-    assert decoded.brightness_gradient is bool(parsed.brightness_is_gradient)
-    assert [
-        (
-            block.scope_high,
-            block.scope_low,
-            int(block.order),
-            block.change_speed,
-            block.brightest_retention,
-            block.darkest_retention,
-        )
-        for block in decoded.brightness_patterns
-    ] == [
-        (
-            int(block.scope_high),
-            int(block.scope_low),
-            int(block.order),
-            int(block.change_speed),
-            int(block.retention_brightest),
-            int(block.retention_darkest),
-        )
-        for block in parsed.brightness_blocks
-    ]
-    assert (decoded.distribution.method, decoded.distribution.backwards) == (
-        int(parsed.distribution_method),
-        bool(parsed.direction_is_backward),
-    )
-    assert (decoded.colour_speed, decoded.colour_retention) == (
-        int(parsed.colour_speed),
-        int(parsed.colour_retention),
-    )
-    assert decoded.palette == tuple((int(colour.r), int(colour.g), int(colour.b)) for colour in parsed.palette)
-    _assert_movement(decoded.selected_movement, parsed.selected_area_movement)
-    _assert_movement(decoded.overall_movement, parsed.overall_movement)
-    assert decoded.priority == int(parsed.priority)
-    assert decoded.unknown_flags == int(parsed.unknown_flags)
-    assert decoded.excess == bytes(parsed.excess)
-
-
 def test_all_committed_type_2_scenes_decode_losslessly() -> None:
     scene_counts: Counter[str] = Counter()
     layer_count = 0
@@ -174,7 +118,7 @@ def test_all_committed_type_2_scenes_decode_losslessly() -> None:
             assert encode_layered_scene(decoded) == raw_param
             assert len(decoded.effect.layers) == len(parsed.records)
             for layer, record in zip(decoded.effect.layers, parsed.records, strict=True):
-                _assert_layer(layer, record.body)
+                _assert_layer_matches(layer, record.body)
                 catalogue_unknown_flags += layer.unknown_flags
                 catalogue_unknown_flags += layer.selected_movement.unknown_flags
                 catalogue_unknown_flags += layer.overall_movement.unknown_flags

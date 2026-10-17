@@ -70,13 +70,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
-
-
-def frame(prefix: str) -> bytes:
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    assert len(body) == 19
-    return body + bytes((xor_checksum(body),))
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.ble_frames import frame
 
 
 def test_exact_profile_and_truthful_effect_authorization() -> None:

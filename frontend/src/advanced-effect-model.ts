@@ -354,10 +354,6 @@ export function isKnownBrightnessOrder(
   return KNOWN_BRIGHTNESS_ORDERS.includes(value as BrightnessOrder);
 }
 
-export function bytePercent(value: number): number {
-  return Math.round((clampInteger(value, 0, 255) / 255) * 100);
-}
-
 interface AppliedAreaBounds {
   start: number;
   end: number;

@@ -34,11 +34,6 @@ import type { AppliedAreaChange } from "./applied-area-control";
 import "./applied-area-control";
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./palette-editor";
-export {
-  blankAdvancedContent,
-  cloneAdvancedContent,
-  cloneLayeredSceneContent,
-} from "./advanced-effect-model";
 import type { CheckboxControlChange } from "./checkbox-control";
 import "./checkbox-control";
 import "./reorderable-strip";

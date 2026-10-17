@@ -29,8 +29,8 @@ from custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameter
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import MusicBody, build_brightness
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
-from tests.test_effect_preview import _manager, _open
-from tests.test_h6099_music import frame
+from tests.ble_frames import frame
+from tests.test_effect_preview import _manager, _open, _queue
 from tests.test_music_commands import _music_transport
 
 PALETTE = ((12, 34, 56), (78, 90, 123))
@@ -228,14 +228,7 @@ async def test_public_preview_preserves_palette_and_geometry_guards(hass, monkey
         with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
             monkeypatch.setattr(coordinator, "async_preview_preflight", AsyncMock(side_effect=preflight))
             monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))
-            await manager.async_queue_snapshot(
-                session_id=session,
-                owner=owner,
-                config_entry_id="entry-a",
-                sequence=1,
-                updated_at="2026-09-15T00:00:00Z",
-                item=item,
-            )
+            await _queue(manager, owner, session, item, updated_at="2026-09-15T00:00:00Z")
             await manager.async_wait_idle("entry-a")
             if stale:
                 assert events[-1].phase is PreviewPhase.FAILED

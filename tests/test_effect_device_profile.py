@@ -31,9 +31,9 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import music_body_parameters, prepare_music_profile_writes
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
-from tests.test_effect_preview import _manager, _open
+from tests.ble_frames import frame
+from tests.test_effect_preview import _manager, _open, _queue
 from tests.test_effect_websocket import _setup_backend
-from tests.test_h6099_music import frame
 from tests.test_music_commands import _music_transport as _transport
 
 
@@ -203,14 +203,7 @@ async def test_preview_rechecks_geometry_after_preflight_and_at_write(hass, monk
                 await original_write(*args, **kwargs)
 
             monkeypatch.setattr(coordinator, "async_preview_write", changed_write)
-        await manager.async_queue_snapshot(
-            session_id=session,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-09-15T00:00:00Z",
-            item=_item(kind),
-        )
+        await _queue(manager, owner, session, _item(kind), updated_at="2026-09-15T00:00:00Z")
         await manager.async_wait_idle("entry-a")
         if stage == "unchanged":
             assert events[-1].phase is PreviewPhase.CONFIRMED

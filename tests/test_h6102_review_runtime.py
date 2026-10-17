@@ -27,8 +27,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_profile_writes
+from tests.ble_frames import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_h6199_native_controls import frame
 
 
 @pytest.fixture

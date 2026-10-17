@@ -30,12 +30,7 @@ from custom_components.ha_govee_led_ble.h6099_controls import (
     installation_direction_value,
 )
 from custom_components.ha_govee_led_ble.light_services import async_register_light_services
-from custom_components.ha_govee_led_ble.transport import xor_checksum
-
-
-def frame(prefix: str) -> bytes:
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes((xor_checksum(body),))
+from tests.ble_frames import frame
 
 
 def test_exact_builders_and_generic_status_root() -> None:

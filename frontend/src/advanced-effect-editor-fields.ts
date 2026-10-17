@@ -20,14 +20,6 @@ import type { SliderControlChange } from "./slider-control";
 import type { EffectLayer } from "./types";
 import { clampInteger } from "./ui-utils";
 
-export {
-  FILL_PATTERN_LABELS,
-  FILL_PATTERN_PARAMETERS,
-  fillPatternParameters,
-  type FillPatternParameter,
-  type FillPatternParameterKey,
-} from "./advanced-effect-editor-model";
-
 export function renderFillPatternControls(
   layer: EffectLayer,
   disabled: boolean,

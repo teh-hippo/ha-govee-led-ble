@@ -368,25 +368,6 @@ class EffectDeploymentEngine:
             self._publish_coordinator_state(coordinator)
         return result
 
-    async def async_reconcile(
-        self,
-        coordinator: GoveeBLECoordinator,
-        *,
-        config_entry_id: str,
-        observed_at: str,
-    ) -> ObservedDeviceState:
-        async with async_control_intent(
-            coordinator,
-            ControlIntent.BACKGROUND,
-        ):
-            refreshed = await self._async_refresh_for_reconciliation(coordinator)
-            return self.reconcile_current(
-                coordinator,
-                config_entry_id=config_entry_id,
-                observed_at=observed_at,
-                refreshed=refreshed,
-            )
-
     def reconcile_current(
         self,
         coordinator: GoveeBLECoordinator,
@@ -892,22 +873,6 @@ class EffectDeploymentEngine:
                 "Failed to persist the terminal state for Effect Studio deployment %s",
                 record.operation_id,
             )
-
-    async def _async_refresh_for_reconciliation(
-        self,
-        coordinator: GoveeBLECoordinator,
-    ) -> bool:
-        if not coordinator.profile.state_readable:
-            return False
-        try:
-            return await coordinator.refresh_state()
-        except Exception:
-            _LOGGER.debug(
-                "Could not refresh %s before Effect Studio reconciliation",
-                getattr(coordinator, "address", coordinator.model),
-                exc_info=True,
-            )
-            return False
 
     async def _async_prepare_prior_state(
         self,

@@ -25,15 +25,10 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     upload_ack_success,
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
-from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import fragment_a3
+from tests.ble_frames import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_effect_preview import _manager, _open
-
-
-def frame(prefix):
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes((xor_checksum(body),))
-
+from tests.test_effect_preview import _manager, _open, _queue
 
 MUSIC_OK = frame("a3413000")
 MUSIC_NO = frame("a3413001")
@@ -323,14 +318,7 @@ async def test_real_preview_path_upload_ack_then_own_selector(connected, hass, m
     owner = object()
     session = _open(manager, owner, events)
     try:
-        await manager.async_queue_snapshot(
-            session_id=session,
-            owner=owner,
-            config_entry_id="entry-a",
-            sequence=1,
-            updated_at="2026-09-16T00:00:00Z",
-            item=LibraryItem.new("Preview", content),
-        )
+        await _queue(manager, owner, session, LibraryItem.new("Preview", content), updated_at="2026-09-16T00:00:00Z")
         await asyncio.wait_for(manager.async_wait_idle("entry-a"), 2)
         assert final in written
         if positive:

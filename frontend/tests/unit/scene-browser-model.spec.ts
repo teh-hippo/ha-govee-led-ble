@@ -6,7 +6,6 @@ import {
   initialSceneBrowserState,
   nativeSceneActions,
   normaliseSceneName,
-  previewMayChangeSceneDefault,
   sceneBrowserCategories,
   sceneBrowserEntries,
   sceneHasParameterSurface,
@@ -112,38 +111,6 @@ test("palette inspection data does not create a parameter surface", () => {
 
   expect(sceneHasParameterSurface(paletteScene)).toBe(false);
   expect(sceneHasParameterSurface({ ...paletteScene, speed: scene.speed })).toBe(true);
-});
-
-test("settled scene preview statuses trigger an authoritative default refresh", () => {
-  const status = {
-    session_id: "session-a",
-    sequence: 1,
-    config_entry_id: "entry-a",
-    phase: "written" as const,
-    content_kind: "scene_layered",
-    confidence: "write_completed" as const,
-    error_code: null,
-    error_message: null,
-    write_disposition: "completed" as const,
-    persist_default: true,
-    scene_id: 1,
-    effect_id: 2,
-    default_action: "set" as const,
-  };
-
-  expect(previewMayChangeSceneDefault(status, "entry-a")).toBe(false);
-  expect(
-    previewMayChangeSceneDefault(
-      {
-        ...status,
-        phase: "failed",
-        error_code: "transport_failed",
-        write_disposition: "may_have_started",
-      },
-      "entry-a",
-    ),
-  ).toBe(true);
-  expect(previewMayChangeSceneDefault(status, "entry-b")).toBe(false);
 });
 
 test("scene content clones do not share editable colour arrays", () => {

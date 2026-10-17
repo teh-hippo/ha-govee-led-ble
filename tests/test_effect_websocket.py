@@ -67,6 +67,21 @@ def _content(speed: int = 50) -> dict[str, Any]:
     return effect_content_to_dict(SingleEffect(0, 0, speed, ((255, 0, 0),)))
 
 
+async def _ws(client, message_type: str, **fields: Any) -> Any:
+    await client.send_json_auto_id({"type": message_type, **fields})
+    return await client.receive_json()
+
+
+def _loaded_entry(hass: HomeAssistant, monkeypatch, runtime_data: Any) -> SimpleNamespace:
+    entry = SimpleNamespace(entry_id="entry-a", domain=DOMAIN, state=ConfigEntryState.LOADED, runtime_data=runtime_data)
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_get_entry",
+        lambda entry_id: entry if entry_id == entry.entry_id else None,
+    )
+    return entry
+
+
 async def test_light_entity_resolution_requires_one_enabled_integration_light(
     hass: HomeAssistant,
     entity_registry,
@@ -115,12 +130,9 @@ async def test_authenticated_users_can_read_contracts(
     await _setup_backend(hass)
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
 
-    await client.send_json_auto_id({"type": WS_INFO})
-    info = await client.receive_json()
-    await client.send_json_auto_id({"type": WS_LIBRARY_LIST})
-    library = await client.receive_json()
-    await client.send_json_auto_id({"type": WS_CUSTOM_CATALOGUE})
-    catalogue = await client.receive_json()
+    info = await _ws(client, WS_INFO)
+    library = await _ws(client, WS_LIBRARY_LIST)
+    catalogue = await _ws(client, WS_CUSTOM_CATALOGUE)
 
     assert info["result"]["api_version"] == EDITOR_API_VERSION
     assert "drafts_per_owner" not in info["result"]["limits"]
@@ -145,14 +157,7 @@ async def test_non_admin_cannot_mutate_library(
     await _setup_backend(hass)
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_CREATE,
-            "name": "Test",
-            "content": _content(),
-        }
-    )
-    response = await client.receive_json()
+    response = await _ws(client, WS_LIBRARY_CREATE, name="Test", content=_content())
 
     assert response["success"] is False
     assert response["error"]["code"] == "unauthorized"
@@ -165,55 +170,25 @@ async def test_template_default_websocket_lifecycle_has_no_ble_writes(
 ) -> None:
     await _setup_backend(hass)
     coordinator = MagicMock(model="H617A")
-    entry = SimpleNamespace(
-        entry_id="entry-a",
-        domain=DOMAIN,
-        state=ConfigEntryState.LOADED,
-        runtime_data=coordinator,
-    )
-    monkeypatch.setattr(
-        hass.config_entries,
-        "async_get_entry",
-        lambda entry_id: entry if entry_id == entry.entry_id else None,
-    )
+    entry = _loaded_entry(hass, monkeypatch, coordinator)
     client = await hass_ws_client(hass)
     template = resolve_catalogue_template("H617A", "template:single:0:0")
     content = effect_content_to_dict(template.content)
     content["speed"] = 75
+    target = {"config_entry_id": entry.entry_id, "template_id": template.id}
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_TEMPLATE_DEFAULT_GET,
-            "config_entry_id": entry.entry_id,
-            "template_id": template.id,
-        }
-    )
-    initial = (await client.receive_json())["result"]
+    initial = (await _ws(client, WS_TEMPLATE_DEFAULT_GET, **target))["result"]
     assert initial["content"] == initial["catalogue_content"]
     assert initial["has_default"] is False
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_TEMPLATE_DEFAULT_SET,
-            "config_entry_id": entry.entry_id,
-            "template_id": template.id,
-            "content": content,
-            "updated_at": "2026-08-27T00:00:00Z",
-        }
-    )
-    stored = (await client.receive_json())["result"]
+    stored = (await _ws(client, WS_TEMPLATE_DEFAULT_SET, **target, content=content, updated_at="2026-08-27T00:00:00Z"))[
+        "result"
+    ]
     assert stored["content"]["speed"] == 75
     assert stored["catalogue_content"]["speed"] == 50
     assert stored["has_default"] is True
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_TEMPLATE_DEFAULT_RESET,
-            "config_entry_id": entry.entry_id,
-            "template_id": template.id,
-        }
-    )
-    reset = (await client.receive_json())["result"]
+    reset = (await _ws(client, WS_TEMPLATE_DEFAULT_RESET, **target))["result"]
     assert reset["content"] == reset["catalogue_content"]
     assert reset["has_default"] is False
     coordinator.assert_not_called()
@@ -226,41 +201,23 @@ async def test_template_default_get_is_readable_but_mutations_require_admin(
     monkeypatch,
 ) -> None:
     await _setup_backend(hass)
-    entry = SimpleNamespace(
-        entry_id="entry-a",
-        domain=DOMAIN,
-        state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
-    )
-    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    entry = _loaded_entry(hass, monkeypatch, SimpleNamespace(model="H617A", profile=get_profile("H617A")))
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
     template = resolve_catalogue_template("H617A", "template:single:0:0")
+    target = {"config_entry_id": entry.entry_id, "template_id": template.id}
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_TEMPLATE_DEFAULT_GET,
-            "config_entry_id": entry.entry_id,
-            "template_id": template.id,
-        }
-    )
-    assert (await client.receive_json())["result"]["has_default"] is False
+    assert (await _ws(client, WS_TEMPLATE_DEFAULT_GET, **target))["result"]["has_default"] is False
 
-    for message in (
-        {
-            "type": WS_TEMPLATE_DEFAULT_SET,
-            "config_entry_id": entry.entry_id,
-            "template_id": template.id,
-            "content": effect_content_to_dict(template.content),
-            "updated_at": "2026-08-27T00:00:00Z",
-        },
-        {
-            "type": WS_TEMPLATE_DEFAULT_RESET,
-            "config_entry_id": entry.entry_id,
-            "template_id": template.id,
-        },
+    for response in (
+        await _ws(
+            client,
+            WS_TEMPLATE_DEFAULT_SET,
+            **target,
+            content=effect_content_to_dict(template.content),
+            updated_at="2026-08-27T00:00:00Z",
+        ),
+        await _ws(client, WS_TEMPLATE_DEFAULT_RESET, **target),
     ):
-        await client.send_json_auto_id(message)
-        response = await client.receive_json()
         assert response["success"] is False
         assert response["error"]["code"] == "unauthorized"
 
@@ -271,25 +228,17 @@ async def test_template_default_set_rejects_mismatched_identity(
     monkeypatch,
 ) -> None:
     await _setup_backend(hass)
-    entry = SimpleNamespace(
-        entry_id="entry-a",
-        domain=DOMAIN,
-        state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
-    )
-    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    entry = _loaded_entry(hass, monkeypatch, SimpleNamespace(model="H617A", profile=get_profile("H617A")))
     client = await hass_ws_client(hass)
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_TEMPLATE_DEFAULT_SET,
-            "config_entry_id": entry.entry_id,
-            "template_id": "template:single:0:0",
-            "content": effect_content_to_dict(SingleEffect(1, 0, 50, ((255, 0, 0),))),
-            "updated_at": "2026-08-27T00:00:00Z",
-        }
+    response = await _ws(
+        client,
+        WS_TEMPLATE_DEFAULT_SET,
+        config_entry_id=entry.entry_id,
+        template_id="template:single:0:0",
+        content=effect_content_to_dict(SingleEffect(1, 0, 50, ((255, 0, 0),))),
+        updated_at="2026-08-27T00:00:00Z",
     )
-    response = await client.receive_json()
 
     assert response["success"] is False
     assert response["error"]["code"] == "invalid_format"
@@ -307,42 +256,21 @@ async def test_scene_default_websocket_persists_full_content_without_ble(
         if item.scene_type == 2 and item.speed is not None and item.speed.option_count > 1
     )
     coordinator = SimpleNamespace(model="H617A", profile=get_profile("H617A"), async_apply_native_scene=AsyncMock())
-    entry = SimpleNamespace(
-        entry_id="entry-a",
-        domain=DOMAIN,
-        state=ConfigEntryState.LOADED,
-        runtime_data=coordinator,
-    )
-    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    entry = _loaded_entry(hass, monkeypatch, coordinator)
     client = await hass_ws_client(hass)
     content = cast(dict[str, Any], scene_detail_payload("H617A", scene.scene_id, scene.effect_id)["content"])
     assert scene.speed is not None
     content["speed_index"] = (scene.speed.default_index + 1) % scene.speed.option_count
+    target = {"config_entry_id": entry.entry_id, "scene_id": scene.scene_id, "effect_id": scene.effect_id}
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_SCENE_DEFAULT_SET,
-            "config_entry_id": entry.entry_id,
-            "scene_id": scene.scene_id,
-            "effect_id": scene.effect_id,
-            "content": content,
-            "updated_at": "2026-08-27T00:00:00Z",
-        }
-    )
-    stored = (await client.receive_json())["result"]
+    stored = (await _ws(client, WS_SCENE_DEFAULT_SET, **target, content=content, updated_at="2026-08-27T00:00:00Z"))[
+        "result"
+    ]
     assert stored["has_default"] is True
     assert stored["content"]["speed_index"] == content["speed_index"]
     assert stored["catalogue_content"]["speed_index"] == scene.speed.default_index
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_SCENE_RESET,
-            "config_entry_id": entry.entry_id,
-            "scene_id": scene.scene_id,
-            "effect_id": scene.effect_id,
-        }
-    )
-    reset = (await client.receive_json())["result"]
+    reset = (await _ws(client, WS_SCENE_RESET, **target))["result"]
     assert reset["has_default"] is False
     assert reset["content"] == reset["catalogue_content"]
     coordinator.async_apply_native_scene.assert_not_awaited()
@@ -362,29 +290,17 @@ async def test_apply_forwards_expected_item_version(
     mutation = await backend.application.async_create_library_item(name="Saved", content=_content())
     item = replace(mutation.item, version=2)
     await backend.library.async_update(item, expected_version=1, expected_updated_at=mutation.item.updated_at)
-    entry = SimpleNamespace(
-        entry_id="entry-a",
-        domain=DOMAIN,
-        state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
-    )
-    monkeypatch.setattr(
-        hass.config_entries,
-        "async_get_entry",
-        lambda entry_id: entry if entry_id == entry.entry_id else None,
-    )
+    entry = _loaded_entry(hass, monkeypatch, SimpleNamespace(model="H617A", profile=get_profile("H617A")))
     client = await hass_ws_client(hass)
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_APPLY,
-            "config_entry_id": entry.entry_id,
-            "item_id": str(item.id),
-            "expected_version": 2,
-            "updated_at": "2026-08-27T00:00:00Z",
-        }
+    response = await _ws(
+        client,
+        WS_APPLY,
+        config_entry_id=entry.entry_id,
+        item_id=str(item.id),
+        expected_version=2,
+        updated_at="2026-08-27T00:00:00Z",
     )
-    response = await client.receive_json()
 
     assert response["success"] is True
     apply_saved.assert_awaited_once_with(
@@ -405,29 +321,17 @@ async def test_apply_surfaces_item_version_conflict(
     backend = await _setup_backend(hass)
     monkeypatch.setattr(cast(Any, backend.preview), "async_supersede_device", AsyncMock())
     mutation = await backend.application.async_create_library_item(name="Saved", content=_content())
-    entry = SimpleNamespace(
-        entry_id="entry-a",
-        domain=DOMAIN,
-        state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H617A", profile=get_profile("H617A")),
-    )
-    monkeypatch.setattr(
-        hass.config_entries,
-        "async_get_entry",
-        lambda entry_id: entry if entry_id == entry.entry_id else None,
-    )
+    entry = _loaded_entry(hass, monkeypatch, SimpleNamespace(model="H617A", profile=get_profile("H617A")))
     client = await hass_ws_client(hass)
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_APPLY,
-            "config_entry_id": entry.entry_id,
-            "item_id": str(mutation.item.id),
-            "expected_version": 4,
-            "updated_at": "2026-08-27T00:00:00Z",
-        }
+    response = await _ws(
+        client,
+        WS_APPLY,
+        config_entry_id=entry.entry_id,
+        item_id=str(mutation.item.id),
+        expected_version=4,
+        updated_at="2026-08-27T00:00:00Z",
     )
-    response = await client.receive_json()
 
     assert response["success"] is False
     assert response["error"]["code"] == "conflict"
@@ -444,26 +348,21 @@ async def test_ineligible_apply_preserves_preview(hass, hass_ws_client, monkeypa
     apply_snapshot = AsyncMock()
     monkeypatch.setattr(backend.engine, "async_apply_saved", apply_saved)
     monkeypatch.setattr(backend.engine, "async_apply_snapshot", apply_snapshot)
-    entry = SimpleNamespace(
-        entry_id="entry-a",
-        domain=DOMAIN,
-        state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model=narrow, profile=get_profile(narrow)),
-    )
-    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _entry_id: entry)
+    entry = _loaded_entry(hass, monkeypatch, SimpleNamespace(model=narrow, profile=get_profile(narrow)))
     content = effect_content_to_dict(SingleEffect(0, 1, 50, ((255, 0, 0), (0, 0, 255))))
     mutation = await backend.application.async_create_library_item(name="Imported", content=content)
     client = await hass_ws_client(hass)
-    message = {
-        "type": WS_APPLY if saved else WS_APPLY_SNAPSHOT,
-        "config_entry_id": entry.entry_id,
-        "updated_at": "2026-08-27T00:00:00Z",
-    }
-    message.update(
-        {"item_id": str(mutation.item.id), "expected_version": 1} if saved else {"name": "Imported", "content": content}
+    response = await _ws(
+        client,
+        WS_APPLY if saved else WS_APPLY_SNAPSHOT,
+        config_entry_id=entry.entry_id,
+        updated_at="2026-08-27T00:00:00Z",
+        **(
+            {"item_id": str(mutation.item.id), "expected_version": 1}
+            if saved
+            else {"name": "Imported", "content": content}
+        ),
     )
-    await client.send_json_auto_id(message)
-    response = await client.receive_json()
     assert response["success"] is False
     assert response["error"]["code"] == "unsupported_model"
     supersede.assert_not_awaited()
@@ -478,66 +377,42 @@ async def test_admin_current_only_library_lifecycle_and_stale_token(
     await _setup_backend(hass)
     client = await hass_ws_client(hass)
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_CREATE,
-            "name": "Test",
-            "content": _content(),
-        }
-    )
-    create_result = (await client.receive_json())["result"]
+    create_result = (await _ws(client, WS_LIBRARY_CREATE, name="Test", content=_content()))["result"]
     created = create_result["item"]
     assert created["version"] == 1
     assert len(created["content_hash"]) == 64
     assert created["origin"] == {"kind": "authored", "source_id": None}
     assert create_result["library"]["generation"] == 1
+    created_token = {"expected_version": created["version"], "expected_updated_at": created["updated_at"]}
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_UPDATE,
-            "item_id": created["id"],
-            "name": "Updated",
-            "content": _content(60),
-            "expected_version": created["version"],
-            "expected_updated_at": created["updated_at"],
-        }
-    )
-    update_result = (await client.receive_json())["result"]
+    update_result = (
+        await _ws(
+            client, WS_LIBRARY_UPDATE, item_id=created["id"], name="Updated", content=_content(60), **created_token
+        )
+    )["result"]
     updated = update_result["item"]
     assert updated["version"] == 2
     assert updated["updated_at"] > created["updated_at"]
     assert update_result["library"]["generation"] == 2
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_UPDATE,
-            "item_id": created["id"],
-            "name": "Stale",
-            "content": _content(),
-            "expected_version": created["version"],
-            "expected_updated_at": created["updated_at"],
-        }
+    conflict = await _ws(
+        client, WS_LIBRARY_UPDATE, item_id=created["id"], name="Stale", content=_content(), **created_token
     )
-    conflict = await client.receive_json()
     assert conflict["success"] is False
     assert conflict["error"]["code"] == "conflict"
 
-    await client.send_json_auto_id({"type": WS_LIBRARY_GET, "item_id": created["id"]})
-    assert (await client.receive_json())["result"]["item"] == updated
+    assert (await _ws(client, WS_LIBRARY_GET, item_id=created["id"]))["result"]["item"] == updated
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_DELETE,
-            "item_id": updated["id"],
-            "expected_version": updated["version"],
-            "expected_updated_at": updated["updated_at"],
-        }
+    deleted = await _ws(
+        client,
+        WS_LIBRARY_DELETE,
+        item_id=updated["id"],
+        expected_version=updated["version"],
+        expected_updated_at=updated["updated_at"],
     )
-    deleted = await client.receive_json()
     assert deleted["success"] is True
     assert deleted["result"]["library"] == {"generation": 3, "items": []}
-    await client.send_json_auto_id({"type": WS_LIBRARY_LIST})
-    assert (await client.receive_json())["result"] == {"generation": 3, "items": []}
+    assert (await _ws(client, WS_LIBRARY_LIST))["result"] == {"generation": 3, "items": []}
 
 
 async def test_library_subscription_publishes_current_snapshot(
@@ -554,13 +429,7 @@ async def test_library_subscription_publishes_current_snapshot(
     assert initial["id"] == subscribed["id"]
     assert initial["event"] == {"generation": 0, "items": []}
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_CREATE,
-            "name": "Test",
-            "content": _content(),
-        }
-    )
+    await client.send_json_auto_id({"type": WS_LIBRARY_CREATE, "name": "Test", "content": _content()})
     messages = [await client.receive_json(), await client.receive_json()]
     created = next(message for message in messages if "success" in message)
     event = next(message for message in messages if "event" in message)
@@ -578,69 +447,44 @@ async def test_library_name_status_and_distinct_name_errors(
     await _setup_backend(hass)
     client = await hass_ws_client(hass)
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_CREATE,
-            "name": "Saved",
-            "content": _content(),
-        }
-    )
-    saved = (await client.receive_json())["result"]["item"]
+    saved = (await _ws(client, WS_LIBRARY_CREATE, name="Saved", content=_content()))["result"]["item"]
 
     for name, excluding_item_id, expected in (
         ("Available", None, {"kind": "available"}),
         ("Custom", saved["id"], {"kind": "reserved"}),
         ("Saved", saved["id"], {"kind": "same_item"}),
     ):
-        await client.send_json_auto_id(
-            {
-                "type": WS_LIBRARY_NAME_STATUS,
-                "name": name,
-                **({"excluding_item_id": excluding_item_id} if excluding_item_id else {}),
-            }
+        response = await _ws(
+            client,
+            WS_LIBRARY_NAME_STATUS,
+            name=name,
+            **({"excluding_item_id": excluding_item_id} if excluding_item_id else {}),
         )
-        assert (await client.receive_json())["result"]["status"] == expected
+        assert response["result"]["status"] == expected
 
-    await client.send_json_auto_id({"type": WS_LIBRARY_NAME_STATUS, "name": "Saved"})
-    conflict = (await client.receive_json())["result"]["status"]
+    conflict = (await _ws(client, WS_LIBRARY_NAME_STATUS, name="Saved"))["result"]["status"]
     assert conflict["kind"] == "saved"
     assert conflict["item"]["id"] == saved["id"]
 
     for name, code in (("Custom", "reserved_name"), ("Saved", "name_conflict")):
-        await client.send_json_auto_id(
-            {
-                "type": WS_LIBRARY_CREATE,
-                "name": name,
-                "content": _content(),
-            }
-        )
-        response = await client.receive_json()
+        response = await _ws(client, WS_LIBRARY_CREATE, name=name, content=_content())
         assert response["success"] is False
         assert response["error"]["code"] == code
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_CREATE,
-            "name": "Other",
-            "content": _content(),
-        }
-    )
-    other = (await client.receive_json())["result"]["item"]
+    other = (await _ws(client, WS_LIBRARY_CREATE, name="Other", content=_content()))["result"]["item"]
     for item, name, code in (
         (saved, "Custom", "reserved_name"),
         (other, "Saved", "name_conflict"),
     ):
-        await client.send_json_auto_id(
-            {
-                "type": WS_LIBRARY_UPDATE,
-                "item_id": item["id"],
-                "name": name,
-                "content": _content(),
-                "expected_version": item["version"],
-                "expected_updated_at": item["updated_at"],
-            }
+        response = await _ws(
+            client,
+            WS_LIBRARY_UPDATE,
+            item_id=item["id"],
+            name=name,
+            content=_content(),
+            expected_version=item["version"],
+            expected_updated_at=item["updated_at"],
         )
-        response = await client.receive_json()
         assert response["success"] is False
         assert response["error"]["code"] == code
 
@@ -651,49 +495,27 @@ async def test_library_overwrite_updates_only_target_and_returns_snapshot(
 ) -> None:
     await _setup_backend(hass)
     client = await hass_ws_client(hass)
-    items = []
-    for name in ("Source", "Target"):
-        await client.send_json_auto_id(
-            {
-                "type": WS_LIBRARY_CREATE,
-                "name": name,
-                "content": _content(),
-            }
-        )
-        items.append((await client.receive_json())["result"]["item"])
-    source, target = items
+    source, target = [
+        (await _ws(client, WS_LIBRARY_CREATE, name=name, content=_content()))["result"]["item"]
+        for name in ("Source", "Target")
+    ]
+    target_token = {
+        "target_item_id": target["id"],
+        "expected_version": target["version"],
+        "expected_updated_at": target["updated_at"],
+        "name": target["name"],
+    }
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_OVERWRITE,
-            "target_item_id": target["id"],
-            "expected_version": target["version"],
-            "expected_updated_at": target["updated_at"],
-            "name": target["name"],
-            "content": _content(75),
-        }
-    )
-    result = (await client.receive_json())["result"]
+    result = (await _ws(client, WS_LIBRARY_OVERWRITE, **target_token, content=_content(75)))["result"]
 
     assert result["item"]["id"] == target["id"]
     assert result["item"]["version"] == 2
     assert result["library"]["generation"] == 3
     assert {item["id"] for item in result["library"]["items"]} == {source["id"], target["id"]}
 
-    await client.send_json_auto_id({"type": WS_LIBRARY_GET, "item_id": source["id"]})
-    assert (await client.receive_json())["result"]["item"] == source
+    assert (await _ws(client, WS_LIBRARY_GET, item_id=source["id"]))["result"]["item"] == source
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_LIBRARY_OVERWRITE,
-            "target_item_id": target["id"],
-            "expected_version": target["version"],
-            "expected_updated_at": target["updated_at"],
-            "name": target["name"],
-            "content": _content(),
-        }
-    )
-    stale = await client.receive_json()
+    stale = await _ws(client, WS_LIBRARY_OVERWRITE, **target_token, content=_content())
     assert stale["success"] is False
     assert stale["error"]["code"] == "conflict"
 
@@ -711,15 +533,7 @@ async def test_library_mutations_reject_invalid_layer_metadata_and_extensions(
         {"layer_labels": [1]},
         {"extensions": {"arbitrary": True}},
     ):
-        await client.send_json_auto_id(
-            {
-                "type": WS_LIBRARY_CREATE,
-                "name": "Invalid",
-                "content": _content(),
-                **extra,
-            }
-        )
-        response = await client.receive_json()
+        response = await _ws(client, WS_LIBRARY_CREATE, name="Invalid", content=_content(), **extra)
         assert response["success"] is False
         assert response["error"]["code"] in {"invalid_format", "invalid_info"}
 
@@ -732,23 +546,16 @@ async def test_user_state_contains_navigation_without_drafts(
     await _setup_backend(hass)
     client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
 
-    await client.send_json_auto_id(
-        {
-            "type": WS_USER_STATE_UPDATE,
-            "selected_config_entry_id": "entry-a",
-            "navigation": {"section": "scenes", "item_id": "effect-a"},
-        }
-    )
-    updated = (await client.receive_json())["result"]["user_state"]
-    await client.send_json_auto_id(
-        {
-            "type": WS_USER_STATE_RECORD_COLOUR,
-            "colour": [1, 2, 3],
-        }
-    )
-    coloured = (await client.receive_json())["result"]["user_state"]
-    await client.send_json_auto_id({"type": WS_USER_STATE_GET})
-    fetched = (await client.receive_json())["result"]["user_state"]
+    updated = (
+        await _ws(
+            client,
+            WS_USER_STATE_UPDATE,
+            selected_config_entry_id="entry-a",
+            navigation={"section": "scenes", "item_id": "effect-a"},
+        )
+    )["result"]["user_state"]
+    coloured = (await _ws(client, WS_USER_STATE_RECORD_COLOUR, colour=[1, 2, 3]))["result"]["user_state"]
+    fetched = (await _ws(client, WS_USER_STATE_GET))["result"]["user_state"]
 
     assert updated["selected_config_entry_id"] == "entry-a"
     assert updated["navigation"] == {"section": "scenes", "item_id": "effect-a"}

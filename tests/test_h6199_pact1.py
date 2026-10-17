@@ -48,8 +48,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color,
 )
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
+from tests.ble_frames import frame
 from tests.test_h6199_capabilities import lifecycle as pact_lifecycle  # noqa: F401
-from tests.test_h6199_native_controls import frame
 
 
 def advertise(c, pact):

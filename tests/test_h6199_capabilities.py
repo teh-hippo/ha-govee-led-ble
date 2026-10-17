@@ -214,7 +214,7 @@ async def lifecycle(hass, monkeypatch):
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     from custom_components.ha_govee_led_ble.const import DOMAIN
-    from tests.test_h6199_native_controls import frame
+    from tests.ble_frames import frame
 
     entry = MockConfigEntry(domain=DOMAIN)
     entry.add_to_hass(hass)
@@ -280,7 +280,7 @@ async def lifecycle(hass, monkeypatch):
 async def test_real_reconnect_waits_for_identity_before_guard(lifecycle, hass, monkeypatch, route, identity):
     from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode, apply_white_balance
     from custom_components.ha_govee_led_ble.select import GoveeBLEControlSelect
-    from tests.test_h6199_native_controls import frame
+    from tests.ble_frames import frame
 
     c, replies, clients, packets = lifecycle
     await c._async_update_data()
@@ -339,7 +339,7 @@ async def test_poll_preserves_delayed_native_replies_until_next_query(lifecycle)
     for control in ("strip_direction", "camera_position", "gradient", "camera_status"):
         del replies[build_h6199_control_query(control)]
     # Avoid the static-mode gradient companion answering the independent missing query.
-    from tests.test_h6199_native_controls import frame
+    from tests.ble_frames import frame
 
     replies[build_colour_mode_query("H6199")] = frame("aa05000100640064")
     await c._async_update_data()
@@ -362,7 +362,7 @@ async def test_basic_setup_with_missing_identity_uses_real_lifecycle(lifecycle):
 async def test_issue_293_setup_requires_only_basic_readback(lifecycle, missing_domain):
     from homeassistant.helpers.update_coordinator import UpdateFailed
 
-    from tests.test_h6199_native_controls import frame
+    from tests.ble_frames import frame
 
     c, replies, clients, packets = lifecycle
     # Reported main versions; Wi-Fi identity and Pact were not supplied.

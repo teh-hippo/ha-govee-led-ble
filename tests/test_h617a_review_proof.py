@@ -28,12 +28,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
-
-
-def frame(domain, body):
-    payload = bytes([0xAA, domain, *body]).ljust(19, b"\x00")
-    return bytearray(payload + bytes([xor_checksum(payload)]))
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.ble_frames import status_frame
 
 
 def observe_segments(coordinator, colours, brightness):
@@ -41,7 +37,7 @@ def observe_segments(coordinator, colours, brightness):
         body = [offset // 3 + 1]
         for index in range(offset, offset + 3):
             body.extend([brightness[index], *colours[index]])
-        coordinator._notify_callback(None, frame(0xA5, body))
+        coordinator._notify_callback(None, status_frame(0xA5, body))
 
 
 @pytest.fixture
@@ -83,11 +79,11 @@ async def test_restoration_preserves_segments_and_rejects_wrong_readback(coordin
                     if static.segment_mask & (1 << index):
                         physical_brightness[index] = static.brightness_pct
         elif packet[1] == 1:
-            coordinator._notify_callback(None, frame(1, [1]))
+            coordinator._notify_callback(None, status_frame(1, [1]))
         elif packet[1] == 5:
-            coordinator._notify_callback(None, frame(5, [0x15, 0]))
+            coordinator._notify_callback(None, status_frame(5, [0x15, 0]))
         elif packet[1] == 4:
-            coordinator._notify_callback(None, frame(4, [37]))
+            coordinator._notify_callback(None, status_frame(4, [37]))
         elif packet[1] == 0xA5 and packet[2] == 5:
             observe_segments(coordinator, physical, physical_brightness)
 

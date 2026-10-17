@@ -10,7 +10,6 @@ from .generated_protocol_adapter import (
     build_h617a_diy_painted_body,
     build_h617a_diy_single_body,
     build_h6199_palette_diy_envelope,
-    build_h6199_scene,
 )
 from .generated_protocol_adapter import (
     build_h617a_diy_activation as build_diy_activation,
@@ -119,14 +118,6 @@ def build_h6199_palette_diy(
     _validate_palette(palette)
     envelope = build_h6199_palette_diy_envelope(family, variant, speed, tuple(palette))
     return fragment_a3_envelope(envelope)
-
-
-def build_h6199_palette_diy_activation(scene_code: int, music_code: int) -> bytes:
-    if not isinstance(scene_code, int) or not 0 <= scene_code <= 0xFFFF:
-        raise ValueError("scene code must be an integer from 0 to 65535")
-    if not isinstance(music_code, int) or not 0 <= music_code <= 0xFFFF:
-        raise ValueError("music code must be an integer from 0 to 65535")
-    return build_h6199_scene(scene_code, music_code)
 
 
 def _frame_type04(body: bytes, a1_selector: int | None) -> list[bytes]:

@@ -16,7 +16,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compil
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import _STATUS_ROOTS, build_video_mode
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode, prepare_video_mode
-from tests.test_h6099 import frame
+from tests.ble_frames import frame
 
 
 @pytest.fixture

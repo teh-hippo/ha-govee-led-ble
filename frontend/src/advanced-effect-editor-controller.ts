@@ -11,11 +11,6 @@ import { AUTHORING_LAYER_LIMIT } from "./advanced-effect-editor-model";
 import type { AdvancedContent, BrightnessPattern, EffectLayer, RGB } from "./types";
 import { clampInteger, clonePalette, relocatedIndex } from "./ui-utils";
 
-export {
-  AUTHORING_LAYER_LIMIT,
-  AUTHORING_PALETTE_LIMIT,
-  DEFAULT_SEGMENT_COUNT,
-} from "./advanced-effect-editor-model";
 export type MovementKey = "selected_movement" | "overall_movement";
 
 type NestedLayerKey = "area" | "distribution" | "selection" | MovementKey;

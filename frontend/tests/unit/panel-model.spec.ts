@@ -423,18 +423,24 @@ function musicItem(content: MusicProfileContent): LibraryItem {
   };
 }
 
-function editor(model: PanelModel): PanelEditorController {
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
+function modalController(model: PanelModel): PanelModalController {
+  return new PanelModalController(model, {
     updateComplete: async () => undefined,
     root: () => null,
     canMutate: () => true,
   });
-  return new PanelEditorController(model, preview, modal, {
+}
+
+function editor(
+  model: PanelModel,
+  preview = new PanelPreviewController(model),
+  contentCommitted: () => void = () => undefined,
+): PanelEditorController {
+  return new PanelEditorController(model, preview, modalController(model), {
     apiReady: () => true,
     selectItem: () => undefined,
     editorTransitionStarted: () => undefined,
-    contentCommitted: () => undefined,
+    contentCommitted,
   });
 }
 
@@ -562,20 +568,23 @@ function installPaintCatalogue(model: PanelModel): void {
 
 function panelControllerHarness(
   model: PanelModel,
-  saveSceneWork?: () => Promise<boolean>,
+  {
+    saveSceneWork,
+    preview = new PanelPreviewController(model),
+    contentCommitted = () => undefined,
+  }: {
+    saveSceneWork?: () => Promise<boolean>;
+    preview?: PanelPreviewController;
+    contentCommitted?: () => void;
+  } = {},
 ) {
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   let controller!: PanelController;
   const editorController = new PanelEditorController(model, preview, modal, {
     apiReady: () => true,
     selectItem: () => undefined,
     editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
+    contentCommitted,
   });
   controller = new PanelController(
     model,
@@ -790,11 +799,7 @@ test("unchanged explicit New drafts save directly with the header name", () => {
     kind: "new",
     owner: { section: "custom", category: "single-layer" },
   };
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   const save = vi.fn();
 
   modal.requestSave(save);
@@ -806,11 +811,7 @@ test("unchanged explicit New drafts save directly with the header name", () => {
 test("Save As retains the dedicated naming dialog", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   const saveAs = vi.fn().mockResolvedValue(true);
 
   modal.requestSaveAs({} as HTMLElement, "Jumping copy");
@@ -825,11 +826,7 @@ test("Save As retains the dedicated naming dialog", async () => {
 test("Save As overwrite cancellation resumes naming and preserves return focus", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   const focus = vi.fn();
   const returnFocus = {
     isConnected: true,
@@ -855,11 +852,7 @@ test("Save As overwrite cancellation resumes naming and preserves return focus",
 test("busy Save As ignores cancellation until persistence finishes", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   let resolveSave!: (saved: boolean) => void;
   const saving = new Promise<boolean>((resolve) => {
     resolveSave = resolve;
@@ -887,11 +880,7 @@ test("busy Save As ignores cancellation until persistence finishes", async () =>
 test("successful persistence keeps an apply error without resuming Save As", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
 
   modal.requestSaveAs({} as HTMLElement, "Existing");
   await modal.confirmNamedSave(async () => {
@@ -918,11 +907,7 @@ test("successful persistence keeps an apply error without resuming Save As", asy
 test("error modals suspend and resume the active naming workflow", () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
 
   modal.requestSaveAs({} as HTMLElement, "Jumping copy");
   modal.showError("The library is unavailable.", {
@@ -943,11 +928,7 @@ test("error modals suspend and resume the active naming workflow", () => {
 
 test("replacement errors preserve suspended workflows and retry after close", () => {
   const model = new PanelModel(() => undefined);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
 
   modal.requestTransition("Save", "Draft", false);
   modal.showError("First failure.", { key: "first" });
@@ -971,11 +952,7 @@ test("replacement errors preserve suspended workflows and retry after close", ()
 
 test("overwrite confirmation resolves without stacking modal workflows", async () => {
   const model = new PanelModel(() => undefined);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
 
   const cancelled = modal.requestOverwrite("Existing");
   modal.cancelOverwrite();
@@ -990,11 +967,7 @@ test("overwrite confirmation resolves without stacking modal workflows", async (
 
 test("nested overwrite cancellation preserves transition return focus", async () => {
   const model = new PanelModel(() => undefined);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   const focus = vi.fn();
   const returnFocus = {
     isConnected: true,
@@ -1063,10 +1036,7 @@ test("top-level transitions use the registered scene-work saver", async () => {
   model.sceneWorkDirty = true;
   installH6199Catalogue(model);
   const saveSceneWork = vi.fn().mockResolvedValue(true);
-  const { controller } = panelControllerHarness(
-    model,
-    saveSceneWork,
-  );
+  const { controller } = panelControllerHarness(model, { saveSceneWork });
   controller.api = {
     subscribeDevice: vi.fn().mockResolvedValue(() => undefined),
     updateUserState: vi.fn().mockResolvedValue(undefined),
@@ -1135,10 +1105,7 @@ test("external layered-scene transitions use the panel editor save", async () =>
   model.selectedDeviceId = selected.config_entry_id;
   model.section = "scenes";
   const saveSceneWork = vi.fn().mockResolvedValue(true);
-  const { controller, editorController } = panelControllerHarness(
-    model,
-    saveSceneWork,
-  );
+  const { controller, editorController } = panelControllerHarness(model, { saveSceneWork });
   const scene = {
     kind: "scene_layered" as const,
     template: {
@@ -1205,10 +1172,7 @@ test("catalogue drafts take precedence over stale scene-work ownership", async (
   model.selectedDeviceId = selected.config_entry_id;
   model.customEffectCategory = "advanced";
   const saveSceneWork = vi.fn().mockResolvedValue(true);
-  const { controller, editorController } = panelControllerHarness(
-    model,
-    saveSceneWork,
-  );
+  const { controller, editorController } = panelControllerHarness(model, { saveSceneWork });
   editorController.openEditableTemplate(
     "Template",
     blankAdvancedContent(),
@@ -1395,17 +1359,7 @@ test("paint gestures commit after their live segment update", () => {
   const preview = new PanelPreviewController(model);
   const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
   const committed = vi.fn();
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  const controller = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => undefined,
-    contentCommitted: committed,
-  });
+  const controller = editor(model, preview, committed);
 
   controller.paintColourChanged([12, 34, 56]);
   expect(controller.setSegmentColour(2, "changing")).toBe(true);
@@ -1458,17 +1412,7 @@ test("explicit template selection previews once while automatic opening only pop
   const schedule = vi.spyOn(preview, "scheduleTemplateSelection");
   const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
   const committed = vi.fn();
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  const controller = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => undefined,
-    contentCommitted: committed,
-  });
+  const controller = editor(model, preview, committed);
 
   controller.openEditableTemplate(
     "Paint",
@@ -1515,13 +1459,7 @@ test.each([false, true])("actual music controller uses Bloom variant style %s th
   };
   const preview = new PanelPreviewController(model);
   vi.spyOn(preview, "scheduleEdited");
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined, root: () => null, canMutate: () => true,
-  });
-  const controller = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true, selectItem: () => undefined, editorTransitionStarted: () => undefined,
-    contentCommitted: () => undefined,
-  });
+  const controller = editor(model, preview);
   controller.openMusicTemplate("bloom", "Bloom");
   expect(model.content).toMatchObject({mode: "bloom", calm: style ? true : null});
   expect(model.previewCapability).toBe("supported");
@@ -1581,17 +1519,7 @@ test("Reactive Reset restores its baseline immediately and previews only once", 
   const preview = new PanelPreviewController(model);
   const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
   const committed = vi.fn();
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  const controller = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => undefined,
-    contentCommitted: committed,
-  });
+  const controller = editor(model, preview, committed);
 
   controller.newCustomEffect("music");
   controller.musicModeChanged("rhythm");
@@ -1630,17 +1558,7 @@ test("Reactive mode changes preserve common fields, identity, and generated name
   const preview = new PanelPreviewController(model);
   const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
   const committed = vi.fn();
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  const controller = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => undefined,
-    contentCommitted: committed,
-  });
+  const controller = editor(model, preview, committed);
 
   controller.newCustomEffect("music");
   controller.musicContentChanged({
@@ -1741,17 +1659,7 @@ test("name-only Reset restores a new draft without scheduling preview", () => {
   installH6199Catalogue(model);
   const preview = new PanelPreviewController(model);
   const scheduleEdited = vi.spyOn(preview, "scheduleEdited");
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  const controller = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => undefined,
-    contentCommitted: () => undefined,
-  });
+  const controller = editor(model, preview);
 
   controller.newEffect("advanced");
   model.name = "Renamed";
@@ -1845,29 +1753,7 @@ test("category transitions stay blank without a matching active item", async () 
   installH6199Catalogue(model);
   const preview = new PanelPreviewController(model);
   const templatePreview = vi.spyOn(preview, "scheduleTemplateSelection");
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller, editorController } = panelControllerHarness(model, { preview });
 
   const videoEpoch = editorController.beginSelectionTransition();
   editorController.openVideoTemplate("movie", "Movie", false, videoEpoch);
@@ -1946,29 +1832,7 @@ test("automatic restoration selects only a matching fresh native category", asyn
   installH6199Catalogue(model);
   const preview = new PanelPreviewController(model);
   const templatePreview = vi.spyOn(preview, "scheduleTemplateSelection");
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller } = panelControllerHarness(model, { preview });
   let refreshed = structuredClone(selected);
   refreshed.active_state = {
     config_entry_id: selected.config_entry_id,
@@ -2033,30 +1897,7 @@ test("navigation does not request device refreshes", async () => {
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
   installH6199Catalogue(model);
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller } = panelControllerHarness(model);
   const deviceRefresh = vi.fn();
   controller.api = {
     device: deviceRefresh,
@@ -2080,30 +1921,7 @@ test("late device restoration cannot clear newer editor work", async () => {
   model.devices = [first, second];
   model.selectedDeviceId = first.config_entry_id;
   installH6199Catalogue(model);
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller, editorController } = panelControllerHarness(model);
   let finishRemembering!: () => void;
   const remembering = new Promise<void>((resolve) => {
     finishRemembering = resolve;
@@ -2136,30 +1954,7 @@ test("Flow selection and edits survive Effects to Scenes to Effects navigation",
   model.devices = [selected];
   model.selectedDeviceId = selected.config_entry_id;
   installH6199Catalogue(model);
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller, editorController } = panelControllerHarness(model);
   editorController.openEditableTemplate(
     "Flow",
     painted(),
@@ -2442,30 +2237,7 @@ test("initial load and device switching navigate to each active context", async 
     navigation: { section: "scenes" },
   };
   installH6199Catalogue(model);
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller } = panelControllerHarness(model);
   controller.api = {
     subscribeDevice: vi.fn().mockResolvedValue(() => undefined),
     updateUserState: vi.fn().mockResolvedValue(model.userState),
@@ -2493,31 +2265,7 @@ test("initial load and device switching navigate to each active context", async 
 test("a library subscription reload cannot clobber a mid-flight local edit", async () => {
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller, editorController } = panelControllerHarness(model);
   const source = item(painted());
   editorController.applyLibraryItem(source);
   let resolveRemote!: (value: LibraryItem) => void;
@@ -2672,30 +2420,8 @@ test("automatic saved restoration reads without applying, previewing, or saving"
   };
   const preview = new PanelPreviewController(model);
   const templatePreview = vi.spyOn(preview, "scheduleTemplateSelection");
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
   const contentCommitted = vi.fn();
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller } = panelControllerHarness(model, { preview, contentCommitted });
   const applySavedEffect = vi.fn();
   const updateItem = vi.fn();
   const createItem = vi.fn();
@@ -2728,11 +2454,7 @@ test("initial navigation preserves unavailable deep links without a feedback ban
     navigation: {},
   };
   const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   let controller!: PanelController;
   const editorController = new PanelEditorController(model, preview, modal, {
     apiReady: () => true,
@@ -2763,11 +2485,7 @@ test("auto-save coalesces committed edits onto the returned item version", async
   model.autoSaveEnabled = true;
   model.liveApplyEnabled = false;
   const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   let controller!: PanelController;
   const editorController = new PanelEditorController(model, preview, modal, {
     apiReady: () => true,
@@ -2870,11 +2588,7 @@ test("saved item selection applies identity only while Live is enabled", async (
   model.selectedDeviceId = "entry-a";
   installPaintCatalogue(model);
   const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
+  const modal = modalController(model);
   let controller!: PanelController;
   const editorController = new PanelEditorController(model, preview, modal, {
     apiReady: () => true,
@@ -3154,30 +2868,7 @@ test("manual Save adopts the saved content as the next Reset baseline", async ()
   const model = new PanelModel(() => undefined);
   model.isAdmin = true;
   model.liveApplyEnabled = false;
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller, editorController } = panelControllerHarness(model);
   const source = item(painted());
   editorController.applyLibraryItem(source);
   editorController.updatePaintedContent({ speed: 65 }, "committed");
@@ -3209,30 +2900,7 @@ test("Save As rebinds a copy to its content category", async () => {
   vi.spyOn(model, "customEffectCategoryAvailable").mockImplementation(
     (category) => category === "single-layer",
   );
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller } = panelControllerHarness(model);
   controller.api = {
     createItem: vi.fn().mockResolvedValue({
       ...source,
@@ -3272,30 +2940,7 @@ test("Save As keeps video profile copies in the Video section", async () => {
   model.currentItem = source;
   model.name = source.name;
   model.content = source.content;
-  const preview = new PanelPreviewController(model);
-  const modal = new PanelModalController(model, {
-    updateComplete: async () => undefined,
-    root: () => null,
-    canMutate: () => true,
-  });
-  let controller!: PanelController;
-  const editorController = new PanelEditorController(model, preview, modal, {
-    apiReady: () => true,
-    selectItem: () => undefined,
-    editorTransitionStarted: () => controller.cancelPendingAutoSave(),
-    contentCommitted: () => undefined,
-  });
-  controller = new PanelController(
-    model,
-    editorController,
-    preview,
-    modal,
-    {
-      connected: () => true,
-      pathname: () => "/ha-govee-led-ble",
-      replacePath: () => undefined,
-    },
-  );
+  const { controller } = panelControllerHarness(model);
   controller.api = {
     createItem: vi.fn().mockResolvedValue({
       ...source,

@@ -21,15 +21,11 @@ from custom_components.ha_govee_led_ble.music_commands import (
     resolve_music_profile,
 )
 from custom_components.ha_govee_led_ble.music_semantics import music_params_for_mode, music_variant
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.ble_frames import frame
 
 NEW_MODES = (0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37)
 PROFILE = get_profile("H617A")
-
-
-def frame(prefix):
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes([xor_checksum(body)])
 
 
 def parse_body(body):

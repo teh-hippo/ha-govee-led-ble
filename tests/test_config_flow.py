@@ -56,31 +56,14 @@ async def _confirm(hass, result):
     return await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
 
-async def test_bluetooth_discovery(hass: HomeAssistant, mock_manual_validation):
-    r = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC)
+@pytest.mark.parametrize(("service_info", "model"), [(SVC, "H617A"), (SVC_H6076, "H6076"), (SVC_H6179, "H6179")])
+async def test_bluetooth_discovery(hass: HomeAssistant, mock_manual_validation, service_info, model):
+    r = await _init(hass, config_entries.SOURCE_BLUETOOTH, service_info)
     assert r["type"] == FlowResultType.FORM and r["step_id"] == "bluetooth_confirm"
-    assert r["description_placeholders"] == {"model": "H617A"}
+    assert r["description_placeholders"] == {"model": model}
     r2 = await _confirm(hass, r)
-    assert r2["type"] == FlowResultType.CREATE_ENTRY and r2["title"] == "Govee H617A"
-    assert r2["data"][CONF_MODEL] == "H617A"
-    mock_manual_validation.assert_not_awaited()
-
-
-async def test_bluetooth_discovery_h6076(hass: HomeAssistant, mock_manual_validation):
-    result = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_H6076)
-    assert result["type"] is FlowResultType.FORM
-    created = await _confirm(hass, result)
-    assert created["type"] is FlowResultType.CREATE_ENTRY
-    assert created["data"] == {CONF_MODEL: "H6076"}
-    mock_manual_validation.assert_not_awaited()
-
-
-async def test_bluetooth_discovery_h6179(hass: HomeAssistant, mock_manual_validation):
-    result = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_H6179)
-    assert result["type"] is FlowResultType.FORM
-    created = await _confirm(hass, result)
-    assert created["type"] is FlowResultType.CREATE_ENTRY
-    assert created["data"] == {CONF_MODEL: "H6179"}
+    assert r2["type"] == FlowResultType.CREATE_ENTRY and r2["title"] == f"Govee {model}"
+    assert r2["data"] == {CONF_MODEL: model}
     mock_manual_validation.assert_not_awaited()
 
 
@@ -494,53 +477,36 @@ async def test_options_flow_aborts_only_when_model_has_no_effect_options(
         assert result["type"] is FlowResultType.FORM
 
 
-async def test_reconfigure_h6076_preserves_entry_identity(hass: HomeAssistant):
+@pytest.mark.parametrize(
+    ("service_info", "model", "options"),
+    [
+        (SVC_H6076, "H6076", {CONF_EFFECT_CATEGORIES: ["scenes", "effects"]}),
+        (
+            SVC_H617E,
+            "H617E",
+            {
+                CONF_EFFECT_CATEGORIES: ["scenes", "effects"],
+                CONF_PREFIX_EFFECT_NAMES: True,
+                CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True,
+            },
+        ),
+    ],
+)
+async def test_reconfigure_preserves_entry_identity_and_clears_effect_options(
+    hass: HomeAssistant, service_info, model, options
+):
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Govee H617A",
         data={CONF_MODEL: "H617A"},
-        options={CONF_EFFECT_CATEGORIES: ["scenes", "effects"]},
-        unique_id=SVC_H6076.address,
+        options=options,
+        unique_id=service_info.address,
     )
     entry.add_to_hass(hass)
     original_entry_id = entry.entry_id
 
     with (
-        patch(f"{M}.bluetooth.async_last_service_info", return_value=SVC_H6076),
-        patch.object(hass.config_entries, "async_schedule_reload") as reload_entry,
-    ):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN,
-            context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
-        )
-        updated = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_MODEL: "H6076"})
-
-    assert updated["type"] is FlowResultType.ABORT
-    assert entry.entry_id == original_entry_id
-    assert entry.unique_id == SVC_H6076.address
-    assert entry.title == "Govee H6076"
-    assert entry.data == {CONF_MODEL: "H6076"}
-    assert entry.options == {}
-    reload_entry.assert_called_once_with(entry.entry_id)
-
-
-async def test_reconfigure_preserves_entry_identity_and_clears_effect_options(hass: HomeAssistant):
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Govee H617A",
-        data={CONF_MODEL: "H617A"},
-        options={
-            CONF_EFFECT_CATEGORIES: ["scenes", "effects"],
-            CONF_PREFIX_EFFECT_NAMES: True,
-            CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True,
-        },
-        unique_id=SVC_H617E.address,
-    )
-    entry.add_to_hass(hass)
-    original_entry_id = entry.entry_id
-
-    with (
-        patch(f"{M}.bluetooth.async_last_service_info", return_value=SVC_H617E),
+        patch(f"{M}.bluetooth.async_last_service_info", return_value=service_info),
         patch.object(hass.config_entries, "async_schedule_reload") as reload_entry,
     ):
         result = await hass.config_entries.flow.async_init(
@@ -548,14 +514,14 @@ async def test_reconfigure_preserves_entry_identity_and_clears_effect_options(ha
             context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
         )
         assert result["type"] is FlowResultType.FORM
-        updated = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_MODEL: "H617E"})
+        updated = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_MODEL: model})
 
     assert updated["type"] is FlowResultType.ABORT
     assert updated["reason"] == "reconfigure_successful"
     assert entry.entry_id == original_entry_id
-    assert entry.unique_id == SVC_H617E.address
-    assert entry.title == "Govee H617E"
-    assert entry.data == {CONF_MODEL: "H617E"}
+    assert entry.unique_id == service_info.address
+    assert entry.title == f"Govee {model}"
+    assert entry.data == {CONF_MODEL: model}
     assert entry.options == {}
     reload_entry.assert_called_once_with(entry.entry_id)
 
@@ -650,53 +616,37 @@ async def test_reconfigure_non_h6102_removes_stale_firmware_context(hass: HomeAs
     reload_entry.assert_called_once_with(entry.entry_id)
 
 
-async def test_options_flow_saves_ordered_studio_categories(hass: HomeAssistant):
+@pytest.mark.parametrize(
+    ("submitted", "categories", "prefix", "always_custom"),
+    [
+        (
+            {"scenes": True, "video": False, "effects": False, "reactive": True, "advanced": False},
+            ["scenes", "reactive"],
+            False,
+            True,
+        ),
+        (
+            {"video": True, "scenes": True, "effects": False, "reactive": False, "advanced": False},
+            ["video", "scenes"],
+            True,
+            False,
+        ),
+    ],
+)
+async def test_options_flow_saves_ordered_categories_and_preferences(
+    hass: HomeAssistant, submitted, categories, prefix, always_custom
+):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6199"}, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     with patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock):
         saved = await hass.config_entries.options.async_configure(
             result["flow_id"],
-            {
-                "scenes": True,
-                "video": False,
-                "effects": False,
-                "reactive": True,
-                "advanced": False,
-                CONF_PREFIX_EFFECT_NAMES: False,
-                CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True,
-            },
+            {**submitted, CONF_PREFIX_EFFECT_NAMES: prefix, CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: always_custom},
         )
     assert saved["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {
-        CONF_EFFECT_CATEGORIES: ["scenes", "reactive"],
-        CONF_PREFIX_EFFECT_NAMES: False,
-        CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True,
-    }
-
-
-async def test_options_flow_persists_prefix_preference(hass: HomeAssistant):
-    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6199"}, unique_id="AA:BB:CC:DD:EE:FF")
-    entry.add_to_hass(hass)
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-
-    with patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock):
-        saved = await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            {
-                "video": True,
-                "scenes": True,
-                "effects": False,
-                "reactive": False,
-                "advanced": False,
-                CONF_PREFIX_EFFECT_NAMES: True,
-                CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,
-            },
-        )
-
-    assert saved["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
-        CONF_EFFECT_CATEGORIES: ["video", "scenes"],
-        CONF_PREFIX_EFFECT_NAMES: True,
-        CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,
+        CONF_EFFECT_CATEGORIES: categories,
+        CONF_PREFIX_EFFECT_NAMES: prefix,
+        CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: always_custom,
     }

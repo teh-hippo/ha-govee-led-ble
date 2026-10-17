@@ -39,13 +39,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
-from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3, xor_checksum
-
-
-def _frame(prefix: str) -> bytes:
-    body = bytes.fromhex(prefix).ljust(19, b"\x00")
-    assert len(body) == 19
-    return body + bytes([xor_checksum(body)])
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
+from tests.ble_frames import frame
 
 
 def test_modern_commands_use_shared_grammar_and_exact_scene_catalogue() -> None:
@@ -62,8 +57,8 @@ def test_modern_commands_use_shared_grammar_and_exact_scene_catalogue() -> None:
         assert result.rejection is None and result.parser == "command_write"
         assert result.parsed is not None
         assert result.parsed.opcode.name == opcode
-    assert build_color_rgb(32, 64, 96, "H6102") == _frame("330515012040600000000000ff7f")
-    assert build_scene_activation("H6102", 0x1234) == _frame("3305043412")
+    assert build_color_rgb(32, 64, 96, "H6102") == frame("330515012040600000000000ff7f")
+    assert build_scene_activation("H6102", 0x1234) == frame("3305043412")
     envelope = reassemble_a3(build_h617a_diy_single(0, 0, 50, [(32, 64, 96)]))
     diy = parse_a3_effect_envelope(envelope, "H6102")
     assert diy.family == 0 and diy.body.speed == 50
@@ -71,12 +66,12 @@ def test_modern_commands_use_shared_grammar_and_exact_scene_catalogue() -> None:
 
 def test_complete_status_root_covers_exact_profile_and_preserves_unused_slots() -> None:
     frames = {
-        ReadDomain.POWER: _frame("aa0101"),
-        ReadDomain.BRIGHTNESS: _frame("aa0432"),
-        ReadDomain.COLOUR_MODE: _frame("aa0515010fa0"),
-        ReadDomain.FIRMWARE: _frame("aa06332e30322e303200"),
-        ReadDomain.HARDWARE: _frame("aa0703332e30312e303100"),
-        ReadDomain.SEGMENTS: _frame("aaa505000000006420406032aabbccdeadbeef"),
+        ReadDomain.POWER: frame("aa0101"),
+        ReadDomain.BRIGHTNESS: frame("aa0432"),
+        ReadDomain.COLOUR_MODE: frame("aa0515010fa0"),
+        ReadDomain.FIRMWARE: frame("aa06332e30322e303200"),
+        ReadDomain.HARDWARE: frame("aa0703332e30312e303100"),
+        ReadDomain.SEGMENTS: frame("aaa505000000006420406032aabbccdeadbeef"),
     }
     assert get_profile("H6102").read_domains <= frames.keys()
     for domain, packet in frames.items():
@@ -92,36 +87,36 @@ def test_complete_status_root_covers_exact_profile_and_preserves_unused_slots() 
     assert page.unused == [0xDE, 0xAD, 0xBE, 0xEF]
     assert parse_status_result(frames[ReadDomain.SEGMENTS], "H617A").rejection is ProtocolParseRejection.SCHEMA_REJECTED
     for group in range(1, 6):
-        assert build_segment_query(group, "H6102") == _frame(f"aaa5{group:02x}")
+        assert build_segment_query(group, "H6102") == frame(f"aaa5{group:02x}")
     for group in (0, 6):
-        assert parse_status_result(_frame(f"aaa5{group:02x}"), "H6102").rejection is not None
+        assert parse_status_result(frame(f"aaa5{group:02x}"), "H6102").rejection is not None
 
 
 def test_status_retains_kelvin_gradual_identity_and_unknown_modes() -> None:
     for flag in (0, 1):
-        result = parse_status_result(_frame(f"aa0515{flag:02x}0fa0dead"), "H6102")
+        result = parse_status_result(frame(f"aa0515{flag:02x}0fa0dead"), "H6102")
         assert result.parsed is not None
         mode = parse_color_mode(result.parsed, "H6102")
         assert mode.mode is ParsedMode.COLOUR
         assert mode.color_temp_kelvin == 4000 and mode.multi_effect_flag == flag
         assert result.parsed.body.mode_body.unknown_tail.startswith(b"\xde\xad")
-        generated = parse_status_result(_frame(f"aaa3{flag:02x}fe"), "H6102").parsed
+        generated = parse_status_result(frame(f"aaa3{flag:02x}fe"), "H6102").parsed
         assert generated is not None
         gradual = generated.body
         assert gradual.flag == flag and gradual.unknown_tail.startswith(b"\xfe")
     for prefix, expected in (("aa06332e30322e303200", "3.02.02"), ("aa0703312e30302e303300", "1.00.03")):
-        generated = parse_status_result(_frame(prefix), "H6102").parsed
+        generated = parse_status_result(frame(prefix), "H6102").parsed
         assert generated is not None and generated.body.text == expected
     for prefix, expected_mode, field, value in (
         ("aa05043412ab", ParsedMode.SCENE, "scene_code", 0x1234),
         ("aa050a7856ab", ParsedMode.DIY, "diy_code", 0x5678),
     ):
-        generated = parse_status_result(_frame(prefix), "H6102").parsed
+        generated = parse_status_result(frame(prefix), "H6102").parsed
         assert generated is not None
         semantic = parse_color_mode(generated, "H6102")
         assert semantic.mode is expected_mode and getattr(semantic, field) == value
         assert generated.body.mode_body.unknown_tail.startswith(b"\xab")
-    unknown = parse_status_result(_frame("aa05ee1234"), "H6102").parsed
+    unknown = parse_status_result(frame("aa05ee1234"), "H6102").parsed
     assert unknown is not None
     assert unknown.body.mode_body.startswith(b"\x12\x34")
     assert parse_color_mode(unknown, "H6102").mode is ParsedMode.UNKNOWN
@@ -131,14 +126,14 @@ def test_effective_profile_reaches_builders_parsers_and_expectations() -> None:
     # Independent context: an unknown SKU can use declared codecs without a SKU allowlist.
     profile = replace(get_profile("H6102"), whole_device_mask=0x0007, segment_count=3)
     packet = build_color_rgb(32, 64, 96, "H9901", profile=profile)
-    assert packet == _frame("3305150120406000000000000700")
+    assert packet == frame("3305150120406000000000000700")
     static = parse_static_write(packet, "H9901", profile=profile)
     assert static is not None and static.whole_strip and static.rgb == (32, 64, 96)
     assert expectations_from_packet(packet, "H9901", profile=profile)["rgb_color"] == (32, 64, 96)
     assert parse_command_result(packet, "H9901").rejection is ProtocolParseRejection.UNSUPPORTED_MODEL
-    generated = parse_status_result(_frame("aa0101"), "H9901", profile=profile).parsed
+    generated = parse_status_result(frame("aa0101"), "H9901", profile=profile).parsed
     assert generated is not None and generated.body.is_on == 1
-    assert build_segment_color([3], 1, 2, 3, "H9901", profile=profile) == _frame("3305150101020300000000000400")
+    assert build_segment_color([3], 1, 2, 3, "H9901", profile=profile) == frame("3305150101020300000000000400")
     kelvin = parse_static_write(build_color_temp(4000, "H9901", profile=profile), "H9901", profile=profile)
     assert kelvin is not None and kelvin.kelvin == 4000 and kelvin.kelvin_companion_rgb is not None
     restricted = replace(profile, command_operations=frozenset({"power", "brightness"}), effect_grammar=None)
@@ -159,9 +154,9 @@ def test_shared_queries_keep_default_and_expose_apk_selector() -> None:
         (build_firmware_query, "aa06"),
         (build_hardware_query, "aa0703"),
     ):
-        assert builder("H9901", profile=profile) == _frame(prefix)
-    assert build_colour_mode_query("H6102") == _frame("aa0500")
-    assert build_colour_mode_query("H6102", selector=1) == _frame("aa0501")
+        assert builder("H9901", profile=profile) == frame(prefix)
+    assert build_colour_mode_query("H6102") == frame("aa0500")
+    assert build_colour_mode_query("H6102", selector=1) == frame("aa0501")
     restricted = replace(profile, command_operations=frozenset({"power", "brightness"}))
     for selector in (0, 1):
         require_profile_packet(build_colour_mode_query("H9901", profile=restricted, selector=selector), restricted)
@@ -180,12 +175,12 @@ def test_boolean_register_contract(control: str, opcode: str) -> None:
     )
     for enabled in (False, True):
         packet = build_boolean_control(control, enabled, "H9901", profile=profile)
-        assert packet == _frame(f"33{opcode}{int(enabled):02x}")
+        assert packet == frame(f"33{opcode}{int(enabled):02x}")
         require_profile_packet(packet, profile)
         query = build_boolean_control_query(control, "H9901", profile=profile)
-        assert query == _frame(f"aa{opcode}")
+        assert query == frame(f"aa{opcode}")
         require_profile_packet(query, profile)
-        generated = parse_status_result(_frame(f"aa{opcode}{int(enabled):02x}dead"), profile=profile).parsed
+        generated = parse_status_result(frame(f"aa{opcode}{int(enabled):02x}dead"), profile=profile).parsed
         assert generated is not None and generated.body.unknown_tail.startswith(b"\xde\xad")
         assert parse_boolean_control(generated, "H9901", profile=profile) == {control: enabled}
         disabled = replace(profile, boolean_controls=frozenset())
@@ -199,14 +194,14 @@ def test_boolean_register_contract(control: str, opcode: str) -> None:
                 require_profile_packet(denied, disabled)
     with pytest.raises(ValueError, match="requires a boolean"):
         build_boolean_control(control, 1, "H6102")
-    generated = parse_status_result(_frame(f"aa{opcode}02"), "H6102").parsed
+    generated = parse_status_result(frame(f"aa{opcode}02"), "H6102").parsed
     assert generated is not None
     with pytest.raises(ValueError, match="0 or 1"):
         parse_boolean_control(generated, "H6102")
     # Neither AA05's gradual flag nor an ordinary ACK confirms the register.
     for generated in (
-        parse_status_result(_frame("aa0515010fa0"), "H6102").parsed,
-        parse_command_ack_result(_frame(f"33{opcode}00"), "H6102").parsed,
+        parse_status_result(frame("aa0515010fa0"), "H6102").parsed,
+        parse_command_ack_result(frame(f"33{opcode}00"), "H6102").parsed,
     ):
         assert generated is not None and parse_boolean_control(generated, "H6102") == {}
 
@@ -222,17 +217,17 @@ def test_static_operation_gate_does_not_grant_other_multi_commands() -> None:
         build_color_rgb(1, 2, 3, "H6102", profile=profile),
         build_color_temp(4000, "H6102", profile=profile),
         build_segment_brightness([2, 4], 50, "H6102", profile=profile),
-        _frame("33051503" + "32" * 15),
+        frame("33051503" + "32" * 15),
     ):
         require_profile_packet(packet, profile)
     for packet in (
         build_scene_activation("H6102", 402),
         build_h617a_diy_activation(800),
-        _frame("3305130332"),
-        _frame("330515ff"),  # Unknown static operation is not authorized.
-        _frame("3305ee"),
-        _frame("33a300"),
-        _frame("330e01"),
+        frame("3305130332"),
+        frame("330515ff"),  # Unknown static operation is not authorized.
+        frame("3305ee"),
+        frame("33a300"),
+        frame("330e01"),
         *build_h617a_diy_single(0, 0, 50, [(1, 2, 3)]),
     ):
         with pytest.raises(ValueError, match="does not support"):
@@ -247,11 +242,11 @@ def test_shared_upload_ack_offsets_and_positive_result(subtype: int) -> None:
     for success in (False, True):
         # Music's byte 2 is deliberately opposite to status at byte 3.
         payload = f"{int(success):02x}{int(not success):02x}" if subtype == 0x41 else f"{int(not success):02x}a5"
-        result = parse_command_ack_result(_frame(f"a3{subtype:02x}{payload}"), "H9901", profile=profile)
+        result = parse_command_ack_result(frame(f"a3{subtype:02x}{payload}"), "H9901", profile=profile)
         assert result.parsed is not None and result.parser == "h617a_command_ack"
         assert upload_ack_success(result.parsed, subtype) is success
         assert upload_ack_success(result.parsed, subtype + 1) is None
-    ordinary = parse_command_ack_result(_frame(f"33{subtype:02x}00"), "H6102").parsed
+    ordinary = parse_command_ack_result(frame(f"33{subtype:02x}00"), "H6102").parsed
     assert ordinary is not None and upload_ack_success(ordinary, subtype) is None
     with pytest.raises(ValueError, match="complete A3"):
         upload_ack_subtype(packets, len(packets) - 2, "H6102")

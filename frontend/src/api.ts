@@ -82,18 +82,12 @@ export class EffectStudioApi {
     callback: (device: DeviceCapabilities) => void,
     onError?: (error: Error) => void,
   ): Promise<() => void> {
-    return this.hass.connection.subscribeMessage(
-      (payload) => {
-        try {
-          callback(decodeDevices([resultField(payload, "device")])[0]);
-        } catch (error) {
-          onError?.(asError(error));
-        }
-      },
-      {
-        type: `${PREFIX}/device/subscribe`,
-        config_entry_id: configEntryId,
-      },
+    return this.subscribe(
+      "device/subscribe",
+      { config_entry_id: configEntryId },
+      (payload) => decodeDevices([resultField(payload, "device")])[0],
+      callback,
+      onError,
     );
   }
 
@@ -145,13 +139,7 @@ export class EffectStudioApi {
     content: EffectContent,
     guard?: () => boolean,
   ): Promise<LibraryItem> {
-    const data = {
-      name,
-      content: effectContentToWire(content),
-      ...(editableLayerLabels(content)
-        ? { layer_labels: editableLayerLabels(content) }
-        : {}),
-    };
+    const data = documentPayload(name, content);
     try {
       return await this.libraryMutation("library/create", data);
     } catch (error) {
@@ -173,11 +161,7 @@ export class EffectStudioApi {
   ): Promise<LibraryItem> {
     const data = {
       item_id: item.id,
-      name,
-      content: effectContentToWire(content),
-      ...(editableLayerLabels(content)
-        ? { layer_labels: editableLayerLabels(content) }
-        : {}),
+      ...documentPayload(name, content),
       expected_version: item.version,
       expected_updated_at: item.updated_at,
     };
@@ -427,18 +411,7 @@ export class EffectStudioApi {
     callback: (snapshot: LibrarySnapshot) => void,
     onError?: (error: Error) => void,
   ): Promise<() => void> {
-    return this.hass.connection.subscribeMessage(
-      (snapshot) => {
-        try {
-          callback(decodeLibrarySnapshot(snapshot));
-        } catch (error) {
-          onError?.(asError(error));
-        }
-      },
-      {
-        type: `${PREFIX}/library/subscribe`,
-      },
-    );
+    return this.subscribe("library/subscribe", {}, decodeLibrarySnapshot, callback, onError);
   }
 
   public subscribePreview(
@@ -446,19 +419,7 @@ export class EffectStudioApi {
     callback: (status: PreviewStatus) => void,
     onError?: (error: Error) => void,
   ): Promise<() => void> {
-    return this.hass.connection.subscribeMessage(
-      (status) => {
-        try {
-          callback(decodePreviewStatus(status));
-        } catch (error) {
-          onError?.(asError(error));
-        }
-      },
-      {
-        type: `${PREFIX}/preview/subscribe`,
-        session_id: sessionId,
-      },
-    );
+    return this.subscribe("preview/subscribe", { session_id: sessionId }, decodePreviewStatus, callback, onError);
   }
 
   public onConnectionReady(callback: () => void): () => void {
@@ -478,6 +439,25 @@ export class EffectStudioApi {
       type: `${PREFIX}/${command}`,
       ...data,
     });
+  }
+
+  private subscribe<T>(
+    command: string,
+    data: Record<string, unknown>,
+    decode: (payload: unknown) => T,
+    callback: (value: T) => void,
+    onError?: (error: Error) => void,
+  ): Promise<() => void> {
+    return this.hass.connection.subscribeMessage(
+      (payload) => {
+        try {
+          callback(decode(payload));
+        } catch (error) {
+          onError?.(asError(error));
+        }
+      },
+      { type: `${PREFIX}/${command}`, ...data },
+    );
   }
 
   private async libraryMutation(
@@ -533,11 +513,7 @@ export class EffectStudioApi {
       target_item_id: status.item.id,
       expected_version: status.item.version,
       expected_updated_at: status.item.updated_at,
-      name,
-      content: effectContentToWire(content),
-      ...(editableLayerLabels(content)
-        ? { layer_labels: editableLayerLabels(content) }
-        : {}),
+      ...documentPayload(name, content),
     });
   }
 
@@ -570,6 +546,12 @@ class StaleLibraryMutationError extends Error {
   public constructor() {
     super("The effect library changed before the save response arrived.");
   }
+}
+
+function documentPayload(name: string, content: EffectContent) {
+  const wire = effectContentToWire(content);
+  const labels = editableLayerLabels(content);
+  return { name, content: wire, ...(labels ? { layer_labels: labels } : {}) };
 }
 
 function decodeLibraryMutation(value: unknown): LibraryMutationResult {

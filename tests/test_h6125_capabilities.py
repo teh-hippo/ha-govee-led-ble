@@ -43,13 +43,9 @@ from custom_components.ha_govee_led_ble.music_semantics import (
 )
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import reassemble_a1_02, reassemble_a3, xor_checksum
+from tests.ble_frames import status_frame
 
 H = bytes.fromhex
-
-
-def frame(domain, body):
-    packet = bytes((0xAA, domain, *body)).ljust(19, b"\0")
-    return packet + bytes((xor_checksum(packet),))
 
 
 LEGACY = device_profile("H6125", 1, 2, firmware="1.07.00", hardware="1.00.03")
@@ -126,12 +122,12 @@ def test_every_other_frame_reaches_the_device_unchanged() -> None:
 
 def test_status_root_covers_every_declared_read_domain() -> None:
     samples = {
-        ReadDomain.POWER: frame(0x01, [1]),
-        ReadDomain.BRIGHTNESS: frame(0x04, [0x80]),
-        ReadDomain.COLOUR_MODE: frame(0x05, [0x15, 0, 0x0F, 0xA0]),
-        ReadDomain.FIRMWARE: frame(0x06, list(b"1.07.01\0")),
-        ReadDomain.HARDWARE: frame(0x07, [3, *b"1.00.04\0"]),
-        ReadDomain.SEGMENTS: frame(0xA5, [1, 100, 255, 0, 0, 100, 0, 255, 0, 100, 0, 0, 255]),
+        ReadDomain.POWER: status_frame(0x01, [1]),
+        ReadDomain.BRIGHTNESS: status_frame(0x04, [0x80]),
+        ReadDomain.COLOUR_MODE: status_frame(0x05, [0x15, 0, 0x0F, 0xA0]),
+        ReadDomain.FIRMWARE: status_frame(0x06, list(b"1.07.01\0")),
+        ReadDomain.HARDWARE: status_frame(0x07, [3, *b"1.00.04\0"]),
+        ReadDomain.SEGMENTS: status_frame(0xA5, [1, 100, 255, 0, 0, 100, 0, 255, 0, 100, 0, 0, 255]),
     }
     profile = MODEL_PROFILES["H6125"]
     assert set(samples) == profile.read_domains

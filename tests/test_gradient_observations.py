@@ -8,8 +8,8 @@ from custom_components.ha_govee_led_ble.const import ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h6199_control_query, build_video_mode
+from tests.ble_frames import frame
 from tests.test_h6199_capabilities import QUALIFIED
-from tests.test_h6199_native_controls import frame
 
 
 def test_stale_mode_does_not_publish_gradient_but_accepted_static_does(hass):

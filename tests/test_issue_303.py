@@ -29,7 +29,8 @@ from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import validate_video_request, white_balance_readback_state
-from tests.test_h6199_native_controls import frame, qualify
+from tests.ble_frames import frame
+from tests.test_h6199_native_controls import qualify
 
 
 @pytest.fixture
@@ -250,13 +251,13 @@ async def test_camera_evidence_blocks_physical_video_write(camera_device, state)
 
 
 @pytest.mark.parametrize("state", ["absent", "incompatible"])
-async def test_video_service_reports_camera_reason(camera_device, monkeypatch, state):
+async def test_video_entity_command_reports_camera_reason(camera_device, monkeypatch, state):
     c = camera_device
     observe_camera(c, state)
     # Reproduce an unconfirmed command without waiting for BLE timeouts.
     monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
-    with pytest.raises(HomeAssistantError) as error:
-        await GoveeBLELight(c)._async_set_video_mode("movie")
+    with pytest.raises(HomeAssistantError) as error, GoveeBLELight(c)._rollback():
+        await apply_active_video_mode(c, mode="movie", requested_values={})
     key = error.value.translation_key
     assert key == f"camera_{state}", f"camera={state}, error={key}, cause={error.value.__cause__}"
     assert c._client.write_gatt_char.await_count == 0

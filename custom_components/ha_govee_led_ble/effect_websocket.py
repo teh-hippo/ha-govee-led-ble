@@ -22,8 +22,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, ModelProfile, supported_effect_categories
+from .const import DOMAIN, supported_effect_categories
 from .control_arbiter import ControlIntent
+from .effect_application import LibraryMutation
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
     custom_effect_catalogue_payload,
@@ -192,9 +193,7 @@ async def ws_editor_device(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     connection.send_result(
         msg["id"],
@@ -261,9 +260,7 @@ def ws_device_subscribe(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     backend = _backend(hass)
     cancel_forward: CALLBACK_TYPE | None = None
@@ -334,14 +331,9 @@ def ws_scene_catalogue_list(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg, scenes=True)) is None:
         return
     coordinator = entry.runtime_data
-    if not coordinator.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
-        return
     try:
         catalogue = scene_catalogue_payload(coordinator.model)
     except ValueError as exc:
@@ -375,12 +367,7 @@ def ws_scene_catalogue_get(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
-        return
-    if not entry.runtime_data.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+    if (entry := _loaded_entry(hass, connection, msg, scenes=True)) is None:
         return
     try:
         backend = _backend(hass)
@@ -419,12 +406,7 @@ async def ws_scene_apply(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
-        return
-    if not entry.runtime_data.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+    if (entry := _loaded_entry(hass, connection, msg, scenes=True)) is None:
         return
     try:
         backend = _backend(hass)
@@ -486,9 +468,7 @@ async def ws_scene_reset(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     backend = _backend(hass)
     try:
@@ -531,12 +511,7 @@ async def ws_scene_default_set(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
-        return
-    if not entry.runtime_data.profile.supports_scenes:
-        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+    if (entry := _loaded_entry(hass, connection, msg, scenes=True)) is None:
         return
     backend = _backend(hass)
     try:
@@ -571,16 +546,10 @@ async def ws_scene_default_set(
     )
 
 
-def _template_default_detail(
-    backend: EffectBackend,
-    config_entry_id: str,
-    model: str,
-    template_id: str,
-    *,
-    profile: ModelProfile | None = None,
-) -> dict[str, Any]:
-    template = resolve_catalogue_template(model, template_id, profile=profile)
-    stored = backend.template_defaults.get(config_entry_id, template_id)
+def _template_default_detail(backend: EffectBackend, entry: ConfigEntry[Any], template_id: str) -> dict[str, Any]:
+    model = entry.runtime_data.model
+    template = resolve_catalogue_template(model, template_id, profile=entry.runtime_data.profile)
+    stored = backend.template_defaults.get(entry.entry_id, template_id)
     if stored is not None and stored.model != model:
         stored = None
     return {
@@ -604,18 +573,10 @@ def ws_template_default_get(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     try:
-        detail = _template_default_detail(
-            _backend(hass),
-            entry.entry_id,
-            entry.runtime_data.model,
-            msg["template_id"],
-            profile=entry.runtime_data.profile,
-        )
+        detail = _template_default_detail(_backend(hass), entry, msg["template_id"])
     except ValueError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
         return
@@ -638,9 +599,7 @@ async def ws_template_default_set(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     backend = _backend(hass)
     try:
@@ -669,16 +628,7 @@ async def ws_template_default_set(
     except EffectStorageError as exc:
         connection.send_error(msg["id"], "save_failed", str(exc))
         return
-    connection.send_result(
-        msg["id"],
-        _template_default_detail(
-            backend,
-            entry.entry_id,
-            entry.runtime_data.model,
-            msg["template_id"],
-            profile=entry.runtime_data.profile,
-        ),
-    )
+    connection.send_result(msg["id"], _template_default_detail(backend, entry, msg["template_id"]))
 
 
 @websocket_command(
@@ -695,9 +645,7 @@ async def ws_template_default_reset(
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     backend = _backend(hass)
     try:
@@ -709,16 +657,7 @@ async def ws_template_default_reset(
     except EffectStorageError as exc:
         connection.send_error(msg["id"], "reset_failed", str(exc))
         return
-    connection.send_result(
-        msg["id"],
-        _template_default_detail(
-            backend,
-            entry.entry_id,
-            entry.runtime_data.model,
-            msg["template_id"],
-            profile=entry.runtime_data.profile,
-        ),
-    )
+    connection.send_result(msg["id"], _template_default_detail(backend, entry, msg["template_id"]))
 
 
 @websocket_command(
@@ -761,9 +700,7 @@ async def ws_preview_close(
 @require_admin
 @async_response
 async def ws_music_edit_retained(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     coordinator = entry.runtime_data
     try:
@@ -1091,13 +1028,7 @@ async def ws_library_create(
     except EffectStorageError as exc:
         connection.send_error(msg["id"], "storage_unavailable", str(exc))
         return
-    connection.send_result(
-        msg["id"],
-        {
-            "item": mutation.item.to_dict(),
-            "library": library_snapshot_payload(mutation.snapshot),
-        },
-    )
+    connection.send_result(msg["id"], _mutation_payload(mutation))
 
 
 @websocket_command(
@@ -1127,38 +1058,10 @@ async def ws_library_update(
             expected_updated_at=msg["expected_updated_at"],
             layer_labels=msg.get("layer_labels"),
         )
-    except ReservedEffectNameError as exc:
-        connection.send_error(msg["id"], "reserved_name", str(exc))
+    except (ValueError, EffectStorageError) as exc:
+        connection.send_error(msg["id"], *_library_write_error(exc))
         return
-    except SavedEffectNameConflictError as exc:
-        connection.send_error(msg["id"], "name_conflict", str(exc))
-        return
-    except EffectValidationError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
-        return
-    except (ValueError, EffectNotFoundError) as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
-        return
-    except EffectVersionConflictError as exc:
-        connection.send_error(
-            msg["id"],
-            "conflict",
-            f"{exc}; current_version={exc.current_version}",
-        )
-        return
-    except EffectLimitError as exc:
-        connection.send_error(msg["id"], "limit_reached", str(exc))
-        return
-    except EffectStorageError as exc:
-        connection.send_error(msg["id"], "storage_unavailable", str(exc))
-        return
-    connection.send_result(
-        msg["id"],
-        {
-            "item": mutation.item.to_dict(),
-            "library": library_snapshot_payload(mutation.snapshot),
-        },
-    )
+    connection.send_result(msg["id"], _mutation_payload(mutation))
 
 
 @websocket_command(
@@ -1215,38 +1118,10 @@ async def ws_library_overwrite(
             expected_updated_at=msg["expected_updated_at"],
             layer_labels=msg.get("layer_labels"),
         )
-    except ReservedEffectNameError as exc:
-        connection.send_error(msg["id"], "reserved_name", str(exc))
+    except (ValueError, EffectStorageError) as exc:
+        connection.send_error(msg["id"], *_library_write_error(exc))
         return
-    except SavedEffectNameConflictError as exc:
-        connection.send_error(msg["id"], "name_conflict", str(exc))
-        return
-    except EffectValidationError as exc:
-        connection.send_error(msg["id"], "invalid_format", str(exc))
-        return
-    except (ValueError, EffectNotFoundError) as exc:
-        connection.send_error(msg["id"], "not_found", str(exc))
-        return
-    except EffectVersionConflictError as exc:
-        connection.send_error(
-            msg["id"],
-            "conflict",
-            f"{exc}; current_version={exc.current_version}",
-        )
-        return
-    except EffectLimitError as exc:
-        connection.send_error(msg["id"], "limit_reached", str(exc))
-        return
-    except EffectStorageError as exc:
-        connection.send_error(msg["id"], "storage_unavailable", str(exc))
-        return
-    connection.send_result(
-        msg["id"],
-        {
-            "item": mutation.item.to_dict(),
-            "library": library_snapshot_payload(mutation.snapshot),
-        },
-    )
+    connection.send_result(msg["id"], _mutation_payload(mutation))
 
 
 @websocket_command(
@@ -1387,9 +1262,7 @@ async def ws_apply(
     msg: dict[str, Any],
 ) -> None:
     backend = _backend(hass)
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     try:
         UUID(msg["item_id"])
@@ -1457,9 +1330,7 @@ async def ws_apply_snapshot(
     msg: dict[str, Any],
 ) -> None:
     backend = _backend(hass)
-    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
-        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+    if (entry := _loaded_entry(hass, connection, msg)) is None:
         return
     try:
         if "origin_id" in msg and "origin_kind" not in msg:
@@ -1552,6 +1423,39 @@ def async_register_effect_websocket(
     websocket_api.async_register_command(hass, ws_user_state_record_colour)
     websocket_api.async_register_command(hass, ws_apply)
     websocket_api.async_register_command(hass, ws_apply_snapshot)
+
+
+def _loaded_entry(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any], *, scenes: bool = False
+) -> ConfigEntry[Any] | None:
+    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
+    if entry is None or entry.domain != DOMAIN or entry.state is not ConfigEntryState.LOADED:
+        connection.send_error(msg["id"], "not_found", "target config entry is not loaded")
+        return None
+    if scenes and not entry.runtime_data.profile.supports_scenes:
+        connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
+        return None
+    return entry
+
+
+def _library_write_error(exc: ValueError | EffectStorageError) -> tuple[str, str]:
+    if isinstance(exc, ReservedEffectNameError):
+        return "reserved_name", str(exc)
+    if isinstance(exc, SavedEffectNameConflictError):
+        return "name_conflict", str(exc)
+    if isinstance(exc, EffectValidationError):
+        return "invalid_format", str(exc)
+    if isinstance(exc, ValueError | EffectNotFoundError):
+        return "not_found", str(exc)
+    if isinstance(exc, EffectVersionConflictError):
+        return "conflict", f"{exc}; current_version={exc.current_version}"
+    if isinstance(exc, EffectLimitError):
+        return "limit_reached", str(exc)
+    return "storage_unavailable", str(exc)
+
+
+def _mutation_payload(mutation: LibraryMutation) -> dict[str, Any]:
+    return {"item": mutation.item.to_dict(), "library": library_snapshot_payload(mutation.snapshot)}
 
 
 def _backend(hass: HomeAssistant) -> EffectBackend:

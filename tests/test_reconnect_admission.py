@@ -31,11 +31,11 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
     async_require_video_controls,
 )
 from custom_components.ha_govee_led_ble.select import GoveeBLEControlSelect
+from tests.ble_frames import frame
 from tests.storage_test_double import InMemoryVersionedDocumentStore
-from tests.test_effect_preview import _manager, _open
+from tests.test_effect_preview import _manager, _open, _queue
 from tests.test_h6199_capabilities import QUALIFIED
 from tests.test_h6199_capabilities import lifecycle as reconnect_lifecycle  # noqa: F401
-from tests.test_h6199_native_controls import frame
 
 
 @pytest.mark.parametrize("identity", ["qualified", "missing", "mismatched"])
@@ -144,14 +144,7 @@ async def test_background_reconnect_admission(reconnect_lifecycle, hass, monkeyp
                 c, item, config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z"
             )
         else:
-            await manager.async_queue_snapshot(
-                session_id=session,
-                owner=owner,
-                config_entry_id="entry-a",
-                sequence=1,
-                updated_at="2026-09-16T00:00:00Z",
-                item=item,
-            )
+            await _queue(manager, owner, session, item, updated_at="2026-09-16T00:00:00Z")
             await manager.async_wait_idle("entry-a")
             assert statuses[-1].phase is not PreviewPhase.FAILED
 

@@ -110,6 +110,17 @@ def h6199_light(mock_h6199_coordinator):
     return e
 
 
+def _lookup(value: object = None) -> SimpleNamespace:
+    return SimpleNamespace(get=MagicMock(return_value=value))
+
+
+def _stub_light(coordinator, *saved: LibraryItem, **services: object) -> GoveeBLELight:
+    # The light probes optional backend services with getattr, so the stub exposes only the services given.
+    services.setdefault("application", SimpleNamespace(library_snapshot=MagicMock(return_value=LibrarySnapshot(saved))))
+    backend = cast(EffectBackend, SimpleNamespace(**services))
+    return GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+
+
 def _h6102_light(mock_coordinator, firmware=None, firmware_source=None, *, pact_type=None):
     resolution = resolve_h6102_capabilities(firmware, firmware_source, pact_type=pact_type, pact_code=1)
     mock_coordinator.model = "H6102"
@@ -782,25 +793,15 @@ def test_saved_categories_remain_visible_when_native_families_are_narrower(
 
     assert {"Saved scene", "Saved reactive"} <= {entry.display_label for entry in entries}
 
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(
-                    return_value=LibrarySnapshot((saved_scene, saved_reactive)),
-                )
-            ),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-            active_workspaces=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    entity = GoveeBLELight(
+    entity = _stub_light(
         mock_h6199_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        saved_scene,
+        saved_reactive,
+        device_cache=_lookup(),
+        active_workspaces=_lookup(),
+        template_defaults=_lookup(),
     )
 
-    backend.template_defaults = SimpleNamespace(get=MagicMock(return_value=None))
     assert {"Saved scene", "Saved reactive"} <= set(entity.effect_list)
 
 
@@ -834,21 +835,7 @@ def test_always_custom_includes_saved_effects_with_no_enabled_categories(
     mock_coordinator.effect_categories = frozenset()
     mock_coordinator.effect_families = frozenset()
     mock_coordinator.always_include_custom_effects = True
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot((saved,))),
-            ),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-            active_workspaces=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    entity = GoveeBLELight(
-        mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
+    entity = _stub_light(mock_coordinator, saved, device_cache=_lookup(), active_workspaces=_lookup())
 
     assert entity.effect_list == ["off", "Saved effect"]
     assert all(entry.source == "saved" for entry in entity._selector_entries())
@@ -872,22 +859,11 @@ def test_always_custom_keeps_active_saved_effect_in_state_and_list(
     mock_coordinator.always_include_custom_effects = True
     mock_coordinator.is_on = True
     mock_coordinator.diy_code = 800
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot((saved,))),
-            ),
-            device_cache=SimpleNamespace(
-                get=MagicMock(return_value=SimpleNamespace(active_effect=hint)),
-            ),
-            active_workspaces=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    entity = GoveeBLELight(
+    entity = _stub_light(
         mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        saved,
+        device_cache=_lookup(SimpleNamespace(active_effect=hint)),
+        active_workspaces=_lookup(),
     )
 
     assert entity.effect == "Saved effect"
@@ -979,18 +955,11 @@ async def test_saved_effects_are_compatible_reactive_and_lock_safe(
         saved_effect_for_apply=saved_effect_for_apply,
     )
     apply_saved = AsyncMock(side_effect=apply_saved_effect)
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=application,
-            engine=SimpleNamespace(async_apply_saved=apply_saved),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    entity = GoveeBLELight(
+    entity = _stub_light(
         mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        application=application,
+        engine=SimpleNamespace(async_apply_saved=apply_saved),
+        device_cache=_lookup(),
     )
     entity.async_write_ha_state = MagicMock()
 
@@ -1050,26 +1019,12 @@ def test_active_saved_effect_uses_current_name_only_for_matching_content(
         content_hash=saved.content_hash,
         observable_signature="custom:800",
     )
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(
-                    return_value=LibrarySnapshot((renamed,)),
-                )
-            ),
-            device_cache=SimpleNamespace(
-                get=MagicMock(
-                    return_value=SimpleNamespace(active_effect=hint),
-                )
-            ),
-            active_workspaces=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    entity = GoveeBLELight(
+    workspaces = _lookup()
+    entity = _stub_light(
         mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        renamed,
+        device_cache=_lookup(SimpleNamespace(active_effect=hint)),
+        active_workspaces=workspaces,
     )
     entity.async_write_ha_state = MagicMock()
     mock_coordinator.is_on = True
@@ -1092,13 +1047,13 @@ def test_active_saved_effect_uses_current_name_only_for_matching_content(
     mock_coordinator.scene_code = None
     mock_coordinator.diy_code = 800
 
-    backend.active_workspaces.get.return_value = SimpleNamespace(
+    workspaces.get.return_value = SimpleNamespace(
         model="H617A",
         content=saved.content,
         observable_signature="custom:800",
     )
     assert entity.effect == "Custom"
-    backend.active_workspaces.get.return_value = None
+    workspaces.get.return_value = None
 
     changed = replace(
         renamed,
@@ -1302,28 +1257,16 @@ def test_active_custom_remains_in_effect_list_when_categories_are_disabled(
     mock_coordinator.effect_categories = frozenset()
     mock_coordinator.is_on = True
     mock_coordinator.diy_code = 24
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-            active_workspaces=SimpleNamespace(
-                get=MagicMock(
-                    return_value=SimpleNamespace(
-                        model="H617A",
-                        content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
-                        observable_signature="custom:24",
-                    )
-                )
-            ),
-        ),
-    )
-    entity = GoveeBLELight(
+    entity = _stub_light(
         mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        device_cache=_lookup(),
+        active_workspaces=_lookup(
+            SimpleNamespace(
+                model="H617A",
+                content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
+                observable_signature="custom:24",
+            )
+        ),
     )
 
     assert entity.effect == "Custom"
@@ -1340,185 +1283,83 @@ def test_active_custom_uses_the_advertised_namespace_for_saved_resolution(
     mock_coordinator.effect_categories = frozenset({"effects"})
     mock_coordinator.is_on = True
     mock_coordinator.diy_code = 24
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(
-                    return_value=LibrarySnapshot((saved,)),
-                ),
-            ),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-            active_workspaces=SimpleNamespace(
-                get=MagicMock(
-                    return_value=SimpleNamespace(
-                        model="H617A",
-                        content=saved.content,
-                        observable_signature="custom:24",
-                    )
-                )
-            ),
-        ),
-    )
-    entity = GoveeBLELight(
+    entity = _stub_light(
         mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
+        saved,
+        device_cache=_lookup(),
+        active_workspaces=_lookup(
+            SimpleNamespace(
+                model="H617A",
+                content=saved.content,
+                observable_signature="custom:24",
+            )
+        ),
     )
 
     assert "Custom [Effect]" in entity.effect_list
     assert entity._saved_effect("Custom [Effect]") == saved
 
 
-async def test_direct_colour_control_clears_active_workspace(mock_coordinator):
-    workspace = SimpleNamespace(
+def _workspace_light(coordinator) -> tuple[GoveeBLELight, MagicMock]:
+    workspaces = MagicMock()
+    workspaces.get.return_value = SimpleNamespace(
         model="H617A",
         content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
         observable_signature="custom:24",
     )
-    current_workspace = workspace
-    active_workspaces = MagicMock()
-    active_workspaces.get.side_effect = lambda _entry_id: current_workspace
 
-    def clear_workspace(_entry_id):
-        nonlocal current_workspace
-        current_workspace = None
+    def clear(_entry_id: str) -> bool:
+        workspaces.get.return_value = None
         return True
 
-    active_workspaces.clear.side_effect = clear_workspace
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            active_workspaces=active_workspaces,
-            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
+    workspaces.clear.side_effect = clear
+    coordinator.is_on = True
+    coordinator.diy_code = 24
+    light = _stub_light(
+        coordinator,
+        active_workspaces=workspaces,
+        preview=SimpleNamespace(async_supersede_device=AsyncMock()),
+        device_cache=_lookup(),
     )
-    mock_coordinator.is_on = True
-    mock_coordinator.diy_code = 24
-    light = GoveeBLELight(
-        mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
+    return light, workspaces
+
+
+async def test_direct_colour_control_clears_active_workspace(mock_coordinator):
+    light, workspaces = _workspace_light(mock_coordinator)
     light.async_write_ha_state = MagicMock()
 
     assert light.effect == "Custom"
 
     await light.async_turn_on(rgb_color=(12, 34, 56))
 
-    active_workspaces.clear.assert_called_once_with("entry-a")
+    workspaces.clear.assert_called_once_with("entry-a")
     assert light.effect == "off"
     assert light.rgb_color == (12, 34, 56)
 
 
 async def test_failed_foreground_control_preserves_active_workspace(mock_coordinator):
-    workspace = SimpleNamespace(
-        model="H617A",
-        content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
-        observable_signature="custom:24",
-    )
-    active_workspaces = MagicMock()
-    active_workspaces.get.return_value = workspace
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            active_workspaces=active_workspaces,
-            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    mock_coordinator.is_on = True
-    mock_coordinator.diy_code = 24
     mock_coordinator.send_command = AsyncMock(side_effect=BleakError("failed"))
-    light = GoveeBLELight(
-        mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
+    light, workspaces = _workspace_light(mock_coordinator)
 
     with pytest.raises(HomeAssistantError):
         await light.async_turn_on(rgb_color=(12, 34, 56))
 
-    active_workspaces.clear.assert_not_called()
+    workspaces.clear.assert_not_called()
     assert light.effect == "Custom"
 
 
-async def test_custom_effect_selection_with_brightness_preserves_workspace(
-    mock_coordinator,
-):
-    workspace = SimpleNamespace(
-        model="H617A",
-        content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
-        observable_signature="custom:24",
-    )
-    active_workspaces = MagicMock()
-    active_workspaces.get.return_value = workspace
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            active_workspaces=active_workspaces,
-            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    mock_coordinator.is_on = True
-    mock_coordinator.diy_code = 24
-    light = GoveeBLELight(
-        mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
+@pytest.mark.parametrize(
+    "control",
+    [{"brightness": 128, "effect": "Custom"}, {"brightness": 128}],
+    ids=["custom-effect-with-brightness", "brightness-only"],
+)
+async def test_brightness_control_preserves_active_workspace(mock_coordinator, control):
+    light, workspaces = _workspace_light(mock_coordinator)
     light.async_write_ha_state = MagicMock()
 
-    await light.async_turn_on(brightness=128, effect="Custom")
+    await light.async_turn_on(**control)
 
-    active_workspaces.clear.assert_not_called()
-    assert light.effect == "Custom"
-
-
-async def test_brightness_only_control_preserves_active_workspace(
-    mock_coordinator,
-):
-    workspace = SimpleNamespace(
-        model="H617A",
-        content=SingleEffect(0, 0, 50, ((255, 0, 0),)),
-        observable_signature="custom:24",
-    )
-    active_workspaces = MagicMock()
-    active_workspaces.get.return_value = workspace
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            active_workspaces=active_workspaces,
-            preview=SimpleNamespace(async_supersede_device=AsyncMock()),
-            device_cache=SimpleNamespace(get=MagicMock(return_value=None)),
-        ),
-    )
-    mock_coordinator.is_on = True
-    mock_coordinator.diy_code = 24
-    light = GoveeBLELight(
-        mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
-    light.async_write_ha_state = MagicMock()
-
-    await light.async_turn_on(brightness=128)
-
-    active_workspaces.clear.assert_not_called()
+    workspaces.clear.assert_not_called()
     assert light.effect == "Custom"
 
 
@@ -1574,22 +1415,7 @@ async def test_turn_on_scene_uses_the_device_stored_default(mock_coordinator):
         updated_at="2026-08-17T00:00:00Z",
         canonical_body=b"\x00",
     )
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            scene_defaults=SimpleNamespace(
-                get=MagicMock(return_value=scene_default),
-            ),
-        ),
-    )
-    entity = GoveeBLELight(
-        mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
+    entity = _stub_light(mock_coordinator, scene_defaults=_lookup(scene_default))
     entity.async_write_ha_state = MagicMock()
     mock_coordinator.is_on = True
 
@@ -1642,22 +1468,8 @@ async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effe
 
 async def test_turn_on_music_effect_uses_the_device_template_default(mock_coordinator):
     content = MusicProfile("H617A", "rhythm", 42, None, False, {})
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            template_defaults=SimpleNamespace(
-                get=MagicMock(return_value=SimpleNamespace(model="H617A", content=content)),
-            ),
-        ),
-    )
-    entity = GoveeBLELight(
-        mock_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
+    defaults = _lookup(SimpleNamespace(model="H617A", content=content))
+    entity = _stub_light(mock_coordinator, template_defaults=defaults)
     entity.async_write_ha_state = MagicMock()
     mock_coordinator.is_on = True
 
@@ -1671,7 +1483,7 @@ async def test_turn_on_music_effect_uses_the_device_template_default(mock_coordi
     assert isinstance(compiled, CompiledMusicProfile)
     assert compiled.mode == "rhythm"
     assert compiled.sensitivity == 42
-    backend.template_defaults.get.assert_called_once_with("entry-a", "template:music:rhythm")
+    defaults.get.assert_called_once_with("entry-a", "template:music:rhythm")
     mock_coordinator.async_select_music_slug.assert_not_awaited()
 
 
@@ -1727,22 +1539,8 @@ async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_
         RelativeBrightness(80, 70, 60, 50),
         True,
     )
-    backend = cast(
-        EffectBackend,
-        SimpleNamespace(
-            application=SimpleNamespace(
-                library_snapshot=MagicMock(return_value=LibrarySnapshot(())),
-            ),
-            template_defaults=SimpleNamespace(
-                get=MagicMock(return_value=SimpleNamespace(model="H6199", content=content)),
-            ),
-        ),
-    )
-    entity = GoveeBLELight(
-        mock_h6199_coordinator,
-        config_entry_id="entry-a",
-        effect_backend=backend,
-    )
+    defaults = _lookup(SimpleNamespace(model="H6199", content=content))
+    entity = _stub_light(mock_h6199_coordinator, template_defaults=defaults)
     entity.async_write_ha_state = MagicMock()
     mock_h6199_coordinator.is_on = True
 
@@ -1756,7 +1554,7 @@ async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_
     assert isinstance(compiled, CompiledVideoProfile)
     assert compiled.saturation == 63
     assert compiled.relative_brightness == (80, 70, 60, 50)
-    backend.template_defaults.get.assert_called_with("entry-a", "template:video:movie")
+    defaults.get.assert_called_with("entry-a", "template:video:movie")
 
 
 async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordinator):

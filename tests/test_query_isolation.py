@@ -21,8 +21,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_segment_query,
     build_white_balance_query,
 )
+from tests.ble_frames import frame
 from tests.test_h6199_capabilities import QUALIFIED
-from tests.test_h6199_native_controls import frame
 
 
 @pytest.fixture

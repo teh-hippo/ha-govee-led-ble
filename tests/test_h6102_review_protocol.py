@@ -24,14 +24,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
-from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import identity_version
-
-
-def frame(prefix: str) -> bytes:
-    body = bytes.fromhex(prefix).ljust(19, b"\x00")
-    assert len(body) == 19
-    return body + bytes([xor_checksum(body)])
+from tests.ble_frames import frame
 
 
 def test_status_semantics_use_effective_grammar_roster_and_bounds() -> None:

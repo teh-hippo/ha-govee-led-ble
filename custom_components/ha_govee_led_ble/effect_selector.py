@@ -17,7 +17,6 @@ from .const import (
     EFFECT_CATEGORY_REACTIVE,
     EFFECT_CATEGORY_SCENES,
     EFFECT_CATEGORY_VIDEO,
-    MUSIC_MODE_SLUGS,
     ModelProfile,
     effect_category_for_content_kind,
     get_profile,
@@ -28,8 +27,6 @@ from .scenes import MODEL_SCENE_LABELS, scene_aliases
 
 EFFECT_OFF = "off"
 _EFFECT_QUOTE_CHARS = "\"'“”‘’"
-
-MUSIC_EFFECTS: dict[str, str] = {f"Music: {slug.replace('_', ' ').title()}": slug for slug in MUSIC_MODE_SLUGS}
 
 EffectSelectorSource = Literal["scene", "video", "music", "saved"]
 SavedEffectNameKind = Literal["available", "reserved", "same_item", "saved"]
@@ -220,24 +217,6 @@ def compatible_saved_effects(
             key=lambda item: item.name.casefold(),
         )
     )
-
-
-def saved_effect_by_name(
-    items: Iterable[LibraryItem],
-    model: str,
-    effect_name: str,
-    *,
-    profile: ModelProfile | None = None,
-) -> LibraryItem | None:
-    entries = effect_selector_entries(
-        model,
-        frozenset(EFFECT_CATEGORIES),
-        items,
-        prefix_effect_names=False,
-        profile=profile,
-    )
-    resolved = resolve_effect_selector(entries, effect_name)
-    return resolved.item if resolved is not None and resolved.source == "saved" else None
 
 
 def _selector_candidates(

@@ -48,10 +48,3 @@ export function builtInDefaultDirty(
     baselines && !builtInContentEquals(content, baselines.persisted),
   );
 }
-
-export function builtInDefaultAction(
-  content: EditableEffectContent,
-  baselines: BuiltInDefaultBaselines,
-): "set" | "reset" {
-  return builtInContentEquals(content, baselines.catalogue) ? "reset" : "set";
-}

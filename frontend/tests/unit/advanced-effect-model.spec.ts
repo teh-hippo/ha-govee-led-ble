@@ -9,7 +9,6 @@ import {
   appliedAreaWireBounds,
   blankAdvancedContent,
   blankLayer,
-  bytePercent,
   cloneAdvancedContent,
   cloneLayer,
   cloneLayeredSceneContent,
@@ -76,11 +75,6 @@ test("invalid layer metadata falls back to positional labels", () => {
 
   installAdvancedLayerLabels(content, [255, 256]);
   expect(advancedLayerLabels(content)).toEqual([1, 2]);
-});
-
-test("byte percentages clamp to the supported range", () => {
-  expect(bytePercent(128)).toBe(50);
-  expect(bytePercent(300)).toBe(100);
 });
 
 test("applied area left edge resizes without moving the right edge", () => {

@@ -1,10 +1,8 @@
 import { LitElement, css, html } from "lit";
 
+import type { GoveeAdvancedEffectEditor } from "../../../src/advanced-effect-editor";
 import {
   blankAdvancedContent,
-  type GoveeAdvancedEffectEditor,
-} from "../../../src/advanced-effect-editor";
-import {
   blankLayer,
   withAppliedAreaSegments,
 } from "../../../src/advanced-effect-model";

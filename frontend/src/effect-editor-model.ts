@@ -465,19 +465,6 @@ export function defaultPalette(catalogue?: ModelEffectCatalogue): RGB[] {
   return Array.from({ length: count }, (_, index) => cloneRgb(colours[index % colours.length]));
 }
 
-export function mergedPaintBrushes(colours: RGB[]): RGB[] {
-  const brushes: RGB[] = [];
-  for (const colour of [...colours, ...defaultPalette()]) {
-    if (!brushes.some((brush) => sameRgb(brush, colour))) {
-      brushes.push(cloneRgb(colour));
-    }
-    if (brushes.length === 8) {
-      break;
-    }
-  }
-  return brushes;
-}
-
 export function uniquePaintedPalette(content: PaintedContent): RGB[] {
   const palette: RGB[] = [];
   for (const colour of content.segments) {
@@ -631,36 +618,6 @@ export function isMyEffectKind(kind: string): boolean {
     kind === "music_profile" ||
     !isKnownEffectKind(kind)
   );
-}
-
-export function libraryKindPriority(
-  kind: string,
-  catalogue: ModelEffectCatalogue | undefined,
-): number {
-  const paletteDiyFirst =
-    catalogue?.apply.palette_diy !== "unsupported" &&
-    catalogue?.apply.single === "unsupported";
-  const order = paletteDiyFirst
-    ? [
-        "palette_diy",
-        "workshop",
-        "music_profile",
-        "advanced",
-        "scene_layered",
-      ]
-    : [
-        "h617a_painted",
-        "h617a_single",
-        "h617a_multi",
-        "h6179_single_diy",
-        "h6179_mixed_diy",
-        "music_profile",
-        "workshop",
-        "advanced",
-        "scene_layered",
-      ];
-  const priority = order.indexOf(kind);
-  return priority === -1 ? order.length : priority;
 }
 
 export function customEffectCategoryForKind(

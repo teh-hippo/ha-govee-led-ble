@@ -26,13 +26,9 @@ from custom_components.ha_govee_led_ble.music_commands import (
     prepare_music_request,
 )
 from custom_components.ha_govee_led_ble.music_semantics import music_params_for_mode, music_variant
-from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
+from custom_components.ha_govee_led_ble.transport import reassemble_a3
+from tests.ble_frames import frame
 from tests.test_music_commands import _music_transport
-
-
-def frame(prefix):
-    body = bytes.fromhex(prefix).ljust(19, b"\0")
-    return body + bytes((xor_checksum(body),))
 
 
 def body(mode, parameters=None, *, ic=None, palette=None, calm=False):

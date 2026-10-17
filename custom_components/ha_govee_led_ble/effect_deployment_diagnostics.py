@@ -64,159 +64,114 @@ class EffectDeploymentDiagnosticBridge:
         previous: _ObservedTransition | None,
     ) -> None:
         operation_id = str(record.operation_id)
-        if record.phase is DeploymentPhase.COMPILING:
+
+        def emit(
+            stage: DiagnosticStage, outcome: DiagnosticOutcome, code: str, *, coalesce: bool = False, **details: object
+        ) -> None:
             self._history.record(
-                DiagnosticStage.COMPILATION,
-                DiagnosticOutcome.SUCCEEDED,
-                "artifact_compiled",
-                details={
-                    "artifact_sha256": record.artifact_sha256,
-                    "compiler_version": record.compiler_version,
-                },
+                stage,
+                outcome,
+                code,
+                details=details,
                 correlation_id=operation_id,
                 config_entry_id=record.config_entry_id,
                 operation_id=operation_id,
+                coalesce=coalesce,
             )
-            for code in record.evidence_codes:
-                self._history.record_evidence_gap(
-                    code,
-                    details={
-                        "target_mode": record.target_mode,
-                        "target_effect": record.target_effect,
-                    },
-                    correlation_id=operation_id,
-                    config_entry_id=record.config_entry_id,
-                    operation_id=operation_id,
-                )
-        elif record.phase is DeploymentPhase.PENDING:
-            self._history.record(
+
+        phase = record.phase
+        if phase in {DeploymentPhase.COMPILING, DeploymentPhase.PENDING}:
+            emit(
                 DiagnosticStage.COMPILATION,
                 DiagnosticOutcome.SUCCEEDED,
                 "artifact_compiled",
-                details={
-                    "artifact_sha256": record.artifact_sha256,
-                    "compiler_version": record.compiler_version,
-                },
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
+                artifact_sha256=record.artifact_sha256,
+                compiler_version=record.compiler_version,
             )
-        elif record.phase is DeploymentPhase.UPLOADING:
-            self._history.record(
+            if phase is DeploymentPhase.COMPILING:
+                for code in record.evidence_codes:
+                    emit(
+                        DiagnosticStage.EVIDENCE_GAP,
+                        DiagnosticOutcome.INFORMATIONAL,
+                        code,
+                        target_mode=record.target_mode,
+                        target_effect=record.target_effect,
+                    )
+        elif phase is DeploymentPhase.UPLOADING:
+            emit(
                 DiagnosticStage.PACKET_PROGRESS,
                 DiagnosticOutcome.PROGRESS,
                 "packet_upload_progress",
-                details={
-                    "current": record.progress_current,
-                    "total": record.progress_total,
-                },
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
                 coalesce=True,
+                current=record.progress_current,
+                total=record.progress_total,
             )
-        elif record.phase is DeploymentPhase.ACTIVATING:
-            self._history.record(
+        elif phase is DeploymentPhase.ACTIVATING:
+            emit(
                 DiagnosticStage.PACKET_PROGRESS,
                 DiagnosticOutcome.PROGRESS,
                 "activation_started",
-                details={
-                    "current": record.progress_current,
-                    "total": record.progress_total,
-                },
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
+                current=record.progress_current,
+                total=record.progress_total,
             )
-        elif record.phase is DeploymentPhase.VERIFYING:
-            self._history.record(
+        elif phase is DeploymentPhase.VERIFYING:
+            emit(
                 DiagnosticStage.VERIFICATION,
                 DiagnosticOutcome.STARTED,
                 "device_verification_started",
-                details={"packets_sent": record.progress_current},
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
+                packets_sent=record.progress_current,
             )
-        elif record.phase is DeploymentPhase.CONFIRMED:
-            self._history.record(
+        elif phase is DeploymentPhase.CONFIRMED:
+            emit(
                 DiagnosticStage.VERIFICATION,
                 DiagnosticOutcome.SUCCEEDED,
                 "device_verification_succeeded",
-                details={"confidence": record.verification_confidence.value},
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
+                confidence=record.verification_confidence.value,
             )
-        elif record.phase is DeploymentPhase.APPLIED:
-            self._history.record_evidence_gap(
+        elif phase is DeploymentPhase.APPLIED:
+            emit(
+                DiagnosticStage.EVIDENCE_GAP,
+                DiagnosticOutcome.INFORMATIONAL,
                 "application_write_completed",
-                details={
-                    "confidence": record.verification_confidence.value,
-                    "packets_sent": record.progress_current,
-                    "verification": "device_readback_unavailable",
-                },
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
+                confidence=record.verification_confidence.value,
+                packets_sent=record.progress_current,
+                verification="device_readback_unavailable",
             )
-        elif record.phase in {DeploymentPhase.UNKNOWN, DeploymentPhase.UNCERTAIN}:
-            self._history.record_evidence_gap(
+        elif phase in {DeploymentPhase.UNKNOWN, DeploymentPhase.UNCERTAIN}:
+            emit(
+                DiagnosticStage.EVIDENCE_GAP,
+                DiagnosticOutcome.INFORMATIONAL,
                 "device_state_uncertain",
-                details={
-                    "confidence": record.verification_confidence.value,
-                    "error_code": record.error_code,
-                    "progress_current": record.progress_current,
-                    "progress_total": record.progress_total,
-                },
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
+                confidence=record.verification_confidence.value,
+                error_code=record.error_code,
+                progress_current=record.progress_current,
+                progress_total=record.progress_total,
             )
-        elif record.phase is DeploymentPhase.RECOVERING:
-            self._history.record(
-                DiagnosticStage.RECOVERY,
-                DiagnosticOutcome.STARTED,
-                "recovery_started",
-                details={"error_code": record.error_code},
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
-            )
-        elif record.phase is DeploymentPhase.INTERRUPTED:
-            self._history.record(
+        elif phase is DeploymentPhase.RECOVERING:
+            emit(DiagnosticStage.RECOVERY, DiagnosticOutcome.STARTED, "recovery_started", error_code=record.error_code)
+        elif phase is DeploymentPhase.INTERRUPTED:
+            emit(
                 DiagnosticStage.RECOVERY,
                 DiagnosticOutcome.INFORMATIONAL,
                 "deployment_interrupted",
-                details={
-                    "error_code": record.error_code,
-                    "progress_current": record.progress_current,
-                    "progress_total": record.progress_total,
-                },
-                correlation_id=operation_id,
-                config_entry_id=record.config_entry_id,
-                operation_id=operation_id,
+                error_code=record.error_code,
+                progress_current=record.progress_current,
+                progress_total=record.progress_total,
             )
-        elif record.phase is DeploymentPhase.FAILED:
+        elif phase is DeploymentPhase.FAILED:
             if previous is not None and previous.phase is DeploymentPhase.RECOVERING:
-                self._history.record(
+                emit(
                     DiagnosticStage.RECOVERY,
                     DiagnosticOutcome.SUCCEEDED,
                     "prior_state_recovered",
-                    details={"deployment_error_code": record.error_code},
-                    correlation_id=operation_id,
-                    config_entry_id=record.config_entry_id,
-                    operation_id=operation_id,
+                    deployment_error_code=record.error_code,
                 )
             else:
-                self._history.record(
+                emit(
                     DiagnosticStage.RECOVERY,
                     DiagnosticOutcome.FAILED,
                     "deployment_failed",
-                    details={"error_code": record.error_code},
-                    correlation_id=operation_id,
-                    config_entry_id=record.config_entry_id,
-                    operation_id=operation_id,
+                    error_code=record.error_code,
                 )
 
 

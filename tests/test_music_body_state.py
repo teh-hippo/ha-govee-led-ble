@@ -21,7 +21,7 @@ from custom_components.ha_govee_led_ble.music_commands import (
 )
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.transport import fragment_a3
-from tests.test_h617a_music import frame
+from tests.ble_frames import frame
 
 BODY = bytes.fromhex("3302010203040506aabbcc196104050708")
 

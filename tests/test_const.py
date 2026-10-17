@@ -32,7 +32,7 @@ from custom_components.ha_govee_led_ble.const import (
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityState, compatibility, compile_music_profile
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
-from custom_components.ha_govee_led_ble.effect_selector import MUSIC_EFFECTS, effect_selector_entries
+from custom_components.ha_govee_led_ble.effect_selector import effect_selector_entries
 
 
 def test_segment_count_and_supports_segments():
@@ -383,7 +383,6 @@ async def test_new_encoding_metadata_does_not_enable_music_before_profile_constr
     monkeypatch.setitem(sys.modules, namespace.__name__, namespace)
     exec(compile(ast.fix_missing_locations(tree), const.__file__, "exec"), namespace.__dict__)  # noqa: S102
     monkeypatch.setitem(const.MUSIC_MODE_SLUGS, "future_mode", 5)
-    monkeypatch.setitem(MUSIC_EFFECTS, "Music: Future Mode", "future_mode")
 
     for model in ("H617A", "H617E", "H6199"):
         profile = namespace.MODEL_PROFILES[model]
