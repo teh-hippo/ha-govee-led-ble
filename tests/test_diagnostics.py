@@ -162,6 +162,7 @@ async def test_h6102_diagnostics_expose_resolved_capabilities_without_implying_i
 
     assert resolution == {
         "configured_app_firmware": firmware,
+        "configured_app_hardware": None,
         "configured_pact": None,
         "pact_type": None,
         "pact_code": None,

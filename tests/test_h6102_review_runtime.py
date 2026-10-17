@@ -310,28 +310,32 @@ async def test_authored_selector_recovery_is_selection_only(radio, code):
     assert not packets
 
 
-async def test_qualified_pact1_static_has_complete_readback(radio):
+async def test_qualified_pact1_static_is_owner_confirmed_whole_strip_rgb(radio):
     c, state, packets, _ = radio
     c.pact_type, c.pact_code = 1, 1
     state.update(hw="1.00.03", fw="1.06.00", register_brightness=True)
     c.fw_version, c.hw_version = state["fw"], state["hw"]
     c._resolve_device_profile()
-    assert c.profile.can_read(ReadDomain.COLOUR_MODE) and c.profile.can_read(ReadDomain.SEGMENTS)
+    assert not c.profile.can_read(ReadDomain.COLOUR_MODE) and not c.profile.supports_segments
     assert await c.refresh_state(refresh_all=True)
-    await c.send_command(build_color_rgb(1, 2, 3, c.model, profile=c.profile))
-    assert await c.async_refresh_segments()
-    assert {packet[2] for packet in packets if packet[:2] == bytes.fromhex("aaa5")} == {1, 2, 3, 4, 5}
+    assert not {bytes(packet[:2]) for packet in packets} & {bytes.fromhex("aa05"), bytes.fromhex("aaa5")}
+    red = build_color_rgb(255, 0, 0, c.model, profile=c.profile)
+    assert red == bytes.fromhex("33051501ff00000000000000ff7f00000000005d")
+    with pytest.raises(ValueError, match="colour temperature"):
+        build_color_temp(4000, c.model, profile=c.profile)
 
 
-@pytest.mark.parametrize("identity", [False, True])
+@pytest.mark.parametrize("identity", [None, "ble", "configured"])
 async def test_issue310_setup_control_and_reconnect_use_brightness_register(radio, identity):
     from types import SimpleNamespace
 
     c, state, packets, clients = radio
+    if identity == "configured":
+        c._configured_h6102_firmware, c._configured_h6102_hardware = "1.08.08", "1.00.03"
     c._note_advertisement(SimpleNamespace(manufacturer_data={34817: bytes.fromhex("ec000101")}))
     state.update(
-        fw="1.08.08" if identity else None,
-        hw="1.00.03" if identity else None,
+        fw="1.08.08" if identity == "ble" else None,
+        hw="1.00.03" if identity == "ble" else None,
         register_brightness=True,
         brightness=92,
     )
@@ -340,7 +344,7 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(radi
     owner_frame = "aa04eb0000000000000000000000000000000045"
     assert any(entry["raw"] == owner_frame and entry["outcome"] == "parsed" for entry in c.packet_log)
     assert c.profile.brightness_wire_range == (20, 254)
-    assert c.profile.supports_rgb is identity
+    assert c.profile.supports_rgb is (identity is not None)
     light = GoveeBLELight(c)
     light.async_write_ha_state = MagicMock()
     for value, register, percent in ((26, 41, 10), (128, 136, 50), (255, 254, 100)):
@@ -351,7 +355,7 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(radi
     if identity:
         await light.async_turn_on(rgb_color=(1, 2, 3))
         assert state["colours"] == [(1, 2, 3)] * 15
-        assert frame("aa0501") in packets
+        assert light.rgb_color == (1, 2, 3)
     await light.async_turn_off()
     assert not state["on"] and not c.is_on
     await c.disconnect()
@@ -392,11 +396,10 @@ async def test_pact1_static_recovery_preserves_register_transport_without_confir
     light.async_write_ha_state = MagicMock()
     await light.async_turn_on(brightness=255, rgb_color=(1, 2, 3))
     packets.clear()
-    assert prior.static_gradual is True and "gradual" not in c.profile.boolean_controls
+    assert prior.static_gradual is None and "gradual" not in c.profile.boolean_controls
     assert not await c.async_restore_effect_control_state(prior, overwritten_diy_code=None)
     assert state["brightness"] == c.brightness_pct == prior.brightness_pct == 50
     assert frame("330488") in packets
-    assert state["kelvin"] == prior.color_temp_kelvin == 4500
 
 
 def test_legacy_static_snapshot_keeps_new_fields_unknown():

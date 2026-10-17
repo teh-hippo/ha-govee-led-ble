@@ -52,6 +52,9 @@ H617A scene references are preserved but are not silently relabelled H6102.
 Pact 1 master brightness uses a scaled 20–254 register, while Pact 10 uses
 percentages.  Both writes and readback follow the selected route; physical
 brightness and reply freshness on the older #310 revision remain under qualification.
+Pact 1 with hardware 1.00.03+ and firmware 1.06.00+ adds optimistic whole-strip
+RGB only.  If the strip does not report its identity, enter the hardware and
+firmware versions shown by Govee Home during setup or reconfiguration.
 
 ## Effect Studio
 

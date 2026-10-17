@@ -22,6 +22,7 @@ from custom_components.ha_govee_led_ble.ble_device_resolver import BLEDeviceReso
 from custom_components.ha_govee_led_ble.const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     CONF_H6102_APP_FIRMWARE,
+    CONF_H6102_APP_HARDWARE,
     CONF_MODEL,
     DOMAIN,
     MODEL_PROFILES,
@@ -81,6 +82,7 @@ async def test_setup_entry(hass: HomeAssistant):
         always_include_custom_effects=True,
         h6102_firmware=None,
         h6102_firmware_source=None,
+        h6102_hardware=None,
         h6102_pact=None,
     )
     build_url.assert_called_once_with(entry.entry_id)
@@ -111,6 +113,7 @@ async def test_setup_entry_passes_configured_h6102_firmware_context(hass: HomeAs
         data={
             CONF_MODEL: "H6102",
             CONF_H6102_APP_FIRMWARE: "1.03.01",
+            CONF_H6102_APP_HARDWARE: "1.00.03",
         }
     )
     with (
@@ -125,6 +128,7 @@ async def test_setup_entry_passes_configured_h6102_firmware_context(hass: HomeAs
 
     assert cls.call_args.kwargs["h6102_firmware"] == "1.03.01"
     assert cls.call_args.kwargs["h6102_firmware_source"] == "configured"
+    assert cls.call_args.kwargs["h6102_hardware"] == "1.00.03"
 
 
 async def test_setup_entry_ignores_stale_h6102_firmware_for_other_models(hass: HomeAssistant):

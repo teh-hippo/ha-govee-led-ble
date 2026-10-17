@@ -24,7 +24,7 @@ Sources below are relative to the Android 7.6.01 `full/sources/com/govee/` extra
 | ACK / activation | DIY upload result at absolute byte 2, music A3/41 at byte 3; zero success; upload before selector | ACK proves transport acceptance only; fresh mode/selector reply still required |
 | Gradual | Shared boolean switch, Pact 10; 33 A3 write / AA A3 query | Owner-visible toggle and restoration qualification |
 | Limit | Shared boolean switch, Pact 10 and HW ≥1.00.02; 33 0E write / AA 0E query | Meaning and visible behavior remain owner qualification |
-| Pact 1 | Extended static command independently enabled at HW ≥1.00.03 and FW ≥1.06.00 | A1 DIY and legacy RGB remain unavailable; static authorization never grants the whole multi opcode |
+| Pact 1 | Extended static command independently enabled at HW ≥1.00.03 and FW ≥1.06.00 | Owner-confirmed whole-strip 15/01 RGB only, qualified by BLE or app-reported identity; Kelvin, segments, AA05 readback, A1 DIY and legacy RGB remain unavailable; static authorization never grants the whole multi opcode |
 
 The 1.03.01 firmware boundary in `OldDreamColorUtil` is an app migration condition, not wire authorization.
 Phone microphone injection, timers, OTA, provisioning and continuous streaming remain repository non-goals.

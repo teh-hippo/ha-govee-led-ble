@@ -22,6 +22,7 @@ from .const import (
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_H6102_APP_FIRMWARE,
+    CONF_H6102_APP_HARDWARE,
     CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
@@ -206,6 +207,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     ir.async_delete_issue(hass, DOMAIN, issue_id)
     configured_firmware = entry.data.get(CONF_H6102_APP_FIRMWARE)
     h6102_firmware = configured_firmware if model == "H6102" and isinstance(configured_firmware, str) else None
+    configured_hardware = entry.data.get(CONF_H6102_APP_HARDWARE)
     coordinator = GoveeBLECoordinator(
         hass,
         entry.unique_id,
@@ -218,6 +220,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         always_include_custom_effects=always_include_custom_effects_from_options(entry.options),
         h6102_firmware=h6102_firmware,
         h6102_firmware_source="configured" if h6102_firmware is not None else None,
+        h6102_hardware=configured_hardware if model == "H6102" and isinstance(configured_hardware, str) else None,
         h6102_pact=entry.data.get(CONF_H6102_PACT) if model == "H6102" else None,
     )
     await coordinator.async_config_entry_first_refresh()

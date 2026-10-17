@@ -26,6 +26,7 @@ from .const import (
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_H6102_APP_FIRMWARE,
+    CONF_H6102_APP_HARDWARE,
     CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
@@ -130,15 +131,22 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         # visible on reconfigure, but require device-format 3.02.02 before reuse.
         if firmware and FirmwareVersion.parse(firmware) is None:
             return self._show_h6102_firmware_form(errors={CONF_H6102_APP_FIRMWARE: "invalid_firmware"})
+        hardware = user_input.get(CONF_H6102_APP_HARDWARE)
+        if hardware and FirmwareVersion.parse(hardware) is None:
+            return self._show_h6102_firmware_form(errors={CONF_H6102_APP_HARDWARE: "invalid_hardware"})
         pact = user_input.get(CONF_H6102_PACT) or None
         if pact is not None and pact not in H6102_PACTS:
             return self._show_h6102_firmware_form(errors={CONF_H6102_PACT: "invalid_pact"})
         if self.source == SOURCE_RECONFIGURE:
-            return self._finish_reconfigure(self._get_reconfigure_entry(), "H6102", firmware or None, pact)
+            return self._finish_reconfigure(
+                self._get_reconfigure_entry(), "H6102", firmware or None, pact, hardware or None
+            )
         self._abort_if_unique_id_configured()
         data = {CONF_MODEL: "H6102"}
         if firmware:
             data[CONF_H6102_APP_FIRMWARE] = firmware
+        if hardware:
+            data[CONF_H6102_APP_HARDWARE] = hardware
         if pact:
             data[CONF_H6102_PACT] = pact
         return self.async_create_entry(title="Govee H6102", data=data)
@@ -149,13 +157,17 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         selected_model: str,
         firmware: str | None = None,
         pact: str | None = None,
+        hardware: str | None = None,
     ) -> ConfigFlowResult:
         data = dict(entry.data)
         data[CONF_MODEL] = selected_model
         data.pop(CONF_H6102_APP_FIRMWARE, None)
+        data.pop(CONF_H6102_APP_HARDWARE, None)
         data.pop(CONF_H6102_PACT, None)
         if firmware is not None:
             data[CONF_H6102_APP_FIRMWARE] = firmware
+        if hardware is not None:
+            data[CONF_H6102_APP_HARDWARE] = hardware
         if pact is not None:
             data[CONF_H6102_PACT] = pact
         options = {
@@ -204,23 +216,21 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     def _show_h6102_firmware_form(self, *, errors: dict[str, str] | None = None) -> ConfigFlowResult:
-        current = None
-        current_pact = ""
-        if self.source == SOURCE_RECONFIGURE:
-            stored = self._get_reconfigure_entry().data.get(CONF_H6102_APP_FIRMWARE)
-            current = stored if isinstance(stored, str) else None
-            current_pact = self._get_reconfigure_entry().data.get(CONF_H6102_PACT, "")
-        field = (
-            vol.Optional(CONF_H6102_APP_FIRMWARE, description={"suggested_value": current})
-            if current is not None
-            else vol.Optional(CONF_H6102_APP_FIRMWARE)
-        )
+        stored = self._get_reconfigure_entry().data if self.source == SOURCE_RECONFIGURE else {}
+
+        def version_field(key: str) -> vol.Optional:
+            value = stored.get(key)
+            if isinstance(value, str):
+                return vol.Optional(key, description={"suggested_value": value})
+            return vol.Optional(key)
+
         return self.async_show_form(
             step_id="h6102_firmware",
             data_schema=vol.Schema(
                 {
-                    field: str,
-                    vol.Optional(CONF_H6102_PACT, default=current_pact): vol.In(
+                    version_field(CONF_H6102_APP_FIRMWARE): str,
+                    version_field(CONF_H6102_APP_HARDWARE): str,
+                    vol.Optional(CONF_H6102_PACT, default=stored.get(CONF_H6102_PACT, "")): vol.In(
                         {
                             "": "Automatic / unknown",
                             "10/1": "RGBIC Pact 10/1",
