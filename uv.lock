@@ -722,11 +722,11 @@ wheels = [
 
 [[package]]
 name = "certifi"
-version = "2026.7.22"
+version = "2026.10.18"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz", hash = "sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55", size = 138112, upload-time = "2026-07-22T03:35:12.644Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/eb/a2aa1ac3ea30dd3f30ca57f40232138b6b0040719316ecb85daf61167771/certifi-2026.10.18.tar.gz", hash = "sha256:b9995d97b64d0431a5af837d8ca8cd6238104d1f319f04bd93ea43124d6c861e", size = 135227, upload-time = "2026-10-18T16:21:07.655Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl", hash = "sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775", size = 136983, upload-time = "2026-07-22T03:35:11.276Z" },
+    { url = "https://files.pythonhosted.org/packages/08/ba/95dd616042484f7c83a06974388b37b837732740ee70bc5dc715b5fcd55a/certifi-2026.10.18-py3-none-any.whl", hash = "sha256:73191c47aaa79da394e8fee2dbc2ec827432cab56311122c9e47abf79e390f62", size = 134093, upload-time = "2026-10-18T16:21:06.276Z" },
 ]
 
 [[package]]
@@ -1697,7 +1697,7 @@ wheels = [
 
 [[package]]
 name = "nab"
-version = "0.0.21"
+version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nab-index" },
@@ -1708,14 +1708,14 @@ dependencies = [
     { name = "tomli" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b6/15/fd49f67bf3e9b559c78dbd79c393214377ea78b858541ef47e9cfd1fcb4d/nab-0.0.21.tar.gz", hash = "sha256:1cef7f26a758b1cdde7227d2e558a0f6e35d0858f6b918f65cb2e8ac45eb3fba", size = 284378, upload-time = "2026-10-14T20:48:05.658Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/3d/e4c8f4b2890efbf2fa6eef82acf57ecc0ef39b0a1e6843d306d2053a107c/nab-0.0.22.tar.gz", hash = "sha256:a0da54ee96bf1eb1997581566620c250c8a3557139e9467ccaced2a12e9e71ac", size = 286128, upload-time = "2026-10-18T05:45:08.513Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/22/85c9c677320e03fbc53a4d950708d9d1a47f747c88c549a7cb318fc5545f/nab-0.0.21-py3-none-any.whl", hash = "sha256:266e4f5c9a7fc071036a403b408f3dc56d9fe8ae03aa9448cc74455f2bb62010", size = 137800, upload-time = "2026-10-14T20:48:03.929Z" },
+    { url = "https://files.pythonhosted.org/packages/56/4b/77baa0ddb0b7578b6475b2b578fa4579207b0f97e0b3b80480e01dcb3d6f/nab-0.0.22-py3-none-any.whl", hash = "sha256:f62fcf75b28786fbf58627f6d7eaa735daefbc7f736715403bc4357acb57e7bb", size = 137802, upload-time = "2026-10-18T05:45:06.803Z" },
 ]
 
 [[package]]
 name = "nab-index"
-version = "0.0.21"
+version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nab-provider" },
@@ -1724,23 +1724,23 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/35/1d/cd81258161ebe3f7562614eb05a30370168d57c19d0e4b76f42d83c38b4c/nab_index-0.0.21.tar.gz", hash = "sha256:51c8e37936fe5af85791791bf8eb46a881b5378edcb4d363b6610646f17489a6", size = 110236, upload-time = "2026-10-14T20:47:39.308Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2a/83/8d2483239b7dc5ac8d9f758db1cc19d4129d0143d34c2e1ab8cd48ea71fb/nab_index-0.0.22.tar.gz", hash = "sha256:5900ea5ad298512379cfddff1a73a544590f0b04620ef58ff345f99a7c59688e", size = 110621, upload-time = "2026-10-18T05:44:43.857Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/74/369daddebac4ca335780d7cd6bcdf127623bc0272d91f6bc0dfebf79c4a3/nab_index-0.0.21-py3-none-any.whl", hash = "sha256:485725f1662cef41c398d28bef4508a55fd24ab53ba889dc0ba2acac0e05f1a8", size = 88370, upload-time = "2026-10-14T20:47:37.606Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/58/c06ada29934a78479b989675829f26083972f38bf1e8a2503e01101cb970/nab_index-0.0.22-py3-none-any.whl", hash = "sha256:c89ffa607dfe4246dc59e9f5236d54413da3d310183ffa3298ba51a48e7c2ec7", size = 88373, upload-time = "2026-10-18T05:44:42.188Z" },
 ]
 
 [[package]]
 name = "nab-markersets"
-version = "0.0.21"
+version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a9/0f/2d6ea329bd7132ca9098b93dfb15555d89361c2219dc917040ffece7986c/nab_markersets-0.0.21.tar.gz", hash = "sha256:0fa9f90c4fe9aa92700e8be97b738353afe751ba6e6b4c80f62806c2b22e9f08", size = 62461, upload-time = "2026-10-14T20:47:15.958Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/b7/3997893dfdada9998d4dc786c10445a1361e197b4aed54ddd866c84dd538/nab_markersets-0.0.22.tar.gz", hash = "sha256:38212664f517f75d798808ecfe902bfd11fef340042ab0203100c7e06e78eea5", size = 109258, upload-time = "2026-10-18T05:44:19.58Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/51/52096bad3c461b5a9209552a93d3c62f7273f6dbab5e419da64dd788d073/nab_markersets-0.0.21-py3-none-any.whl", hash = "sha256:0d8959058215a9ee1520c765135e78e87783acfbc3762b0aaf79eaaedaa6aad1", size = 32583, upload-time = "2026-10-14T20:47:14.633Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/9e/9744adff3a66633a811f8253faaa8b91a447c99199edba16f2790e3647ea/nab_markersets-0.0.22-py3-none-any.whl", hash = "sha256:ad268dcece034495b2ea31a70250cd43cc4f6123039a548762c7ec8826e5d3bd", size = 44360, upload-time = "2026-10-18T05:44:18.237Z" },
 ]
 
 [[package]]
 name = "nab-project"
-version = "0.0.21"
+version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "build" },
@@ -1755,32 +1755,32 @@ dependencies = [
     { name = "tomli-w" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/f3/649a8080e4ba15aea3b4100727f50e45168c178c71f2ed9c871a3aeda9e3/nab_project-0.0.21.tar.gz", hash = "sha256:d746a4c831527d3ba48113ccbd9d5cdb8ba165150eb2aa3291756b0488f22761", size = 758799, upload-time = "2026-10-14T20:47:51.505Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/84/f5197d4044ceda9c6ee3e7aefce154ab616fec632fa1d89cdfaacc665c07/nab_project-0.0.22.tar.gz", hash = "sha256:5f7a1dee5b618149267b2b6233c3a220e45cd6f97bd5ec7f3f48fa7570e9f053", size = 774409, upload-time = "2026-10-18T05:44:55.821Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/18/04111f34660e08ed88aa7b7bf835743654d78181046526083bb27f4f5c1f/nab_project-0.0.21-py3-none-any.whl", hash = "sha256:c8221d47d01f406e470fdbb9388a214aae1ac6f71d4412b8b99a1b0a370d3d0a", size = 146012, upload-time = "2026-10-14T20:47:49.849Z" },
+    { url = "https://files.pythonhosted.org/packages/de/c9/62affa4df6cabce48751307c4c3adfbaa8c54e402d464d015897a16a6dba/nab_project-0.0.22-py3-none-any.whl", hash = "sha256:cb09fa143105fd99a60609b3ff4830924b0d4eaf5abad48678467ec4b73e577f", size = 148262, upload-time = "2026-10-18T05:44:53.956Z" },
 ]
 
 [[package]]
 name = "nab-provider"
-version = "0.0.21"
+version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nab-markersets" },
     { name = "nab-resolver" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/34/97/e187dc33611dcb0acc4eaec8980436e1b0cf70dc4270108bbda67e5c50a5/nab_provider-0.0.21.tar.gz", hash = "sha256:b3b9dd6c629df89ecd0b4d7a13287853ac8ef7bfd75675a22f94f54163795a90", size = 407394, upload-time = "2026-10-14T20:47:28.684Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/0d/64fbadae562fefc00257c4f5ec988171d6e6b3ea4363f1da2e8886e80228/nab_provider-0.0.22.tar.gz", hash = "sha256:3f129ab7394bf5eb031152c3535ee74073e2a6b6ae081fb7f5a4d269fcf5f8a0", size = 409367, upload-time = "2026-10-18T05:44:31.579Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/f1/fcb0d41f63e328dad740cbc4395d423499b77c0cee0715be2fe85d45cca1/nab_provider-0.0.21-py3-none-any.whl", hash = "sha256:b20f487186c53253912a84a9adbe8d6694c7093143bd6a48f02be3c82e71e43f", size = 338910, upload-time = "2026-10-14T20:47:26.986Z" },
+    { url = "https://files.pythonhosted.org/packages/30/67/32bda18d34f0f8ec098f8e4a0f792164ef1a4b2aa61d435d20f4645572af/nab_provider-0.0.22-py3-none-any.whl", hash = "sha256:1450c9dc58b23da1a7bde7fdb43a72b043327bd0e3ef20435254ffcb8b7eae6b", size = 339242, upload-time = "2026-10-18T05:44:29.803Z" },
 ]
 
 [[package]]
 name = "nab-resolver"
-version = "0.0.21"
+version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e1/a4/b2bf789fd6d6b33cdf7200cd373f27e4a2b7457bfb787a1d37009e2de372/nab_resolver-0.0.21.tar.gz", hash = "sha256:f44391325dbde953ca7309572659e9d0f4afd9a1dafdf55cfa6e79b77c852897", size = 167637, upload-time = "2026-10-14T20:47:05.752Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/bc/dcbfe5163538b1cc8421797e3f8ff77d79321cbc9943af8065e2c8ae1c09/nab_resolver-0.0.22.tar.gz", hash = "sha256:e005b225213e032858cf4aef3850961aaa1d4ea521428da731f33175ebd3b05f", size = 167648, upload-time = "2026-10-18T05:44:08.017Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/dd/0c439a14d99c78f01f67ddb488ad37f8b66146fdb5873953f7e3496d30d3/nab_resolver-0.0.21-py3-none-any.whl", hash = "sha256:9554a5c4244d875f8093f41364b2cd103214f4a21932de9f1181c8b455687ec3", size = 58596, upload-time = "2026-10-14T20:47:04.305Z" },
+    { url = "https://files.pythonhosted.org/packages/22/a8/6e30b25ae12e0c662dc9b181a7f32fa8cd22f26016f12dc1d10176f62bba/nab_resolver-0.0.22-py3-none-any.whl", hash = "sha256:6f77daa98279ef0eedb9e8f2248aee4c50e01b92b470b68886995e5056d79971", size = 58597, upload-time = "2026-10-18T05:44:06.445Z" },
 ]
 
 [[package]]
