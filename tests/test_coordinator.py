@@ -1421,7 +1421,9 @@ async def test_background_refresh_keeps_background_intent_and_preview_admission(
     reset.assert_not_called()
 
 
-async def test_background_refresh_disconnects_poll_only_connection_after_query(coord):
+@pytest.mark.parametrize("advertised", [False, True])
+async def test_background_refresh_disconnects_poll_only_connection_after_query(coord, advertised):
+    coord._present = advertised
     client = _c(disconnect=AsyncMock())
 
     async def refresh(**_kwargs) -> bool:
@@ -1438,6 +1440,30 @@ async def test_background_refresh_disconnects_poll_only_connection_after_query(c
 
     client.disconnect.assert_awaited_once_with()
     assert coord._client is None
+    assert coord.available
+
+
+@pytest.mark.parametrize("advertised", [False, True])
+@pytest.mark.parametrize("failure", [BleakError("No state reply"), ValueError("Unexpected read failure")])
+async def test_failed_poll_revokes_read_availability_without_erasing_advertisement_presence(coord, advertised, failure):
+    coord._present = advertised
+    client = _c(disconnect=AsyncMock())
+
+    async def refresh(**_kwargs) -> bool:
+        coord._client = client
+        return True
+
+    with patch.object(coord, "refresh_state", new=AsyncMock(side_effect=refresh)):
+        await coord._async_update_data()
+    assert coord.available
+
+    with patch.object(coord, "refresh_state", new=AsyncMock(side_effect=failure)):
+        if isinstance(failure, BleakError):
+            await coord._async_update_data()
+        else:
+            with pytest.raises(ValueError, match="Unexpected read failure"):
+                await coord._async_update_data()
+    assert coord.available is advertised
 
 
 def test_disconnect_callback_clears_only_current_unintentional_client(coord):

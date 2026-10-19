@@ -343,8 +343,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._field_received_at: dict[str, float] = {}
         self._domain_received_at: dict[StatusDomain, float] = {}
         self._revision_event = asyncio.Event()
-        # BLE presence (advertisement-driven) and first-refresh gate for ConfigEntryNotReady.
+        # Successful polling survives intentional release independently of advertisement presence.
         self._present = False
+        self._state_read_available = False
         self._first_refresh_done = False
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
         self._init_dreamview()
@@ -983,10 +984,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
 
     @property
     def available(self) -> bool:
-        """Whether the device is reachable: a live BLE link or a recent advertisement."""
+        """Reachability from a live link, advertisements or the latest validated state poll."""
         if self._client is not None and self._client.is_connected:
             return True
-        return self._present
+        return self._present or (self.profile.state_readable and self._state_read_available)
 
     async def _async_setup(self) -> None:
         """Register BLE presence tracking once, before the first refresh (HA idiom)."""
@@ -1146,26 +1147,30 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     if not acquired:
                         return self._state_snapshot()
                     previous_client = self._client
-                    for _ in range(2):
-                        generation = self._profile_generation
-                        refreshed = await self.refresh_state(
-                            refresh_all=True,
-                            required_domains=self.profile.setup_required_read_domains,
-                        )
-                        if generation == self._profile_generation:
-                            break
-                    else:
-                        refreshed = False
-                    client = self._client
-                    if not refreshed or client is None:
-                        if client is not None:
-                            await self._disconnect_if_current_locked(client)
-                        raise BleakError(f"State query failed for {self.address}")
+                    read_succeeded = False
+                    try:
+                        for _ in range(2):
+                            generation = self._profile_generation
+                            refreshed = await self.refresh_state(
+                                refresh_all=True,
+                                required_domains=self.profile.setup_required_read_domains,
+                            )
+                            if generation == self._profile_generation:
+                                break
+                        else:
+                            refreshed = False
+                        client = self._client
+                        if not refreshed or client is None:
+                            if client is not None:
+                                await self._disconnect_if_current_locked(client)
+                            raise BleakError(f"State query failed for {self.address}")
+                        read_succeeded = True
+                    finally:
+                        self._state_read_available = read_succeeded
                     if client is not previous_client and self.connection_mode != CONNECTION_MODE_HOLD:
                         await self._disconnect_if_current_locked(client)
             except BleakError as err:
-                # ConfigEntryNotReady on first setup only; steady-state refreshes degrade silently
-                # and presence-driven availability tracks the running state.
+                # Missing state revokes read-based reachability, not independent advertisement evidence.
                 self._log_availability_transition()
                 if first_refresh:
                     raise UpdateFailed(f"{self.address} unreachable at setup") from err

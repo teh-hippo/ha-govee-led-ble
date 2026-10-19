@@ -52,6 +52,8 @@ Keep cached identity and light capabilities stable across ordinary polling and i
 
 Retain core light state while refreshing.  Optional installation, camera and boolean observations remain visible while a query is pending, and become unknown only after their own sent-query deadline or an unexpected disconnect.  Missing optional replies must not fail a basic poll.  Runtime-discovered physical IC geometry and uploaded bodies remain connection-scoped, separate from identity.
 
+For state-readable devices, successful required-state polling establishes availability independently of advertisements and survives intentional connection release.  A failed required-state poll revokes that read-based evidence without erasing independent advertisement presence.  Neither source grants identity-dependent write authorisation.
+
 Release is the default connection mode for state-readable devices.  Hold retains a healthy link, queries power every five seconds and refreshes readable basic state and optional controls every fifteen seconds.  Periodic Hold refreshes exclude multipart segment queries; explicit segment operations still query them.  Optional replies have bounded deadlines and cannot retire an otherwise healthy held link.  A held link consumes a proxy connection slot and blocks the Govee app's BLE connection.
 
 ### Outbound transmission

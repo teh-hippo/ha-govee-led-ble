@@ -46,9 +46,14 @@ async def _run(coord, entry=None, hass=None):
 
 async def test_surfaces_segment_fields(mock_h6199_coordinator):
     colors = [(10, 20, 30)] * 15
+    mock_h6199_coordinator.connection_mode = "hold"
+    mock_h6199_coordinator._state_read_available = True
     diag = await _run(_prep(mock_h6199_coordinator, segment_colors=colors))
     coord = diag["coordinator"]
     assert coord["support_quality"] == "supported"
+    assert coord["connection_mode"] == "hold"
+    assert coord["advertisement_present"] is False
+    assert coord["state_read_available"] is True
     assert coord["supports_segments"] is True
     assert coord["segment_count"] == 15
     assert coord["read_domains"] == [
