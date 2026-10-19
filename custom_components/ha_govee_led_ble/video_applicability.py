@@ -14,9 +14,14 @@ def identity_version(value: object) -> int | None:
     return version.identity_number() if version is not None else None
 
 
-def video_identity_fields(profile: ModelProfile) -> frozenset[str]:
-    fields = frozenset(condition.identity_field for condition in profile.video_firmware_conditions)
-    if profile.video_revision_policy == "H6199":
+def video_identity_fields(profile: ModelProfile, controls: Iterable[str] | None = None) -> frozenset[str]:
+    requested = frozenset(controls) if controls is not None else None
+    fields = frozenset(
+        condition.identity_field
+        for condition in profile.video_firmware_conditions
+        if requested is None or condition.control in requested
+    )
+    if profile.video_revision_policy == "H6199" and (requested is None or requested):
         fields |= {"fw_version", "hw_version", "subordinate_20_version", "subordinate_21_version"}
     return fields
 
@@ -145,11 +150,30 @@ def requested_video_controls(content: Any) -> frozenset[str]:
     )
 
 
-def require_video_controls(profile: ModelProfile, identity: object, controls: Iterable[str]) -> None:
+def video_mode_controls(profile: ModelProfile) -> frozenset[str]:
+    return frozenset(
+        control
+        for control, supported in (
+            ("capture_region", profile.supports_video_capture_region),
+            ("saturation", profile.supports_video_saturation),
+            ("sound_effects", profile.supports_video_sound_effects),
+        )
+        if supported
+    )
+
+
+def require_video_controls(
+    profile: ModelProfile, identity: object, controls: Iterable[str], *, require_confirmation: bool = True
+) -> None:
+    requested = frozenset(controls)
     states = video_control_states(profile, identity)
-    for control in controls:
+    for control in requested:
         if states[control] is not CapabilityState.SUPPORTED:
             raise ValueError(f"video setting {control} is {states[control].value} for this device")
+    identity_fields = video_identity_fields(profile, requested)
+    confirmation = getattr(identity, "identity_fields_confirmed", None)
+    if require_confirmation and identity_fields and callable(confirmation) and not confirmation(identity_fields):
+        raise ValueError("video identity is not confirmed on the current BLE connection")
 
 
 class CameraUnavailableError(ValueError):
@@ -168,9 +192,14 @@ def require_video_mode(profile: ModelProfile, identity: object) -> None:
         raise CameraUnavailableError(state)
 
 
-def validate_video_request(coordinator: Any, content: object) -> None:
+def validate_video_request(coordinator: Any, content: object, *, require_confirmation: bool = True) -> None:
     if isinstance(content, VideoProfile):
         require_video_mode(coordinator.profile, coordinator)
         if content.saturation is not None:
             coordinator.profile.validate_video_saturation(content.saturation)
-        require_video_controls(coordinator.profile, coordinator, requested_video_controls(content))
+        require_video_controls(
+            coordinator.profile,
+            coordinator,
+            requested_video_controls(content),
+            require_confirmation=require_confirmation,
+        )

@@ -59,6 +59,11 @@ def gated(monkeypatch: pytest.MonkeyPatch):
     return profile
 
 
+def confirm_firmware(coordinator):
+    coordinator.subordinate_21_version = "9.08.07"
+    coordinator._confirmed_identity_fields.add("subordinate_21_version")
+
+
 @pytest.mark.parametrize(
     ("version", "expected"),
     [
@@ -95,6 +100,7 @@ async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monk
         MODEL_PROFILES, "H7000", replace(gated(monkeypatch), supports_rgb=True, whole_device_mask=0x7FFF)
     )
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock())
     content = VideoProfile("H7000", "movie", None, None, None, None, None, None, None, white_balance_value=1)
     item = LibraryItem.new("Gated", content)
     raw = effect_content_to_dict(content)
@@ -112,7 +118,7 @@ async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monk
             coordinator, item, config_entry_id="entry-a", updated_at="2026-09-14T00:00:00Z"
         )
     assert not repository.snapshot().records
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     validate_video_request(coordinator, content)
     coordinator.subordinate_21_version = "9.08.06"
     before = coordinator.capture_effect_control_state()
@@ -140,7 +146,7 @@ async def test_admission_recheck_omission_and_recovery(hass: HomeAssistant, monk
         build_color_rgb(*prior.rgb_color, "H7000"),
         build_power(False, "H7000"),
     ]
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     send.reset_mock()
     await coordinator.async_restore_effect_control_state(
         replace(prior, video_restore_controls=()), overwritten_diy_code=None
@@ -180,6 +186,7 @@ async def test_preview_rejects_before_admission_and_rechecks_execution(
 ):
     gated(monkeypatch)
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock())
     manager = EffectPreviewManager(
         hass,
         EffectDeviceCache(InMemoryVersionedDocumentStore()),
@@ -204,7 +211,7 @@ async def test_preview_rejects_before_admission_and_rechecks_execution(
             item=item,
         )
     assert not manager._devices
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     write = AsyncMock()
     monkeypatch.setattr(coordinator, "async_preview_write", write)
     await manager.async_queue_snapshot(
@@ -230,7 +237,7 @@ async def test_preview_rechecks_firmware_at_physical_write(hass, monkeypatch, ch
 
     gated(monkeypatch)
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     coordinator.is_on = True
     before = coordinator.capture_effect_control_state()
     write = AsyncMock()
@@ -296,6 +303,7 @@ async def test_preview_forwards_retained_field_guard_to_physical_write(hass, mon
         coordinator.profile,
         video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
     )
+    confirm_firmware(coordinator)
     coordinator.is_on = True
     coordinator.video_saturation = 31
     physical = AsyncMock()
@@ -393,7 +401,7 @@ async def test_synthetic_deployment_uses_real_ble_parser_and_writer(
 
     gated(monkeypatch)
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     state = {"white": 90, "brightness": (11, 22, 33, 44, 55, 66)}
     writes: list[bytes] = []
 
@@ -484,6 +492,8 @@ async def test_mode_applicability_rechecked_before_each_write(hass, monkeypatch,
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     coordinator.profile = profile
     coordinator.subordinate_21_version = None if change_at == "unknown" else "9.08.07"
+    if change_at != "unknown":
+        coordinator._confirmed_identity_fields.add("subordinate_21_version")
     coordinator.is_on = change_at != "power"
     coordinator.video_mode = "movie"
     if change_at == "transform":
@@ -545,6 +555,7 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
         video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
     )
     coordinator.subordinate_21_version = "9.08.06" if during == "retained" else "9.08.07"
+    coordinator._confirmed_identity_fields.add("subordinate_21_version")
     coordinator.is_on = during not in {"power", "retained_power"}
     coordinator.video_saturation = 31
     backend = await EffectBackend.async_create(hass)
@@ -584,8 +595,9 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
 
         coordinator.profile = replace(coordinator.profile, outbound_transform=transform)
     if during == "retained":
-        await entity.async_turn_on(effect="Video: Movie")
-        assert physical.await_count == 1
+        with pytest.raises(ValueError, match="saturation is unsupported"):
+            await entity.async_turn_on(effect="Video: Movie")
+        physical.assert_not_awaited()
         assert coordinator.video_saturation == 31
     else:
         with pytest.raises((HomeAssistantError, ValueError)) as error:
@@ -603,7 +615,7 @@ async def test_native_selector_without_default_guards_physical_write(hass, monke
 async def test_recovery_rechecks_firmware_after_transform(hass, monkeypatch):
     gated(monkeypatch)
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     coordinator.white_balance_scalar = 90
     prior = replace(
         coordinator.capture_effect_control_state(), white_balance_scalar=100, video_restore_controls=("white_balance",)
@@ -622,7 +634,7 @@ async def test_recovery_rechecks_firmware_after_transform(hass, monkeypatch):
     physical.assert_not_awaited()
 
 
-async def test_preserved_mode_fields_do_not_request_unavailable_controls(hass, monkeypatch):
+async def test_preserved_mode_fields_still_require_authorised_controls(hass, monkeypatch):
     from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
@@ -630,18 +642,19 @@ async def test_preserved_mode_fields_do_not_request_unavailable_controls(hass, m
         coordinator.profile,
         video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
     )
+    confirm_firmware(coordinator)
+    coordinator.subordinate_21_version = "9.08.06"
     coordinator.video_mode = "movie"
     coordinator.is_on = True
     coordinator.video_saturation = 31
     writer = AsyncMock()
     refresh = AsyncMock(return_value=True)
     monkeypatch.setattr(coordinator, "refresh_state", refresh)
-    assert await apply_active_video_mode(
-        coordinator, mode="movie", requested_values={"full_screen": True}, writer=writer
-    )
-    writer.assert_awaited_once()
+    with pytest.raises(ValueError, match="saturation is unsupported"):
+        await apply_active_video_mode(coordinator, mode="movie", requested_values={"full_screen": True}, writer=writer)
+    writer.assert_not_awaited()
     assert coordinator.video_saturation == 31
-    assert "expected_video_saturation" not in refresh.await_args.kwargs
+    refresh.assert_not_awaited()
 
 
 async def test_retained_native_field_changed_during_transform_is_guarded(hass, monkeypatch):
@@ -661,6 +674,7 @@ async def test_retained_native_field_changed_during_transform_is_guarded(hass, m
         outbound_transform=transform,
         video_firmware_conditions=(VideoFirmwareCondition("saturation", "subordinate_21_version", "9.08.07"),),
     )
+    confirm_firmware(coordinator)
     physical = AsyncMock()
     monkeypatch.setattr(
         coordinator, "_ensure_connected", AsyncMock(return_value=MagicMock(is_connected=True, write_gatt_char=physical))
@@ -724,7 +738,7 @@ async def test_whole_profile_guard_rejects_before_first_physical_write(hass, mon
     gated(monkeypatch)
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
     coordinator.is_on = on
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     before = coordinator.capture_effect_control_state()
 
     def transform(packet):
@@ -752,7 +766,7 @@ async def test_rejected_register_does_not_arm_expectations(hass, monkeypatch, se
     from custom_components.ha_govee_led_ble.transport import xor_checksum
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     coordinator.white_balance_red, coordinator.white_balance_blue = 21, 5
     for zone in coordinator.profile.video_brightness_zones:
         setattr(coordinator, f"relative_brightness_{zone}", 80)
@@ -837,7 +851,7 @@ async def test_native_profile_caller_power_and_brightness_keep_whole_guard(hass,
         coordinator.profile,
         video_firmware_conditions=(VideoFirmwareCondition("white_balance", "subordinate_21_version", "9.08.07"),),
     )
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     coordinator.is_on = on
     backend = await EffectBackend.async_create(hass)
     content = VideoProfile("H6199", "movie", True, 50, False, 50, 17, None, None)
@@ -951,7 +965,7 @@ async def test_public_deployment_recovers_only_after_control_attempt(hass, monke
     from custom_components.ha_govee_led_ble.transport import xor_checksum
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     controls = []
     queries = []
     published = []
@@ -1111,7 +1125,7 @@ async def test_video_retry_keeps_request_and_does_not_install_rejected_companion
 
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     coordinator.is_on = True
-    coordinator.subordinate_21_version = "9.08.07"
+    confirm_firmware(coordinator)
     original_white = coordinator.white_balance
     writes = []
     published = []

@@ -49,6 +49,8 @@ def identity(hass, monkeypatch, request):
     entry.add_to_hass(hass)
     with current_entry.set(entry):
         coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
+    previous_client = MagicMock(is_connected=True)
+    coordinator._client = previous_client
     for name, _ in IDENTITY:
         setattr(coordinator, name, "legacy display")
     query = (
@@ -72,16 +74,19 @@ def notify(coordinator, opcode, version):
 @pytest.mark.parametrize("stale_stream", [False, True])
 async def test_reconnect_refreshes_only_condition_source(identity, monkeypatch, stale_stream):
     coordinator, field, opcode, query = identity
+    old_client = coordinator._client
+    assert old_client is not None
+    old_client.disconnect = AsyncMock()
     notify(coordinator, opcode, "9.08.07")
+    old_client.is_connected = stale_stream
     assert video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.SUPPORTED
-    old_client = MagicMock(is_connected=stale_stream, disconnect=AsyncMock())
-    coordinator._client = old_client
     monkeypatch.setattr(coordinator, "_receive_is_stale", lambda: stale_stream)
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
 
     async def connect(*args, **kwargs):
-        assert getattr(coordinator, field) is None
-        assert video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.EVIDENCE_GAP
+        assert getattr(coordinator, field) == "9.08.07"
+        assert video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.SUPPORTED
+        assert not coordinator.identity_fields_confirmed(frozenset({field}))
         return client
 
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", connect)
@@ -91,14 +96,15 @@ async def test_reconnect_refreshes_only_condition_source(identity, monkeypatch, 
         client.start_notify.assert_awaited_once()
         client.write_gatt_char.assert_awaited_once_with(WRITE_UUID, query, response=False)
         assert coordinator._identity_incomplete()
-        assert video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.EVIDENCE_GAP
+        assert getattr(coordinator, field) == "9.08.07"
+        assert video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.SUPPORTED
+        assert not coordinator.identity_fields_confirmed(frozenset({field}))
         for sibling, sibling_opcode in IDENTITY:
             if sibling != field:
                 assert getattr(coordinator, sibling) == "legacy display"
                 notify(coordinator, sibling_opcode, "99.99.99")
                 assert (
-                    video_control_states(coordinator.profile, coordinator)["white_balance"]
-                    is CapabilityState.EVIDENCE_GAP
+                    video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.SUPPORTED
                 )
         notify(coordinator, opcode, "9.08.06")
         assert video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.UNSUPPORTED
@@ -112,13 +118,13 @@ async def test_reconnect_refreshes_only_condition_source(identity, monkeypatch, 
 
 async def test_malformed_notification_retries_until_valid(identity, monkeypatch):
     coordinator, field, opcode, query = identity
-    notify(coordinator, opcode, "9.08.07")
-    notify(coordinator, opcode, "malformed")
-    assert getattr(coordinator, field) == "malformed"
-    assert coordinator._identity_incomplete()
-    assert video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.EVIDENCE_GAP
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
+    notify(coordinator, opcode, "9.08.07")
+    notify(coordinator, opcode, "malformed")
+    assert getattr(coordinator, field) == "9.08.07"
+    assert coordinator._identity_incomplete()
+    assert video_control_states(coordinator.profile, coordinator)["white_balance"] is CapabilityState.SUPPORTED
 
     async def respond(_uuid, packet, **kwargs):
         assert packet == query

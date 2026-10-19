@@ -1,5 +1,6 @@
 """H6099 APK video evidence and requested-only firmware gating, not owner qualification."""
 
+import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -39,7 +40,11 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
     apply_black_border,
     apply_blank_screen,
 )
-from custom_components.ha_govee_led_ble.video_applicability import validate_video_request, video_control_states
+from custom_components.ha_govee_led_ble.video_applicability import (
+    identity_version,
+    validate_video_request,
+    video_control_states,
+)
 from tests.test_h6099 import frame
 
 
@@ -48,10 +53,20 @@ def content() -> VideoProfile:
 
 
 def coordinator(version: str | None = None) -> SimpleNamespace:
+    confirmed = {"subordinate_21_version"} if identity_version(version) is not None else set()
+    profile = get_profile("H6099")
+
+    async def ensure_connected():
+        return None
+
     return SimpleNamespace(
         _control_arbiter=BLEControlArbiter(),
+        _lock=asyncio.Lock(),
+        _confirmed_identity_fields=confirmed,
+        identity_fields_confirmed=lambda fields: fields <= confirmed,
+        _ensure_connected=ensure_connected,
         model="H6099",
-        profile=get_profile("H6099"),
+        profile=profile,
         subordinate_21_version=version,
         is_on=True,
         video_full_screen=True,
@@ -153,6 +168,7 @@ async def test_border_only_gate_and_physical_recheck(version, state) -> None:
 
         async def disconnected(packet, *, write_guard, **kwargs):
             device.subordinate_21_version = None
+            device._confirmed_identity_fields.discard("subordinate_21_version")
             write_guard()
 
         with pytest.raises(ValueError, match="black_border"):
@@ -161,7 +177,7 @@ async def test_border_only_gate_and_physical_recheck(version, state) -> None:
 
 
 async def test_policy_edit_toggle_retention_and_race() -> None:
-    device = coordinator()
+    device = coordinator("1.00.11")
 
     async def refresh(**kwargs):
         for field in (
@@ -272,14 +288,16 @@ async def test_h6099_condition_identity_is_connection_scoped(hass, monkeypatch) 
     assert video_control_states(device.profile, device)["black_border"] == "supported"
 
     async def reconnect(*args, **kwargs):
-        assert device.subordinate_21_version is None
+        assert device.subordinate_21_version == "1.00.11"
+        assert not device.identity_fields_confirmed(frozenset({"subordinate_21_version"}))
         raise BleakError("offline")
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", reconnect)
     with pytest.raises(BleakError):
         await device._ensure_connected()
-    assert device.subordinate_21_version is None
-    assert video_control_states(device.profile, device)["black_border"] == "evidence_gap"
+    assert device.subordinate_21_version == "1.00.11"
+    assert not device.identity_fields_confirmed(frozenset({"subordinate_21_version"}))
+    assert video_control_states(device.profile, device)["black_border"] == "supported"
     validate_video_request(device, content())
 
 
@@ -288,6 +306,10 @@ async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, m
     profile = get_profile(model)
     assert profile.video_saturation_min == minimum
     device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url="test")
+    if model == "H6199":
+        from tests.test_h6199_capabilities import set_qualified_identity
+
+        set_qualified_identity(device)
     device.is_on = False
     writer = AsyncMock()
     monkeypatch.setattr(device, "async_write_effect_sequence", writer)

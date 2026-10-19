@@ -1208,9 +1208,9 @@ async def test_snapshot_profile_previews_use_preview_transport(
         coordinator._client.write_gatt_char.side_effect = acknowledge_upload
     if model == "H6199":
         from tests.test_h6099 import frame
-        from tests.test_h6199_capabilities import QUALIFIED
+        from tests.test_h6199_capabilities import set_qualified_identity
 
-        vars(coordinator).update(QUALIFIED)
+        set_qualified_identity(coordinator)
 
         async def fresh_policy(**kwargs):
             assert kwargs == {"refresh_display_settings": frozenset({"blank_screen"})}
@@ -1648,6 +1648,7 @@ async def test_scene_preview_validation_errors(
 @pytest.mark.parametrize("fresh", [False, True])
 async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeypatch, fresh):
     from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_blank_screen_query
+    from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
     from tests.test_h6099 import frame
 
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6099", configuration_url="test")
@@ -1667,6 +1668,7 @@ async def test_toggle_only_live_preview_uses_fresh_external_policy(hass, monkeyp
     async def reconnect(**kwargs):
         coordinator._clear_client_state(client)
         coordinator._client = client
+        coordinator._confirmed_identity_fields.update(video_identity_fields(coordinator.profile))
 
     monkeypatch.setattr(coordinator, "async_preview_preflight", reconnect)
     monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(return_value=True))

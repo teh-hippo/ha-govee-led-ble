@@ -22,12 +22,15 @@ from homeassistant.core import callback
 from .ble_connection import async_validate_ble_connection
 from .const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+    CONF_CONNECTION_MODE,
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_H6102_APP_FIRMWARE,
     CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
+    CONNECTION_MODE_HOLD,
+    CONNECTION_MODE_RELEASE,
     DOMAIN,
     MODEL_PROFILES,
     default_effect_categories,
@@ -239,35 +242,30 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
         if model is None:
             return self.async_abort(reason="not_supported")
         supported = supported_effect_categories(model)
-        if not supported:
+        readable = MODEL_PROFILES[model].state_readable
+        if not supported and not readable:
             return self.async_abort(reason="no_options")
         if user_input is not None:
-            ordered = [category for category in supported if user_input[category]]
             options = {key: value for key, value in self.config_entry.options.items() if key != CONF_EFFECT_FAMILIES}
-            options[CONF_EFFECT_CATEGORIES] = ordered
-            options[CONF_PREFIX_EFFECT_NAMES] = user_input[CONF_PREFIX_EFFECT_NAMES]
-            options[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS] = user_input[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS]
+            if supported:
+                options[CONF_EFFECT_CATEGORIES] = [category for category in supported if user_input[category]]
+                options[CONF_PREFIX_EFFECT_NAMES] = user_input[CONF_PREFIX_EFFECT_NAMES]
+                options[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS] = user_input[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS]
+            if readable:
+                options[CONF_CONNECTION_MODE] = user_input[CONF_CONNECTION_MODE]
             return self.async_create_entry(data=options)
         defaults = default_effect_categories(model)
-        current = self.config_entry.options.get(
-            CONF_EFFECT_CATEGORIES,
-            list(defaults),
-        )
-        prefix_effect_names = self.config_entry.options.get(
-            CONF_PREFIX_EFFECT_NAMES,
-            False,
-        )
-        always_include_custom_effects = self.config_entry.options.get(
-            CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
-            False,
-        )
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    **{vol.Required(category, default=category in current): bool for category in supported},
-                    vol.Required(CONF_PREFIX_EFFECT_NAMES, default=prefix_effect_names): bool,
-                    vol.Required(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS, default=always_include_custom_effects): bool,
-                }
-            ),
-        )
+        current = self.config_entry.options.get(CONF_EFFECT_CATEGORIES, list(defaults))
+        prefix_effect_names = self.config_entry.options.get(CONF_PREFIX_EFFECT_NAMES, False)
+        always_include_custom_effects = self.config_entry.options.get(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS, False)
+        connection_mode = self.config_entry.options.get(CONF_CONNECTION_MODE, CONNECTION_MODE_RELEASE)
+        schema: dict[Any, Any] = {}
+        if readable:
+            schema[vol.Required(CONF_CONNECTION_MODE, default=connection_mode)] = vol.In(
+                {CONNECTION_MODE_RELEASE: "Release", CONNECTION_MODE_HOLD: "Hold"}
+            )
+        if supported:
+            schema.update({vol.Required(category, default=category in current): bool for category in supported})
+            schema[vol.Required(CONF_PREFIX_EFFECT_NAMES, default=prefix_effect_names)] = bool
+            schema[vol.Required(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS, default=always_include_custom_effects)] = bool
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))

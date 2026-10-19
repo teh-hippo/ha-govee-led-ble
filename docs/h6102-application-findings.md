@@ -32,8 +32,10 @@ Phone microphone injection, timers, OTA, provisioning and continuous streaming r
 
 The exact profile registry, advertisement parser, profile-generation invalidation, shared physical writer,
 compiler, preview admission, saved library and deployment engine are reused. Observed Pact overrides
-configured context. Reconnection invalidates identity-dependent grants before awaiting connection setup.
-Every effect sequence checks profile generation, and physical music selectors check the effective roster.
+configured context.  Reconnection retains cached presentation identity and capabilities,
+but invalidates identity-dependent authorisation before awaiting connection setup.
+Valid replies on the current connection must confirm the required fields again.
+Every effect sequence checks profile generation, and physical music selectors check the authorised roster.
 
 `tests/test_h6102_capabilities.py` covers two independent devices, roster thresholds, unknown context,
 catalogue bounds, reconnect revocation, pre-write rejection and real-coordinator saved Apply with matching

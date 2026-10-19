@@ -31,6 +31,8 @@ from .ble_connection import (
 )
 from .ble_device_resolver import BLEDeviceResolver
 from .const import (
+    CONNECTION_MODE_HOLD,
+    CONNECTION_MODE_RELEASE,
     DOMAIN,
     ModelProfile,
     ReadDomain,
@@ -146,9 +148,6 @@ PACKET_LOG_LIMIT = 50
 PACKET_LOG_RAW_BYTES_LIMIT = 512
 EXPECTED_STATE_TTL = 2.0
 AVAILABILITY_UNAVAILABLE_DATA_KEY = "availability_unavailable"
-# Models whose effective profile is qualified by fresh firmware and hardware identity.
-_IDENTITY_QUALIFIED_MODELS = frozenset({"H60A1", "H60A6", "H6076", "H6102", "H6125"})
-
 _CORE_STATE_FIELDS = (
     "is_on",
     "brightness_pct",
@@ -194,6 +193,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         model: str,
         *,
         configuration_url: str | None,
+        connection_mode: str = "release",
         effect_families: frozenset[str] | None = None,
         effect_categories: frozenset[str] | None = None,
         prefix_effect_names: bool = False,
@@ -232,6 +232,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         )
         self.prefix_effect_names = prefix_effect_names
         self.always_include_custom_effects = always_include_custom_effects
+        self.connection_mode = (
+            CONNECTION_MODE_HOLD if connection_mode == CONNECTION_MODE_HOLD else CONNECTION_MODE_RELEASE
+        )
         self._device_resolver = BLEDeviceResolver() if device_resolver is None else device_resolver
         self._client: BleakClient | None = None
         self._encryption: GoveeEncryptionSession | None = None
@@ -239,6 +242,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._advertised_plaintext = False
         self._connection_initializing = False
         self._notification_token: object | None = None
+        self._confirmed_identity_fields: set[str] = set()
+        self._authorization_generation = 0
         self._upload_ack: tuple[BleakClient, object | None, int, int, int | None, asyncio.Future[bool]] | None = None
         self._lock = asyncio.Lock()
         self._control_arbiter = BLEControlArbiter()
@@ -732,11 +737,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     music_expectations["expected_music_calm"] = state.music_calm
 
             def guard_music_recovery() -> None:
+                profile = self._authorization_profile()
                 if (
-                    state.music_mode not in self.profile.music_modes
+                    state.music_mode not in profile.music_modes
                     or music_variant(
-                        self.profile,
-                        music_code_for(self.model, state.music_mode, profile=self.profile),
+                        profile,
+                        music_code_for(self.model, state.music_mode, profile=profile),
                     )
                     != variant
                 ):
@@ -891,24 +897,57 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
 
     @callback
     def _note_identity(self, *, fw_version: str | None = None, hw_version: str | None = None) -> None:
-        # Entities snapshot device_info at construction, before the first identity reply lands,
-        # so a newly learned version must be pushed to the registry or the device page stays blank (#97).
-        changed = False
-        if fw_version is not None and fw_version != self.fw_version:
-            self.fw_version, changed = fw_version, True
+        # Entities snapshot device_info at construction, before the first identity reply lands.
+        authorization_fields = self._authorization_identity_fields()
+        changed_fields: set[str] = set()
+        if fw_version is not None and identity_version(fw_version) is not None and fw_version != self.fw_version:
+            self.fw_version = fw_version
+            changed_fields.add("fw_version")
             if self.model == "H6102":
                 self._configured_h6102_firmware = None
-        if hw_version is not None and hw_version != self.hw_version:
-            self.hw_version, changed = hw_version, True
-        if not changed:
-            return
-        if self.model in _IDENTITY_QUALIFIED_MODELS:
-            self._resolve_device_profile()
-        assert self.config_entry is not None
-        registry = dr.async_get(self.hass)
-        device = registry.async_get_device_by_identifier((DOMAIN, self.address), self.config_entry.entry_id)
-        if device is not None:
-            registry.async_update_device(device.id, sw_version=self.fw_version, hw_version=self.hw_version)
+        if hw_version is not None and identity_version(hw_version) is not None and hw_version != self.hw_version:
+            self.hw_version = hw_version
+            changed_fields.add("hw_version")
+        if changed_fields:
+            if changed_fields & authorization_fields:
+                self._authorization_generation += 1
+            if self.profile.profile_identity_fields:
+                self._resolve_device_profile()
+            if self.config_entry is not None:
+                registry = dr.async_get(self.hass)
+                device = registry.async_get_device_by_identifier((DOMAIN, self.address), self.config_entry.entry_id)
+                if device is not None:
+                    registry.async_update_device(device.id, sw_version=self.fw_version, hw_version=self.hw_version)
+
+    @callback
+    def _observe_identity_field(self, field: str, value: str | None) -> bool:
+        """Cache a valid identity observation and confirm it for this notification session."""
+        confirmed = field in self._confirmed_identity_fields
+        parseable = identity_version(value) is not None
+        current_connection = self._client is not None and self._client.is_connected
+        if field in self._authorization_identity_fields():
+            if parseable and current_connection:
+                self._confirmed_identity_fields.add(field)
+            else:
+                self._confirmed_identity_fields.discard(field)
+        if confirmed != (field in self._confirmed_identity_fields):
+            self._authorization_generation += 1
+        if not parseable or value is None:
+            return False
+        previous = getattr(self, field)
+        if field == "fw_version":
+            self._note_identity(fw_version=value)
+        elif field == "hw_version":
+            self._note_identity(hw_version=value)
+        elif previous != value:
+            setattr(self, field, value)
+            self._authorization_generation += 1
+        return bool(previous != value)
+
+    def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool:
+        """Return whether required condition identity was observed on this connection."""
+        required = self._authorization_identity_fields() if fields is None else fields
+        return required <= self._confirmed_identity_fields
 
     def _sync_device_configuration_url(self) -> None:
         """Entities snapshot device_info at construction, so profile changes to Effect Studio access are pushed."""
@@ -981,7 +1020,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if service_info is not None and isinstance(service_info.manufacturer_data, Mapping):
             advertisement = parse_govee_advertisement(service_info.manufacturer_data)
             if advertisement is not None:
-                self.pact_type, self.pact_code = advertisement.pact_type, advertisement.pact_code
+                pact = advertisement.pact_type, advertisement.pact_code
+                if pact != (self.pact_type, self.pact_code):
+                    self.pact_type, self.pact_code = pact
+                    self._authorization_generation += 1
                 self._resolve_device_profile()
                 if advertisement.supports_encryption:
                     self._advertised_encryption = True
@@ -1089,6 +1131,16 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if self.hass.is_stopping:
             return self._state_snapshot()
         if self.profile.state_readable:
+            if (
+                self.connection_mode == CONNECTION_MODE_HOLD
+                and not first_refresh
+                and self._client is not None
+                and self._client.is_connected
+                and (self._encryption is None or self._encryption.ready)
+                and not self._receive_is_stale()
+                and not self._segment_query_incomplete
+            ):
+                return self._state_snapshot()
             try:
                 async with async_control_intent(self, ControlIntent.BACKGROUND, wait=False) as acquired:
                     if not acquired:
@@ -1109,7 +1161,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         if client is not None:
                             await self._disconnect_if_current_locked(client)
                         raise BleakError(f"State query failed for {self.address}")
-                    if client is not previous_client:
+                    if client is not previous_client and self.connection_mode != CONNECTION_MODE_HOLD:
                         await self._disconnect_if_current_locked(client)
             except BleakError as err:
                 # ConfigEntryNotReady on first setup only; steady-state refreshes degrade silently
@@ -1138,19 +1190,13 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 self._renew_foreground_lease()
                 return self._client
             _LOGGER.debug("Reconnecting stale notification stream for %s", self.address)
-        # Invalidate authorization before reconnect can yield; unrelated display identity stays cached.
+        # Cached identity remains presentation data; only current-connection confirmation is revoked.
+        self._confirmed_identity_fields.clear()
+        self._authorization_generation += 1
         self._music_palette = self._music_body = None
         self.video_parameters = None
-        for field in self._authorization_identity_fields():
-            setattr(self, field, None)
         if self.model == "H6102":
             self.profile = replace(self.profile, physical_ic_count=None)
-        if self.model in _IDENTITY_QUALIFIED_MODELS:
-            self._resolve_device_profile()
-        self.boolean_control_state.clear()
-        self.installation_direction, self.camera_health = None, "unknown"
-        self.strip_direction = self.camera_position = self.gradient = None
-        self.camera_status = "unknown"
         if self.profile.command_grammar == "H6099":
             self.profile = replace(self.profile, physical_ic_count=None)
         if self._client and self._client.is_connected:
@@ -1232,10 +1278,18 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         return stale_gatt
 
     def _renew_foreground_lease(self) -> None:
-        if self._control_arbiter.current_task_intent is not ControlIntent.BACKGROUND:
+        if (
+            self.connection_mode != CONNECTION_MODE_HOLD
+            and self._control_arbiter.current_task_intent is not ControlIntent.BACKGROUND
+        ):
             self._reset_disconnect_timer()
 
     def _reset_disconnect_timer(self) -> None:
+        if self.connection_mode == CONNECTION_MODE_HOLD:
+            if self._cancel_disconnect:
+                self._cancel_disconnect()
+                self._cancel_disconnect = None
+            return
         if self._cancel_disconnect:
             self._cancel_disconnect()
         self._disconnect_generation += 1
@@ -1253,7 +1307,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         )
 
     async def _async_disconnect_on_timeout(self, generation: int) -> None:
-        if generation != self._disconnect_generation:
+        if self.connection_mode == CONNECTION_MODE_HOLD or generation != self._disconnect_generation:
             return
         async with async_control_intent(self, ControlIntent.BACKGROUND, wait=False) as acquired:
             if not acquired:
@@ -1278,6 +1332,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._client = None
         self._music_palette = self._music_body = None
         self._notification_token = None
+        self._confirmed_identity_fields.clear()
+        self._authorization_generation += 1
         if self._encryption is not None:
             self._encryption.reset()
         if client is not None:
@@ -1288,10 +1344,11 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._segment_query_incomplete = False
         self._segment_groups_observed.clear()
         self._segment_query_colors = self._segment_query_brightness = None
-        self.installation_direction, self.camera_health = None, "unknown"
-        if self._intentional_disconnect_client is not client:
+        if client is None or self._intentional_disconnect_client is not client:
+            self.installation_direction, self.camera_health = None, "unknown"
             self.strip_direction = self.camera_position = self.gradient = None
             self.camera_status = "unknown"
+            self.boolean_control_state.clear()
         if self.profile.command_grammar == "H6099":
             self.profile = replace(self.profile, physical_ic_count=None)
         self._stop_keep_alive()
@@ -1330,6 +1387,22 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             self._field_revisions[field] = self._field_revisions.get(field, 0) + 1
             self._field_received_at[field] = received_at
         self._revision_event.set()
+
+    @callback
+    def _expire_optional_observations(self, baselines: Mapping[str, int]) -> None:
+        changed = False
+        for field, baseline in baselines.items():
+            if self._field_revisions.get(field, 0) > baseline:
+                continue
+            if field.startswith("boolean_"):
+                changed |= self.boolean_control_state.pop(field.removeprefix("boolean_"), None) is not None
+            else:
+                value = "unknown" if field in {"camera_health", "camera_status"} else None
+                if getattr(self, field, None) != value:
+                    setattr(self, field, value)
+                    changed = True
+        if changed:
+            self.async_set_updated_data(self.data or {})
 
     @property
     def _segment_group_count(self) -> int:
@@ -1847,16 +1920,20 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 version = (
                     generated.values["version"] if isinstance(generated, ParsedH6179Status) else generated.body.text
                 )
-                self._note_identity(fw_version=version or None)
+                if self._observe_identity_field("fw_version", version):
+                    observed = ("fw_version",)
             elif domain is StatusDomain.HARDWARE:
                 version = (
                     generated.values["version"] if isinstance(generated, ParsedH6179Status) else generated.body.text
                 )
-                self._note_identity(hw_version=version or None)
+                if self._observe_identity_field("hw_version", version):
+                    observed = ("hw_version",)
             elif domain is StatusDomain.SUBORDINATE_20:
-                self.subordinate_20_version = generated.body.text or None
+                if self._observe_identity_field("subordinate_20_version", generated.body.text or None):
+                    observed = ("subordinate_20_version",)
             elif domain is StatusDomain.SUBORDINATE_21:
-                self.subordinate_21_version = generated.body.text or None
+                if self._observe_identity_field("subordinate_21_version", generated.body.text or None):
+                    observed = ("subordinate_21_version",)
             elif domain in _OPTIONAL_CONTROL_DOMAINS:
                 control_values = h6099_control_status(decoded, self.profile)
                 if not control_values:
@@ -1865,7 +1942,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     setattr(self, field, control_value)
                 observed = tuple(control_values)
             elif (count := parse_physical_ic_count(generated)) is not None:
-                self.profile = replace(self.profile, physical_ic_count=count)
+                if self.profile.physical_ic_count != count:
+                    self.profile = replace(self.profile, physical_ic_count=count)
+                    self._authorization_generation += 1
                 if self.model == "H6102":
                     self._resolve_device_profile()
                 for variant in self.profile.music_variants:
@@ -1902,7 +1981,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             # The caller owns reconnect/retry policy; never write across an abandoned query.
             raise BleakError("Incomplete segment query requires a new connection")
         packet_validator(packet, self.profile)
+        self._validate_authorized_packet(packet)
         generation = self._profile_generation
+        authorization_generation = self._authorization_generation
         wire_packet = packet
         if (transform := self.profile.outbound_transform) is not None:
             wire_packet = transform(packet)
@@ -1915,8 +1996,11 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if before_write is not None:
             before_write()
         packet_validator(packet, self.profile)
+        self._validate_authorized_packet(packet)
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed before control write; refresh and retry")
+        if arm_expected and authorization_generation != self._authorization_generation:
+            raise ValueError("Device identity changed before control write; refresh and retry")
         requested = expectations_from_packet(packet, self.model, profile=self.profile)
         if (music_mode := requested.get("music_mode")) is not None and music_mode not in self.profile.music_modes:
             raise ValueError("Device profile does not support the requested music mode")
@@ -1982,6 +2066,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._record_packet("tx", wire_packet, outcome="sent", reason="write_succeeded")
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed during control write; refresh and retry")
+        if arm_expected and authorization_generation != self._authorization_generation:
+            raise ValueError("Device identity changed during control write; refresh and retry")
 
     async def _send_state_queries(
         self,
@@ -2002,6 +2088,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if client is None or not client.is_connected or self._segment_query_incomplete:
             return False
         generation = self._profile_generation
+        authorization_generation = self._authorization_generation
+        profile = self._authorization_profile()
         token = self._notification_token
         if deadline is None:
             deadline = time.monotonic() + 2.0
@@ -2009,26 +2097,29 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         try:
             queries: list[tuple[bytes, ReadDomain, tuple[str, ...]]] = []
             states = video_control_states(self.profile, self)
-            if query_power and self.profile.can_read(ReadDomain.POWER):
-                queries.append((build_power_query(self.model, profile=self.profile), ReadDomain.POWER, ("is_on",)))
-            if query_brightness and self.profile.can_read(ReadDomain.BRIGHTNESS):
+            video_identity_ready = self.identity_fields_confirmed(video_identity_fields(self.profile))
+            confirmed_controls = {
+                control
+                for control in states
+                if self.identity_fields_confirmed(video_identity_fields(self.profile, (control,)))
+            }
+            if query_power and profile.can_read(ReadDomain.POWER):
+                queries.append((build_power_query(self.model, profile=profile), ReadDomain.POWER, ("is_on",)))
+            if query_brightness and profile.can_read(ReadDomain.BRIGHTNESS):
                 queries.append(
                     (
-                        build_brightness_query(self.model, profile=self.profile),
+                        build_brightness_query(self.model, profile=profile),
                         ReadDomain.BRIGHTNESS,
                         ("brightness_pct",),
                     )
                 )
-            if query_color_mode and self.profile.supports_color_mode_readback:
-                color_domain = (
-                    ReadDomain.COLOUR_MODE if self.profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE
-                )
-                queries.append(
-                    (build_colour_mode_query(self.model, profile=self.profile), color_domain, ("color_mode",))
-                )
+            if query_color_mode and profile.supports_color_mode_readback:
+                color_domain = ReadDomain.COLOUR_MODE if profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE
+                queries.append((build_colour_mode_query(self.model, profile=profile), color_domain, ("color_mode",)))
             full_query = query_power and query_brightness and query_color_mode
             if (
-                self.profile.can_read(ReadDomain.DISPLAY_SETTING)
+                "white_balance" in confirmed_controls
+                and profile.can_read(ReadDomain.DISPLAY_SETTING)
                 and white_balance_readback_state(self.profile, self) is CapabilityState.SUPPORTED
                 and (query_white_balance if query_white_balance is not None else full_query)
             ):
@@ -2049,7 +2140,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     )
                 )
             if (
-                self.profile.can_read(ReadDomain.DISPLAY_SETTING)
+                "blank_screen" in confirmed_controls
+                and profile.can_read(ReadDomain.DISPLAY_SETTING)
                 and states["blank_screen"] is CapabilityState.SUPPORTED
                 and (query_blank_screen if query_blank_screen is not None else full_query)
             ):
@@ -2066,13 +2158,15 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     )
                 )
             if (
-                self.profile.can_read(ReadDomain.DISPLAY_SETTING)
+                "black_border" in confirmed_controls
+                and profile.can_read(ReadDomain.DISPLAY_SETTING)
                 and states["black_border"] is CapabilityState.SUPPORTED
                 and (query_black_border if query_black_border is not None else full_query)
             ):
                 queries.append((build_black_border_query(self.model), ReadDomain.DISPLAY_SETTING, ("black_border",)))
             if (
-                self.profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS)
+                "relative_brightness" in confirmed_controls
+                and profile.can_read(ReadDomain.RELATIVE_BRIGHTNESS)
                 and states["relative_brightness"] is CapabilityState.SUPPORTED
                 and (query_relative_brightness if query_relative_brightness is not None else full_query)
             ):
@@ -2084,8 +2178,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     )
                 )
             if (
-                self.profile.can_read(ReadDomain.SEGMENTS)
-                and self.profile.supports_segments
+                profile.can_read(ReadDomain.SEGMENTS)
+                and profile.supports_segments
                 and (query_segments if query_segments is not None else full_query)
             ):
                 segment_baseline = {"segment_colors": self._field_revisions.get("segment_colors", 0)}
@@ -2094,40 +2188,41 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 self._segment_query_brightness = list(self.segment_brightness)
                 queries.extend(
                     (
-                        build_segment_query(group, self.model, profile=self.profile),
+                        build_segment_query(group, self.model, profile=profile),
                         ReadDomain.SEGMENTS,
                         ("segment_colors", "segment_brightness"),
                     )
-                    for group in range(1, self._segment_group_count + 1)
+                    for group in range(1, profile.segment_group_count + 1)
                 )
             if full_query:
                 queries.extend(
                     (query, domain, (domain.value,))
                     for query, domain in zip(
-                        h6099_control_queries(self.model, self.profile),
+                        h6099_control_queries(self.model, profile),
                         (
                             domain
                             for domain in (ReadDomain.INSTALLATION_DIRECTION, ReadDomain.CAMERA_HEALTH)
-                            if self.profile.can_read(domain)
+                            if profile.can_read(domain)
                         ),
                         strict=True,
                     )
                 )
-            if full_query and self.model == "H6199":
-                for control in H6199_NATIVE_CONTROLS:
-                    setattr(self, control, "unknown" if control == "camera_status" else None)
-                    if h6199_camera_controls_state(self.model, self) is CapabilityState.SUPPORTED:
-                        queries.append((build_h6199_control_query(control), ReadDomain.OTHER, (control,)))
-            if full_query and self.profile.boolean_controls:
+            if full_query and self.model == "H6199" and video_identity_ready:
+                if h6199_camera_controls_state(self.model, self) is CapabilityState.SUPPORTED:
+                    queries.extend(
+                        (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
+                        for control in H6199_NATIVE_CONTROLS
+                    )
+            if full_query and profile.boolean_controls:
                 from .generated_protocol_adapter import build_boolean_control_query
 
                 queries.extend(
                     (
-                        build_boolean_control_query(control, self.model, profile=self.profile),
+                        build_boolean_control_query(control, self.model, profile=profile),
                         ReadDomain.OTHER,
                         (f"boolean_{control}",),
                     )
-                    for control in sorted(self.profile.boolean_controls)
+                    for control in sorted(profile.boolean_controls)
                 )
             required = (
                 required_domains
@@ -2141,11 +2236,16 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         ReadDomain.RELATIVE_BRIGHTNESS,
                     }
                 )
-            )
-            if query_segments is True:
+            ) & profile.read_domains
+            if query_segments is True and profile.supports_segments:
                 required |= {ReadDomain.SEGMENTS}
             for index, (query, domain, fields) in enumerate(queries):
-                if generation != self._profile_generation or self._client is not client or not client.is_connected:
+                if (
+                    generation != self._profile_generation
+                    or authorization_generation != self._authorization_generation
+                    or self._client is not client
+                    or not client.is_connected
+                ):
                     return False
                 if time.monotonic() >= deadline:
                     return all(d not in required for _, d, _ in queries[index:])
@@ -2168,7 +2268,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     if not write_timeout.expired():
                         raise
                     return (
-                        self._client is client
+                        authorization_generation == self._authorization_generation
+                        and self._client is client
                         and client.is_connected
                         and all(d not in required for _, d, _ in queries[index:])
                     )
@@ -2177,12 +2278,19 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         return False
                     _LOGGER.debug("Optional %s query failed for %s", domain.value, self.address, exc_info=True)
                     continue
-                if time.monotonic() >= deadline:
-                    return all(d not in required for _, d, _ in queries[index:])
-                if optional_baselines is not None:
+                if optional_baselines is not None and domain in _OPTIONAL_CONTROL_DOMAINS | {ReadDomain.OTHER}:
                     for field, revision in baselines.items():
                         optional_baselines.setdefault(field, revision)
-            if generation != self._profile_generation or self._client is not client or not client.is_connected:
+                if time.monotonic() >= deadline:
+                    return authorization_generation == self._authorization_generation and all(
+                        d not in required for _, d, _ in queries[index:]
+                    )
+            if (
+                generation != self._profile_generation
+                or authorization_generation != self._authorization_generation
+                or self._client is not client
+                or not client.is_connected
+            ):
                 return False
             if segment_baseline:
                 # All producers hold the existing control intent through this collection.
@@ -2193,6 +2301,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 complete = complete and time.monotonic() < deadline
                 if (
                     generation != self._profile_generation
+                    or authorization_generation != self._authorization_generation
                     or self._client is not client
                     or not client.is_connected
                     or self._notification_token is not token
@@ -2210,13 +2319,18 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         packet = build_h6199_control(control, value)
 
         def qualified() -> None:
-            if h6199_camera_controls_state(self.model, self) is not CapabilityState.SUPPORTED:
+            if (
+                not self.identity_fields_confirmed(video_identity_fields(self.profile))
+                or h6199_camera_controls_state(self.model, self) is not CapabilityState.SUPPORTED
+            ):
                 raise ValueError("H6199 control is not qualified for this device revision")
 
         async with async_control_intent(self, ControlIntent.USER):
-            qualified()
             try:
                 async with asyncio.timeout(EFFECT_SEQUENCE_CONNECT_TIMEOUT + timeout):
+                    async with self._lock:
+                        await self._ensure_connected()
+                    qualified()
                     await self.async_write_effect_sequence(
                         (packet,),
                         intent=ControlIntent.USER,
@@ -2284,14 +2398,32 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
 
     def _identity_field_incomplete(self, field: str) -> bool:
         value = getattr(self, field)
-        return value is None or (field in self._authorization_identity_fields() and identity_version(value) is None)
+        if field in self._authorization_identity_fields():
+            return field not in self._confirmed_identity_fields or identity_version(value) is None
+        return value is None
 
     def _authorization_identity_fields(self) -> frozenset[str]:
-        return (
-            frozenset({"fw_version", "hw_version"})
-            if self.model in _IDENTITY_QUALIFIED_MODELS
-            else frozenset(video_identity_fields(self.profile))
-        )
+        return self.profile.profile_identity_fields | frozenset(video_identity_fields(self.profile))
+
+    def _authorization_profile(self) -> ModelProfile:
+        fields = self.profile.profile_identity_fields
+        if not fields or self.identity_fields_confirmed(fields):
+            return self.profile
+        if self.model == "H6102":
+            return resolve_h6102_capabilities(
+                None,
+                None,
+                hardware=None,
+                pact_type=self.pact_type,
+                pact_code=self.pact_code,
+                physical_ic_count=self.profile.physical_ic_count,
+            ).profile
+        return device_profile(self.model, self.pact_type, self.pact_code, firmware=None, hardware=None)
+
+    def _validate_authorized_packet(self, packet: bytes) -> None:
+        profile = self._authorization_profile()
+        if profile != self.profile:
+            require_profile_packet(packet, profile)
 
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
         from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query
@@ -2462,6 +2594,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         refresh_display_settings: bool | frozenset[str] = False,
         refresh_relative_brightness: bool = False,
         refresh_all: bool = False,
+        query_segments: bool | None = None,
         required_domains: frozenset[ReadDomain] | None = None,
         timeout: float = 2.0,
     ) -> bool:
@@ -2617,8 +2750,15 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             client = self._client
             if client is None or not client.is_connected or generation != self._profile_generation:
                 return False
+            authorization_generation = self._authorization_generation
+            profile = self._authorization_profile()
             states = video_control_states(self.profile, self)
             states["white_balance"] = white_balance_readback_state(self.profile, self)
+            confirmed_controls = {
+                control
+                for control in states
+                if self.identity_fields_confirmed(video_identity_fields(self.profile, (control,)))
+            }
             requested_registers = display_settings | {
                 control
                 for control, requested in (
@@ -2631,34 +2771,48 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             }
             if any(states[control] is not CapabilityState.SUPPORTED for control in requested_registers):
                 return False
+            if requested_registers - confirmed_controls:
+                return False
             if refresh_all:
-                query_white_balance = states["white_balance"] is CapabilityState.SUPPORTED
-                query_blank_screen = states["blank_screen"] is CapabilityState.SUPPORTED
-                query_black_border = states["black_border"] is CapabilityState.SUPPORTED
-                query_relative_brightness = states["relative_brightness"] is CapabilityState.SUPPORTED
+                query_white_balance = (
+                    "white_balance" in confirmed_controls and states["white_balance"] is CapabilityState.SUPPORTED
+                )
+                query_blank_screen = (
+                    "blank_screen" in confirmed_controls and states["blank_screen"] is CapabilityState.SUPPORTED
+                )
+                query_black_border = (
+                    "black_border" in confirmed_controls and states["black_border"] is CapabilityState.SUPPORTED
+                )
+                query_relative_brightness = (
+                    "relative_brightness" in confirmed_controls
+                    and states["relative_brightness"] is CapabilityState.SUPPORTED
+                )
+            query_power = query_power and profile.can_read(ReadDomain.POWER)
+            query_brightness = query_brightness and profile.can_read(ReadDomain.BRIGHTNESS)
+            query_color = query_color and profile.supports_color_mode_readback
             queried_domains = {
                 domain
                 for domain, enabled in (
                     (ReadDomain.POWER, query_power),
                     (ReadDomain.BRIGHTNESS, query_brightness),
                     (
-                        ReadDomain.COLOUR_MODE if self.profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE,
+                        ReadDomain.COLOUR_MODE if profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE,
                         query_color,
                     ),
                     (ReadDomain.DISPLAY_SETTING, query_white_balance or query_blank_screen or query_black_border),
                     (ReadDomain.RELATIVE_BRIGHTNESS, query_relative_brightness),
                 )
-                if enabled and self.profile.can_read(domain)
+                if enabled and profile.can_read(domain)
             }
             if required_domains is not None:
-                queried_domains.update(required_domains & self.profile.read_domains & _OPTIONAL_CONTROL_DOMAINS)
+                queried_domains.update(required_domains & profile.read_domains & _OPTIONAL_CONTROL_DOMAINS)
             awaited_domains = queried_domains if required_domains is None else queried_domains & required_domains
             initial_domain_baselines = {domain: self._domain_revisions.get(domain, 0) for domain in awaited_domains}
             deadline = time.monotonic() + timeout
+            optional_baselines: dict[str, int] = {}
             for attempt in range(2):
                 if time.monotonic() >= deadline:
                     break
-                optional_baselines: dict[str, int] = {}
                 query_options: dict[str, Any] = {"deadline": deadline}
                 if refresh_all or required_domains is not None:
                     query_options = {
@@ -2672,6 +2826,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         | ({ReadDomain.RELATIVE_BRIGHTNESS} if "relative_brightness" in requested_registers else set()),
                         "optional_baselines": optional_baselines,
                     }
+                if query_segments is not None:
+                    query_options["query_segments"] = query_segments
                 field_baselines = {field: self._field_revisions.get(field, 0) for field in expectations}
                 if refresh_all and query_black_border and required_domains is None:
                     field_baselines["black_border"] = self._field_revisions.get("black_border", 0)
@@ -2740,13 +2896,20 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     ):
                         # A background poll closes its connection on return. Collect delayed
                         # optional replies first; their silence never rejects the basic poll.
-                        if optional_baselines:
-                            await self._wait_for_revisions(optional_baselines, {}, deadline)
-                        return generation == self._profile_generation and self._client is client and client.is_connected
-                if generation != self._profile_generation:
+                        if optional_baselines and not await self._wait_for_revisions(optional_baselines, {}, deadline):
+                            self._expire_optional_observations(optional_baselines)
+                        return (
+                            generation == self._profile_generation
+                            and authorization_generation == self._authorization_generation
+                            and self._client is client
+                            and client.is_connected
+                        )
+                if generation != self._profile_generation or authorization_generation != self._authorization_generation:
                     return False
                 if time.monotonic() >= deadline:
                     break
+            if optional_baselines:
+                self._expire_optional_observations(optional_baselines)
             if any(
                 self._domain_revisions.get(domain, 0) <= baseline
                 for domain, baseline in initial_domain_baselines.items()
@@ -3176,15 +3339,26 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                                     await self._disconnect_if_current_locked(client)
                                 break
                     full = self._keep_alive_ticks % STATE_QUERY_EVERY_N_KEEP_ALIVES == 0
-                    async with self._lock:
-                        client = self._client
-                        generation = self._profile_generation
-                        ok = await self._send_state_queries(
-                            query_power=True,
-                            query_brightness=full,
-                            query_color_mode=full and self.profile.supports_color_mode_readback,
+                    client = self._client
+                    generation = self._profile_generation
+                    if self.connection_mode == CONNECTION_MODE_HOLD and full:
+                        ok = await self._refresh_connected_state(
+                            refresh_all=True,
+                            query_segments=False,
                             required_domains=self.profile.setup_required_read_domains,
                         )
+                    else:
+                        async with self._lock:
+                            ok = await self._send_state_queries(
+                                query_power=True,
+                                query_brightness=full,
+                                query_color_mode=full and self.profile.supports_color_mode_readback,
+                                required_domains=(
+                                    frozenset({ReadDomain.POWER})
+                                    if self.connection_mode == CONNECTION_MODE_HOLD
+                                    else self.profile.setup_required_read_domains
+                                ),
+                            )
                     if not ok:
                         if generation != self._profile_generation:
                             continue

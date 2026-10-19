@@ -1632,12 +1632,15 @@ async def test_turn_on_unknown_effect_raises(light, mock_coordinator):
 @pytest.mark.parametrize(
     "effect,slug", [("Music: Rhythm", "rhythm"), ("Music: Piano Keys", "piano_keys"), ("music: rhythm", "rhythm")]
 )
-async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effect, slug):
+async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effect, slug, monkeypatch):
     co = mock_coordinator
     co.music_sensitivity = 99
     co.is_on = True
+    video_preflight = AsyncMock()
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.light.async_require_video_controls", video_preflight)
     await light.async_turn_on(effect=effect)
     co.async_select_music_slug.assert_awaited_once_with(slug)
+    video_preflight.assert_not_awaited()
 
 
 async def test_turn_on_music_effect_uses_the_device_template_default(mock_coordinator):
@@ -1687,10 +1690,10 @@ async def test_invalid_music_selection_has_no_control_side_effects(light, mock_c
 
 @pytest.mark.parametrize("effect,mode", [("Video: Movie", "movie"), ("Video: Game", "game"), ("video: game", "game")])
 async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coordinator, effect, mode):
-    from tests.test_h6199_capabilities import QUALIFIED
+    from tests.test_h6199_capabilities import set_qualified_identity
 
     co = mock_h6199_coordinator
-    vars(co).update(QUALIFIED)
+    set_qualified_identity(co)
     co.is_on = True
     co.video_full_screen = False
     co.video_saturation = 63
@@ -1713,9 +1716,9 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
 
 
 async def test_turn_on_video_effect_uses_the_device_template_default(mock_h6199_coordinator):
-    from tests.test_h6199_capabilities import QUALIFIED
+    from tests.test_h6199_capabilities import set_qualified_identity
 
-    vars(mock_h6199_coordinator).update(QUALIFIED)
+    set_qualified_identity(mock_h6199_coordinator)
     content = VideoProfile(
         "H6199",
         "movie",
@@ -2325,7 +2328,12 @@ async def test_control_lock_keeps_failed_rollback_before_newer_colour(light, moc
 
     mock_coordinator._client.write_gatt_char.side_effect = transmit
     first = asyncio.create_task(light.async_turn_on(rgb_color=(255, 0, 0)))
-    await first_started.wait()
+    try:
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+    except TimeoutError:
+        if first.done():
+            await first
+        raise
     second = asyncio.create_task(light.async_turn_on(rgb_color=(0, 0, 255)))
     await asyncio.sleep(0)
     assert sent == [red]

@@ -58,8 +58,10 @@ upload, activation, readback, or restoration compatibility. See the
   black RGB colour. Rendered RGB requires the segment replies. Command echoes
   and optimistic entity state are not observations.
 - Firmware/hardware identity uses `AA 06` / `AA 07`; Wi-Fi hardware/software
-  identity uses `AA 20` / `AA 21`. Missing identity is retried within the bounded
-  coordinator identity loop. Setup requires only power, brightness, and colour
+  identity uses `AA 20` / `AA 21`.  Cached identity remains visible across
+  reconnects; identity-dependent controls require valid replies on the current
+  connection.  Missing confirmation is retried within the bounded coordinator
+  identity loop.  Setup requires only power, brightness, and colour
   mode replies, not optional installation controls or physical IC discovery.
 - Physical IC count (`physicalIC` in the app, `physical_ic_count` in the
   integration) starts unknown and accepts only positive `AA 40` values. It is
@@ -186,9 +188,11 @@ The response contains `installation_direction` (2-5 or null) and `camera_health`
 (`absent`/0, `healthy`/1, `incompatible`/2, or `unknown`). Missing or unrecognized
 replies are unknown, never absent/healthy. Each domain requires its own fresh
 revision, so a partial response does not reuse the other domain's cached value.
-Both queries run on refresh; missing optional replies do not gate setup or
-disconnect an otherwise usable light solely for these domains. Disconnect
-clears their observations. Camera position `31` is neither read nor written.
+Both queries run on refresh; pending queries retain the last observation.
+Missing optional replies mark only the unanswered fields unknown at their
+sent-query deadline and do not gate setup or disconnect an otherwise usable
+light.  Intentional Release-mode disconnects retain observations; unexpected
+disconnects clear them.  Camera position `31` is neither read nor written.
 
 ### DreamView
 

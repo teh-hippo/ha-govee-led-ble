@@ -105,6 +105,7 @@ def test_display_replies_are_atomic_and_field_specific(device):
 @pytest.mark.parametrize("fresh", [False, True])
 async def test_refresh_and_observe_require_exact_reply(device, setting, fresh):
     device.subordinate_21_version = "1.00.11"
+    device._confirmed_identity_fields.add("subordinate_21_version")
     expected = (
         {"black_border": False}
         if setting == "black_border"
@@ -140,6 +141,8 @@ async def test_refresh_and_observe_require_exact_reply(device, setting, fresh):
 @pytest.mark.parametrize("missing_reply", [None, "power", "brightness", "mode"])
 async def test_border_query_gate_and_optional_setup(device, monkeypatch, version, missing_reply):
     device.subordinate_21_version = version
+    if version is not None:
+        device._confirmed_identity_fields.add("subordinate_21_version")
     await device._send_state_queries(query_segments=False)
     packets = [call.args[1] for call in device._client.write_gatt_char.await_args_list]
     assert (build_black_border_query("H6099") in packets) is (version == "1.00.11")
@@ -215,6 +218,7 @@ async def test_ic_discovery_is_device_scoped_and_only_initializes_new_defaults(d
 @pytest.mark.parametrize("reply", ["aaa90b0101", "aa0101"])
 async def test_full_refresh_needs_border_and_core_domains(device, reply):
     device.subordinate_21_version = "1.00.11"
+    device._confirmed_identity_fields.add("subordinate_21_version")
 
     async def respond(*args, **kwargs):
         notify(device, reply)
@@ -241,11 +245,15 @@ async def test_border_reconnect_guard_prevents_optimistic_state(device):
 async def test_ic_reset_precedes_reconnect_await(hass, monkeypatch):
     device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6099", configuration_url="test")
     device.profile = replace(device.profile, physical_ic_count=60)
+    device.subordinate_21_version = "1.00.11"
     device.installation_direction, device.camera_health = 4, "healthy"
+    device._client = MagicMock(is_connected=False)
 
     async def connect(*args, **kwargs):
         assert device.profile.physical_ic_count is None
         assert device.installation_direction is None and device.camera_health == "unknown"
+        assert device.subordinate_21_version == "1.00.11"
+        assert not device.identity_fields_confirmed(frozenset({"subordinate_21_version"}))
         raise BleakError("offline")
 
     monkeypatch.setattr(f"{M}.async_establish_ble_connection", connect)
@@ -602,9 +610,11 @@ async def test_ic_rediscovery_preserves_user_parameters_and_validates_new_bounds
 async def test_toggle_reads_fresh_external_policy_before_writing(device, monkeypatch, route, fresh):
     notify(device, "aaa90a0600020a007800")
     client = device._client
+    device.subordinate_21_version = "1.00.11"
     saved = replace(device.capture_effect_control_state(), blank_screen=True)
     device._clear_client_state(client)
     device._client = client
+    device._confirmed_identity_fields.add("subordinate_21_version")
     refresh = device.refresh_state
 
     async def immediate_refresh(**kwargs):
@@ -653,6 +663,8 @@ async def test_toggle_reads_fresh_external_policy_before_writing(device, monkeyp
 
 @pytest.mark.parametrize("change", ["filtered", "reconnect"])
 async def test_toggle_guard_rejects_filtered_reply_or_reconnect(device, monkeypatch, change):
+    device.subordinate_21_version = "1.00.11"
+    device._confirmed_identity_fields.add("subordinate_21_version")
     client = device._client
     refresh = device.refresh_state
 
@@ -688,6 +700,8 @@ async def test_toggle_guard_rejects_filtered_reply_or_reconnect(device, monkeypa
 @pytest.mark.parametrize("cached", [False, True])
 @pytest.mark.parametrize("fresh", [False, True])
 async def test_compiled_toggle_prepares_policy_before_any_control(device, monkeypatch, cached, fresh):
+    device.subordinate_21_version = "1.00.11"
+    device._confirmed_identity_fields.add("subordinate_21_version")
     if cached:
         notify(device, "aaa90a0600020a007800")
     before = device.capture_effect_control_state()

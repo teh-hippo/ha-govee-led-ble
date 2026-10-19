@@ -63,6 +63,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
     if TYPE_CHECKING:
 
+        def _authorization_profile(self) -> ModelProfile: ...
+
         async def send_command(self, packet: bytes, *, write_guard: Callable[[], None] | None = None) -> None: ...
 
         async def async_write_effect_sequence(

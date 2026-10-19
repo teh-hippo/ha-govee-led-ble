@@ -164,5 +164,8 @@ def test_legacy_short_config_is_unqualified_until_reentered_or_observed(hass) ->
     assert coordinator._identity_field_incomplete("fw_version")
     coordinator.fw_version = "3.02.02"
     coordinator._resolve_device_profile()
+    assert coordinator._identity_field_incomplete("fw_version")
+    coordinator._client = MagicMock(is_connected=True)
+    coordinator._observe_identity_field("fw_version", "3.02.02")
     assert not coordinator._identity_field_incomplete("fw_version")
     assert "bloom" in coordinator.profile.music_modes

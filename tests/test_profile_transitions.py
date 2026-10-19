@@ -19,8 +19,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
-from tests.test_h6199_capabilities import QUALIFIED
 from tests.test_h6199_capabilities import lifecycle as transition_lifecycle  # noqa: F401
+from tests.test_h6199_capabilities import set_qualified_identity
 from tests.test_h6199_native_controls import frame
 from tests.test_h6199_pact1 import advertise
 
@@ -28,7 +28,7 @@ from tests.test_h6199_pact1 import advertise
 @pytest.fixture
 def device(hass, monkeypatch):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
-    vars(c).update(QUALIFIED)
+    set_qualified_identity(c)
     c._present = True
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     c._client = client
@@ -160,6 +160,20 @@ async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure
     if failure == "optional":
         assert c._client is client and c.is_on and ticks == 2
     assert not c._lock.locked() and not c._control_arbiter.locked()
+
+
+async def test_identity_change_during_control_invalidates_completion_without_profile_change(device):
+    c, client = device
+    profile = c.profile
+
+    async def write(_uuid, packet, **kwargs):
+        c._notify_callback(None, bytearray(frame("aa21" + b"1.00.34".hex())))
+
+    client.write_gatt_char.side_effect = write
+    with pytest.raises(ValueError, match="identity changed during control"):
+        await c.send_command(build_power(False, c.model))
+    assert c.profile is profile and c.subordinate_21_version == "1.00.34"
+    client.write_gatt_char.assert_awaited_once()
 
 
 async def test_targeted_register_remains_strict(device):

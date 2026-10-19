@@ -106,6 +106,7 @@ async def test_coordinator_real_pages_panel_brightness_and_no_false_verification
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     c.hw_version, c.fw_version = "1.04.03", "1.02.20" if model == "H60A1" else "1.00.41"
     c._resolve_device_profile()
+    c._confirmed_identity_fields.update(c.profile.profile_identity_fields)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
@@ -191,6 +192,7 @@ async def test_missing_final_page_cannot_promote_partial_segment_state(hass, mon
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     c.hw_version, c.fw_version = "1.04.03", "1.02.20" if model == "H60A1" else "1.00.41"
     c._resolve_device_profile()
+    c._confirmed_identity_fields.update(c.profile.profile_identity_fields)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))

@@ -33,7 +33,7 @@ from custom_components.ha_govee_led_ble.native_profile_controls import (
 from custom_components.ha_govee_led_ble.select import GoveeBLEControlSelect
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _manager, _open
-from tests.test_h6199_capabilities import QUALIFIED
+from tests.test_h6199_capabilities import QUALIFIED, set_qualified_identity
 from tests.test_h6199_capabilities import lifecycle as reconnect_lifecycle  # noqa: F401
 from tests.test_h6199_native_controls import frame
 
@@ -61,7 +61,7 @@ from tests.test_h6199_native_controls import frame
 )
 async def test_background_reconnect_admission(reconnect_lifecycle, hass, monkeypatch, route, identity):  # noqa: F811
     c, replies, clients, packets = reconnect_lifecycle
-    vars(c).update(QUALIFIED)
+    set_qualified_identity(c)
     replies[build_colour_mode_query("H6199")] = frame("aa05000100640164")
     if identity == "missing":
         del replies[build_firmware_query("H6199")]
@@ -86,6 +86,7 @@ async def test_background_reconnect_admission(reconnect_lifecycle, hass, monkeyp
     if route.startswith(("light_", "service_", "ws_")):
         backend = await EffectBackend.async_create(hass)
         await backend.library.async_create(item)
+        c.always_include_custom_effects = True
         light = GoveeBLELight(c, config_entry_id="entry-a", effect_backend=backend)
         light.async_write_ha_state = Mock()
         if route == "light_default":
@@ -155,11 +156,15 @@ async def test_background_reconnect_admission(reconnect_lifecycle, hass, monkeyp
             await manager.async_wait_idle("entry-a")
             assert statuses[-1].phase is not PreviewPhase.FAILED
 
+    cached_effects = light.effect_list if route.startswith("light_") else None
     background = asyncio.create_task(c._async_update_data())
     foreground = None
     try:
         await asyncio.wait_for(connecting.wait(), 1)
-        assert c._connection_initializing and c.fw_version is None
+        assert c._connection_initializing and c.fw_version == QUALIFIED["fw_version"]
+        assert not c.identity_fields_confirmed()
+        if route.startswith("light_"):
+            assert light.effect_list == cached_effects
         foreground = asyncio.create_task(request())
         await asyncio.sleep(0.01)
         assert not foreground.done()
@@ -198,8 +203,8 @@ async def test_qualification_wait_cancels_without_writes_or_stale_fallback(recon
             await task
         assert c._control_arbiter.current_task_intent is ControlIntent.BACKGROUND
     assert not packets and not c._control_arbiter.locked()
-    with pytest.raises(ValueError, match="evidence_gap"):
-        await async_require_video_controls(c, ("white_balance",))
+    await async_require_video_controls(c, ("white_balance",))
+    assert c.identity_fields_confirmed()
 
 
 async def test_structurally_invalid_register_fails_without_waiting(reconnect_lifecycle):  # noqa: F811

@@ -8,7 +8,7 @@ from custom_components.ha_govee_led_ble.const import ReadDomain
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h6199_control_query, build_video_mode
-from tests.test_h6199_capabilities import QUALIFIED
+from tests.test_h6199_capabilities import set_qualified_identity
 from tests.test_h6199_native_controls import frame
 
 
@@ -38,7 +38,7 @@ def test_stale_mode_does_not_publish_gradient_but_accepted_static_does(hass):
 @pytest.mark.parametrize("direct", [None, 0, 1])
 async def test_gradient_write_requires_matching_direct_register_reply(hass, monkeypatch, direct):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
-    vars(c).update(QUALIFIED)
+    set_qualified_identity(c)
     # A previous matching A3 reply must not qualify the next write.
     c._notify_callback(None, frame("aaa301"))
     baseline = c._field_revisions["gradient_register"]

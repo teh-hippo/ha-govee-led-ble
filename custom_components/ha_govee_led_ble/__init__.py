@@ -18,12 +18,14 @@ from homeassistant.util import dt as dt_util
 from .ble_connection import clear_stale_gatt_recovery
 from .const import (
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+    CONF_CONNECTION_MODE,
     CONF_EFFECT_CATEGORIES,
     CONF_EFFECT_FAMILIES,
     CONF_H6102_APP_FIRMWARE,
     CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
+    CONNECTION_MODE_RELEASE,
     DOMAIN,
     MODEL_PROFILES,
     always_include_custom_effects_from_options,
@@ -209,6 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         entry.unique_id,
         model,
         configuration_url=editor_url(entry.entry_id) if supported_effect_categories(model) else None,
+        connection_mode=entry.options.get(CONF_CONNECTION_MODE, CONNECTION_MODE_RELEASE),
         effect_families=effect_families_from_options(model, entry.options),
         effect_categories=effect_categories_from_options(model, entry.options),
         prefix_effect_names=prefix_effect_names_from_options(entry.options),

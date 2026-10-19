@@ -21,7 +21,7 @@ from custom_components.ha_govee_led_ble.native_profile_controls import apply_whi
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_h6099 import frame
-from tests.test_h6199_capabilities import QUALIFIED
+from tests.test_h6199_capabilities import set_qualified_identity
 
 AUTO = bytes.fromhex("aaa9000601100300150500000000000000000007")
 MANUAL = bytes.fromhex("aaa9000601100301150500000000000000000006")
@@ -30,7 +30,7 @@ MANUAL = bytes.fromhex("aaa9000601100301150500000000000000000006")
 @pytest.fixture
 def coordinator(hass):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
-    vars(coordinator).update(QUALIFIED)
+    set_qualified_identity(coordinator)
     return coordinator
 
 

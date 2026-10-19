@@ -97,7 +97,7 @@ To add manually in Home Assistant:
 
 **Settings → Devices & Services → Add Integration → Govee LED BLE**
 
-Use the integration's **Configure** action to choose which Effect Studio categories and light effect names are exposed for each device.
+Use the integration's **Configure** action to choose which Effect Studio categories and light effect names are exposed for each device.  Devices with readable state also offer a BLE connection mode.  **Release** is the default: poll every 30 seconds and disconnect after background use so Govee Home can connect between polls.  Foreground commands retain a short connection lease.  **Hold** retains a healthy notification connection, queries power every five seconds, and refreshes readable brightness, mode and optional controls every fifteen seconds without periodic multipart segment reads.  Hold permanently uses one proxy connection slot and blocks Govee Home BLE access; Wi-Fi control remains independent.
 
 Use **Reconfigure** to correct the selected model while preserving the existing config entry and entity identity.
 

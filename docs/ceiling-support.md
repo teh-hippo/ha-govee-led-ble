@@ -55,10 +55,11 @@ source-code regression between those builds.
 | H601C basic identifiable variants | `bulblightv3` goods 111 basic producer; PR #330 reports one HW/FW combination above | RGB/Kelvin/power/brightness candidate; the reported ACK/register result does not establish visible output or qualify other variants |
 | H601C Matter branch: BLE + Wi-Fi FW >=1.01.05, HW exactly 1.07.02 | `bulblightv3/newdetail/config/MatterSupport.java:142–166` | Matter eligibility only; does not change basic encoding or qualify BLE operation |
 
-Fresh BLE identity invalidates/requalifies tuple-dependent H60A capabilities at reconnect.
-Prepared packets are revalidated against the effective profile at each physical attempt.
-Pact authorization is independently retained. Unknown identity cannot authorize the exact
-reporter-tuple route.
+Reconnects retain cached H60A capabilities for presentation but revoke tuple-dependent
+write authorisation until valid identity replies arrive on the current connection.
+Prepared packets are revalidated at each physical attempt.  Pact authorisation is
+independently retained.  Unconfirmed identity cannot authorise the exact reporter-tuple
+route, even when its cached controls remain visible.
 
 ## Candidate support scope
 

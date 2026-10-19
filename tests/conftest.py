@@ -117,6 +117,8 @@ def _make_coord(**ov) -> MagicMock:
         _field_revisions={},
         _domain_revisions={},
         _profile_generation=0,
+        _authorization_generation=0,
+        _confirmed_identity_fields=set(),
         _encryption=None,
         control_write_attempts=0,
         _static_write_attempts=0,

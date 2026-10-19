@@ -359,6 +359,7 @@ def _coordinator(*, readable: bool = True):
         segment_brightness=[100] * 15,
         segment_state_source="initial",
     )
+    coordinator._authorization_profile = lambda: coordinator.profile
 
     async def refresh_segments():
         coordinator.segment_state_source = "observed"
@@ -408,12 +409,14 @@ def _coordinator(*, readable: bool = True):
 
 
 def _profile_coordinator(model: str):
-    from tests.test_h6199_capabilities import QUALIFIED
+    from tests.test_h6199_capabilities import set_qualified_identity
 
     coordinator = _coordinator()
     coordinator._control_arbiter = coordinator._control_lock = BLEControlArbiter()
+    coordinator.model = model
+    coordinator.profile = get_profile(model)
     if model == "H6199":
-        vars(coordinator).update(QUALIFIED)
+        set_qualified_identity(coordinator)
     coordinator.active_mode = None
     coordinator._field_revisions = {}
 
@@ -439,8 +442,6 @@ def _profile_coordinator(model: str):
             setattr(coordinator, field, value)
 
     coordinator.send_command = AsyncMock(side_effect=send_command)
-    coordinator.model = model
-    coordinator.profile = get_profile(model)
     coordinator.video_full_screen = True
     coordinator.video_saturation = 88
     coordinator.video_sound_effects = False

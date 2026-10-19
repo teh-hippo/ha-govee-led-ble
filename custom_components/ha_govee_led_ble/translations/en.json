@@ -177,9 +177,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Effects",
-        "description": "Choose which Effect Studio categories appear in the Studio and on the light entity.",
+        "title": "Device options",
+        "description": "Choose the BLE connection mode and, when available, which Effect Studio categories appear in the Studio and on the light entity.",
         "data": {
+          "connection_mode": "BLE connection mode",
           "scenes": "Scenes",
           "video": "Video",
           "effects": "Effects",
@@ -188,6 +189,9 @@
           "advanced": "Advanced",
           "prefix_effect_names": "Prefix effects with their category (e.g., \"Scene: Aurora\")",
           "always_include_custom_effects": "Always include my custom effects"
+        },
+        "data_description": {
+          "connection_mode": "Release disconnects after use so the Govee app can connect. Hold keeps the BLE connection open and may prevent the app from connecting."
         }
       }
     }

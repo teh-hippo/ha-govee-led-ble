@@ -21,14 +21,14 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_segment_query,
     build_white_balance_query,
 )
-from tests.test_h6199_capabilities import QUALIFIED
+from tests.test_h6199_capabilities import set_qualified_identity
 from tests.test_h6199_native_controls import frame
 
 
 @pytest.fixture
 def device(hass, monkeypatch):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
-    vars(c).update(QUALIFIED)
+    set_qualified_identity(c)
     c._present = True
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     c._client = client

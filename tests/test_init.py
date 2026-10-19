@@ -72,6 +72,7 @@ async def test_setup_entry(hass: HomeAssistant):
         "AA:BB:CC:DD:EE:FF",
         "H617A",
         configuration_url="homeassistant://ha-govee-led-ble/editor/test_entry_id",
+        connection_mode="release",
         effect_families=frozenset({"scenes", "music"}),
         effect_categories=frozenset(
             {"scenes", "effects", "multi_layered", "reactive", "advanced"},

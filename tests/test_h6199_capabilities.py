@@ -44,6 +44,16 @@ QUALIFIED = dict(
 )
 
 
+def set_qualified_identity(coordinator):
+    vars(coordinator).update(QUALIFIED)
+    confirmed = getattr(coordinator, "_confirmed_identity_fields", None)
+    if confirmed is None:
+        confirmed = coordinator._confirmed_identity_fields = set()
+    confirmed.update(video_identity_fields(coordinator.profile))
+    if not callable(getattr(coordinator, "identity_fields_confirmed", None)):
+        coordinator.identity_fields_confirmed = lambda fields: fields <= confirmed
+
+
 @pytest.mark.parametrize("mode,colour", [("energetic", False), ("rhythm", True), ("spectrum", True), ("rolling", True)])
 @pytest.mark.parametrize("sensitivity", [0, 100])
 def test_catalogue_matches_music_backend(mode, colour, sensitivity):
@@ -128,6 +138,7 @@ async def test_basic_setup_survives_optional_silence(hass, monkeypatch, revision
         # Identity values are synthetic routing input, not an older-hardware test.
         for field, value in QUALIFIED.items():
             setattr(coordinator, field, value)
+        coordinator._confirmed_identity_fields.update(video_identity_fields(coordinator.profile))
         if revision == "old":
             coordinator.fw_version = "1.00.01"
     replies = {
@@ -170,6 +181,27 @@ async def test_basic_setup_survives_optional_silence(hass, monkeypatch, revision
         assert coordinator.send_command.await_count == 1  # Power only, no newer register recovery.
 
 
+async def test_only_queried_optional_controls_expire_after_silence(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
+    set_qualified_identity(coordinator)
+    coordinator._client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator.strip_direction = 1
+    coordinator.camera_position = 1
+    coordinator.gradient = 1
+    coordinator.camera_status = "healthy"
+    coordinator.white_balance_red = 22
+    optional_baselines = {}
+
+    await coordinator._send_state_queries(optional_baselines=optional_baselines, query_segments=False)
+
+    assert {"strip_direction", "camera_position", "gradient", "camera_status"} <= optional_baselines.keys()
+    assert "is_on" not in optional_baselines and "white_balance_red" not in optional_baselines
+    coordinator._expire_optional_observations(optional_baselines)
+    assert coordinator.strip_direction is coordinator.camera_position is coordinator.gradient is None
+    assert coordinator.camera_status == "unknown"
+    assert coordinator.white_balance_red == 22
+
+
 async def test_missing_basic_reply_still_fails_setup(hass, monkeypatch):
     from homeassistant.helpers.update_coordinator import UpdateFailed
 
@@ -192,8 +224,11 @@ async def test_reconnect_invalidates_all_h6199_revision_authorization(hass, monk
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
 
     async def connect(*args, **kwargs):
-        assert all(getattr(coordinator, field) is None for field in video_identity_fields(coordinator.profile))
-        assert h6199_camera_controls_state(coordinator.model, coordinator) is CapabilityState.EVIDENCE_GAP
+        assert all(
+            getattr(coordinator, field) == QUALIFIED[field] for field in video_identity_fields(coordinator.profile)
+        )
+        assert not coordinator.identity_fields_confirmed()
+        assert h6199_camera_controls_state(coordinator.model, coordinator) is CapabilityState.SUPPORTED
         return client
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", connect)
@@ -241,8 +276,6 @@ async def lifecycle(hass, monkeypatch):
     async def connect(*args, **kwargs):
         client = MagicMock(is_connected=True)
         clients.append(client)
-        assert c.strip_direction is c.camera_position is c.gradient is None
-        assert c.camera_status == "unknown"
         receive = None
 
         async def subscribe(_uuid, callback):
@@ -285,6 +318,7 @@ async def test_real_reconnect_waits_for_identity_before_guard(lifecycle, hass, m
     c, replies, clients, packets = lifecycle
     await c._async_update_data()
     assert c._client is None and clients[-1].disconnect.await_count == 1
+    assert c.gradient == 1
     assert h6199_camera_controls_state(c.model, c) is CapabilityState.SUPPORTED
     if identity == "missing":
         del replies[build_firmware_query("H6199")]

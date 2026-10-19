@@ -25,8 +25,11 @@ Gradient also defaults disabled to keep these newly qualified controls opt-in.
 Independent register writes do not enter static/video mode, turn on the light,
 or write sibling registers. They do not participate in effect recovery because
 effect application does not author these registers. State is never restored
-from HA storage as observed readback. A pending/missed camera query clears old
-status to unknown and cannot disable the basic light.
+from HA storage as observed readback.  A pending camera query retains the last
+observation; only a missed sent-query deadline or unexpected disconnect marks it
+unknown.  Intentional Release-mode disconnects retain it.  Unknown status cannot
+disable the basic light.  Cached revision identity keeps controls and selectors
+stable, but writes require valid identity replies on the current connection.
 
 Runnable coverage is in `tests/test_h6199_native_controls.py`. Software fault
 injection and generated parser checks are not physical qualification. A future

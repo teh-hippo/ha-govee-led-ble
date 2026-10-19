@@ -204,17 +204,17 @@ async def test_ceiling_entity_panel_brightness_is_one_write_without_readback(has
 
 
 @pytest.mark.parametrize("model", ["H60A1", "H60A6"])
-async def test_reconnect_revokes_cached_tuple_before_await(hass, monkeypatch, model):
+async def test_reconnect_retains_cached_profile_but_revokes_write_authority(hass, monkeypatch, model):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", model, configuration_url=None)
     c.hw_version, c.fw_version = "1.04.03", "1.02.20" if model == "H60A1" else "1.00.41"
     c._resolve_device_profile()
     packet = build_segment_color([1], 1, 2, 3, model, profile=c.profile)
 
     async def establish(*args, **kwargs):
-        assert c.hw_version is None and c.fw_version is None
-        assert not c.profile.supports_rgb and not c.profile.supports_segments
+        assert c.hw_version == "1.04.03" and c.fw_version == ("1.02.20" if model == "H60A1" else "1.00.41")
+        assert c.profile.supports_rgb and c.profile.supports_segments
         with pytest.raises(ValueError):
-            require_profile_packet(packet, c.profile)
+            c._validate_authorized_packet(packet)
         raise RuntimeError("stop before connecting")
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", establish)

@@ -290,9 +290,9 @@ async def test_apply_active_video_mode_noop_when_video_off(coord):
 
 
 async def test_apply_active_video_mode_requires_readback(h6199):
-    from tests.test_h6199_capabilities import QUALIFIED
+    from tests.test_h6199_capabilities import set_qualified_identity
 
-    vars(h6199).update(QUALIFIED)
+    set_qualified_identity(h6199)
     h6199.is_on = True
     values = {"full_screen": False, "saturation": 63, "sound_effects": True, "sound_effects_softness": 27}
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
@@ -317,6 +317,9 @@ async def test_apply_active_video_mode_requires_readback(h6199):
 
 
 async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
+    from tests.test_h6199_capabilities import set_qualified_identity
+
+    set_qualified_identity(h6199)
     h6199.is_on, h6199.video_mode = False, "movie"
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     with (
@@ -340,6 +343,8 @@ async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
                 expected_video_mode="movie",
                 expected_video_full_screen=True,
                 expected_video_saturation=100,
+                expected_video_sound_effects=False,
+                expected_video_sound_effects_softness=100,
             )
         ]
         * 2

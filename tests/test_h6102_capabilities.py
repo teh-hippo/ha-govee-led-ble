@@ -226,7 +226,7 @@ async def test_physical_music_selector_rechecks_effective_roster(hass):
     client.write_gatt_char.assert_not_awaited()
 
 
-async def test_reconnect_invalidates_revision_grants_before_connect_yields(hass, monkeypatch):
+async def test_reconnect_retains_presentation_identity_but_restricts_write_profile(hass, monkeypatch):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()
@@ -234,10 +234,12 @@ async def test_reconnect_invalidates_revision_grants_before_connect_yields(hass,
     generation = coordinator._profile_generation
 
     async def connect(*args, **kwargs):
-        assert coordinator.fw_version is coordinator.hw_version is None
-        assert len(coordinator.profile.music_modes) == 4
+        assert coordinator.fw_version == "3.02.02" and coordinator.hw_version == "3.02.01"
+        assert len(coordinator.profile.music_modes) > 4
+        assert len(coordinator._authorization_profile().music_modes) == 4
         assert coordinator.profile.supports_scenes
-        assert coordinator._profile_generation > generation
+        assert coordinator._profile_generation == generation
+        assert not coordinator.identity_fields_confirmed()
         raise BleakError("offline")
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", connect)
@@ -323,6 +325,7 @@ async def test_boolean_setting_requires_fresh_matching_readback(hass, monkeypatc
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()
+    coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)
     coordinator.boolean_control_state[control] = True  # Stale cached success cannot confirm.
 
     async def transmit(_uuid, packet, **kwargs):

@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.transport import xor_checksum
+from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
 
 
 def frame(prefix):
@@ -34,6 +35,7 @@ def qualify(c):
     c.fw_version, c.hw_version = "1.10.04", "3.02.01"
     c.subordinate_20_version, c.subordinate_21_version = "1.03.00", "1.00.33"
     c.pact_type, c.pact_code = 2, 1
+    c._confirmed_identity_fields.update(video_identity_fields(c.profile))
 
 
 @pytest.fixture
@@ -96,7 +98,7 @@ async def test_diy_static_and_camera_observation_preserve_light(coordinator):
         assert light.available and c.is_on
     c.camera_status = "healthy"
     await c._send_state_queries()
-    assert diagnostic.native_value == "unknown" and light.available
+    assert diagnostic.native_value == "healthy" and light.available
     c._clear_client_state(c._client)
     assert c.camera_status == "unknown" and c.gradient is None
 
@@ -195,8 +197,10 @@ async def test_native_entity_to_generated_wire_and_fresh_notification(coordinato
     assert [call.args[1] for call in c._client.write_gatt_char.await_args_list] == [frame("333101"), frame("aa31")]
 
 
-async def test_optional_camera_silence_does_not_fail_basic_refresh(coordinator):
+@pytest.mark.parametrize("connection_mode", ["release", "hold"])
+async def test_optional_camera_silence_does_not_fail_basic_refresh(coordinator, monkeypatch, connection_mode):
     c = coordinator
+    c.connection_mode = connection_mode
     c.camera_status = "healthy"
 
     async def respond(_uuid, packet, **kwargs):
@@ -205,10 +209,30 @@ async def test_optional_camera_silence_does_not_fail_basic_refresh(coordinator):
             c._notify_callback(None, bytearray(replies[packet]))
 
     c._client.write_gatt_char.side_effect = respond
-    assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.01)
+    if connection_mode == "hold":
+        c._keep_alive_ticks = 2
+        refresh = c._refresh_connected_state
+
+        async def bounded_refresh(**kwargs):
+            return await refresh(timeout=0.01, **kwargs)
+
+        monkeypatch.setattr(c, "_refresh_connected_state", bounded_refresh)
+        with monkeypatch.context() as held:
+            held.setattr(
+                "custom_components.ha_govee_led_ble.coordinator.asyncio.sleep",
+                AsyncMock(side_effect=[None, asyncio.CancelledError()]),
+            )
+            await c._keep_alive_loop()
+    else:
+        assert await c.refresh_state(
+            refresh_all=True, required_domains=c.profile.setup_required_read_domains, timeout=0.01
+        )
     packets = [call.args[1] for call in c._client.write_gatt_char.await_args_list]
     assert all(build_h6199_control_query(key) in packets for key in H6199_NATIVE_CONTROLS)
+    if connection_mode == "hold":
+        assert all(packet[:2] != b"\xaa\xa5" for packet in packets)
     assert c.camera_status == "unknown" and c.is_on and GoveeBLELight(c).available
+    assert c.brightness_pct == 42 and c.color_mode is ParsedMode.COLOUR
     c._client.disconnect.assert_not_awaited()
 
 

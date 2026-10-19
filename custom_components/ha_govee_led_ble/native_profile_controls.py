@@ -14,7 +14,13 @@ from .generated_protocol_adapter import (
     build_video_mode,
     build_white_balance,
 )
-from .video_applicability import require_video_controls, require_video_mode, video_control_states
+from .video_applicability import (
+    require_video_controls,
+    require_video_mode,
+    video_control_states,
+    video_identity_fields,
+    video_mode_controls,
+)
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator
@@ -40,9 +46,17 @@ async def async_require_video_controls(
     intent: ControlIntent = ControlIntent.USER,
 ) -> None:
     """Evaluate identity after an in-flight reconnect relinquishes control."""
+    requested = frozenset(controls)
     current_intent = coordinator._control_arbiter.current_task_intent
     async with async_control_intent(coordinator, intent if current_intent is None else current_intent):
-        require_video_controls(coordinator.profile, coordinator, controls)
+        profile = coordinator.profile
+        identity_fields = video_identity_fields(
+            profile, None if profile.video_revision_policy == "H6199" else requested
+        )
+        if identity_fields and not coordinator.identity_fields_confirmed(identity_fields):
+            async with coordinator._lock:
+                await coordinator._ensure_connected()
+        require_video_controls(coordinator.profile, coordinator, requested)
 
 
 def prepare_video_mode(
@@ -72,6 +86,13 @@ def prepare_video_mode(
         )
         if field not in requested_values and supported
     }
+    control_by_field = {
+        "full_screen": "capture_region",
+        "saturation": "saturation",
+        "sound_effects": "sound_effects",
+        "sound_effects_softness": "sound_effects",
+    }
+    controls |= frozenset(control_by_field[field] for field in retained)
     retained_parameters = dict(getattr(coordinator, "video_parameters", None) or {})
     resolved_parameters = retained_parameters | dict(parameters or {})
     profile = coordinator.profile
@@ -80,6 +101,7 @@ def prepare_video_mode(
 
     def check_retained() -> None:
         require_video_mode(coordinator.profile, coordinator)
+        require_video_controls(coordinator.profile, coordinator, controls)
         if coordinator.profile != profile:
             raise ValueError("Video profile changed before write; refresh and retry")
         coordinator.profile.validate_video_saturation(values["saturation"])
@@ -131,7 +153,7 @@ async def apply_active_video_mode(
 ) -> bool:
     if mode not in ("movie", "game"):
         return False
-    await async_require_video_controls(coordinator, ())
+    await async_require_video_controls(coordinator, video_mode_controls(coordinator.profile))
     packet, values, controls, check_retained = prepare_video_mode(
         coordinator, mode=mode, requested_values=requested_values, parameters=parameters
     )

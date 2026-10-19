@@ -77,6 +77,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
+from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 M = "custom_components.ha_govee_led_ble.coordinator"
@@ -254,6 +255,7 @@ def test_h6125_notifications_decode_register_brightness_and_submode_0x11_music(h
 
 async def test_h6125_writes_the_register_while_expectations_stay_in_percent(h6125):
     _qualify_h6125(h6125, hardware="1.00.03")
+    h6125._confirmed_identity_fields.update(h6125.profile.profile_identity_fields)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     await h6125._async_write_packet(client, build_brightness(50, "H6125"), arm_expected=True)
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [
@@ -287,6 +289,7 @@ def test_h6125_advertised_pact_and_notified_identity_qualify_the_profile(h6125):
 
 async def test_h6125_type04_sequence_reaches_the_device_as_a1_frames_then_the_selector(h6125, monkeypatch):
     _qualify_h6125(h6125)
+    h6125._confirmed_identity_fields.update(h6125.profile.profile_identity_fields)
     compiled = compile_application(
         LibraryItem.new("Fade", SingleEffect(family=0, variant=0, speed=40, palette=((255, 0, 0),))),
         "H6125",
@@ -304,13 +307,14 @@ async def test_h6125_type04_sequence_reaches_the_device_as_a1_frames_then_the_se
     ]
 
 
-async def test_h6125_reconnect_revokes_the_qualified_profile_until_identity_returns(h6125, monkeypatch):
+async def test_h6125_reconnect_retains_profile_but_limits_writes_until_identity_returns(h6125, monkeypatch):
     _qualify_h6125(h6125)
     assert h6125.profile.outbound_transform is not None
 
     async def establish(*args, **kwargs):
-        assert h6125.fw_version is None and h6125.hw_version is None
-        assert h6125.profile.command_operations == frozenset({"power"})
+        assert h6125.fw_version == "1.07.00" and h6125.hw_version == "1.00.04"
+        assert h6125.profile.outbound_transform is not None
+        assert h6125._authorization_profile().command_operations == frozenset({"power"})
         raise RuntimeError("stop before connecting")
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", establish)
@@ -362,15 +366,16 @@ def test_h6076_registered_effect_studio_link_follows_late_identity(hass):
     assert registry.async_get(device.id).configuration_url is None
 
 
-async def test_h6076_reconnect_revokes_music_until_identity_returns(h6076, monkeypatch):
+async def test_h6076_reconnect_retains_music_profile_but_revokes_write_authority(h6076, monkeypatch):
     h6076.pact_type, h6076.pact_code = 2, 1
     h6076.fw_version, h6076.hw_version = "1.04.05", "3.05.00"
     h6076._resolve_device_profile()
     assert h6076.profile.music_modes
 
     async def establish(*args, **kwargs):
-        assert h6076.fw_version is None and h6076.hw_version is None
-        assert not h6076.profile.music_modes
+        assert h6076.fw_version == "1.04.05" and h6076.hw_version == "3.05.00"
+        assert h6076.profile.music_modes
+        assert not h6076._authorization_profile().music_modes
         raise RuntimeError("stop before connecting")
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", establish)
@@ -659,9 +664,9 @@ async def test_restore_effect_control_state_reapplies_complete_music_profile(coo
 
 
 async def test_restore_effect_control_state_reapplies_complete_video_profile(h6199):
-    from tests.test_h6199_capabilities import QUALIFIED
+    from tests.test_h6199_capabilities import set_qualified_identity
 
-    vars(h6199).update(QUALIFIED)
+    set_qualified_identity(h6199)
     initial = h6199.capture_effect_control_state()
     state = PriorControlState(
         mode="video",
@@ -727,6 +732,7 @@ async def test_blank_screen_recovery_preserves_live_policy(h6199, enabled, polic
     from tests.test_h6199_capabilities import QUALIFIED
 
     vars(h6199).update(QUALIFIED)
+    h6199._confirmed_identity_fields.update(video_identity_fields(h6199.profile))
     h6199.is_on = True
     h6199.color_mode = ParsedMode.SCENE
     h6199.effect = "candlelight"
@@ -969,7 +975,16 @@ async def test_outbound_workflows_share_profile_transform(coord, h6199, model, w
         packets = [build_power_query(model)]
     elif workflow == "identity":
         coordinator.fw_version = coordinator.subordinate_20_version = coordinator.subordinate_21_version = "1.00.01"
-        packets = [build_hardware_query(model)]
+        packets = (
+            [
+                build_hardware_query(model),
+                build_firmware_query(model),
+                build_h6199_subordinate_query(0x20),
+                build_h6199_subordinate_query(0x21),
+            ]
+            if model == "H6199"
+            else [build_hardware_query(model)]
+        )
     elif workflow == "sequence":
         packets.extend(build_native_scene_packets(model, MODEL_SCENES[model]["glacier"]))
 
@@ -2174,9 +2189,9 @@ async def test_send_state_queries_selective(coord):
 
 
 async def test_send_state_queries_include_h6199_display_state(h6199):
-    from tests.test_h6199_capabilities import QUALIFIED
+    from tests.test_h6199_capabilities import set_qualified_identity
 
-    vars(h6199).update(QUALIFIED)
+    set_qualified_identity(h6199)
     h6199.pact_type = None  # This test isolates video queries, not qualified native installation queries.
     c = _c(write_gatt_char=AsyncMock())
     h6199._client = c
@@ -2731,6 +2746,7 @@ async def test_refresh_state_queries_each_display_domain(h6199):
     from tests.test_h6199_capabilities import QUALIFIED
 
     vars(h6199).update(QUALIFIED)
+    h6199._confirmed_identity_fields.update(video_identity_fields(h6199.profile))
     h6199._client = client = _c()
 
     async def _reply(**kwargs) -> bool:
@@ -4130,7 +4146,7 @@ async def test_send_identity_queries_only_unknown(coord):
     c.write_gatt_char.assert_not_awaited()
 
 
-async def test_h6199_identity_queries_include_only_non_sensitive_subordinate_versions(h6199):
+async def test_h6199_identity_queries_reconfirm_all_revision_fields_on_a_new_connection(h6199):
     c = _c(write_gatt_char=AsyncMock())
     h6199._client = c
 
@@ -4147,6 +4163,8 @@ async def test_h6199_identity_queries_include_only_non_sensitive_subordinate_ver
     h6199.fw_version = "1.10.04"
     h6199.hw_version = "3.02.01"
     h6199.subordinate_20_version = "1.03.00"
+    h6199.subordinate_21_version = "1.00.33"
+    h6199._confirmed_identity_fields.update(video_identity_fields(h6199.profile) - {"subordinate_21_version"})
     c.write_gatt_char.reset_mock()
 
     await h6199._send_identity_queries()
@@ -4278,6 +4296,48 @@ async def test_config_entry_first_refresh_raises_config_entry_not_ready(coord):
         bt.async_address_present.return_value = False
         with pytest.raises(ConfigEntryNotReady):
             await coord.async_config_entry_first_refresh()
+
+
+async def test_hold_keeps_connection_and_refreshes_basic_state_without_segments(hass, monkeypatch):
+    from custom_components.ha_govee_led_ble.const import CONNECTION_MODE_HOLD, ReadDomain
+
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:99", "H617A", configuration_url=None)
+    coord.connection_mode = CONNECTION_MODE_HOLD
+    client = MagicMock(is_connected=True, disconnect=AsyncMock())
+    coord._client = client
+    coord._first_refresh_done = True
+    send_queries = AsyncMock(return_value=True)
+    refresh_connected = AsyncMock(return_value=True)
+    send_identity_queries = AsyncMock()
+    monkeypatch.setattr(coord, "_send_state_queries", send_queries)
+    monkeypatch.setattr(coord, "_refresh_connected_state", refresh_connected)
+    monkeypatch.setattr(coord, "_send_identity_queries", send_identity_queries)
+    monkeypatch.setattr(coord, "_receive_is_stale", lambda: False)
+    sleeps = 0
+
+    async def sleep(_seconds):
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps == 4:
+            client.is_connected = False
+
+    monkeypatch.setattr(f"{M}.asyncio.sleep", sleep)
+    assert await coord._async_update_data() == coord._state_snapshot()
+    await coord._keep_alive_loop()
+    assert send_identity_queries.await_count == 3
+    assert send_queries.await_count == 2
+    assert send_queries.await_args.kwargs == {
+        "query_power": True,
+        "query_brightness": False,
+        "query_color_mode": False,
+        "required_domains": frozenset({ReadDomain.POWER}),
+    }
+    refresh_connected.assert_awaited_once_with(
+        refresh_all=True,
+        query_segments=False,
+        required_domains=coord.profile.setup_required_read_domains,
+    )
+    client.disconnect.assert_not_awaited()
 
 
 def test_expectations_from_packet_covers_every_command_family():

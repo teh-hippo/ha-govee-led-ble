@@ -95,6 +95,7 @@ from .video_applicability import (
     require_video_controls,
     require_video_mode,
     validate_video_request,
+    video_mode_controls,
 )
 
 # fmt: on
@@ -505,7 +506,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
         def available(content: object) -> bool:
             try:
-                validate_video_request(self.coordinator, content)
+                validate_video_request(self.coordinator, content, require_confirmation=False)
             except ValueError:
                 return False
             return True
@@ -754,12 +755,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return None
         item = LibraryItem.new(template_id, stored.content)
         compiled = compile_application(item, self.coordinator.model, profile=self.coordinator.profile)
-        validate_video_request(self.coordinator, item.content)
+        validate_video_request(self.coordinator, item.content, require_confirmation=False)
         if not isinstance(compiled, CompiledMusicProfile | CompiledVideoProfile):
             raise RuntimeError("native selector template default did not compile to a native profile")
         return compiled
 
-    def _prepare_effect(
+    async def _prepare_effect(
         self, effect_name: str, *, video_guards: list[Callable[[], None]] | None = None
     ) -> Callable[[], Awaitable[None]]:
         key = normalise_effect_name(effect_name)
@@ -806,6 +807,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             )
         if selected is not None and selected.source == "video":
             compiled = self._compile_template_default(f"template:video:{selected.value}")
+            controls = video_mode_controls(coordinator.profile)
+            if isinstance(compiled, CompiledVideoProfile):
+                controls |= requested_video_controls(compiled)
+            await async_require_video_controls(coordinator, controls)
             if compiled is not None:
                 if isinstance(compiled, CompiledVideoProfile):
                     controls = requested_video_controls(compiled)
@@ -896,8 +901,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        if ATTR_EFFECT in kwargs:
-            await async_require_video_controls(self.coordinator, ())
         active_workspace = self._matching_active_workspace()
         if self.coordinator.model == "H6102" and kwargs.get(ATTR_BRIGHTNESS) == 0:
             await self._async_supersede_preview()
@@ -923,7 +926,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             return
         video_guards: list[Callable[[], None]] = []
         prepared_effect = (
-            self._prepare_effect(str(kwargs[ATTR_EFFECT]), video_guards=video_guards) if ATTR_EFFECT in kwargs else None
+            await self._prepare_effect(str(kwargs[ATTR_EFFECT]), video_guards=video_guards)
+            if ATTR_EFFECT in kwargs
+            else None
         )
         await self._async_supersede_preview()
         clear_workspace = active_workspace is not None and (
@@ -964,6 +969,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     diy_code=resolve_diy_code(current, diy_code, model=self.coordinator.model),
                     profile=self.coordinator.profile,
                 )
+                if isinstance(compiled, CompiledVideoProfile):
+                    await async_require_video_controls(
+                        self.coordinator,
+                        requested_video_controls(compiled) | video_mode_controls(self.coordinator.profile),
+                    )
 
                 def guard() -> None:
                     validate_compiled_geometry(compiled, self.coordinator.profile)
@@ -1036,7 +1046,6 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         )
         item: LibraryItem | None
         if effect is not None:
-            await async_require_video_controls(self.coordinator, ())
             key = normalise_effect_name(effect)
             item = next(
                 (

@@ -29,6 +29,7 @@ def _coordinator(hass, *, resolved=True):
     )
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()
+    coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)
     return coordinator
 
 

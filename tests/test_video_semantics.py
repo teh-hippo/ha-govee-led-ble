@@ -145,7 +145,7 @@ async def test_alternate_roundtrip_writer_parser_observation_and_recovery(
 
 
 async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant) -> None:
-    from tests.test_h6199_capabilities import QUALIFIED
+    from tests.test_h6199_capabilities import set_qualified_identity
 
     content = VideoProfile("H6199", "movie", True, 50, False, 50, 17, RelativeBrightness(100, 100, 100, 100), False)
     raw = effect_content_to_dict(content)
@@ -166,7 +166,7 @@ async def test_legacy_calibration_hash_and_omitted_registers(hass: HomeAssistant
         key.startswith(("white_balance", "relative_brightness", "blank_screen")) for key in expected
     )
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
-    vars(coordinator).update(QUALIFIED)
+    set_qualified_identity(coordinator)
     coordinator.is_on = True
     writer = AsyncMock()
     await async_apply_compiled_profile(coordinator, compiled, writer=writer, verify=False)

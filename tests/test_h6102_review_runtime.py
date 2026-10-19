@@ -318,6 +318,7 @@ async def test_external_retained_body_change_stops_edit_and_preserves_external_v
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url=None, h6102_pact="10/1")
     c.fw_version, c.hw_version = "3.02.02", "3.02.01"
     c._resolve_device_profile()
+    c._confirmed_identity_fields.update(c.profile.profile_identity_fields)
     c.music_mode = "hopping"
     c._music_body = ("hopping", bytes.fromhex("3302010203040506aabbcc196104050708"))
     with _music_transport(c) as physical:

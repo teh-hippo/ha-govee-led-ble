@@ -25,6 +25,9 @@ CONF_EFFECT_CATEGORIES = "effect_categories"
 CONF_EFFECT_FAMILIES = "effect_families"
 CONF_PREFIX_EFFECT_NAMES = "prefix_effect_names"
 CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS = "always_include_custom_effects"
+CONF_CONNECTION_MODE = "connection_mode"
+CONNECTION_MODE_RELEASE = "release"
+CONNECTION_MODE_HOLD = "hold"
 EFFECT_FAMILY_SCENES = "scenes"
 EFFECT_FAMILY_MUSIC = "music"
 EFFECT_FAMILY_VIDEO = "video"
@@ -131,6 +134,7 @@ class ModelProfile:
     dreamview_reads: frozenset[str] = frozenset()
     dreamview_max_sub_devices: int = 0
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
+    profile_identity_fields: frozenset[str] = frozenset()
     # Exact-product revision policy, independent of compatible wire grammars.
     video_revision_policy: str | None = None
     read_domains: frozenset[ReadDomain] = frozenset()
@@ -419,6 +423,7 @@ _H6076_PROFILE = ModelProfile(
             ReadDomain.HARDWARE,
         }
     ),
+    profile_identity_fields=frozenset({"fw_version"}),
     setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
     supports_rgb=True,
     supports_color_temperature=True,
@@ -459,6 +464,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H60A1",
         command_operations=frozenset({"power", "brightness", "static"}),
         read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         min_color_temp_kelvin=2700,
         max_color_temp_kelvin=6500,
@@ -475,6 +481,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H60A6",
         command_operations=frozenset({"power", "brightness", "static"}),
         read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         min_color_temp_kelvin=2700,
         max_color_temp_kelvin=6500,
@@ -647,6 +654,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         support_quality=SupportQuality.EXPERIMENTAL,
         command_grammar="H617A",
         status_grammar="H6102",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
         static_readback_gradual=True,
@@ -703,6 +711,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         support_quality=SupportQuality.EXPERIMENTAL,
         command_grammar="H617A",
         status_grammar="H6125",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         effect_grammar="H617A",
         # Static replies carry the SubModeColorV2 Kelvin field, as on H6102.
         static_readback_kelvin=True,
@@ -895,6 +904,7 @@ H6125_POWER_ONLY_PROFILE = ModelProfile(
     command_grammar="H617A",
     command_operations=frozenset({"power"}),
     status_grammar="H6125",
+    profile_identity_fields=frozenset({"fw_version", "hw_version"}),
     read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
     setup_required_read_domains=frozenset({ReadDomain.POWER}),
 )

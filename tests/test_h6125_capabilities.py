@@ -6,7 +6,7 @@ import pytest
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_status import StatusDomain, decode_status_frame
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, StatusDomain, decode_status_frame
 from custom_components.ha_govee_led_ble.effect_catalogue import H617A_TYPE04_APPLY_CODE, MODEL_EFFECT_CATALOGUES
 from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityState, compatibility, compile_application
 from custom_components.ha_govee_led_ble.effect_domain import (
@@ -58,6 +58,21 @@ CURRENT = device_profile("H6125", 1, 2, firmware="1.07.01", hardware="1.00.04")
 
 def _wire(profile, packet):
     return profile.outbound_transform(packet)
+
+
+def test_changed_wire_revision_invalidates_old_control_state(h6125):
+    h6125.is_on = True
+    h6125.brightness_pct = 37
+    h6125.color_mode = ParsedMode.COLOUR
+    h6125.rgb_color = (12, 34, 56)
+    h6125.hw_version = "1.00.03"
+    h6125._resolve_device_profile()
+
+    assert h6125.is_on
+    assert h6125.brightness_pct == 100
+    assert h6125.color_mode is None
+    assert h6125.rgb_color == (12, 34, 56)
+    assert h6125.rgb_color_source == "initial"
 
 
 @pytest.mark.parametrize(
@@ -169,6 +184,7 @@ def h6125(hass):
     coordinator.pact_type, coordinator.pact_code = 1, 2
     coordinator.fw_version, coordinator.hw_version = "1.07.01", "1.00.04"
     coordinator._resolve_device_profile()
+    coordinator._confirmed_identity_fields.update(coordinator.profile.profile_identity_fields)
     return coordinator
 
 

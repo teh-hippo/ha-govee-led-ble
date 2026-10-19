@@ -16,10 +16,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.const import (
     BLE_DISCOVERABLE_MODELS,
     CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+    CONF_CONNECTION_MODE,
     CONF_EFFECT_CATEGORIES,
     CONF_H6102_APP_FIRMWARE,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
+    CONNECTION_MODE_HOLD,
+    CONNECTION_MODE_RELEASE,
     DOMAIN,
     model_from_ble_name,
 )
@@ -422,11 +425,13 @@ async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssist
     schema = result["data_schema"]
     assert schema is not None
     assert [marker.schema for marker in schema.schema] == [
+        CONF_CONNECTION_MODE,
         *expected,
         CONF_PREFIX_EFFECT_NAMES,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
     ]
     assert schema({}) == {
+        CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
         **dict.fromkeys(expected, True),
         CONF_PREFIX_EFFECT_NAMES: False,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,
@@ -447,6 +452,7 @@ async def test_options_flow_uses_stored_category_list_for_checkbox_defaults(hass
     schema = result["data_schema"]
     assert schema is not None
     assert schema({}) == {
+        CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
         "scenes": True,
         "video": False,
         "effects": False,
@@ -470,14 +476,15 @@ async def test_options_flow_aborts_for_unsupported_model(hass: HomeAssistant):
 @pytest.mark.parametrize(
     ("data", "address"),
     [
-        ({CONF_MODEL: "H601C"}, SVC_H6076.address),
+        ({CONF_MODEL: "H60A1"}, "66:77:88:99:AA:01"),
+        ({CONF_MODEL: "H60A6"}, "66:77:88:99:AA:06"),
         ({CONF_MODEL: "H6076"}, SVC_H6076.address),
         ({CONF_MODEL: "H6102"}, SVC_H6102.address),
         ({CONF_MODEL: "H6102", CONF_H6102_APP_FIRMWARE: "1.03.00"}, SVC_H6102.address),
         ({CONF_MODEL: "H6102", CONF_H6102_APP_FIRMWARE: "1.03.01"}, SVC_H6102.address),
     ],
 )
-async def test_options_flow_aborts_only_when_model_has_no_effect_options(
+async def test_options_flow_exposes_connection_mode_for_readable_models(
     hass: HomeAssistant,
     data: dict[str, str],
     address: str,
@@ -487,11 +494,25 @@ async def test_options_flow_aborts_only_when_model_has_no_effect_options(
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    if data[CONF_MODEL] == "H601C":
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "no_options"
-    else:
-        assert result["type"] is FlowResultType.FORM
+    assert result["type"] is FlowResultType.FORM
+    schema = result["data_schema"]
+    assert schema is not None
+    fields = [marker.schema for marker in schema.schema]
+    assert fields[0] == CONF_CONNECTION_MODE
+    assert schema({})[CONF_CONNECTION_MODE] == CONNECTION_MODE_RELEASE
+    if data[CONF_MODEL] in {"H60A1", "H60A6"}:
+        assert fields == [CONF_CONNECTION_MODE]
+        assert schema({}) == {CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE}
+
+
+async def test_options_flow_does_not_offer_hold_without_readable_state(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H601C"}, unique_id=SVC_H6076.address)
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_options"
 
 
 async def test_reconfigure_h6076_preserves_entry_identity(hass: HomeAssistant):
@@ -658,6 +679,7 @@ async def test_options_flow_saves_ordered_studio_categories(hass: HomeAssistant)
         saved = await hass.config_entries.options.async_configure(
             result["flow_id"],
             {
+                CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
                 "scenes": True,
                 "video": False,
                 "effects": False,
@@ -669,6 +691,7 @@ async def test_options_flow_saves_ordered_studio_categories(hass: HomeAssistant)
         )
     assert saved["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {
+        CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
         CONF_EFFECT_CATEGORIES: ["scenes", "reactive"],
         CONF_PREFIX_EFFECT_NAMES: False,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True,
@@ -684,6 +707,7 @@ async def test_options_flow_persists_prefix_preference(hass: HomeAssistant):
         saved = await hass.config_entries.options.async_configure(
             result["flow_id"],
             {
+                CONF_CONNECTION_MODE: CONNECTION_MODE_HOLD,
                 "video": True,
                 "scenes": True,
                 "effects": False,
@@ -696,6 +720,7 @@ async def test_options_flow_persists_prefix_preference(hass: HomeAssistant):
 
     assert saved["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {
+        CONF_CONNECTION_MODE: CONNECTION_MODE_HOLD,
         CONF_EFFECT_CATEGORIES: ["video", "scenes"],
         CONF_PREFIX_EFFECT_NAMES: True,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,

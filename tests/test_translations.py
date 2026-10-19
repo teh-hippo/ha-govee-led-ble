@@ -17,6 +17,7 @@ def test_effect_category_options_have_direct_labels():
     strings = json.loads(_STRINGS.read_text(encoding="utf-8"))
 
     assert strings["options"]["step"]["init"]["data"] == {
+        "connection_mode": "BLE connection mode",
         "scenes": "Scenes",
         "video": "Video",
         "effects": "Effects",
@@ -26,7 +27,7 @@ def test_effect_category_options_have_direct_labels():
         "prefix_effect_names": 'Prefix effects with their category (e.g., "Scene: Aurora")',
         "always_include_custom_effects": "Always include my custom effects",
     }
-    assert "data_description" not in strings["options"]["step"]["init"]
+    assert set(strings["options"]["step"]["init"]["data_description"]) == {"connection_mode"}
 
 
 def test_home_assistant_exceptions_declare_translation_metadata():

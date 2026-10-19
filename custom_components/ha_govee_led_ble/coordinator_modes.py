@@ -329,13 +329,12 @@ class _ActiveModeMixin(_CoordinatorBase):
 
         def guard(index: int) -> None:
             nonlocal attempted_upload, revision
-            if mode_code not in (
-                music_code_for(self.model, slug, profile=self.profile) for slug in self.profile.music_modes
-            ):
+            profile = self._authorization_profile()
+            if mode_code not in (music_code_for(self.model, slug, profile=profile) for slug in profile.music_modes):
                 raise ValueError("Device profile no longer supports the requested music mode")
-            if dependent and physical_ic_count != self.profile.physical_ic_count:
+            if dependent and physical_ic_count != profile.physical_ic_count:
                 raise ValueError("Physical IC count changed since preparation; refresh and retry")
-            if music_variant(self.profile, mode_code) != variant:
+            if music_variant(profile, mode_code) != variant:
                 raise ValueError("Music variant changed since preparation; refresh and retry")
             if retained_body_revision is not None and self._music_body_revision != (
                 revision if attempted_upload else retained_body_revision
