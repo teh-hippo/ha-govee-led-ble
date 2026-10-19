@@ -236,10 +236,17 @@ H617A static RGB is confirmed through complete segment replies, not the colour-m
 Use a published RC installed through HACS for live qualification, not SSH deployment or direct file copying.
 When release and live testing are authorised, follow this established route without asking the owner to choose a deployment mechanism again.
 
+The [prerelease workflow](.github/workflows/prerelease.yml) delegates packaging and publication to the
+[shared Home Assistant prerelease workflow](https://github.com/teh-hippo/common-repo-configs).
+The caller pins a released provider commit by full SHA, with its release tag alongside the pin.  Review a provider release before updating that pin.
+Build-only runs (`publish=false`) upload the deterministic ZIP, checksum and build metadata without creating a release.
+Only the artifact manifest receives the normalised version: `7.13.1-rc.2.h6102` becomes `7.13.1rc2`.
+Feature branches keep the stable source version, and prereleases never move GitHub's latest release.
+
 1. Run the final `make check`, commit the reviewed candidate, and push its feature branch.
-   Use the [prerelease workflow](.github/workflows/prerelease.yml) with that branch selected, its exact full commit SHA as `target_sha`,
+   Dispatch the prerelease workflow with that branch selected, its exact lowercase 40-character commit SHA as `target_sha`,
    a fresh `version` in `MAJOR.MINOR.PATCH-rc.N.SUFFIX` form, and `publish=true`.
-   Review release notes before publishing.  The workflow stamps the packaged manifest; do not bump source versions for the RC.
+   The SHA must be reachable from the selected branch.  Set `release_notes` to the exact maintainer-approved public notes; publishing requires non-empty notes.
    Require a successful run and verify the tag's target SHA and the package checksum.
 2. Before deployment, capture the installed release and the test devices' restorable state, including hidden mode/settings when a light is off.
    If a state cannot be safely restored, resolve that before changing it.

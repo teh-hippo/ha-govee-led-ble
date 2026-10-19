@@ -16,6 +16,11 @@ on:
         required: true
         default: false
         type: boolean
+      release_notes:
+        description: Exact maintainer-approved public release notes, required when publishing
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: prerelease-${{ inputs.target_sha }}
@@ -23,123 +28,15 @@ concurrency:
 
 jobs:
   package:
-    name: Validate exact SHA package
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Validate inputs
-        env:
-          TARGET_SHA: ${{ inputs.target_sha }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "target_sha must be a lowercase 40-character commit SHA" >&2
-            exit 1
-          }
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+(\.[0-9A-Za-z-]+)*$ ]] || {
-            echo "version must use the form 7.2.0-rc.4 or 7.2.0-rc.4.foundation" >&2
-            exit 1
-          }
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Verify immutable selected-branch commit
-        env:
-          TARGET_REF: ${{ github.ref_name }}
-          TARGET_SHA: ${{ inputs.target_sha }}
-        run: |
-          git fetch --no-tags origin "$TARGET_REF"
-          git merge-base --is-ancestor "$TARGET_SHA" "origin/$TARGET_REF" || {
-            echo "target_sha is not reachable from origin/$TARGET_REF" >&2
-            exit 1
-          }
-          git checkout --detach "$TARGET_SHA"
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-
-      - name: Stamp package version
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import re
-          from pathlib import Path
-
-          expected = re.sub(r"-rc\.(\d+)(?:\..*)?$", r"rc\1", os.environ["VERSION"])
-          path = Path("custom_components/ha_govee_led_ble/manifest.json")
-          manifest = json.loads(path.read_text(encoding="utf-8"))
-          manifest["version"] = expected
-          path.write_text(f"{json.dumps(manifest, indent=4)}\n", encoding="utf-8")
-          PY
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version-file: .node-version
-
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          python-version: "3.14"
-          enable-cache: false
-
-      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5
-        with:
-          install_args: github:kaitai-io/kaitai_struct_compiler
-          cache: false
-
-      - name: Build deterministic package
-        run: |
-          uv sync --locked
-          make clean package
-          uv run --no-sync python scripts/package.py \
-            --source custom_components/ha_govee_led_ble \
-            --verify-archive dist/ha_govee_led_ble.zip
-          (cd dist && sha256sum --check ha_govee_led_ble.zip.sha256)
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: prerelease-${{ inputs.target_sha }}
-          path: |
-            dist/ha_govee_led_ble.zip
-            dist/ha_govee_led_ble.zip.sha256
-          if-no-files-found: error
-          retention-days: 7
-
-  publish:
-    name: Publish exact SHA prerelease
-    if: ${{ inputs.publish }}
-    needs: package
-    runs-on: ubuntu-latest
+    uses: teh-hippo/common-repo-configs/.github/workflows/ha-prerelease.yml@dcbcf109fcc32810715abbeaf88397eb33cde633 # v3.3.0
     permissions:
       contents: write
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-        with:
-          name: prerelease-${{ inputs.target_sha }}
-          path: dist
-
-      - name: Publish prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ inputs.target_sha }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          (cd dist && sha256sum --check ha_govee_led_ble.zip.sha256)
-          tag="v$VERSION"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "release $tag already exists" >&2
-            exit 1
-          fi
-          gh release create "$tag" \
-            dist/ha_govee_led_ble.zip \
-            dist/ha_govee_led_ble.zip.sha256 \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$TARGET_SHA" \
-            --title "$tag" \
-            --generate-notes \
-            --prerelease \
-            --latest=false
+    with:
+      integration: ha_govee_led_ble
+      target_sha: ${{ inputs.target_sha }}
+      version: ${{ inputs.version }}
+      publish: ${{ inputs.publish }}
+      release_notes: ${{ inputs.release_notes }}
+      make_target: package
+      node_version_file: .node-version
+      mise_install_args: github:kaitai-io/kaitai_struct_compiler
