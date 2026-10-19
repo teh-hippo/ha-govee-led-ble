@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   package:
-    uses: teh-hippo/common-repo-configs/.github/workflows/ha-prerelease.yml@dcbcf109fcc32810715abbeaf88397eb33cde633 # v3.3.0
+    uses: teh-hippo/common-repo-configs/.github/workflows/ha-prerelease.yml@b931aca4b15cb636891d2037f3cc9b7bfd33e2c3 # v3.4.0
     permissions:
       contents: write
     with:
