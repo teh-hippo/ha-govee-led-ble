@@ -36,6 +36,9 @@ doc: |
   Issue #310 supplies AA04 register EB from a Pact 1 device. Master brightness
   is a raw 20..254 register for Pact 1 and a percentage for Pact 10; the
   effective profile selects the semantic conversion, not the reply value.
+  The owner also reports register FF after another controller writes 255.
+  Preserve the raw register and expose a Pact 1 upper-bound normalisation:
+  the app accepts an unsigned reply byte and caps its display at register 254.
 seq:
   - id: header
     contents: [0xaa]
@@ -85,6 +88,9 @@ types:
         type: u1
       - id: unknown_tail
         size-eos: true
+    instances:
+      legacy_register:
+        value: 'register > 254 ? 254 : register'
   multi_effect_body:
     seq:
       - id: flag
