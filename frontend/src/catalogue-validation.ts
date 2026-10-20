@@ -152,12 +152,13 @@ function decodeModelCatalogues(
   );
 }
 
-function decodeModelEffectCatalogue(
+export function decodeModelEffectCatalogue(
   value: unknown,
   name: string,
   expectedSku: string,
   decodeContent: (value: unknown) => EffectContent,
 ): ModelEffectCatalogue {
+  assertBoundedJson(value, name, MAX_CATALOGUE_BYTES, MAX_CATALOGUE_JSON_NODES);
   const catalogue = objectValue(value, name);
   const limits = objectValue(catalogue.limits, `${name} limits`);
   const supports = objectValue(

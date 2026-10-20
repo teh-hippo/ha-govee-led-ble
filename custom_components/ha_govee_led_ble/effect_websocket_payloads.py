@@ -19,9 +19,12 @@ from .music_protocol import music_code_for
 from .music_semantics import retained_music_profile
 
 
-def device_music_settings(model: str, *, profile: ModelProfile) -> dict[str, Any]:
+def device_catalogue_settings(model: str, *, profile: ModelProfile) -> dict[str, Any]:
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
-    return {} if catalogue is None else {"music_settings": catalogue.to_dict(profile=profile)["music_settings"]}
+    if catalogue is None:
+        return {}
+    payload = catalogue.to_dict(profile=profile)
+    return {"catalogue": payload, "music_settings": payload["music_settings"]}
 
 
 def retained_music_edit(coordinator: Any) -> dict[str, Any] | None:
@@ -35,7 +38,7 @@ def retained_music_edit(coordinator: Any) -> dict[str, Any] | None:
             coordinator.profile,
             music_code_for(coordinator.model, mode, profile=coordinator.profile),
         )
-        settings = device_music_settings(coordinator.model, profile=profile)["music_settings"][mode]
+        settings = device_catalogue_settings(coordinator.model, profile=profile)["music_settings"][mode]
         parameters = music_body_parameters(body, mode, profile=profile)
         return {
             "mode": mode,

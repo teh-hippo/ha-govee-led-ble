@@ -484,7 +484,7 @@ class EffectPreviewManager:
         self.ensure_session(session_id, owner)
         coordinator = self._loaded_coordinator(config_entry_id)
         try:
-            diy_code = resolve_diy_code(item, diy_code, model=coordinator.model)
+            diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=coordinator.profile)
             compiled = compile_application(item, coordinator.model, diy_code=diy_code, profile=coordinator.profile)
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
@@ -556,6 +556,7 @@ class EffectPreviewManager:
                 resolved.entry,
                 scene_default=scene_default,
                 speed_index=speed_index,
+                profile=coordinator.profile,
             )
             require_native_scenes(coordinator.model, coordinator.profile)
             build_native_scene_packets(
@@ -563,6 +564,7 @@ class EffectPreviewManager:
                 resolved.entry,
                 speed_index=resolved_speed,
                 canonical_body=canonical_body or None,
+                profile=coordinator.profile,
             )
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
@@ -1255,6 +1257,7 @@ class EffectPreviewManager:
             updated_at=request.updated_at,
             canonical_body=canonical_body,
             speed_index=speed_index,
+            profile=self._loaded_coordinator(request.config_entry_id).profile,
         )
 
     async def _async_begin_transmission(self, request: _PreviewRequest) -> None:
@@ -1728,7 +1731,7 @@ def _verification_expectations(
     if not coordinator.profile.can_read(ReadDomain.POWER) or not coordinator.profile.supports_color_mode_readback:
         return None
     if request.scene is not None:
-        scene_code = scene_selector_code(coordinator.model, request.scene.entry)
+        scene_code = scene_selector_code(coordinator.model, request.scene.entry, profile=coordinator.profile)
         scene_expectations: dict[str, Any] = {
             "is_on": True,
             "scene_code": scene_code,

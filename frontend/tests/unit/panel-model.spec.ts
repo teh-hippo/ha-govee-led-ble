@@ -140,6 +140,33 @@ test("effective music roster filters modes and templates on device subscription 
   expect(catalogue.music_modes).toBe(modes);
 });
 
+test("two controller revisions use their complete device catalogues without changing the SKU ceiling", () => {
+  const model = new PanelModel(() => undefined);
+  model.customCatalogue = decodeCustomCatalogue(backendContracts.responses.custom_catalogue);
+  const ceiling = structuredClone(model.customCatalogue.models.H6125);
+  model.devices = decodeDevices(Object.values(backendContracts.device_profile_samples));
+  model.selectedDeviceId = "h6125-original";
+  expect(model.modelCatalogue!.apply.painted).toBe("unsupported");
+  expect(model.modelCatalogue!.painted_effects).toEqual([]);
+  expect(model.modelCatalogue!.templates!.some(template => template.id === "template:paint")).toBe(false);
+  const rhythm = model.modelCatalogue!.templates!.find(template => template.id === "template:music:rhythm")!;
+  expect(rhythm.content).toMatchObject({kind: "music_profile", calm: null});
+  expect(model.modelCatalogue!.music_modes).toHaveLength(4);
+
+  model.selectedDeviceId = "h6125-modern";
+  expect(model.modelCatalogue!.apply.painted).toBe("supported");
+  const paint = model.modelCatalogue!.templates!.find(template => template.id === "template:paint")!;
+  expect(paint).toHaveProperty("content.segments.length", 50);
+  expect(model.modelCatalogue!.music_modes).toHaveLength(11);
+  expect(model.customCatalogue.models.H6125).toEqual(ceiling);
+
+  model.selectedDeviceId = "h6125-original";
+  expect(model.modelCatalogue!.apply.painted).toBe("unsupported");
+  const foreign = structuredClone(backendContracts.device_profile_samples.original);
+  foreign.catalogue.sku = "H6199";
+  expect(() => decodeDevices([foreign])).toThrow();
+});
+
 test("live video conditions reject requested settings without stripping persisted content", () => {
   const model = new PanelModel(() => undefined);
   const target = device("video", "H6199");

@@ -283,7 +283,7 @@ class EffectDeploymentEngine:
         operation_id: UUID | None,
         source_kind: str,
     ) -> tuple[CompiledApplication, DeploymentRecord]:
-        resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model)
+        resolved_diy_code = resolve_diy_code(item, diy_code, model=coordinator.model, profile=coordinator.profile)
         compiled = compile_application(item, coordinator.model, diy_code=resolved_diy_code, profile=coordinator.profile)
         if isinstance(compiled, CompiledVideoProfile):
             await async_require_video_controls(

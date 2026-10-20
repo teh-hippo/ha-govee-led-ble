@@ -164,7 +164,7 @@ async def test_template_default_websocket_lifecycle_has_no_ble_writes(
     monkeypatch,
 ) -> None:
     await _setup_backend(hass)
-    coordinator = MagicMock(model="H617A")
+    coordinator = MagicMock(model="H617A", profile=get_profile("H617A"))
     entry = SimpleNamespace(
         entry_id="entry-a",
         domain=DOMAIN,

@@ -109,7 +109,7 @@ async def test_real_coordinator_ack_and_restricted_writer_use_effective_profile(
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     coordinator._client = client
     future = asyncio.get_running_loop().create_future()
-    coordinator._upload_ack = (client, None, coordinator._profile_generation, 4, None, future)
+    coordinator._upload_ack = (client, None, coordinator._profile_generation, 4, None, 0xA3, future)
     coordinator._notify_callback(None, bytearray(frame("a30400")))
     assert future.done() and future.result() is True
     packet = build_boolean_control("limit", True, "H6102")

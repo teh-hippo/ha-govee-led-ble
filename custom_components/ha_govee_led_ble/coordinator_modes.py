@@ -24,7 +24,7 @@ from .music_protocol import music_code_for, music_mode_supports_style
 from .music_semantics import music_parameters_depend_on_ic, music_params_for_mode, music_variant
 from .native_profile_controls import ProfileWriter
 from .native_scenes import build_native_scene_packets
-from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key, scene_selector_code
+from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key, scene_selector_code, scene_supported
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,9 @@ class _ActiveModeMixin(_CoordinatorBase):
 
     @property
     def scene_name_set(self) -> frozenset[str]:
-        return frozenset(MODEL_SCENES.get(self.model, ())) if self.profile.supports_scenes else frozenset()
+        return frozenset(
+            key for key, scene in MODEL_SCENES.get(self.model, {}).items() if scene_supported(scene, self.profile)
+        )
 
     @property
     def active_mode(self) -> str:
@@ -122,7 +124,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         scene_entry: SceneEntry | None = None,
         speed_index: int | None = None,
         canonical_body: bytes | None = None,
-        writer: Callable[[bytes], Awaitable[None]] | None = None,
+        writer: ProfileWriter | None = None,
         before_write: Callable[[], Awaitable[None]] | None = None,
         progress: Callable[[int], Awaitable[None]] | None = None,
         verify: bool = True,
@@ -148,7 +150,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         scene_entry: SceneEntry | None = None,
         speed_index: int | None = None,
         canonical_body: bytes | None = None,
-        writer: Callable[[bytes], Awaitable[None]] | None = None,
+        writer: ProfileWriter | None = None,
         before_write: Callable[[], Awaitable[None]] | None = None,
         progress: Callable[[int], Awaitable[None]] | None = None,
         verify: bool,
@@ -156,8 +158,12 @@ class _ActiveModeMixin(_CoordinatorBase):
     ) -> None:
         from .effect_compiler import require_native_scenes
 
+        generation = self._profile_generation
+
         def qualified() -> None:
             require_native_scenes(self.model, self.profile)
+            if generation != self._profile_generation:
+                raise ValueError("Device profile changed during scene preparation")
 
         qualified()
         if scene_entry is None:
@@ -167,13 +173,15 @@ class _ActiveModeMixin(_CoordinatorBase):
             scene = scene_entry
         if scene is None:
             raise ValueError(f"unknown native scene {scene_name!r}")
-        selector = scene_selector_code(self.model, scene)
+        selector = scene_selector_code(self.model, scene, profile=self.profile)
         packets = build_native_scene_packets(
             self.model,
             scene,
             speed_index=speed_index,
             canonical_body=canonical_body,
+            profile=self.profile,
         )
+        upload_count = len(packets) - 1
 
         power_in_sequence = False
         if not self.is_on:
@@ -195,7 +203,8 @@ class _ActiveModeMixin(_CoordinatorBase):
                     raise RuntimeError(f"Failed to confirm power-on before selecting scene {scene_name!r}")
 
         async def apply() -> None:
-            if writer is not None:
+            require_ack = bool(upload_count and self.profile.diy_requires_upload_ack)
+            if writer is not None and not require_ack:
                 for packet in packets:
                     qualified()
                     await writer(packet)
@@ -207,6 +216,9 @@ class _ActiveModeMixin(_CoordinatorBase):
                 before_write=before_write,
                 progress=progress,
                 write_guard=qualified,
+                writer=writer,
+                require_upload_ack=require_ack,
+                upload_ack_index=upload_count - 1 + int(power_in_sequence) if require_ack else None,
             )
 
         await apply()

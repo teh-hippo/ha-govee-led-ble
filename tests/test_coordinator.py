@@ -284,7 +284,8 @@ def test_h6125_advertised_pact_and_notified_identity_qualify_the_profile(h6125):
     assert h6125.brightness_pct == 50
     generation = h6125._profile_generation
     h6125._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.06.99\0"))))
-    assert h6125.profile.command_operations == frozenset({"power"}) and h6125._profile_generation == generation + 1
+    assert h6125.profile.supports_rgb and h6125.profile.supports_segments
+    assert len(h6125.profile.music_modes) == 4 and h6125._profile_generation == generation + 1
 
 
 async def test_h6125_type04_sequence_reaches_the_device_as_a1_frames_then_the_selector(h6125, monkeypatch):
@@ -3637,8 +3638,11 @@ async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
     coord.is_on = False
     packets = []
 
-    async def writer(packet: bytes) -> None:
+    async def writer(packet: bytes, **kwargs: object) -> None:
         assert lock.locked()
+        guard = kwargs.get("write_guard")
+        if callable(guard):
+            guard()
         packets.append(packet)
 
     coord.effect_families = frozenset()

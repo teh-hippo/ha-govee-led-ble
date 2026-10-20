@@ -46,6 +46,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     diy_code: int | None
     color_mode: ParsedMode | None
     _control_lock: BLEControlArbiter
+    _profile_generation: int
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]
 

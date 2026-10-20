@@ -6,7 +6,7 @@ import base64
 from collections.abc import Callable
 from typing import Any
 
-from .const import get_profile
+from .const import ModelProfile, get_profile
 from .generated_protocol_adapter import (
     GoveeShared,
     H6199EffectUpload,
@@ -121,9 +121,10 @@ def encode_workshop_effect(
     effect: LayeredEffect,
     *,
     trailing_padding: int = 0,
+    profile: ModelProfile | None = None,
 ) -> bytes:
     """Serialize Workshop layers through the model-specific generated structure."""
-    grammar = get_profile(model).effect_grammar
+    grammar = (get_profile(model) if profile is None else profile).effect_grammar
     serializer: Callable[[Any], bytes]
     if grammar == "H617A":
         root = WorkshopBody()

@@ -17,7 +17,7 @@ from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, Read
 from .const import H6199_PACT1_PROFILE, ModelProfile, ReadDomain, get_profile
 from .music_protocol import music_slug_for
 from .music_semantics import MusicVariant, music_variant
-from .transport import A3_CHUNK_SIZE, reassemble_a3, xor_checksum
+from .transport import A1_02_COMMAND, A1_02_PREFIX, A3_CHUNK_SIZE, reassemble_a1_02_upload, reassemble_a3, xor_checksum
 
 CommandWrite = cast(
     Any,
@@ -165,6 +165,34 @@ H6125StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_status_reply").H6125StatusReply,
 )
+H6125ModernStatusReply = cast(
+    Any,
+    import_module(
+        "custom_components.ha_govee_led_ble.generated_protocol.h6125_modern_status_reply"
+    ).H6125ModernStatusReply,
+)
+H6125IntermediateStatusReply = cast(
+    Any,
+    import_module(
+        "custom_components.ha_govee_led_ble.generated_protocol.h6125_intermediate_status_reply"
+    ).H6125IntermediateStatusReply,
+)
+H6125CommandAck = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_command_ack").H6125CommandAck,
+)
+H6125LegacyStatusReply = cast(
+    Any,
+    import_module(
+        "custom_components.ha_govee_led_ble.generated_protocol.h6125_legacy_status_reply"
+    ).H6125LegacyStatusReply,
+)
+H6125LegacySegmentQuery = cast(
+    Any,
+    import_module(
+        "custom_components.ha_govee_led_ble.generated_protocol.h6125_legacy_segment_query"
+    ).H6125LegacySegmentQuery,
+)
 H6125WireWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_wire_write").H6125WireWrite,
@@ -279,6 +307,9 @@ _STATUS_ROOTS = {
     "H601C": ("h601c_status_reply", H601cStatusReply),
     "H6102": ("h6102_status_reply", H6102StatusReply),
     "H6125": ("h6125_status_reply", H6125StatusReply),
+    "H6125-modern": ("h6125_modern_status_reply", H6125ModernStatusReply),
+    "H6125-legacy": ("h6125_legacy_status_reply", H6125LegacyStatusReply),
+    "H6125-intermediate": ("h6125_intermediate_status_reply", H6125IntermediateStatusReply),
     "H6099": ("h6099_status_reply", H6099StatusReply),
     "H617A": ("status_reply", StatusReply),
     "H6179": ("h6179_status_reply", H6179StatusReply),
@@ -300,6 +331,7 @@ _STATUS_QUERY_ROOTS = {
 }
 _H6076_ACK_ROOTS = {"H6076": ("h6076_music_ack", H6076MusicAck)}
 _COMMAND_ACK_ROOTS = {
+    "H6125": ("h6125_command_ack", H6125CommandAck),
     "H6099": ("h6099_command_ack", H6099CommandAck),
     "H617A": ("h617a_command_ack", H617aCommandAck),
     "H6199": ("h6199_command_ack", H6199CommandAck),
@@ -371,7 +403,7 @@ def parse_command_ack_result(frame: bytes, model: str, *, profile: ModelProfile 
         music = _parse_xor_frame(frame, "H6076", _H6076_ACK_ROOTS)
         if music.parsed is not None:
             return music
-    return _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ACK_ROOTS)
+    return _parse_xor_frame(frame, profile.command_ack_grammar or profile.command_grammar, _COMMAND_ACK_ROOTS)
 
 
 def _complete_a3_upload(
@@ -390,7 +422,15 @@ def _complete_a3_upload(
 
 
 def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, profile: ModelProfile | None = None) -> int:
-    """Validate a complete A3 upload ending at index, returning its ACK command."""
+    """Validate a complete upload ending at index, returning its ACK command."""
+    profile = profile or get_profile(model)
+    if packets[index][0] == A1_02_PREFIX:
+        if profile.a1_diy_selector is None or profile.command_ack_grammar not in _COMMAND_ACK_ROOTS:
+            raise ValueError("A1 upload acknowledgement is not qualified for this profile")
+        body = reassemble_a1_02_upload(packets, index)
+        if body[0] != profile.a1_diy_selector:
+            raise ValueError("A1 upload selector does not match the profile")
+        return A1_02_COMMAND
     return _complete_a3_upload(packets, index, model, profile)[0]
 
 
@@ -405,15 +445,19 @@ def upload_ack_mode(
     return int(body.mode)
 
 
-def upload_ack_success(parsed: Any, subtype: int, mode: int | None = None) -> bool | None:
-    """Return a matching upload result, never treating an ordinary ACK as A3."""
+def upload_ack_success(
+    parsed: Any, subtype: int, mode: int | None = None, *, protocol: int | None = None
+) -> bool | None:
+    """Return a matching upload result, never treating an ordinary ACK as upload acceptance."""
+    if protocol is not None and getattr(parsed, "protocol_id", None) != protocol:
+        return None
     if isinstance(parsed, H6076MusicAck):
         return (
             bool(parsed.is_success)
             if mode is not None and parsed.opcode == subtype and int(parsed.mode) == mode
             else None
         )
-    if isinstance(parsed, H617aCommandAck) and parsed.is_upload and parsed.opcode == subtype:
+    if getattr(parsed, "is_upload", False) and parsed.opcode == subtype:
         return bool(parsed.is_success)
     return None
 
@@ -857,8 +901,6 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
 def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile | None = None) -> dict[str, bool]:
     """Decode register replies only; mode flags and command ACKs are not confirmation."""
     profile = profile or get_profile(model)
-    if profile.status_grammar not in {"H617A", "H6102"}:
-        return {}
     domain = getattr(getattr(generated, "domain", None), "name", "")
     control = boolean_control_name(domain)
     if control is None or control not in profile.boolean_controls:
@@ -1638,6 +1680,18 @@ def build_h617a_scene(scene_code: int, *, scene_type: int = 0) -> bytes:
     return _serialize_xor(root)
 
 
+def build_diy_activation(diy_code: int, model: str, *, profile: ModelProfile | None = None) -> bytes:
+    """Select a native DIY activation encoder independently of the effect-body codec."""
+    grammar = (profile or get_profile(model)).command_grammar
+    if grammar == "H617A":
+        return build_h617a_diy_activation(diy_code)
+    if grammar == "H6099":
+        return build_h6099_diy_activation(diy_code)
+    if grammar == "H6179":
+        return build_h6179_diy_activation(diy_code)
+    raise ValueError(f"{model} has no generated DIY activation grammar")
+
+
 def build_h617a_diy_activation(diy_code: int) -> bytes:
     root = CommandWrite()
     root.header = b"\x33"
@@ -2063,27 +2117,29 @@ def _build_h6076_music_selector(
     return _serialize_xor(root)
 
 
-def _h6125_wire_music(selector: Any) -> bytes:
+def _h6125_wire_music(selector: Any, *, legacy: bool = False) -> bytes:
     root = H6125WireWrite()
     root.header = b"\x33"
     root.opcode = H6125WireWrite.CommandOp.mode
     mode = _child(H6125WireWrite.ModeBody, root)
-    mode.sub = H6125WireWrite.ModeSub.music
-    wire = _child(H6125WireWrite.MusicSelector, mode)
+    mode.sub = H6125WireWrite.ModeSub.legacy_music if legacy else H6125WireWrite.ModeSub.music
+    wire = _child(H6125WireWrite.LegacyMusicSelector if legacy else H6125WireWrite.MusicSelector, mode)
+    mode_type = H6125WireWrite.LegacyMusicMode if legacy else H6125WireWrite.MusicMode
     name = getattr(selector.mode_id, "name", None)
-    if name not in H6125WireWrite.MusicMode.__members__:
+    if name not in mode_type.__members__:
         raise ValueError(f"H6125 has no music selector for mode {selector.mode_id}")
-    wire.mode_id = H6125WireWrite.MusicMode[name]
+    wire.mode_id = mode_type[name]
     wire.sensitivity = selector.sensitivity
     if name in {"rhythm", "spectrum", "rolling"}:
         colour = selector.rgb if selector.has_fixed_colour else None
-        settings = _child(H6125WireWrite.RhythmSettings if name == "rhythm" else H6125WireWrite.ColourSettings, wire)
-        if name == "rhythm":
+        rhythm = name == "rhythm" and not legacy
+        settings = _child(H6125WireWrite.RhythmSettings if rhythm else H6125WireWrite.ColourSettings, wire)
+        if rhythm:
             settings.style = selector.style
         settings.has_fixed_colour = int(colour is not None)
         if colour is not None:
             settings.rgb = _rgb(settings, colour.red, colour.green, colour.blue)
-        settings.padding = bytes(14 - (2 if name == "rhythm" else 1) - (3 if colour is not None else 0))
+        settings.padding = bytes(14 - (2 if rhythm else 1) - (3 if colour is not None else 0))
     else:
         settings = _child(H6125WireWrite.OpaqueSettings, wire)
         settings.padding = bytes(14)
@@ -2104,18 +2160,49 @@ def _h6125_wire_brightness(percent: int, wire_range: tuple[int, int]) -> bytes:
     return _serialize_xor(root)
 
 
+def _h6125_wire_colour(static: Any) -> bytes:
+    if static.static_sub != 1 or static.static_body.kelvin:
+        raise ValueError("Legacy RGB does not support Kelvin or segment brightness")
+    root = H6125WireWrite()
+    root.header = b"\x33"
+    root.opcode = H6125WireWrite.CommandOp.mode
+    mode = _child(H6125WireWrite.ModeBody, root)
+    mode.sub = H6125WireWrite.ModeSub.legacy_colour
+    body = _child(H6125WireWrite.LegacyColour, mode)
+    rgb = static.static_body.rgb_direct
+    body.rgb = _rgb(body, rgb.red, rgb.green, rgb.blue)
+    body.segment_mask = static.static_body.mask.bits
+    body.padding = bytes(11)
+    mode.sub_body = body
+    root.body = mode
+    return _serialize_xor(root)
+
+
 @cache
-def h6125_outbound_transform(wire_range: tuple[int, int]) -> Callable[[bytes], bytes]:
-    """Re-encode the two H6125 writes whose layout differs from the shared logical frames."""
+def h6125_outbound_transform(
+    wire_range: tuple[int, int], *, legacy_colour: bool = False, legacy_music: bool = False
+) -> Callable[[bytes], bytes]:
+    """Re-encode the revision's differing fields through its generated wire roots."""
 
     def transform(packet: bytes) -> bytes:
+        if legacy_colour:
+            query = _parse_xor_frame(packet, "H617A", _STATUS_QUERY_ROOTS).parsed
+            if query is not None and getattr(query.domain, "name", None) == "segments":
+                root = H6125LegacySegmentQuery()
+                root.header = b"\xaa"
+                root.domain = H6125LegacySegmentQuery.QueryDomain.segments
+                root.group = query.body.group
+                root.padding = bytes(16)
+                return _serialize_xor(root)
         parsed = parse_command_result(packet, "H617A").parsed
         if parsed is None:
             return packet
         if parsed.opcode.name == "brightness":
             return _h6125_wire_brightness(int(parsed.body.percent), wire_range)
         if parsed.opcode.name == "multi" and parsed.body.sub.name == "music":
-            return _h6125_wire_music(parsed.body.sub_body)
+            return _h6125_wire_music(parsed.body.sub_body, legacy=legacy_music)
+        if legacy_colour and parsed.opcode.name == "multi" and parsed.body.sub.name == "static":
+            return _h6125_wire_colour(parsed.body.sub_body)
         return packet
 
     return transform

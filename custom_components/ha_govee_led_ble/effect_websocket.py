@@ -78,7 +78,7 @@ from .effect_storage import (
 from .effect_template_defaults import CatalogueTemplateDefault
 from .effect_websocket_payloads import (
     deployment_snapshot_payload,
-    device_music_settings,
+    device_catalogue_settings,
     item_summary,
     library_snapshot_payload,
     retained_music_edit,
@@ -227,7 +227,7 @@ def _device_payload(
         profile=coordinator.profile,
     ).to_dict()
     device["active_state"] = observed.to_public_dict()
-    device.update(device_music_settings(coordinator.model, profile=coordinator.profile))
+    device.update(device_catalogue_settings(coordinator.model, profile=coordinator.profile))
     device["retained_music_edit"] = retained_music_edit(coordinator)
     device["video_control_states"] = {
         key: value.value for key, value in video_control_states(coordinator.profile, coordinator).items()
@@ -343,7 +343,7 @@ def ws_scene_catalogue_list(
         connection.send_error(msg["id"], "unsupported_model", "Device profile supports no scenes")
         return
     try:
-        catalogue = scene_catalogue_payload(coordinator.model)
+        catalogue = scene_catalogue_payload(coordinator.model, profile=coordinator.profile)
     except ValueError as exc:
         connection.send_error(msg["id"], "not_found", str(exc))
         return
@@ -389,6 +389,7 @@ def ws_scene_catalogue_get(
             entry.runtime_data.model,
             msg["scene_id"],
             msg["effect_id"],
+            profile=entry.runtime_data.profile,
             scene_default=scene_default_for(
                 backend.scene_defaults,
                 entry.entry_id,
@@ -457,6 +458,7 @@ async def ws_scene_apply(
                 entry.runtime_data.model,
                 resolved.entry.scene_id,
                 resolved.entry.effect_id,
+                profile=entry.runtime_data.profile,
                 scene_default=scene_default_for(
                     backend.scene_defaults,
                     entry.entry_id,
@@ -510,6 +512,7 @@ async def ws_scene_reset(
             entry.runtime_data.model,
             resolved.entry.scene_id,
             resolved.entry.effect_id,
+            profile=entry.runtime_data.profile,
         ),
     )
 
@@ -560,6 +563,7 @@ async def ws_scene_default_set(
             entry.runtime_data.model,
             resolved.entry.scene_id,
             resolved.entry.effect_id,
+            profile=entry.runtime_data.profile,
             scene_default=scene_default_for(
                 backend.scene_defaults,
                 entry.entry_id,
@@ -1477,7 +1481,9 @@ async def ws_apply_snapshot(
             ),
         )
         operation_id = UUID(msg["operation_id"]) if "operation_id" in msg else None
-        diy_code = resolve_diy_code(item, msg.get("diy_code"), model=entry.runtime_data.model)
+        diy_code = resolve_diy_code(
+            item, msg.get("diy_code"), model=entry.runtime_data.model, profile=entry.runtime_data.profile
+        )
         compile_application(
             item,
             entry.runtime_data.model,

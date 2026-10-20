@@ -34,5 +34,7 @@ seq:
   - id: checksum
     type: u1
 instances:
+  protocol_id:
+    value: protocol[0]
   is_success:
     value: status == 0

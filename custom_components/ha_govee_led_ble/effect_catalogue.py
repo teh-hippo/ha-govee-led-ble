@@ -11,6 +11,7 @@ from .effect_contracts import (
     CapabilityState,
     CapabilityWorkflow,
     frontend_release_capabilities,
+    profile_supports_workflow,
     studio_apply_capability_state,
     workflow_capability_state,
 )
@@ -18,6 +19,7 @@ from .effect_domain import (
     MAX_MULTI_EFFECTS,
     EffectContent,
     EffectValidationError,
+    H6179MixedDiyEffect,
     H6179SingleDiyEffect,
     JsonValue,
     LayeredEffect,
@@ -224,16 +226,25 @@ class ModelEffectCatalogue:
     native_diy_palette_groups: tuple[tuple[int, tuple[int, ...], int, int], ...] = ()
 
     def to_dict(self, *, profile: ModelProfile | None = None) -> dict[str, JsonValue]:
+        device_profile = profile
         profile = MODEL_PROFILES[self.sku] if profile is None else profile
         result: dict[str, JsonValue] = {
             "sku": self.sku,
-            "painted_effects": [dict(effect) for effect in self.painted_effects],
+            "painted_effects": [
+                dict(effect)
+                for effect in self.painted_effects
+                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.PAINTED)
+            ],
             **(
                 {"painted_addressing": self.painted_addressing, "painted_background": list(self.painted_background)}
                 if self.painted_addressing != "segments"
                 else {}
             ),
-            "effects": [effect.to_dict() for effect in self.effects],
+            "effects": [
+                effect.to_dict()
+                for effect in self.effects
+                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.SINGLE)
+            ],
             "music_modes": [mode.to_dict() for mode in self.music_modes if mode.id in profile.music_modes],
             "music_settings": {
                 mode.id: {
@@ -287,13 +298,22 @@ class ModelEffectCatalogue:
                 "brightness_zones": list(profile.video_brightness_zones),
             },
             "templates": [
-                template.to_dict()
+                _template_for_profile(template, device_profile).to_dict()
                 for template in self.templates
-                if not isinstance(template.content, MusicProfile) or template.content.mode in profile.music_modes
+                if device_profile is None or _template_available(template, profile)
             ],
-            "workshop_templates": [template.to_dict(self.sku) for template in self.workshop_templates],
-            "workflows": frontend_release_capabilities(self.sku),
-            "supports": self.supports.to_dict(),
+            "workshop_templates": [
+                template.to_dict(self.sku)
+                for template in self.workshop_templates
+                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow.WORKSHOP)
+            ],
+            "workflows": frontend_release_capabilities(self.sku, profile=device_profile),
+            "supports": {
+                name: state
+                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow(name))
+                else CapabilityState.UNSUPPORTED.value
+                for name, state in self.supports.to_dict().items()
+            },
             "limits": {
                 "palette_min": self.palette_min,
                 "palette_max": self.palette_max,
@@ -305,7 +325,12 @@ class ModelEffectCatalogue:
                 "music_sensitivity_min": profile.music_sensitivity_min,
                 "music_sensitivity_max": profile.music_sensitivity_max,
             },
-            "apply": self.apply.to_dict(),
+            "apply": {
+                name: state
+                if device_profile is None or profile_supports_workflow(profile, CapabilityWorkflow(name))
+                else CapabilityState.UNSUPPORTED.value
+                for name, state in self.apply.to_dict().items()
+            },
         }
         if profile.command_operations is not None and not supported_effect_categories(self.sku, profile=profile):
             for key in (
@@ -846,7 +871,7 @@ H617A_NATIVE_DIY_TEMPLATES: Final = tuple(
 _RGBIC_APP_PALETTE = ((255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (139, 0, 255))
 
 
-def _h6102_native_palette(
+def _rgbic_native_palette(
     selector: int, index: int, original: tuple[tuple[int, int, int], ...]
 ) -> tuple[tuple[int, int, int], ...]:
     if selector == 501:
@@ -858,26 +883,36 @@ def _h6102_native_palette(
     return original
 
 
-H6102_NATIVE_DIY_TEMPLATES: Final = tuple(
-    replace(
-        template,
-        content=replace(
-            template.content,
-            layers=tuple(
-                replace(
-                    layer,
-                    palette=_h6102_native_palette(template.content.native_diy, index, layer.palette),
-                    selection=replace(layer.selection, param_2=12 if template.content.native_diy == 504 else 30)
-                    if template.content.native_diy == 504 or template.content.native_diy == 506 and index >= 2
-                    else layer.selection,
-                )
-                for index, layer in enumerate(template.content.layers)
+def _rgbic_native_templates(preset_ic_count: int) -> tuple[CatalogueTemplate, ...]:
+    return tuple(
+        replace(
+            template,
+            content=replace(
+                template.content,
+                layers=tuple(
+                    replace(
+                        layer,
+                        palette=_rgbic_native_palette(template.content.native_diy, index, layer.palette),
+                        selection=replace(
+                            layer.selection,
+                            param_2=preset_ic_count // 5
+                            if template.content.native_diy == 504
+                            else preset_ic_count // 2,
+                        )
+                        if template.content.native_diy == 504 or template.content.native_diy == 506 and index >= 2
+                        else layer.selection,
+                    )
+                    for index, layer in enumerate(template.content.layers)
+                ),
             ),
-        ),
+        )
+        for template in H617A_NATIVE_DIY_TEMPLATES
+        if isinstance(template.content, LayeredEffect) and template.content.native_diy is not None
     )
-    for template in H617A_NATIVE_DIY_TEMPLATES
-    if isinstance(template.content, LayeredEffect) and template.content.native_diy is not None
-)
+
+
+H6102_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(60)
+H6125_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(50)
 H617A_CATALOGUE_TEMPLATES: Final = (
     *_h617a_catalogue_templates("H617A", H617A_NATIVE_MUSIC_MODES),
     *H617A_NATIVE_DIY_TEMPLATES,
@@ -949,6 +984,33 @@ WORKSHOP_PROTOCOL_FIXTURES: Final = (
     ),
 )
 
+H6125_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        name,
+        label,
+        family,
+        tuple(
+            DiyEffectVariation(str(variant), f"Variation {index + 1}", variant)
+            for index, variant in enumerate(variants)
+        ),
+        family in (0, 1, 2, 3, 8, 9),
+        rate="sensitivity" if family == 4 else "speed",
+        rate_min=1,
+        multi_rate_min=0,
+        palette_max=3 if family == 10 else 8,
+        source_reference="H6125 DreamColor basic and mixed DIY",
+    )
+    for name, label, family, variants in (
+        ("fade", "Fade", 0, (0, 1, 2)),
+        ("jump", "Jump", 1, (0, 2)),
+        ("blink", "Blink", 2, (0, 1, 2)),
+        ("marquee", "Marquee", 3, (3, 4, 5)),
+        ("stream", "Stream", 8, (9, 10)),
+        ("flow", "Flow", 9, (9, 10)),
+        ("chase", "Chase", 10, (0,)),
+        ("music", "Music", 4, (8, 6, 7)),
+    )
+)
 H6125_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6125")
 # The selector order follows the app, not the wire codes.
 H6076_NATIVE_MUSIC_MODES: Final = tuple(
@@ -1040,13 +1102,35 @@ MODEL_EFFECT_CATALOGUES: Final = {
     ),
     "H6125": ModelEffectCatalogue(
         sku="H6125",
-        painted_effects=(),
-        effects=H6102_DIY_FAMILIES,
+        native_diy_palette_groups=(
+            (501, (0,), 1, 1),
+            (501, (1, 2), 4, 8),
+            (502, (0, 1), 2, 8),
+            (504, (0, 1, 2), 3, 8),
+            (505, (1,), 1, 1),
+            (506, (0, 1), 2, 8),
+            (506, (2, 3), 2, 8),
+        ),
+        painted_addressing="physical_ic",
+        painted_effects=tuple(
+            {"id": name, "label": name.replace("_", " ").capitalize()}
+            for name in ("clockwise", "counter_clockwise", "cycle", "gradient", "twinkle", "breathe")
+        ),
+        effects=H6125_DIY_FAMILIES,
         music_modes=H6125_NATIVE_MUSIC_MODES,
         video_modes=(),
         templates=(
-            *(_single_template("H6125", family) for family in H6102_DIY_FAMILIES),
+            CatalogueTemplate(
+                id="template:paint",
+                label="Paint",
+                category="single-layer",
+                content=PaintedEffect(
+                    effect="clockwise", speed=50, brightness=100, segments=(None,), addressing="physical_ic"
+                ),
+            ),
+            *(_single_template("H6125", family) for family in H6125_DIY_FAMILIES),
             *(_music_template("H6125", mode) for mode in H6125_NATIVE_MUSIC_MODES),
+            *H6125_NATIVE_DIY_TEMPLATES,
         ),
         workshop_templates=(),
         supports=CatalogueSupport(
@@ -1344,6 +1428,52 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
     return geometry_edited
 
 
+def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> bool:
+    content = template.content
+    if isinstance(content, MusicProfile):
+        return content.mode in profile.music_modes
+    if isinstance(content, VideoProfile):
+        return content.mode in profile.video_modes
+    if isinstance(content, PaintedEffect):
+        workflow = CapabilityWorkflow.PAINTED
+    elif isinstance(content, LayeredEffect):
+        workflow = CapabilityWorkflow.ADVANCED
+    elif isinstance(content, SingleEffect | H6179SingleDiyEffect):
+        workflow = CapabilityWorkflow.SINGLE
+    elif isinstance(content, MultiEffect | H6179MixedDiyEffect):
+        workflow = CapabilityWorkflow.MULTI
+    elif isinstance(content, PaletteDiyEffect):
+        workflow = CapabilityWorkflow.PALETTE_DIY
+    elif isinstance(content, WorkshopEffect):
+        workflow = CapabilityWorkflow.WORKSHOP
+    else:
+        raise ValueError("unsupported catalogue template content")
+    return profile_supports_workflow(profile, workflow)
+
+
+def _template_for_profile(template: CatalogueTemplate, profile: ModelProfile | None) -> CatalogueTemplate:
+    if profile is None:
+        return template
+    content = template.content
+    if isinstance(content, MusicProfile):
+        variant = music_variant(profile, music_code_for(content.model, content.mode, profile=profile))
+        return replace(
+            template,
+            content=replace(
+                content,
+                sensitivity=profile.music_sensitivity_max,
+                calm=variant.calm_default if variant and variant.supports_style else None,
+            ),
+        )
+    if (
+        isinstance(content, PaintedEffect)
+        and content.addressing == "physical_ic"
+        and profile.physical_ic_count is not None
+    ):
+        return replace(template, content=replace(content, segments=(None,) * profile.physical_ic_count))
+    return template
+
+
 def resolve_catalogue_template(
     model: str,
     template_id: str,
@@ -1361,12 +1491,13 @@ def resolve_catalogue_template(
         raise ValueError(f"{model} has no custom-effect catalogue")
     for template in catalogue.templates:
         if template.id == template_id:
+            if profile is not None and not _template_available(template, profile):
+                raise ValueError("Device profile does not support this effect template")
             if isinstance(template.content, PaintedEffect) and template.content.addressing == "physical_ic":
                 count = (get_profile(model) if profile is None else profile).physical_ic_count
                 if count is None:
                     raise ValueError(f"{model} graffiti requires a known physical IC count")
-                return replace(template, content=replace(template.content, segments=(None,) * count))
-            return template
+            return _template_for_profile(template, get_profile(model) if profile is None else profile)
     raise ValueError(f"{model} template {template_id!r} was not found")
 
 

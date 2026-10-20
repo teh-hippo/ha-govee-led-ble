@@ -19,7 +19,7 @@ from .effect_limits import (
 )
 
 EDITOR_API_VERSION: Final = 15
-EDITOR_ASSET_VERSION: Final = 21
+EDITOR_ASSET_VERSION: Final = 22
 EFFECT_COMPILER_VERSION: Final = 5
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -529,15 +529,21 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             model="H6125",
             verification_confidence=VerificationConfidence.SELECTION_ONLY,
             physical_validation_state=PhysicalValidationState.NOT_VALIDATED,
+            diagnostics_evidence_classification=EvidenceClassification.STRUCTURAL,
         )
         for capability in _RELEASE_CAPABILITY_BASE
         if capability.model == "H617A"
         and capability.workflow
         in {
             CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.EDITED_PALETTE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.PAINTED,
             CapabilityWorkflow.SINGLE,
             CapabilityWorkflow.MULTI,
             CapabilityWorkflow.NATIVE_MUSIC,
+            CapabilityWorkflow.ADVANCED,
+            CapabilityWorkflow.WORKSHOP,
         }
     ),
     *(
@@ -575,10 +581,33 @@ def release_capability(model: str, workflow: CapabilityWorkflow) -> ReleaseCapab
     )
 
 
+def profile_supports_workflow(profile: ModelProfile, workflow: CapabilityWorkflow) -> bool:
+    """Apply device restrictions without promoting its exact-SKU workflow ceiling."""
+    if profile.effect_workflows is not None and workflow.value not in profile.effect_workflows:
+        return False
+    return {
+        CapabilityWorkflow.NATIVE_SCENES: profile.supports_scenes,
+        CapabilityWorkflow.EDITED_PALETTE_SCENES: profile.supports_scenes,
+        CapabilityWorkflow.LAYERED_SCENES: profile.supports_scenes,
+        CapabilityWorkflow.PAINTED: profile.supports_custom_effects,
+        CapabilityWorkflow.SINGLE: profile.supports_custom_effects,
+        CapabilityWorkflow.MULTI: profile.supports_custom_effects,
+        CapabilityWorkflow.NATIVE_MUSIC: profile.supports_music_mode,
+        CapabilityWorkflow.VIDEO: profile.supports_video_mode,
+        CapabilityWorkflow.PALETTE_DIY: profile.supports_custom_effects,
+        CapabilityWorkflow.ADVANCED: profile.supports_advanced_effects,
+        CapabilityWorkflow.WORKSHOP: profile.supports_advanced_effects,
+    }[workflow]
+
+
 def require_effect_route(
-    model: str, workflow: CapabilityWorkflow, grammars: tuple[str, ...] = ("H617A", "H6199", "H6099", "H6179")
+    model: str,
+    workflow: CapabilityWorkflow,
+    grammars: tuple[str, ...] = ("H617A", "H6199", "H6099", "H6179"),
+    *,
+    profile: ModelProfile | None = None,
 ) -> str:
-    """Require exact-model workflow authorization and matching effect/command grammar."""
+    """Require the exact-model workflow and independently selected upload/activation codecs."""
     capability = release_capability(model, workflow)
     label = "Workshop" if workflow is CapabilityWorkflow.WORKSHOP else workflow.value
     if capability is None or capability.application_route not in {
@@ -588,21 +617,30 @@ def require_effect_route(
         ApplicationRoute.HOME_ASSISTANT_CONTROL,
     }:
         raise ValueError(f"{model} {label} application is not supported")
-    profile = get_profile(model)
-    if (
-        profile.effect_grammar is None
-        or profile.effect_grammar not in grammars
-        or profile.command_grammar != profile.effect_grammar
-    ):
+    profile = get_profile(model) if profile is None else profile
+    if profile.effect_workflows is not None and workflow.value not in profile.effect_workflows:
+        raise ValueError(f"{model} effective profile does not support {label}")
+    if profile.effect_grammar is None or profile.effect_grammar not in grammars or profile.command_grammar is None:
         raise ValueError(f"{model} has no supported {label} grammar and activation route")
+    from .generated_protocol_adapter import build_diy_activation, build_scene_activation
+
+    # The activation codec is independent of the upload codec, but must exist.
+    try:
+        if workflow in {CapabilityWorkflow.PAINTED, CapabilityWorkflow.SINGLE, CapabilityWorkflow.MULTI}:
+            build_diy_activation(0, model, profile=profile)
+        else:
+            build_scene_activation(model, 0, profile=profile)
+    except ValueError as error:
+        raise ValueError(f"{model} has no supported {label} grammar and activation route") from error
     return profile.effect_grammar
 
 
-def frontend_release_capabilities(model: str) -> list[JsonValue]:
+def frontend_release_capabilities(model: str, *, profile: ModelProfile | None = None) -> list[JsonValue]:
     return [
         capability.to_frontend_dict()
         for capability in release_capabilities_for_model(model)
         if capability.frontend_visibility is FrontendVisibility.VISIBLE
+        and (profile is None or profile_supports_workflow(profile, capability.workflow))
     ]
 
 
@@ -614,7 +652,11 @@ def diagnostics_release_capabilities(model: str) -> dict[str, JsonValue]:
     }
 
 
-def workflow_capability_state(model: str, workflow: CapabilityWorkflow) -> CapabilityState:
+def workflow_capability_state(
+    model: str, workflow: CapabilityWorkflow, *, profile: ModelProfile | None = None
+) -> CapabilityState:
+    if profile is not None and not profile_supports_workflow(profile, workflow):
+        return CapabilityState.UNSUPPORTED
     capability = release_capability(model, workflow)
     if capability is None or capability.frontend_visibility is not FrontendVisibility.VISIBLE:
         return CapabilityState.UNSUPPORTED
@@ -626,7 +668,11 @@ def workflow_capability_state(model: str, workflow: CapabilityWorkflow) -> Capab
     return CapabilityState.SUPPORTED
 
 
-def studio_apply_capability_state(model: str, workflow: CapabilityWorkflow) -> CapabilityState:
+def studio_apply_capability_state(
+    model: str, workflow: CapabilityWorkflow, *, profile: ModelProfile | None = None
+) -> CapabilityState:
+    if profile is not None and not profile_supports_workflow(profile, workflow):
+        return CapabilityState.UNSUPPORTED
     capability = release_capability(model, workflow)
     if capability is None or capability.application_route not in {
         ApplicationRoute.STUDIO_CUSTOM_APPLY,
@@ -723,28 +769,28 @@ def device_effect_capabilities(
         display_name=display_name,
         segment_count=segment_count,
         physical_ic_count=physical_ic_count,
-        painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED)
+        painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED, profile=profile)
         if profile.supports_custom_effects
         else CapabilityState.UNSUPPORTED,
-        single=studio_apply_capability_state(model, CapabilityWorkflow.SINGLE)
+        single=studio_apply_capability_state(model, CapabilityWorkflow.SINGLE, profile=profile)
         if profile.supports_custom_effects
         else CapabilityState.UNSUPPORTED,
-        multi=studio_apply_capability_state(model, CapabilityWorkflow.MULTI)
+        multi=studio_apply_capability_state(model, CapabilityWorkflow.MULTI, profile=profile)
         if profile.supports_custom_effects
         else CapabilityState.UNSUPPORTED,
-        palette_diy=studio_apply_capability_state(model, CapabilityWorkflow.PALETTE_DIY)
+        palette_diy=studio_apply_capability_state(model, CapabilityWorkflow.PALETTE_DIY, profile=profile)
         if profile.supports_custom_effects
         else CapabilityState.UNSUPPORTED,
-        advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED)
+        advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED, profile=profile)
         if profile.supports_advanced_effects
         else CapabilityState.UNSUPPORTED,
-        music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC)
+        music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC, profile=profile)
         if profile.supports_music_mode
         else CapabilityState.UNSUPPORTED,
-        video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO)
+        video=studio_apply_capability_state(model, CapabilityWorkflow.VIDEO, profile=profile)
         if profile.supports_video_mode
         else CapabilityState.UNSUPPORTED,
-        workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP)
+        workshop=studio_apply_capability_state(model, CapabilityWorkflow.WORKSHOP, profile=profile)
         if profile.supports_advanced_effects
         else CapabilityState.UNSUPPORTED,
         readback=profile.effect_readback,

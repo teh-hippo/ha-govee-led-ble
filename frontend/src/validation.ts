@@ -27,7 +27,7 @@ import type {
   VideoProfileContent,
   WorkshopContent,
 } from "./types";
-import { decodeCustomCataloguePayload, decodeMusicSettings } from "./catalogue-validation";
+import { decodeCustomCataloguePayload, decodeModelEffectCatalogue, decodeMusicSettings } from "./catalogue-validation";
 import {
   EDITOR_API_VERSION,
   EFFECT_COMPILER_VERSION,
@@ -149,6 +149,7 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
       device.profiles,
       `devices[${index}].profiles`,
     );
+    const model = boundedString(device.model, `devices[${index}].model`, MAX_IDENTIFIER_LENGTH);
     return {
       config_entry_id: boundedString(
         device.config_entry_id,
@@ -159,11 +160,10 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         device.light_entity_id,
         `devices[${index}].light_entity_id`,
       ),
-      model: boundedString(
-        device.model,
-        `devices[${index}].model`,
-        MAX_IDENTIFIER_LENGTH,
-      ),
+      model,
+      ...(device.catalogue === undefined ? {} : {
+        catalogue: decodeModelEffectCatalogue(device.catalogue, `devices[${index}].catalogue`, model, decodeEffectContent),
+      }),
       support_quality: enumString(
         device.support_quality,
         ["experimental", "partial", "compatible", "supported"],

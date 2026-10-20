@@ -10,7 +10,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import get_profile
+from .const import ModelProfile, get_profile
 from .effect_contracts import CapabilityWorkflow, require_effect_route
 from .effect_domain import (
     BuiltinScene,
@@ -41,6 +41,8 @@ from .scenes import (
     canonical_scene_key,
     legacy_scene_entries,
     resolve_scene_identity,
+    scene_for_profile,
+    scene_supported,
 )
 
 CATALOGUE_SCHEMA_VERSION = 1
@@ -123,7 +125,10 @@ async def async_store_scene_default(
     updated_at: str,
     canonical_body: bytes,
     speed_index: int | None,
+    profile: ModelProfile | None = None,
 ) -> None:
+    if profile is not None and scene_for_profile(resolved.entry, profile).selector_only:
+        raise EffectValidationError("selector-only scenes do not support device-specific defaults")
     value = NativeSceneDefault(
         config_entry_id=config_entry_id,
         scene_id=resolved.entry.scene_id,
@@ -139,10 +144,12 @@ async def async_store_scene_default(
     )
 
 
-def scene_catalogue_payload(model: str) -> dict[str, JsonValue]:
+def scene_catalogue_payload(model: str, *, profile: ModelProfile | None = None) -> dict[str, JsonValue]:
     entries = SCENE_ENTRIES.get(model)
     if entries is None:
         raise ValueError(f"{model} has no native scene catalogue")
+    if profile is not None:
+        entries = tuple(scene_for_profile(entry, profile) for entry in entries if scene_supported(entry, profile))
     categories: list[JsonValue] = []
     seen_categories: set[int] = set()
     for entry in entries:
@@ -152,7 +159,7 @@ def scene_catalogue_payload(model: str) -> dict[str, JsonValue]:
     return {
         "schema_version": CATALOGUE_SCHEMA_VERSION,
         "sku": model,
-        "enabled": get_profile(model).supports_scenes,
+        "enabled": (get_profile(model) if profile is None else profile).supports_scenes,
         "categories": categories,
         "scenes": [_scene_summary(model, entry) for entry in entries],
     }
@@ -164,8 +171,11 @@ def scene_detail_payload(
     effect_id: int,
     *,
     scene_default: NativeSceneDefault | None = None,
+    profile: ModelProfile | None = None,
 ) -> dict[str, JsonValue]:
     resolved = resolve_scene(model, scene_id, effect_id)
+    if profile is not None:
+        resolved = replace(resolved, entry=scene_for_profile(resolved.entry, profile))
     if resolved.entry.selector_only:
         if scene_default is not None:
             raise ValueError(f"{model} selector-only scenes do not accept canonical-body defaults")
@@ -241,11 +251,16 @@ async def async_apply_scene(
         resolved.entry,
         scene_default=scene_default,
         speed_index=speed_index,
+        profile=coordinator.profile,
     )
 
-    require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES)
+    require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=coordinator.profile)
     build_native_scene_packets(
-        coordinator.model, resolved.entry, speed_index=resolved_speed, canonical_body=canonical_body or None
+        coordinator.model,
+        resolved.entry,
+        speed_index=resolved_speed,
+        canonical_body=canonical_body or None,
+        profile=coordinator.profile,
     )
     if before_apply is not None:
         await before_apply()
@@ -267,6 +282,7 @@ async def async_reset_scene_default(
 ) -> ResolvedScene:
     coordinator = config_entry.runtime_data
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
+    resolved = replace(resolved, entry=scene_for_profile(resolved.entry, coordinator.profile))
     await async_delete_scene_defaults(scene_defaults, config_entry.entry_id, coordinator.model, resolved)
     return resolved
 
@@ -282,6 +298,7 @@ async def async_set_scene_default(
 ) -> ResolvedScene:
     coordinator = config_entry.runtime_data
     resolved = resolve_scene(coordinator.model, scene_id, effect_id)
+    resolved = replace(resolved, entry=scene_for_profile(resolved.entry, coordinator.profile))
     if resolved.entry.selector_only:
         raise EffectValidationError(f"{coordinator.model} selector-only scenes do not support device-specific defaults")
     parsed = effect_content_from_dict(content)
@@ -306,6 +323,7 @@ async def async_set_scene_default(
             updated_at=updated_at,
             canonical_body=canonical_body,
             speed_index=resolved_speed,
+            profile=coordinator.profile,
         )
     return resolved
 
@@ -361,7 +379,10 @@ def resolve_scene_application_body(
     *,
     scene_default: NativeSceneDefault | None,
     speed_index: int | None,
+    profile: ModelProfile | None = None,
 ) -> tuple[bytes, int | None]:
+    if profile is not None:
+        scene = scene_for_profile(scene, profile)
     if scene.selector_only:
         if speed_index is not None:
             raise ValueError("selector-only scenes do not accept speed_index")

@@ -6,20 +6,15 @@ meta:
     - ../govee_shared
 doc: |
   SPECULATIVE H6125, issue #117.
-  Evidence source class: reachable Android 7.6.01 producer code; no official-app
-  BLE capture of an identified H6125 is available.
-  Compatibility hypothesis: pact 1 firmware 1.07.00 or newer uses the shared
-  H617A logical frames for everything except two registers.  The brightness byte
-  is a device register on a scaled range, and the music selector uses submode
-  0x11 with its own effect numbering.  dreamcolorlightv1/pact/Support.getBrightnessRange,
-  base2light/util/NumUtil.calculateProgress and BrightnessController.q give the
-  register write; dreamcolorlightv1/ble/SubModeMusicV2.getWriteBytes gives the
-  music selector.  The semantic builders in the adapter derive both frames from the
-  shared logical H617A frames, so this schema owns only the wire layout.
-  Unresolved assumptions: the register range for each hardware revision, whether
-  later firmware still accepts submode 0x13, unused bytes of every frame, and
-  whether the device echoes these writes.  The final byte is the XOR of bytes 0
-  through 18.
+  Evidence source class: application producers and public legacy observations.
+  Compatibility hypothesis: pact 1 uses a scaled brightness register and the
+  0x11 music selector. Older controllers use 0x0b RGB with a segment mask;
+  the original H612526 music selector is 0x0c with a separate mode codebook.
+  The adapter re-encodes shared logical commands through these named fields.
+  Revision eligibility belongs to the product profile, not this wire grammar.
+  Unresolved assumptions: conflicting minimum-register evidence on some Telink
+  paths, firmware-specific acceptance, unused bytes and command echoes.
+  The final byte is the XOR of bytes 0 through 18.
 seq:
   - id: header
     contents: [0x33]
@@ -40,7 +35,14 @@ enums:
     0x04: brightness
     0x05: mode
   mode_sub:
+    0x0b: legacy_colour
+    0x0c: legacy_music
     0x11: music
+  legacy_music_mode:
+    0x00: energetic
+    0x04: rhythm
+    0x03: spectrum
+    0x02: rolling
   music_mode:
     0x10: energetic
     0x11: rhythm
@@ -70,7 +72,31 @@ types:
         type:
           switch-on: sub
           cases:
+            'mode_sub::legacy_colour': legacy_colour
+            'mode_sub::legacy_music': legacy_music_selector
             'mode_sub::music': music_selector
+  legacy_colour:
+    seq:
+      - id: rgb
+        type: govee_shared::rgb
+      - id: segment_mask
+        type: u2le
+      - id: padding
+        size: 11
+  legacy_music_selector:
+    seq:
+      - id: mode_id
+        type: u1
+        enum: legacy_music_mode
+      - id: sensitivity
+        type: u1
+      - id: settings
+        size: 14
+        type:
+          switch-on: mode_id
+          cases:
+            'legacy_music_mode::energetic': opaque_settings
+            _: colour_settings
   music_selector:
     seq:
       - id: mode_id

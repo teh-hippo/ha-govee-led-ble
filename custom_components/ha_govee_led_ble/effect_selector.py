@@ -24,7 +24,7 @@ from .const import (
 )
 from .effect_compiler import CompatibilityState, compatibility
 from .effect_domain import EffectValidationError, LibraryItem, effect_content_to_dict
-from .scenes import MODEL_SCENE_LABELS, scene_aliases
+from .scenes import MODEL_SCENE_LABELS, MODEL_SCENES, scene_aliases, scene_supported
 
 EFFECT_OFF = "off"
 _EFFECT_QUOTE_CHARS = "\"'“”‘’"
@@ -263,6 +263,7 @@ def _selector_candidates(
                 aliases=(key, *_legacy_scene_selector_aliases(model, key)),
             )
             for key, label in MODEL_SCENE_LABELS[model].items()
+            if scene_supported(MODEL_SCENES[model][key], profile)
         )
     if EFFECT_CATEGORY_VIDEO in native and profile.supports_video_mode:
         candidates.extend(

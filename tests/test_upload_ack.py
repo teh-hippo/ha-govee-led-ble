@@ -11,13 +11,14 @@ from custom_components.ha_govee_led_ble import coordinator as coordinator_module
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
-from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
-from custom_components.ha_govee_led_ble.effect_deployments import EffectDeploymentRepository
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
+from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
+from custom_components.ha_govee_led_ble.effect_compiler import compile_application, compile_effect
+from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
+from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile, SingleEffect
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_power,
     build_scene_activation,
     parse_command_ack_result,
     upload_ack_mode,
@@ -131,6 +132,35 @@ def test_ack_uses_command_grammar_independently_of_video(monkeypatch):
     assert parse_command_ack_result(MUSIC_OK, "H9908").parsed.is_success
     monkeypatch.setitem(MODEL_PROFILES, "H9908", ModelProfile("Synthetic ACK", video_grammar="H6199"))
     assert parse_command_ack_result(MUSIC_OK, "H9908").parsed is None
+
+
+@pytest.mark.parametrize("response", [None, "a10201", "a30200", "330200", "a10200"])
+async def test_a1_upload_requires_its_own_positive_ack_before_activation(connected, response):
+    c, client = connected
+    c.model = "H6125"
+    c.pact_type, c.pact_code = 1, 2
+    c.fw_version, c.hw_version = "1.07.01", "1.00.04"
+    c.profile = device_profile("H6125", 1, 2, firmware=c.fw_version, hardware=c.hw_version)
+    c._confirmed_identity_fields.update(c.profile.profile_identity_fields)
+    item = LibraryItem.new("Fade", SingleEffect(family=0, variant=0, speed=40, palette=((255, 0, 0),)))
+    compiled = compile_application(item, c.model, profile=c.profile)
+    packets = [build_power(True, c.model, profile=c.profile), *compiled.upload_packets]
+    index = len(packets) - 1
+
+    async def write(_uuid, packet, **kwargs):
+        if packet == packets[index] and response is not None:
+            receive(client, frame(response))
+
+    client.write_gatt_char.side_effect = write
+    if response == "a10200":
+        await write_sequence(c, packets, index, final_packet=compiled.activation_packet)
+        expected = [*packets, compiled.activation_packet]
+    else:
+        with pytest.raises((TimeoutError, RuntimeError)):
+            await write_sequence(c, packets, index, final_packet=compiled.activation_packet)
+        expected = packets
+    assert [call.args[1] for call in client.write_gatt_char.call_args_list] == expected
+    assert c._field_revisions == {}
 
 
 async def test_ordinary_ack_is_diagnostic_not_power_readback(connected):
@@ -373,6 +403,67 @@ async def test_saved_native_diy_apply_uses_ack_gate(connected, monkeypatch, posi
             await engine.async_apply_saved(c, item, config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z")
     sent = [call.args[1] for call in client.write_gatt_char.call_args_list]
     assert sent == list(compiled.packets if positive else compiled.upload_packets)
+    assert c._upload_ack is None
+
+
+@pytest.mark.parametrize("path", ["saved", "preview"])
+@pytest.mark.parametrize("ack", ["accepted", "rejected", "missing"])
+async def test_workshop_public_paths_require_upload_ack(connected, hass, monkeypatch, path, ack):
+    c, client = connected
+    c.model = "H6125"
+    c.profile = device_profile("H6125", 10, 2, firmware="3.04.37", hardware="3.01.10")
+    c._confirmed_identity_fields.update(c.profile.profile_identity_fields)
+    c.is_on = True
+    item = LibraryItem.new("Workshop", WORKSHOP_PROTOCOL_FIXTURES[0].content("H6125"))
+    compiled = compile_effect(item, c.model, profile=c.profile)
+    monkeypatch.setattr(c, "async_preview_preflight", AsyncMock())
+    monkeypatch.setattr(c, "async_observe_effect", AsyncMock(return_value=True))
+
+    async def write(_uuid, packet, **kwargs):
+        if packet == compiled.upload_packets[-1] and ack != "missing":
+            receive(client, DIY_OK if ack == "accepted" else DIY_NO)
+
+    client.write_gatt_char.side_effect = write
+    if path == "saved":
+        repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+        await repository.async_load()
+        engine = EffectDeploymentEngine(repository)
+        monkeypatch.setattr(engine, "_async_prepare_prior_state", AsyncMock(return_value=False))
+        monkeypatch.setattr(c, "async_restore_effect_control_state", AsyncMock(return_value=False))
+        monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
+        if ack == "accepted":
+            result = await engine.async_apply_saved(
+                c, item, config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z"
+            )
+            assert result.phase is DeploymentPhase.CONFIRMED
+        else:
+            with pytest.raises(TimeoutError if ack == "missing" else RuntimeError):
+                await engine.async_apply_saved(c, item, config_entry_id="entry-a", updated_at="2026-09-16T00:00:00Z")
+            assert repository.snapshot().records[-1].phase is DeploymentPhase.UNCERTAIN
+    else:
+        manager, _ = await _manager(hass, monkeypatch, c)
+        events = []
+        owner = object()
+        session = _open(manager, owner, events)
+        try:
+            await manager.async_queue_snapshot(
+                session_id=session,
+                owner=owner,
+                config_entry_id="entry-a",
+                sequence=1,
+                updated_at="2026-09-16T00:00:00Z",
+                item=item,
+            )
+            await asyncio.wait_for(manager.async_wait_idle("entry-a"), 2)
+            assert events[-1].phase in (
+                {PreviewPhase.CONFIRMED, PreviewPhase.UNCONFIRMED} if ack == "accepted" else {PreviewPhase.FAILED}
+            )
+        finally:
+            await manager.async_shutdown()
+    sent = [call.args[1] for call in client.write_gatt_char.call_args_list]
+    assert sent == list(compiled.packets if ack == "accepted" else compiled.upload_packets)
+    if ack != "accepted":
+        c.async_observe_effect.assert_not_awaited()
     assert c._upload_ack is None
 
 

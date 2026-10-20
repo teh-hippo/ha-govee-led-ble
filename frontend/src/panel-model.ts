@@ -330,6 +330,10 @@ export class PanelModel {
   }
 
   public get modelCatalogue(): ModelEffectCatalogue | undefined {
+    const device = this.selectedDevice;
+    if (device?.catalogue) {
+      return {...device.catalogue, physical_ic_count: device.physical_ic_count};
+    }
     const model = this.selectedModel;
     const catalogue = model ? this.customCatalogue?.models[model] : undefined;
     return catalogue && (catalogue.painted_addressing === "physical_ic" || this.selectedDevice?.music_settings !== undefined)

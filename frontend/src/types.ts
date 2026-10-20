@@ -52,6 +52,7 @@ export interface EditorApiInfo {
 
 export interface DeviceCapabilities {
   physical_ic_count?: number | null;
+  catalogue?: ModelEffectCatalogue;
   music_settings?: Record<string, MusicSettings>;
   retained_music_edit?: RetainedMusicEdit | null;
   config_entry_id: string;

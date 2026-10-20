@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
-from .const import MODEL_PROFILES
+from .const import MODEL_PROFILES, ModelProfile
 
 CATALOGUE_DIR = Path(__file__).with_name("scene_catalogues")
 
@@ -67,6 +67,7 @@ class SceneEntry:
     variant: str = ""
     music_code: int = 0
     selector_only: bool = False
+    local_only: bool = False
 
     @property
     def display_name(self) -> str:
@@ -122,6 +123,21 @@ def _load_catalogue(sku: str) -> tuple[SceneEntry, ...]:
         )
         for effect in data["effects"]
     )
+    codes = {entry.code for entry in entries}
+    entries += tuple(
+        SceneEntry(
+            code=code,
+            scene_type=0,
+            category="Legacy",
+            scene_id=0,
+            effect_id=code,
+            name=name,
+            selector_only=True,
+            local_only=True,
+        )
+        for code, name in profile.local_scenes
+        if code not in codes
+    )
     identities = {(entry.scene_id, entry.effect_id) for entry in entries}
     if len(identities) != len(entries):
         raise ValueError(f"Duplicate scene identity in {path}")
@@ -175,8 +191,29 @@ MODEL_SCENE_LABELS: dict[str, dict[str, str]] = {
 MODEL_SCENE_ALIASES: dict[str, dict[str, str]] = {}
 
 
-def scene_selector_code(model: str, scene: SceneEntry) -> int:
-    bits = MODEL_PROFILES[model].selector_only_scene_bits
+def scene_supported(scene: SceneEntry, profile: ModelProfile) -> bool:
+    if not profile.supports_scenes:
+        return False
+    if profile.effect_workflows is not None and "native_scenes" not in profile.effect_workflows:
+        return False
+    if profile.scene_codes is None:
+        return not scene.local_only
+    return scene.code in profile.scene_codes
+
+
+def scene_for_profile(scene: SceneEntry, profile: ModelProfile) -> SceneEntry:
+    """Project immutable catalogue data without changing other controller revisions."""
+    if not profile.supports_scenes:
+        raise ValueError(f"{profile.name} native scenes are not supported")
+    if not scene_supported(scene, profile):
+        raise ValueError("Scene is not supported by this device profile")
+    if profile.selector_only_scene_bits is not None:
+        return replace(scene, selector_only=True, param="", speed=None, scene_type=0)
+    return scene
+
+
+def scene_selector_code(model: str, scene: SceneEntry, *, profile: ModelProfile | None = None) -> int:
+    bits = (MODEL_PROFILES[model] if profile is None else profile).selector_only_scene_bits
     if bits is None:
         return scene.code
     if not isinstance(scene.code, int) or isinstance(scene.code, bool) or scene.code < 0:

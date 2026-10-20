@@ -167,17 +167,17 @@ class PriorControlState:
             except ValueError as error:
                 raise EffectStorageError("invalid prior music body") from error
         if self.segment_colors is not None or self.segment_brightness is not None:
-            if (
-                not isinstance(self.segment_colors, tuple)
-                or not isinstance(self.segment_brightness, tuple)
-                or not 1 <= len(self.segment_colors) <= 16
-                or len(self.segment_colors) != len(self.segment_brightness)
-            ):
-                raise EffectStorageError("prior segment layout must contain matching 1 to 16 element tuples")
+            if not isinstance(self.segment_colors, tuple) or not 1 <= len(self.segment_colors) <= 16:
+                raise EffectStorageError("prior segment layout must contain 1 to 16 colours")
             for rgb in self.segment_colors:
                 _validate_rgb(rgb, "prior segment colour")
-            if any(type(value) is not int or not 0 <= value <= 100 for value in self.segment_brightness):
-                raise EffectStorageError("prior segment brightness must be from 0 to 100")
+            if self.segment_brightness is not None:
+                if not isinstance(self.segment_brightness, tuple) or len(self.segment_colors) != len(
+                    self.segment_brightness
+                ):
+                    raise EffectStorageError("prior segment layout must contain matching 1 to 16 element tuples")
+                if any(type(value) is not int or not 0 <= value <= 100 for value in self.segment_brightness):
+                    raise EffectStorageError("prior segment brightness must be from 0 to 100")
         if self.music_palette is not None:
             if not isinstance(self.music_palette, tuple) or not 1 <= len(self.music_palette) <= 8:
                 raise EffectStorageError("prior music palette must contain 1 to 8 colours")
@@ -364,9 +364,13 @@ class PriorControlState:
             **(
                 {
                     "segment_colors": [list(rgb) for rgb in self.segment_colors],
-                    "segment_brightness": list(self.segment_brightness),
+                    **(
+                        {"segment_brightness": list(self.segment_brightness)}
+                        if self.segment_brightness is not None
+                        else {}
+                    ),
                 }
-                if self.segment_colors is not None and self.segment_brightness is not None
+                if self.segment_colors is not None
                 else {}
             ),
             "effect": self.effect,
@@ -434,10 +438,12 @@ class PriorControlState:
         segment_colors = raw.get("segment_colors")
         segment_brightness = raw.get("segment_brightness")
         if segment_colors is not None or segment_brightness is not None:
-            if not isinstance(segment_colors, list) or not isinstance(segment_brightness, list):
+            if not isinstance(segment_colors, list) or (
+                segment_brightness is not None and not isinstance(segment_brightness, list)
+            ):
                 raise EffectStorageError("invalid prior segment layout")
             segment_colors = tuple(_required_rgb({"rgb": rgb}, "rgb") for rgb in segment_colors)
-            segment_brightness = tuple(segment_brightness)
+            segment_brightness = tuple(segment_brightness) if segment_brightness is not None else None
         palette = raw.get("music_palette")
         if palette is not None:
             if not isinstance(palette, list) or not 1 <= len(palette) <= 8:

@@ -128,7 +128,9 @@ class EffectStudioApplication:
             item = self.get_saved_effect(item_id)
             if expected_version is not None and item.version != expected_version:
                 raise EffectVersionConflictError(item.version)
-            compile_application(item, model, diy_code=resolve_diy_code(item, diy_code, model=model), profile=profile)
+            compile_application(
+                item, model, diy_code=resolve_diy_code(item, diy_code, model=model, profile=profile), profile=profile
+            )
             yield item
 
     async def async_create_library_item(
