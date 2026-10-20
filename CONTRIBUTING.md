@@ -28,11 +28,17 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
 ### Reusing device protocol support
 
 - Declare `command_grammar` and `status_grammar` explicitly, even when they select the same grammar. Basic commands, outgoing basic status queries, command echoes, and optimistic command expectations use `command_grammar`; incoming status frames and their semantic interpretation use `status_grammar`. Missing or unknown grammar keys fail closed, without falling back to another direction or exact model.
+- Declare `command_ack_grammar` when acknowledgements differ from the logical command codec.
+  Upload barriers match protocol and command, not just the command number.  Do not infer a transaction ID.
 - Any declared read domain requires `status_grammar`; power, brightness, colour mode, mode, firmware, hardware, and segment reads also require `command_grammar`. The selected complete status root must cover every declared read domain, proven by an exact-profile integration test. Do not add fallback or per-domain status routing, or a Python grammar-metadata registry.
 - Declare a device register that rescales a shared logical value with `brightness_wire_range` and the paired `outbound_transform`.  Shared builders, expectations and guards keep logical percentages; the transform re-encodes them through exact-model KSY wire roots, and readback decodes through the same range.  Declare `colour_mode_query_selector` for the accepted AA05 form and `a1_diy_selector` for Type04 uploads over A1 command 02.  Declare `profile_identity_fields` on every identity-qualified profile variant.  Reconnects retain the cached presentation profile but revoke identity-dependent query and write authorisation until valid replies confirm the required fields on the current notification subscription.
 - Declare `music_grammar` only when the music selector and its codebook differ from `command_grammar`, as for the H6076 submode `0x0f` selector.  It selects the model's mode codebook and selector writer; it does not authorise music, which still needs explicit `music_modes` and qualified `music_variants`.
 - Declare `effect_grammar` independently of basic command and status compatibility. It selects A3 and Workshop codecs, including their canonical semantics; it does not authorize effect application, catalogue reuse, activation, or readback policy. Workshop application also requires the exact-model capability contract and an implemented activation route.
 - Declare effect families, variations, per-family rate bounds, palette bounds, Painted parameters, and Multi limits in the exact-model `ModelEffectCatalogue`. Shared grammars do not inherit another product's catalogue. Structural imports preserve representable unknown pairs; application checks the target catalogue and compiles the complete immutable request before preview admission or other device-control side effects.
+- Use `effect_workflows` to narrow the exact-SKU workflow ceiling for a device revision.
+  Pass the effective profile through selector allocation, activation, compilation and catalogue projection.
+  Device responses carry the complete effective catalogue, including valid template defaults; editors use that view rather than a music-only override.
+  Prepared scenes must recheck selector eligibility and the selector-only/upload route before any power or effect write.
 - Declare video modes and setting capabilities on the exact-model profile. `video_grammar` selects compatible mode, query, writer, readback, and command-ACK semantics independently of the basic grammars; it does not authorize a model or imply support for every companion setting. Grammar keys select codecs directly, not another model's profile.
 - Declare `dreamview_grammar="H6099"` only with evidence of compatibility with the existing MovieFeastV2 encoding. Independently list evidenced `dreamview_operations` (`replace_group`, `delete_group`, `switch_group`, `member_brightness`, `same_brightness`, `member_connect`, `saturation`, `sample`, `sound`) and `dreamview_reads` (the same individual settings, excluding replacement/deletion). Both sets default to empty and authorize nothing. Basic command/status grammars, video support, and camera presence do not grant DreamView support.
 - Declare `dreamview_max_sub_devices` from product evidence for replacement and indexed writes only (1..255, subject to the A3 payload limit). Capacity zero still permits declared non-indexed settings, deletion, and reads. Service schemas enforce wire bounds; target validation enforces its capacity before preview or control side effects, then revalidates prepared packets at each physical attempt. DreamView authorization is independent of restrictions on basic `command_operations`.
@@ -41,6 +47,8 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
 - Qualify `music_variants` separately: `MusicParamSpec` defaults/bounds, named Kaitai fields, palette templates, style and companion semantics need their own evidence. An absent variant permits the native selector only. Unknown physical IC count must not be inferred from logical `segment_count`; it blocks only explicitly dependent parameter writes. Recovery retains legacy fields, validates against the effective variant before writes, and never promotes restored parameters to observed state.
 - Pass the effective device profile to semantic segment builders. Construct and validate the entire request before cancelling previews, acquiring user control, changing optimistic state, or writing to BLE. Whole-device masks remain separate from individually selectable segments.
 - Reuse `govee_segment_page` in status KSY with the evidenced segment count, page size, and unused-byte rule. Its fixed page body has four wire slots; only the declared meaningful records contribute to observed state. Keep profile counts consistent with the selected schema, and preserve uncertain unused bytes rather than treating zero-valued records as absent.
+- RGB-only pages use their own record shape and must not publish invented segment brightness.
+  Recovery retains colour-only layouts; absence of brightness is not a default percentage.
 
 Extension tests should demonstrate reuse through declarations without unrelated exact-model codec allowlist edits. Register a test-only exact-model profile and an independent status-root key rather than replacing an existing root or mocking profile lookup. Synthetic profiles and speculative fixtures establish these software boundaries, not physical device compatibility; the H66A0 fixture does not enable real H66A0 runtime support.
 
@@ -200,6 +208,11 @@ profile keeps scene controls disabled.  An Experimental candidate may expose
 scene activation when an exact-model transport hypothesis is represented in
 Kaitai.  Owner-confirmed visible behaviour and restoration are required before
 promotion.
+
+Use `scene_codes` for revision-specific selector eligibility and project selector-only behaviour through the effective profile.
+Keep vendor snapshots unchanged when a documented legacy selector is absent.
+Explicit `local_scenes` entries use catalogue `scene_id=0` and `effect_id=selector`, are marked `local_only`,
+and are exposed only by profiles that explicitly admit the selector.
 
 ## Repository non-goals
 

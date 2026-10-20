@@ -5,13 +5,14 @@ meta:
   imports:
     - ../govee_segment_page
     - ../govee_shared
+    - h6102_status_reply
 doc: |
   SPECULATIVE H6125, issue #117.
   Evidence source class: reachable Android 7.6.01 consumer code; no official-app
   BLE capture of an identified H6125 is available.
-  Compatibility hypothesis: pact 1 firmware 1.07.00 or newer replies with the
+  Compatibility hypothesis: the extended pact-1 route replies with the
   shared power, identity, static, scene, DIY and fifteen-segment layouts, plus a
-  brightness register and the submode 0x11 music layout.
+  brightness register, the submode 0x11 music layout and the gradual register.
   Android 7.6.01 classes under com.govee:
   dreamcolorlightv1/ble/Mode.java:80-115 dispatches mode replies;
   SubModeColorV2.parse consumes the gradual flag and big-endian Kelvin;
@@ -41,6 +42,7 @@ seq:
         'aa_domain::fw_version': version_body
         'aa_domain::hw_version': hw_version_body
         'aa_domain::segments': govee_segment_page(15, 3, false)
+        'aa_domain::multi_effect': h6102_status_reply::multi_effect_body
   - id: checksum
     type: u1
 enums:
@@ -50,6 +52,7 @@ enums:
     0x05: colormode
     0x06: fw_version
     0x07: hw_version
+    0xa3: multi_effect
     0xa5: segments
   color_mode:
     0x04: scene

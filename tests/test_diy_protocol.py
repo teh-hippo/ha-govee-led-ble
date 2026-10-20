@@ -39,6 +39,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     PaintedEffect,
     PaletteDiyEffect,
     SingleEffect,
+    WorkshopEffect,
     effect_content_from_dict,
     effect_content_to_dict,
 )
@@ -515,6 +516,9 @@ def test_basic_grammars_do_not_supply_effect_grammar(monkeypatch, model) -> None
 )
 def test_custom_authorization_without_supported_grammar_pair_is_rejected(monkeypatch, model, content, field, grammar):
     item = LibraryItem.new("Custom", content)
+    independent_scene_codec = grammar == "other" and (
+        isinstance(content, WorkshopEffect) or isinstance(content, PaletteDiyEffect) and field == "command_grammar"
+    )
     if grammar == "other":
         grammar = "H6199" if model == "H617A" else "H617A"
     monkeypatch.setitem(
@@ -524,6 +528,11 @@ def test_custom_authorization_without_supported_grammar_pair_is_rejected(monkeyp
             MODEL_PROFILES[model], **{field: grammar}, read_domains=frozenset(), setup_required_read_domains=frozenset()
         ),
     )
+    if independent_scene_codec:
+        assert compatibility(item, model).state is CompatibilityState.COMPATIBLE
+        compiled = compile_effect(item, model)
+        assert compiled.activation_packet is not None
+        return
     assert compatibility(item, model).state is CompatibilityState.INCOMPATIBLE
     with pytest.raises(ValueError, match="activation route"):
         compile_effect(item, model, diy_code=800)

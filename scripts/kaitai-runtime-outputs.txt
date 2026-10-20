@@ -6,8 +6,14 @@ govee_common.py
 govee_encryption.py
 govee_segment_page.py
 govee_shared.py
+govee_rgb_segment_page.py
 h6102_status_reply.py
 h6125_status_reply.py
+h6125_modern_status_reply.py
+h6125_legacy_status_reply.py
+h6125_intermediate_status_reply.py
+h6125_legacy_segment_query.py
+h6125_command_ack.py
 h6125_wire_write.py
 h6076_music_ack.py
 h6076_music_body.py

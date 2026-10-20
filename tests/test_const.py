@@ -101,9 +101,9 @@ def test_h6125_is_an_exact_experimental_profile_on_the_shared_dreamcolor_route()
     assert (profile.segment_count, profile.segment_group_size, profile.physical_ic_count) == (15, 3, 50)
     assert profile.a1_diy_selector == 0xFE and profile.colour_mode_query_selector == 1
     assert len(profile.music_modes) == 11 and profile.music_variants
-    assert not profile.supports_advanced_effects and not profile.supports_video_mode
+    assert profile.supports_advanced_effects and not profile.supports_video_mode
     assert profile.brightness_wire_range is None and profile.outbound_transform is None
-    assert supported_effect_categories("H6125") == ("scenes", "effects", "multi_layered", "reactive")
+    assert supported_effect_categories("H6125") == ("scenes", "effects", "multi_layered", "reactive", "advanced")
 
 
 @pytest.mark.parametrize(
@@ -113,8 +113,8 @@ def test_h6125_is_an_exact_experimental_profile_on_the_shared_dreamcolor_route()
         ((1, 1), "1.07.01", "1.00.04", (20, 254)),
         ((1, 2), "1.07.01", "1.00.04", (20, 254)),
         ((1, 2), "1.08.00", "1.01.00", (20, 254)),
-        ((1, 2), "1.06.99", "1.00.04", None),
-        ((1, 2), "1.07.00", "1.00.02", None),
+        ((1, 2), "1.06.99", "1.00.04", (20, 254)),
+        ((1, 2), "1.07.00", "1.00.02", (6, 254)),
         ((1, 2), "1.07.00", "2.00.04", None),
         ((1, 2), "1.07.00", "1.04", None),
         ((1, 2), "1.07", "1.00.04", None),
@@ -125,7 +125,7 @@ def test_h6125_is_an_exact_experimental_profile_on_the_shared_dreamcolor_route()
         ((None, None), "1.07.00", "1.00.04", None),
     ],
 )
-def test_h6125_pact_revision_gate_admits_one_controller_generation(pact, firmware, hardware, wire_range):
+def test_h6125_pact1_register_and_invalid_identity_gates(pact, firmware, hardware, wire_range):
     profile = device_profile("H6125", *pact, firmware=firmware, hardware=hardware)
 
     if wire_range is None:
@@ -138,6 +138,40 @@ def test_h6125_pact_revision_gate_admits_one_controller_generation(pact, firmwar
         assert profile.outbound_transform is not None
         # The cached transform keeps profile equality stable, so refreshes do not reset state.
         assert profile == device_profile("H6125", *pact, firmware=firmware, hardware=hardware)
+
+
+@pytest.mark.parametrize(
+    ("pact", "firmware", "hardware", "music_count", "colour_temperature", "groups"),
+    [
+        ((1, 1), "1.00.11", "1.00.01", 4, False, 4),
+        ((1, 1), "1.04.08", "1.00.04", 4, False, 4),
+        ((1, 2), "1.05.99", "1.00.03", 4, False, 4),
+        ((1, 2), "1.06.00", "1.00.03", 4, True, 5),
+        ((1, 2), "1.07.00", "1.00.03", 11, True, 5),
+        ((10, 1), "2.03.99", "2.01.01", 4, True, 5),
+        ((10, 1), "2.04.00", "2.01.01", 11, True, 5),
+        ((10, 2), "3.00.99", "3.01.10", 4, True, 5),
+        ((10, 2), "3.01.00", "3.01.10", 11, True, 5),
+        ((10, 2), "3.04.37", "3.01.10", 11, True, 5),
+    ],
+)
+def test_h6125_colour_and_music_have_independent_revision_gates(
+    pact, firmware, hardware, music_count, colour_temperature, groups
+):
+    profile = device_profile("H6125", *pact, firmware=firmware, hardware=hardware)
+    assert profile.supports_rgb
+    assert profile.supports_color_temperature is colour_temperature
+    assert profile.segment_group_count == groups
+    assert len(profile.music_modes) == music_count
+    if pact[0] == 10:
+        assert profile.outbound_transform is None and profile.brightness_wire_range is None
+        assert profile.a1_diy_selector is None
+
+
+@pytest.mark.parametrize("hardware", ["2.02.01", "3.04.10"])
+def test_h6125_unmapped_hardware_does_not_inherit_the_modern_route(hardware):
+    profile = device_profile("H6125", 10, 2, firmware=f"{hardware[0]}.04.37", hardware=hardware)
+    assert profile is const.H6125_POWER_ONLY_PROFILE
 
 
 def test_register_range_requires_the_transform_that_encodes_it():

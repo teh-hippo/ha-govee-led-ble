@@ -73,7 +73,7 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert len(SCENE_ENTRIES["H617E"]) == 240
     assert len(SCENE_ENTRIES["H617C"]) == 240
     assert len(SCENE_ENTRIES["H617F"]) == 240
-    assert len(SCENE_ENTRIES["H6125"]) == 240
+    assert sum(not scene.local_only for scene in SCENE_ENTRIES["H6125"]) == 240
     assert len(SCENE_ENTRIES["H6076"]) == 110
     assert len(SCENE_ENTRIES["H6179"]) == 83
     assert len(SCENE_ENTRIES["H6199"]) == 240

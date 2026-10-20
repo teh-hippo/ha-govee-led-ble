@@ -1908,6 +1908,7 @@ async def test_h6199_upload_without_selector_readback_stays_uncertain(
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
     coordinator.unknown_scene_code = None
     item = _h6199_item()
     compiled = compile_h6199(item)
@@ -1936,6 +1937,7 @@ async def test_h6199_slot_readback_confirms_selection_without_claiming_content_r
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
     coordinator.unknown_scene_code = None
 
     _confirm_scene_code_on_call(coordinator, 2, H6199_PALETTE_DIY_APPLY_CODE)
@@ -1964,6 +1966,7 @@ async def test_h6199_rejects_unsupported_variation_before_any_write(
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()
     coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
 
     with pytest.raises(ValueError, match="is not supported"):
         await EffectDeploymentEngine(repository, cache).async_apply_saved(
@@ -2003,6 +2006,7 @@ async def test_h6199_uncertain_result_emits_structured_evidence_gap(
     backend = await EffectBackend.async_create(hass)
     coordinator = _coordinator()
     coordinator.model = "H6199"
+    coordinator.profile = get_profile("H6199")
     coordinator.unknown_scene_code = None
 
     result = await backend.engine.async_apply_saved(

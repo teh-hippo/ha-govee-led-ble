@@ -46,6 +46,8 @@ seq:
   - id: checksum
     type: u1
 instances:
+  protocol_id:
+    value: protocol
   is_upload:
     value: protocol == 0xa3
   is_success:

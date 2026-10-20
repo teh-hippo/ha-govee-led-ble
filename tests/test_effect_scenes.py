@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.ha_govee_led_ble.const import device_profile, get_profile
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_scenes import (
     async_apply_scene,
@@ -281,6 +282,7 @@ async def test_scene_speed_request_is_validated_before_write(
     with_speed = next(scene for scene in SCENE_ENTRIES["H617A"] if scene.speed is not None)
     coordinator = SimpleNamespace(
         model="H617A",
+        profile=get_profile("H617A"),
     )
     entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
 
@@ -312,6 +314,7 @@ async def test_scene_without_speed_uses_coordinator_primitive(
     scene = next(item for item in SCENE_ENTRIES["H617A"] if item.speed is None)
     coordinator = SimpleNamespace(
         model="H617A",
+        profile=get_profile("H617A"),
         async_apply_native_scene=AsyncMock(),
     )
     entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
@@ -354,6 +357,7 @@ async def test_scene_application_uses_the_stored_device_default(
     )
     coordinator = SimpleNamespace(
         model="H617A",
+        profile=get_profile("H617A"),
         async_apply_native_scene=AsyncMock(),
     )
     entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
@@ -382,6 +386,7 @@ async def test_reset_deletes_default_without_applying_to_the_device() -> None:
     scene = next(item for item in SCENE_ENTRIES["H617A"] if item.scene_type == 2)
     coordinator = SimpleNamespace(
         model="H617A",
+        profile=get_profile("H617A"),
         async_apply_native_scene=AsyncMock(),
     )
     repository = SimpleNamespace(async_replace_identities=AsyncMock())
@@ -402,10 +407,31 @@ async def test_reset_deletes_default_without_applying_to_the_device() -> None:
     coordinator.async_apply_native_scene.assert_not_awaited()
 
 
+async def test_selector_only_device_rejects_scene_defaults_before_storage():
+    scene = next(scene for scene in SCENE_ENTRIES["H6125"] if scene.code == 4)
+    profile = device_profile("H6125", 1, 1, firmware="1.00.11", hardware="1.00.01")
+    entry = SimpleNamespace(entry_id="legacy", runtime_data=SimpleNamespace(model="H6125", profile=profile))
+    repository = SimpleNamespace(async_replace_identities=AsyncMock())
+    detail = scene_detail_payload("H6125", scene.scene_id, scene.effect_id)
+    content = detail["content"]
+    assert isinstance(content, dict)
+    with pytest.raises(ValueError, match="selector-only"):
+        await async_set_scene_default(
+            entry,
+            scene_id=scene.scene_id,
+            effect_id=scene.effect_id,
+            content=content,
+            updated_at=TIMESTAMP,
+            scene_defaults=repository,
+        )
+    repository.async_replace_identities.assert_not_awaited()
+
+
 async def test_set_scene_default_encodes_content_without_applying_to_the_device() -> None:
     scene = next(item for item in SCENE_ENTRIES["H617A"] if item.scene_type == 2 and item.speed is not None)
     coordinator = SimpleNamespace(
         model="H617A",
+        profile=get_profile("H617A"),
         async_apply_native_scene=AsyncMock(),
     )
     repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())

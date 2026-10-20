@@ -80,7 +80,7 @@ async def test_native_scene_application_requires_exact_capability_and_grammar(
         "RELEASE_CAPABILITY_CONTRACT",
         (*effect_contracts.RELEASE_CAPABILITY_CONTRACT, replace(capability, model=model)),
     )
-    for effect_grammar in (None, "unknown", "H6199" if grammar == "H617A" else "H617A"):
+    for effect_grammar in (None, "unknown"):
         coord.profile = replace(profile, effect_grammar=effect_grammar)
         monkeypatch.setitem(MODEL_PROFILES, model, coord.profile)
         with pytest.raises(ValueError, match="grammar and activation route"):

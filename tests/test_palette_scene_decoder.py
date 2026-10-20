@@ -134,7 +134,11 @@ def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
         assert compiled.activation_mode is ActivationMode.SCENE
         assert compiled.selector_kind == "scene"
         assert compiled.packets == tuple(expected)
-        assert compiled.evidence_codes == ("scene_payload_readback_unavailable",)
+        assert compiled.evidence_codes[0] == "scene_payload_readback_unavailable"
+        assert set(compiled.evidence_codes) <= {
+            "scene_payload_readback_unavailable",
+            "native_diy_positive_ack_required",
+        }
 
 
 def test_edited_palette_scene_compiles_authored_definition_not_catalogue_bytes() -> None:

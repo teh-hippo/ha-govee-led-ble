@@ -14,7 +14,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 
-from custom_components.ha_govee_led_ble.const import DOMAIN
+from custom_components.ha_govee_led_ble.const import DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES
 from custom_components.ha_govee_led_ble.effect_domain import H6179SingleDiyEffect, LibraryItem
@@ -55,6 +55,7 @@ async def test_entity_action_applies_saved_effect_and_returns_deployment(
     reference: str,
 ) -> None:
     mock_coordinator.model = "H6179"
+    mock_coordinator.profile = get_profile("H6179")
     mock_coordinator.effect_categories = frozenset({"effects"})
     item = LibraryItem.new(
         "Paint",

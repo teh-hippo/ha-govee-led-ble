@@ -3,6 +3,11 @@ diy_type03
 diy_type04
 speculative/h6102_status_reply
 speculative/h6125_status_reply
+speculative/h6125_modern_status_reply
+speculative/h6125_legacy_status_reply
+speculative/h6125_intermediate_status_reply
+speculative/h6125_legacy_segment_query
+speculative/h6125_command_ack
 speculative/h6125_wire_write
 speculative/h6199_pact1_wire_write
 speculative/h6076_music_ack

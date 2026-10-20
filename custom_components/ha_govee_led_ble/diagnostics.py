@@ -7,7 +7,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import GoveeBLEConfigEntry
-from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_PACT
+from .const import CONF_H6102_APP_FIRMWARE, CONF_H6102_PACT, get_profile
 from .coordinator import PACKET_LOG_LIMIT, PACKET_LOG_RAW_BYTES_LIMIT
 from .coordinator_status import decode_status_frame
 from .effect_contracts import diagnostics_release_capabilities
@@ -105,7 +105,9 @@ async def async_get_config_entry_diagnostics(
         "brightness_pct": coordinator.brightness_pct,
         "rgb_color": coordinator.rgb_color,
         "segment_colors": coordinator.segment_colors,
-        "segment_brightness": coordinator.segment_brightness,
+        "segment_brightness": coordinator.segment_brightness
+        if coordinator.profile.supports_segment_brightness or coordinator.segment_brightness_readable
+        else None,
         "segment_state_source": coordinator.segment_state_source,
         "segment_state_observed_at": coordinator.segment_state_observed_at,
         "color_temp_kelvin": coordinator.color_temp_kelvin,
@@ -158,6 +160,27 @@ async def async_get_config_entry_diagnostics(
     }
     if coordinator.model == "H6102":
         coordinator_data["capability_resolution"] = _h6102_capability_resolution(entry, coordinator)
+    elif coordinator.profile.profile_identity_fields:
+        profile = coordinator.profile
+        coordinator_data["capability_resolution"] = {
+            "resolved_profile": profile.name,
+            "command_grammar": profile.command_grammar,
+            "status_grammar": profile.status_grammar,
+            "command_ack_grammar": profile.command_ack_grammar,
+            "effect_grammar": profile.effect_grammar,
+            "identity_confirmed": coordinator.identity_fields_confirmed(profile.profile_identity_fields),
+            "command_operations": sorted(profile.command_operations)
+            if profile.command_operations is not None
+            else None,
+            "effect_workflows": sorted(profile.effect_workflows) if profile.effect_workflows is not None else None,
+            "brightness_wire_range": profile.brightness_wire_range,
+            "physical_ic_count": profile.physical_ic_count,
+            "physical_ic_count_source": "declared"
+            if profile.physical_ic_count is not None
+            and profile.physical_ic_count == get_profile(coordinator.model).physical_ic_count
+            else "unknown",
+            "scene_count": len(coordinator.scene_name_set),
+        }
     return {
         "entry": async_redact_data(
             {

@@ -265,6 +265,7 @@ def test_exact_qualified_scene_routes_share_native_and_authored_activation(
             command_grammar=grammar,
             effect_grammar=grammar,
             supports_scenes=True,
+            supports_advanced_effects=True,
             advanced_scene_carrier=(entry.scene_id, entry.effect_id),
         ),
     )
@@ -312,11 +313,17 @@ def test_exact_qualified_scene_routes_share_native_and_authored_activation(
                 compile_effect(item, grammar)
         profile = MODEL_PROFILES[model]
         for field in ("effect_grammar", "command_grammar"):
-            for missing in (None, "unknown", "H6199" if grammar == "H617A" else "H617A"):
+            for missing in (None, "unknown"):
                 monkeypatch.setitem(MODEL_PROFILES, model, replace(profile, **{field: missing}))
                 assert compatibility(item, model).state is CompatibilityState.INCOMPATIBLE
-                with pytest.raises(ValueError, match="activation route"):
+                with pytest.raises(ValueError, match="activation"):
                     compile_effect(item, model)
+            alternate = "H6199" if grammar == "H617A" else "H617A"
+            monkeypatch.setitem(MODEL_PROFILES, model, replace(profile, **{field: alternate}))
+            assert compatibility(item, model).state is CompatibilityState.COMPATIBLE
+            assert compile_effect(item, model).activation_packet == build_scene_activation(
+                model, entry.code, entry.music_code
+            )
         monkeypatch.setitem(MODEL_PROFILES, model, profile)
         monkeypatch.setattr(
             effect_contracts,

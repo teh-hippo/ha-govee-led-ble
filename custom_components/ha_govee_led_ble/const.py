@@ -118,6 +118,7 @@ class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
     command_grammar: str | None = None
+    command_ack_grammar: str | None = None
     # None retains the grammar's shipped operations; a set restricts physical writes.
     command_operations: frozenset[str] | None = None
     status_grammar: str | None = None
@@ -128,6 +129,8 @@ class ModelProfile:
     colour_mode_query_selector: int = 0
     # Effect semantics require evidence independent of basic command compatibility.
     effect_grammar: str | None = None
+    # None permits the exact-SKU workflow ceiling; a set narrows it for this device.
+    effect_workflows: frozenset[str] | None = None
     video_grammar: str | None = None
     dreamview_grammar: str | None = None
     dreamview_operations: frozenset[str] = frozenset()
@@ -191,6 +194,8 @@ class ModelProfile:
     scene_catalogue_sku: str | None = None
     legacy_scene_catalogue_sku: str | None = None
     selector_only_scene_bits: int | None = None
+    scene_codes: frozenset[int] | None = None
+    local_scenes: tuple[tuple[int, str], ...] = ()
     advanced_scene_carrier: tuple[int, int] | None = None
     advanced_diy_selector: int | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
@@ -710,6 +715,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H6125 LED Strip",
         support_quality=SupportQuality.EXPERIMENTAL,
         command_grammar="H617A",
+        command_ack_grammar="H6125",
         status_grammar="H6125",
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         effect_grammar="H617A",
@@ -732,6 +738,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_color_temperature=True,
         supports_custom_effects=True,
         supports_scenes=True,
+        supports_advanced_effects=True,
         supports_multi_layered_effects=True,
         music_modes=(
             "energetic",
@@ -748,21 +755,25 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         music_variants=H6125_MUSIC_VARIANTS,
         supports_music_color=True,
-        # The Govee app lists fifty ICs for this SKU, and its firmware reports the same count at boot.
+        # Exact-SKU declared geometry, separate from connection-scoped measurements.
         physical_ic_count=50,
         whole_device_mask=0x7FFF,
         segment_count=15,
         segment_group_size=3,
         supports_segment_writes=True,
         supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
         connection_idle_timeout=3.0,
         scene_catalogue_sku="H6125",
+        local_scenes=((249, "Work"),),
         effect_readback="diy_code_only",
         # The app writes the latest Type04 upload through this slot on the pact-1 route.
         a1_diy_selector=0xFE,
+        advanced_diy_selector=402,
         # MultipleController4Music uploads the companion before the selector and waits for its acknowledgement.
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
+        diy_requires_upload_ack=True,
     ),
     "H6179": ModelProfile(
         "H6179 RGB TV Backlight",
@@ -898,7 +909,7 @@ H6199_PACT1_PROFILE = ModelProfile(
 )
 
 
-# Other H6125 controller generations answer only the shared power and identity frames.
+# Unresolved revisions authorise only the independently shared bootstrap operations.
 H6125_POWER_ONLY_PROFILE = ModelProfile(
     "H6125 (power only)",
     command_grammar="H617A",
@@ -913,25 +924,82 @@ H6125_POWER_ONLY_PROFILE = ModelProfile(
 def _h6125_profile(
     pact_type: int | None, pact_code: int | None, firmware: str | None, hardware: str | None
 ) -> ModelProfile:
-    """Admit only pact 1 firmware 1.07.00+ on three-part hardware 1.00.03+; the register range follows hardware."""
+    """Resolve independently gated H6125 controls from the controller's full identity."""
     from .firmware_version import FirmwareVersion
-    from .generated_protocol_adapter import h6125_outbound_transform
+    from .generated_protocol_adapter import (
+        H6125IntermediateStatusReply,
+        H6125LegacyStatusReply,
+        h6125_outbound_transform,
+    )
 
     fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-    if (
-        pact_type != 1
-        or pact_code not in (1, 2)
-        or fw is None
-        or hw is None
-        or fw < FirmwareVersion((1, 7))
-        or not FirmwareVersion((1, 0, 3)) <= hw < FirmwareVersion((2,))
-    ):
+    if pact_code not in (1, 2) or fw is None or hw is None:
         return H6125_POWER_ONLY_PROFILE
-    wire_range = (6, 254) if hw < FirmwareVersion((1, 0, 4)) else (20, 254)
+    hardware_family = hw.identity_number() // 10000
+    firmware_family = fw.identity_number() // 10000
+    if hardware_family != firmware_family:
+        return H6125_POWER_ONLY_PROFILE
+    profile = MODEL_PROFILES["H6125"]
+    if pact_type == 10:
+        bk = hardware is not None and hardware.startswith("2.01.")
+        frk = hardware_family == 3 and hardware is not None and not hardware.startswith("3.04.")
+        if not (bk or frk):
+            return H6125_POWER_ONLY_PROFILE
+        expanded_music = fw >= FirmwareVersion((2, 4) if bk else (3, 1))
+        return replace(
+            profile,
+            status_grammar="H6125-modern",
+            music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
+            a1_diy_selector=None,
+            static_readback_gradual=True,
+            supports_segment_color_temperature=True,
+            boolean_controls=frozenset({"gradual"}),
+        )
+    if pact_type != 1 or hardware_family != 1:
+        return H6125_POWER_ONLY_PROFILE
+    extended_colour = hw >= FirmwareVersion((1, 0, 3)) and fw >= FirmwareVersion((1, 6))
+    original_music = fw < FirmwareVersion((1, 3, 1))
+    expanded_music = fw >= FirmwareVersion((1, 7))
+    uploaded_scenes = not original_music and (pact_code == 2 or fw >= FirmwareVersion((1, 4)))
+    wire_range = (6, 254) if original_music or hw < FirmwareVersion((1, 0, 4)) else (20, 254)
+    workflows = frozenset({"native_music", "native_scenes", "single", "multi"})
+    if uploaded_scenes:
+        workflows |= {"edited_palette_scenes", "layered_scenes", "advanced", "workshop"}
+    if extended_colour:
+        workflows |= {"native_scenes", "edited_palette_scenes", "layered_scenes", "painted", "advanced", "workshop"}
     return replace(
-        MODEL_PROFILES["H6125"],
+        profile,
+        status_grammar="H6125" if extended_colour else "H6125-legacy" if original_music else "H6125-intermediate",
+        effect_workflows=workflows,
+        music_modes=profile.music_modes if expanded_music else profile.music_modes[:4],
+        music_variants=tuple(
+            replace(variant, supports_style=False) if original_music and variant.mode_code == 3 else variant
+            for variant in profile.music_variants
+        ),
+        supports_color_temperature=extended_colour,
+        static_readback_kelvin=extended_colour,
+        static_readback_zero_kelvin_is_rgb=extended_colour,
+        supports_segment_brightness=extended_colour,
+        supports_segment_color_temperature=extended_colour,
+        segment_group_size=3 if extended_colour else 4,
+        supports_scenes=True,
+        supports_advanced_effects=uploaded_scenes,
+        advanced_diy_selector=profile.advanced_diy_selector if uploaded_scenes else None,
+        selector_only_scene_bits=None if uploaded_scenes else 8,
+        scene_codes=None
+        if uploaded_scenes
+        else frozenset(
+            int(scene)
+            for scene in (
+                H6125LegacyStatusReply.SceneMode if original_music else H6125IntermediateStatusReply.SceneMode
+            )
+        ),
+        static_readback_gradual=True,
+        boolean_controls=frozenset({"gradual"}),
         brightness_wire_range=wire_range,
-        outbound_transform=h6125_outbound_transform(wire_range),
+        outbound_transform=h6125_outbound_transform(
+            wire_range, legacy_colour=not extended_colour, legacy_music=original_music
+        ),
     )
 
 

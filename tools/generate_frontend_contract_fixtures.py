@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
@@ -52,7 +52,10 @@ from custom_components.ha_govee_led_ble.effect_preview import (
 )
 from custom_components.ha_govee_led_ble.effect_scenes import scene_catalogue_payload, scene_detail_payload
 from custom_components.ha_govee_led_ble.effect_storage import LibrarySnapshot
-from custom_components.ha_govee_led_ble.effect_websocket_payloads import library_snapshot_payload
+from custom_components.ha_govee_led_ble.effect_websocket_payloads import (
+    device_catalogue_settings,
+    library_snapshot_payload,
+)
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -77,6 +80,31 @@ CONTENT_FAMILIES = {
     "scene_layered",
     "future_wave",
 }
+
+
+def _device_payload(model: str, profile: ModelProfile, config_entry_id: str) -> dict[str, Any]:
+    device = device_effect_capabilities(
+        config_entry_id,
+        model,
+        profile.name,
+        profile.segment_count,
+        light_entity_id="light.h617a_main" if model == "H617A" else None,
+        physical_ic_count=profile.physical_ic_count,
+        profile=profile,
+    ).to_dict()
+    device.update(device_catalogue_settings(model, profile=profile))
+    device["active_state"] = None
+    device["preview_health"] = PreviewHealthStatus(
+        config_entry_id=config_entry_id,
+        revision=1,
+        phase=PreviewHealthPhase.HEALTHY,
+        incident_id=None,
+        error_code=None,
+        error_message=None,
+        write_disposition=PreviewWriteDisposition.COMPLETED,
+        checked_at=TIMESTAMP,
+    ).to_dict()
+    return device
 
 
 def _painted_segments() -> tuple[tuple[int, int, int] | None, ...]:
@@ -287,24 +315,8 @@ def rendered_data() -> str:
     library_snapshot = LibrarySnapshot((item, scene_item, h6179_diy_item, h6179_music_item))
     devices = []
     for model in MODELS:
-        device = device_effect_capabilities(
-            f"{model.lower()}-main",
-            model,
-            MODEL_PROFILES[model].name,
-            MODEL_PROFILES[model].segment_count,
-            light_entity_id="light.h617a_main" if model == "H617A" else None,
-        ).to_dict()
+        device = _device_payload(model, MODEL_PROFILES[model], f"{model.lower()}-main")
         device["active_state"] = active_state.to_public_dict() if model == "H617A" else None
-        device["preview_health"] = PreviewHealthStatus(
-            config_entry_id=f"{model.lower()}-main",
-            revision=1,
-            phase=PreviewHealthPhase.HEALTHY,
-            incident_id=None,
-            error_code=None,
-            error_message=None,
-            write_disposition=PreviewWriteDisposition.COMPLETED,
-            checked_at=TIMESTAMP,
-        ).to_dict()
         devices.append(device)
     document = {
         "schema_version": 1,
@@ -319,6 +331,13 @@ def rendered_data() -> str:
             "scene_details": scene_details,
         },
         "content_samples": _content_samples(catalogue, scene_details),
+        "device_profile_samples": {
+            name: _device_payload("H6125", profile, f"h6125-{name}")
+            for name, profile in (
+                ("original", device_profile("H6125", 1, 1, firmware="1.00.11", hardware="1.00.01")),
+                ("modern", device_profile("H6125", 10, 2, firmware="3.04.37", hardware="3.01.10")),
+            )
+        },
     }
     return f"{json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True)}\n"
 

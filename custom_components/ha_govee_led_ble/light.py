@@ -422,7 +422,11 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             attrs["unknown_scene_code"] = scene_code
         if self.coordinator.profile.supports_segments:
             attrs["segment_colors"] = [list(color) for color in self.coordinator.segment_colors]
-            attrs["segment_brightness"] = list(self.coordinator.segment_brightness)
+            attrs["segment_brightness"] = (
+                list(self.coordinator.segment_brightness)
+                if self.coordinator.profile.supports_segment_brightness or self.coordinator.segment_brightness_readable
+                else None
+            )
             attrs["segment_state_source"] = self.coordinator.segment_state_source
         return attrs
 
@@ -776,7 +780,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 translation_placeholders={"effect": effect_name},
             ) from exc
         if selected is not None and selected.source == "scene":
-            require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES)
+            require_effect_route(coordinator.model, CapabilityWorkflow.NATIVE_SCENES, profile=coordinator.profile)
             scene = MODEL_SCENES[coordinator.model][selected.value]
             scene_default = (
                 scene_default_for(
@@ -794,6 +798,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 scene,
                 speed_index=scene_default.speed_index if scene_default is not None else None,
                 canonical_body=scene_default.canonical_body if scene_default is not None else None,
+                profile=coordinator.profile,
             )
             return partial(
                 coordinator._async_apply_native_scene_locked,
@@ -966,7 +971,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 compiled = compile_application(
                     current,
                     self.coordinator.model,
-                    diy_code=resolve_diy_code(current, diy_code, model=self.coordinator.model),
+                    diy_code=resolve_diy_code(
+                        current, diy_code, model=self.coordinator.model, profile=self.coordinator.profile
+                    ),
                     profile=self.coordinator.profile,
                 )
                 if isinstance(compiled, CompiledVideoProfile):
