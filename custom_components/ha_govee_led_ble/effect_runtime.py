@@ -17,6 +17,7 @@ from .effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
 )
+from .effect_catalogue import requires_approved_diy_slot
 from .effect_compiler import (
     ActivationMode,
     CompiledApplication,
@@ -494,7 +495,7 @@ class EffectDeploymentEngine:
                         require_video_mode(coordinator.profile, coordinator)
                         require_video_controls(coordinator.profile, coordinator, requested_video_controls(compiled))
                     refreshed = await self._async_prepare_prior_state(coordinator, compiled)
-                    _validate_h6179_diy_approval(coordinator, compiled)
+                    _validate_diy_slot_approval(coordinator, compiled)
                     validate_compiled_geometry(compiled, coordinator.profile)
                     self._reconcile_observation(
                         coordinator,
@@ -574,12 +575,17 @@ class EffectDeploymentEngine:
                         a1_activation = compiled.activation_packet if compiled.upload_transport == "a1_02" else None
                         if a1_activation is not None:
                             ack_options["final_packet"] = a1_activation
+
+                        def validate_effect_write() -> None:
+                            validate_compiled_geometry(compiled, coordinator.profile)
+                            _validate_diy_slot_approval(coordinator, compiled)
+
                         await coordinator.async_write_effect_sequence(
                             compiled.upload_packets if a1_activation is not None else compiled.packets,
                             intent=ControlIntent.APPLY,
                             attempt_started=attempt_started,
                             progress=record_sequence_progress,
-                            write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                            write_guard=validate_effect_write,
                             **ack_options,
                         )
                     else:
@@ -914,38 +920,7 @@ class EffectDeploymentEngine:
         coordinator: GoveeBLECoordinator,
         compiled: CompiledApplication,
     ) -> bool:
-        profile = coordinator.profile
-        refreshed = False
-        if profile.state_readable:
-            revisions = getattr(coordinator, "_field_revisions", {})
-            baselines = {
-                field: revisions.get(field, 0)
-                for field, readable in (
-                    ("is_on", profile.can_read(ReadDomain.POWER)),
-                    ("brightness_pct", profile.can_read(ReadDomain.BRIGHTNESS)),
-                    ("color_mode", profile.supports_color_mode_readback),
-                )
-                if readable and hasattr(coordinator, "_field_revisions")
-            }
-            refreshed = (
-                await coordinator.refresh_state(
-                    refresh_all=True,
-                    required_domains=profile.read_domains
-                    & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
-                )
-                is True
-            )
-            if not refreshed or any(
-                coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
-            ):
-                raise RuntimeError("Could not read the current power, mode and brightness before applying the effect")
-            if (
-                profile.supports_segments
-                and profile.can_read(ReadDomain.SEGMENTS)
-                and _coordinator_mode(coordinator) in {"colour", "off"}
-                and await coordinator.async_refresh_segments() is not True
-            ):
-                raise RuntimeError("Could not read the current segment layout before applying the effect")
+        refreshed = await async_prepare_effect_control_state(coordinator, require_restorable_static=False)
         if not isinstance(compiled, CompiledVideoProfile):
             return refreshed
         profile = coordinator.profile
@@ -1307,6 +1282,8 @@ def active_workspace_matches(
         identity = (content.template.scene_id, content.template.effect_id)
     elif isinstance(content, LayeredEffect):
         if content.native_diy is not None:
+            if requires_approved_diy_slot(workspace.model):
+                return coordinator.diy_code is not None
             return getattr(coordinator, "scene_code", None) == content.native_diy
         if coordinator.profile.advanced_diy_selector is not None:
             return getattr(coordinator, "scene_code", None) == coordinator.profile.advanced_diy_selector
@@ -1374,6 +1351,87 @@ def _coordinator_mode(coordinator: GoveeBLECoordinator) -> str:
     if getattr(coordinator, "video_mode", "off") not in (None, "off"):
         return "video"
     return "colour"
+
+
+async def async_prepare_effect_control_state(
+    coordinator: GoveeBLECoordinator,
+    *,
+    require_restorable_static: bool,
+) -> bool:
+    """Refresh ordinary prior state, optionally requiring a lossless static restore."""
+    profile = coordinator.profile
+    capture = getattr(coordinator, "capture_effect_control_state", None)
+    prior = capture() if require_restorable_static and capture is not None else None
+    prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
+    if require_restorable_static:
+        if prior_mode not in {"colour", "unknown"}:
+            return True
+        if profile.segment_colour_mode_ambiguous:
+            raise RuntimeError("The current per-bulb RGB or white intent cannot be safely restored after preview")
+        if not profile.configured_string_counts:
+            return True
+        if (
+            not profile.supports_segments
+            or not profile.can_read(ReadDomain.SEGMENTS)
+            or await coordinator.async_refresh_segments() is not True
+        ):
+            raise RuntimeError("Could not read a restorable current segment layout before preview")
+        prior = capture() if capture is not None else None
+        colours = (
+            prior.segment_colors
+            if isinstance(prior, PriorControlState)
+            else tuple(coordinator.segment_colors)
+            if getattr(coordinator, "segment_state_source", None) == "observed"
+            else None
+        )
+        brightness = (
+            prior.segment_brightness
+            if isinstance(prior, PriorControlState)
+            else tuple(coordinator.segment_brightness)
+            if getattr(coordinator, "segment_state_source", None) == "observed"
+            else None
+        )
+        if (
+            colours is None
+            or brightness is None
+            or len(colours) != profile.segment_count
+            or len(brightness) != profile.segment_count
+        ):
+            raise RuntimeError("The current segment layout is incomplete and cannot be safely restored after preview")
+        return True
+    if not profile.state_readable:
+        return False
+    revisions = getattr(coordinator, "_field_revisions", {})
+    baselines = {
+        field: revisions.get(field, 0)
+        for field, readable in (
+            ("is_on", profile.can_read(ReadDomain.POWER)),
+            ("brightness_pct", profile.can_read(ReadDomain.BRIGHTNESS)),
+            ("color_mode", profile.supports_color_mode_readback),
+        )
+        if readable and hasattr(coordinator, "_field_revisions")
+    }
+    refreshed = (
+        await coordinator.refresh_state(
+            refresh_all=True,
+            required_domains=profile.read_domains
+            & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
+        )
+        is True
+    )
+    if not refreshed or any(
+        coordinator._field_revisions.get(field, 0) <= baseline for field, baseline in baselines.items()
+    ):
+        raise RuntimeError("Could not read the current power, mode and brightness before applying the effect")
+    if (
+        profile.supports_segments
+        and profile.can_read(ReadDomain.SEGMENTS)
+        and _coordinator_mode(coordinator) in {"colour", "off"}
+        and await coordinator.async_refresh_segments() is not True
+        and not profile.configured_string_counts
+    ):
+        raise RuntimeError("Could not read the current segment layout before applying the effect")
+    return True
 
 
 def compiled_observation(
@@ -1497,16 +1555,18 @@ def _record_signature(record: DeploymentRecord, model: str) -> str | None:
     return None
 
 
-def _validate_h6179_diy_approval(
+def _validate_diy_slot_approval(
     coordinator: GoveeBLECoordinator,
     compiled: CompiledApplication,
 ) -> None:
-    if not isinstance(compiled, CompiledEffect) or compiled.model != "H6179":
-        return
-    if compiled.content_kind not in {"h6179_single_diy", "h6179_mixed_diy"}:
+    if (
+        not isinstance(compiled, CompiledEffect)
+        or compiled.selector_kind != "diy"
+        or not requires_approved_diy_slot(compiled.model)
+    ):
         return
     if coordinator.diy_code != compiled.diy_code:
-        raise ValueError("approved H6179 disposable DIY code is no longer selected")
+        raise ValueError("approved disposable DIY code is no longer selected")
 
 
 def _activation_matches(

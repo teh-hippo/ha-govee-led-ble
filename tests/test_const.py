@@ -147,31 +147,23 @@ def test_register_range_requires_the_transform_that_encodes_it():
         ModelProfile("x", brightness_wire_range=(0, 254), outbound_transform=lambda packet: packet)
 
 
-def test_h7020_profile_is_basic_percent_brightness_with_kelvin():
+def test_h7020_candidate_is_qualified_by_pact_not_guessed_firmware():
     profile = MODEL_PROFILES["H7020"]
-    assert profile.support_quality is SupportQuality.PARTIAL
+    assert profile.support_quality is SupportQuality.EXPERIMENTAL
     assert "H7020" in BLE_DISCOVERABLE_MODELS
-    assert profile.command_grammar == profile.status_grammar == "H617A"
-    assert profile.command_operations == {"power", "brightness", "static"}
-    assert profile.read_domains == {
-        ReadDomain.POWER,
-        ReadDomain.BRIGHTNESS,
-        ReadDomain.FIRMWARE,
-        ReadDomain.HARDWARE,
-    }
+    assert profile.command_grammar == profile.status_grammar == "H7020"
+    assert profile.effect_grammar == "H617A"
     assert profile.setup_required_read_domains == {ReadDomain.POWER}
-    # The device takes brightness as a percentage, so nothing re-encodes it.
     assert profile.brightness_wire_range is None and profile.outbound_transform is None
     assert profile.supports_rgb and profile.supports_color_temperature
-    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2300, 6700)
-    assert profile.whole_device_mask == 0x7FFF
-    assert not profile.supports_color_mode_readback
-    assert not profile.supports_custom_effects
-    assert not profile.supports_scenes
-    assert not profile.supports_music_mode
-    assert not profile.supports_segments
-    assert profile.effect_grammar is None
-    assert device_profile("H7020", 1, 1) is profile
+    assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2000, 9000)
+    for pact in (1, 2):
+        assert device_profile("H7020", pact, 1) is profile
+    for pact, code in ((None, None), (1, 2), (3, 1)):
+        unknown = device_profile("H7020", pact, code)
+        assert unknown.command_operations == {"power", "brightness"}
+        assert not unknown.supports_segments and not unknown.supports_music_mode
+        assert not unknown.boolean_controls and not unknown.configured_string_counts
 
 
 def test_h6076_profile_is_basic_and_fail_closed_until_identity_qualifies_music():

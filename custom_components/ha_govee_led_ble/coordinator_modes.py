@@ -21,7 +21,12 @@ from .music_commands import (
     prepare_music_profile_writes,
 )
 from .music_protocol import music_code_for, music_mode_supports_style
-from .music_semantics import music_parameters_depend_on_ic, music_params_for_mode, music_variant
+from .music_semantics import (
+    music_parameters_depend_on_ic,
+    music_params_for_mode,
+    music_variant,
+    retained_music_selector_parameters,
+)
 from .native_profile_controls import ProfileWriter
 from .native_scenes import build_native_scene_packets
 from .scenes import MODEL_SCENES, SceneEntry, canonical_scene_key, scene_selector_code
@@ -270,7 +275,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             self.music_sensitivity,
             color,
             calm,
-            {},
+            retained_music_selector_parameters(self, mode_id, self.profile),
             include_parameters=include_parameters
             and (
                 palette is not None
@@ -427,12 +432,13 @@ class _ActiveModeMixin(_CoordinatorBase):
         )
 
     async def async_restore_pre_mode(self) -> None:
-        snap = self._pre_mode_snapshot
-        match snap.kind:
-            case "color_temp":
-                await self.send_command(build_color_temp(snap.kelvin, self.model, profile=self.profile))
-            case "white":
-                await self.send_command(build_white_brightness(snap.level, self.model))
-            case _:
-                await self.send_command(build_color_rgb(*snap.rgb, self.model, profile=self.profile))
-        self._enter_static_mode()
+        async with self.async_mask_transaction():
+            snap = self._pre_mode_snapshot
+            match snap.kind:
+                case "color_temp":
+                    await self.send_command(build_color_temp(snap.kelvin, self.model, profile=self.profile))
+                case "white":
+                    await self.send_command(build_white_brightness(snap.level, self.model))
+                case _:
+                    await self.send_command(build_color_rgb(*snap.rgb, self.model, profile=self.profile))
+            self._enter_static_mode()

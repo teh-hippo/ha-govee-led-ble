@@ -80,6 +80,8 @@ async def async_get_config_entry_diagnostics(
         "supports_white_brightness": coordinator.profile.supports_white_brightness,
         "supports_segments": coordinator.profile.supports_segments,
         "segment_count": coordinator.profile.segment_count,
+        "configured_strings": coordinator.configured_strings,
+        "configured_strings_confirmed": coordinator._configured_strings_confirmed,
         "light_count_observation": _light_count_observation(packet_log, coordinator.model),
         "connection_mode": coordinator.connection_mode,
         "advertisement_present": coordinator._present,

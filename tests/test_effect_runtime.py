@@ -23,8 +23,10 @@ from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H6199_PALETTE_DIY_APPLY_CODE,
     WORKSHOP_PROTOCOL_FIXTURES,
+    resolve_catalogue_template,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import (
+    CompiledEffect,
     compile_application,
     compile_effect,
     compile_h617a,
@@ -54,6 +56,7 @@ from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
 from custom_components.ha_govee_led_ble.effect_runtime import (
     EffectDeploymentEngine,
     _activation_matches,
+    async_prepare_effect_control_state,
     compiled_observation,
     observable_signature_for_compiled,
     resolve_diy_code,
@@ -273,6 +276,48 @@ async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
     engine = EffectDeploymentEngine(EffectDeploymentRepository(InMemoryVersionedDocumentStore()))
     assert await engine._async_prepare_prior_state(coordinator, compile_h617a(_item(), 800))
     assert engine._capture_prior_state(coordinator, config_entry_id="entry-a").brightness_pct == 37
+    if mode in {"colour", "off"}:
+        coordinator.async_refresh_segments.assert_awaited_once()
+    else:
+        coordinator.async_refresh_segments.assert_not_awaited()
+
+
+async def test_preview_rejects_h7020_static_state_with_ambiguous_white_intent():
+    coordinator = _coordinator()
+    coordinator.model = "H7020"
+    coordinator.profile = replace(
+        get_profile("H7020"),
+        read_domains=get_profile("H7020").read_domains | {ReadDomain.SEGMENTS},
+        segment_count=30,
+        configured_string_counts=(1, 2),
+        bulbs_per_string=15,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+    )
+    coordinator.active_mode = "colour"
+    coordinator.segment_colors = [(1, 2, 3)] * 30
+    coordinator.segment_brightness = [100] * 30
+
+    async def refresh_segments():
+        coordinator.segment_state_source = "observed"
+        return True
+
+    coordinator.async_refresh_segments.side_effect = refresh_segments
+    with pytest.raises(RuntimeError, match="RGB or white intent"):
+        await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
+    coordinator.async_refresh_segments.assert_not_awaited()
+
+
+async def test_h7020_topology_independent_apply_does_not_require_segment_snapshot():
+    coordinator = _coordinator()
+    coordinator.model = "H7020"
+    coordinator.profile = get_profile("H7020")
+    coordinator.active_mode = "colour"
+    coordinator.async_refresh_segments.return_value = False
+
+    assert await async_prepare_effect_control_state(coordinator, require_restorable_static=False)
+    coordinator.async_refresh_segments.assert_awaited_once()
 
 
 async def test_truthy_mock_is_not_successful_preflight():
@@ -470,6 +515,79 @@ def _profile_coordinator(model: str):
     coordinator.music_daynight_speed = 10
     coordinator.music_daynight_gradient = False
     return coordinator
+
+
+@pytest.mark.parametrize(
+    ("model", "name", "code"),
+    [("H7020", "Twilight", 2070), ("H6179", "Sunrise", 0)],
+)
+async def test_scene_snapshot_does_not_require_disposable_diy_slot(model: str, name: str, code: int) -> None:
+    coordinator = _profile_coordinator(model)
+    coordinator.effect = "existing"
+    coordinator.diy_code = None
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
+    entry = next(scene for scene in SCENE_ENTRIES[model] if scene.name == name and scene.code == code)
+    item = LibraryItem.new(
+        name,
+        BuiltinScene(CatalogueRef(model, entry.scene_id, entry.effect_id)),
+    )
+    compiled = compile_application(item, model)
+    assert isinstance(compiled, CompiledEffect)
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+
+    result = await EffectDeploymentEngine(repository).async_apply_snapshot(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-10-21T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert coordinator.send_command.await_count == len(compiled.packets)
+
+
+@pytest.mark.parametrize("template_id", [17, 18, 19])
+async def test_h7020_native_template_snapshot_uses_custom_capability(template_id: int) -> None:
+    coordinator = _profile_coordinator("H7020")
+    coordinator.diy_code = 321
+    coordinator.effect = "existing"
+    coordinator.async_observe_effect = AsyncMock(return_value=True)
+    template = resolve_catalogue_template("H7020", f"template:native-diy:{template_id}")
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+
+    result = await EffectDeploymentEngine(repository).async_apply_snapshot(
+        coordinator,
+        LibraryItem.new(template.label, template.content),
+        config_entry_id="entry-a",
+        updated_at="2026-10-21T00:00:00Z",
+        diy_code=321,
+    )
+
+    assert result.phase is DeploymentPhase.CONFIRMED
+    assert result.diy_code == 321
+    assert coordinator.send_command.await_count > 1
+
+
+async def test_h7020_native_template_snapshot_rejects_changed_approved_slot() -> None:
+    coordinator = _profile_coordinator("H7020")
+    coordinator.diy_code = 320
+    coordinator.effect = "existing"
+    template = resolve_catalogue_template("H7020", "template:native-diy:17")
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+
+    with pytest.raises(ValueError, match="approved disposable DIY code"):
+        await EffectDeploymentEngine(repository).async_apply_snapshot(
+            coordinator,
+            LibraryItem.new(template.label, template.content),
+            config_entry_id="entry-a",
+            updated_at="2026-10-21T00:00:00Z",
+            diy_code=321,
+        )
+
+    coordinator.send_command.assert_not_awaited()
 
 
 class YieldingVersionedDocumentStore(InMemoryVersionedDocumentStore):

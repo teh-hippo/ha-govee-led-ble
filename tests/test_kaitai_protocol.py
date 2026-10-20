@@ -138,6 +138,83 @@ def _parse(root_type: type[Any], data: bytes) -> Any:
     return parsed
 
 
+@pytest.fixture
+def h7020_profile():
+    return get_profile("H7020")
+
+
+@pytest.mark.parametrize(
+    ("kelvin", "companion"),
+    [(2000, "ff8d0b"), (4000, "ffd5a1"), (4001, "000000"), (4099, "000000"), (9000, "d9e1ff")],
+)
+def test_h7020_kelvin_and_four_byte_masks(h7020_profile, kelvin, companion):
+    from custom_components.ha_govee_led_ble.light_commands import parse_static_write
+
+    for mask in (0x7FFF, 0x3FFFFFFF):
+        profile = replace(h7020_profile, whole_device_mask=mask, segment_count=mask.bit_count())
+        packet = build_color_temp(kelvin, "H7020", profile=profile)
+        expected = b"\x33\x05\x15\x01\xff\xff\xff" + kelvin.to_bytes(2, "big")
+        expected += bytes.fromhex(companion) + mask.to_bytes(4, "little") + bytes(3)
+        assert packet == expected + bytes([xor_checksum(expected)])
+        static = parse_static_write(packet, profile=profile)
+        assert static is not None and static.whole_strip
+        assert static.kelvin == kelvin and static.rgb is None
+        assert static.kelvin_companion_rgb == tuple(bytes.fromhex(companion))
+        generated_protocol_adapter.require_profile_packet(packet, profile)
+
+
+def test_h7020_mask_bounds_preserve_legacy_encoding(h7020_profile):
+    from custom_components.ha_govee_led_ble.light_commands import build_segment_color, parse_static_write
+
+    packet = build_segment_color([1, 16, 30], 1, 2, 3, profile=h7020_profile)
+    parsed = parse_static_write(packet, profile=h7020_profile)
+    assert parsed is not None and parsed.segment_mask == 0x20008001
+    generated_protocol_adapter.require_profile_packet(packet, h7020_profile)
+    fifteen = replace(h7020_profile, segment_count=15, whole_device_mask=0x7FFF)
+    assert build_color_rgb(1, 2, 3, profile=fifteen) == build_color_rgb(1, 2, 3, "H617A")
+    with pytest.raises(ValueError, match="geometry"):
+        generated_protocol_adapter.require_profile_packet(packet, fifteen)
+    with pytest.raises(ValueError, match="out of range"):
+        build_segment_color([31], 1, 2, 3, profile=h7020_profile)
+
+
+def test_h7020_configuration_and_paged_roots(h7020_profile):
+    adapter = generated_protocol_adapter
+    assert adapter.build_colour_mode_query(profile=h7020_profile) == bytes.fromhex(
+        "aa050100000000000000000000000000000000ae"
+    )
+    query = adapter.build_configured_strings_query(h7020_profile)
+    assert query == bytes.fromhex("aa0f0000000000000000000000000000000000a5")
+    command = adapter.build_configured_strings(2, h7020_profile)
+    assert command == bytes.fromhex("330f02000000000000000000000000000000003e")
+    for count in (0, 3, True):
+        with pytest.raises(ValueError):
+            adapter.build_configured_strings(count, h7020_profile)
+    raw = bytes.fromhex("aa0f02") + bytes(range(16))
+    parsed = adapter.parse_status(raw + bytes([xor_checksum(raw)]), profile=h7020_profile)
+    assert parsed.body.count == 2 and parsed.body.unknown_tail == bytes(range(16))
+    raw = bytes.fromhex("aaa50a250102032604050627070809aabbccdd")
+    parsed = adapter.parse_status(raw + bytes([xor_checksum(raw)]), profile=h7020_profile)
+    assert parsed.body.group == 10 and parsed.body.num_segments == 3
+    assert parsed.body.unused == [0xAA, 0xBB, 0xCC, 0xDD]
+    assert [segment.brightness for segment in parsed.body.segments] == [37, 38, 39]
+    for group in (0, 11):
+        with pytest.raises(ValueError):
+            adapter.build_segment_query(group, profile=h7020_profile)
+
+
+def test_h7020_power_memory_ack_is_not_state(h7020_profile):
+    adapter = generated_protocol_adapter
+    packet = adapter.build_boolean_control("power_off_memory", True, "H7020", profile=h7020_profile)
+    assert packet == bytes.fromhex("3341010000000000000000000000000000000073")
+    reply = bytes.fromhex("aa410100000000000000000000000000000000ea")
+    parsed = adapter.parse_status(reply, profile=h7020_profile)
+    assert adapter.parse_boolean_control(parsed, "H7020", profile=h7020_profile) == {"power_off_memory": True}
+    ack = bytes.fromhex("3341000000000000000000000000000000000072")
+    assert adapter.parse_status(ack, profile=h7020_profile) is None
+    assert adapter.parse_command_ack_result(ack, "H7020", profile=h7020_profile).parsed.is_success
+
+
 @pytest.mark.parametrize("selector", [0, 1])
 def test_shared_colour_mode_query_selectors(selector: int) -> None:
     packet = generated_protocol_adapter.build_colour_mode_query(selector=selector)

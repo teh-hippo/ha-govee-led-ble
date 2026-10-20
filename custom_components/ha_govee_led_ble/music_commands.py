@@ -18,8 +18,10 @@ from .music_protocol import music_code_for, music_codebook, music_mode_has_param
 from .music_semantics import (
     COMPANION_MUSIC_LAYOUTS,
     compile_music_parameters,
+    encode_music_selector_parameters,
+    music_body_params_for_mode,
     music_parameters_available,
-    music_params_for_mode,
+    music_selector_params_for_mode,
     music_variant,
     retained_music_profile,
 )
@@ -41,7 +43,11 @@ def build_music_params(
     variant = music_variant(profile, mode)
     compiled = compile_music_parameters(parameters, mode, profile)
     if variant is None or variant.layout is None:
-        if compiled or palette is not None or (variant is not None and (variant.template or variant.parameters)):
+        if (
+            any(spec.profile_key in compiled for spec in (() if variant is None else variant.parameters))
+            or palette is not None
+            or (variant is not None and (variant.template or variant.parameters))
+        ):
             raise ValueError("music parameter layout is unqualified")
         return []
     if not music_parameters_available(profile, variant):
@@ -74,6 +80,7 @@ def prepare_music_request(
         raise ValueError(f"{model} does not support music mode {mode}")
     mode_code = music_code_for(model, mode, profile=profile)
     variant = music_variant(profile, mode_code)
+    compiled = compile_music_parameters(parameters, mode_code, profile)
     if palette is not None and (variant is None or variant.palette_bounds is None):
         raise ValueError("music mode does not support an authored palette")
     if palette is not None and not include_parameters:
@@ -85,7 +92,16 @@ def prepare_music_request(
         if include_parameters and music_mode_has_parameter_write(model, mode_code, profile=profile)
         else []
     )
-    selector = build_music_mode(mode_code, sensitivity, colour, calm, model, profile=profile)
+    selector_parameters = encode_music_selector_parameters(compiled, mode_code, profile)
+    selector = build_music_mode(
+        mode_code,
+        sensitivity,
+        colour,
+        calm,
+        model,
+        profile=profile,
+        **({"selector_parameters": selector_parameters} if selector_parameters else {}),
+    )
     control = (*companion, selector) if profile.music_upload_before_selector else (selector, *companion)
     return (build_power(True, model), *control)
 
@@ -134,6 +150,8 @@ def prepare_music_profile_writes(
 ) -> tuple[tuple[bytes, dict[str, Any]], ...]:
     """Pair validated packets with retained state installed at their physical attempt."""
     profile = get_profile(model) if profile is None else profile
+    mode_code = music_code_for(model, mode, profile=profile)
+    compiled = compile_music_parameters(parameters, mode_code, profile)
     if original_body is not None:
         if not include_parameters or palette is not None or parameters:
             raise ValueError("original music body cannot be combined with authored parameters")
@@ -164,8 +182,8 @@ def prepare_music_profile_writes(
         "video_mode": "off",
         "effect": None,
         "diy_code": None,
+        **{spec.key: compiled[spec.profile_key] for spec in music_selector_params_for_mode(mode_code, profile)},
     }
-    mode_code = music_code_for(model, mode, profile=profile)
     variant = music_variant(profile, mode_code)
     if variant and variant.layout in COMPANION_MUSIC_LAYOUTS:
         # New selectors carry neither style nor fixed colour, even without an upload.
@@ -175,8 +193,8 @@ def prepare_music_profile_writes(
         # Earlier fragments cannot complete the companion; a final attempt may.
         companion_index = len(packets) - 2 if profile.music_upload_before_selector else len(packets) - 1
         states[companion_index] = {
-            spec.key: parameters.get(spec.profile_key, spec.default)
-            for spec in music_params_for_mode(mode_code, profile)
+            spec.key: compiled[spec.profile_key]
+            for spec in music_body_params_for_mode(mode_code, profile)
             if original_body is None
         }
         if original_body is None and variant and variant.supports_style:
@@ -187,7 +205,7 @@ def prepare_music_profile_writes(
             if original_body is not None
             else encode_music_parameters(
                 variant,
-                compile_music_parameters(parameters, mode_code, profile),
+                compiled,
                 palette=None if palette is None else list(palette),
                 calm=calm,
                 physical_ic_count=profile.physical_ic_count,

@@ -1800,8 +1800,8 @@ def test_registers_light_services_during_integration_setup():
 
 def test_segment_service_schema_preserves_integer_strings_only():
     schema = vol.Schema(_SEGMENTS)
-    assert schema(["1", "15", 2, "2"]) == [1, 15, 2, 2]
-    for invalid in ([], [0], [16], [True], [False], [1.5], [1.0], ["1.5"]):
+    assert schema(["1", "15", 2, "2", "30"]) == [1, 15, 2, 2, 30]
+    for invalid in ([], [0], [33], [True], [False], [1.5], [1.0], ["1.5"]):
         with pytest.raises(vol.Invalid):
             schema(invalid)
 

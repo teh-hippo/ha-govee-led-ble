@@ -128,6 +128,9 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     if (this.content.layers.length === 0) {
       return this.renderEmptyLayers();
     }
+    if (this.content.native_diy !== undefined && this.content.native_diy >= 17 && this.content.native_diy <= 19) {
+      return this.renderNativeDiy();
+    }
     const layer = this.activeLayer;
     const layerItems = advancedLayerItems(this.controller.layerLabels);
     const layerActions = advancedLayerActions(
@@ -642,6 +645,30 @@ export class GoveeAdvancedEffectEditor extends LitElement {
     const content = this.content!;
     const code = content.native_diy;
     if (code === undefined) return nothing;
+    if (code >= 17 && code <= 19) {
+      const palette = nativeDiyPalette(content);
+      const speed = code === 19
+        ? content.layers[0].colour_speed
+        : content.layers[0].selected_movement.speed;
+      return html`<section class="card">
+        <h3>${code === 17 ? "Spin 1" : code === 18 ? "Spin 2" : "Ribbon"} · Native DIY ${code}</h3>
+        <govee-palette-editor
+          .palette=${palette}
+          .minColours=${1}
+          .maxColours=${8}
+          .disabled=${this.disabled}
+          @palette-changed=${(event: CustomEvent<{ palette: RGB[] }>) =>
+            this.applyContentChange(updateNativeDiy(content, { palette: event.detail.palette }))}
+        ></govee-palette-editor>
+        ${renderNumberField(
+          "Template rate",
+          speed,
+          (nextSpeed) => this.applyContentChange(updateNativeDiy(content, { speed: nextSpeed })),
+          this.disabled,
+          { minimum: 150, maximum: code === 19 ? 253 : 250 },
+        )}
+      </section>`;
+    }
     const layers = content.layers;
     const names = ["Brilliant / Colorful", "Colorful Sky", "Meteor", "Meteor Shower", "Shine", "Bloom DIY", "Stack"];
     const change = (edit: NativeDiyEdit) => this.applyContentChange(updateNativeDiy(content, edit, this.physicalIcCount));

@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 from types import SimpleNamespace
@@ -5,7 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, supported_effect_categories
-from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
+from custom_components.ha_govee_led_ble.native_scenes import apply_scene_speed
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, _load_speed
 from tools.ble.refresh_scene_catalogues import SNAPSHOT_DIR, _snapshot_speed, build_snapshot
 
 
@@ -138,13 +140,13 @@ def test_snapshot_rejects_duplicate_vendor_identity():
         build_snapshot(raw, "H617A")
 
 
-def _speed_record(*, brightness_speed: int = 250):
+def _speed_record(*, colour_speed: int = 250, brightness_speed: int = 250):
     return SimpleNamespace(
         body=SimpleNamespace(
             num_brightness_blocks=1,
             selected_area_movement=SimpleNamespace(speed=250),
             overall_movement=SimpleNamespace(speed=250),
-            colour_speed=250,
+            colour_speed=colour_speed,
             brightness_blocks=[SimpleNamespace(brightness_speed=brightness_speed)],
         )
     )
@@ -191,7 +193,7 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
     with pytest.warns(UserWarning, match="does not reproduce the stored scene body"):
         assert _snapshot_speed(effect, "Stale default") is None
 
-    assert _snapshot_speed(effect, "Captured rewrite", allow_default_rewrite=True) == {
+    assert _snapshot_speed(effect, "Metadata default", metadata_default_applied=True) == {
         "default_index": 2,
         "pages": [
             {
@@ -200,6 +202,76 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
             }
         ],
     }
+
+
+def test_snapshot_uses_h7020_metadata_defaults_without_enabling_other_skus(monkeypatch):
+    monkeypatch.setattr(
+        "tools.ble.refresh_scene_catalogues._parse_scene_records",
+        lambda _param: [
+            _speed_record(colour_speed=81),
+            _speed_record(brightness_speed=221),
+        ],
+    )
+    effect = _speed_effect(
+        [
+            {"page": 0, "color": [188, 198, 220], "defaultIndex": 2},
+            {
+                "page": 1,
+                "bright": [{"brightPage": "0", "brightValue": [201, 204, 215]}],
+                "defaultIndex": 2,
+            },
+        ]
+    )
+    effect.update(
+        {
+            "scenceParamId": 5591,
+            "scenceName": "",
+            "specialEffect": [],
+        }
+    )
+    raw = {
+        "status": 200,
+        "data": {
+            "categories": [
+                {
+                    "categoryId": 223,
+                    "categoryName": "Festival",
+                    "scenes": [
+                        {
+                            "sceneId": 5041,
+                            "sceneName": "Halloween",
+                            "sceneType": 2,
+                            "lightEffects": [effect],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    h7020 = build_snapshot(raw, "H7020")["effects"][0]
+    unrelated = build_snapshot(raw, "H6199")["effects"][0]
+
+    assert h7020["speed"] == {
+        "default_index": 2,
+        "pages": [
+            {"page": 0, "colour_speed": [188, 198, 220]},
+            {
+                "page": 1,
+                "brightness": [{"block": 0, "values": [201, 204, 215]}],
+            },
+        ],
+    }
+    assert "speed" not in unrelated
+
+    raw["data"]["categories"][0]["scenes"][0]["sceneId"] = 5042
+    assert build_snapshot(raw, "H7020")["effects"][0]["speed"] == h7020["speed"]
+
+    speed_info = effect["speedInfo"]
+    assert isinstance(speed_info, dict)
+    speed_info["config"] = json.dumps([{"page": 2, "color": [188, 198, 220], "defaultIndex": 2}])
+    with pytest.warns(UserWarning, match="outside 2 records; omitting Speed"):
+        assert "speed" not in build_snapshot(raw, "H7020")["effects"][0]
 
 
 def test_h6102_candidate_uses_complete_exact_snapshot():
@@ -236,6 +308,12 @@ def test_h6102_candidate_uses_complete_exact_snapshot():
             "4e76c0bc2057f293ffa73f3540110fb9e978829c0f0d4edde62207a1912c8a35",
         ),
         (
+            "H7020",
+            4,
+            51,
+            "f2250fce00ca04ae9cee00526c358d98f25e38e0a87c708d6d1b21a5825f548b",
+        ),
+        (
             "H617E",
             12,
             240,
@@ -261,3 +339,40 @@ def test_committed_snapshot_scope(
     assert len(data["categories"]) == categories
     assert len(data["effects"]) == effects
     assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+
+
+def test_h7020_snapshot_preserves_the_scene_2983_default_rewrite_contract():
+    data = json.loads((SNAPSHOT_DIR / "H7020.json").read_text(encoding="utf-8"))
+    effect = next(effect for effect in data["effects"] if effect["code"] == 2983)
+
+    assert effect["param"] == (
+        "AiMAAAACAgI1FgHEFBQxFQPGFBQDURQC/38AiwD/AACAAACAACAAAggGAAH/AADdBgUA9AoD/zcHAAAAiwD/AACAAACAAA=="
+    )
+    assert effect["speed"] == {
+        "default_index": 2,
+        "pages": [
+            {"page": 0, "colour_speed": [188, 198, 220]},
+            {
+                "page": 1,
+                "brightness": [{"block": 0, "values": [201, 204, 215]}],
+            },
+        ],
+    }
+
+    speed = _load_speed(effect["speed"])
+    assert speed is not None
+    stored = base64.b64decode(effect["param"], validate=True)
+    rewritten = apply_scene_speed(stored, speed, speed.default_index)
+
+    assert base64.b64encode(rewritten).decode() == (
+        "AiMAAAACAgI1FgHEFBQxFQPGFBQD3BQC/38AiwD/AACAAACAACAAAggGAAH/AADXBgUA9AoD/zcHAAAAiwD/AACAAACAAA=="
+    )
+    changed = [
+        (index, before, after)
+        for index, (before, after) in enumerate(zip(stored, rewritten, strict=True))
+        if before != after
+    ]
+    assert changed == [
+        (21, 81, 220),
+        (47, 221, 215),
+    ]

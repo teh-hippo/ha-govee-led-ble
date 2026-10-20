@@ -30,6 +30,9 @@ h6179_command_write.py
 h6179_diy_body.py
 h6179_status_query.py
 h6179_status_reply.py
+h7020_command_write.py
+h7020_status_query.py
+h7020_status_reply.py
 h66a0_video_command.py
 h66a0_video_status.py
 h6199_command_write.py

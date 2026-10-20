@@ -1,4 +1,4 @@
-"""Revision-qualified H6199 installation and Gradient controls."""
+"""Profile-qualified native configuration controls."""
 
 from bleak.exc import BleakError
 from homeassistant.components.select import SelectEntity
@@ -27,13 +27,19 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: GoveeBLEConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator = entry.runtime_data
-    if coordinator.model != "H6199":
-        return
     added = False
+    strings_added = False
 
     def add_qualified() -> None:
-        nonlocal added
-        if not added and h6199_camera_controls_state(coordinator.model, coordinator) is CapabilityState.SUPPORTED:
+        nonlocal added, strings_added
+        if not strings_added and coordinator.profile.configured_string_counts:
+            strings_added = True
+            async_add_entities([GoveeBLEConfiguredStringsSelect(entry)])
+        if (
+            coordinator.model == "H6199"
+            and not added
+            and h6199_camera_controls_state(coordinator.model, coordinator) is CapabilityState.SUPPORTED
+        ):
             added = True
             async_add_entities([GoveeBLEControlSelect(entry, key) for key in _OPTIONS])
 
@@ -78,3 +84,34 @@ class GoveeBLEControlSelect(GoveeBLEEntity, SelectEntity):
                 await self.coordinator.async_set_h6199_control(self._control, self.options.index(option))
             except (BleakError, ValueError, TimeoutError) as err:
                 raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from err
+
+
+class GoveeBLEConfiguredStringsSelect(GoveeBLEEntity, SelectEntity):
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "configured_strings"
+
+    def __init__(self, entry: GoveeBLEConfigEntry) -> None:
+        super().__init__(entry.runtime_data)
+        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_configured_strings"
+        self._attr_device_info = self.coordinator.device_info
+
+    @property
+    def options(self) -> list[str]:
+        return [str(count) for count in self.coordinator.profile.configured_string_counts]
+
+    @property
+    def available(self) -> bool:
+        return bool(self.options) and super().available
+
+    @property
+    def current_option(self) -> str | None:
+        count = self.coordinator.configured_strings
+        return str(count) if count in self.coordinator.profile.configured_string_counts else None
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self.options:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
+        try:
+            await self.coordinator.async_set_configured_strings(int(option))
+        except (BleakError, ValueError, TimeoutError) as error:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error

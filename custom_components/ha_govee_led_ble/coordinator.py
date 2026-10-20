@@ -3,8 +3,8 @@
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping, Sequence
-from contextlib import nullcontext
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, cast
@@ -53,7 +53,6 @@ from .coordinator_status import (
     parse_color_mode,
     status_is_authorized,
 )
-from .effect_commands import build_h617a_diy_activation
 from .effect_contracts import CapabilityState
 from .effect_deployments import PriorControlState
 from .generated_protocol_adapter import (
@@ -64,9 +63,10 @@ from .generated_protocol_adapter import (
     build_brightness,
     build_brightness_query,
     build_colour_mode_query,
+    build_configured_strings,
+    build_configured_strings_query,
+    build_diy_activation,
     build_firmware_query,
-    build_h6099_diy_activation,
-    build_h6179_diy_activation,
     build_h6199_control,
     build_h6199_control_query,
     build_hardware_query,
@@ -102,12 +102,17 @@ from .light_commands import (
     build_color_temp,
     build_segment_brightness,
     build_segment_paint,
-    kelvin_to_rgb,
+    kelvin_companion_rgb,
     parse_static_write,
 )
 from .music_commands import prepare_music_profile_writes
 from .music_protocol import music_code_for
-from .music_semantics import COMPANION_MUSIC_LAYOUTS, capture_music_parameters, music_params_for_mode, music_variant
+from .music_semantics import (
+    COMPANION_MUSIC_LAYOUTS,
+    capture_music_parameters,
+    music_body_params_for_mode,
+    music_variant,
+)
 from .native_profile_controls import (
     ProfileWriter,
     apply_active_video_mode,
@@ -204,6 +209,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         h6102_pact: str | None = None,
     ) -> None:
         profile = get_profile(model)
+        if model == "H7020":
+            profile = device_profile(model, None, None)
         resolution = resolve_h6102_capabilities(h6102_firmware, h6102_firmware_source) if model == "H6102" else None
         if resolution is not None:
             profile = resolution.profile
@@ -245,6 +252,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._confirmed_identity_fields: set[str] = set()
         self._authorization_generation = 0
         self._upload_ack: tuple[BleakClient, object | None, int, int, int | None, asyncio.Future[bool]] | None = None
+        self._setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None = None
         self._lock = asyncio.Lock()
         self._control_arbiter = BLEControlArbiter()
         self._control_lock = self._control_arbiter
@@ -273,6 +281,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self.pact_type: int | None = None
         self.pact_code: int | None = None
         self.boolean_control_state: dict[str, bool] = {}
+        self.configured_strings: int | None = None
+        self._configured_strings_confirmed = False
+        self._mask_transaction: tuple[asyncio.Task[Any] | None, object | None, int] | None = None
+        self._segment_query_generation: int | None = None
         self.installation_direction: int | None = None
         self.camera_health = "unknown"
         self.strip_direction: int | None = None
@@ -331,9 +343,11 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self.music_daynight_gradient = False
         self._initialized_music_parameters: set[str] = set()
         for variant in self.profile.music_variants:
-            for spec in music_params_for_mode(variant.mode_code, self.profile):
+            for spec in music_body_params_for_mode(variant.mode_code, self.profile):
                 setattr(self, spec.key, spec.default)
                 self._initialized_music_parameters.add(spec.key)
+            for spec in variant.selector_parameters:
+                setattr(self, spec.key, None)
         self.packet_log: list[dict[str, Any]] = []
         self._expected_state: dict[str, tuple[Any, float]] = {}
         self._notify_started_monotonic: float | None = None
@@ -449,15 +463,29 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         *,
         overwritten_diy_code: int | None,
     ) -> bool:
+        if not state.is_on:
+            return await self._async_restore_effect_control_state(state, overwritten_diy_code=overwritten_diy_code)
+        if state.mode == "colour" and self.profile.segment_colour_mode_ambiguous:
+            return False
+        async with self.async_mask_transaction() if state.mode == "colour" else nullcontext():
+            if (
+                self.profile.configured_string_counts
+                and state.mode == "colour"
+                and (state.segment_colors is None or len(state.segment_colors) != self.profile.segment_count)
+            ):
+                return False
+            return await self._async_restore_effect_control_state(state, overwritten_diy_code=overwritten_diy_code)
+
+    async def _async_restore_effect_control_state(
+        self,
+        state: PriorControlState,
+        *,
+        overwritten_diy_code: int | None,
+    ) -> bool:
         from .generated_protocol_adapter import build_scene_activation
         from .music_commands import prepare_music_body_writes
 
         music_writes: tuple[tuple[bytes, dict[str, Any]], ...] = ()
-        if state.mode == "video" and self.profile.supports_video_mode:
-            # A legacy snapshot cannot reconstruct values overwritten since it was captured.
-            from .generated_protocol_adapter import validate_video_parameters
-
-            validate_video_parameters(self.profile.video_grammar, state.video_parameters or {})
         if not state.is_on:
             attempts = self.control_write_attempts
             try:
@@ -465,7 +493,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     replace(state, is_on=True), overwritten_diy_code=overwritten_diy_code
                 )
             except BaseException:
-                if self.control_write_attempts != attempts:
+                if self.is_on or self.control_write_attempts != attempts:
                     try:
                         await self.send_command(build_power(False, self.model), state_values={"is_on": False})
                     except BaseException:
@@ -473,6 +501,11 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 raise
             await self.send_command(build_power(False, self.model), state_values={"is_on": False})
             return await self.refresh_state(expected_on=False) and appearance_restored
+        if state.mode == "video" and self.profile.supports_video_mode:
+            # A legacy snapshot cannot reconstruct values overwritten since it was captured.
+            from .generated_protocol_adapter import validate_video_parameters
+
+            validate_video_parameters(self.profile.video_grammar, state.video_parameters or {})
         physical_ic_count = self.profile.physical_ic_count
         variant = None
         if state.mode == "music" and state.is_on:
@@ -484,6 +517,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 self.profile,
                 music_code_for(self.model, state.music_mode, profile=self.profile),
             )
+            if variant and any(
+                spec.profile_key not in (state.music_parameters or {}) for spec in variant.selector_parameters
+            ):
+                return False
             # Legacy snapshots retain style across modes even when the active selector
             # has no style byte semantics. Do not reinterpret that retained value.
             music_calm = state.music_calm if variant and variant.supports_style else False
@@ -503,7 +540,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     if self.profile.supports_music_color and (variant is None or variant.supports_fixed_colour)
                     else None,
                     music_calm,
-                    {},
+                    {
+                        spec.profile_key: (state.music_parameters or {})[spec.profile_key]
+                        for spec in (() if variant is None else variant.selector_parameters)
+                    },
                     profile=self.profile,
                     include_parameters=False,
                 )
@@ -652,16 +692,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 state.diy_code is None
                 or (overwritten_diy_code is not None and state.diy_code == overwritten_diy_code)
                 or not self.profile.supports_custom_effects
-                or self.profile.effect_grammar != self.profile.command_grammar
-                or self.profile.effect_grammar not in {"H6099", "H617A", "H6179"}
             ):
                 return False
-            if self.profile.command_grammar == "H6099":
-                activation = build_h6099_diy_activation(state.diy_code)
-            elif self.profile.command_grammar == "H617A":
-                activation = build_h617a_diy_activation(state.diy_code)
-            else:
-                activation = build_h6179_diy_activation(state.diy_code)
+            activation = build_diy_activation(state.diy_code, self.model, profile=self.profile)
             await self.send_command(build_power(True, self.model))
             await self.send_command(build_brightness(state.brightness_pct, self.model))
             await self.send_command(activation, state_values={"diy_code": state.diy_code})
@@ -828,7 +861,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             if (
                 kelvin_restore
                 and state.color_temp_kelvin is not None
-                and state.segment_colors != (kelvin_to_rgb(state.color_temp_kelvin),) * self.profile.segment_count
+                and state.segment_colors
+                != (kelvin_companion_rgb(state.color_temp_kelvin, self.profile),) * self.profile.segment_count
             ):
                 # Whole-device Kelvin cannot reproduce a simultaneously captured
                 # different RGB layout. Preserve it instead of overwriting it.
@@ -1034,7 +1068,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     self._advertised_plaintext = True
 
     def _resolve_device_profile(self) -> None:
-        if self.model not in {"H60A1", "H60A6", "H6076", "H6102", "H6125", "H6199"}:
+        if self.model not in {"H60A1", "H60A6", "H6076", "H6102", "H6125", "H6199", "H7020"}:
             return
         if self.model == "H6102":
             context = (self.pact_type, self.pact_code, self.fw_version, self.hw_version, self.profile.physical_ic_count)
@@ -1057,12 +1091,20 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             profile = device_profile(
                 self.model, self.pact_type, self.pact_code, firmware=self.fw_version, hardware=self.hw_version
             )
+            if profile.configured_string_counts and self.configured_strings in profile.configured_string_counts:
+                bulbs = self.configured_strings * profile.bulbs_per_string
+                profile = replace(profile, segment_count=bulbs, whole_device_mask=(1 << bulbs) - 1)
         if profile == self.profile:
             if context_changed:
                 self._profile_generation += 1
                 self._expected_state.clear()
             return
         self.profile = profile
+        for variant in profile.music_variants:
+            for spec in variant.selector_parameters:
+                setattr(self, spec.key, None)
+        self._configured_strings_confirmed = False
+        self._segment_query_generation = None
         self.boolean_control_state = {
             key: value for key, value in self.boolean_control_state.items() if key in profile.boolean_controls
         }
@@ -1202,6 +1244,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self.video_parameters = None
         if self.model == "H6102":
             self.profile = replace(self.profile, physical_ic_count=None)
+        self._configured_strings_confirmed = False
         if self.profile.command_grammar == "H6099":
             self.profile = replace(self.profile, physical_ic_count=None)
         if self._client and self._client.is_connected:
@@ -1251,6 +1294,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 # Reconnect invalidates authorization. Let real notifications requalify
                 # guards before returning, but missing identity must not fail basic setup.
                 await self._wait_for_revisions({}, identity_baselines, time.monotonic() + IDENTITY_QUERY_TIMEOUT)
+                if self.profile.configured_string_counts:
+                    await self._read_configured_strings(client, deadline=time.monotonic() + IDENTITY_QUERY_TIMEOUT)
             if self._client is not client or not client.is_connected or not self._encryption.ready:
                 raise GoveeCryptoError("disconnected_during_setup")
             if self.profile.state_readable and self._notify_started_monotonic is not None:
@@ -1339,6 +1384,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._notification_token = None
         self._confirmed_identity_fields.clear()
         self._authorization_generation += 1
+        self._configured_strings_confirmed = False
+        self._segment_query_generation = None
         if self._encryption is not None:
             self._encryption.reset()
         if client is not None:
@@ -1399,6 +1446,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         for field, baseline in baselines.items():
             if self._field_revisions.get(field, 0) > baseline:
                 continue
+            if field in {"is_on", "brightness_pct", "color_mode", "segment_colors", "segment_brightness"}:
+                # A missing optional basic reply leaves cached presentation, not a new observation.
+                continue
             if field.startswith("boolean_"):
                 changed |= self.boolean_control_state.pop(field.removeprefix("boolean_"), None) is not None
             else:
@@ -1447,6 +1497,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._segment_query_brightness = None
 
     def _apply_segment_group(self, generated: Any) -> tuple[str, ...]:
+        if self.profile.configured_string_counts and (
+            not self._configured_strings_confirmed or self._segment_query_generation != self._profile_generation
+        ):
+            raise ValueError("segment page has no current configured layout")
         group = getattr(generated.body, "group", None)
         records = getattr(generated.body, "segments", None)
         count = getattr(generated.body, "num_segments", None)
@@ -1500,7 +1554,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         ):
             rendered = self.segment_colors[0]
             kelvin = self.color_temp_kelvin
-            if kelvin is not None and rendered != kelvin_to_rgb(kelvin):
+            if kelvin is not None and rendered != kelvin_companion_rgb(kelvin, self.profile):
                 kelvin = None
             if self._accept_expected_values({"rgb_color": rendered, "color_temp_kelvin": kelvin}):
                 self.rgb_color = rendered
@@ -1677,7 +1731,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             accepted_values = dict(static_values)
             if "rgb_color" in static_values and "color_temp_kelvin" not in static_values:
                 kelvin = self.color_temp_kelvin
-                if kelvin is None or static_values["rgb_color"] != kelvin_to_rgb(kelvin):
+                if kelvin is None or static_values["rgb_color"] != kelvin_companion_rgb(kelvin, self.profile):
                     accepted_values["color_temp_kelvin"] = None
             if self._accept_expected_values(accepted_values):
                 if (
@@ -1708,6 +1762,18 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._last_rx_monotonic = time.monotonic()
         ack = parse_command_ack_result(frame, self.model, profile=self.profile)
         if ack.parsed is not None:
+            setting = self._setting_ack
+            if setting is not None:
+                client, token, opcode, future = setting
+                if (
+                    not ack.parsed.is_upload
+                    and int(ack.parsed.opcode) == opcode
+                    and self._client is client
+                    and client.is_connected
+                    and self._notification_token is token
+                    and not future.done()
+                ):
+                    future.set_result(bool(ack.parsed.is_success))
             pending = self._upload_ack
             if pending is not None:
                 client, token, generation, subtype, ack_mode, future = pending
@@ -1815,7 +1881,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 for field, value in values.items():
                     setattr(self, field, value)
                 observed = tuple(values)
-            if domain is StatusDomain.POWER:
+            if domain is StatusDomain.CONFIGURED_STRINGS:
+                self._apply_configured_strings(int(generated.body.count))
+                observed = ("configured_strings",)
+            elif domain is StatusDomain.POWER:
                 value = (
                     bool(generated.values["is_on"])
                     if isinstance(generated, ParsedH6179Status)
@@ -1953,7 +2022,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 if self.model == "H6102":
                     self._resolve_device_profile()
                 for variant in self.profile.music_variants:
-                    for spec in music_params_for_mode(variant.mode_code, self.profile):
+                    for spec in music_body_params_for_mode(variant.mode_code, self.profile):
                         if spec.key not in self._initialized_music_parameters:
                             setattr(self, spec.key, spec.default)
                             self._initialized_music_parameters.add(spec.key)
@@ -1987,6 +2056,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             raise BleakError("Incomplete segment query requires a new connection")
         packet_validator(packet, self.profile)
         self._validate_authorized_packet(packet)
+        if (
+            arm_expected
+            and self.profile.configured_string_counts
+            and parse_static_write(packet, self.model, profile=self.profile) is not None
+        ):
+            self._require_mask_transaction()
         generation = self._profile_generation
         authorization_generation = self._authorization_generation
         wire_packet = packet
@@ -2002,6 +2077,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             before_write()
         packet_validator(packet, self.profile)
         self._validate_authorized_packet(packet)
+        if (
+            arm_expected
+            and self.profile.configured_string_counts
+            and parse_static_write(packet, self.model, profile=self.profile) is not None
+        ):
+            self._require_mask_transaction()
         if arm_expected and generation != self._profile_generation:
             raise ValueError("Device profile changed before control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
@@ -2092,12 +2173,20 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         client = self._client
         if client is None or not client.is_connected or self._segment_query_incomplete:
             return False
-        generation = self._profile_generation
-        authorization_generation = self._authorization_generation
-        profile = self._authorization_profile()
         token = self._notification_token
         if deadline is None:
             deadline = time.monotonic() + 2.0
+        full_query = query_power and query_brightness and query_color_mode
+        if self.profile.configured_string_counts and (full_query or query_segments is True):
+            if not self._has_mask_transaction():
+                # Missing optional geometry must leave time for topology-independent reads.
+                count_deadline = deadline if query_segments is True else (time.monotonic() + deadline) / 2
+                await self._read_configured_strings(client, deadline=count_deadline)
+            if query_segments is True and not self._configured_strings_confirmed:
+                return False
+        generation = self._profile_generation
+        authorization_generation = self._authorization_generation
+        profile = self._authorization_profile()
         segment_baseline: dict[str, int] = {}
         try:
             queries: list[tuple[bytes, ReadDomain, tuple[str, ...]]] = []
@@ -2121,7 +2210,6 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             if query_color_mode and profile.supports_color_mode_readback:
                 color_domain = ReadDomain.COLOUR_MODE if profile.can_read(ReadDomain.COLOUR_MODE) else ReadDomain.MODE
                 queries.append((build_colour_mode_query(self.model, profile=profile), color_domain, ("color_mode",)))
-            full_query = query_power and query_brightness and query_color_mode
             if (
                 "white_balance" in confirmed_controls
                 and profile.can_read(ReadDomain.DISPLAY_SETTING)
@@ -2185,12 +2273,14 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             if (
                 profile.can_read(ReadDomain.SEGMENTS)
                 and profile.supports_segments
+                and (not self.profile.configured_string_counts or self._configured_strings_confirmed)
                 and (query_segments if query_segments is not None else full_query)
             ):
                 segment_baseline = {"segment_colors": self._field_revisions.get("segment_colors", 0)}
                 self._segment_groups_observed.clear()
                 self._segment_query_colors = list(self.segment_colors)
                 self._segment_query_brightness = list(self.segment_brightness)
+                self._segment_query_generation = generation
                 queries.extend(
                     (
                         build_segment_query(group, self.model, profile=profile),
@@ -2283,7 +2373,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         return False
                     _LOGGER.debug("Optional %s query failed for %s", domain.value, self.address, exc_info=True)
                     continue
-                if optional_baselines is not None and domain in _OPTIONAL_CONTROL_DOMAINS | {ReadDomain.OTHER}:
+                if optional_baselines is not None and (
+                    domain not in required or domain in _OPTIONAL_CONTROL_DOMAINS | {ReadDomain.OTHER}
+                ):
                     for field, revision in baselines.items():
                         optional_baselines.setdefault(field, revision)
                 if time.monotonic() >= deadline:
@@ -2429,6 +2521,111 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         profile = self._authorization_profile()
         if profile != self.profile:
             require_profile_packet(packet, profile)
+
+    def _apply_configured_strings(self, count: int) -> None:
+        if count not in self.profile.configured_string_counts:
+            raise ValueError("unsupported configured string count")
+        if self.configured_strings == count:
+            return
+        self.configured_strings = count
+        self._configured_strings_confirmed = False
+        bulbs = count * self.profile.bulbs_per_string
+        self.profile = replace(self.profile, segment_count=bulbs, whole_device_mask=(1 << bulbs) - 1)
+        self._profile_generation += 1
+        self._expected_state.clear()
+        self._segment_query_generation = None
+        self._segment_groups_observed.clear()
+        self._segment_query_colors = self._segment_query_brightness = None
+        self.segment_colors = [(255, 255, 255)] * bulbs
+        self.segment_brightness = [100] * bulbs
+        self.segment_state_source = "initial"
+        self.segment_state_observed_at = None
+        self.color_temp_kelvin = None
+        self.rgb_color_source = self.color_temp_kelvin_source = "initial"
+
+    async def _read_configured_strings(self, client: BleakClient, *, deadline: float) -> bool:
+        self._configured_strings_confirmed = False
+        baseline = {"configured_strings": self._field_revisions.get("configured_strings", 0)}
+        token = self._notification_token
+        try:
+            async with asyncio.timeout_at(deadline):
+                await self._async_write_packet(client, build_configured_strings_query(self.profile))
+                received = await self._wait_for_revisions(baseline, {}, deadline)
+        except TimeoutError:
+            received = False
+        self._configured_strings_confirmed = (
+            received and self._client is client and client.is_connected and self._notification_token is token
+        )
+        if not self._configured_strings_confirmed:
+            _LOGGER.debug("Configured string count could not be confirmed")
+        return self._configured_strings_confirmed
+
+    def _has_mask_transaction(self) -> bool:
+        return self._mask_transaction == (asyncio.current_task(), self._notification_token, self._profile_generation)
+
+    def _require_mask_transaction(self) -> None:
+        if not self._configured_strings_confirmed or not self._has_mask_transaction():
+            raise ValueError("Configured bulb layout changed or is unknown; refresh and retry")
+
+    @asynccontextmanager
+    async def async_mask_transaction(self) -> AsyncIterator[None]:
+        """Confirm configuration once before building a mask-dependent request."""
+        if not self.profile.configured_string_counts:
+            yield
+            return
+        if self._mask_transaction is not None and self._mask_transaction[0] is asyncio.current_task():
+            self._require_mask_transaction()
+            yield
+            return
+        intent = self._control_arbiter.current_task_intent or ControlIntent.USER
+        async with async_control_intent(self, intent):
+            async with self._lock:
+                client = await self._ensure_connected()
+                if not await self._read_configured_strings(client, deadline=time.monotonic() + 2.0):
+                    raise ValueError("Cannot confirm configured bulb layout; refresh and retry")
+            self._mask_transaction = (asyncio.current_task(), self._notification_token, self._profile_generation)
+            try:
+                yield
+            finally:
+                self._mask_transaction = None
+
+    async def async_set_configured_strings(self, count: int) -> None:
+        packet = build_configured_strings(count, self.profile)
+        command = parse_command_result(packet, self.model, profile=self.profile).parsed
+        if command is None:
+            raise ValueError("Invalid configured string command")
+        opcode = int(command.opcode)
+        async with async_control_intent(self, ControlIntent.USER):
+            if self.config_entry is not None:
+                from .effect_setup import get_effect_backend
+
+                if backend := get_effect_backend(self.hass):
+                    await backend.preview.async_supersede_device(
+                        self.config_entry.entry_id, reason="home_assistant_control"
+                    )
+            async with self._lock:
+                client = await self._ensure_connected()
+                future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+                token = self._notification_token
+
+                def before_write() -> None:
+                    self._configured_strings_confirmed = False
+                    self._setting_ack = (client, token, opcode, future)
+
+                try:
+                    async with asyncio.timeout(4.0):
+                        await self._async_write_packet(client, packet, arm_expected=True, before_write=before_write)
+                        if not await future:
+                            raise ValueError("Device rejected configured string count")
+                    if not await self._read_configured_strings(client, deadline=time.monotonic() + 2.0):
+                        raise ValueError("Device did not provide fresh configured string count")
+                    if self.configured_strings != count:
+                        raise ValueError("Device did not confirm requested string count")
+                finally:
+                    self._setting_ack = None
+                    future.cancel()
+            if not await self.async_refresh_segments():
+                raise ValueError("Configured strings changed but bulb state could not be read")
 
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
         from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query
@@ -3437,6 +3634,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                             await asyncio.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
 
     async def async_paint_segments(self, groups: list[SegmentColorGroup]) -> None:
+        async with self.async_mask_transaction():
+            await self._async_paint_segments(groups)
+
+    async def _async_paint_segments(self, groups: list[SegmentColorGroup]) -> None:
         """Optimistically paint colour groups onto the segment slots.
 
         Each group pairs 1-based segment indices with an RGB colour. The device does not
@@ -3488,6 +3689,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     self.async_set_updated_data(self.data or {})
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
+        async with self.async_mask_transaction():
+            await self._async_set_segment_brightness(segments, brightness)
+
+    async def _async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
         segments = list(segments)
         value = max(0, min(100, brightness))
         packet = build_segment_brightness(segments, value, self.model, profile=self.profile)

@@ -5143,6 +5143,7 @@
             "single": "supported",
             "workshop": "unsupported"
           },
+          "diy_slot_policy": "approved_observed",
           "effects": [
             {
               "category": "single_layer",
@@ -9174,6 +9175,1574 @@
             }
           ],
           "workshop_templates": []
+        },
+        "H7020": {
+          "advanced_create": false,
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "diy_slot_policy": "approved_observed",
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "1",
+                  "label": "Fade 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Fade 2",
+                  "variant": 1
+                },
+                {
+                  "id": "3",
+                  "label": "Fade 3",
+                  "variant": 2
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 1
+          },
+          "music_modes": [
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            }
+          ],
+          "music_settings": {
+            "energetic": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H7020 qualified Energetic selector",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H7020 qualified Rhythm selector response",
+              "palette_size": 0,
+              "parameters": {
+                "response": {
+                  "default": "soft",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "dynamic",
+                    "soft"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H7020 qualified Rolling selector",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "spectrum": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H7020 qualified Spectrum selector",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "native_diy_templates": [
+            {
+              "body_effect": 89,
+              "layer_count": 5,
+              "palette_max": 8,
+              "palette_min": 1,
+              "rate_default": 248,
+              "rate_field": "selected_movement_speed",
+              "rate_max": 250,
+              "rate_min": 150,
+              "template_id": 17,
+              "upload_subtype": 2
+            },
+            {
+              "body_effect": 89,
+              "layer_count": 5,
+              "palette_max": 8,
+              "palette_min": 1,
+              "rate_default": 248,
+              "rate_field": "selected_movement_speed",
+              "rate_max": 250,
+              "rate_min": 150,
+              "template_id": 18,
+              "upload_subtype": 2
+            },
+            {
+              "body_effect": 90,
+              "layer_count": 2,
+              "palette_max": 8,
+              "palette_min": 1,
+              "rate_default": 202,
+              "rate_field": "colour_brightness_speed",
+              "rate_max": 253,
+              "rate_min": 150,
+              "template_id": 19,
+              "upload_subtype": 2
+            }
+          ],
+          "painted_effects": [],
+          "sku": "H7020",
+          "supports": {
+            "advanced": "supported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H7020",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H7020",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H7020",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H7020",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 126
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 243,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        97,
+                        254,
+                        8
+                      ],
+                      [
+                        7,
+                        254,
+                        174
+                      ],
+                      [
+                        7,
+                        186,
+                        254
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 1,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 2,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 24
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 243,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        255,
+                        94,
+                        7
+                      ],
+                      [
+                        255,
+                        6,
+                        61
+                      ],
+                      [
+                        255,
+                        6,
+                        211
+                      ],
+                      [
+                        180,
+                        6,
+                        254
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 3,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 4,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 25
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 242,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        8,
+                        255,
+                        170
+                      ],
+                      [
+                        6,
+                        218,
+                        254
+                      ],
+                      [
+                        8,
+                        125,
+                        254
+                      ],
+                      [
+                        215,
+                        6,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 1,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 6,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 25
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 243,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        255,
+                        6,
+                        133
+                      ],
+                      [
+                        245,
+                        7,
+                        255
+                      ],
+                      [
+                        86,
+                        102,
+                        255
+                      ],
+                      [
+                        7,
+                        162,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 3,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 8,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 25
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 243,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        241,
+                        80,
+                        255
+                      ],
+                      [
+                        7,
+                        105,
+                        255
+                      ],
+                      [
+                        8,
+                        255,
+                        145
+                      ],
+                      [
+                        8,
+                        255,
+                        15
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 1,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 17
+              },
+              "id": "template:native-diy:17",
+              "label": "Spin 1"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 126
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 243,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        97,
+                        254,
+                        8
+                      ],
+                      [
+                        7,
+                        254,
+                        174
+                      ],
+                      [
+                        7,
+                        186,
+                        254
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 3,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 2,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 24
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 243,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        255,
+                        94,
+                        7
+                      ],
+                      [
+                        255,
+                        6,
+                        61
+                      ],
+                      [
+                        255,
+                        6,
+                        211
+                      ],
+                      [
+                        180,
+                        6,
+                        254
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 1,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 4,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 25
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 242,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        8,
+                        255,
+                        170
+                      ],
+                      [
+                        6,
+                        218,
+                        254
+                      ],
+                      [
+                        8,
+                        125,
+                        254
+                      ],
+                      [
+                        215,
+                        6,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 3,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 6,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 25
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 243,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        255,
+                        6,
+                        133
+                      ],
+                      [
+                        245,
+                        7,
+                        255
+                      ],
+                      [
+                        86,
+                        102,
+                        255
+                      ],
+                      [
+                        7,
+                        162,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 1,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 8,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 10,
+                        "change_speed": 128,
+                        "darkest_retention": 10,
+                        "order": 3,
+                        "scope_high": 255,
+                        "scope_low": 25
+                      }
+                    ],
+                    "colour_retention": 20,
+                    "colour_speed": 243,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        140,
+                        7
+                      ],
+                      [
+                        255,
+                        254,
+                        7
+                      ],
+                      [
+                        241,
+                        80,
+                        255
+                      ],
+                      [
+                        7,
+                        105,
+                        255
+                      ],
+                      [
+                        8,
+                        255,
+                        145
+                      ],
+                      [
+                        8,
+                        255,
+                        15
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 3,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 248,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 18
+              },
+              "id": "template:native-diy:18",
+              "label": "Spin 2"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 202,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 25
+                      },
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 202,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 25
+                      }
+                    ],
+                    "colour_retention": 10,
+                    "colour_speed": 202,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        56,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 4,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 10,
+                      "param_2": 5,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 202,
+                        "darkest_retention": 20,
+                        "order": 0,
+                        "scope_high": 196,
+                        "scope_low": 116
+                      }
+                    ],
+                    "colour_retention": 10,
+                    "colour_speed": 202,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        15,
+                        7
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 128,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 19
+              },
+              "id": "template:native-diy:19",
+              "label": "Ribbon"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Basic DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Mixed DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "advanced",
+              "id": "advanced",
+              "label": "Template DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            }
+          ],
+          "workshop_templates": []
         }
       },
       "music_modes": [
@@ -9602,7 +11171,7 @@
           "label": "Cycle"
         }
       ],
-      "schema_version": 10,
+      "schema_version": 11,
       "sku": "H617A",
       "supports": {
         "advanced": "supported",
@@ -11682,11 +13251,50 @@
         "readback": "none",
         "segment_count": 0,
         "support_quality": "partial"
+      },
+      {
+        "active_state": null,
+        "config_entry_id": "h7020-main",
+        "custom_effects": {
+          "advanced": "supported",
+          "multi": "supported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H7020 Outdoor String Lights",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive"
+        ],
+        "light_entity_id": null,
+        "model": "H7020",
+        "physical_ic_count": null,
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h7020-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "unsupported"
+        },
+        "readback": "diy_code_only",
+        "segment_count": 30,
+        "support_quality": "experimental"
       }
     ],
     "editor_info": {
-      "api_version": 15,
-      "compiler_version": 5,
+      "api_version": 16,
+      "compiler_version": 6,
       "effect_schema_version": 2,
       "limits": {
         "deployment_records": 128,
@@ -12252,6 +13860,48 @@
         ],
         "schema_version": 1,
         "sku": "H6199"
+      },
+      "H7020": {
+        "categories": [
+          {
+            "id": 94,
+            "name": "Natural"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "Natural",
+            "category_id": 94,
+            "display_name": "Twilight",
+            "effect_id": 587,
+            "name": "Twilight",
+            "parameter_kind": "layers",
+            "scene_id": 541,
+            "scene_type": 2,
+            "selector_only": false,
+            "speed": {
+              "default_index": 1,
+              "option_count": 3
+            },
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 94,
+            "display_name": "Ripple",
+            "effect_id": 610,
+            "name": "Ripple",
+            "parameter_kind": "none",
+            "scene_id": 564,
+            "scene_type": 0,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H7020"
       }
     },
     "scene_details": {

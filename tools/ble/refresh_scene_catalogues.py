@@ -30,8 +30,13 @@ APP_VERSION = "9999999"
 SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_ble" / "scene_catalogues"
 DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
-# Glacier's current iOS application was captured rewriting the two stored 0xff movement
-# bytes to the catalogue's default value 250 when applying the scene.
+_SPEED_METADATA_SKUS = frozenset({"H617A", "H7020"})
+
+# H7020 derives the initial speed selection from metadata and rewrites every configured
+# field before upload, so embedded field values are not the default-speed invariant.
+_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H7020"})
+
+# Glacier's application path was captured rewriting its stale stored movement fields.
 _CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})
 
 
@@ -94,7 +99,7 @@ def _snapshot_speed(
     effect: dict[str, Any],
     label: str,
     *,
-    allow_default_rewrite: bool = False,
+    metadata_default_applied: bool = False,
 ) -> dict[str, Any] | None:
     if not effect.get("speedInfo", {}).get("supSpeed"):
         return None
@@ -186,7 +191,7 @@ def _snapshot_speed(
                     f"stores {actual}, default is {expected}"
                 )
 
-    if mismatches and not allow_default_rewrite:
+    if mismatches and not metadata_default_applied:
         warnings.warn(
             f"{label}: default Speed metadata does not reproduce the stored scene body "
             f"({'; '.join(mismatches)}); omitting Speed",
@@ -234,11 +239,12 @@ def build_snapshot(raw: dict[str, Any], sku: str) -> dict[str, Any]:
                     entry["variant"] = variant or f"#{index}"
                 if param := str(effect.get("scenceParam") or ""):
                     entry["param"] = param
-                if sku == "H617A" and (
+                if sku in _SPEED_METADATA_SKUS and (
                     speed := _snapshot_speed(
                         effect,
                         f"{name}-{variant}" if variant else name,
-                        allow_default_rewrite=(sku, scene_id, effect_id) in _CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES,
+                        metadata_default_applied=sku in _METADATA_DEFAULT_SPEED_SKUS
+                        or (sku, scene_id, effect_id) in _CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES,
                     )
                 ):
                     entry["speed"] = speed

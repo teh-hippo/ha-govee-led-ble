@@ -1495,7 +1495,7 @@ export class GoveeLedEffectStudio extends LitElement {
       <section class="card h6179-diy-approval" role="note">
         <h3 class="section-title">Disposable DIY item required</h3>
         <p>
-          Apply and Live preview overwrite the explicitly approved H6179 DIY
+          Apply and Live preview overwrite the explicitly approved device DIY
           item. The approved code is sent only with the action and is not saved
           with the effect.
         </p>

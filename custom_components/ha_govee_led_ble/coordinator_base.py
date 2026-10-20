@@ -1,6 +1,7 @@
 """Shared typed base for the coordinator and its write mixins."""
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -64,6 +65,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     if TYPE_CHECKING:
 
         def _authorization_profile(self) -> ModelProfile: ...
+
+        def async_mask_transaction(self) -> AbstractAsyncContextManager[None]: ...
 
         async def send_command(self, packet: bytes, *, write_guard: Callable[[], None] | None = None) -> None: ...
 

@@ -871,18 +871,21 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     async def _async_clear_effect(self) -> None:
         coordinator = self.coordinator
-        with self._rollback():
-            if coordinator.color_temp_kelvin is not None:
-                packet = build_color_temp(coordinator.color_temp_kelvin, coordinator.model, profile=coordinator.profile)
-                self._attr_color_mode = ColorMode.COLOR_TEMP
-            else:
-                packet = build_color_rgb(
-                    *coordinator.rgb_color,
-                    coordinator.model,
-                    profile=coordinator.profile,
-                )
-                self._attr_color_mode = ColorMode.RGB
-            await coordinator.send_command(packet)
+        async with coordinator.async_mask_transaction():
+            with self._rollback():
+                if coordinator.color_temp_kelvin is not None:
+                    packet = build_color_temp(
+                        coordinator.color_temp_kelvin, coordinator.model, profile=coordinator.profile
+                    )
+                    self._attr_color_mode = ColorMode.COLOR_TEMP
+                else:
+                    packet = build_color_rgb(
+                        *coordinator.rgb_color,
+                        coordinator.model,
+                        profile=coordinator.profile,
+                    )
+                    self._attr_color_mode = ColorMode.RGB
+                await coordinator.send_command(packet)
 
     def _validate_basic_request(self, kwargs: Mapping[str, Any]) -> None:
         profile = self.coordinator.profile
@@ -901,6 +904,13 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        if ATTR_RGB_COLOR in kwargs or ATTR_COLOR_TEMP_KELVIN in kwargs:
+            async with self.coordinator.async_mask_transaction():
+                await self._async_prepare_turn_on(**kwargs)
+        else:
+            await self._async_prepare_turn_on(**kwargs)
+
+    async def _async_prepare_turn_on(self, **kwargs: Any) -> None:
         active_workspace = self._matching_active_workspace()
         if self.coordinator.model == "H6102" and kwargs.get(ATTR_BRIGHTNESS) == 0:
             await self._async_supersede_preview()

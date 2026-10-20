@@ -45,6 +45,14 @@ _H6199_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(
         "rolling": 0x06,
     }
 )
+_H7020_MODE_CODES: Final[Mapping[str, int]] = MappingProxyType(
+    {
+        "rhythm": 0x03,
+        "spectrum": 0x04,
+        "energetic": 0x05,
+        "rolling": 0x06,
+    }
+)
 
 MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxyType(
     {
@@ -56,6 +64,7 @@ MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxy
         "H6076": _H6076_MODE_CODES,
         "H6179": _H6179_MODE_CODES,
         "H6199": _H6199_MODE_CODES,
+        "H7020": _H7020_MODE_CODES,
     }
 )
 
@@ -75,6 +84,7 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
         "H6076": frozenset({int(H6076MusicWrite.MusicMode.rhythm)}),
         "H6179": frozenset(),
         "H6199": frozenset({0x03}),
+        "H7020": frozenset(),
     }
 )
 _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyType(
@@ -87,6 +97,7 @@ _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = Map
         "H6076": frozenset(int(mode) for mode in H6076MusicBody.MusicMode),
         "H6179": frozenset(),
         "H6199": frozenset(),
+        "H7020": frozenset(),
     }
 )
 

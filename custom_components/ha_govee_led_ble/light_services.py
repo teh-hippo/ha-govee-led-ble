@@ -26,8 +26,7 @@ from .light_commands import (
     build_segment_brightness,
     build_segment_color_temp,
     build_segment_paint,
-    kelvin_to_rgb,
-    segments_to_mask,
+    kelvin_companion_rgb,
 )
 from .native_profile_controls import apply_active_video_mode
 from .schema_compat import vol
@@ -40,7 +39,8 @@ def _segment(value: int | str) -> int:
     try:
         if isinstance(value, str):
             value = int(value)
-        segments_to_mask((value,))
+        if type(value) is not int or not 1 <= value <= 32:
+            raise ValueError("segment indices must be integers from 1 to 32")
     except (TypeError, ValueError) as err:
         raise vol.Invalid(str(err)) from err
     return value
@@ -180,6 +180,10 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
+        async with self.coordinator.async_mask_transaction():
+            await self._async_paint_segments(groups)
+
+    async def _async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
         self._require_support(
             "paint_segments",
             supported=self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb,
@@ -211,11 +215,11 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         await self.async_paint_segments([group])
 
     async def async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
-        """Verify rendered RGB and preserve freshly read sibling colours/brightness.
+        async with self.coordinator.async_mask_transaction():
+            await self._async_set_segment_color_temp(segments, color_temp_kelvin)
 
-        At 3000 K the service computes (255,177,109). The older manual probe
-        supplied (255,185,105); its device qualification is distinct.
-        """
+    async def _async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
+        """Verify companion RGB without claiming per-bulb Kelvin readback."""
         c = self.coordinator
         self._require_support(
             "set_segment_color_temp",
@@ -228,7 +232,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         try:
             segments = list(segments)
             packet = build_segment_color_temp(segments, color_temp_kelvin, c.model, profile=c.profile)
-            expected = kelvin_to_rgb(color_temp_kelvin)
+            expected = kelvin_companion_rgb(color_temp_kelvin, c.profile)
             await self._async_supersede_preview()
             async with async_control_intent(c, ControlIntent.USER):
                 try:
@@ -263,6 +267,10 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             ) from err
 
     async def async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
+        async with self.coordinator.async_mask_transaction():
+            await self._async_set_segment_brightness(segments, brightness)
+
+    async def _async_set_segment_brightness(self, segments: list[int], brightness: int) -> None:
         self._require_support(
             "set_segment_brightness",
             supported=(

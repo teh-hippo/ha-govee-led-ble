@@ -1,30 +1,41 @@
 """Uncorrelated segment replies must finish before another transaction writes."""
 
 import asyncio
+from contextlib import suppress
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from bleak.exc import BleakError
+from homeassistant.exceptions import ServiceValidationError
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble import coordinator as coordinator_module
+from custom_components.ha_govee_led_ble import select, switch
+from custom_components.ha_govee_led_ble.const import DOMAIN, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_colour_mode_query,
+    build_configured_strings_query,
     build_power_query,
     build_segment_query,
+    parse_command,
 )
 from custom_components.ha_govee_led_ble.govee_encryption.session import GoveeEncryptionSession
-from custom_components.ha_govee_led_ble.light_commands import build_segment_brightness
+from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_segment_brightness
 from tests.test_coordinator import _packet
 
 
 @pytest.fixture
-async def device(hass, monkeypatch):
-    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+async def device(hass, monkeypatch, request):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H617A"), configuration_url=None)
+    if c.model == "H7020":
+        c.pact_type = c.pact_code = 1
+        c._resolve_device_profile()
     c.fw_version, c.hw_version = "3.02.24", "3.01.01"
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), disconnect=AsyncMock())
     c._client = client
@@ -38,8 +49,204 @@ async def device(hass, monkeypatch):
 def pages(levels):
     return [
         _packet(0xAA, 0xA5, [group, *(v for i in range((group - 1) * 3, group * 3) for v in (levels[i], i, 96, 160))])
-        for group in range(1, 6)
+        for group in range(1, len(levels) // 3 + 1)
     ]
+
+
+@pytest.mark.parametrize("device", ["H7020"], indirect=True)
+@pytest.mark.parametrize(("cached", "fresh"), [(1, 2), (2, 1)])
+async def test_configured_layout_precedes_whole_device_packet_construction(device, cached, fresh, monkeypatch):
+    c, client, receive = device
+    c._apply_configured_strings(cached)
+    c.is_on = True
+    sent = []
+
+    async def write(_uuid, packet, **_kwargs):
+        sent.append(packet)
+        if packet == build_configured_strings_query(c.profile):
+            receive(None, bytearray(_packet(0xAA, 0x0F, [fresh])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    light = GoveeBLELight(c)
+    monkeypatch.setattr(light, "async_write_ha_state", MagicMock())
+    await light.async_turn_on(rgb_color=(1, 2, 3))
+    assert len(sent) == 2
+    command = parse_command(sent[1], "H7020")
+    assert command.body.sub_body.static_body.mask.bits == (1 << (fresh * 15)) - 1
+    assert c.configured_strings == fresh and c.control_write_attempts == 1
+    assert c._mask_transaction is None
+
+
+@pytest.mark.parametrize("device", ["H7020"], indirect=True)
+async def test_configuration_change_invalidates_prepared_masks_at_physical_boundary(device):
+    c, client, receive = device
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_configured_strings_query(c.profile):
+            receive(None, bytearray(_packet(0xAA, 0x0F, [1])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    async with c.async_mask_transaction():
+        packet = build_color_rgb(1, 2, 3, profile=c.profile)
+        with pytest.raises(ValueError, match="layout changed"):
+            await c._async_write_packet(
+                client,
+                packet,
+                arm_expected=True,
+                before_write=lambda: receive(None, bytearray(_packet(0xAA, 0x0F, [2]))),
+            )
+    assert client.write_gatt_char.await_count == 1 and c.control_write_attempts == 0
+    assert c.segment_state_source == "initial"
+
+
+@pytest.mark.parametrize("device", ["H7020"], indirect=True)
+@pytest.mark.parametrize("strings", [1, 2])
+async def test_configured_pages_complete_only_current_geometry(device, strings):
+    c, client, receive = device
+    replies = pages([37] * (strings * 15))
+    sent = asyncio.Event()
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_configured_strings_query(c.profile):
+            receive(None, bytearray(_packet(0xAA, 0x0F, [strings])))
+        elif packet == build_segment_query(strings * 5, profile=c.profile):
+            sent.set()
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    task = asyncio.create_task(c.async_refresh_segments())
+    try:
+        await asyncio.wait_for(sent.wait(), 1)
+        for reply in list(reversed(replies[:-1])) + replies[:1]:
+            receive(None, bytearray(reply))
+        assert c.segment_state_source != "observed" and not task.done()
+        receive(None, bytearray(replies[-1]))
+        assert await task
+        assert c.segment_brightness == [37] * (strings * 15)
+        assert c.segment_state_source == "observed"
+        revision = c._field_revisions["segment_colors"]
+        receive(None, bytearray(_packet(0xAA, 0x0F, [3 - strings])))
+        for reply in replies:
+            receive(None, bytearray(reply))
+        assert c._field_revisions["segment_colors"] == revision
+        assert c.segment_state_source == "initial"
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.parametrize("device", ["H7020"], indirect=True)
+@pytest.mark.parametrize(("ack", "readback"), [(0, 2), (1, 1), (0, 1), (0, None)])
+async def test_count_setting_needs_ack_and_matching_fresh_readback(device, ack, readback, monkeypatch):
+    c, client, receive = device
+    c._apply_configured_strings(1)
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet[0] == 0x33:
+            receive(None, bytearray(_packet(0x33, 0x0F, [ack])))
+        elif packet == build_configured_strings_query(c.profile) and readback is not None:
+            receive(None, bytearray(_packet(0xAA, 0x0F, [readback])))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "async_refresh_segments", AsyncMock(return_value=True))
+    if readback is None:
+        monkeypatch.setattr(c, "_wait_for_revisions", AsyncMock(return_value=False))
+    if ack == 0 and readback == 2:
+        await c.async_set_configured_strings(2)
+        assert c.configured_strings == 2
+        c.async_refresh_segments.assert_awaited_once()
+    else:
+        with pytest.raises(ValueError, match="rejected|fresh|confirm"):
+            await c.async_set_configured_strings(2)
+        assert c.configured_strings == 1
+        c.async_refresh_segments.assert_not_awaited()
+    assert sum(packet.args[1][0] == 0x33 for packet in client.write_gatt_char.await_args_list) == 1
+
+
+@pytest.mark.parametrize("device", ["H7020"], indirect=True)
+@pytest.mark.parametrize("strings", [1, 2])
+async def test_exact_configured_profile_queries_every_declared_read_domain(device, strings, hass):
+    c, client, receive = device
+    c.config_entry = MockConfigEntry(domain=DOMAIN, entry_id="h7020-status")
+    c.config_entry.add_to_hass(hass)
+    c.fw_version = c.hw_version = None
+    basic = {
+        1: [1],
+        4: [37],
+        5: [0x15, 1, 0x0F, 0xA0],
+        6: list(b"1.00.14\0"),
+        7: [3, *b"3.01.01\0"],
+        0x0F: [strings],
+        0x41: [1],
+    }
+
+    async def write(_uuid, packet, **_kwargs):
+        assert packet[0] == 0xAA
+        reply = (
+            pages([37] * (strings * 15))[packet[2] - 1]
+            if packet[1] == 0xA5
+            else _packet(0xAA, packet[1], basic[packet[1]])
+        )
+        receive(None, bytearray(reply))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    await c._send_identity_queries()
+    async with c._control_arbiter.hold(ControlIntent.USER):
+        assert await c._send_state_queries()
+    assert set(c._domain_revisions) == c.profile.read_domains | {ReadDomain.OTHER}
+    assert (c.is_on, c.brightness_pct, c.color_temp_kelvin) == (True, 37, 4000)
+    assert (c.fw_version, c.hw_version) == ("1.00.14", "3.01.01")
+    assert c.boolean_control_state == {"power_off_memory": True}
+    assert c.segment_brightness == [37] * (strings * 15)
+    revisions = dict(c._domain_revisions)
+    for frame in (
+        _packet(0x33, 1, [0]),
+        _packet(0x33, 0x0F, [0]),
+        _packet(0xAA, 4, [101]),
+        _packet(0xAA, 0x0F, [3]),
+    ):
+        receive(None, bytearray(frame))
+    assert c._domain_revisions == revisions
+
+
+@pytest.mark.parametrize("device", ["H7020"], indirect=True)
+async def test_unknown_configured_count_blocks_masks_not_power(device, monkeypatch):
+    c, client, receive = device
+    c._apply_configured_strings(1)
+    client.write_gatt_char = AsyncMock()
+    monkeypatch.setattr(c, "_wait_for_revisions", AsyncMock(return_value=False))
+    with pytest.raises(ValueError, match="Cannot confirm"):
+        async with c.async_mask_transaction():
+            pytest.fail("unknown geometry authorised a mask transaction")
+    assert c.configured_strings == 1 and not c._configured_strings_confirmed
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
+
+    await c.send_command(build_power(True, "H7020"))
+    assert c.control_write_attempts == 1
+
+
+@pytest.mark.parametrize("device", ["H7020"], indirect=True)
+async def test_configured_string_entities_expose_only_explicit_user_changes(device, monkeypatch):
+    c, client, receive = device
+    entry = MagicMock(runtime_data=c)
+    entities = []
+    await select.async_setup_entry(c.hass, entry, entities.extend)
+    await switch.async_setup_entry(c.hass, entry, entities.extend)
+    selector = next(entity for entity in entities if isinstance(entity, select.GoveeBLEConfiguredStringsSelect))
+    memory = next(entity for entity in entities if isinstance(entity, switch.GoveeBLEControlSwitch))
+    assert selector.options == ["1", "2"] and selector.current_option is None
+    assert memory.is_on is None
+    client.write_gatt_char.assert_not_called()
+    c._apply_configured_strings(2)
+    assert selector.current_option == "2"
+    monkeypatch.setattr(c, "async_set_configured_strings", AsyncMock())
+    await selector.async_select_option("1")
+    c.async_set_configured_strings.assert_awaited_once_with(1)
+    with pytest.raises(ServiceValidationError):
+        await selector.async_select_option("3")
+    c.async_set_configured_strings.assert_awaited_once()
+    c._clear_client_state(client)
+    assert selector.current_option == "2" and not c._configured_strings_confirmed
 
 
 @pytest.mark.parametrize("producer", ["keepalive", "refresh", "observe", "segments"])

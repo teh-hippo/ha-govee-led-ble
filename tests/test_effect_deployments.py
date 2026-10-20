@@ -447,7 +447,7 @@ def test_unsaved_apply_records_content_free_source_metadata() -> None:
         ("music_body", ""),
         ("music_body", "3101ff000005640a"),
         ("segment_colors", []),
-        ("segment_colors", [[1, 2, 3]] * 17),
+        ("segment_colors", [[1, 2, 3]] * 31),
         ("segment_colors", [[1, 2, True]]),
         ("segment_brightness", [True]),
         ("segment_brightness", [101]),
@@ -470,6 +470,19 @@ def test_prior_state_legacy_missing_fields_stay_unknown():
     )
     assert prior.music_body is prior.segment_colors is prior.segment_brightness is None
     assert not {"music_body", "segment_colors", "segment_brightness"} & prior.to_dict().keys()
+
+
+def test_prior_state_round_trips_thirty_segments():
+    prior = PriorControlState(
+        "colour",
+        True,
+        50,
+        (1, 2, 3),
+        segment_colors=((1, 2, 3),) * 30,
+        segment_brightness=(50,) * 30,
+    )
+
+    assert PriorControlState.from_dict(prior.to_dict()) == prior
 
 
 def test_deployment_round_trip_preserves_prior_state_and_verification_confidence() -> None:

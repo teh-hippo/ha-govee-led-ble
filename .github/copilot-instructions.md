@@ -36,3 +36,4 @@ Do not duplicate those rules here.  Update `CONTRIBUTING.md` when a contributor-
 - Never edit generated protocol or frontend outputs manually.
 - Run focused existing checks while iterating and `make check` before declaring the final tree complete.
 - Run `make package` only when a distributable archive is requested.
+- For local rebases, keep recovery refs outside `refs/heads/` and use `--no-update-refs` from the first invocation.  Do not remove `update-ref` commands by hand from an active rebase.

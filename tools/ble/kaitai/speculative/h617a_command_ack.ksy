@@ -29,6 +29,9 @@ doc: |
   AbsControllerNoEvent4MultiWithSub.java:12-15 overrides the index to 3.
   No byte-2 transaction token is inferred for music. H6102 policy requires
   positive upload ACK before activation; schema reuse is not donor qualification.
+  H7020 #363 reuses ordinary zero-success ACKs, including configured strings,
+  and the A3/02 and A3/04 result-byte-2 forms. This is candidate structural
+  compatibility, not exact-model capture qualification or state confirmation.
 seq:
   - id: protocol
     type: u1

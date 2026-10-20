@@ -40,6 +40,7 @@ _STATUS_DOMAIN_NAMES = {
     "display_setting": StatusDomain.DISPLAY_SETTING,
     "relative_brightness": StatusDomain.RELATIVE_BRIGHTNESS,
     "segments": StatusDomain.SEGMENTS,
+    "configured_strings": StatusDomain.CONFIGURED_STRINGS,
     "installation_direction": StatusDomain.INSTALLATION_DIRECTION,
     "camera_health": StatusDomain.CAMERA_HEALTH,
 }
@@ -291,7 +292,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(body.mode_body.code))
     if mode_name == "music":
         detail = body.mode_body
-        if not detail.is_legacy:
+        if not getattr(detail, "is_legacy", True):
             return ParsedColorModeResponse(
                 mode=ParsedMode.MUSIC,
                 music_mode=music_mode,
@@ -305,7 +306,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             mode=ParsedMode.MUSIC,
             music_mode=music_mode,
             music_sensitivity=int(detail.sensitivity),
-            music_calm=bool(detail.style) if music_mode == "rhythm" else None,
+            music_calm=bool(detail.style) if music_mode == "rhythm" and hasattr(detail, "style") else None,
             music_color=music_color,
         )
     return ParsedColorModeResponse()

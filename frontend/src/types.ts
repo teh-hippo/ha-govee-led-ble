@@ -307,6 +307,19 @@ export interface AdvancedContent {
   native_diy?: number;
 }
 
+export interface NativeDiyTemplateContract {
+  template_id: number;
+  body_effect: number;
+  upload_subtype: number;
+  layer_count: number;
+  palette_min: number;
+  palette_max: number;
+  rate_field: "selected_movement_speed" | "colour_brightness_speed";
+  rate_min: number;
+  rate_max: number;
+  rate_default: number;
+}
+
 export interface WorkshopContent {
   kind: "workshop";
   model: ModelSku;
@@ -426,6 +439,9 @@ export interface ModelEffectCatalogue {
   templates?: CatalogueTemplate[];
   workshop_templates: WorkshopTemplate[];
   workflows: ReleaseWorkflowCapability[];
+  native_diy_templates?: NativeDiyTemplateContract[];
+  diy_slot_policy?: "fixed" | "approved_observed";
+  advanced_create?: boolean;
   supports: {
     multi: CapabilityState;
     advanced: CapabilityState;
@@ -452,7 +468,7 @@ export interface ModelEffectCatalogue {
 }
 
 export interface EffectStudioCatalogue extends ModelEffectCatalogue {
-  schema_version: 10;
+  schema_version: 11;
   sku: ModelSku;
   models: Record<ModelSku, ModelEffectCatalogue>;
 }

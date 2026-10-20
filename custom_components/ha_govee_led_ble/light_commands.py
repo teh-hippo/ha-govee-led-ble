@@ -10,6 +10,7 @@ from .generated_protocol_adapter import (
     build_segment_colour,
     parse_command,
     parse_h6179_command,
+    table_kelvin_rgb,
 )
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
@@ -27,10 +28,10 @@ def _clamp(value: int, minimum: int, maximum: int) -> int:
 
 
 def segments_to_mask(segments: Iterable[int], profile: ModelProfile | None = None) -> int:
-    """Validate one-based indices, optionally for a target, and build a 15-bit mask."""
+    """Validate one-based indices against the target's selectable geometry."""
     if profile is not None and not profile.supports_segments:
         raise ValueError(f"{profile.name} does not support per-segment control")
-    count = SEGMENT_COUNT if profile is None else min(SEGMENT_COUNT, profile.segment_count)
+    count = SEGMENT_COUNT if profile is None else profile.segment_count
     mask = 0
     for segment in segments:
         if not isinstance(segment, int) or isinstance(segment, bool):
@@ -117,12 +118,18 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
     return int(red), _clamp(int(green), 0, 255), _clamp(int(blue), 0, 255)
 
 
+def kelvin_companion_rgb(kelvin: int, profile: ModelProfile) -> tuple[int, int, int]:
+    return table_kelvin_rgb(kelvin) if profile.command_grammar in {"H601C", "H7020"} else kelvin_to_rgb(kelvin)
+
+
 def build_color_temp(kelvin: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
     profile = profile or get_profile(model)
     if not profile.supports_color_temperature:
         raise ValueError(f"{profile.name} does not support colour temperature")
     value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
-    return build_colour_temperature(value, kelvin_to_rgb(value), profile.whole_device_mask, model, profile=profile)
+    return build_colour_temperature(
+        value, kelvin_companion_rgb(value, profile), profile.whole_device_mask, model, profile=profile
+    )
 
 
 def build_segment_color_temp(
@@ -143,7 +150,7 @@ def build_segment_color_temp(
         raise ValueError("Kelvin must be an integer")
     if not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
         raise ValueError("Kelvin outside profile range")
-    return build_colour_temperature(kelvin, kelvin_to_rgb(kelvin), mask, model, profile=profile)
+    return build_colour_temperature(kelvin, kelvin_companion_rgb(kelvin, profile), mask, model, profile=profile)
 
 
 def build_white_brightness(percent: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
@@ -260,7 +267,10 @@ def parse_static_write(
         rgb = (int(body.rgb_direct.red), int(body.rgb_direct.green), int(body.rgb_direct.blue))
         kelvin = int(body.kelvin)
         mask = int(body.mask.bits)
-        if rgb == (0, 0, 0) and kelvin:
+        sentinel = (255, 255, 255) if profile.command_grammar == "H7020" else (0, 0, 0)
+        if kelvin and profile.command_grammar == "H7020" and rgb != sentinel:
+            raise ValueError("Kelvin requires direct white RGB")
+        if rgb == sentinel and kelvin:
             return ParsedStaticWrite(
                 operation=operation,
                 segment_mask=mask,

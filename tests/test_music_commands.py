@@ -35,7 +35,13 @@ from custom_components.ha_govee_led_ble.music_commands import (
     prepare_music_profile_writes,
     prepare_music_request,
 )
-from custom_components.ha_govee_led_ble.music_semantics import MusicParamSpec, MusicVariant, music_variant
+from custom_components.ha_govee_led_ble.music_semantics import (
+    H7020_MUSIC_VARIANTS,
+    MusicParamSpec,
+    MusicVariant,
+    capture_music_parameters,
+    music_variant,
+)
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
@@ -96,6 +102,35 @@ def _notify(coordinator, payload: bytes) -> None:
     frame = bytearray(payload.ljust(19, b"\x00"))
     frame.append(xor_checksum(frame))
     coordinator._notify_callback(None, frame)
+
+
+def _h7020_music_selector(
+    mode: int,
+    sensitivity: int,
+    response: int = 0,
+    colour: tuple[int, int, int] | None = None,
+) -> bytes:
+    packet = bytes(
+        [
+            0x33,
+            0x05,
+            0x13,
+            mode,
+            sensitivity,
+            response,
+            int(colour is not None),
+            *(colour or (0, 0, 0)),
+            *([0] * 9),
+        ]
+    )
+    return packet + bytes([xor_checksum(packet)])
+
+
+def _h7020_coordinator(hass) -> GoveeBLECoordinator:
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H7020", configuration_url="test")
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._resolve_device_profile()
+    return coordinator
 
 
 @pytest.mark.parametrize("mode,parameters", [("rhythm", {}), ("separation", {"point": 4})])
@@ -705,6 +740,154 @@ def test_parameter_validation_does_not_coerce(parameters):
 def test_selector_validation_does_not_coerce(sensitivity, calm):
     with pytest.raises(ValueError):
         prepare_music_request("H617A", "rhythm", sensitivity, None, calm, {})
+
+
+def test_h7020_selector_parameter_uses_shared_compilation_without_upload(monkeypatch):
+    profile = ModelProfile(
+        "Synthetic H7020 music",
+        command_grammar="H7020",
+        music_modes=("rhythm", "spectrum", "energetic", "rolling"),
+        music_variants=H7020_MUSIC_VARIANTS,
+        supports_music_color=True,
+    )
+    monkeypatch.setitem(MODEL_PROFILES, "TEST-H7020", profile)
+    selectors = []
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.music_commands.build_power", lambda *_args: b"power")
+
+    def selector(*_args, **kwargs):
+        selectors.append(kwargs.get("selector_parameters", {}))
+        return b"selector"
+
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.music_commands.build_music_mode", selector)
+
+    writes = prepare_music_profile_writes("TEST-H7020", "rhythm", 99, None, False, {}, profile=profile)
+    assert [packet for packet, _ in writes] == [b"power", b"selector"]
+    assert selectors[-1] == {"rhythm_response": 1}
+    assert writes[-1][1]["music_rhythm_response"] == "soft"
+
+    prepare_music_request(
+        "TEST-H7020",
+        "rhythm",
+        0,
+        (1, 2, 3),
+        False,
+        {"response": "dynamic"},
+        profile=profile,
+    )
+    assert selectors[-1] == {"rhythm_response": 0}
+
+    with pytest.raises(ValueError, match="does not support parameter response"):
+        prepare_music_request(
+            "TEST-H7020",
+            "spectrum",
+            50,
+            None,
+            False,
+            {"response": "soft"},
+            profile=profile,
+        )
+    with pytest.raises(ValueError, match="dynamic, soft"):
+        prepare_music_request(
+            "TEST-H7020",
+            "rhythm",
+            50,
+            None,
+            False,
+            {"response": "calm"},
+            profile=profile,
+        )
+
+
+def test_h7020_response_capture_is_authored_only():
+    profile = ModelProfile(
+        "Synthetic H7020 music",
+        command_grammar="H7020",
+        music_modes=("rhythm", "spectrum", "energetic", "rolling"),
+        music_variants=H7020_MUSIC_VARIANTS,
+    )
+    observed = SimpleNamespace(unknown_selector_parameter=0)
+    assert capture_music_parameters(observed, profile, "rhythm") == {}
+    observed.music_rhythm_response = "dynamic"
+    assert capture_music_parameters(observed, profile, "rhythm") == {"response": "dynamic"}
+    assert capture_music_parameters(observed, profile, "spectrum") == {}
+
+
+@pytest.mark.parametrize(
+    ("parameters", "response", "colour"),
+    [
+        ({}, 1, None),
+        ({"response": "dynamic"}, 0, (1, 2, 3)),
+    ],
+)
+async def test_h7020_compiler_writes_exact_selector_and_retains_response(hass, parameters, response, colour):
+    compiled = compile_music_profile(
+        LibraryItem.new(
+            "H7020 music",
+            MusicProfile("H7020", "rhythm", 99, colour=colour, parameters=parameters),
+        ),
+        "H7020",
+    )
+    expected_response = "soft" if response else "dynamic"
+    assert compiled.parameters == {"response": expected_response}
+    coordinator = _h7020_coordinator(hass)
+    with _music_transport(coordinator) as physical:
+        await async_apply_compiled_profile(coordinator, compiled)
+    packets = [call.args[1] for call in physical.await_args_list]
+    assert packets == [
+        build_power(True, "H7020"),
+        _h7020_music_selector(3, 99, response, colour),
+    ]
+    assert coordinator.music_rhythm_response == expected_response
+    assert coordinator.capture_effect_control_state().music_parameters == {"response": expected_response}
+
+
+async def test_h7020_unknown_response_blocks_recovery_but_not_direct_selection(hass):
+    coordinator = _h7020_coordinator(hass)
+    _notify(coordinator, H("aa0101"))
+    _notify(coordinator, H("aa0513036300"))
+    state = coordinator.capture_effect_control_state()
+    assert state.music_mode == "rhythm" and state.music_parameters == {}
+    assert coordinator.music_rhythm_response is None
+
+    with _music_transport(coordinator) as physical:
+        assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+        physical.assert_not_awaited()
+        await coordinator.async_select_music_slug("rhythm")
+    assert [call.args[1] for call in physical.await_args_list] == [
+        build_power(True, "H7020"),
+        _h7020_music_selector(3, 99, 1),
+    ]
+    assert coordinator.music_rhythm_response == "soft"
+
+
+async def test_h7020_authored_response_restores_and_selector_notifications_do_not_replace_it(hass):
+    coordinator = _h7020_coordinator(hass)
+    compiled = compile_music_profile(
+        LibraryItem.new(
+            "Dynamic Rhythm",
+            MusicProfile("H7020", "rhythm", 42, parameters={"response": "dynamic"}),
+        ),
+        "H7020",
+    )
+    with _music_transport(coordinator) as physical:
+        await async_apply_compiled_profile(coordinator, compiled)
+        state = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
+        assert state.music_parameters == {"response": "dynamic"}
+
+        coordinator._expected_state.clear()
+        _notify(coordinator, H("aa0513042a0100"))
+        assert coordinator.music_mode == "spectrum"
+        assert coordinator.music_rhythm_response == "dynamic"
+        _notify(coordinator, H("aa0513032a00"))
+        assert coordinator.music_mode == "rhythm"
+        assert coordinator.music_rhythm_response == "dynamic"
+
+        coordinator.music_rhythm_response = "soft"
+        physical.reset_mock()
+        assert not await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+    assert physical.await_args_list[-1].args[1] == _h7020_music_selector(3, 42, 0)
+    assert coordinator.music_rhythm_response == "dynamic"
+    assert coordinator.capture_effect_control_state().music_parameters == {"response": "dynamic"}
 
 
 async def test_new_fountain_parameter_survives_application_capture_and_recovery(hass, monkeypatch):

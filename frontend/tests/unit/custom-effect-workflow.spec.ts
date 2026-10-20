@@ -107,6 +107,23 @@ test("starter lists expose product choices but not protocol evidence fixtures", 
   ).toEqual(["Rhythm"]);
 });
 
+test("native templates stay available without unrestricted Advanced creation", () => {
+  const native = {
+    ...catalogue,
+    advanced_create: false,
+    templates: [{
+      id: "template:native-diy:17",
+      label: "Spin 1",
+      category: "advanced" as const,
+      content: { kind: "advanced" as const, native_diy: 17, layers: [] },
+    }],
+  };
+  const nativeContext = { model: "H7020", catalogue: { ...native, sku: "H7020" }, libraryItems: [] };
+
+  expect(buildCustomEffectEntries(nativeContext, "advanced").map(entry => entry.label)).toEqual(["Spin 1"]);
+  expect(newEffectKindForCategory(nativeContext, "advanced")).toBeUndefined();
+});
+
 test("saved effects remain available in their content category", () => {
   const entries = buildCustomEffectEntries(context([saved]), "single-layer");
 

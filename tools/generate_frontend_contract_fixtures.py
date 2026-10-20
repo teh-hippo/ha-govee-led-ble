@@ -95,7 +95,8 @@ def _compact_custom_catalogue(catalogue: dict[str, Any]) -> dict[str, Any]:
             "video_modes",
             "workshop_templates",
         ):
-            compact[field] = cast(list[Any], compact[field])[:1]
+            values = cast(list[Any], compact[field])
+            compact[field] = values if model == "H7020" and field == "music_modes" else values[:1]
         compact_models[model] = compact
     return {
         "schema_version": catalogue["schema_version"],
@@ -207,7 +208,7 @@ def _content_samples(
     }
     if samples.keys() != CONTENT_FAMILIES:
         raise RuntimeError("Frontend content fixture coverage is incomplete")
-    return cast(dict[str, dict[str, Any]], samples)
+    return samples
 
 
 def rendered_data() -> str:

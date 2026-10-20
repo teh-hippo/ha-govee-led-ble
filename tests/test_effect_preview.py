@@ -34,6 +34,8 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 )
 from custom_components.ha_govee_led_ble.effect_diagnostics import EffectDiagnosticHistory
 from custom_components.ha_govee_led_ble.effect_domain import (
+    BuiltinScene,
+    CatalogueRef,
     H6179SingleDiyEffect,
     LibraryItem,
     MusicProfile,
@@ -189,6 +191,71 @@ async def _manager(
         lambda entry_id: entry if entry_id == entry.entry_id else None,
     )
     return manager, cache
+
+
+async def test_h7020_static_preview_rejects_ambiguous_per_bulb_white_intent(hass, monkeypatch):
+    coordinator = _coordinator(model="H7020", readable=True)
+    coordinator.is_on = True
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    events: list[PreviewStatus] = []
+    owner = object()
+    session = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-10-21T00:00:00Z",
+            item=_item("Ambiguous static"),
+            diy_code=321,
+        )
+        await manager.async_wait_idle("entry-a")
+
+        assert events[-1].phase is PreviewPhase.FAILED
+        assert events[-1].write_disposition is PreviewWriteDisposition.NOT_STARTED
+        assert not coordinator.writes
+    finally:
+        await manager.async_shutdown()
+
+
+@pytest.mark.parametrize(
+    ("model", "name", "code"),
+    [("H7020", "Twilight", 2070), ("H6179", "Sunrise", 0)],
+)
+async def test_scene_preview_does_not_refresh_disposable_diy_slot(
+    hass,
+    monkeypatch,
+    model: str,
+    name: str,
+    code: int,
+) -> None:
+    coordinator = _coordinator(model=model, readable=True)
+    coordinator.is_on = True
+    coordinator.effect = "existing"
+    entry = next(scene for scene in SCENE_ENTRIES[model] if scene.name == name and scene.code == code)
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    events: list[PreviewStatus] = []
+    owner = object()
+    session = _open(manager, owner, events)
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-10-21T00:00:00Z",
+            item=LibraryItem.new(
+                name,
+                BuiltinScene(CatalogueRef(model, entry.scene_id, entry.effect_id)),
+            ),
+        )
+        await manager.async_wait_idle("entry-a")
+
+        assert events[-1].phase is PreviewPhase.CONFIRMED
+        assert coordinator.writes
+    finally:
+        await manager.async_shutdown()
 
 
 def _open(manager: EffectPreviewManager, owner: object, events: list[PreviewStatus]) -> str:

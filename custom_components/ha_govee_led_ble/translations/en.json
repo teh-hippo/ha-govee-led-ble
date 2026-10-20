@@ -2,12 +2,14 @@
   "entity": {
     "switch": {
       "gradual": {"name": "Gradual"},
-      "limit": {"name": "Limit"}
+      "limit": {"name": "Limit"},
+      "power_off_memory": {"name": "Power-off memory"}
     },
     "select": {
       "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},
       "camera_position": {"name": "Camera position", "state": {"top": "Top", "bottom": "Bottom"}},
-      "gradient": {"name": "Gradient", "state": {"off": "Off", "on": "On"}}
+      "gradient": {"name": "Gradient", "state": {"off": "Off", "on": "On"}},
+      "configured_strings": {"name": "Configured bulb strings", "state": {"1": "One string (15 bulbs)", "2": "Two strings (30 bulbs)"}}
     },
     "sensor": {
       "camera_status": {"name": "Camera status", "state": {"absent": "Absent", "healthy": "Connected", "incompatible": "Incompatible", "unknown": "Unknown"}}

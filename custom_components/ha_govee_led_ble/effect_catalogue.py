@@ -38,7 +38,7 @@ from .music_commands import music_default_available
 from .music_protocol import MUSIC_MODE_CODES_BY_MODEL, music_code_for
 from .music_semantics import music_parameters_available, music_params_for_mode, music_variant
 
-EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 10
+EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 11
 LEGACY_CATALOGUE_SKU: Final = "H617A"
 
 # H617A Type04 uploads are selected with DIY code 24.
@@ -169,6 +169,34 @@ class CatalogueTemplate:
 
 
 @dataclass(frozen=True, slots=True)
+class NativeDiyTemplateContract:
+    template_id: int
+    body_effect: int
+    upload_subtype: int
+    layer_count: int
+    palette_min: int
+    palette_max: int
+    rate_field: str
+    rate_min: int
+    rate_max: int
+    rate_default: int
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "template_id": self.template_id,
+            "body_effect": self.body_effect,
+            "upload_subtype": self.upload_subtype,
+            "layer_count": self.layer_count,
+            "palette_min": self.palette_min,
+            "palette_max": self.palette_max,
+            "rate_field": self.rate_field,
+            "rate_min": self.rate_min,
+            "rate_max": self.rate_max,
+            "rate_default": self.rate_default,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CatalogueSupport:
     multi: CapabilityState
     advanced: CapabilityState
@@ -222,6 +250,9 @@ class ModelEffectCatalogue:
     painted_background: tuple[int, int, int] = (0, 0, 0)
     # Exact-model APK authoring bounds; wire grammar alone does not qualify them.
     native_diy_palette_groups: tuple[tuple[int, tuple[int, ...], int, int], ...] = ()
+    native_diy_templates: tuple[NativeDiyTemplateContract, ...] = ()
+    diy_slot_policy: str = "fixed"
+    advanced_create: bool = True
 
     def to_dict(self, *, profile: ModelProfile | None = None) -> dict[str, JsonValue]:
         profile = MODEL_PROFILES[self.sku] if profile is None else profile
@@ -294,6 +325,13 @@ class ModelEffectCatalogue:
             "workshop_templates": [template.to_dict(self.sku) for template in self.workshop_templates],
             "workflows": frontend_release_capabilities(self.sku),
             "supports": self.supports.to_dict(),
+            **(
+                {"native_diy_templates": [template.to_dict() for template in self.native_diy_templates]}
+                if self.native_diy_templates
+                else {}
+            ),
+            **({"diy_slot_policy": self.diy_slot_policy} if self.diy_slot_policy != "fixed" else {}),
+            **({"advanced_create": False} if not self.advanced_create else {}),
             "limits": {
                 "palette_min": self.palette_min,
                 "palette_max": self.palette_max,
@@ -482,6 +520,93 @@ H6099_DIY_FAMILIES: Final = tuple(
     )
 )
 
+H7020_DIY_FAMILIES: Final = (
+    DiyEffectFamily(
+        "fade",
+        "Fade",
+        0,
+        (
+            DiyEffectVariation("1", "Fade 1", 0),
+            DiyEffectVariation("2", "Fade 2", 1),
+            DiyEffectVariation("3", "Fade 3", 2),
+        ),
+        True,
+        rate_min=1,
+        palette_max=8,
+    ),
+    DiyEffectFamily(
+        "jumping",
+        "Jumping",
+        1,
+        (
+            DiyEffectVariation("4", "Jumping 1", 0),
+            DiyEffectVariation("5", "Jumping 2", 2),
+        ),
+        True,
+        rate_min=1,
+        palette_max=8,
+    ),
+    DiyEffectFamily(
+        "blinking",
+        "Blinking",
+        2,
+        (
+            DiyEffectVariation("6", "Blinking 1", 0),
+            DiyEffectVariation("7", "Blinking 2", 1),
+            DiyEffectVariation("8", "Blinking 3", 2),
+        ),
+        True,
+        rate_min=1,
+        palette_max=8,
+    ),
+    DiyEffectFamily(
+        "marquee",
+        "Marquee",
+        3,
+        (
+            DiyEffectVariation("9", "Marquee 1", 3),
+            DiyEffectVariation("10", "Marquee 2", 4),
+            DiyEffectVariation("11", "Marquee 3", 5),
+        ),
+        True,
+        rate_min=1,
+        palette_max=8,
+    ),
+    DiyEffectFamily(
+        "stream",
+        "Stream",
+        8,
+        (
+            DiyEffectVariation("12", "Stream 1", 9),
+            DiyEffectVariation("13", "Stream 2", 10),
+        ),
+        True,
+        rate_min=1,
+        palette_max=8,
+    ),
+    DiyEffectFamily(
+        "flow",
+        "Flow",
+        9,
+        (
+            DiyEffectVariation("14", "Flow 1", 9),
+            DiyEffectVariation("15", "Flow 2", 10),
+        ),
+        True,
+        rate_min=1,
+        palette_max=8,
+    ),
+    DiyEffectFamily(
+        "chase",
+        "Chase",
+        10,
+        (DiyEffectVariation("16", "Chase", 0),),
+        False,
+        rate_min=1,
+        palette_max=3,
+    ),
+)
+
 
 def _mode_label(slug: str) -> str:
     return slug.replace("_", " ").title()
@@ -539,6 +664,12 @@ H6179_DIY_FAMILIES: Final = (
 H6179_NATIVE_MUSIC_MODES: Final = (
     NativeModeOption("mode_0", "Mode 1"),
     NativeModeOption("mode_1", "Mode 2"),
+)
+H7020_NATIVE_MUSIC_MODES: Final = (
+    NativeModeOption("rhythm", "Rhythm"),
+    NativeModeOption("spectrum", "Spectrum"),
+    NativeModeOption("energetic", "Energetic"),
+    NativeModeOption("rolling", "Rolling"),
 )
 
 H6199_DIY_EFFECTS: Final = (
@@ -695,10 +826,15 @@ def _video_profile_settings(profile: ModelProfile) -> tuple[str, ...]:
 H6199_VIDEO_MODES: Final = _native_video_modes("H6199")
 
 
-def _single_template(model: str, family: DiyEffectFamily) -> CatalogueTemplate:
+def _single_template(
+    model: str,
+    family: DiyEffectFamily,
+    *,
+    grammar: str | None = None,
+) -> CatalogueTemplate:
     variation = family.variations[0]
     content: EffectContent
-    grammar = get_profile(model).effect_grammar
+    grammar = get_profile(model).effect_grammar if grammar is None else grammar
     if grammar in {"H617A", "H6099"}:
         content = SingleEffect(
             family=family.family,
@@ -839,6 +975,61 @@ H617A_NATIVE_DIY_TEMPLATES: Final = tuple(
     )
     for code, label, seed in H617A_NATIVE_DIY_SEEDS
 )
+
+H7020_NATIVE_DIY_SEEDS: Final = (
+    (
+        17,
+        89,
+        "Spin 1",
+        "BSYgAAABAgH/fgOACgoA8xQF/4wH//4HYf4IB/6uB7r+FQD4AACAACkiAAABAgH/GAOACgoA8xQG/4wH//4H/14H/wY9/wbTtAb+FwD4AACAACkkAAABAgH/GQOACgoA8hQG/4wH//4HCP+qBtr+CH3+1wb/FQD4AACAACkmAAABAgH/GQOACgoA8xQG/4wH//4H/waF9Qf/Vmb/B6L/FwD4AACAACkoAAABAgH/GQOACgoA8xQG/4wH//4H8VD/B2n/CP+RCP8PFQD4AACAAA==",
+    ),
+    (
+        18,
+        89,
+        "Spin 2",
+        "BSYgAAABAgH/fgOACgoA8xQF/4wH//4HYf4IB/6uB7r+FwD4AACAACkiAAABAgH/GAOACgoA8xQG/4wH//4H/14H/wY9/wbTtAb+FQD4AACAACkkAAABAgH/GQOACgoA8hQG/4wH//4HCP+qBtr+CH3+1wb/FwD4AACAACkmAAABAgH/GQOACgoA8xQG/4wH//4H/waF9Qf/Vmb/B6L/FQD4AACAACkoAAABAgH/GQOACgoA8xQG/4wH//4H8VD/B2n/CP+RCP8PFwD4AACAAA==",
+    ),
+    (
+        19,
+        90,
+        "Ribbon",
+        "Ai8AAgoFAgL/GQDZAAD/GQDdAAAC+AoG/zgA/38A//8AAP8AAP//AAD/AACAAAAABCkAAAABAAHEdACbFBQA+AoG/w8H/38A//8AAP8AAP//AAD/AACAAACAAQ==",
+    ),
+)
+
+H7020_NATIVE_DIY_CONTRACTS: Final = (
+    NativeDiyTemplateContract(17, 89, 2, 5, 1, 8, "selected_movement_speed", 150, 250, 248),
+    NativeDiyTemplateContract(18, 89, 2, 5, 1, 8, "selected_movement_speed", 150, 250, 248),
+    NativeDiyTemplateContract(19, 90, 2, 2, 1, 8, "colour_brightness_speed", 150, 253, 202),
+)
+
+
+def _h7020_native_diy_content(template_id: int, seed: str) -> LayeredEffect:
+    content = replace(decode_workshop_effect("H617A", base64.b64decode(seed))[0], native_diy=template_id)
+    if template_id != 19:
+        return content
+    return replace(
+        content,
+        layers=tuple(
+            replace(
+                layer,
+                colour_speed=202,
+                brightness_patterns=tuple(replace(pattern, change_speed=202) for pattern in layer.brightness_patterns),
+            )
+            for layer in content.layers
+        ),
+    )
+
+
+H7020_NATIVE_DIY_TEMPLATES: Final = tuple(
+    CatalogueTemplate(
+        id=f"template:native-diy:{template_id}",
+        label=label,
+        category="advanced",
+        content=_h7020_native_diy_content(template_id, seed),
+    )
+    for template_id, _body_effect, label, seed in H7020_NATIVE_DIY_SEEDS
+)
 # ScenesOp.changeEffectStr4Sku uses 60 for H6102 presets 504/506. This is
 # preset construction evidence, not permission to infer runtime physical geometry.
 # DiyColorParams.Companion.a() supplies the app's seven-colour defaults;
@@ -894,6 +1085,12 @@ H6199_CATALOGUE_TEMPLATES: Final = (
     *(_single_template("H6199", family) for family in H6199_PALETTE_DIY_FAMILIES),
     *(_music_template("H6199", mode) for mode in H6199_NATIVE_MUSIC_MODES),
     *(_video_template("H6199", mode) for mode in H6199_VIDEO_MODES),
+)
+
+H7020_CATALOGUE_TEMPLATES: Final = (
+    *(_single_template("H7020", family, grammar="H617A") for family in H7020_DIY_FAMILIES),
+    *(_music_template("H7020", mode) for mode in H7020_NATIVE_MUSIC_MODES),
+    *H7020_NATIVE_DIY_TEMPLATES,
 )
 
 WORKSHOP_PROTOCOL_FIXTURES: Final = (
@@ -1112,6 +1309,7 @@ MODEL_EFFECT_CATALOGUES: Final = {
         video_modes=(),
         templates=H6179_CATALOGUE_TEMPLATES,
         workshop_templates=(),
+        diy_slot_policy="approved_observed",
         supports=CatalogueSupport(
             multi=workflow_capability_state("H6179", CapabilityWorkflow.MULTI),
             advanced=workflow_capability_state("H6179", CapabilityWorkflow.ADVANCED),
@@ -1166,6 +1364,31 @@ MODEL_EFFECT_CATALOGUES: Final = {
             palette_diy=studio_apply_capability_state("H6076", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H6076", CapabilityWorkflow.WORKSHOP),
         ),
+    ),
+    "H7020": ModelEffectCatalogue(
+        sku="H7020",
+        painted_effects=(),
+        effects=H7020_DIY_FAMILIES,
+        music_modes=H7020_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=H7020_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        native_diy_templates=H7020_NATIVE_DIY_CONTRACTS,
+        diy_slot_policy="approved_observed",
+        advanced_create=False,
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H7020", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H7020", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H7020", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H7020", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H7020", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H7020", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H7020", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H7020", CapabilityWorkflow.WORKSHOP),
+        ),
+        speed_min=1,
     ),
 }
 
@@ -1229,6 +1452,13 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
     catalogue = MODEL_EFFECT_CATALOGUES.get(model)
     if catalogue is None or profile.effect_grammar != "H617A":
         raise ValueError("native DIY templates require an exact compatible catalogue")
+    contract = next(
+        (contract for contract in catalogue.native_diy_templates if contract.template_id == content.native_diy),
+        None,
+    )
+    if contract is not None:
+        _validate_h7020_native_diy(content, catalogue, contract)
+        return False
     template = next(
         (
             t
@@ -1342,6 +1572,91 @@ def validate_native_diy(content: LayeredEffect, model: str, profile: ModelProfil
             ):
                 raise ValueError("Bloom selection must use one, all, or half the physical IC count")
     return geometry_edited
+
+
+def _validate_h7020_native_diy(
+    content: LayeredEffect,
+    catalogue: ModelEffectCatalogue,
+    contract: NativeDiyTemplateContract,
+) -> None:
+    template = next(
+        (
+            template.content
+            for template in catalogue.templates
+            if isinstance(template.content, LayeredEffect) and template.content.native_diy == contract.template_id
+        ),
+        None,
+    )
+    if not isinstance(template, LayeredEffect):
+        raise ValueError("unknown native DIY template")
+    if len(content.layers) != contract.layer_count:
+        raise ValueError(f"native DIY {contract.template_id} must retain {contract.layer_count} layers")
+    palettes = tuple(layer.palette for layer in content.layers)
+    template_palettes = tuple(layer.palette for layer in template.layers)
+    palette_changed = palettes != template_palettes
+    if palette_changed and not all(palette == palettes[0] for palette in palettes[1:]):
+        raise ValueError(f"native DIY {contract.template_id} must use one shared palette")
+    if palette_changed and not contract.palette_min <= len(palettes[0]) <= contract.palette_max:
+        raise ValueError(
+            f"native DIY {contract.template_id} palette must contain "
+            f"{contract.palette_min} to {contract.palette_max} colours"
+        )
+    if contract.rate_field == "selected_movement_speed":
+        rates = tuple(layer.selected_movement.speed for layer in content.layers)
+        expected = replace(
+            template,
+            layers=tuple(
+                replace(
+                    layer,
+                    palette=palettes[0] if palette_changed else layer.palette,
+                    selected_movement=replace(layer.selected_movement, speed=rates[0]),
+                )
+                for layer in template.layers
+            ),
+        )
+    else:
+        rates = tuple(
+            value
+            for layer in content.layers
+            for value in (layer.colour_speed, *(pattern.change_speed for pattern in layer.brightness_patterns))
+        )
+        expected = replace(
+            template,
+            layers=tuple(
+                replace(
+                    layer,
+                    palette=palettes[0] if palette_changed else layer.palette,
+                    colour_speed=rates[0],
+                    brightness_patterns=tuple(
+                        replace(pattern, change_speed=rates[0]) for pattern in layer.brightness_patterns
+                    ),
+                )
+                for layer in template.layers
+            ),
+        )
+    if not rates or any(rate != rates[0] for rate in rates):
+        raise ValueError(f"native DIY {contract.template_id} must use one shared rate")
+    if not contract.rate_min <= rates[0] <= contract.rate_max:
+        raise ValueError(
+            f"native DIY {contract.template_id} rate must be from {contract.rate_min} to {contract.rate_max}"
+        )
+    if content != expected:
+        raise ValueError(f"native DIY {contract.template_id} only supports palette and rate edits")
+
+
+def native_diy_template_contract(model: str, template_id: int | None) -> NativeDiyTemplateContract | None:
+    catalogue = MODEL_EFFECT_CATALOGUES.get(model)
+    if catalogue is None:
+        return None
+    return next(
+        (contract for contract in catalogue.native_diy_templates if contract.template_id == template_id),
+        None,
+    )
+
+
+def requires_approved_diy_slot(model: str) -> bool:
+    catalogue = MODEL_EFFECT_CATALOGUES.get(model)
+    return catalogue is not None and catalogue.diy_slot_policy == "approved_observed"
 
 
 def resolve_catalogue_template(

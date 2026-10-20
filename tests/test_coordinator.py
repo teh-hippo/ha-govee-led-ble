@@ -19,7 +19,7 @@ from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
     BLEDeviceResolver,
 )
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, MUSIC_MODE_SLUGS, ReadDomain
+from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, MUSIC_MODE_SLUGS, ModelProfile, ReadDomain
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
@@ -92,6 +92,59 @@ def _packet(header: int, action: int, params: list[int]) -> bytes:
     payload.extend(b"\x00" * (19 - len(payload)))
     payload.append(xor_checksum(payload))
     return bytes(payload)
+
+
+@pytest.mark.parametrize(("poll", "reply_brightness"), [(False, True), (True, True), (False, False)])
+async def test_power_required_profile_collects_optional_brightness_before_release(
+    hass, monkeypatch, poll, reply_brightness
+):
+    profile = ModelProfile(
+        "Optional brightness fixture",
+        command_grammar="H617A",
+        status_grammar="H617A",
+        read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+        setup_required_read_domains=frozenset({ReadDomain.POWER}),
+    )
+    monkeypatch.setitem(MODEL_PROFILES, "H9904", profile)
+    c = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H9904", configuration_url=None)
+    client = MagicMock(is_connected=True, disconnect=AsyncMock())
+    pending = []
+
+    async def connect():
+        c._client = client
+        return client
+
+    async def disconnect(_client):
+        client.is_connected = False
+        c._clear_client_state(client)
+
+    async def brightness_reply():
+        await asyncio.sleep(0.02)
+        if client.is_connected:
+            c._notify_callback(None, bytearray(_packet(0xAA, 4, [37])))
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == build_power_query():
+            c._notify_callback(None, bytearray(_packet(0xAA, 1, [1])))
+        elif packet == build_brightness_query() and reply_brightness:
+            pending.append(asyncio.create_task(brightness_reply()))
+
+    client.write_gatt_char = AsyncMock(side_effect=write)
+    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(side_effect=connect))
+    monkeypatch.setattr(c, "_disconnect_if_current_locked", AsyncMock(side_effect=disconnect))
+    try:
+        if poll:
+            snapshot = await c._async_update_data()
+            assert not client.is_connected and snapshot["brightness_pct"] == 37
+        else:
+            assert await c.refresh_state(
+                refresh_all=True, required_domains=profile.setup_required_read_domains, timeout=0.1
+            )
+        assert c.brightness_pct == (37 if reply_brightness else 100)
+        assert c._field_revisions.get("brightness_pct", 0) == int(reply_brightness)
+    finally:
+        await asyncio.gather(*pending)
+        await c.disconnect()
 
 
 proto = SimpleNamespace(
@@ -2320,7 +2373,7 @@ def test_mixed_grammars_route_command_expectations_and_status_semantics(
         assert build_segment_query(5, model) == build_segment_query(5, "H617A")
     else:
         assert build_segment_query(4, model) == build_segment_query(4, "H6199")
-        with pytest.raises(ValueError, match="1 to 4"):
+        with pytest.raises(ValueError, match="selected grammar"):
             build_segment_query(5, model)
 
     coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x04, [37])))
@@ -4516,7 +4569,7 @@ def test_generated_adapter_rejects_structurally_invalid_frames() -> None:
 @pytest.mark.parametrize(("model", "maximum"), [("H617A", 5), ("H6199", 4)])
 def test_segment_query_groups_are_model_bounded(model: str, maximum: int) -> None:
     assert build_segment_query(maximum, model)[2] == maximum
-    with pytest.raises(ValueError, match=f"1 to {maximum}"):
+    with pytest.raises(ValueError, match="selected grammar"):
         build_segment_query(maximum + 1, model)
 
 

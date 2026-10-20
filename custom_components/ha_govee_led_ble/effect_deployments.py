@@ -170,10 +170,10 @@ class PriorControlState:
             if (
                 not isinstance(self.segment_colors, tuple)
                 or not isinstance(self.segment_brightness, tuple)
-                or not 1 <= len(self.segment_colors) <= 16
+                or not 1 <= len(self.segment_colors) <= 30
                 or len(self.segment_colors) != len(self.segment_brightness)
             ):
-                raise EffectStorageError("prior segment layout must contain matching 1 to 16 element tuples")
+                raise EffectStorageError("prior segment layout must contain matching 1 to 30 element tuples")
             for rgb in self.segment_colors:
                 _validate_rgb(rgb, "prior segment colour")
             if any(type(value) is not int or not 0 <= value <= 100 for value in self.segment_brightness):

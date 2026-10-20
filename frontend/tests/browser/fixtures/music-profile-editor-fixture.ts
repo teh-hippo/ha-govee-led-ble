@@ -42,5 +42,12 @@ if (new URLSearchParams(location.search).has("fountain")) {
   };
   editor.content = {...editor.content, mode: "fountain"};
 }
+if (new URLSearchParams(location.search).has("selector-parameter")) {
+  catalogue.music_settings.separation.parameters = {
+    response: {
+      kind: "select", default: "soft", min: 0, max: 0, options: ["dynamic", "soft"],
+    },
+  };
+}
 const mode = new URLSearchParams(location.search).get("mode");
 if (mode) editor.content = {...editor.content, mode};

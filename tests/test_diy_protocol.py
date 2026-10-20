@@ -8,13 +8,14 @@ from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import effect_commands as proto
 from custom_components.ha_govee_led_ble import effect_contracts
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, get_profile
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H6199_DIY_EFFECTS,
     H6199_PALETTE_DIY_APPLY_CODE,
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
+    resolve_catalogue_template,
 )
 from custom_components.ha_govee_led_ble.effect_compiler import (
     CompatibilityState,
@@ -24,6 +25,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import (
     compile_h617a,
     compile_h6199,
     resolve_diy_code,
+    validate_compiled_geometry,
 )
 from custom_components.ha_govee_led_ble.effect_contracts import (
     ApplicationRoute,
@@ -34,6 +36,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     EffectPair,
     H6179MixedDiyEffect,
     H6179SingleDiyEffect,
+    LayeredEffect,
     LibraryItem,
     MultiEffect,
     PaintedEffect,
@@ -51,6 +54,7 @@ from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import Diy
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type04 import DiyType04
 from custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload import H6199EffectUpload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_diy_activation,
     build_h6199_palette_diy_envelope,
     parse_a3_effect_envelope,
     parse_command,
@@ -80,6 +84,26 @@ H6199_CONTENT = PaletteDiyEffect(
     50,
     ((255, 0, 0), (0, 0, 255)),
 )
+
+
+@pytest.fixture
+def h7020_effect_profile(monkeypatch: pytest.MonkeyPatch):
+    profile = replace(
+        get_profile("H7020"),
+        command_grammar="H7020",
+        status_grammar="H7020",
+        effect_grammar="H617A",
+        command_operations=None,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_multi_layered_effects=True,
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+    )
+    monkeypatch.setitem(MODEL_PROFILES, "H7020", profile)
+    return profile
+
+
 H6179_CONTENT = H6179MixedDiyEffect(
     "H6179",
     (EffectPair(0, 0), EffectPair(2, 0)),
@@ -529,6 +553,180 @@ def test_custom_authorization_without_supported_grammar_pair_is_rejected(monkeyp
         compile_effect(item, model, diy_code=800)
     with pytest.raises(ValueError, match="activation route"):
         resolve_diy_code(item, model=model)
+
+
+@pytest.mark.parametrize(
+    ("family", "variant"),
+    [
+        (0, 0),
+        (0, 1),
+        (0, 2),
+        (1, 0),
+        (1, 2),
+        (2, 0),
+        (2, 1),
+        (2, 2),
+        (3, 3),
+        (3, 4),
+        (3, 5),
+        (8, 9),
+        (8, 10),
+        (9, 9),
+        (9, 10),
+        (10, 0),
+    ],
+)
+def test_h7020_basic_diy_compiles_family_variant_not_editor_id(
+    h7020_effect_profile,
+    family: int,
+    variant: int,
+) -> None:
+    palette = ((255, 0, 0), (0, 255, 0), (0, 0, 255))
+    item = LibraryItem.new("Basic", SingleEffect(family, variant, 50, palette))
+    compiled = compile_effect(item, "H7020", diy_code=321, profile=h7020_effect_profile)
+
+    assert reassemble_a3(compiled.upload_packets)[2] == compiled.upload_subtype == 4
+    assert compiled.activation_packet == build_diy_activation(321, "H7020", profile=h7020_effect_profile)
+    assert decode_effect_frames(compiled.upload_packets, "H7020", "a3") == item.content
+
+
+def test_h7020_mixed_diy_is_bounded_and_activates_selected_slot(h7020_effect_profile) -> None:
+    palette = ((255, 0, 0), (0, 255, 0))
+    content = MultiEffect(tuple(EffectPair(0, index) for index in (0, 1, 2, 0)), 100, palette)
+    compiled = compile_effect(LibraryItem.new("Mixed", content), "H7020", diy_code=654, profile=h7020_effect_profile)
+
+    assert compiled.activation_packet == build_diy_activation(654, "H7020", profile=h7020_effect_profile)
+    assert decode_effect_frames(compiled.upload_packets, "H7020", "a3") == content
+    with pytest.raises(ValueError, match="Multi must contain 1 to 4"):
+        MultiEffect((*content.effects, EffectPair(1, 0)), 50, palette)
+
+
+def test_h7020_does_not_enable_unrestricted_advanced_or_workshop(h7020_effect_profile) -> None:
+    native = resolve_catalogue_template("H7020", "template:native-diy:17").content
+    assert isinstance(native, LayeredEffect)
+    unrestricted = replace(native, native_diy=None)
+    with pytest.raises(ValueError, match="layered-scene framing is not supported"):
+        compile_effect(
+            LibraryItem.new("Unrestricted", unrestricted),
+            "H7020",
+            diy_code=321,
+            profile=h7020_effect_profile,
+        )
+    workshop = replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model="H7020")
+    with pytest.raises(ValueError, match="Workshop application is not supported"):
+        compile_effect(LibraryItem.new("Workshop", workshop), "H7020", profile=h7020_effect_profile)
+
+
+@pytest.mark.parametrize("template_id", [17, 18, 19])
+def test_h7020_params_v2_compilation_separates_template_body_and_slot(
+    h7020_effect_profile,
+    template_id: int,
+) -> None:
+    template = resolve_catalogue_template("H7020", f"template:native-diy:{template_id}")
+    content = template.content
+    assert isinstance(content, LayeredEffect)
+    item = LibraryItem.new(template.label, content)
+    with pytest.raises(ValueError, match="approved disposable DIY code"):
+        compile_effect(item, "H7020", profile=h7020_effect_profile)
+
+    compiled = compile_effect(item, "H7020", diy_code=321, profile=h7020_effect_profile)
+
+    assert reassemble_a3(compiled.upload_packets)[2] == 2
+    assert compiled.activation_packet == build_diy_activation(321, "H7020", profile=h7020_effect_profile)
+    assert compiled.diy_code == 321
+    assert compiled.selector_kind == "diy"
+    assert (compiled.body_template_id, compiled.body_effect_code, compiled.upload_subtype) == (
+        template_id,
+        89 if template_id in (17, 18) else 90,
+        2,
+    )
+    assert "native_diy_positive_ack_required" in compiled.evidence_codes
+    validate_compiled_geometry(compiled, h7020_effect_profile)
+    for invalid in (
+        replace(compiled, upload_subtype=4),
+        replace(compiled, body_effect_code=0),
+        replace(compiled, selector_kind="scene"),
+    ):
+        with pytest.raises(ValueError, match="no longer supports"):
+            validate_compiled_geometry(invalid, h7020_effect_profile)
+    decoded = decode_effect_frames(compiled.upload_packets, "H7020", compiled.upload_transport)
+    assert isinstance(decoded, LayeredEffect)
+    assert decoded.native_diy is None
+    assert decoded.layers == content.layers
+
+
+@pytest.mark.parametrize("template_id", [17, 18, 19])
+def test_h7020_params_v2_edits_are_limited_to_shared_palette_and_raw_rate(
+    h7020_effect_profile,
+    template_id: int,
+) -> None:
+    template = resolve_catalogue_template("H7020", f"template:native-diy:{template_id}")
+    content = template.content
+    assert isinstance(content, LayeredEffect)
+    palette = ((1, 2, 3), (4, 5, 6))
+    if template_id == 19:
+        rate = 253
+        layers = tuple(
+            replace(
+                layer,
+                palette=palette,
+                colour_speed=rate,
+                brightness_patterns=tuple(replace(pattern, change_speed=rate) for pattern in layer.brightness_patterns),
+            )
+            for layer in content.layers
+        )
+    else:
+        rate = 150
+        layers = tuple(
+            replace(
+                layer,
+                palette=palette,
+                selected_movement=replace(layer.selected_movement, speed=rate),
+            )
+            for layer in content.layers
+        )
+    edited = replace(content, layers=layers)
+    compile_effect(LibraryItem.new("Edited", edited), "H7020", diy_code=321, profile=h7020_effect_profile)
+
+    partial = replace(edited, layers=(replace(edited.layers[0], palette=((9, 9, 9),)), *edited.layers[1:]))
+    with pytest.raises(ValueError, match="shared palette"):
+        compile_effect(LibraryItem.new("Partial", partial), "H7020", diy_code=321, profile=h7020_effect_profile)
+
+    first = edited.layers[0]
+    mismatched_first = (
+        replace(
+            first,
+            colour_speed=150,
+            brightness_patterns=tuple(replace(pattern, change_speed=150) for pattern in first.brightness_patterns),
+        )
+        if template_id == 19
+        else replace(first, selected_movement=replace(first.selected_movement, speed=151))
+    )
+    mismatched = replace(edited, layers=(mismatched_first, *edited.layers[1:]))
+    with pytest.raises(ValueError, match="one shared rate"):
+        compile_effect(LibraryItem.new("Partial rate", mismatched), "H7020", diy_code=321, profile=h7020_effect_profile)
+
+    if template_id == 19:
+        percentage = replace(
+            edited,
+            layers=tuple(
+                replace(
+                    layer,
+                    colour_speed=100,
+                    brightness_patterns=tuple(
+                        replace(pattern, change_speed=100) for pattern in layer.brightness_patterns
+                    ),
+                )
+                for layer in edited.layers
+            ),
+        )
+        with pytest.raises(ValueError, match="rate must be from 150 to 253"):
+            compile_effect(
+                LibraryItem.new("Percentage is invalid", percentage),
+                "H7020",
+                diy_code=321,
+                profile=h7020_effect_profile,
+            )
 
 
 @pytest.mark.parametrize("route", [ApplicationRoute.NONE, ApplicationRoute.STUDIO_SCENE_APPLY])

@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { blankLayer, cloneAdvancedContent, layerBrightness, nativeDiyPalette, selectionQuantity, updateNativeDiy, withLayerBrightness, withSelectionQuantity } from "../../src/advanced-effect-model";
 import { AdvancedEffectEditorController } from "../../src/advanced-effect-editor-controller";
+import { effectContentEligible } from "../../src/effect-editor-model";
 import type { AdvancedContent, RGB } from "../../src/types";
 import { decodeCatalogueTemplateDefaultDetail, decodeEffectContent } from "../../src/validation";
 import { decodeCustomCataloguePayload } from "../../src/catalogue-validation";
@@ -96,6 +97,40 @@ test("all seven named edits retain identity and follow APK producers", () => {
   expect(edited.layers.map(layer => layer.selected_movement.direction)).toEqual([2, 0]);
   expect(edited.layers.map(layer => layer.brightness_patterns[0].scope_low)).toEqual([140, 140]);
   expect(nativeDiyPalette(edited, true)).toEqual(colours);
+});
+
+test("H7020 templates reuse layered content with bounded shared palette and raw rate", () => {
+  const colours: RGB[] = [[1, 2, 3], [4, 5, 6]];
+  for (const code of [17, 18, 19]) {
+    const content: AdvancedContent = {
+      kind: "advanced",
+      native_diy: code,
+      layers: Array.from({ length: code === 19 ? 2 : 5 }, blankLayer),
+    };
+    const edited = updateNativeDiy(content, { palette: colours, speed: code === 19 ? 202 : 248 });
+    expect(edited.native_diy).toBe(code);
+    expect(edited.layers.every(layer => JSON.stringify(layer.palette) === JSON.stringify(colours))).toBe(true);
+    if (code === 19) {
+      expect(edited.layers.every(layer =>
+        layer.colour_speed === 202 &&
+        layer.brightness_patterns.every(pattern => pattern.change_speed === 202))).toBe(true);
+    } else {
+      expect(edited.layers.every(layer => layer.selected_movement.speed === 248)).toBe(true);
+    }
+  }
+});
+
+test("H7020 template capability does not admit unrestricted Advanced content", () => {
+  const catalogue = decodeCustomCataloguePayload(
+    backendContracts.responses.custom_catalogue,
+    decodeEffectContent,
+  ).models.H7020;
+  const native = catalogue.templates!.find(template => template.id === "template:native-diy:17")!.content;
+  expect(native.kind).toBe("advanced");
+  if (native.kind !== "advanced") throw new Error("expected advanced template");
+
+  expect(effectContentEligible(native, catalogue, "H7020", 30)).toBe(true);
+  expect(effectContentEligible({ ...native, native_diy: undefined }, catalogue, "H7020", 30)).toBe(false);
 });
 
 test("physical IC controls fail closed while independent colours remain editable", () => {

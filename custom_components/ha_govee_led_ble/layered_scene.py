@@ -233,8 +233,10 @@ class LayeredEffect:
 
     def __post_init__(self) -> None:
         _validate_items(self.layers, EffectLayer, "effect layers")
-        if self.native_diy is not None and (not _is_int(self.native_diy) or not 501 <= self.native_diy <= 507):
-            raise LayeredSceneValidationError("native DIY template must be an integer from 501 to 507")
+        if self.native_diy is not None and (
+            not _is_int(self.native_diy) or self.native_diy not in {*range(17, 20), *range(501, 508)}
+        ):
+            raise LayeredSceneValidationError("native DIY template must be 17 to 19 or 501 to 507")
 
 
 @dataclass(frozen=True, slots=True)

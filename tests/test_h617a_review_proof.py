@@ -324,13 +324,14 @@ def test_profile_kelvin_range_is_overridden_by_adapter_constant(monkeypatch):
     assert parsed.kelvin_companion_rgb == kelvin_to_rgb(1500)
 
 
-def test_declared_sixteenth_segment_encodes_but_semantic_builder_rejects(monkeypatch):
+def test_selectable_segment_limit_follows_declared_target(monkeypatch):
     monkeypatch.setitem(
         MODEL_PROFILES,
         "H9905",
         ModelProfile(
             "Synthetic sixteen segment writer",
             command_grammar="H617A",
+            supports_rgb=True,
             segment_count=16,
             supports_segment_writes=True,
             whole_device_mask=0xFFFF,
@@ -338,5 +339,6 @@ def test_declared_sixteenth_segment_encodes_but_semantic_builder_rejects(monkeyp
     )
     wire = build_segment_colour(0x8000, 1, 2, 3, "H9905")
     assert parse_static_write(wire, "H9905").segment_mask == 0x8000
+    assert build_segment_color([16], 1, 2, 3, "H9905") == wire
     with pytest.raises(ValueError, match="out of range 1..15"):
-        build_segment_color([16], 1, 2, 3, "H9905")
+        build_segment_color([16], 1, 2, 3, "H617A")

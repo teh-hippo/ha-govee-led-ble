@@ -250,12 +250,17 @@ export class PanelModel {
 
   public get h6179DiyCodeRequired(): boolean {
     return (
-      (this.content.kind === "h6179_single_diy" ||
-        this.content.kind === "h6179_mixed_diy") &&
-      this.content.model === this.selectedModel &&
-      this.modelCatalogue?.workflows.some(
-        (workflow) => workflow.content_kind === this.content.kind,
-      ) === true
+      this.modelCatalogue?.diy_slot_policy === "approved_observed" &&
+      (
+        (
+          (this.content.kind === "h6179_single_diy" ||
+            this.content.kind === "h6179_mixed_diy") &&
+          this.content.model === this.selectedModel
+        ) ||
+        this.content.kind === "h617a_single" ||
+        this.content.kind === "h617a_multi" ||
+        (this.content.kind === "advanced" && this.content.native_diy !== undefined)
+      )
     );
   }
 
@@ -281,8 +286,8 @@ export class PanelModel {
 
   public get h6179DiyApprovalMessage(): string {
     return this.h6179ObservedDiyCode === undefined
-      ? "Select a disposable H6179 DIY item in the Govee app, then refresh or return to Effect Studio before applying or enabling Live preview."
-      : "Use the currently observed disposable H6179 DIY item before applying or enabling Live preview.";
+      ? `Select a disposable ${this.selectedModel ?? "device"} DIY item in the Govee app, then refresh or return to Effect Studio before applying or enabling Live preview.`
+      : "Use the currently observed disposable DIY item before applying or enabling Live preview.";
   }
 
   public get showDeviceSelector(): boolean {

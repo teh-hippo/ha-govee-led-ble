@@ -32,6 +32,7 @@ class MusicVariant:
     layout: str | None = None
     template: bytes = b""
     parameters: tuple[MusicParamSpec, ...] = ()
+    selector_parameters: tuple[MusicParamSpec, ...] = ()
     supports_style: bool = False
     calm_default: bool = False
     requires_physical_ic_count: bool = False
@@ -442,6 +443,26 @@ H6076_MUSIC_VARIANTS = (
     ),
 )
 
+H7020_MUSIC_VARIANTS = (
+    MusicVariant(
+        0x03,
+        "H7020 qualified Rhythm selector response",
+        selector_parameters=(
+            MusicParamSpec(
+                "music_rhythm_response",
+                "response",
+                "rhythm_response",
+                "select",
+                "soft",
+                options=("dynamic", "soft"),
+            ),
+        ),
+    ),
+    MusicVariant(0x04, "H7020 qualified Spectrum selector"),
+    MusicVariant(0x05, "H7020 qualified Energetic selector"),
+    MusicVariant(0x06, "H7020 qualified Rolling selector"),
+)
+
 
 def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
     variant = next((variant for variant in profile.music_variants if variant.mode_code == mode_code), None)
@@ -530,19 +551,28 @@ def music_parameters_depend_on_ic(variant: MusicVariant | None, parameters: Mapp
     )
 
 
-def music_params_for_mode(mode_code: int, profile: ModelProfile) -> tuple[MusicParamSpec, ...]:
+def music_selector_params_for_mode(mode_code: int, profile: ModelProfile) -> tuple[MusicParamSpec, ...]:
     variant = music_variant(profile, mode_code)
+    return variant.selector_parameters if variant is not None else ()
+
+
+def music_body_params_for_mode(mode_code: int, profile: ModelProfile) -> tuple[MusicParamSpec, ...]:
+    variant = music_variant(profile, mode_code)
+    if variant is None:
+        return ()
     return (
         tuple(
             spec
             for spec in variant.parameters
             if not spec.requires_physical_ic_count or profile.physical_ic_count is not None
         )
-        if variant is not None
-        and variant.layout in COMPANION_MUSIC_LAYOUTS
-        and music_parameters_available(profile, variant)
+        if variant.layout in COMPANION_MUSIC_LAYOUTS and music_parameters_available(profile, variant)
         else ()
     )
+
+
+def music_params_for_mode(mode_code: int, profile: ModelProfile) -> tuple[MusicParamSpec, ...]:
+    return (*music_selector_params_for_mode(mode_code, profile), *music_body_params_for_mode(mode_code, profile))
 
 
 def compile_music_parameters(
@@ -567,6 +597,30 @@ def compile_music_parameters(
     return compiled
 
 
+def encode_music_selector_parameters(
+    parameters: Mapping[str, int | bool | str], mode_code: int, profile: ModelProfile
+) -> dict[str, int]:
+    encoded: dict[str, int] = {}
+    for spec in music_selector_params_for_mode(mode_code, profile):
+        value = parameters[spec.profile_key]
+        if spec.kind == "select":
+            assert isinstance(value, str)
+            encoded[spec.wire_field] = spec.options.index(value)
+        else:
+            encoded[spec.wire_field] = int(value)
+    return encoded
+
+
+def retained_music_selector_parameters(
+    source: object, mode_code: int, profile: ModelProfile
+) -> dict[str, int | bool | str]:
+    return {
+        spec.profile_key: value
+        for spec in music_selector_params_for_mode(mode_code, profile)
+        if (value := getattr(source, spec.key, None)) is not None
+    }
+
+
 def capture_music_parameters(source: object, profile: ModelProfile, mode: str) -> dict[str, int | bool | str]:
     """New snapshots always carry a mapping; only legacy persisted snapshots omit it."""
     from .music_protocol import music_codebook
@@ -576,6 +630,9 @@ def capture_music_parameters(source: object, profile: ModelProfile, mode: str) -
     mode_code = music_codebook(profile).get(mode)
     if mode_code is None:
         return {}
-    return {
-        spec.profile_key: getattr(source, spec.key, spec.default) for spec in music_params_for_mode(mode_code, profile)
+    selector_parameters = retained_music_selector_parameters(source, mode_code, profile)
+    body_parameters = {
+        spec.profile_key: getattr(source, spec.key, spec.default)
+        for spec in music_body_params_for_mode(mode_code, profile)
     }
+    return {**selector_parameters, **body_parameters}

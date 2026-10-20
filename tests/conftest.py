@@ -167,6 +167,8 @@ def _make_coord(**ov) -> MagicMock:
         segment_brightness=[100] * 15,
         segment_state_source="initial",
         segment_state_observed_at=None,
+        configured_strings=None,
+        _configured_strings_confirmed=False,
         diy_code=None,
         color_mode=None,
         music_mode="off",

@@ -264,7 +264,8 @@ export function newEffectKindForCategory(
       : undefined;
   }
   if (category === "advanced") {
-    return customEffectKindAvailable(context, "advanced")
+    return context.catalogue?.advanced_create !== false &&
+      customEffectKindAvailable(context, "advanced")
       ? "advanced"
       : undefined;
   }
@@ -277,7 +278,7 @@ function customEffectEntryAvailable(
 ): boolean {
   switch (entry.kind) {
     case "native-diy":
-      return customEffectKindAvailable(context, "advanced");
+      return context.catalogue?.supports.advanced !== "unsupported";
     case "paint":
       return customEffectKindAvailable(context, "h617a_painted");
     case "single":
@@ -303,6 +304,8 @@ function customEffectsAvailable(context: CustomEffectListContext): boolean {
       (catalogue.painted_effects.length ||
         catalogue.effects.length ||
         catalogue.music_modes.length ||
+        catalogue.templates?.some((template) =>
+          template.content.kind === "advanced" && template.content.native_diy !== undefined) ||
         catalogue.supports.advanced !== "unsupported"),
   );
 }

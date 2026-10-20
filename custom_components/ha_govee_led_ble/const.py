@@ -14,6 +14,7 @@ from .music_semantics import (
     H6099_MUSIC_VARIANTS,
     H6102_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
+    H7020_MUSIC_VARIANTS,
     MusicVariant,
 )
 
@@ -75,6 +76,7 @@ class ReadDomain(StrEnum):
     DISPLAY_SETTING = "display_setting"
     RELATIVE_BRIGHTNESS = "relative_brightness"
     SEGMENTS = "segments"
+    CONFIGURED_STRINGS = "configured_strings"
     INSTALLATION_DIRECTION = "installation_direction"
     CAMERA_HEALTH = "camera_health"
     OTHER = "other"
@@ -184,6 +186,9 @@ class ModelProfile:
     whole_device_mask: int = 0
     segment_count: int = 0
     segment_group_size: int = 0
+    segment_colour_mode_ambiguous: bool = False
+    configured_string_counts: tuple[int, ...] = ()
+    bulbs_per_string: int = 0
     supports_segment_writes: bool = False
     supports_segment_brightness: bool = False
     supports_segment_color_temperature: bool = False
@@ -201,8 +206,15 @@ class ModelProfile:
     effect_readback: str = "none"
 
     def __post_init__(self) -> None:
-        if not self.boolean_controls <= {"gradual", "limit"}:
+        if not self.boolean_controls <= {"gradual", "limit", "power_off_memory"}:
             raise ValueError("unknown boolean device setting")
+        if self.configured_string_counts and (
+            self.bulbs_per_string <= 0
+            or any(type(count) is not int or count <= 0 for count in self.configured_string_counts)
+            or self.command_grammar is None
+            or self.status_grammar is None
+        ):
+            raise ValueError("configured strings require positive product counts and command/status grammars")
         if self.boolean_controls and (self.command_grammar is None or self.status_grammar is None):
             raise ValueError("boolean settings require command and status grammars")
         if self.advanced_diy_selector is not None and (
@@ -241,6 +253,7 @@ class ModelProfile:
                 ReadDomain.FIRMWARE,
                 ReadDomain.HARDWARE,
                 ReadDomain.SEGMENTS,
+                ReadDomain.CONFIGURED_STRINGS,
                 ReadDomain.INSTALLATION_DIRECTION,
                 ReadDomain.CAMERA_HEALTH,
             }
@@ -766,23 +779,54 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H7020": ModelProfile(
         "H7020 Outdoor String Lights",
-        support_quality=SupportQuality.PARTIAL,
-        command_grammar="H617A",
-        status_grammar="H617A",
-        # Owner-confirmed: brightness is a percent register, so no brightness_wire_range.
-        # Pact 1/1 with an unencrypted advertisement. Segments, scenes and music remain
-        # unavailable until each is confirmed on the device.
-        command_operations=frozenset({"power", "brightness", "static"}),
-        read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        support_quality=SupportQuality.EXPERIMENTAL,
+        command_grammar="H7020",
+        status_grammar="H7020",
+        colour_mode_query_selector=1,
+        effect_grammar="H617A",
+        music_grammar="H7020",
+        command_operations=frozenset(
+            {"power", "brightness", "static", "configured_strings", "scene", "diy", "music", "effect_upload"}
+        ),
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.CONFIGURED_STRINGS,
+                ReadDomain.SEGMENTS,
+            }
+        ),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         supports_rgb=True,
-        # The bulbs carry a separate warm-white channel, driven by the Kelvin static write.
-        # The app reports 2300 K to 6700 K (homebridge-govee #570).
         supports_color_temperature=True,
-        min_color_temp_kelvin=2300,
-        max_color_temp_kelvin=6700,
-        # Fifteen bulbs, addressed through one whole-device mask.
-        whole_device_mask=0x7FFF,
+        min_color_temp_kelvin=2000,
+        max_color_temp_kelvin=9000,
+        whole_device_mask=0x3FFFFFFF,
+        segment_count=30,
+        segment_group_size=3,
+        configured_string_counts=(1, 2),
+        bulbs_per_string=15,
+        segment_colour_mode_ambiguous=True,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        boolean_controls=frozenset({"power_off_memory"}),
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_multi_layered_effects=True,
+        scene_catalogue_sku="H7020",
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        music_modes=("rhythm", "spectrum", "energetic", "rolling"),
+        music_variants=H7020_MUSIC_VARIANTS,
+        music_sensitivity_min=0,
+        music_sensitivity_max=99,
+        supports_music_color=True,
         connection_idle_timeout=3.0,
     ),
     "H6179": ModelProfile(
@@ -977,6 +1021,27 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
+    if model == "H7020":
+        profile = get_profile(model)
+        if (pact_type, pact_code) in {(1, 1), (2, 1)}:
+            return profile
+        return replace(
+            profile,
+            command_operations=frozenset({"power", "brightness"}),
+            read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+            supports_rgb=False,
+            supports_color_temperature=False,
+            supports_segment_writes=False,
+            supports_segment_brightness=False,
+            supports_segment_color_temperature=False,
+            supports_custom_effects=False,
+            supports_scenes=False,
+            supports_multi_layered_effects=False,
+            music_modes=(),
+            music_variants=(),
+            boolean_controls=frozenset(),
+            configured_string_counts=(),
+        )
     if model in {"H60A1", "H60A6"}:
         from .firmware_version import FirmwareVersion
 

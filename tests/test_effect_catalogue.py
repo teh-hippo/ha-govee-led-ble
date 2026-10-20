@@ -1,5 +1,6 @@
 """Model-aware Effect Studio catalogue contracts."""
 
+import base64
 from dataclasses import replace
 from typing import Any, cast
 
@@ -19,6 +20,11 @@ from custom_components.ha_govee_led_ble.effect_catalogue import (
     H6199_NATIVE_MUSIC_MODES,
     H6199_PALETTE_DIY_FAMILIES,
     H6199_VIDEO_MODES,
+    H7020_DIY_FAMILIES,
+    H7020_NATIVE_DIY_CONTRACTS,
+    H7020_NATIVE_DIY_SEEDS,
+    H7020_NATIVE_DIY_TEMPLATES,
+    H7020_NATIVE_MUSIC_MODES,
     LEGACY_CATALOGUE_SKU,
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
@@ -46,6 +52,7 @@ from custom_components.ha_govee_led_ble.effect_contracts import (
 from custom_components.ha_govee_led_ble.effect_domain import (
     EffectPair,
     JsonValue,
+    LayeredEffect,
     LibraryItem,
     MultiEffect,
     MusicProfile,
@@ -57,6 +64,7 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene, build_h6199_scene
+from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 
 
@@ -65,7 +73,17 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
 
     assert catalogue["schema_version"] == EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION
     assert catalogue["sku"] == LEGACY_CATALOGUE_SKU
-    assert set(catalogue["models"]) == {"H6076", "H6099", "H6102", "H6125", "H6179", "H617A", "H617E", "H6199"}
+    assert set(catalogue["models"]) == {
+        "H6076",
+        "H6099",
+        "H6102",
+        "H6125",
+        "H6179",
+        "H617A",
+        "H617E",
+        "H6199",
+        "H7020",
+    }
     assert catalogue["models"] == {sku: model.to_dict() for sku, model in MODEL_EFFECT_CATALOGUES.items()}
     assert catalogue["painted_effects"] == list(H617A_PAINTED_EFFECTS)
     assert catalogue["effects"] == [family.to_dict() for family in H617A_TYPE04_FAMILIES]
@@ -134,6 +152,77 @@ def test_h617a_model_catalogue_preserves_type04_and_painted_contracts() -> None:
         (10, 0),
     }
     assert [effect["id"] for effect in H617A_PAINTED_EFFECTS] == [effect.name for effect in DiyType03.Effect]
+
+
+def test_h7020_editor_choices_map_to_wire_family_variants() -> None:
+    assert [
+        (int(variation.id), family.family, variation.variant)
+        for family in H7020_DIY_FAMILIES
+        for variation in family.variations
+    ] == [
+        (1, 0, 0),
+        (2, 0, 1),
+        (3, 0, 2),
+        (4, 1, 0),
+        (5, 1, 2),
+        (6, 2, 0),
+        (7, 2, 1),
+        (8, 2, 2),
+        (9, 3, 3),
+        (10, 3, 4),
+        (11, 3, 5),
+        (12, 8, 9),
+        (13, 8, 10),
+        (14, 9, 9),
+        (15, 9, 10),
+        (16, 10, 0),
+    ]
+    assert all(family.rate_min == 1 and family.rate_max == 100 for family in H7020_DIY_FAMILIES)
+    assert all(family.palette_max == (3 if family.family == 10 else 8) for family in H7020_DIY_FAMILIES)
+    assert all(family.supports_multi for family in H7020_DIY_FAMILIES[:-1])
+    assert not H7020_DIY_FAMILIES[-1].supports_multi
+
+
+@pytest.mark.parametrize(
+    ("template_id", "body_effect", "layer_count", "rate_min", "rate_max", "rate_default"),
+    [
+        (17, 89, 5, 150, 250, 248),
+        (18, 89, 5, 150, 250, 248),
+        (19, 90, 2, 150, 253, 202),
+    ],
+)
+def test_h7020_params_v2_template_contracts(
+    template_id: int,
+    body_effect: int,
+    layer_count: int,
+    rate_min: int,
+    rate_max: int,
+    rate_default: int,
+) -> None:
+    contract = next(contract for contract in H7020_NATIVE_DIY_CONTRACTS if contract.template_id == template_id)
+    template = next(
+        template
+        for template in H7020_NATIVE_DIY_TEMPLATES
+        if isinstance(template.content, LayeredEffect) and template.content.native_diy == template_id
+    )
+    content = template.content
+    assert isinstance(content, LayeredEffect)
+    assert (contract.body_effect, contract.upload_subtype, contract.layer_count) == (body_effect, 2, layer_count)
+    assert (contract.rate_min, contract.rate_max, contract.rate_default) == (rate_min, rate_max, rate_default)
+    assert len(content.layers) == layer_count
+    rates = (
+        [layer.selected_movement.speed for layer in content.layers]
+        if template_id != 19
+        else [
+            value
+            for layer in content.layers
+            for value in (layer.colour_speed, *(pattern.change_speed for pattern in layer.brightness_patterns))
+        ]
+    )
+    assert set(rates) == {rate_default}
+    if template_id != 19:
+        seed = next(seed for candidate, _effect, _label, seed in H7020_NATIVE_DIY_SEEDS if candidate == template_id)
+        assert encode_workshop_effect("H617A", content) == base64.b64decode(seed)
 
 
 def test_h617e_model_catalogue_reuses_h617a_effects_with_h617e_profiles() -> None:
@@ -218,6 +307,33 @@ def test_h6199_model_catalogue_exposes_confirmed_palette_music_and_video_entries
     }
 
 
+def test_h7020_catalogue_exposes_exact_music_roster_and_rhythm_response() -> None:
+    catalogue = MODEL_EFFECT_CATALOGUES["H7020"].to_dict()
+    music_settings = cast(dict[str, dict[str, Any]], catalogue["music_settings"])
+
+    assert catalogue["music_modes"] == [mode.to_dict() for mode in H7020_NATIVE_MUSIC_MODES]
+    rhythm = music_settings["rhythm"]
+    assert {
+        key: rhythm[key] for key in ("available", "style", "calm_default", "colour", "palette_size", "parameters")
+    } == {
+        "available": True,
+        "style": False,
+        "calm_default": False,
+        "colour": True,
+        "palette_size": 0,
+        "parameters": {
+            "response": {
+                "kind": "select",
+                "default": "soft",
+                "min": 0,
+                "max": 0,
+                "options": ["dynamic", "soft"],
+            }
+        },
+    }
+    assert all(music_settings[mode.id]["parameters"] == {} for mode in H7020_NATIVE_MUSIC_MODES if mode.id != "rhythm")
+
+
 def test_release_capability_contract_covers_every_preview_workflow() -> None:
     expected = {
         "H617A": {
@@ -245,6 +361,14 @@ def test_release_capability_contract_covers_every_preview_workflow() -> None:
             CapabilityWorkflow.NATIVE_SCENES,
             CapabilityWorkflow.SINGLE,
             CapabilityWorkflow.MULTI,
+            CapabilityWorkflow.NATIVE_MUSIC,
+        },
+        "H7020": {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.SINGLE,
+            CapabilityWorkflow.MULTI,
+            CapabilityWorkflow.ADVANCED,
             CapabilityWorkflow.NATIVE_MUSIC,
         },
     }

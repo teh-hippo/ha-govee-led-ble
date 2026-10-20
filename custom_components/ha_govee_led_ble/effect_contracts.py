@@ -18,9 +18,9 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 15
-EDITOR_ASSET_VERSION: Final = 21
-EFFECT_COMPILER_VERSION: Final = 5
+EDITOR_API_VERSION: Final = 16
+EDITOR_ASSET_VERSION: Final = 22
+EFFECT_COMPILER_VERSION: Final = 6
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
 
@@ -557,6 +557,98 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6179"),
     *(replace(capability, model="H617F") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6199"),
+    *(
+        _capability(
+            "H7020",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            VerificationConfidence.SELECTION_ONLY,
+            PhysicalValidationState.NOT_VALIDATED,
+            EvidenceClassification.STRUCTURAL,
+        )
+        for workflow, label, kind, route, strategy in (
+            (
+                CapabilityWorkflow.NATIVE_SCENES,
+                "Scenes",
+                "scene_builtin",
+                ApplicationRoute.STUDIO_SCENE_APPLY,
+                CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+            ),
+            (
+                CapabilityWorkflow.LAYERED_SCENES,
+                "Layered scenes",
+                "scene_layered",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.SINGLE,
+                "Basic DIY",
+                "h617a_single",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.MULTI,
+                "Mixed DIY",
+                "h617a_multi",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.ADVANCED,
+                "Template DIY",
+                "advanced",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.NATIVE_MUSIC,
+                "Music",
+                "music_profile",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.COORDINATOR_WRITER,
+            ),
+        )
+    ),
+)
+
+_ACTIVATION_GRAMMARS: Final = {
+    (CapabilityWorkflow.NATIVE_SCENES, "H6099"): frozenset({"H6099"}),
+    (CapabilityWorkflow.NATIVE_SCENES, "H6179"): frozenset({"H6179"}),
+    (CapabilityWorkflow.NATIVE_SCENES, "H617A"): frozenset({"H617A", "H7020"}),
+    (CapabilityWorkflow.NATIVE_SCENES, "H6199"): frozenset({"H6199"}),
+    (CapabilityWorkflow.EDITED_PALETTE_SCENES, "H617A"): frozenset({"H617A", "H7020"}),
+    (CapabilityWorkflow.EDITED_PALETTE_SCENES, "H6199"): frozenset({"H6199"}),
+    (CapabilityWorkflow.LAYERED_SCENES, "H617A"): frozenset({"H617A", "H7020"}),
+    (CapabilityWorkflow.LAYERED_SCENES, "H6199"): frozenset({"H6199"}),
+    (CapabilityWorkflow.PAINTED, "H6099"): frozenset({"H6099"}),
+    (CapabilityWorkflow.PAINTED, "H617A"): frozenset({"H617A"}),
+    (CapabilityWorkflow.SINGLE, "H6099"): frozenset({"H6099"}),
+    (CapabilityWorkflow.SINGLE, "H6179"): frozenset({"H6179"}),
+    (CapabilityWorkflow.SINGLE, "H617A"): frozenset({"H617A", "H7020"}),
+    (CapabilityWorkflow.MULTI, "H6099"): frozenset({"H6099"}),
+    (CapabilityWorkflow.MULTI, "H6179"): frozenset({"H6179"}),
+    (CapabilityWorkflow.MULTI, "H617A"): frozenset({"H617A", "H7020"}),
+    (CapabilityWorkflow.PALETTE_DIY, "H6199"): frozenset({"H6199"}),
+    (CapabilityWorkflow.ADVANCED, "H617A"): frozenset({"H617A", "H7020"}),
+    (CapabilityWorkflow.ADVANCED, "H6199"): frozenset({"H6199"}),
+    (CapabilityWorkflow.WORKSHOP, "H617A"): frozenset({"H617A"}),
+    (CapabilityWorkflow.WORKSHOP, "H6199"): frozenset({"H6199"}),
+}
+
+_APPLICATION_STRATEGIES: Final = frozenset(
+    {
+        CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+        CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+        CompilerDeployerStrategy.H6199_CUSTOM_ENGINE,
+        CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+        CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
+        CompilerDeployerStrategy.H6179_A1_EFFECT_UPLOAD,
+    }
 )
 
 
@@ -578,7 +670,7 @@ def release_capability(model: str, workflow: CapabilityWorkflow) -> ReleaseCapab
 def require_effect_route(
     model: str, workflow: CapabilityWorkflow, grammars: tuple[str, ...] = ("H617A", "H6199", "H6099", "H6179")
 ) -> str:
-    """Require exact-model workflow authorization and matching effect/command grammar."""
+    """Require independently declared body, upload, activation and readback routes."""
     capability = release_capability(model, workflow)
     label = "Workshop" if workflow is CapabilityWorkflow.WORKSHOP else workflow.value
     if capability is None or capability.application_route not in {
@@ -589,12 +681,14 @@ def require_effect_route(
     }:
         raise ValueError(f"{model} {label} application is not supported")
     profile = get_profile(model)
-    if (
-        profile.effect_grammar is None
-        or profile.effect_grammar not in grammars
-        or profile.command_grammar != profile.effect_grammar
-    ):
+    if profile.effect_grammar is None or profile.effect_grammar not in grammars:
+        raise ValueError(f"{model} has no supported {label} body codec, grammar and activation route")
+    if capability.compiler_deployer_strategy not in _APPLICATION_STRATEGIES:
+        raise ValueError(f"{model} has no supported {label} upload transport")
+    if profile.command_grammar not in _ACTIVATION_GRAMMARS.get((workflow, profile.effect_grammar), frozenset()):
         raise ValueError(f"{model} has no supported {label} grammar and activation route")
+    if profile.effect_readback not in {"none", "diy_code_only", "scene_selector_for_user_effects"}:
+        raise ValueError(f"{model} has no supported {label} readback policy")
     return profile.effect_grammar
 
 
@@ -737,6 +831,8 @@ def device_effect_capabilities(
         else CapabilityState.UNSUPPORTED,
         advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED)
         if profile.supports_advanced_effects
+        or profile.supports_custom_effects
+        and release_capability(model, CapabilityWorkflow.ADVANCED) is not None
         else CapabilityState.UNSUPPORTED,
         music=studio_apply_capability_state(model, CapabilityWorkflow.NATIVE_MUSIC)
         if profile.supports_music_mode

@@ -58,13 +58,16 @@ def test_h6076_uses_its_whole_device_mask_and_kelvin_range() -> None:
 
 
 def test_h7020_sends_percent_brightness_and_whole_string_static_commands() -> None:
+    profile = replace(MODEL_PROFILES["H7020"], whole_device_mask=0x7FFF, segment_count=15)
     assert build_brightness(100, "H7020") == H("3304640000000000000000000000000000000053")
-    assert build_color_rgb(255, 0, 0, "H7020") == H("33051501ff00000000000000ff7f00000000005d")
+    assert build_color_rgb(255, 0, 0, profile=profile) == H("33051501ff00000000000000ff7f00000000005d")
     parsed = parse_static_write(build_color_rgb(10, 20, 30, "H7020"), "H7020")
-    assert parsed is not None and parsed.whole_strip
-    assert build_color_temp(2300, "H7020") == H("3305150100000008fcff9632ff7f00000000000d")
-    assert build_color_temp(2000, "H7020")[7:9] == (2300).to_bytes(2, "big")
-    assert build_color_temp(9000, "H7020")[7:9] == (6700).to_bytes(2, "big")
+    assert parsed is not None and parsed.whole_strip and parsed.segment_mask == 0x3FFFFFFF
+    assert build_color_temp(4000, profile=profile) == H("33051501ffffff0fa0ffd5a1ff7f000000000079")
+    minimum = parse_static_write(build_color_temp(1000, profile=profile), profile=profile)
+    maximum = parse_static_write(build_color_temp(10000, profile=profile), profile=profile)
+    assert minimum is not None and minimum.kelvin == 2000
+    assert maximum is not None and maximum.kelvin == 9000
 
 
 def test_h6179_uses_exact_raw_brightness_and_whole_device_static_commands() -> None:

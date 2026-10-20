@@ -106,9 +106,9 @@ def expectations_from_packet(
             music_mode = music_slug_for(model, int(detail.mode_id), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
-            if not detail.is_legacy:
+            if not getattr(detail, "is_legacy", True):
                 return expectations
-            if music_mode == "rhythm":
+            if music_mode == "rhythm" and hasattr(detail, "style"):
                 expectations["music_calm"] = bool(detail.style)
             expectations["music_color"] = (
                 (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue)) if detail.has_fixed_colour else None

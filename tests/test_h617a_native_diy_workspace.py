@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, get_profile
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -91,3 +92,39 @@ async def test_workspace_persist_reload_recompile_retains_native_carrier_and_ack
     coordinator.is_on = True
     coordinator.model = "H617E"
     assert not active_workspace_matches(coordinator, restored)
+
+
+def test_h7020_workspace_matches_approved_slot_not_body_template(monkeypatch: pytest.MonkeyPatch) -> None:
+    profile = replace(
+        get_profile("H7020"),
+        command_operations=None,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_multi_layered_effects=True,
+    )
+    monkeypatch.setitem(MODEL_PROFILES, "H7020", profile)
+    source = resolve_catalogue_template("H7020", "template:native-diy:17").content
+    assert isinstance(source, LayeredEffect)
+    compiled = compile_effect(LibraryItem.new("Spin", source), "H7020", diy_code=321, profile=profile)
+    canonical = _active_workspace_content(source, compiled)
+    workspace = ActiveEffectWorkspace(
+        config_entry_id="entry-a",
+        model="H7020",
+        selector_label="Spin",
+        content=canonical,
+        origin=LibraryItem.new("Spin", source).origin,
+        observable_signature="custom:321",
+        updated_at="2026-10-21T00:00:00Z",
+        generation=1,
+    )
+    coordinator: Any = SimpleNamespace(
+        model="H7020",
+        is_on=True,
+        scene_code=None,
+        diy_code=321,
+        effect=None,
+    )
+
+    assert active_workspace_matches(coordinator, workspace)
+    coordinator.diy_code = 17
+    assert not active_workspace_matches(coordinator, workspace)

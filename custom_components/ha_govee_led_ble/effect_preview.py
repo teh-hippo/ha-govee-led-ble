@@ -22,6 +22,7 @@ from .control_arbiter import ControlIntent, PreviewAdmission, async_control_inte
 from .coordinator_status import ParsedMode
 from .effect_active_workspace import ActiveEffectWorkspace, ActiveEffectWorkspaceRepository
 from .effect_catalogue import (
+    requires_approved_diy_slot,
     validate_catalogue_template_identity,
 )
 from .effect_compiler import (
@@ -47,8 +48,10 @@ from .effect_identity import EffectDeviceCache
 from .effect_limits import MAX_PREVIEW_SEQUENCE
 from .effect_runtime import (
     _active_workspace_content,
+    _validate_diy_slot_approval,
     active_workspace_matches,
     async_apply_compiled_profile,
+    async_prepare_effect_control_state,
     compiled_observation,
     observable_signature_for_compiled,
     resolve_diy_code,
@@ -940,15 +943,18 @@ class EffectPreviewManager:
         writer: _PreviewWriter | None = None
         try:
             await coordinator.async_preview_preflight(timeout=self._connect_timeout)
+            await async_prepare_effect_control_state(coordinator, require_restorable_static=True)
             if compiled is not None:
                 validate_compiled_geometry(compiled, coordinator.profile)
-            if isinstance(compiled, CompiledEffect) and compiled.content_kind in {
-                "h6179_single_diy",
-                "h6179_mixed_diy",
-            }:
+            if (
+                isinstance(compiled, CompiledEffect)
+                and compiled.selector_kind == "diy"
+                and requires_approved_diy_slot(compiled.model)
+            ):
                 refreshed = await coordinator.refresh_state()
-                if not refreshed or coordinator.diy_code != compiled.diy_code:
-                    raise PreviewError("approved H6179 disposable DIY code is no longer selected")
+                if not refreshed:
+                    raise PreviewError("approved disposable DIY code could not be refreshed")
+                _validate_diy_slot_approval(coordinator, compiled)
             writer = _PreviewWriter(self, request, coordinator)
             if request.scene is not None:
                 await coordinator.async_apply_native_scene(
@@ -984,11 +990,16 @@ class EffectPreviewManager:
                     )
                     if a1_activation is not None:
                         write_options.update(final_packet=a1_activation, before_final=before_final)
+
+                    def validate_effect_write() -> None:
+                        validate_compiled_geometry(compiled, coordinator.profile)
+                        _validate_diy_slot_approval(coordinator, compiled)
+
                     await coordinator.async_write_effect_sequence(
                         packets,
                         intent=ControlIntent.PREVIEW,
                         before_write=writer.begin,
-                        write_guard=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+                        write_guard=validate_effect_write,
                         **write_options,
                     )
                     if power_required:

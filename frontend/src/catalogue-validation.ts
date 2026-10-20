@@ -201,6 +201,39 @@ function decodeModelEffectCatalogue(
   }
   return {
     sku,
+    diy_slot_policy: enumString(
+      catalogue.diy_slot_policy ?? "fixed",
+      ["fixed", "approved_observed"],
+      `${name} DIY slot policy`,
+    ),
+    advanced_create: catalogue.advanced_create === undefined
+      ? true
+      : booleanValue(catalogue.advanced_create, `${name} unrestricted advanced creation`),
+    native_diy_templates: arrayValue(
+      catalogue.native_diy_templates ?? [],
+      `${name} native DIY templates`,
+      MAX_JSON_COLLECTION_ITEMS,
+    ).map((value, index) => {
+      const contract = objectValue(value, `${name} native DIY templates[${index}]`);
+      const rateMinimum = integerValue(contract.rate_min, "native DIY minimum rate", 0, 255);
+      const rateMaximum = integerValue(contract.rate_max, "native DIY maximum rate", rateMinimum, 255);
+      return {
+        template_id: integerValue(contract.template_id, "native DIY template ID", 0, 65_535),
+        body_effect: integerValue(contract.body_effect, "native DIY body effect", 0, 65_535),
+        upload_subtype: integerValue(contract.upload_subtype, "native DIY upload subtype", 0, 255),
+        layer_count: integerValue(contract.layer_count, "native DIY layer count", 1, 255),
+        palette_min: integerValue(contract.palette_min, "native DIY minimum palette", 1, 8),
+        palette_max: integerValue(contract.palette_max, "native DIY maximum palette", 1, 8),
+        rate_field: enumString(
+          contract.rate_field,
+          ["selected_movement_speed", "colour_brightness_speed"],
+          "native DIY rate field",
+        ),
+        rate_min: rateMinimum,
+        rate_max: rateMaximum,
+        rate_default: integerValue(contract.rate_default, "native DIY default rate", rateMinimum, rateMaximum),
+      };
+    }),
     ...(catalogue.painted_addressing === undefined ? {} : {
       painted_addressing: enumString(catalogue.painted_addressing, ["segments", "physical_ic"], "painted addressing"),
       painted_background: arrayValue(catalogue.painted_background, "painted background", 3).map(

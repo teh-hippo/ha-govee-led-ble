@@ -60,6 +60,7 @@ test("canonical backend responses decode through the production validators", () 
     "H6179",
     "H6199",
     "H6076",
+    "H7020",
   ]);
   expect(devices.find((device) => device.model === "H617A")?.light_entity_id).toBe("light.h617a_main");
   expect(devices.find((device) => device.model === "H617E")?.light_entity_id).toBeNull();

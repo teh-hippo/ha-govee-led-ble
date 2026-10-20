@@ -68,6 +68,18 @@ test("new declared Fountain speed renders and survives editing", async ({ page }
   )).toEqual({speed: 16, direction: "two_way"});
 });
 
+test("selector parameters reuse shared controls without exposing legacy style", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?selector-parameter");
+  const response = page.getByLabel("Response", {exact: true});
+  await expect(response).toHaveValue("soft");
+  await expect(response.locator("option")).toHaveText(["Dynamic", "Soft"]);
+  await expect(page.getByLabel("Style", {exact: true})).toBeHidden();
+  await response.selectOption("dynamic");
+  expect(await page.locator("govee-music-profile-editor").evaluate(el =>
+    (el as GoveeMusicProfileEditor).content!.parameters,
+  )).toEqual({response: "dynamic"});
+});
+
 test("H617A fixed colour contract follows the exact legacy editor roster", async ({ page }) => {
   for (const mode of ["spectrum", "rolling", "energetic"]) {
     await page.goto(`/tests/browser/fixtures/music-profile-editor.html?mode=${mode}`);

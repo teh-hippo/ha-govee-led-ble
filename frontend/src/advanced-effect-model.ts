@@ -257,6 +257,25 @@ export function updateNativeDiy(content: AdvancedContent, edit: NativeDiyEdit, p
   const result = cloneAdvancedContent(content);
   const layers = result.layers;
   const code = content.native_diy;
+  if (code !== undefined && code >= 17 && code <= 19) {
+    if (edit.palette) {
+      layers.forEach((layer) => { layer.palette = clonePalette(edit.palette!); });
+    }
+    if (edit.speed !== undefined) {
+      if (code === 19) {
+        layers.forEach((layer) => {
+          layer.colour_speed = edit.speed!;
+          layer.brightness_patterns = layer.brightness_patterns.map((pattern) => ({
+            ...pattern,
+            change_speed: edit.speed!,
+          }));
+        });
+      } else {
+        layers.forEach((layer) => { layer.selected_movement.speed = edit.speed!; });
+      }
+    }
+    return result;
+  }
   const palettes = (indices: number[], colours: EffectLayer["palette"]) => {
     const sizes = indices.map((index) => layers[index].palette.length);
     if (colours.length === sizes.reduce((sum, size) => sum + size, 0)) {

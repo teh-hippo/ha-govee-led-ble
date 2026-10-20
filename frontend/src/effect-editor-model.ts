@@ -119,6 +119,13 @@ export function effectContentEligible(
     return catalogue?.sku === model && catalogue?.templates?.some((template) =>
       template.content.kind === "advanced" && template.content.native_diy === content.native_diy) === true;
   }
+  if (content.kind === "advanced") {
+    return catalogue === undefined || (
+      catalogue.sku === model &&
+      catalogue.advanced_create !== false &&
+      catalogue.supports.advanced !== "unsupported"
+    );
+  }
   if (content.kind === "music_profile") {
     if (!catalogue || catalogue.sku !== model || content.model !== model ||
         !catalogue.music_modes.some((mode) => mode.id === content.mode)) return false;

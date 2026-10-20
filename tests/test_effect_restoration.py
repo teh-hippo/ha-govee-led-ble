@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -28,8 +29,13 @@ def reply(domain, body):
 
 
 @pytest.fixture
-def physical(hass, monkeypatch):
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617A", configuration_url="test")
+def physical(hass, monkeypatch, request):
+    model = getattr(request, "param", "H617A")
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="test")
+    if model == "H7020":
+        coordinator.pact_type = coordinator.pact_code = 1
+        coordinator._resolve_device_profile()
+        coordinator._apply_configured_strings(1)
     state = {
         "on": True,
         "brightness": 37,
@@ -37,6 +43,7 @@ def physical(hass, monkeypatch):
         "relative": [30] * 14 + [70],
         "fault": None,
         "packets": [],
+        "colour_modes": ["rgb"] * 15,
     }
 
     async def transmit(_uuid, packet, **_kwargs):
@@ -47,12 +54,13 @@ def physical(hass, monkeypatch):
                 state["on"] = bool(packet[2])
             elif packet[1] == 4 and fault != "brightness":
                 state["brightness"] = packet[2]
-            static = parse_static_write(packet)
+            static = parse_static_write(packet, profile=coordinator.profile)
             if static is not None:
                 for index in range(15):
                     if static.segment_mask & (1 << index):
                         if static.rgb is not None and fault != "colour":
                             state["colours"][index] = static.rgb
+                            state["colour_modes"][index] = "rgb"
                         if static.brightness_pct is not None and fault != "relative":
                             state["relative"][index] = static.brightness_pct
         elif packet[0] == 0xAA:
@@ -67,6 +75,10 @@ def physical(hass, monkeypatch):
                 coordinator._notify_callback(
                     None, reply(5, [0x13, 0x04, 50, 0, 0, 0, 0, 0] if fault == "mode" else [0x15, 0])
                 )
+            elif domain == 0x0F and fault != "missing_count":
+                coordinator._notify_callback(None, reply(0x0F, [1]))
+            elif domain == 0x41:
+                coordinator._notify_callback(None, reply(0x41, [1]))
             elif domain == 0xA5 and packet[2] == 5:
                 pages = [5, 2, 4, 1, 3] if fault == "reordered" else range(1, 6)
                 for page in pages:
@@ -86,6 +98,53 @@ def physical(hass, monkeypatch):
     monkeypatch.setattr(coordinator, "refresh_state", lambda **kwargs: refresh(timeout=0.02, **kwargs))
     monkeypatch.setattr(coordinator, "async_refresh_segments", lambda: segments(timeout=0.02))
     return coordinator, state
+
+
+@pytest.mark.parametrize("physical", ["H7020"], indirect=True)
+async def test_ambiguous_bulb_readback_never_repaints_white_as_rgb_during_rollback(physical):
+    coordinator, state = physical
+    state["colours"] = [(255, 213, 161)] + [(255, 0, 0)] * 14
+    state["colour_modes"][0] = "white"
+    assert await coordinator.refresh_state(refresh_all=True)
+    prior = coordinator.capture_effect_control_state()
+    assert prior.color_temp_kelvin is None and prior.segment_colors == tuple(state["colours"])
+    state["packets"].clear()
+
+    assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=321)
+    assert state["colour_modes"][0] == "white"
+    assert not state["packets"]
+
+
+@pytest.mark.parametrize("physical", ["H7020"], indirect=True)
+@pytest.mark.parametrize("failure", ["ambiguous", "missing_geometry", "missing_count"])
+async def test_prior_off_cleanup_does_not_require_static_recovery(physical, monkeypatch, failure):
+    coordinator, state = physical
+    coordinator.is_on = state["on"] = True
+    prior = PriorControlState(
+        mode="colour",
+        is_on=False,
+        brightness_pct=37,
+        rgb_color=state["colours"][0],
+        segment_colors=None if failure == "missing_geometry" else tuple(state["colours"]),
+        segment_brightness=None if failure == "missing_geometry" else tuple(state["relative"]),
+    )
+    if failure != "ambiguous":
+        coordinator.profile = replace(coordinator.profile, segment_colour_mode_ambiguous=False)
+    if failure == "missing_count":
+        state["fault"] = failure
+        wait = coordinator._wait_for_revisions
+
+        async def wait_for_reply(fields, domains, deadline, **kwargs):
+            return False if "configured_strings" in fields else await wait(fields, domains, deadline, **kwargs)
+
+        monkeypatch.setattr(coordinator, "_wait_for_revisions", wait_for_reply)
+        with pytest.raises(ValueError, match="Cannot confirm configured"):
+            await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=321)
+    else:
+        assert not await coordinator.async_restore_effect_control_state(prior, overwritten_diy_code=321)
+    assert not state["on"]
+    assert build_power(False, "H7020") in state["packets"]
+    assert all(parse_static_write(packet, profile=get_profile("H7020")) is None for packet in state["packets"])
 
 
 @pytest.mark.parametrize("on", [True, False])

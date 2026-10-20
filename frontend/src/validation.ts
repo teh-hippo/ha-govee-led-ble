@@ -1061,12 +1061,19 @@ export function decodeEffectContent(value: unknown): EffectContent {
         }),
       } satisfies VideoProfileContent;
     case "advanced":
+      const nativeDiy = content.native_diy === undefined
+        ? undefined
+        : integerValue(content.native_diy, "native DIY template", 17, 507);
+      if (nativeDiy !== undefined && !(
+        (nativeDiy >= 17 && nativeDiy <= 19) ||
+        (nativeDiy >= 501 && nativeDiy <= 507)
+      )) {
+        invalid("native DIY template");
+      }
       return {
         kind,
         layers: layerArray(content.layers, "Advanced layers"),
-        ...(content.native_diy === undefined ? {} : {
-          native_diy: integerValue(content.native_diy, "native DIY template", 501, 507),
-        }),
+        ...(nativeDiy === undefined ? {} : { native_diy: nativeDiy }),
       } satisfies AdvancedContent;
     case "workshop": {
       const effect = objectValue(content.effect, "Workshop effect");
