@@ -6,7 +6,7 @@ import io
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from functools import cache
 from importlib import import_module
 from types import MappingProxyType
@@ -16,7 +16,7 @@ from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, Read
 
 from .const import H6199_PACT1_PROFILE, ModelProfile, ReadDomain, get_profile
 from .music_protocol import music_slug_for
-from .music_semantics import MusicVariant, music_variant
+from .music_semantics import COMPANION_MUSIC_LAYOUTS, MusicVariant, music_variant
 from .transport import A1_02_COMMAND, A1_02_PREFIX, A3_CHUNK_SIZE, reassemble_a1_02_upload, reassemble_a3, xor_checksum
 
 CommandWrite = cast(
@@ -177,6 +177,15 @@ H6076MusicBody = cast(
 H6076MusicWrite = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write").H6076MusicWrite
 )
+H7025MusicBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_body").H7025MusicBody
+)
+H7025MusicWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_write").H7025MusicWrite
+)
+H7025StatusReply = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_status_reply").H7025StatusReply
+)
 H6125StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_status_reply").H6125StatusReply,
@@ -328,6 +337,7 @@ _STATUS_ROOTS = {
     "H6125-intermediate": ("h6125_intermediate_status_reply", H6125IntermediateStatusReply),
     "H6099": ("h6099_status_reply", H6099StatusReply),
     "H617A": ("status_reply", StatusReply),
+    "H7025": ("h7025_status_reply", H7025StatusReply),
     "H6179": ("h6179_status_reply", H6179StatusReply),
     "H6199": ("h6199_status_reply", H6199StatusReply),
     "H7020": ("h7020_status_reply", H7020StatusReply),
@@ -676,16 +686,20 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
-        if operation == "multi" and profile.command_operations is not None:
+        if operation == "multi":
             sub_operation = getattr(command.body.sub, "name", "")
-            if sub_operation != "static":
+            if profile.command_operations is not None and sub_operation != "static":
                 operation = sub_operation
-            if (
-                operation == "music"
-                and music_slug_for(profile.command_grammar or "", int(command.body.sub_body.mode_id), profile=profile)
-                not in profile.music_modes
-            ):
-                raise ValueError("music selector is outside profile capabilities")
+            if sub_operation == "music":
+                if profile.music_grammar == "H7025":
+                    music = _parse_xor_frame(frame, "H7025", {"H7025": ("h7025_music_write", H7025MusicWrite)}).parsed
+                    if music is None or getattr(music.selector.mode_id, "name", None) not in profile.music_modes:
+                        raise ValueError("music mode selector is outside profile capabilities")
+                elif (
+                    music_slug_for(profile.command_grammar or "", int(command.body.sub_body.mode_id), profile=profile)
+                    not in profile.music_modes
+                ):
+                    raise ValueError("music mode selector is outside profile capabilities")
         control = boolean_control_name(operation)
         if control is not None:
             if boolean_control_is_authorized(control, profile):
@@ -1643,9 +1657,9 @@ def build_colour_temperature(
         raise ValueError(f"{model} has no generated colour-temperature grammar")
     return _build_h617a_static_colour(
         mask,
-        direct=(255, 255, 255) if resolved == "H7020" else (0, 0, 0),
+        direct=profile.kelvin_direct_rgb,
         kelvin=value,
-        preview=table_kelvin_rgb(value) if resolved == "H7020" else preview,
+        preview=table_kelvin_rgb(value) if profile.kelvin_direct_rgb == (255, 255, 255) else preview,
         root_type=_COMMAND_ROOTS[resolved][1],
     )
 
@@ -2123,6 +2137,20 @@ def build_music_mode(
         multi.sub_body = selector
         root.body = multi
         return _serialize_xor(root)
+    if resolved == "H7025":
+        root = H7025MusicWrite()
+        root.header, root.opcode, root.sub = b"\x33", b"\x05", b"\x13"
+        selector = _child(H7025MusicWrite.MusicSelector, root)
+        selector.mode_id = H7025MusicWrite.MusicMode(mode_id)
+        selector.sensitivity = sensitivity
+        if selector.is_legacy:
+            selector.style = int(calm)
+            selector.has_fixed_colour = int(colour is not None)
+            if colour is not None:
+                selector.rgb = _rgb(selector, *colour)
+        selector.unknown_tail = bytes(14 - (2 + (3 if colour is not None else 0) if selector.is_legacy else 0))
+        root.selector = selector
+        return _serialize_xor(root)
     if resolved == "H6179":
         root = H6179CommandWrite()
         root.header = b"\x33"
@@ -2358,8 +2386,12 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
             "custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters"
         ).H6099MusicParameters
         root = root_type.from_bytes(body)
-    elif variant.layout in {"music_body", "h6076_music_body"}:
-        root_type = H6076MusicBody if variant.layout == "h6076_music_body" else MusicBody
+    elif variant.layout in COMPANION_MUSIC_LAYOUTS:
+        root_type = {
+            "music_body": MusicBody,
+            "h6076_music_body": H6076MusicBody,
+            "h7025_music_body": H7025MusicBody,
+        }[variant.layout]
         root = root_type.from_bytes(b"\x01\x02\x41" + body)
     else:
         raise ValueError("music palette layout is unqualified")
@@ -2383,7 +2415,7 @@ def encode_music_parameters(
         return _encode_h6099_music_parameters(
             variant, parameters, palette, calm, physical_ic_count, preserve_companions
         )
-    if variant.layout not in {"music_body", "h6076_music_body"} or not variant.evidence or not variant.template:
+    if variant.layout not in COMPANION_MUSIC_LAYOUTS or not variant.evidence or not variant.template:
         raise ValueError("music parameter layout is unqualified")
     root = parse_music_parameters(variant, variant.template)
     length = len(variant.template) + 3
@@ -2412,6 +2444,11 @@ def encode_music_parameters(
             tail.background = _rgb(tail, rgb >> 16, (rgb >> 8) & 255, rgb & 255)
         elif spec.kind != "select":
             setattr(tail, spec.wire_field, int(value))
+        elif not variant.direction_values:
+            current = getattr(tail, spec.wire_field)
+            if not isinstance(current, IntEnum) or str(value) not in spec.options:
+                raise ValueError("music parameter requires a qualified enum value")
+            setattr(tail, spec.wire_field, type(current)[str(value)])
     if variant.gradient_companions is not None and "gradient" in parameters:
         tail.speed = variant.gradient_companions[bool(parameters["gradient"])]
     if variant.piano_derived_half and "key_count" in parameters:

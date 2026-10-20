@@ -61,6 +61,8 @@ H6076MusicBody = _generated("h6076_music_body", "H6076MusicBody")
 H6076MusicWrite = _generated("h6076_music_write", "H6076MusicWrite")
 H6102StatusReply = _generated("h6102_status_reply", "H6102StatusReply")
 H6102WireWrite = _generated("h6102_wire_write", "H6102WireWrite")
+H7025MusicBody = _generated("h7025_music_body", "H7025MusicBody")
+H7025MusicWrite = _generated("h7025_music_write", "H7025MusicWrite")
 H6179ScheduleWrite = _generated("h6179_schedule_write", "H6179ScheduleWrite") if _GENERATED_DIR else None
 DiyType03 = _generated("diy_type03", "DiyType03")
 DiyType04 = _generated("diy_type04", "DiyType04")
@@ -890,6 +892,21 @@ async def test_static_direct_verification_is_not_enabled_for_existing_models(has
 
 
 REPRESENTATIVE_ROOTS = (
+    pytest.param(
+        H7025MusicWrite,
+        bytes.fromhex("330513032a01011122330000000000000000000c"),
+        id="H7025 synthetic explicit Rhythm",
+    ),
+    pytest.param(
+        H7025MusicBody,
+        bytes.fromhex("010241340201020304050600050a0404"),
+        id="H7025 reported Piano tail with synthetic palette",
+    ),
+    pytest.param(
+        H7025MusicBody,
+        bytes.fromhex("010241480201020304050601010103aabb"),
+        id="H7025 synthetic Hopping unknown tail",
+    ),
     pytest.param(CommandWrite, COMMAND_STATIC, id="H617A command"),
     pytest.param(StatusReply, STATUS_SEGMENTS, id="H617A status"),
     pytest.param(StatusQuery, H617A_SEGMENT_QUERY, id="H617A segment query"),
@@ -1115,6 +1132,28 @@ def test_h6076_selector_and_companion_fields_match_the_reporter_capture() -> Non
         (0, 255, 255),
         (139, 0, 255),
     ]
+
+
+def test_h7025_basic_controls_reuse_only_the_compatible_command_layout():
+    profile = get_profile("H7025")
+    rgb = build_color_rgb(17, 34, 51, "H7025")
+    parsed = generated_protocol_adapter.parse_command(rgb, "H7025")
+    assert parsed.body.sub.name == "static"
+    colour = parsed.body.sub_body.static_body
+    assert (colour.rgb_direct.red, colour.rgb_direct.green, colour.rgb_direct.blue) == (17, 34, 51)
+    assert colour.mask.bits == 0x7FFF and colour.kelvin == 0
+    assert expectations_from_packet(rgb, "H7025")["rgb_color"] == (17, 34, 51)
+    assert profile.supports_segments and profile.supports_scenes and profile.supports_custom_effects
+    kelvin = build_color_temp(4200, "H7025")
+    kelvin_body = generated_protocol_adapter.parse_command(kelvin, "H7025").body.sub_body.static_body
+    assert (kelvin_body.rgb_direct.red, kelvin_body.rgb_direct.green, kelvin_body.rgb_direct.blue) == (255, 255, 255)
+    assert (
+        kelvin_body.rgb_preview.red,
+        kelvin_body.rgb_preview.green,
+        kelvin_body.rgb_preview.blue,
+    ) == generated_protocol_adapter.table_kelvin_rgb(4200)
+    assert expectations_from_packet(kelvin, "H7025")["color_temp_kelvin"] == 4200
+    assert generated_protocol_adapter.build_colour_mode_query("H7025") == H6179_MODE_QUERY
 
 
 def test_command_and_status_fields_are_meaningful() -> None:

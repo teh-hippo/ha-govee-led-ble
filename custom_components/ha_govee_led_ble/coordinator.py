@@ -3279,6 +3279,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
         attempt_started: Callable[[int], Awaitable[None]] | None = None,
+        retry_allowed: Callable[[], bool] | None = None,
         progress: Callable[[int], Awaitable[None]] | None = None,
         packet_state_values: Sequence[Mapping[str, Any]] | None = None,
         packet_write_guard: Callable[[int], None] | None = None,
@@ -3410,7 +3411,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         await self._disconnect_locked()
                         if self.hass.is_stopping:
                             raise RuntimeError("Home Assistant is stopping") from err
-                        if attempt == attempts:
+                        if attempt == attempts or (retry_allowed is not None and not retry_allowed()):
                             raise
                         error = str(err).lower()
                         if isinstance(err, TimeoutError) or "already shutdown" in error or "not found" in error:

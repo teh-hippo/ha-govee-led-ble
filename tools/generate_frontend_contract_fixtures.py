@@ -158,7 +158,7 @@ def _compact_scene_catalogue(model: str) -> dict[str, Any]:
 def _representative_scene_details() -> dict[str, dict[str, Any]]:
     details: dict[str, dict[str, Any]] = {}
     for model in MODELS:
-        for entry in SCENE_ENTRIES[model]:
+        for entry in SCENE_ENTRIES.get(model, ()):
             detail = cast(dict[str, Any], scene_detail_payload(model, entry.scene_id, entry.effect_id))
             kind = cast(dict[str, Any], detail["content"])["kind"]
             if isinstance(kind, str):
@@ -328,7 +328,7 @@ def rendered_data() -> str:
             "library_snapshot": library_snapshot_payload(library_snapshot),
             "library_item": item.to_dict(),
             "preview_status": preview.to_dict(),
-            "scene_catalogues": {model: _compact_scene_catalogue(model) for model in MODELS},
+            "scene_catalogues": {model: _compact_scene_catalogue(model) for model in MODELS if model in SCENE_ENTRIES},
             "scene_details": scene_details,
         },
         "content_samples": _content_samples(catalogue, scene_details),

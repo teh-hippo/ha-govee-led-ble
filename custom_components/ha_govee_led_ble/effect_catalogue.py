@@ -637,6 +637,15 @@ H7020_DIY_FAMILIES: Final = (
     ),
 )
 
+H7025_DIY_FAMILIES: Final = tuple(
+    replace(
+        family,
+        multi_rate_min=0,
+        source_reference="Android 7.6.01 H7025DiyConfig.getBasicEffectList/getMixEffectList",
+    )
+    for family in H7020_DIY_FAMILIES[:6]
+)
+
 
 def _mode_label(slug: str) -> str:
     return slug.replace("_", " ").title()
@@ -1128,6 +1137,11 @@ H7020_CATALOGUE_TEMPLATES: Final = (
     *H7020_NATIVE_DIY_TEMPLATES,
 )
 
+H7025_CATALOGUE_TEMPLATES: Final = (
+    *(_single_template("H7025", family) for family in H7025_DIY_FAMILIES),
+    *(_music_template("H7025", mode) for mode in _native_music_modes("H7025")),
+)
+
 WORKSHOP_PROTOCOL_FIXTURES: Final = (
     WorkshopTemplate(
         "movement-baseline",
@@ -1212,6 +1226,9 @@ H6125_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6125")
 # The selector order follows the app, not the wire codes.
 H6076_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H6076"].music_modes
+)
+H7025_NATIVE_MUSIC_MODES: Final = tuple(
+    NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H7025"].music_modes
 )
 
 MODEL_EFFECT_CATALOGUES: Final = {
@@ -1473,6 +1490,29 @@ MODEL_EFFECT_CATALOGUES: Final = {
             workshop=studio_apply_capability_state("H7020", CapabilityWorkflow.WORKSHOP),
         ),
         speed_min=1,
+    ),
+    "H7025": ModelEffectCatalogue(
+        sku="H7025",
+        painted_effects=(),
+        effects=H7025_DIY_FAMILIES,
+        music_modes=H7025_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=H7025_CATALOGUE_TEMPLATES,
+        workshop_templates=(),
+        diy_slot_policy="approved_observed",
+        advanced_create=False,
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H7025", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H7025", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H7025", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H7025", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H7025", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H7025", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H7025", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H7025", CapabilityWorkflow.WORKSHOP),
+        ),
     ),
 }
 

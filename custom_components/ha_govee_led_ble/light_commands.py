@@ -119,7 +119,11 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
 
 
 def kelvin_companion_rgb(kelvin: int, profile: ModelProfile) -> tuple[int, int, int]:
-    return table_kelvin_rgb(kelvin) if profile.command_grammar in {"H601C", "H7020"} else kelvin_to_rgb(kelvin)
+    return (
+        table_kelvin_rgb(kelvin)
+        if profile.command_grammar == "H601C" or profile.kelvin_direct_rgb == (255, 255, 255)
+        else kelvin_to_rgb(kelvin)
+    )
 
 
 def build_color_temp(kelvin: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
@@ -267,8 +271,8 @@ def parse_static_write(
         rgb = (int(body.rgb_direct.red), int(body.rgb_direct.green), int(body.rgb_direct.blue))
         kelvin = int(body.kelvin)
         mask = int(body.mask.bits)
-        sentinel = (255, 255, 255) if profile.command_grammar == "H7020" else (0, 0, 0)
-        if kelvin and profile.command_grammar == "H7020" and rgb != sentinel:
+        sentinel = profile.kelvin_direct_rgb
+        if kelvin and sentinel == (255, 255, 255) and rgb != sentinel:
             raise ValueError("Kelvin requires direct white RGB")
         if rgb == sentinel and kelvin:
             return ParsedStaticWrite(

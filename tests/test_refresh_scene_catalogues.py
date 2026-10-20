@@ -314,6 +314,12 @@ def test_h6102_candidate_uses_complete_exact_snapshot():
             "f2250fce00ca04ae9cee00526c358d98f25e38e0a87c708d6d1b21a5825f548b",
         ),
         (
+            "H7025",
+            7,
+            114,
+            "06891eea620fdd8cbd9232919b5788f4bfb2e612836a14b06aea57513b13888d",
+        ),
+        (
             "H617E",
             12,
             240,

@@ -16,6 +16,8 @@ from custom_components.ha_govee_led_ble.music_protocol import (
     H6179CommandWrite,
     H6199CommandWrite,
     H7020CommandWrite,
+    H7025MusicBody,
+    H7025MusicWrite,
     MusicBody,
     music_code_for,
     music_codebook,
@@ -147,6 +149,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         "H6179": H6179CommandWrite.MusicEffect,
         "H6199": H6199CommandWrite.MusicMode,
         "H7020": H7020CommandWrite.MusicMode,
+        "H7025": H7025MusicWrite.MusicMode,
     }
     assert set(MUSIC_MODE_CODES_BY_MODEL) == set(expected_enums)
     for grammar, enum_type in expected_enums.items():
@@ -156,6 +159,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         "H617A": MusicBody.MusicMode,
         "H6099": H6099MusicParameters.MusicMode,
         "H6076": H6076MusicBody.MusicMode,
+        "H7025": H7025MusicBody.MusicMode,
     }
     for grammar, enum_type in expected_parameter_enums.items():
         assert _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL[grammar] == {int(mode) for mode in enum_type}

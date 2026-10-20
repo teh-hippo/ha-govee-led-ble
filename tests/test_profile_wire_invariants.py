@@ -604,6 +604,11 @@ def test_every_advertised_music_mode_has_a_way_to_be_applied(model: str, profile
                 parsed_h6076 = a.H6076MusicWrite.from_bytes(selector)
                 parsed_h6076._read()
                 assert parsed_h6076.selector.mode_id.name == slug
+            elif active_profile.music_grammar == "H7025":
+                parsed_h7025 = a.H7025MusicWrite.from_bytes(selector)
+                parsed_h7025._read()
+                assert parsed_h7025.selector.mode_id.name == slug
+                assert expectations_from_packet(selector, model, profile=active_profile)["music_mode"] == slug
             else:
                 parsed_cmd = a.parse_command_result(selector, model, profile=active_profile)
                 assert parsed_cmd.rejection is None and parsed_cmd.parsed is not None

@@ -524,6 +524,56 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         EvidenceClassification.STRUCTURAL,
     ),
     *(
+        _capability(
+            "H7025",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            VerificationConfidence.SELECTION_ONLY,
+            PhysicalValidationState.NOT_VALIDATED,
+            EvidenceClassification.STRUCTURAL,
+        )
+        for workflow, label, kind, route, strategy in (
+            (
+                CapabilityWorkflow.NATIVE_SCENES,
+                "Scenes",
+                "scene_builtin",
+                ApplicationRoute.STUDIO_SCENE_APPLY,
+                CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+            ),
+            (
+                CapabilityWorkflow.LAYERED_SCENES,
+                "Layered scenes",
+                "scene_layered",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.SINGLE,
+                "Basic DIY",
+                "h617a_single",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.MULTI,
+                "Mixed DIY",
+                "h617a_multi",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.NATIVE_MUSIC,
+                "Music",
+                "music_profile",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.COORDINATOR_WRITER,
+            ),
+        )
+    ),
+    *(
         replace(
             capability,
             model="H6125",

@@ -11,6 +11,7 @@ from .generated_protocol_adapter import (
     video_parameters_from_detail,
 )
 from .light_commands import parse_static_write
+from .music_protocol import music_slug_for
 from .scenes import scene_key_for_code
 
 
@@ -63,7 +64,7 @@ def expectations_from_packet(
         mode = getattr(generated.body.sub_mode, "name", None)
         detail = generated.body.detail
         if mode == "music":
-            music_mode = getattr(detail.mode, "name", None)
+            music_mode = music_slug_for(model, int(detail.mode), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
             if not getattr(detail, "is_legacy", True):
@@ -98,7 +99,7 @@ def expectations_from_packet(
         mode = getattr(generated.body.sub, "name", None)
         detail = generated.body.sub_body
         if mode == "music":
-            music_mode = getattr(detail.mode_id, "name", None)
+            music_mode = music_slug_for(model, int(detail.mode_id), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
             if not getattr(detail, "is_legacy", True):

@@ -15827,6 +15827,1072 @@
             }
           ],
           "workshop_templates": []
+        },
+        "H7025": {
+          "advanced_create": false,
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "diy_slot_policy": "approved_observed",
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "1",
+                  "label": "Fade 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Fade 2",
+                  "variant": 1
+                },
+                {
+                  "id": "3",
+                  "label": "Fade 3",
+                  "variant": 2
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            }
+          ],
+          "music_settings": {
+            "day_and_night": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Day and Night: 1..3 pieces; reported default 03 0a 00",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "segment_count": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 3,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "flow": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Flow: direction, 1..3 groups and five ICs per group",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "clockwise",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise"
+                  ]
+                },
+                "group_count": {
+                  "default": 2,
+                  "kind": "number",
+                  "max": 3,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Hopping producer and issue #148 background/brightness replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "background": {
+                  "default": 65793,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                },
+                "relative_brightness": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "piano_keys": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 issue #148 Piano tail 00 05 0a 04 04; app limits palette to five and keeps gradient off",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 5,
+                "min": 1
+              },
+              "palette_size": 5,
+              "parameters": {},
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H7025 explicit Rhythm selector, calm flag and one optional fixed RGB",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Rolling direction choices; not a speed parameter",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "spread",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "left",
+                    "right",
+                    "spread"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Separation direction choices and two trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "spread",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "left",
+                    "right",
+                    "spread",
+                    "gather"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "star": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Star: background RGB; final distance byte preserved without a brightness interpretation",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "background": {
+                  "default": 255,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "sway": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 colour-only music producer; three trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            },
+            "twinkle": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 colour-only music producer; three trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_effects": [],
+          "sku": "H7025",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "sway",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:sway",
+              "label": "Sway"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "flow",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:flow",
+              "label": "Flow"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "star",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:star",
+              "label": "Star"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "twinkle",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Basic DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Mixed DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            }
+          ],
+          "workshop_templates": []
         }
       },
       "music_modes": [
@@ -32687,6 +33753,1802 @@
         "readback": "diy_code_only",
         "segment_count": 30,
         "support_quality": "experimental"
+      },
+      {
+        "active_state": null,
+        "catalogue": {
+          "advanced_create": false,
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "diy_slot_policy": "approved_observed",
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "1",
+                  "label": "Fade 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Fade 2",
+                  "variant": 1
+                },
+                {
+                  "id": "3",
+                  "label": "Fade 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "4",
+                  "label": "Jumping 1",
+                  "variant": 0
+                },
+                {
+                  "id": "5",
+                  "label": "Jumping 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "6",
+                  "label": "Blinking 1",
+                  "variant": 0
+                },
+                {
+                  "id": "7",
+                  "label": "Blinking 2",
+                  "variant": 1
+                },
+                {
+                  "id": "8",
+                  "label": "Blinking 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Marquee 1",
+                  "variant": 3
+                },
+                {
+                  "id": "10",
+                  "label": "Marquee 2",
+                  "variant": 4
+                },
+                {
+                  "id": "11",
+                  "label": "Marquee 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "12",
+                  "label": "Stream 1",
+                  "variant": 9
+                },
+                {
+                  "id": "13",
+                  "label": "Stream 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "14",
+                  "label": "Flow 1",
+                  "variant": 9
+                },
+                {
+                  "id": "15",
+                  "label": "Flow 2",
+                  "variant": 10
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "sway",
+              "label": "Sway"
+            },
+            {
+              "id": "flow",
+              "label": "Flow"
+            },
+            {
+              "id": "star",
+              "label": "Star"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            }
+          ],
+          "music_settings": {
+            "day_and_night": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Day and Night: 1..3 pieces; reported default 03 0a 00",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "segment_count": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 3,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "flow": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Flow: direction, 1..3 groups and five ICs per group",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "clockwise",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise"
+                  ]
+                },
+                "group_count": {
+                  "default": 2,
+                  "kind": "number",
+                  "max": 3,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Hopping producer and issue #148 background/brightness replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "background": {
+                  "default": 65793,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                },
+                "relative_brightness": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "piano_keys": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 issue #148 Piano tail 00 05 0a 04 04; app limits palette to five and keeps gradient off",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 5,
+                "min": 1
+              },
+              "palette_size": 5,
+              "parameters": {},
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H7025 explicit Rhythm selector, calm flag and one optional fixed RGB",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Rolling direction choices; not a speed parameter",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "spread",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "left",
+                    "right",
+                    "spread"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Separation direction choices and two trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "spread",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "left",
+                    "right",
+                    "spread",
+                    "gather"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "star": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Star: background RGB; final distance byte preserved without a brightness interpretation",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "background": {
+                  "default": 255,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "sway": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 colour-only music producer; three trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            },
+            "twinkle": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 colour-only music producer; three trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_effects": [],
+          "sku": "H7025",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "sway",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:sway",
+              "label": "Sway"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "flow",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:flow",
+              "label": "Flow"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "star",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:star",
+              "label": "Star"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "twinkle",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Basic DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Mixed DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            }
+          ],
+          "workshop_templates": []
+        },
+        "config_entry_id": "h7025-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "supported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H7025 Outdoor String Lights",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive"
+        ],
+        "light_entity_id": null,
+        "model": "H7025",
+        "music_settings": {
+          "day_and_night": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 Day and Night: 1..3 pieces; reported default 03 0a 00",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "segment_count": {
+                "default": 3,
+                "kind": "number",
+                "max": 3,
+                "min": 1,
+                "options": []
+              }
+            },
+            "style": false
+          },
+          "flow": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 Flow: direction, 1..3 groups and five ICs per group",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "direction": {
+                "default": "clockwise",
+                "kind": "select",
+                "max": 0,
+                "min": 0,
+                "options": [
+                  "clockwise",
+                  "counterclockwise"
+                ]
+              },
+              "group_count": {
+                "default": 2,
+                "kind": "number",
+                "max": 3,
+                "min": 1,
+                "options": []
+              }
+            },
+            "style": false
+          },
+          "hopping": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 Hopping producer and issue #148 background/brightness replay",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "background": {
+                "default": 65793,
+                "kind": "number",
+                "max": 16777215,
+                "min": 0,
+                "options": []
+              },
+              "relative_brightness": {
+                "default": 3,
+                "kind": "number",
+                "max": 50,
+                "min": 1,
+                "options": []
+              }
+            },
+            "style": false
+          },
+          "piano_keys": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 issue #148 Piano tail 00 05 0a 04 04; app limits palette to five and keeps gradient off",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ]
+              ],
+              "max": 5,
+              "min": 1
+            },
+            "palette_size": 5,
+            "parameters": {},
+            "style": false
+          },
+          "rhythm": {
+            "available": true,
+            "calm_default": false,
+            "colour": true,
+            "evidence": "H7025 explicit Rhythm selector, calm flag and one optional fixed RGB",
+            "palette_size": 0,
+            "parameters": {},
+            "style": true
+          },
+          "rolling": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 Rolling direction choices; not a speed parameter",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "direction": {
+                "default": "spread",
+                "kind": "select",
+                "max": 0,
+                "min": 0,
+                "options": [
+                  "left",
+                  "right",
+                  "spread"
+                ]
+              }
+            },
+            "style": false
+          },
+          "separation": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 Separation direction choices and two trailing body bytes",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 2
+            },
+            "palette_size": 7,
+            "parameters": {
+              "direction": {
+                "default": "spread",
+                "kind": "select",
+                "max": 0,
+                "min": 0,
+                "options": [
+                  "left",
+                  "right",
+                  "spread",
+                  "gather"
+                ]
+              }
+            },
+            "style": false
+          },
+          "star": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 Star: background RGB; final distance byte preserved without a brightness interpretation",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "background": {
+                "default": 255,
+                "kind": "number",
+                "max": 16777215,
+                "min": 0,
+                "options": []
+              }
+            },
+            "style": false
+          },
+          "sway": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 colour-only music producer; three trailing body bytes",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {},
+            "style": false
+          },
+          "twinkle": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H7025 colour-only music producer; three trailing body bytes",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {},
+            "style": false
+          }
+        },
+        "physical_ic_count": null,
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h7025-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "unsupported"
+        },
+        "readback": "diy_code_only",
+        "segment_count": 15,
+        "support_quality": "experimental"
       }
     ],
     "editor_info": {
@@ -33299,6 +36161,45 @@
         ],
         "schema_version": 1,
         "sku": "H7020"
+      },
+      "H7025": {
+        "categories": [
+          {
+            "id": 1409,
+            "name": "Natural"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "Natural",
+            "category_id": 1409,
+            "display_name": "Rainbow",
+            "effect_id": 25512,
+            "name": "Rainbow",
+            "parameter_kind": "none",
+            "scene_id": 15683,
+            "scene_type": 0,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 1409,
+            "display_name": "Sunset Glow",
+            "effect_id": 25515,
+            "name": "Sunset Glow",
+            "parameter_kind": "layers",
+            "scene_id": 15686,
+            "scene_type": 2,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H7025"
       }
     },
     "scene_details": {

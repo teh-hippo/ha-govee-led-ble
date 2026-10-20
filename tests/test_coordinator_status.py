@@ -31,6 +31,34 @@ def _h6179_status(domain: int, body: bytes) -> bytes:
     return frame + bytes((xor_checksum(frame),))
 
 
+def test_h7025_exact_status_root_covers_declared_reads_and_music_numbering():
+    frames = (
+        _h6179_status(1, b"\x01"),
+        _h6179_status(4, b"\x2a"),
+        _h6179_status(5, H("13482a")),
+        _h6179_status(6, b"1.02.03\0"),
+        _h6179_status(7, b"\x033.01.01\0"),
+        _h6179_status(0xA5, H("01640102036404050664070809640a0b0c")),
+    )
+    decoded = [decode_status_frame_result(frame, "H7025") for frame in frames]
+    assert all(result.parser == "h7025_status_reply" and result.rejection is None for result in decoded)
+    assert {result.parsed.domain for result in decoded} == MODEL_PROFILES["H7025"].read_domains
+    music = parse_color_mode(decoded[2].parsed.generated, "H7025")
+    assert music.mode is ParsedMode.MUSIC and music.music_mode == "hopping"
+    assert music.music_sensitivity == 42 and not music.music_color_present
+    rhythm = decode_status_frame(_h6179_status(5, H("13032a0101112233")), "H7025")
+    assert rhythm is not None
+    settings = parse_color_mode(rhythm.generated, "H7025")
+    assert settings.music_mode == "rhythm" and settings.music_calm
+    assert settings.music_color == (17, 34, 51)
+    static = decode_status_frame(_h6179_status(5, H("15001068")), "H7025")
+    assert static is not None
+    assert parse_color_mode(static.generated, "H7025").color_temp_kelvin == 4200
+    unknown = decode_status_frame(_h6179_status(5, H("00")), "H7025")
+    assert unknown is not None
+    assert parse_color_mode(unknown.generated, "H7025").mode is ParsedMode.UNKNOWN
+
+
 def test_status_envelope_rejects_invalid_frames() -> None:
     assert decode_status_frame(b"") is None
     assert decode_status_frame(H("3301010000000000000000000000000000000033")) is None

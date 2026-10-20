@@ -32,6 +32,12 @@ doc: |
   H7020 #363 reuses ordinary zero-success ACKs, including configured strings,
   and the A3/02 and A3/04 result-byte-2 forms. This is candidate structural
   compatibility, not exact-model capture qualification or state confirmation.
+  H7025 #148 independently reaches MusicControllerNoEvent3Result through
+  H7025MusicMode and MusicModeComposeController (A3/41 result byte 3) and the
+  shared A3/02 and A3/04 result-byte-2 controllers for scenes and DIY, with
+  protocol/opcode correlation. Its candidate requires a positive result before
+  activation. No H7025 mode echo, transaction token or LAN receipt guarantee
+  is inferred from the H607C observation in that issue.
 seq:
   - id: protocol
     type: u1

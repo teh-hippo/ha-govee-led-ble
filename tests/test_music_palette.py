@@ -101,11 +101,10 @@ def test_variant_availability_matches_catalogue_and_compiler(model, mode, ic, av
 
 
 @pytest.mark.parametrize("route", ["native", "studio", "preview"])
-async def test_apply_recovery_and_retained_palette_are_not_readback(hass, route):
-    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6099", configuration_url=None)
-    compiled = compile_music_profile(
-        LibraryItem.new("Palette", MusicProfile("H6099", "bloom", 42, palette=PALETTE)), "H6099"
-    )
+@pytest.mark.parametrize(("model", "mode"), [("H6099", "bloom"), ("H7025", "hopping")])
+async def test_apply_recovery_and_retained_palette_are_not_readback(hass, route, model, mode):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
+    compiled = compile_music_profile(LibraryItem.new("Palette", MusicProfile(model, mode, 42, palette=PALETTE)), model)
     coordinator.music_sensitivity = 42
 
     async def preview_writer(packet, *, state_values=None, write_guard=None):
@@ -115,7 +114,7 @@ async def test_apply_recovery_and_retained_palette_are_not_readback(hass, route)
 
     with _music_transport(coordinator) as physical, patch.object(coordinator, "_encryption", None):
         if route == "native":
-            await coordinator.async_select_music_slug("bloom", palette=PALETTE)
+            await coordinator.async_select_music_slug(mode, palette=PALETTE)
         else:
             await async_apply_compiled_profile(
                 coordinator, compiled, writer=preview_writer if route == "preview" else None
@@ -127,7 +126,7 @@ async def test_apply_recovery_and_retained_palette_are_not_readback(hass, route)
         restored = PriorControlState.from_dict(state.to_dict())
         assert restored == state
         assert "music_palette" not in coordinator._field_revisions
-        await coordinator.async_select_music_slug("bloom")
+        await coordinator.async_select_music_slug(mode)
         assert coordinator.music_palette != PALETTE
         physical.reset_mock()
         coordinator.refresh_state.return_value = True

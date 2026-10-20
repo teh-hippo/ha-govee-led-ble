@@ -47,7 +47,7 @@ class MusicVariant:
 
 
 # Layouts whose A3 companion carries the effect's parameters; their selectors omit style and fixed colour.
-COMPANION_MUSIC_LAYOUTS = frozenset({"music_body", "h6076_music_body", "h6099_music_parameters"})
+COMPANION_MUSIC_LAYOUTS = frozenset({"music_body", "h6076_music_body", "h6099_music_parameters", "h7025_music_body"})
 
 # Captured values, not values calculated from logical colour zones or guessed IC counts.
 H617A_MUSIC_VARIANTS = (
@@ -461,6 +461,117 @@ H7020_MUSIC_VARIANTS = (
     MusicVariant(0x04, "H7020 qualified Spectrum selector"),
     MusicVariant(0x05, "H7020 qualified Energetic selector"),
     MusicVariant(0x06, "H7020 qualified Rolling selector"),
+)
+
+
+_H7025_PALETTE = "ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+
+H7025_MUSIC_VARIANTS = (
+    MusicVariant(0x03, "H7025 explicit Rhythm selector, calm flag and one optional fixed RGB", supports_style=True),
+    *(
+        MusicVariant(
+            mode,
+            "H7025 colour-only music producer; three trailing body bytes",
+            "h7025_music_body",
+            bytes.fromhex(f"{mode:02x}07{_H7025_PALETTE}000000"),
+            palette_bounds=(1, 8),
+            supports_fixed_colour=False,
+        )
+        for mode in (0x8E, 0x8F)
+    ),
+    MusicVariant(
+        0x59,
+        "H7025 Flow: direction, 1..3 groups and five ICs per group",
+        "h7025_music_body",
+        bytes.fromhex(f"5907{_H7025_PALETTE}000205"),
+        (
+            MusicParamSpec(
+                "music_flow_direction",
+                "direction",
+                "direction",
+                "select",
+                "clockwise",
+                options=("clockwise", "counterclockwise"),
+            ),
+            MusicParamSpec("music_flow_groups", "group_count", "group_count", "number", 2, 1, 3),
+        ),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x98,
+        "H7025 Star: background RGB; final distance byte preserved without a brightness interpretation",
+        "h7025_music_body",
+        bytes.fromhex(f"9807{_H7025_PALETTE}0000ff03"),
+        (MusicParamSpec("music_star_background", "background", "background", "number", 0x0000FF, 0, 0xFFFFFF),),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x48,
+        "H7025 Hopping producer and issue #148 background/brightness replay",
+        "h7025_music_body",
+        bytes.fromhex(f"4807{_H7025_PALETTE}010101030000"),
+        (
+            MusicParamSpec("music_hopping_background", "background", "background", "number", 0x010101, 0, 0xFFFFFF),
+            MusicParamSpec("music_hopping_brightness", "relative_brightness", "rel_brightness", "number", 3, 1, 50),
+        ),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x5A,
+        "H7025 Rolling direction choices; not a speed parameter",
+        "h7025_music_body",
+        bytes.fromhex(f"5a07{_H7025_PALETTE}080000"),
+        (
+            MusicParamSpec(
+                "music_rolling_direction",
+                "direction",
+                "direction",
+                "select",
+                "spread",
+                options=("left", "right", "spread"),
+            ),
+        ),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x37,
+        "H7025 Day and Night: 1..3 pieces; reported default 03 0a 00",
+        "h7025_music_body",
+        bytes.fromhex(f"3707{_H7025_PALETTE}030a00"),
+        (MusicParamSpec("music_daynight_segments", "segment_count", "piece_count", "number", 3, 1, 3),),
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x34,
+        "H7025 issue #148 Piano tail 00 05 0a 04 04; app limits palette to five and keeps gradient off",
+        "h7025_music_body",
+        bytes.fromhex("3405ff0000ff7f00ffff0000ff000000ff00050a0404"),
+        palette_bounds=(1, 5),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x5D,
+        "H7025 Separation direction choices and two trailing body bytes",
+        "h7025_music_body",
+        bytes.fromhex(f"5d07{_H7025_PALETTE}080000"),
+        (
+            MusicParamSpec(
+                "music_separation_direction",
+                "direction",
+                "direction",
+                "select",
+                "spread",
+                options=("left", "right", "spread", "gather"),
+            ),
+        ),
+        palette_bounds=(2, 8),
+        supports_fixed_colour=False,
+    ),
 )
 
 

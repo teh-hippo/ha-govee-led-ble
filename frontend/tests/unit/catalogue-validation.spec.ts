@@ -27,6 +27,7 @@ test("canonical backend catalogue decodes through the production catalogue valid
     "H617E",
     "H6199",
     "H7020",
+    "H7025",
   ]);
   expect(decoded.models.H6199.video_settings).toEqual([
     "capture_region",

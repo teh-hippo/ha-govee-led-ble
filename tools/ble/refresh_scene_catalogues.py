@@ -30,11 +30,11 @@ APP_VERSION = "9999999"
 SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_ble" / "scene_catalogues"
 DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
-_SPEED_METADATA_SKUS = frozenset({"H617A", "H7020"})
+_SPEED_METADATA_SKUS = frozenset({"H617A", "H7020", "H7025"})
 
-# H7020 derives the initial speed selection from metadata and rewrites every configured
-# field before upload, so embedded field values are not the default-speed invariant.
-_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H7020"})
+# H7020 and H7025 derive the initial speed selection from metadata and rewrite every
+# configured field before upload, so embedded field values are not the default-speed invariant.
+_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H7020", "H7025"})
 
 # Glacier's application path was captured rewriting its stale stored movement fields.
 _CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})

@@ -203,9 +203,10 @@ async def test_user_step_shows_form(hass: HomeAssistant):
     assert r["type"] == FlowResultType.FORM and r["step_id"] == "user"
 
 
-async def test_user_step_creates_entry(hass: HomeAssistant, mock_manual_validation):
-    r = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: "H617A"})
-    assert r["type"] == FlowResultType.CREATE_ENTRY and r["data"][CONF_MODEL] == "H617A"
+@pytest.mark.parametrize("model", ["H617A", "H7025"])
+async def test_user_step_creates_entry(hass: HomeAssistant, mock_manual_validation, model):
+    r = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: model})
+    assert r["type"] == FlowResultType.CREATE_ENTRY and r["data"][CONF_MODEL] == model
     mock_manual_validation.assert_awaited_once_with(hass, "AA:BB:CC:DD:EE:FF")
 
 

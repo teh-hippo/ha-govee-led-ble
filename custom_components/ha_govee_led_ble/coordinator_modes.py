@@ -367,16 +367,18 @@ class _ActiveModeMixin(_CoordinatorBase):
 
         async with async_control_intent(self, intent):
             try:
-                ack_options: dict[str, Any] = {}
+                sequence_options: dict[str, Any] = {}
                 if last_upload is not None and self.profile.music_requires_upload_ack:
-                    ack_options = {"require_upload_ack": True, "upload_ack_index": last_upload}
+                    sequence_options = {"require_upload_ack": True, "upload_ack_index": last_upload}
+                if not self.profile.music_retry_after_upload:
+                    sequence_options["retry_allowed"] = lambda: not attempted_upload
                 await self.async_write_effect_sequence(
                     tuple(packet for packet, _ in writes),
                     intent=intent,
                     packet_state_values=states,
                     packet_write_guard=guard,
                     writer=writer,
-                    **ack_options,
+                    **sequence_options,
                 )
                 if retained_body_revision is not None and self._music_body_revision != revision:
                     raise ValueError("Retained music body changed during edit; refresh and retry")
@@ -435,6 +437,8 @@ class _ActiveModeMixin(_CoordinatorBase):
         upload[-1][1]["_music_parameter_keys"] = tuple(parameters)
         if calm is not None:
             upload[-1][1]["music_calm"] = calm
+        if self.profile.music_params_require_activation:
+            upload.append(writes[-1] if self.profile.music_upload_before_selector else writes[1])
         await self.async_write_music_sequence(
             upload,
             mode_code=mode_code,

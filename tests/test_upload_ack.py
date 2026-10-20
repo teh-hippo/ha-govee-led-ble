@@ -18,6 +18,7 @@ from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicP
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_music_mode,
     build_power,
     build_scene_activation,
     parse_command_ack_result,
@@ -43,15 +44,16 @@ DIY_NO = frame("a30201")
 
 
 @pytest.fixture
-async def connected(hass, monkeypatch):
-    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+async def connected(hass, monkeypatch, request):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H617A"), configuration_url=None)
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
     c._client = client
     await c._start_notify()
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
-    monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 1)
+    if c.model != "H7025":
+        monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 1)
     monkeypatch.setattr(coordinator_module, "RETRY_BACKOFF_SECONDS", 0)
 
     async def disconnect():
@@ -65,6 +67,121 @@ async def connected(hass, monkeypatch):
 
 def receive(client, data):
     client.start_notify.call_args.args[1](None, bytearray(data))
+
+
+@pytest.mark.parametrize("connected", ["H7025"], indirect=True)
+@pytest.mark.parametrize("accepted", [False, True])
+async def test_h7025_music_waits_for_positive_upload_result(connected, accepted):
+    c, client = connected
+    c.music_sensitivity = 42
+    expected = prepare_music_request("H7025", "hopping", 42, None, False, {})
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == expected[-2]:
+            receive(client, frame("a34148" + ("00" if accepted else "01")))
+
+    client.write_gatt_char.side_effect = write
+    if accepted:
+        await c.async_select_music_slug("hopping")
+        assert c.music_body is not None
+    else:
+        with pytest.raises(RuntimeError, match="Device rejected A3 upload"):
+            await c.async_select_music_slug("hopping")
+        assert c.music_body is None
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert (expected[-1] in sent) is accepted
+
+
+@pytest.mark.parametrize("connected", ["H7025"], indirect=True)
+@pytest.mark.parametrize("fault", ["missing_ack", "write_timeout", "disconnect"])
+async def test_h7025_uncertain_upload_is_not_automatically_replayed(connected, fault):
+    c, client = connected
+    expected = prepare_music_request("H7025", "hopping", 99, None, False, {})
+
+    async def reconnect():
+        c._client = client
+        await c._start_notify()
+        return client
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == expected[1]:
+            if fault == "write_timeout":
+                raise TimeoutError("upload write timed out")
+            if fault == "disconnect":
+                c._clear_client_state(client)
+                raise BleakError("disconnected during upload")
+
+    c._ensure_connected.side_effect = reconnect
+    client.write_gatt_char.side_effect = write
+    with pytest.raises((TimeoutError, BleakError)):
+        await c.async_select_music_slug("hopping")
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == (list(expected[:-1]) if fault == "missing_ack" else list(expected[:2]))
+    assert c._ensure_connected.await_count == 1
+    assert c.music_body is None and c._upload_ack is None
+
+
+@pytest.mark.parametrize("connected", ["H7025"], indirect=True)
+async def test_h7025_connection_failure_before_upload_can_retry(connected):
+    c, client = connected
+    expected = prepare_music_request("H7025", "hopping", 99, None, False, {})
+
+    async def reconnect():
+        if c._ensure_connected.await_count == 1:
+            raise BleakError("connection failed before upload")
+        c._client = client
+        await c._start_notify()
+        return client
+
+    async def write(_uuid, packet, **_kwargs):
+        if packet == expected[-2]:
+            receive(client, frame("a3414800"))
+
+    c._ensure_connected.side_effect = reconnect
+    client.write_gatt_char.side_effect = write
+    await c.async_select_music_slug("hopping")
+    assert c._ensure_connected.await_count == 2
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(expected)
+    assert c.music_body is not None
+
+
+@pytest.mark.parametrize("connected", ["H7025"], indirect=True)
+@pytest.mark.parametrize(
+    ("mode", "code", "body", "parameters", "edited"),
+    [
+        ("flow", 0x59, "5902010203040506000205", {"direction": "counterclockwise"}, "5902010203040506010205"),
+        ("hopping", 0x48, "480201020304050601020319aabb", {"relative_brightness": 17}, "480201020304050601020311aabb"),
+    ],
+)
+@pytest.mark.parametrize("accepted", [False, True])
+@pytest.mark.parametrize("preview", [False, True])
+async def test_h7025_retained_edit_uploads_acknowledges_then_activates(
+    connected, mode, code, body, parameters, edited, accepted, preview
+):
+    c, client = connected
+    c.music_mode, c.music_sensitivity = mode, 42
+    c._music_body = (mode, bytes.fromhex(body))
+    upload = fragment_a3(0x41, bytes.fromhex(edited))
+    selector = build_music_mode(code, 42, None, False, "H7025")
+    events = []
+
+    async def write(_uuid, packet, **_kwargs):
+        events.append(packet)
+        if packet == upload[-1]:
+            events.append("positive ACK" if accepted else "negative ACK")
+            receive(client, frame(f"a341{code:02x}" + ("00" if accepted else "01")))
+
+    client.write_gatt_char.side_effect = write
+    options = {"writer": lambda *args, **kwargs: preview_writer(c, *args, **kwargs)} if preview else {}
+    if accepted:
+        await c.async_apply_music_params(code, parameters=parameters, **options)
+        assert events == [*upload, "positive ACK", selector]
+        assert c.music_body == bytes.fromhex(edited)
+    else:
+        with pytest.raises(RuntimeError, match="Device rejected A3 upload"):
+            await c.async_apply_music_params(code, parameters=parameters, **options)
+        assert events == [*upload, "negative ACK"]
+        assert c.music_body is None
 
 
 def sequence(subtype=0x41):

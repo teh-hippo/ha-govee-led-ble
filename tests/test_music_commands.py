@@ -42,10 +42,66 @@ from custom_components.ha_govee_led_ble.music_semantics import (
     capture_music_parameters,
     music_variant,
 )
-from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
+from custom_components.ha_govee_led_ble.transport import WRITE_UUID, reassemble_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 H = bytes.fromhex
+
+
+@pytest.mark.parametrize(
+    ("mode", "code", "tail"),
+    [
+        ("sway", 0x8E, "000000"),
+        ("flow", 0x59, "000205"),
+        ("star", 0x98, "0000ff03"),
+        ("twinkle", 0x8F, "000000"),
+        ("hopping", 0x48, "010101030000"),
+        ("rolling", 0x5A, "080000"),
+        ("day_and_night", 0x37, "030a00"),
+        ("piano_keys", 0x34, "00050a0404"),
+        ("separation", 0x5D, "080000"),
+    ],
+)
+def test_h7025_palettes_use_exact_style_tails_before_activation(mode, code, tail):
+    palette = [(1, 2, 3), (4, 5, 6)]
+    packets = prepare_music_request("H7025", mode, 42, None, False, {}, palette=palette)
+    expected_body = bytes((code, 2)) + H("010203040506" + tail)
+    envelope = reassemble_a3(packets[1:-1])
+    assert envelope[2 : 3 + len(expected_body)] == b"\x41" + expected_body
+    assert packets[-1][:5] == bytes((0x33, 0x05, 0x13, code, 42))
+    assert len(packets[1:-1]) == 2
+
+
+def test_h7025_rhythm_uses_explicit_inline_selector_not_bare_default():
+    packets = prepare_music_request("H7025", "rhythm", 42, (17, 34, 51), True, {})
+    assert len(packets) == 2
+    assert packets[-1][:10] == H("330513032a0101112233")
+    with pytest.raises(ValueError, match="authored palette"):
+        prepare_music_request("H7025", "rhythm", 42, None, False, {}, palette=[(1, 2, 3)])
+
+
+@pytest.mark.parametrize(
+    ("mode", "parameters", "palette"),
+    [
+        ("piano_keys", {}, [(1, 2, 3)] * 6),
+        ("separation", {}, [(1, 2, 3)]),
+        ("rolling", {"direction": "gather"}, None),
+        ("flow", {"group_count": 4}, None),
+        ("star", {"relative_brightness": 20}, None),
+    ],
+)
+def test_h7025_rejects_other_styles_bounds_and_unqualified_controls(mode, parameters, palette):
+    with pytest.raises(ValueError):
+        prepare_music_request("H7025", mode, 42, None, False, parameters, palette=palette)
+
+
+def test_h7025_six_colour_hopping_uses_app_fragmentation_with_complete_tail():
+    packets = prepare_music_request("H7025", "hopping", 42, None, False, {}, palette=[(1, 2, 3)] * 6)
+    assert [packet[1] for packet in packets[1:-1]] == [0, 0xFF]
+    assert packets[1][3] == 2
+    envelope = reassemble_a3(packets[1:-1])
+    assert envelope[2:29] == H("414806") + H("010203") * 6 + H("010101030000")
+
 
 _CAPTURED_BODIES = {
     (0x30, ()): "0102413007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50000000000000",

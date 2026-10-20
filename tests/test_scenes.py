@@ -77,6 +77,7 @@ def test_per_model_snapshots_preserve_vendor_identity():
     assert len(SCENE_ENTRIES["H6076"]) == 110
     assert len(SCENE_ENTRIES["H6179"]) == 83
     assert len(SCENE_ENTRIES["H6199"]) == 240
+    assert len(SCENE_ENTRIES["H7025"]) == 114
     assert SCENE_ENTRIES["H617E"] is not SCENE_ENTRIES["H617A"]
     assert SCENE_ENTRIES["H617C"] is not SCENE_ENTRIES["H617F"]
     assert MODEL_SCENES["H617C"]["dracarys"].scene_id == 29884

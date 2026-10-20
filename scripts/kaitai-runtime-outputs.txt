@@ -19,6 +19,9 @@ h6125_wire_write.py
 h6076_music_ack.py
 h6076_music_body.py
 h6076_music_write.py
+h7025_music_write.py
+h7025_music_body.py
+h7025_status_reply.py
 h601c_command_write.py
 h601c_status_reply.py
 h60a1_status_reply.py
