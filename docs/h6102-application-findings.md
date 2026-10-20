@@ -36,6 +36,8 @@ compiler, preview admission, saved library and deployment engine are reused. Obs
 configured context.  Reconnection retains cached presentation identity and capabilities,
 but invalidates identity-dependent authorisation before awaiting connection setup.
 Valid replies on the current connection must confirm the required fields again.
+For Pact 1 whole-strip RGB only, an explicitly configured app-reported version
+may supply a missing identity field until a valid BLE observation supersedes it.
 Every effect sequence checks profile generation, and physical music selectors check the authorised roster.
 
 `tests/test_h6102_capabilities.py` covers two independent devices, roster thresholds, unknown context,
