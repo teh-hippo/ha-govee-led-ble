@@ -58,6 +58,8 @@ Partial fixtures must declare only the minimal capabilities and read domains the
 
 Keep cached identity and light capabilities stable across ordinary polling and intentional disconnects.  Capability presentation uses cached identity; operation admission and each physical write use current-connection confirmation.  Missing or malformed replies never erase cached identity or grant authorisation.  A genuine identity or Pact change may change the effective profile and invalidate its old control state.
 
+Legacy H6102 whole-strip RGB also accepts explicitly configured app-reported identity for fields not yet observed over BLE.  A valid BLE observation supersedes that field's configured fallback; cached BLE identity still requires current-connection confirmation for writes.
+
 Retain core light state while refreshing.  Optional installation, camera and boolean observations remain visible while a query is pending, and become unknown only after their own sent-query deadline or an unexpected disconnect.  Missing optional replies must not fail a basic poll.  Runtime-discovered physical IC geometry and uploaded bodies remain connection-scoped, separate from identity.
 
 For state-readable devices, successful required-state polling establishes availability independently of advertisements and survives intentional connection release.  A failed required-state poll revokes that read-based evidence without erasing independent advertisement presence.  Neither source grants identity-dependent write authorisation.

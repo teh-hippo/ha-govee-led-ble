@@ -916,6 +916,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if hw_version is not None and identity_version(hw_version) is not None and hw_version != self.hw_version:
             self.hw_version = hw_version
             changed_fields.add("hw_version")
+            if self.model == "H6102":
+                self._configured_h6102_hardware = None
         if changed_fields:
             if changed_fields & authorization_fields:
                 self._authorization_generation += 1
@@ -2449,10 +2451,25 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if not fields or self.identity_fields_confirmed(fields):
             return self.profile
         if self.model == "H6102":
+            confirmed_firmware = "fw_version" in self._confirmed_identity_fields
+            firmware = (
+                self.fw_version
+                if confirmed_firmware
+                else self._configured_h6102_firmware
+                if self.pact_type == 1
+                else None
+            )
+            hardware = (
+                self.hw_version
+                if "hw_version" in self._confirmed_identity_fields
+                else self._configured_h6102_hardware
+                if self.pact_type == 1
+                else None
+            )
             return resolve_h6102_capabilities(
-                None,
-                None,
-                hardware=None,
+                firmware,
+                "ble" if confirmed_firmware else "configured" if firmware else None,
+                hardware=hardware,
                 pact_type=self.pact_type,
                 pact_code=self.pact_code,
                 physical_ic_count=self.profile.physical_ic_count,

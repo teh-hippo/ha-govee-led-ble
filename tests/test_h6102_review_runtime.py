@@ -325,7 +325,7 @@ async def test_qualified_pact1_static_is_owner_confirmed_whole_strip_rgb(radio):
         build_color_temp(4000, c.model, profile=c.profile)
 
 
-@pytest.mark.parametrize("identity", [None, "ble", "configured"])
+@pytest.mark.parametrize("identity", [None, "ble", "configured", "configured_fw", "configured_hw"])
 @pytest.mark.parametrize(
     ("register", "percent", "owner_frame"),
     [
@@ -339,12 +339,12 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(
     from types import SimpleNamespace
 
     c, state, packets, clients = radio
-    if identity == "configured":
+    if identity in {"configured", "configured_fw", "configured_hw"}:
         c._configured_h6102_firmware, c._configured_h6102_hardware = "1.08.08", "1.00.03"
     c._note_advertisement(SimpleNamespace(manufacturer_data={34817: bytes.fromhex("ec000101")}))
     state.update(
-        fw="1.08.08" if identity == "ble" else None,
-        hw="1.00.03" if identity == "ble" else None,
+        fw="1.08.08" if identity in {"ble", "configured_hw"} else None,
+        hw="1.00.03" if identity in {"ble", "configured_fw"} else None,
         register_brightness=True,
         brightness=92,
         brightness_reply_override=register,
@@ -372,6 +372,27 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(
     assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
     assert c.profile.brightness_wire_range == (20, 254) and c.brightness_pct == 100
     assert len(clients) >= 2
+
+
+@pytest.mark.parametrize("missing", ["fw", "hw"])
+async def test_issue310_cached_identity_does_not_authorize_colour_after_reconnect(radio, missing):
+    c, state, packets, _ = radio
+    c.pact_type, c.pact_code = 1, 1
+    c._configured_h6102_firmware, c._configured_h6102_hardware = "1.08.08", "1.00.03"
+    c._resolve_device_profile()
+    state.update(fw="1.08.08", hw="1.00.03", register_brightness=True)
+    assert await c.refresh_state(refresh_all=True)
+    assert c._configured_h6102_firmware is c._configured_h6102_hardware is None
+    await c.disconnect()
+    assert c.profile.supports_rgb and c.fw_version == "1.08.08" and c.hw_version == "1.00.03"
+    state[missing] = None
+    packets.clear()
+    attempts = c.control_write_attempts
+    with pytest.raises(HomeAssistantError):
+        await GoveeBLELight(c).async_turn_on(rgb_color=(1, 2, 3))
+    assert c.profile.supports_rgb
+    assert c.control_write_attempts == attempts
+    assert all(packet[0] == 0xAA for packet in packets)
 
 
 @pytest.mark.parametrize(("pact_type", "register"), [(1, 19), (10, 255)])
