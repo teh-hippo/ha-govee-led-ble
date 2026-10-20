@@ -230,7 +230,7 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
-Python upgrades must keep `project.requires-python`, `.python-version`, and `uv.lock` aligned.  CI reads its interpreter version from `.python-version`; regenerate the lockfile with `uv lock` and validate with `make check`.
+Python upgrades must keep `project.requires-python`, `.python-version`, `uv.lock`, and the Ruff and mypy Python targets aligned.  CI reads its interpreter version from `.python-version`; regenerate the lockfile with `uv lock` and validate with `make check`.
 
 After switching branches, protocol verification can report obsolete ignored
 modules.  `make clean` only knows the current runtime output list.  Remove only

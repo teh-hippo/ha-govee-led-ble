@@ -34,7 +34,7 @@ branch = true
 omit = ["custom_components/ha_govee_led_ble/generated_protocol/*"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.15"
 strict = true
 warn_unreachable = true
 
