@@ -141,11 +141,16 @@ def _parse(root_type: type[Any], data: bytes) -> Any:
 
 
 def test_h6102_owner_register_reply_and_candidate_write():
-    reply = bytes.fromhex("aa04eb0000000000000000000000000000000045")
-    assert xor_checksum(reply) == 0
-    parsed = _parse(H6102StatusReply, reply)
-    assert parsed.body.register == 235
-    assert parsed.body.unknown_tail == bytes(16)
+    for raw, legacy, reply_hex in (
+        (235, 235, "aa04eb0000000000000000000000000000000045"),
+        (255, 254, "aa04ff0000000000000000000000000000000051"),
+    ):
+        reply = bytes.fromhex(reply_hex)
+        assert xor_checksum(reply) == 0
+        parsed = _parse(H6102StatusReply, reply)
+        assert parsed.body.register == raw
+        assert parsed.body.legacy_register == legacy
+        assert parsed.body.unknown_tail == bytes(16)
     write = bytes.fromhex("33048800000000000000000000000000000000bf")
     assert xor_checksum(write) == 0
     assert _parse(H6102WireWrite, write).body.register == 136

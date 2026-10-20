@@ -1855,6 +1855,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     if isinstance(generated, ParsedH6179Status)
                     else int(generated.body.percent)
                     if self.profile.status_grammar in {"H6099", "H6199"}
+                    else int(generated.body.legacy_register)
+                    if self.profile.status_grammar == "H6102" and self.profile.brightness_wire_range is not None
                     else int(generated.body.register)
                     if hasattr(generated.body, "register")
                     else int(generated.body.brightness_pct)

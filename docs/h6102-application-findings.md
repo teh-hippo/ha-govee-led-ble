@@ -12,7 +12,7 @@ Sources below are relative to the Android 7.6.01 `full/sources/com/govee/` extra
 | --- | --- | --- |
 | Pact | `dreamcolorlightv1/pact/Support.addSupportPact` registers goods 18 with 1/1, 1/2, 10/1 and 10/2; `supportV1UIV3` and `LightVersionServiceImpl.getDiySupport` select the modern route for Pact 10 | Automatic advertisement evidence or explicitly owner-qualified Pact; firmware never selects Pact |
 | Power, brightness, identity | Shared switch/brightness/firmware/hardware controllers, exact H6102 status root | Bootstrap subscribes and reads even without Pact; no mode/effect writes under unknown context |
-| Master brightness | Pact 1 uses a 20–254 register for writes and replies; Pact 10 uses percentages. The raw register is decoded through the effective profile, independently of static RGB support | #310 supplies a valid EB register reply, equivalent to 92% under the candidate conversion; its reported invariance still requires owner freshness checks |
+| Master brightness | Pact 1 writes a 20–254 register; readback also accepts FF as full brightness, retaining the raw byte. Pact 10 uses percentages. The effective profile selects conversion independently of RGB support | #310 supplies EB (92%) and FF replies; FF setup handling still needs owner qualification |
 | RGB, logical segments | Modern RGBIC shared static command, fifteen logical segments, five three-record A5 pages | Physical mapping; logical count does not establish physical IC count |
 | Kelvin | `rgbiclight/mode/color/ColorControllerConfig`, `dreamcolorlightv1/ble/SubModeColorV2`, common `KelvinConfig` 2000–9000 range | RGB-rendered white, not a separate white emitter; retained Kelvin is not fresh measured Kelvin |
 | Scenes | Complete committed H6102 snapshot: 240 entries; shared modern scene upload/selector grammar | Visible activation and restoration on owner device |
@@ -46,6 +46,11 @@ visible scene/Studio/restoration results are still required.
 
 For #310, setup retains its required readback rather than bypassing verification.
 Pact 1 brightness is converted in both directions while command expectations and
-recovery keep percentages.  Failed writes and contradictory replies do not
+recovery keep percentages.  Legacy FF readback is normalised to register FE
+before percentage conversion; outgoing writes remain capped at FE.  The app's
+`BrightnessController.parseValidBytes` accepts unsigned byte replies, and
+`BrightnessUI.p` clamps the displayed register before percentage conversion.
+This does not relax modern percentage validation or the legacy lower bound.
+Failed writes and contradictory replies do not
 confirm a command.  H6102 mode queries use selector `01`; other profiles retain
 their own selectors.  No new Pact 1 scene or DIY support is enabled.

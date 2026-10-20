@@ -326,7 +326,16 @@ async def test_qualified_pact1_static_is_owner_confirmed_whole_strip_rgb(radio):
 
 
 @pytest.mark.parametrize("identity", [None, "ble", "configured"])
-async def test_issue310_setup_control_and_reconnect_use_brightness_register(radio, identity):
+@pytest.mark.parametrize(
+    ("register", "percent", "owner_frame"),
+    [
+        (235, 92, "aa04eb0000000000000000000000000000000045"),
+        (255, 100, "aa04ff0000000000000000000000000000000051"),
+    ],
+)
+async def test_issue310_setup_control_and_reconnect_use_brightness_register(
+    radio, identity, register, percent, owner_frame
+):
     from types import SimpleNamespace
 
     c, state, packets, clients = radio
@@ -338,13 +347,14 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(radi
         hw="1.00.03" if identity == "ble" else None,
         register_brightness=True,
         brightness=92,
+        brightness_reply_override=register,
     )
     snapshot = await c._async_update_data()
-    assert snapshot["brightness_pct"] == 92
-    owner_frame = "aa04eb0000000000000000000000000000000045"
+    assert snapshot["brightness_pct"] == percent
     assert any(entry["raw"] == owner_frame and entry["outcome"] == "parsed" for entry in c.packet_log)
     assert c.profile.brightness_wire_range == (20, 254)
     assert c.profile.supports_rgb is (identity is not None)
+    state["brightness_reply_override"] = None
     light = GoveeBLELight(c)
     light.async_write_ha_state = MagicMock()
     for value, register, percent in ((26, 41, 10), (128, 136, 50), (255, 254, 100)):
@@ -362,6 +372,16 @@ async def test_issue310_setup_control_and_reconnect_use_brightness_register(radi
     assert await c.refresh_state(refresh_all=True, required_domains=c.profile.setup_required_read_domains)
     assert c.profile.brightness_wire_range == (20, 254) and c.brightness_pct == 100
     assert len(clients) >= 2
+
+
+@pytest.mark.parametrize(("pact_type", "register"), [(1, 19), (10, 255)])
+async def test_issue310_brightness_tolerance_excludes_low_registers_and_modern_percentages(radio, pact_type, register):
+    c, _, _, _ = radio
+    c.pact_type, c.pact_code = pact_type, 1
+    c._resolve_device_profile()
+    c._notify_callback(None, bytearray(frame(f"aa04{register:02x}")))
+    assert c.packet_log[-1]["reason"] == "semantic_rejected"
+    assert "brightness_pct" not in c._field_revisions
 
 
 @pytest.mark.parametrize("fault", ["write", "stale_readback"])
