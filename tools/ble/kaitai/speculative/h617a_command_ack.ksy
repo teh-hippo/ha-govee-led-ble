@@ -29,6 +29,11 @@ doc: |
   AbsControllerNoEvent4MultiWithSub.java:12-15 overrides the index to 3.
   No byte-2 transaction token is inferred for music. H6102 policy requires
   positive upload ACK before activation; schema reuse is not donor qualification.
+  H7025 #148 independently reaches MusicControllerNoEvent3Result through
+  H7025MusicMode and MusicModeComposeController, with result byte 3 and
+  protocol/opcode correlation. Its candidate also requires a positive result
+  before activation. No H7025 mode echo, transaction token or LAN receipt
+  guarantee is inferred from the H607C observation in that issue.
 seq:
   - id: protocol
     type: u1

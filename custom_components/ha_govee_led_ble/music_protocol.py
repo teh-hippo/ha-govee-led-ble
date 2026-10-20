@@ -20,6 +20,10 @@ H6076MusicWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write").H6076MusicWrite,
 )
+H7025MusicWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_write").H7025MusicWrite,
+)
 
 H6125StatusReply = cast(
     Any,
@@ -54,6 +58,7 @@ MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxy
         "H6102": _H617A_MODE_CODES,
         "H6125": _H617A_MODE_CODES,
         "H6076": _H6076_MODE_CODES,
+        "H7025": MappingProxyType({mode.name: int(mode) for mode in H7025MusicWrite.MusicMode}),
         "H6179": _H6179_MODE_CODES,
         "H6199": _H6199_MODE_CODES,
     }
@@ -73,6 +78,7 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
         "H6102": frozenset({0x03, 0x30, 0x31}),
         "H6125": frozenset({0x03, 0x30, 0x31}),
         "H6076": frozenset({int(H6076MusicWrite.MusicMode.rhythm)}),
+        "H7025": frozenset({int(H7025MusicWrite.MusicMode.rhythm)}),
         "H6179": frozenset(),
         "H6199": frozenset({0x03}),
     }
@@ -85,6 +91,7 @@ _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = Map
         "H6102": frozenset({0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37}),
         "H6125": frozenset({0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37}),
         "H6076": frozenset(int(mode) for mode in H6076MusicBody.MusicMode),
+        "H7025": frozenset(int(mode) for mode in H7025MusicWrite.MusicMode if mode.name != "rhythm"),
         "H6179": frozenset(),
         "H6199": frozenset(),
     }

@@ -60,7 +60,9 @@ test("canonical backend responses decode through the production validators", () 
     "H6179",
     "H6199",
     "H6076",
+    "H7025",
   ]);
+  expect(responses.scene_catalogues).not.toHaveProperty("H7025");
   expect(devices.find((device) => device.model === "H617A")?.light_entity_id).toBe("light.h617a_main");
   expect(devices.find((device) => device.model === "H617E")?.light_entity_id).toBeNull();
   expect(devices.find((device) => device.model === "H617A")?.active_state?.active_effect?.observable_signature).toBe(

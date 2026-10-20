@@ -14,6 +14,7 @@ from .music_semantics import (
     H6099_MUSIC_VARIANTS,
     H6102_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
+    H7025_MUSIC_VARIANTS,
     MusicVariant,
 )
 
@@ -144,6 +145,7 @@ class ModelProfile:
     supports_color_temperature: bool = False
     min_color_temp_kelvin: int = 2000
     max_color_temp_kelvin: int = 9000
+    kelvin_direct_rgb: tuple[int, int, int] = (0, 0, 0)
     supports_custom_effects: bool = False
     supports_scenes: bool = False
     supports_video_mode: bool = False
@@ -171,6 +173,8 @@ class ModelProfile:
     music_variants: tuple[MusicVariant, ...] = ()
     music_upload_before_selector: bool = False
     music_requires_upload_ack: bool = False
+    music_retry_after_upload: bool = True
+    music_params_require_activation: bool = False
     # Physical IC count is independent of logical segment_count. None means unknown.
     physical_ic_count: int | None = None
     music_sensitivity_min: int = 0
@@ -201,6 +205,10 @@ class ModelProfile:
     effect_readback: str = "none"
 
     def __post_init__(self) -> None:
+        if len(self.kelvin_direct_rgb) != 3 or any(
+            type(channel) is not int or not 0 <= channel <= 255 for channel in self.kelvin_direct_rgb
+        ):
+            raise ValueError("Kelvin direct RGB must contain three byte values")
         if not self.boolean_controls <= {"gradual", "limit"}:
             raise ValueError("unknown boolean device setting")
         if self.boolean_controls and (self.command_grammar is None or self.status_grammar is None):
@@ -869,6 +877,44 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         advanced_scene_carrier=(29884, 41599),
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
         effect_readback="scene_selector_for_user_effects",
+    ),
+    "H7025": ModelProfile(
+        "H7025 Outdoor String Lights",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        command_grammar="H617A",
+        status_grammar="H7025",
+        music_grammar="H7025",
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        kelvin_direct_rgb=(255, 255, 255),
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        whole_device_mask=0x7FFF,
+        music_modes=(
+            "rhythm",
+            "sway",
+            "flow",
+            "star",
+            "twinkle",
+            "hopping",
+            "rolling",
+            "day_and_night",
+            "piano_keys",
+            "separation",
+        ),
+        music_variants=H7025_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+        music_params_require_activation=True,
+        supports_music_color=True,
     ),
 }
 

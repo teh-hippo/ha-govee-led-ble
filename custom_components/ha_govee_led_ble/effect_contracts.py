@@ -523,6 +523,17 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         PhysicalValidationState.NOT_VALIDATED,
         EvidenceClassification.STRUCTURAL,
     ),
+    _capability(
+        "H7025",
+        CapabilityWorkflow.NATIVE_MUSIC,
+        "Music",
+        "music_profile",
+        ApplicationRoute.HOME_ASSISTANT_CONTROL,
+        CompilerDeployerStrategy.COORDINATOR_WRITER,
+        VerificationConfidence.SELECTION_ONLY,
+        PhysicalValidationState.NOT_VALIDATED,
+        EvidenceClassification.STRUCTURAL,
+    ),
     *(
         replace(
             capability,

@@ -260,7 +260,7 @@ def parse_static_write(
         rgb = (int(body.rgb_direct.red), int(body.rgb_direct.green), int(body.rgb_direct.blue))
         kelvin = int(body.kelvin)
         mask = int(body.mask.bits)
-        if rgb == (0, 0, 0) and kelvin:
+        if rgb == profile.kelvin_direct_rgb and kelvin:
             return ParsedStaticWrite(
                 operation=operation,
                 segment_mask=mask,

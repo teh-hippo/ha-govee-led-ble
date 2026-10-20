@@ -14,6 +14,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import compile_music_pro
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.music_commands import (
     edit_music_body,
+    music_body_parameters,
     music_body_style,
     prepare_music_body_writes,
     prepare_music_profile_writes,
@@ -24,6 +25,27 @@ from custom_components.ha_govee_led_ble.transport import fragment_a3
 from tests.test_h617a_music import frame
 
 BODY = bytes.fromhex("3302010203040506aabbcc196104050708")
+
+
+@pytest.mark.parametrize(
+    ("mode", "body", "parameters", "expected"),
+    [
+        ("flow", "5902010203040506000205", {"direction": "counterclockwise"}, "5902010203040506010205"),
+        ("rolling", "5a0201020304050608aabb", {"direction": "left"}, "5a0201020304050606aabb"),
+        ("separation", "5d0201020304050608aabb", {"direction": "gather"}, "5d0201020304050609aabb"),
+        ("star", "98020102030405060102032a", {"background": 0xAABBCC}, "9802010203040506aabbcc2a"),
+        ("hopping", "480201020304050601020319aabb", {"relative_brightness": 17}, "480201020304050601020311aabb"),
+    ],
+)
+def test_h7025_retained_edits_preserve_unrequested_companions(mode, body, parameters, expected):
+    profile = get_profile("H7025")
+    edited = edit_music_body(bytes.fromhex(body), mode, parameters, profile=profile)
+    assert edited == bytes.fromhex(expected)
+    decoded = music_body_parameters(edited, mode, profile=profile)
+    assert all(decoded[key] == value for key, value in parameters.items())
+    writes = prepare_music_body_writes("H7025", mode, 42, edited)
+    assert [packet for packet, _ in writes[1:-1]] == fragment_a3(0x41, edited)
+    assert writes[-2][1]["_music_body"] == (mode, edited)
 
 
 @pytest.mark.parametrize("model", ["H617A", "H6099", "H617E"])

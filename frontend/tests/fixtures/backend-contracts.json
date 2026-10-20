@@ -9174,6 +9174,728 @@
             }
           ],
           "workshop_templates": []
+        },
+        "H7025": {
+          "apply": {
+            "multi": "unsupported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "unsupported",
+            "workshop": "unsupported"
+          },
+          "effects": [],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            }
+          ],
+          "music_settings": {
+            "day_and_night": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Day and Night: 1..3 pieces; reported default 03 0a 00",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "segment_count": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 3,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "flow": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Flow: direction, 1..3 groups and five ICs per group",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "clockwise",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise"
+                  ]
+                },
+                "group_count": {
+                  "default": 2,
+                  "kind": "number",
+                  "max": 3,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Hopping producer and issue #148 background/brightness replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "background": {
+                  "default": 65793,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                },
+                "relative_brightness": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "piano_keys": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 issue #148 Piano tail 00 05 0a 04 04; app limits palette to five and keeps gradient off",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 5,
+                "min": 1
+              },
+              "palette_size": 5,
+              "parameters": {},
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H7025 explicit Rhythm selector, calm flag and one optional fixed RGB",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Rolling direction choices; not a speed parameter",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "spread",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "left",
+                    "right",
+                    "spread"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Separation direction choices and two trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "spread",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "left",
+                    "right",
+                    "spread",
+                    "gather"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "star": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 Star: background RGB; final distance byte preserved without a brightness interpretation",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "background": {
+                  "default": 255,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "sway": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 colour-only music producer; three trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            },
+            "twinkle": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H7025 colour-only music producer; three trailing body bytes",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_effects": [],
+          "sku": "H7025",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "unsupported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "sway",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:sway",
+              "label": "Sway"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "flow",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:flow",
+              "label": "Flow"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "star",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:star",
+              "label": "Star"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "twinkle",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H7025",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            }
+          ],
+          "workshop_templates": []
         }
       },
       "music_modes": [
@@ -11682,6 +12404,42 @@
         "readback": "none",
         "segment_count": 0,
         "support_quality": "partial"
+      },
+      {
+        "active_state": null,
+        "config_entry_id": "h7025-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "unsupported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "unsupported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H7025 Outdoor String Lights",
+        "effect_categories": [
+          "reactive"
+        ],
+        "light_entity_id": null,
+        "model": "H7025",
+        "physical_ic_count": null,
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h7025-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "unsupported"
+        },
+        "readback": "none",
+        "segment_count": 0,
+        "support_quality": "experimental"
       }
     ],
     "editor_info": {
