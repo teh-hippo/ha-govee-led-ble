@@ -154,6 +154,7 @@ def test_h6125_pact1_register_and_invalid_identity_gates(pact, firmware, hardwar
         ((10, 2), "3.00.99", "3.01.10", 4, True, 5),
         ((10, 2), "3.01.00", "3.01.10", 11, True, 5),
         ((10, 2), "3.04.37", "3.01.10", 11, True, 5),
+        ((10, 3), "3.04.37", "3.01.10", 11, True, 5),
     ],
 )
 def test_h6125_colour_and_music_have_independent_revision_gates(

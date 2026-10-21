@@ -23,12 +23,12 @@ Colour, segment, scene and music capabilities have independent thresholds.
 | Original Telink, firmware below 1.03.01 | `0x0b` RGB; four RGB-only A2 pages | `0x0c`, four modes |
 | Intermediate pact 1 | `0x0b` RGB; four RGB-only A2 pages | `0x11` |
 | Pact 1, HW 1.00.03+ and FW 1.06.00+ | `0x15` RGB/Kelvin; five brightness/RGB A5 pages | `0x11` |
-| BK hardware 2.01.xx, pact 10/1 or 10/2 | Modern RGB/Kelvin and A5 pages | `0x13` |
-| FRK hardware 3.xx.xx, pact 10/1 or 10/2 | Modern RGB/Kelvin and A5 pages | `0x13` |
+| BK hardware 2.01.xx, pact 10/1..3 | Modern RGB/Kelvin and A5 pages | `0x13` |
+| FRK hardware 3.xx.xx, pact 10/1..3 | Modern RGB/Kelvin and A5 pages | `0x13` |
 
 The separate hardware family 3.04.xx is not admitted as FRK.
 Unknown, malformed or contradictory identity remains limited to power and identity.
-Pact 10/3 is not treated as an alias for 10/2.
+Pact 10/1..3 is admitted for qualified BK and FRK controllers.
 
 The four basic music modes remain available below expanded-music thresholds.
 The eleven-mode roster requires firmware 1.07.00+ on pact 1, 2.04.00+ on BK, or 3.01.00+ on FRK.
@@ -36,7 +36,7 @@ The reporter's exact identity therefore qualifies for the modern eleven-mode can
 
 Pact 10 uses percentage brightness without register scaling.
 The original Telink route uses 6-254.  The DreamColor pact-1 route retains 6-254 below hardware 1.00.04
-and 20-254 from that revision.
+and 20-254 from that revision, clamping non-zero unsigned register readback bytes into the active range so strips previously dimmed by percentage or 0-255 controllers still complete setup.
 [An identified older report](https://github.com/homebridge-plugins/homebridge-govee/issues/93)
 records hardware 1.00.04, firmware 1.07.01, pact 1/1 and fifty ICs.
 Minimum-register evidence differs between some application paths; the candidate preserves the existing DreamColor mapping

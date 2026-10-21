@@ -111,9 +111,17 @@ def test_bluetooth_manifest_covers_discoverable_models() -> None:
     manifest_path = Path(__file__).parents[1] / "custom_components/ha_govee_led_ble/manifest.json"
     patterns = {entry["local_name"] for entry in json.loads(manifest_path.read_text())["bluetooth"]}
 
-    assert {
-        f"{prefix}_{model}*" for prefix in ("ihoment", "Govee", "GBK", "GVH") for model in BLE_DISCOVERABLE_MODELS
-    } <= patterns
+    expected = {
+        *(
+            f"{prefix}_{model}*"
+            for prefix in ("ihoment", "Govee", "Minger", "GBK", "GVH")
+            for model in BLE_DISCOVERABLE_MODELS
+        ),
+        *(f"GV{model}*" for model in BLE_DISCOVERABLE_MODELS),
+        *(f"GV{model[1:]}*" for model in BLE_DISCOVERABLE_MODELS),
+        *(f"{model}_*" for model in BLE_DISCOVERABLE_MODELS),
+    }
+    assert expected <= patterns
 
 
 async def test_bluetooth_discovery_normalizes_unique_id(hass: HomeAssistant):
@@ -383,8 +391,18 @@ _EM += [
     ("GVH_H601C_ABCD", "H601C"),
     ("ihoment_H6125_ABCD", "H6125"),
     ("Govee_H6125_ABCD", "H6125"),
+    ("Minger_H6125_311D", "H6125"),
     ("GBK_H6125_ABCD", "H6125"),
     ("GVH_H6125_ABCD", "H6125"),
+    ("GVH6125_311D", "H6125"),
+    ("GVH6125311D", "H6125"),
+    ("GV6125_311D", "H6125"),
+    ("GV6125311D", "H6125"),
+    ("H6125_311D", "H6125"),
+    ("H6125", None),
+    ("GVH617A0_ABCD", None),
+    ("GV617A0_ABCD", None),
+    ("H617A0_ABCD", None),
     ("ihoment_H617F_ABCD", "H617F"),
     ("Govee_H617F_ABCD", "H617F"),
     ("GBK_H617F_ABCD", "H617F"),
@@ -412,8 +430,11 @@ _EM += [
     ("GVH_H6199_ABCD", "H6199"),
     ("ihoment_H6102_ABCD", None),
     ("Govee_H6102_ABCD", None),
+    ("Minger_H6102_ABCD", None),
     ("GBK_H6102_ABCD", None),
     ("GVH_H6102_ABCD", None),
+    ("GVH6102_ABCD", None),
+    ("H6102_ABCD", None),
 ]
 
 

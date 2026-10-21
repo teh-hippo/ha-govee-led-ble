@@ -395,14 +395,23 @@ async def test_issue310_cached_identity_does_not_authorize_colour_after_reconnec
     assert all(packet[0] == 0xAA for packet in packets)
 
 
-@pytest.mark.parametrize(("pact_type", "register"), [(1, 19), (10, 255)])
-async def test_issue310_brightness_tolerance_excludes_low_registers_and_modern_percentages(radio, pact_type, register):
+@pytest.mark.parametrize(("pact_type", "register"), [(1, 0), (10, 255)])
+async def test_issue310_brightness_tolerance_excludes_zero_registers_and_modern_percentages(radio, pact_type, register):
     c, _, _, _ = radio
     c.pact_type, c.pact_code = pact_type, 1
     c._resolve_device_profile()
     c._notify_callback(None, bytearray(frame(f"aa04{register:02x}")))
     assert c.packet_log[-1]["reason"] == "semantic_rejected"
     assert "brightness_pct" not in c._field_revisions
+
+
+async def test_issue310_pact1_low_register_clamps_to_minimum_percent(radio):
+    c, _, _, _ = radio
+    c.pact_type, c.pact_code = 1, 1
+    c._resolve_device_profile()
+    c._notify_callback(None, bytearray(frame("aa0413")))
+    assert c.packet_log[-1]["reason"] == "status_parsed"
+    assert c.brightness_pct == 1
 
 
 @pytest.mark.parametrize("fault", ["write", "stale_readback"])

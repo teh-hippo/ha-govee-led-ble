@@ -39,6 +39,7 @@ from .const import (
     resolve_model,
     supported_effect_categories,
 )
+from .effect_setup import get_effect_backend
 from .firmware_version import FirmwareVersion
 from .h6102_protocol import H6102_PACTS
 from .schema_compat import vol
@@ -120,7 +121,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self._show_reconfigure_form(entry, errors={"base": "model_mismatch"})
             if selected_model == "H6102":
                 return await self.async_step_h6102_firmware()
-            return self._finish_reconfigure(entry, selected_model)
+            return await self._finish_reconfigure(entry, selected_model)
         return self._show_reconfigure_form(entry)
 
     async def async_step_h6102_firmware(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -138,7 +139,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         if pact is not None and pact not in H6102_PACTS:
             return self._show_h6102_firmware_form(errors={CONF_H6102_PACT: "invalid_pact"})
         if self.source == SOURCE_RECONFIGURE:
-            return self._finish_reconfigure(
+            return await self._finish_reconfigure(
                 self._get_reconfigure_entry(), "H6102", firmware or None, pact, hardware or None
             )
         self._abort_if_unique_id_configured()
@@ -151,7 +152,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             data[CONF_H6102_PACT] = pact
         return self.async_create_entry(title="Govee H6102", data=data)
 
-    def _finish_reconfigure(
+    async def _finish_reconfigure(
         self,
         entry: ConfigEntry,
         selected_model: str,
@@ -159,6 +160,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         pact: str | None = None,
         hardware: str | None = None,
     ) -> ConfigFlowResult:
+        previous_model = entry.data.get(CONF_MODEL)
         data = dict(entry.data)
         data[CONF_MODEL] = selected_model
         data.pop(CONF_H6102_APP_FIRMWARE, None)
@@ -170,17 +172,20 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             data[CONF_H6102_APP_HARDWARE] = hardware
         if pact is not None:
             data[CONF_H6102_PACT] = pact
-        options = {
-            key: value
-            for key, value in entry.options.items()
-            if key
-            not in {
-                CONF_EFFECT_CATEGORIES,
-                CONF_EFFECT_FAMILIES,
-                CONF_PREFIX_EFFECT_NAMES,
-                CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
-            }
+        excluded = {
+            CONF_EFFECT_CATEGORIES,
+            CONF_EFFECT_FAMILIES,
+            CONF_PREFIX_EFFECT_NAMES,
+            CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
         }
+        if not MODEL_PROFILES[selected_model].state_readable:
+            excluded.add(CONF_CONNECTION_MODE)
+        options = {key: value for key, value in entry.options.items() if key not in excluded}
+        if selected_model != previous_model and (effect_backend := get_effect_backend(self.hass)) is not None:
+            await effect_backend.scene_defaults.async_delete_device(entry.entry_id)
+            await effect_backend.template_defaults.async_delete_device(entry.entry_id)
+            await effect_backend.active_workspaces.async_delete_device(entry.entry_id)
+            await effect_backend.device_cache.async_delete_device(entry.entry_id)
         return self.async_update_reload_and_abort(
             entry,
             title=f"Govee {selected_model}",

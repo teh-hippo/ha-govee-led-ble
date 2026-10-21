@@ -224,7 +224,10 @@ def test_h6102_unknown_context_bootstraps_identity_with_notifications(h6102):
     assert h6102.update_interval == timedelta(seconds=30)
 
 
-@pytest.mark.parametrize(("pact", "register", "expected"), [(1, 235, 92), (1, 19, None), (10, 235, None), (10, 50, 50)])
+@pytest.mark.parametrize(
+    ("pact", "register", "expected"),
+    [(1, 235, 92), (1, 19, 1), (1, 0, None), (10, 235, None), (10, 50, 50)],
+)
 def test_h6102_register_readback_uses_pact_not_payload_value(h6102, pact, register, expected):
     from tests.test_h6199_pact1 import advertise
 

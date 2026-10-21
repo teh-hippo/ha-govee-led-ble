@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_call_later
@@ -132,10 +133,71 @@ async def _async_update_editor_panel(
 
 
 async def _async_cleanup_legacy_entities(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> None:
+    raw_model = entry.data.get(CONF_MODEL)
+    model = resolve_model(raw_model) if isinstance(raw_model, str) else None
+    profile = MODEL_PROFILES.get(model) if model is not None else None
+    unsupported = set(_LEGACY_ENTITY_SUFFIXES)
+    if profile is not None:
+        for control in {"gradual", "limit", "power_off_memory"} - profile.boolean_controls:
+            unsupported.add(f"_{control}")
+        if not profile.configured_string_counts:
+            unsupported.add("_configured_strings")
+        if model != "H6199":
+            unsupported.update({"_strip_direction", "_camera_position", "_gradient", "_camera_status"})
     registry = er.async_get(hass)
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if entity.unique_id and any(entity.unique_id.endswith(suffix) for suffix in _LEGACY_ENTITY_SUFFIXES):
+        if entity.unique_id and any(entity.unique_id.endswith(suffix) for suffix in unsupported):
             registry.async_remove(entity.entity_id)
+
+
+async def _async_migrate_entry_model(
+    hass: HomeAssistant,
+    entry: GoveeBLEConfigEntry,
+    *,
+    old_model: str,
+    new_model: str,
+) -> None:
+    data = dict(entry.data)
+    data[CONF_MODEL] = new_model
+    if new_model != "H6102":
+        data.pop(CONF_H6102_APP_FIRMWARE, None)
+        data.pop(CONF_H6102_APP_HARDWARE, None)
+        data.pop(CONF_H6102_PACT, None)
+    options = dict(entry.options)
+    options.pop(CONF_EFFECT_FAMILIES, None)
+    if CONF_EFFECT_CATEGORIES in options:
+        supported = supported_effect_categories(new_model)
+        if supported:
+            selected = options.get(CONF_EFFECT_CATEGORIES)
+            filtered = (
+                [category for category in supported if category in selected]
+                if isinstance(selected, list | tuple | set | frozenset)
+                else []
+            )
+            options[CONF_EFFECT_CATEGORIES] = filtered or list(default_effect_categories(new_model))
+        else:
+            options.pop(CONF_EFFECT_CATEGORIES, None)
+    if not MODEL_PROFILES[new_model].state_readable:
+        options.pop(CONF_CONNECTION_MODE, None)
+    title = (
+        f"Govee {new_model}" if not isinstance(entry.title, str) or entry.title == f"Govee {old_model}" else entry.title
+    )
+    hass.config_entries.async_update_entry(entry, title=title, data=data, options=options)
+    assert entry.unique_id is not None
+    registry = dr.async_get(hass)
+    device = registry.async_get_device_by_identifier((DOMAIN, entry.unique_id), entry.entry_id)
+    if device is not None:
+        updates: dict[str, Any] = {"model": new_model}
+        if device.name in (None, f"Govee {old_model}"):
+            updates["name"] = f"Govee {new_model}"
+        registry.async_update_device(device.id, **updates)
+    if effect_backend := get_effect_backend(hass):
+        await asyncio.gather(
+            effect_backend.scene_defaults.async_delete_device(entry.entry_id),
+            effect_backend.template_defaults.async_delete_device(entry.entry_id),
+            effect_backend.active_workspaces.async_delete_device(entry.entry_id),
+            effect_backend.device_cache.async_delete_device(entry.entry_id),
+        )
 
 
 def _addr(entry: GoveeBLEConfigEntry) -> str:
@@ -197,13 +259,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
     service_info = bluetooth.async_last_service_info(hass, entry.unique_id, connectable=True)
     advertised_model = model_from_ble_name(service_info.name) if service_info is not None else None
     if advertised_model is not None and advertised_model != model:
-        _LOGGER.error(
-            "Configured model %s does not match advertised model %s for config entry %s; reconfigure the entry",
+        _LOGGER.info(
+            "Migrating config entry %s from %s to advertised model %s",
+            entry.entry_id,
             model,
             advertised_model,
-            entry.entry_id,
         )
-        return False
+        await _async_migrate_entry_model(hass, entry, old_model=model, new_model=advertised_model)
+        model = advertised_model
     ir.async_delete_issue(hass, DOMAIN, issue_id)
     configured_firmware = entry.data.get(CONF_H6102_APP_FIRMWARE)
     h6102_firmware = configured_firmware if model == "H6102" and isinstance(configured_firmware, str) else None

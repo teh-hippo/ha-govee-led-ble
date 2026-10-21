@@ -589,7 +589,7 @@ def parse_h6179_command(frame: bytes) -> ParsedH6179Command | None:
             return None
         values = _values(is_on=bool(parsed.body.is_on))
     elif operation == "brightness":
-        if not _has_zero_opaque(parsed.body):
+        if not 20 <= int(parsed.body.raw) <= 254 or not _has_zero_opaque(parsed.body):
             return None
         try:
             brightness_pct = decode_h6179_brightness(int(parsed.body.raw))
@@ -1425,13 +1425,14 @@ def encode_wire_brightness(percent: int, wire_range: tuple[int, int]) -> int:
 
 
 def decode_wire_brightness(raw: int, wire_range: tuple[int, int] | None) -> int:
-    """Invert encode_wire_brightness; a register outside the declared range is not a brightness."""
+    """Invert encode_wire_brightness; clamp non-zero unsigned bytes to the declared range."""
     if wire_range is None:
         raise ValueError("brightness register range is not declared")
     low, high = wire_range
-    if not isinstance(raw, int) or isinstance(raw, bool) or not low <= raw <= high:
+    if not isinstance(raw, int) or isinstance(raw, bool) or not 1 <= raw <= 255:
         raise ValueError(f"brightness register must be an integer from {low} to {high}")
-    return max(1, min(100, 1 - (-((raw - low) * 100) // (high - low + 3))))
+    clamped = min(max(raw, low), high)
+    return max(1, min(100, 1 - (-((clamped - low) * 100) // (high - low + 3))))
 
 
 _H6179_BRIGHTNESS_RANGE = (20, 254)

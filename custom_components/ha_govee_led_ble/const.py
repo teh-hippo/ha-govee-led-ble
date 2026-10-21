@@ -56,7 +56,10 @@ EFFECT_CATEGORY_CONTENT_KINDS = {
     EFFECT_CATEGORY_REACTIVE: frozenset({"music_profile"}),
     EFFECT_CATEGORY_ADVANCED: frozenset({"advanced", "workshop"}),
 }
-_BLE_MODEL_PATTERN = re.compile(r"(?:ihoment|Govee|GBK|GVH)_(H[0-9A-Z]{4})(?:_|$)", re.IGNORECASE)
+_BLE_MODEL_PATTERN = re.compile(
+    r"(?:(?:ihoment|Govee|Minger|GBK|GVH)_(H[0-9A-Z]{4})(?:_|$)|^GVH?([0-9A-Z]{4})(?:_[0-9A-Z]+|[0-9A-Z]{4}|$)$|^(H[0-9A-Z]{4})_[0-9A-Z]+$)",
+    re.IGNORECASE,
+)
 
 
 class SupportQuality(StrEnum):
@@ -745,6 +748,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         # Static replies carry the SubModeColorV2 Kelvin field, as on H6102.
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
+        static_readback_gradual=True,
         colour_mode_query_selector=1,
         read_domains=frozenset(
             {
@@ -797,6 +801,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_upload_before_selector=True,
         music_requires_upload_ack=True,
         diy_requires_upload_ack=True,
+        boolean_controls=frozenset({"gradual"}),
     ),
     "H7020": ModelProfile(
         "H7020 Outdoor String Lights",
@@ -1070,14 +1075,14 @@ def _h6125_profile(
     )
 
     fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
-    if pact_code not in (1, 2) or fw is None or hw is None:
+    if fw is None or hw is None:
         return H6125_POWER_ONLY_PROFILE
     hardware_family = hw.identity_number() // 10000
     firmware_family = fw.identity_number() // 10000
     if hardware_family != firmware_family:
         return H6125_POWER_ONLY_PROFILE
     profile = MODEL_PROFILES["H6125"]
-    if pact_type == 10:
+    if pact_type == 10 and pact_code in (1, 2, 3):
         bk = hardware is not None and hardware.startswith("2.01.")
         frk = hardware_family == 3 and hardware is not None and not hardware.startswith("3.04.")
         if not (bk or frk):
@@ -1092,7 +1097,7 @@ def _h6125_profile(
             supports_segment_color_temperature=True,
             boolean_controls=frozenset({"gradual"}),
         )
-    if pact_type != 1 or hardware_family != 1:
+    if pact_type != 1 or pact_code not in (1, 2) or hardware_family != 1:
         return H6125_POWER_ONLY_PROFILE
     extended_colour = hw >= FirmwareVersion((1, 0, 3)) and fw >= FirmwareVersion((1, 6))
     original_music = fw < FirmwareVersion((1, 3, 1))
@@ -1243,7 +1248,10 @@ def resolve_model(model: str) -> str | None:
 
 def model_from_ble_name(name: str) -> str | None:
     match = _BLE_MODEL_PATTERN.search(name)
-    model = resolve_model(match.group(1)) if match else None
+    if match is None:
+        return None
+    raw = next(group for group in match.groups() if group is not None)
+    model = resolve_model(raw if len(raw) == 5 else f"H{raw}")
     return model if model in BLE_DISCOVERABLE_MODELS else None
 
 

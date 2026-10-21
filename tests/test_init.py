@@ -187,16 +187,61 @@ async def test_setup_entry_rejects_unknown_model(hass: HomeAssistant, data):
     assert issue.severity is ir.IssueSeverity.ERROR
 
 
-async def test_setup_entry_rejects_known_advertised_model_mismatch(hass: HomeAssistant):
-    entry = _entry(data={CONF_MODEL: "H617A"})
+async def test_setup_entry_migrates_known_advertised_model_mismatch(hass: HomeAssistant):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="AA:BB:CC:DD:EE:FF",
+        title="Govee H617A",
+        data={CONF_MODEL: "H617A", CONF_H6102_APP_FIRMWARE: "1.03.01"},
+        options={"effect_categories": ["scenes", "video"], "effect_families": ["scenes"], "connection_mode": "hold"},
+    )
+    entry.add_to_hass(hass)
     service_info = MagicMock()
-    service_info.name = "Govee_H617E_ABCD"
+    service_info.name = "ihoment_H6125_311D"
+    backend = MagicMock(
+        engine=MagicMock(),
+        preview=MagicMock(async_load_device=AsyncMock()),
+        scene_defaults=MagicMock(async_delete_device=AsyncMock()),
+        template_defaults=MagicMock(async_delete_device=AsyncMock()),
+        active_workspaces=MagicMock(async_delete_device=AsyncMock()),
+        device_cache=MagicMock(async_delete_device=AsyncMock()),
+    )
     with (
         patch("custom_components.ha_govee_led_ble.bluetooth.async_last_service_info", return_value=service_info),
+        patch("custom_components.ha_govee_led_ble.get_effect_backend", return_value=backend),
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
+        patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
+        patch("custom_components.ha_govee_led_ble._async_update_editor_panel", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
     ):
-        assert await async_setup_entry(hass, entry) is False
-    cls.assert_not_called()
+        cls.return_value.async_config_entry_first_refresh = AsyncMock()
+        cls.return_value.profile = MODEL_PROFILES["H6125"]
+        assert await async_setup_entry(hass, entry) is True
+
+    assert entry.data == {CONF_MODEL: "H6125"}
+    assert entry.title == "Govee H6125"
+    assert entry.options == {"effect_categories": ["scenes"], "connection_mode": "hold"}
+    assert cls.call_args.args[2] == "H6125"
+    backend.scene_defaults.async_delete_device.assert_awaited_once_with(entry.entry_id)
+    backend.template_defaults.async_delete_device.assert_awaited_once_with(entry.entry_id)
+    backend.active_workspaces.async_delete_device.assert_awaited_once_with(entry.entry_id)
+    backend.device_cache.async_delete_device.assert_awaited_once_with(entry.entry_id)
+
+
+async def test_late_advertisement_model_mismatch_schedules_single_reload(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="AA:BB:CC:DD:EE:FF", data={CONF_MODEL: "H617A"})
+    entry.add_to_hass(hass)
+    coordinator = GoveeBLECoordinator(hass, entry.unique_id, "H617A", configuration_url=None)
+    coordinator.config_entry = entry
+    service_info = MagicMock()
+    service_info.name = "ihoment_H6125_311D"
+    service_info.manufacturer_data = {34817: bytes.fromhex("ec000101")}
+    with patch.object(hass.config_entries, "async_schedule_reload") as schedule_reload:
+        coordinator._note_advertisement(service_info)
+        coordinator._note_advertisement(service_info)
+
+    schedule_reload.assert_called_once_with(entry.entry_id)
+    assert coordinator.pact_type is None and coordinator.pact_code is None
 
 
 @pytest.mark.parametrize("first_failure", ["connect", "notify", "identity"])

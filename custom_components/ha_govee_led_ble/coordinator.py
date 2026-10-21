@@ -40,6 +40,7 @@ from .const import (
     default_effect_families,
     device_profile,
     get_profile,
+    model_from_ble_name,
     supported_effect_categories,
 )
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
@@ -366,6 +367,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._present = False
         self._state_read_available = False
         self._first_refresh_done = False
+        self._model_reload_scheduled = False
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
         self._init_dreamview()
         if model == "H6102":
@@ -1061,7 +1063,20 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             self.async_update_listeners()
 
     def _note_advertisement(self, service_info: bluetooth.BluetoothServiceInfoBleak | None) -> None:
-        if service_info is not None and isinstance(service_info.manufacturer_data, Mapping):
+        if service_info is None:
+            return
+        name = getattr(service_info, "name", None)
+        advertised_model = model_from_ble_name(name) if isinstance(name, str) else None
+        if advertised_model is not None and advertised_model != self.model:
+            if (
+                not self._model_reload_scheduled
+                and self.config_entry is not None
+                and self.hass.config_entries.async_get_entry(self.config_entry.entry_id) is not None
+            ):
+                self._model_reload_scheduled = True
+                self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
+            return
+        if isinstance(service_info.manufacturer_data, Mapping):
             advertisement = parse_govee_advertisement(service_info.manufacturer_data)
             if advertisement is not None:
                 pact = advertisement.pact_type, advertisement.pact_code
@@ -1930,8 +1945,6 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     if isinstance(generated, ParsedH6179Status)
                     else int(generated.body.percent)
                     if self.profile.status_grammar in {"H6099", "H6199"}
-                    else int(generated.body.legacy_register)
-                    if self.profile.status_grammar == "H6102" and self.profile.brightness_wire_range is not None
                     else int(generated.body.register)
                     if hasattr(generated.body, "register")
                     else int(generated.body.brightness_pct)

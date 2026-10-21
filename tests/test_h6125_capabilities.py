@@ -120,8 +120,14 @@ def test_register_mapping_is_the_apps_linear_rule_and_round_trips() -> None:
         registers = [encode_wire_brightness(percent, wire_range) for percent in range(1, 101)]
         assert registers == sorted(registers) and len(set(registers)) == 100
         assert [decode_wire_brightness(register, wire_range) for register in registers] == list(range(1, 101))
-    with pytest.raises(ValueError, match="from 6 to 254"):
-        decode_wire_brightness(5, (6, 254))
+    assert decode_wire_brightness(1, (20, 254)) == 1
+    assert decode_wire_brightness(19, (20, 254)) == 1
+    assert decode_wire_brightness(255, (20, 254)) == 100
+    assert decode_wire_brightness(5, (6, 254)) == 1
+    assert decode_wire_brightness(255, (6, 254)) == 100
+    for invalid in (0, 256, -1, True):
+        with pytest.raises(ValueError, match="from 6 to 254"):
+            decode_wire_brightness(invalid, (6, 254))
     with pytest.raises(ValueError, match="not declared"):
         decode_wire_brightness(100, None)
     with pytest.raises(ValueError, match="from 1 to 100"):
@@ -136,6 +142,7 @@ def test_reported_frk_identity_uses_percentage_brightness_and_modern_music(h6125
 
     assert profile.supports_rgb and profile.supports_color_temperature and profile.supports_segments
     assert profile.outbound_transform is None
+    assert len(profile.music_modes) == 11
     assert build_brightness(50, "H6125", profile=profile)[:3] == H("330432")
     assert build_music_mode(5, 42, None, False, "H6125", profile=profile)[:5] == H("330513052a")
     h6125._notify_callback(None, bytearray(frame(0x04, [50])))

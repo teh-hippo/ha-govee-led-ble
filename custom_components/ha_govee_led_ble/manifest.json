@@ -9,10 +9,22 @@
             "local_name": "Govee_H601C*"
         },
         {
+            "local_name": "Minger_H601C*"
+        },
+        {
             "local_name": "GBK_H601C*"
         },
         {
             "local_name": "GVH_H601C*"
+        },
+        {
+            "local_name": "GVH601C*"
+        },
+        {
+            "local_name": "GV601C*"
+        },
+        {
+            "local_name": "H601C_*"
         },
         {
             "local_name": "ihoment_H617A*"
@@ -21,10 +33,22 @@
             "local_name": "Govee_H617A*"
         },
         {
+            "local_name": "Minger_H617A*"
+        },
+        {
             "local_name": "GBK_H617A*"
         },
         {
             "local_name": "GVH_H617A*"
+        },
+        {
+            "local_name": "GVH617A*"
+        },
+        {
+            "local_name": "GV617A*"
+        },
+        {
+            "local_name": "H617A_*"
         },
         {
             "local_name": "ihoment_H617C*"
@@ -33,10 +57,22 @@
             "local_name": "Govee_H617C*"
         },
         {
+            "local_name": "Minger_H617C*"
+        },
+        {
             "local_name": "GBK_H617C*"
         },
         {
             "local_name": "GVH_H617C*"
+        },
+        {
+            "local_name": "GVH617C*"
+        },
+        {
+            "local_name": "GV617C*"
+        },
+        {
+            "local_name": "H617C_*"
         },
         {
             "local_name": "ihoment_H617E*"
@@ -45,10 +81,22 @@
             "local_name": "Govee_H617E*"
         },
         {
+            "local_name": "Minger_H617E*"
+        },
+        {
             "local_name": "GBK_H617E*"
         },
         {
             "local_name": "GVH_H617E*"
+        },
+        {
+            "local_name": "GVH617E*"
+        },
+        {
+            "local_name": "GV617E*"
+        },
+        {
+            "local_name": "H617E_*"
         },
         {
             "local_name": "ihoment_H617F*"
@@ -57,10 +105,22 @@
             "local_name": "Govee_H617F*"
         },
         {
+            "local_name": "Minger_H617F*"
+        },
+        {
             "local_name": "GBK_H617F*"
         },
         {
             "local_name": "GVH_H617F*"
+        },
+        {
+            "local_name": "GVH617F*"
+        },
+        {
+            "local_name": "GV617F*"
+        },
+        {
+            "local_name": "H617F_*"
         },
         {
             "local_name": "ihoment_H6076*"
@@ -69,10 +129,22 @@
             "local_name": "Govee_H6076*"
         },
         {
+            "local_name": "Minger_H6076*"
+        },
+        {
             "local_name": "GBK_H6076*"
         },
         {
             "local_name": "GVH_H6076*"
+        },
+        {
+            "local_name": "GVH6076*"
+        },
+        {
+            "local_name": "GV6076*"
+        },
+        {
+            "local_name": "H6076_*"
         },
         {
             "local_name": "ihoment_H6125*"
@@ -81,10 +153,22 @@
             "local_name": "Govee_H6125*"
         },
         {
+            "local_name": "Minger_H6125*"
+        },
+        {
             "local_name": "GBK_H6125*"
         },
         {
             "local_name": "GVH_H6125*"
+        },
+        {
+            "local_name": "GVH6125*"
+        },
+        {
+            "local_name": "GV6125*"
+        },
+        {
+            "local_name": "H6125_*"
         },
         {
             "local_name": "ihoment_H6179*"
@@ -93,10 +177,22 @@
             "local_name": "Govee_H6179*"
         },
         {
+            "local_name": "Minger_H6179*"
+        },
+        {
             "local_name": "GBK_H6179*"
         },
         {
             "local_name": "GVH_H6179*"
+        },
+        {
+            "local_name": "GVH6179*"
+        },
+        {
+            "local_name": "GV6179*"
+        },
+        {
+            "local_name": "H6179_*"
         },
         {
             "local_name": "ihoment_H6199*"
@@ -105,10 +201,22 @@
             "local_name": "Govee_H6199*"
         },
         {
+            "local_name": "Minger_H6199*"
+        },
+        {
             "local_name": "GBK_H6199*"
         },
         {
             "local_name": "GVH_H6199*"
+        },
+        {
+            "local_name": "GVH6199*"
+        },
+        {
+            "local_name": "GV6199*"
+        },
+        {
+            "local_name": "H6199_*"
         },
         {
             "local_name": "ihoment_H7020*"
@@ -117,10 +225,22 @@
             "local_name": "Govee_H7020*"
         },
         {
+            "local_name": "Minger_H7020*"
+        },
+        {
             "local_name": "GBK_H7020*"
         },
         {
             "local_name": "GVH_H7020*"
+        },
+        {
+            "local_name": "GVH7020*"
+        },
+        {
+            "local_name": "GV7020*"
+        },
+        {
+            "local_name": "H7020_*"
         }
     ],
     "codeowners": [
