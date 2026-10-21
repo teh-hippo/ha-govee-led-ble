@@ -36,6 +36,8 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    env:
+      UV_CACHE_DIR: /tmp/.uv-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -45,18 +47,35 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          python-version-file: .python-version
+          enable-cache: false
+      - id: runner-image
+        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+      # Release commits change uv.lock, so fall back to the newest cache with the same image and Python.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
       - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
       - run: npm --prefix frontend ci --ignore-scripts
       - run: npm --prefix frontend exec -- playwright install --with-deps webkit
+      # mypy validates each cached module itself, so any earlier cache is a safe starting point.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: mypy-${{ runner.os }}-${{ runner.arch }}-
       - run: make check
+      - run: uv cache prune --ci
 
   package:
     name: Package
     if: ${{ github.ref == 'refs/heads/ux' || github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
+    env:
+      UV_CACHE_DIR: /tmp/.uv-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -66,11 +85,20 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          python-version-file: .python-version
+          enable-cache: false
+      - id: runner-image
+        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+      # Release commits change uv.lock, so fall back to the newest cache with the same image and Python.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
       - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
       - run: uv sync --locked
+      - run: uv cache prune --ci
       - name: Build reference package
         run: |
           make clean package
