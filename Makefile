@@ -5,6 +5,7 @@ SHELL := /usr/bin/env bash
 PYTHON ?= python3
 NODE := node
 NPM := npm
+PYTEST_WORKERS ?= 4
 
 BUILD_DIR := .build
 DIST_DIR := dist
@@ -103,7 +104,7 @@ check:
 	uv run --no-sync ruff format --check .
 	$(MAKE) --no-print-directory verify-protocol
 	uv run --no-sync mypy custom_components/ha_govee_led_ble tests
-	uv run --no-sync coverage run -m pytest tests/ -v --tb=short
+	uv run --no-sync pytest tests/ -n $(PYTEST_WORKERS) --dist worksteal --cov=$(INTEGRATION_DIR) --cov-branch --cov-report= -v --tb=short
 	uv run --no-sync coverage report --precision=2 --include='custom_components/ha_govee_led_ble/*'
 	@printf '\nAll checks passed.\n'
 

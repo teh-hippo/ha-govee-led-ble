@@ -245,6 +245,17 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
+The full Python suite uses four worker processes and combines their branch coverage.
+Use `make check PYTEST_WORKERS=2` on memory-constrained machines, or `PYTEST_WORKERS=0` to investigate a serial full-suite failure.
+Targeted commands such as `uv run pytest tests/test_coordinator_status.py -q` remain serial by default.
+
+Fake devices should answer supported queries incidental to the scenario; tests for missing replies remove those responses explicitly.
+Use the opt-in `virtual_clock` fixture for coordinator deadline and suppression tests that do not need real I/O.
+It advances asyncio timers and coordinator monotonic timestamps together, preserving production durations and real notification parsing, waits and cancellation.
+Do not patch a monotonic clock independently of absolute asyncio deadlines, or mock successful verification to avoid a timeout.
+Keep filesystem/executor-backed operations and real-time lifecycle smoke tests outside virtual time.
+Callbacks with the same deadline have no guaranteed order; fake radios that require ordered delivery must schedule replies in that order.
+
 Python upgrades must keep `project.requires-python`, `.python-version`, `uv.lock`, and the Ruff and mypy Python targets aligned.  CI reads its interpreter version from `.python-version`; regenerate the lockfile with `uv lock` and validate with `make check`.
 
 After switching branches, protocol verification can report obsolete ignored

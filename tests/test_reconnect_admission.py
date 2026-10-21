@@ -172,6 +172,7 @@ async def test_background_reconnect_admission(reconnect_lifecycle, hass, monkeyp
         release.set()
         await background
         if identity == "qualified":
+            assert not c._segment_query_incomplete
             await asyncio.wait_for(foreground, 3)
             assert writer.await_count or any(packet[0] == 0x33 for packet in packets)
         else:

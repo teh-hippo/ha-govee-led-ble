@@ -72,7 +72,7 @@ def notify(coordinator, opcode, version):
 
 
 @pytest.mark.parametrize("stale_stream", [False, True])
-async def test_reconnect_refreshes_only_condition_source(identity, monkeypatch, stale_stream):
+async def test_reconnect_refreshes_only_condition_source(identity, monkeypatch, stale_stream, virtual_clock):
     coordinator, field, opcode, query = identity
     old_client = coordinator._client
     assert old_client is not None

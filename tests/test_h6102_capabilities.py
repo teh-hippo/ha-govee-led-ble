@@ -269,7 +269,7 @@ def test_identity_change_invalidates_generation_even_with_same_roster(hass):
 
 
 @pytest.mark.parametrize("confirm", [True, False])
-async def test_saved_apply_requires_fresh_exact_h6102_readback(hass, monkeypatch, confirm):
+async def test_saved_apply_requires_fresh_exact_h6102_readback(hass, monkeypatch, confirm, virtual_clock):
     coordinator = GoveeBLECoordinator(
         hass,
         "11:22:33:44:55:66",
@@ -293,6 +293,8 @@ async def test_saved_apply_requires_fresh_exact_h6102_readback(hass, monkeypatch
             # DIY code 24 is read back, not inferred from a write or ACK.
             prefix = "aa050a1800" if selected and confirm else "aa051500"
             coordinator._notify_callback(None, bytearray(frame(prefix)))
+        elif packet[:2] == bytes.fromhex("aaa3"):
+            coordinator._notify_callback(None, bytearray(frame("aaa300")))
         elif packet[:2] == bytes.fromhex("aaa5"):
             page = packet[2]
             coordinator._notify_callback(None, bytearray(frame("aaa5" + bytes([page, *([100, 1, 2, 3] * 3)]).hex())))
@@ -320,8 +322,10 @@ async def test_saved_apply_requires_fresh_exact_h6102_readback(hass, monkeypatch
 
 
 @pytest.mark.parametrize("control,domain", [("gradual", "a3"), ("limit", "0e")])
-@pytest.mark.parametrize("confirm", [True, False])
-async def test_boolean_setting_requires_fresh_matching_readback(hass, monkeypatch, control, domain, confirm):
+@pytest.mark.parametrize("confirm", [True, False, None])
+async def test_boolean_setting_requires_fresh_matching_readback(
+    hass, monkeypatch, control, domain, confirm, virtual_clock
+):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6102", configuration_url="studio", h6102_pact="10/1")
     coordinator.fw_version, coordinator.hw_version = "3.02.02", "3.02.01"
     coordinator._resolve_device_profile()
@@ -329,7 +333,7 @@ async def test_boolean_setting_requires_fresh_matching_readback(hass, monkeypatc
     coordinator.boolean_control_state[control] = True  # Stale cached success cannot confirm.
 
     async def transmit(_uuid, packet, **kwargs):
-        if packet[:2] == bytes.fromhex("aa" + domain):
+        if confirm is not None and packet[:2] == bytes.fromhex("aa" + domain):
             coordinator._notify_callback(None, bytearray(frame("aa" + domain + ("01" if confirm else "00"))))
 
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit))
@@ -338,6 +342,13 @@ async def test_boolean_setting_requires_fresh_matching_readback(hass, monkeypatc
     monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
     if confirm:
         await coordinator.async_set_boolean_control(control, True)
+    elif confirm is None:
+        with pytest.raises(ValueError, match="fresh setting readback"):
+            await coordinator.async_set_boolean_control(control, True)
+        coordinator._expire_optional_observations({f"boolean_{control}": 0})
+        assert control not in coordinator.boolean_control_state
+        assert coordinator._field_revisions.get(f"boolean_{control}", 0) == 0
+        return
     else:
         with pytest.raises(ValueError, match="confirm"):
             await coordinator.async_set_boolean_control(control, True)

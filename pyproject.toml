@@ -12,6 +12,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "aiotools>=2.0",
     "aiousbwatcher>=1.1.1",
     "bleak-esphome==4.1.0",
     "mypy>=1.15",
@@ -22,6 +23,8 @@ dev = [
     # nobody runs. Both are test-only here and never ship with the integration. Wait for
     # upstream.
     "pytest-homeassistant-custom-component>=0.13.316",
+    "pytest-cov>=7.1",
+    "pytest-xdist>=3.8",
     "ruff>=0.9",
     "serialx>=1.8.2",
 ]

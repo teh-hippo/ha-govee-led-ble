@@ -1,7 +1,10 @@
+import asyncio
 from dataclasses import replace
-from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
+from aiotools import VirtualClock
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from custom_components.ha_govee_led_ble.const import (
@@ -17,6 +20,18 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
+
+
+@pytest.fixture
+async def virtual_clock():
+    clock = VirtualClock()
+    # Keep existing timers and coordinator receipt timestamps in the event loop's time domain.
+    clock.vtime = asyncio.get_running_loop().time()
+    with (
+        clock.patch_loop(),
+        patch("custom_components.ha_govee_led_ble.coordinator.time", SimpleNamespace(monotonic=clock.virtual_time)),
+    ):
+        yield clock
 
 
 @pytest.fixture

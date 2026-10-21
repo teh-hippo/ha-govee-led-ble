@@ -2242,7 +2242,7 @@ async def test_send_state_queries_selective(coord):
     assert calls == [build_power_query(), build_colour_mode_query()]
 
 
-async def test_send_state_queries_include_h6199_display_state(h6199):
+async def test_send_state_queries_include_h6199_display_state(h6199, virtual_clock):
     from tests.test_h6199_capabilities import set_qualified_identity
 
     set_qualified_identity(h6199)
@@ -2366,7 +2366,7 @@ def test_mixed_grammars_route_command_expectations_and_status_semantics(
     assert coordinator._field_revisions["color_mode"] == 1
 
 
-async def test_send_state_queries_include_h617a_core_state(coord):
+async def test_send_state_queries_include_h617a_core_state(coord, virtual_clock):
     c = _c(write_gatt_char=AsyncMock())
     coord._client = c
     assert await coord._send_state_queries() is True
@@ -3888,6 +3888,44 @@ async def test_effect_observation_requires_fresh_selector_and_power(coord, selec
     assert not coord._control_lock.locked()
 
 
+@pytest.mark.parametrize("arrival", [3.9, 4.0, 4.1])
+async def test_revision_wait_respects_receipt_deadline(coord, virtual_clock, arrival):
+    loop = asyncio.get_running_loop()
+    baseline = {"is_on": coord._field_revisions.get("is_on", 0)}
+    deadline = loop.time() + 4
+    reply = bytearray(proto.build_packet(0xAA, 0x01, [1]))
+    await asyncio.sleep(arrival)
+    coord._notify_callback(None, reply)
+    # Even a callback processed before the waiter is resumed must respect its receipt deadline.
+    assert await coord._wait_for_revisions(baseline, {}, deadline) is (arrival <= 4)
+
+
+async def test_revision_wait_cancellation_does_not_consume_later_reply(coord, virtual_clock):
+    loop = asyncio.get_running_loop()
+    baseline = {"is_on": coord._field_revisions.get("is_on", 0)}
+    deadline = loop.time() + 4
+    waiting = asyncio.create_task(coord._wait_for_revisions(baseline, {}, deadline))
+    await asyncio.sleep(0)
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    assert coord._field_revisions.get("is_on", 0) == baseline["is_on"]
+    reply = bytearray(proto.build_packet(0xAA, 0x01, [1]))
+    loop.call_later(1, coord._notify_callback, None, reply)
+    assert await coord._wait_for_revisions(baseline, {}, deadline)
+
+
+@pytest.mark.parametrize("elapsed", [1.9, 2.0, 2.1])
+async def test_expectation_expiry_uses_notification_clock(coord, virtual_clock, elapsed):
+    coord.brightness_pct = 42
+    coord._arm_expected_values({"brightness_pct": 42})
+    baseline = coord._field_revisions.get("brightness_pct", 0)
+    await asyncio.sleep(elapsed)
+    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [75])))
+    assert coord.brightness_pct == (42 if elapsed < 2 else 75)
+    assert (coord._field_revisions.get("brightness_pct", 0) > baseline) is (elapsed >= 2)
+
+
 @pytest.mark.parametrize(
     ("selector", "actual", "final_desired"),
     [
@@ -3899,7 +3937,9 @@ async def test_effect_observation_requires_fresh_selector_and_power(coord, selec
     ],
     ids=["diy-to-scene", "scene-to-diy", "scene-to-static", "persistent-wrong", "silence"],
 )
-async def test_deployment_retries_activation_after_fresh_wrong_mode(coord, selector, actual, final_desired):
+async def test_deployment_retries_activation_after_fresh_wrong_mode(
+    coord, selector, actual, final_desired, virtual_clock
+):
     scene = MODEL_SCENES[coord.model]["aurora"]
     item = LibraryItem.new(
         "Retry",

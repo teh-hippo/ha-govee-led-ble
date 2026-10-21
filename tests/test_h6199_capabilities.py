@@ -21,6 +21,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_hardware_query,
     build_power_query,
     build_relative_brightness_query,
+    build_segment_query,
     build_subordinate_query,
     build_video_mode,
     build_white_balance,
@@ -129,7 +130,7 @@ def test_unknown_and_exact_camera_qualification():
 
 
 @pytest.mark.parametrize("revision", ["old", "qualified", "unknown"])
-async def test_basic_setup_survives_optional_silence(hass, monkeypatch, revision):
+async def test_basic_setup_survives_optional_silence(hass, monkeypatch, revision, virtual_clock):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes.fromhex("ec00020100")}))
     assert (coordinator.pact_type, coordinator.pact_code) == (2, 1)
@@ -218,7 +219,7 @@ async def test_missing_basic_reply_still_fails_setup(hass, monkeypatch):
     disconnect.assert_awaited()
 
 
-async def test_reconnect_invalidates_all_h6199_revision_authorization(hass, monkeypatch):
+async def test_reconnect_invalidates_all_h6199_revision_authorization(hass, monkeypatch, virtual_clock):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url="test")
     vars(coordinator).update(QUALIFIED)
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
@@ -271,22 +272,32 @@ async def lifecycle(hass, monkeypatch):
         build_h6199_control_query("gradient"): frame("aaa301"),
         build_h6199_control_query("camera_status"): frame("aa3201"),
     }
+    replies.update(
+        {
+            build_segment_query(group, "H6199"): frame("aaa5" + bytes([group, *([100, 1, 2, 3] * 4)]).hex())
+            for group in range(1, c.profile.segment_group_count + 1)
+        }
+    )
     clients, packets, timers = [], [], []
 
     async def connect(*args, **kwargs):
         client = MagicMock(is_connected=True)
         clients.append(client)
         receive = None
+        next_notification = asyncio.get_running_loop().time()
 
         async def subscribe(_uuid, callback):
             nonlocal receive
             receive = callback
 
         async def transmit(_uuid, packet, **kwargs):
+            nonlocal next_notification
             packets.append(packet)
             if packet in replies:
                 # A GATT write completes before the separate BLE notification arrives.
-                timers.append(asyncio.get_running_loop().call_later(0.02, receive, None, bytearray(replies[packet])))
+                loop = asyncio.get_running_loop()
+                next_notification = max(loop.time() + 0.02, next_notification + 0.001)
+                timers.append(loop.call_at(next_notification, receive, None, bytearray(replies[packet])))
 
         async def disconnect():
             client.is_connected = False
@@ -356,7 +367,7 @@ async def test_real_reconnect_waits_for_identity_before_guard(lifecycle, hass, m
     assert len(clients) == 2
 
 
-async def test_poll_preserves_delayed_native_replies_until_next_query(lifecycle):
+async def test_poll_preserves_delayed_native_replies_until_next_query(lifecycle, virtual_clock):
     from custom_components.ha_govee_led_ble.light import GoveeBLELight
     from custom_components.ha_govee_led_ble.select import GoveeBLEControlSelect
     from custom_components.ha_govee_led_ble.sensor import GoveeBLECameraStatus
@@ -368,6 +379,7 @@ async def test_poll_preserves_delayed_native_replies_until_next_query(lifecycle)
     light = GoveeBLELight(c)
     await c._async_update_data()
     assert c._client is None and not clients[-1].is_connected
+    assert c.segment_state_source == "observed" and not c._segment_query_incomplete
     assert [entity.current_option for entity in selects] == ["anticlockwise", "bottom", "on"]
     assert sensor.native_value == "healthy" and light.available
     for control in ("strip_direction", "camera_position", "gradient", "camera_status"):
@@ -393,7 +405,7 @@ async def test_basic_setup_with_missing_identity_uses_real_lifecycle(lifecycle):
 
 
 @pytest.mark.parametrize("missing_domain", [None, "power", "brightness", "colour_mode"])
-async def test_issue_293_setup_requires_only_basic_readback(lifecycle, missing_domain):
+async def test_issue_293_setup_requires_only_basic_readback(lifecycle, missing_domain, virtual_clock):
     from homeassistant.helpers.update_coordinator import UpdateFailed
 
     from tests.test_h6199_native_controls import frame

@@ -235,6 +235,18 @@ wheels = [
 ]
 
 [[package]]
+name = "aiotools"
+version = "2.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "async-lru" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/1c/1bf03edb69b4cff18c947006fd4738700b029ae2a6fe6055cc525eb583f0/aiotools-2.2.4.tar.gz", hash = "sha256:f29551fc7632e9537608cea0d154bc63b5847b0972f9a3ed122d509aaa81fa72", size = 150329, upload-time = "2026-07-21T07:17:21.149Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/f4/284a4ef469cc5dcc0dd9c73a2c10b82f98df3fa8485e5e050ec5b181bbf9/aiotools-2.2.4-py3-none-any.whl", hash = "sha256:086a3274e805c3b04e8188f60be17b839299e94a4e20cbd8b1466cfef157d03c", size = 48025, upload-time = "2026-07-21T07:17:19.633Z" },
+]
+
+[[package]]
 name = "aiousbwatcher"
 version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -354,6 +366,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/56/79/732a581e3ceb09f938d33ad8ab3419856181d95bb621aa2441a10f281e10/async_interrupt-1.2.2.tar.gz", hash = "sha256:be4331a029b8625777905376a6dc1370984c8c810f30b79703f3ee039d262bf7", size = 8484, upload-time = "2025-02-22T17:15:04.073Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/77/060b972fa7819fa9eea9a70acf8c7c0c58341a1e300ee5ccb063e757a4a7/async_interrupt-1.2.2-py3-none-any.whl", hash = "sha256:0a8deb884acfb5fe55188a693ae8a4381bbbd2cb6e670dac83869489513eec2c", size = 8907, upload-time = "2025-02-22T17:15:01.971Z" },
+]
+
+[[package]]
+name = "async-lru"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8f/43/9d22679e8dd0ed965182cca990d32c68b150730cce8046ad61b3179b5b7a/async_lru-2.4.0.tar.gz", hash = "sha256:b0b0077d9b7596615b3c12d0aad4f6aeccaaa0ac75ceae472608ede89e764c08", size = 22927, upload-time = "2026-10-12T18:12:54.276Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/0b/6a817103fb78faca4970c686a61065047da7226aba0d7cae6d4299b20c59/async_lru-2.4.0-py3-none-any.whl", hash = "sha256:1b46a96419ef91fe11431d58db98d792c9b4250001427191a40faf1031934212", size = 10045, upload-time = "2026-10-12T18:12:53.091Z" },
 ]
 
 [[package]]
@@ -983,10 +1004,13 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "aiotools" },
     { name = "aiousbwatcher" },
     { name = "bleak-esphome" },
     { name = "mypy" },
+    { name = "pytest-cov" },
     { name = "pytest-homeassistant-custom-component" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "serialx" },
 ]
@@ -1000,10 +1024,13 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "aiotools", specifier = ">=2.0" },
     { name = "aiousbwatcher", specifier = ">=1.1.1" },
     { name = "bleak-esphome", specifier = "==4.1.0" },
     { name = "mypy", specifier = ">=1.15" },
+    { name = "pytest-cov", specifier = ">=7.1" },
     { name = "pytest-homeassistant-custom-component", specifier = ">=0.13.316" },
+    { name = "pytest-xdist", specifier = ">=3.8" },
     { name = "ruff", specifier = ">=0.9" },
     { name = "serialx", specifier = ">=1.8.2" },
 ]
