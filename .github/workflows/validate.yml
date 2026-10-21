@@ -56,7 +56,7 @@ jobs:
           path: ${{ env.UV_CACHE_DIR }}
           key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
           restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
-      - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
       - run: npm --prefix frontend ci --ignore-scripts
@@ -94,7 +94,7 @@ jobs:
           path: ${{ env.UV_CACHE_DIR }}
           key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
           restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
-      - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
       - run: uv sync --locked
