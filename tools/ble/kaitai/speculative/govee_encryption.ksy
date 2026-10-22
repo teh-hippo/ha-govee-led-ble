@@ -2,14 +2,15 @@ meta:
   id: govee_encryption
   endian: be
 doc: |
-  SPECULATIVE H6099 encrypted transport, support issue #257 evidence worktree.
-  Hypothesis: H6099 uses the shared Govee Home 7.6.01 Android encryption
-  controllers (com.govee.encryp.ble). No H6099 official-app capture or owner
-  qualification establishes compatibility. V1 uses Controller4Aes/Safe;
-  V2 uses Controller4AesGcm with 16-byte tags only. Short-MTU fragmented
-  E719/E71A layouts are not implemented. Unknown marker/advertisement tails
-  and V1 padding remain opaque. Advertisement flags follow BleUtil's
-  parseBleBroadcastPact; omission is not negative encryption evidence.
+  SPECULATIVE H6099 encrypted transport, support issue #257.
+  Hypothesis: H6099 uses the shared Govee Home 7.6.01 Android BLE encryption
+  protocol.  No H6099 official-app capture or owner qualification establishes
+  compatibility.  V1 uses a two-phase AES-ECB handshake and full-block AES-ECB
+  with an RC4 tail transform; V2 uses AES-GCM with 16-byte tags only.
+  Short-MTU fragmented E719/E71A layouts are not implemented.  Unknown
+  marker/advertisement tails and V1 padding remain opaque.  Advertisement flags
+  follow the shared broadcast Pact format; omission is not negative encryption
+  evidence.
 seq: []
 types:
   advertisement:

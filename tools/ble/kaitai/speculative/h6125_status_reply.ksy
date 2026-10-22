@@ -8,19 +8,16 @@ meta:
     - h6102_status_reply
 doc: |
   SPECULATIVE H6125, issue #117.
-  Evidence source class: reachable Android 7.6.01 consumer code; no official-app
-  BLE capture of an identified H6125 is available.
+  Evidence source class: reachable Android 7.6.01 status-parsing behaviour; no
+  official-app BLE capture of an identified H6125 is available.
   Compatibility hypothesis: the extended pact-1 route replies with the
   shared power, identity, static, scene, DIY and fifteen-segment layouts, plus a
   brightness register, the submode 0x11 music layout and the gradual register.
-  Android 7.6.01 classes under com.govee:
-  dreamcolorlightv1/ble/Mode.java:80-115 dispatches mode replies;
-  SubModeColorV2.parse consumes the gradual flag and big-endian Kelvin;
-  SubModeScenes.parse and SubModeNewDiy.parse consume little-endian codes;
-  SubModeMusicV2.parse consumes effect, sensitivity and the per-effect settings;
-  BulbStringColorControllerV2 and BulbGroupColorV2.parseBytes consume segment
-  pages; base2light/ble/controller/BrightnessController.parseValidBytes
-  returns the register byte unchanged.
+  In Android 7.6.01, mode replies carry a gradual flag and big-endian Kelvin for
+  static colour (0x15), little-endian codes for scenes (0x04) and DIY (0x0a),
+  and effect, sensitivity, and per-effect settings for music (0x11); segment
+  pages carry three brightness/RGB records per group, and brightness replies
+  return the raw register byte unchanged.
   Unresolved assumptions: register range for each hardware revision, whether the
   device ever answers with the legacy 0x0b static or 0x0c music modes, unused
   bytes of every reply, and whether segment pages contain meaningful records

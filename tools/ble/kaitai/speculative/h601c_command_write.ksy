@@ -6,16 +6,15 @@ meta:
     - ../govee_shared
 doc: |
   SPECULATIVE H601C support request (feat/h60a-h601c-support; issue number
-  not supplied). Android 7.6.01 bulblightv3/pact/Support.java registers goods
-  111; bulblightv3/ble/SubModeColor.java:71-82,108-110 produces mode 0D,
-  direct RGB, big-endian Kelvin and companion RGB. Explicit Kelvin uses
-  direct FFFFFF and Constant.getTemColorByKelvin's first ordered match.
-  Shared SwitchController/BrightnessController supply 01/04; the shared
-  single-controller envelope pads writes with zeroes and appends XOR.
+  not supplied).  Android 7.6.01 registers H601C as goods type 111 and produces
+  mode 0D with direct RGB, big-endian Kelvin, and companion RGB.  Explicit
+  Kelvin uses direct FFFFFF and the first ordered entry from the shared
+  Kelvin-to-RGB table.  Shared single-frame commands supply 01 power and 04
+  brightness, zero-padded to 19 bytes with an XOR checksum.
   Compatibility hypothesis: all identifiable H601C revisions use this basic
-  producer, independently of Matter configuration. This is the logical frame;
-  encryption selection, physical acceptance, revision differences and reply
-  availability remain unqualified. No official-app BLE captures supplied.
+  command format, independently of Matter configuration.  This is the logical
+  frame; encryption selection, physical acceptance, revision differences, and
+  reply availability remain unqualified.  No official-app BLE captures supplied.
 seq:
   - id: header
     contents: [0x33]

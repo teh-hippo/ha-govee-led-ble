@@ -8,25 +8,24 @@ meta:
     - h6102_status_reply
 doc: |
   SPECULATIVE H7025, issue #148.
-  Android 7.6.01 h7020 NewDetailVM/Compose4InfoBle uses the shared switch,
-  brightness and identity controllers, Info4Detail dispatches AA05 mode 15 to
-  SubMode4Color, 04 to SubMode4Scene, 0A to SubMode4Diy and 13 to the H7025
-  music state, and NewDetailVM reads A5 segment pages of four brightness/RGB
-  records across fifteen logical positions. SubModeMusicV2 consumes only
-  ID/sensitivity for new modes and flags/one RGB for Rhythm.
+  In Android 7.6.01, H7025 uses the shared power, brightness, and identity
+  status layouts, dispatches AA05 mode 15 to static colour, 04 to scenes, 0A to
+  DIY, and 13 to music state, and reads A5 segment pages of four brightness/RGB
+  records across fifteen logical positions.  Music replies carry only ID and
+  sensitivity for companion-backed modes and flags plus one RGB triple for
+  Rhythm.
   Compatibility hypothesis: these basic fields share the modern AA envelope.
   Shared H617A command_write/status_query codecs provide power, percent
-  brightness, AA0501, identity queries, A5 segment queries and two-byte-mask
+  brightness, AA0501, identity queries, A5 segment queries, and two-byte-mask
   330515 colour/Kelvin/brightness writes; H7025 has fifteen bulbs and a
-  2700..6500 Kelvin range in h7020 Support.
-  Color Config maps goods 296 to command version 0 and Kelvin type 1;
-  Bytes.h emits RGB with a two-byte mask and Bytes.C/Bytes.r use direct white
-  RGB and table-derived companion RGB for Kelvin.
+  2700..6500 Kelvin range.  Goods type 296 uses command version 0 and Kelvin
+  type 1, emitting RGB with a two-byte mask and direct white RGB plus
+  table-derived companion RGB for Kelvin.
   Common payload imports do not inherit H6102's product capabilities.
-  Unknown modes, suffixes and other domains stay opaque. No full palette
+  Unknown modes, suffixes, and other domains stay opaque.  No full palette
   readback is claimed by this candidate.
   Unresolved: reporter hardware/firmware revisions, identity response encoding,
-  response presence, RGB/Kelvin rendering and physical BLE qualification.
+  response presence, RGB/Kelvin rendering, and physical BLE qualification.
 seq:
   - id: header
     contents: [0xaa]

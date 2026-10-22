@@ -3,12 +3,12 @@ meta:
   title: Govee H6099 logical command acknowledgement
   endian: le
 doc: |
-  SPECULATIVE H6099 command ACK for issue #258. Android 7.6.01
-  pact_h6099 controllers inherit AbsControllerNoEvent4Single, whose onResult
-  reads a success byte at body offset zero. Tail bytes remain unknown; this
-  structure records receipt, never setting values or fresh device state.
-  Exact-device reply tails, firmware differences and encryption need owner
-  qualification. Only in-scope command opcodes are named.
+  SPECULATIVE H6099 command ACK for issue #258.  Android 7.6.01 H6099
+  single-frame command handlers read a zero success byte at body offset zero.
+  Tail bytes remain unknown; this structure records receipt, never setting
+  values or fresh device state.  Exact-device reply tails, firmware differences,
+  and encryption need owner qualification.  Only in-scope command opcodes are
+  named.
 seq:
   - id: header
     contents: [0x33]

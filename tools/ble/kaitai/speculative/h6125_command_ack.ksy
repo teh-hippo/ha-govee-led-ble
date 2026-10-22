@@ -5,9 +5,9 @@ doc: |
   SPECULATIVE H6125, issue #117.
   Compatibility hypothesis: ordinary replies and A1 uploads use result byte 2;
   A3 music uploads use result byte 3, while A3 DIY uses byte 2.
-  AbsMultipleController.j, AbsSingleController and the shared A3 consumers
-  treat zero as success. Unknown suffixes and music prefixes remain opaque.
-  No transaction identifier is inferred. A same-protocol, same-command delayed
+  The shared single-frame, A1, and A3 acknowledgement handlers
+  treat zero as success.  Unknown suffixes and music prefixes remain opaque.
+  No transaction identifier is inferred.  A same-protocol, same-command delayed
   acknowledgement remains indistinguishable from a later attempt.
   ACK establishes transport acceptance only, not activation or rendering.
 seq:

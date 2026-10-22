@@ -6,16 +6,15 @@ meta:
     - ../govee_shared
 doc: |
   SPECULATIVE H601C support request (feat/h60a-h601c-support; issue number
-  not supplied). Compatibility hypothesis from Android 7.6.01 goods 111's
-  bulblightv3/ble/Mode.java and SubModeColor.java:96-100,108-110:
-  AA050D carries direct RGB at bytes 3..5, big-endian Kelvin at 6..7,
+  not supplied).  Compatibility hypothesis from Android 7.6.01 goods type 111:
+  AA050D carries direct RGB at bytes 3..5, big-endian Kelvin at 6..7, and
   companion RGB at 8..10; bytes 11..18 are ignored and remain opaque.
-  Shared switch, brightness and soft/hard-version controllers supply the
-  remaining basic domains. AbsModeController.p produces AA0501 queries;
-  reuse status_query for the shared query envelope. Unknown domains/modes
-  remain raw, never inferred effects. Physical acceptance, response presence,
-  identity encoding across revisions and encryption remain unqualified.
-  These are static-derived layouts, not official-app BLE captures.
+  Shared power, brightness, firmware, and hardware status layouts supply the
+  remaining basic domains.  The shared mode query builder emits AA0501 queries;
+  reuse status_query for the shared query envelope.  Unknown domains and modes
+  remain raw, never inferred effects.  Physical acceptance, response presence,
+  identity encoding across revisions, and encryption remain unqualified.
+  These are app-derived layouts, not official-app BLE captures.
 seq:
   - id: header
     contents: [0xaa]

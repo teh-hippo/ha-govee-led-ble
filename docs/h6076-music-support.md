@@ -8,19 +8,19 @@ Music is an unqualified capability of the Partial H6076 profile.  It has explici
 
 ## Research findings
 
-Evidence is the reporter's capture, Android Govee 7.5.30 app behaviour and the reporter's separate LAN integration, [scroom/ha-govee-local-segments](https://github.com/scroom/ha-govee-local-segments).  Class names are those of the `com.govee` package.  The capture is reporter-supplied and its raw file has not been reviewed, and no integration or owner Bluetooth test exists yet, so the schemas stay speculative.
+Evidence is the reporter's capture, Android Govee 7.5.30 app behaviour and the reporter's separate LAN integration, [scroom/ha-govee-local-segments](https://github.com/scroom/ha-govee-local-segments).  The capture is reporter-supplied and its raw file has not been reviewed, and no integration or owner Bluetooth test exists yet, so the schemas stay speculative.
 
 | Surface | Evidence | Disposition |
 | --- | --- | --- |
-| Selector | Capture and `straightfloorlamp/MusicModeV1.d`: submode `0x0f`, then effect, sensitivity and parameters | `h6076_music_write.ksy`; not the H617A submode `0x13` |
+| Selector | Capture and app floor-lamp music mode writer: submode `0x0f`, then effect, sensitivity and parameters | `h6076_music_write.ksy`; not the H617A submode `0x13` |
 | Effect codes | Capture and app: Energetic 0x00, Hopping 0x02, Rhythm 0x04, Beat 0x06, Spray 0x07, Bounce 0x08, Separation 0x32, Skittles 0x4D, Candy Crush 0x4E, Fusion 0x4F, Torch 0x50, Shiny 0x51 | Own codebook derived from the schema enum, so shared H617A codes are not reused |
-| Legacy parameters | Capture and `SubModeMusicV2.getWriteBytes`: a fixed-colour flag then RGB; Rhythm has a leading Dynamic byte where one is Dynamic | Style and fixed colour in the selector |
-| Companion bodies | Capture (Torch, Separation) and `MusicEffect.toBytes`: A3 command `0x41`, mode, seven default colours, and for Separation the tail `02 00 61` | `h6076_music_body.ksy`; Torch and Separation captured, the other four follow the app producer only.  Other effects carry no tail in the app's default bodies |
-| Separation tail | `RgbicMusicFenLi`: point, fade flag and a speed byte of 94 or 97 below 30 ICs and 98 or 99 from 30, for fade on or off; the captured `0x61` is `97` | Captured default only; the lamp's IC count is unknown, so no authored parameters |
-| Order and acknowledgement | `MultipleController4Music` uploads before the selector; the capture shows an `a3 41 <mode> 00` reply per body | Upload before selector; `h6076_music_ack.ksy` models the reply and an acknowledgement counts only when it repeats the uploaded mode, which the app itself does not check |
+| Legacy parameters | Capture and app legacy music selector builder: a fixed-colour flag then RGB; Rhythm has a leading Dynamic byte where one is Dynamic | Style and fixed colour in the selector |
+| Companion bodies | Capture (Torch, Separation) and app music companion serialiser: A3 command `0x41`, mode, seven default colours, and for Separation the tail `02 00 61` | `h6076_music_body.ksy`; Torch and Separation captured, the other four follow the app producer only.  Other effects carry no tail in the app's default bodies |
+| Separation tail | App Separation parameter builder: point, fade flag and a speed byte of 94 or 97 below 30 ICs and 98 or 99 from 30, for fade on or off; the captured `0x61` is `97` | Captured default only; the lamp's IC count is unknown, so no authored parameters |
+| Order and acknowledgement | The app uploads the A3 music companion before sending the selector; the capture shows an `a3 41 <mode> 00` reply per body | Upload before selector; `h6076_music_ack.ksy` models the reply and an acknowledgement counts only when it repeats the uploaded mode, which the app itself does not check |
 | Independent replay | The reporter's LAN integration builds the same selector and companion bytes for all twelve effects at full sensitivity (checked byte for byte against this implementation) and reports that every effect and the sensitivity react on an H6076 | Corroborates the logical frames, including the four bodies that were not captured in full.  It is plaintext over the LAN API, so it says nothing about Bluetooth, V1 or the gate |
-| Software gate | `Support.isSupportNewMusicMode`: pact 1/1 or 2/1 with software 1.02.00 or newer uses these effects; older software uses a legacy screen | Identity-qualified profile; everything else keeps the basic controls |
-| Music screen | `MusicSupportConfig` picks the richer music screen over the default effect list for hardware 3.01.01 with software above 1.03.06 or hardware 3.05.00 with software 1.04.01 or newer; both screens send the same frames | Not a gate: it selects a screen, not a wire dialect.  Owners report whether the lamp reacts to sound |
+| Software gate | App floor-lamp capability gate: pact 1/1 or 2/1 with software 1.02.00 or newer uses these effects; older software uses a legacy screen | Identity-qualified profile; everything else keeps the basic controls |
+| Music screen | App music UI configuration picks the richer music screen over the default effect list for hardware 3.01.01 with software above 1.03.06 or hardware 3.05.00 with software 1.04.01 or newer; both screens send the same frames | Not a gate: it selects a screen, not a wire dialect.  Owners report whether the lamp reacts to sound |
 
 ## Candidate support scope
 

@@ -8,9 +8,8 @@ doc: |
   SPECULATIVE H6076, issue #343.
   Evidence source classes: a reporter's decrypted Android HCI snoop of the Govee
   app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
-  session) and Android Govee 7.5.30 producer code
-  (straightfloorlamp/MusicModeV1.d, straightfloorlamp/ble/SubModeMusicV2.getWriteBytes,
-  straightfloorlamp/pact/Support.isSupportNewMusicMode).  The capture is
+  session) and Android Govee 7.5.30 floor-lamp music selector and capability-gate
+  behaviour.  The capture is
   reporter-supplied and its raw file has not been reviewed, and no integration or
   owner BLE test of an H6076 exists yet.
   Compatibility hypothesis: the H6076 writes its music selector at submode 0x0f,

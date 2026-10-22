@@ -77,13 +77,13 @@ types:
         enum: select_type
       - id: select_param_1
         type: u1
-        doc: 'ParamsV2.RgbICEffect.l: high byte of BE quantity for types 0/1; random maximum for 2; piece IC count for 3.'
+        doc: 'High byte of BE quantity for types 0/1; random maximum for 2; piece IC count for 3.'
       - id: select_param_2
         type: u1
         doc: 'Low byte of BE quantity for types 0/1; random minimum for 2; gap IC count for 3.'
       - id: layer_flags
         type: u1
-        doc: 'ScenesRgbIC.d (Android 7.6.01): high nibble brightness algorithm 0..2, low nibble brightness type 0..3. Other values remain preserved.'
+        doc: 'Android 7.6.01: high nibble brightness algorithm 0..2, low nibble brightness type 0..3.  Other values remain preserved.'
       - id: num_brightness_blocks
         type: u1
       - id: brightness_blocks

@@ -8,32 +8,23 @@ meta:
     - ../govee_shared
 doc: |
   SPECULATIVE H6102, issue #115.
-  Evidence source class: reachable Android 7.6.01 producer/consumer code.
-  Compatibility hypothesis: the modern
-  DreamColor route uses the shared power/identity/mode fields and
-  fifteen logical segments in five three-record A5 pages. No official-app BLE
-  capture or complete owner readback qualification is available.
-  Android 7.6.01 sources, relative to full/sources/com/govee/:
-  base2home/pact/support/OldDreamColorUtil.java:149-152,226-249,367-374 routes
-  H6102 to DreamColor goods 18; 1.03.01 is migration, not a wire predicate.
-  dreamcolorlightv1/adjust/AdjustAc.e2 -> adjust/v1/FrameV1.h -> UiV3
-  (isSupportProtocol:820-832; Support.addSupportPact:383-394 for goods 18,
-  Pact 10) -> BleOpV3.java:716 uses SwitchController,
-  BrightnessController, SoftVersionController, HardVersionController,
-  ModeController and BulbStringColorControllerV2; the last dispatches to
-  dreamcolorlightv1/ble/BulbGroupColorV2.java:22-38, consuming only group +
-  three brightness/RGB records. The final four bytes are ignored, not zeroes.
-  dreamcolorlightv1/ble/Mode.java:80-115 dispatches mode replies;
-  SubModeColorV2.java:595-601 consumes gradual flag and big-endian Kelvin;
-  SubModeScenes.parse and SubModeNewDiy.parse consume little-endian codes.
-  Gradual4BleWifiController.java:55-63 consumes AA A3's first payload byte.
-  LimitController.java:25-38 writes 33 0E and consumes AA 0E boolean state;
-  the app gates this setting at HW >=1.00.02. Unknown tails remain opaque.
+  Evidence source class: reachable Android 7.6.01 protocol behaviour.
+  Compatibility hypothesis: the modern DreamColor route (goods type 18, Pact 10)
+  uses the shared power, identity, and mode fields and fifteen logical segments
+  in five three-record A5 pages.  No official-app BLE capture or complete owner
+  readback qualification is available.  The 1.03.01 firmware threshold is an app
+  migration condition, not a wire predicate.  Segment page replies consume the
+  one-based group and three brightness/RGB records; the final four bytes are
+  ignored rather than validated as zeroes.  Mode replies carry a gradual flag and
+  big-endian Kelvin for static colour (0x15), little-endian codes for scenes
+  (0x04) and DIY (0x0a), and mode/sensitivity for music (0x13).  AA A3 carries
+  the gradual boolean in its first payload byte, and AA 0E carries the limit
+  boolean gated at HW >= 1.00.02.  Unknown tails remain opaque.
   See docs/h6102-application-findings.md for outbound reachability and deferred legacy.
   Unresolved assumptions: physical mapping/IC count, firmware-specific response presence,
   legacy mode/readback layouts, unknown mode selectors and all unused bytes.
   Preserve these bytes; this root does not enable legacy RGB or A1 DIY writes.
-  Issue #310 supplies AA04 register EB from a Pact 1 device. Master brightness
+  Issue #310 supplies AA04 register EB from a Pact 1 device.  Master brightness
   is a raw 20..254 register for Pact 1 and a percentage for Pact 10; the
   effective profile selects the semantic conversion, not the reply value.
   The owner also reports register FF after another controller writes 255.
@@ -114,7 +105,7 @@ types:
   cm_static:
     seq:
       - id: sub
-        doc: Gradual flag from SubModeColorV2.parse; not the write operation byte.
+        doc: Gradual flag in static-colour status replies; not the write operation byte.
         type: u1
       - id: kelvin
         type: u2be

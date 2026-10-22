@@ -7,9 +7,9 @@ meta:
 doc: |
   SPECULATIVE H6125, issue #117.
   Compatibility hypothesis: legacy A2 pages contain a one-based group and four
-  RGB-only slots, as consumed by BulbGroupColor. No brightness is present.
-  Only the declared segment count is meaningful. Unused slots and the final
-  four bytes remain opaque; their values and physical mapping are unqualified.
+  RGB-only slots, with no brightness byte.  Only the declared segment count is
+  meaningful.  Unused slots and the final four bytes remain opaque; their
+  values and physical mapping are unqualified.
 params:
   - id: segment_count
     type: u1

@@ -3,15 +3,15 @@ meta:
   title: H6199 installation, Gradient and DIY selector payloads
   endian: le
 doc: |
-  SPECULATIVE H6199 additions for issue #294. Android 7.6.01 exact-model
-  CameraSettingsAc and VM4Light plus direct register tests on HW3.02.01,
+  SPECULATIVE H6199 additions for issue #294.  Android 7.6.01 exact-model
+  camera settings and light control behaviour plus direct register tests on HW3.02.01,
   FW1.10.04, WiFi HW1.03.00/FW1.00.33, Pact2/1 establish the hypothesis.
   These are NOT official-app BLE captures or schema promotion evidence.
   Direction 0/1 means clockwise/anticlockwise; camera position 0/1 top/bottom.
-  Camera 0 absent and 2 incompatible are APK-only; only 1 healthy was tested.
+  Camera 0 absent and 2 incompatible are app-only; only 1 healthy was tested.
   A3 and static detail expose Color > Subsection > Gradient, not HA transition
-  duration or a proven visual blending algorithm. DIY code254 readback does
-  not establish populated content, uploads or playback. Other revisions and
+  duration or a proven visual blending algorithm.  DIY code254 readback does
+  not establish populated content, uploads or playback.  Other revisions and
   unknown tails remain unqualified.
 seq:
   - id: value

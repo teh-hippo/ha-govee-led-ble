@@ -7,16 +7,15 @@ meta:
 doc: |
   SPECULATIVE H60A1 manual experimental support, reporter's H60A support request.
   Compatibility hypothesis: shared AA power/identity envelope and fourteen
-  logical segments in four four-slot A5 pages. Reporter immutable fork
+  logical segments in four four-slot A5 pages.  Reporter immutable fork
   cedhuf/ha-govee-led-ble f8d4267309e7bac38460c728e05616d07f879b3e,
   docs/h60a-support-findings.md and tests/test_h60a_protocol.py: HW 1.04.03,
   FW 1.02.20 power and page-four literal, 2026-10-09/10 decrypted owner sessions.
-  Android 7.6.01 full/sources/com/govee/pact_h60a0/pact/Support.java:
-  185-214,238-240 identifies fourteen records and four per group;
-  base2light/kt/general_controller/Controller4ColorInfoByGroup.java:173-187
-  consumes only the meaningful brightness/RGB records. Unused slots are opaque.
+  Android 7.6.01 H60A capability metadata specifies fourteen segment records at
+  four per group, and the grouped segment-colour parser consumes only the
+  meaningful brightness/RGB records.  Unused slots are opaque.
   Unresolved: other revisions, identity response presence, unused bytes,
-  rendered brightness vs register state, mode and Kelvin readback. Runtime
+  rendered brightness vs register state, mode, and Kelvin readback.  Runtime
   gates segment use separately; neither brightness nor mode is a read domain.
 seq:
   - id: header

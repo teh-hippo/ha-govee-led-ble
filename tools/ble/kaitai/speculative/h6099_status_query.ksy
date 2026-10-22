@@ -3,18 +3,16 @@ meta:
   title: Govee H6099 logical status query
   endian: le
 doc: |
-  SPECULATIVE H6099 query frame for issue #258, ported from the issue branch.
-  Android 7.6.01 pact_h6099 active-detail ControllerMode uses selector 01;
-  colour pages use four groups for fourteen logical zones. Scalar white balance
-  uses A9 06 and relative brightness AE 01. Encryption is outside this logical
-  frame. Owner acceptance, firmware differences and unused bytes are unresolved.
-  ControllerIcNum.readController uses AA40 with no payload; the corresponding
-  physical count is signed big-endian in NewDetailVm$connectBleSuc$1, not 14 zones.
-  PairAcV1 uses WifiHardVersionController (20) and WifiSoftVersionController (21).
-  detail/NewDetailVm uses BlackBorderRemoveController to query A9 0B.
-  pact_h6099/ble/controller/compose/DirectionController queries AA30;
-  HasCameraController queries AA32. Both have no payload. Camera position
-  (CameraPosController, 31) is separate and not queried here.
+  SPECULATIVE H6099 query frame for issue #258.  In Android 7.6.01, H6099 mode
+  queries use selector 01 and segment queries request four groups for fourteen
+  logical zones.  Scalar white balance uses A9 06, black-border removal uses
+  A9 0B, and relative brightness uses AE 01.  AA40 queries the signed
+  big-endian physical IC count (distinct from the 14 logical zones).  AA20 and
+  AA21 query Wi-Fi hardware and software identity.  AA30 queries installation
+  direction and AA32 queries camera health with zero-filled bodies; camera
+  position (31) is separate and not queried here.  Encryption is outside this
+  logical frame; owner acceptance, firmware differences, and unused bytes
+  remain unresolved.
 seq:
   - id: header
     contents: [0xaa]

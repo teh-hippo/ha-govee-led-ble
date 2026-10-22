@@ -6,9 +6,9 @@ meta:
     - govee_shared
     - speculative/h6199_control_payload
 doc: |
-  H6199 20-byte command frame. The final byte is the XOR of bytes 0 through 18.
+  H6199 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
   Issue #294 DIY0a, direction30, position31 and Gradient A3 extensions are
-  speculative exact-model APK/direct-register evidence, not official-app captures;
+  speculative exact-model app/direct-register evidence, not official-app captures;
   their payloads remain in speculative/h6199_control_payload.ksy.
 seq:
   - id: header
@@ -160,8 +160,8 @@ types:
         size-eos: true
   scalar_white_balance_payload:
     doc: |
-      Govee Android 7.6.01 pact_h6099/ble/controller/Controller4WhiteBalance.java
-      writes A9 selector 6, length 1. Encoding knowledge only, not H6099 qualification.
+      Govee Android 7.6.01 H6099 white-balance control writes A9 selector 6,
+      length 1.  Encoding knowledge only, not H6099 qualification.
     seq:
       - id: value
         type: u1

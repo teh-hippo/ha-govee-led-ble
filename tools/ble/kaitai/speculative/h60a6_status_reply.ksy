@@ -12,12 +12,11 @@ doc: |
   f8d4267309e7bac38460c728e05616d07f879b3e, docs/h60a-support-findings.md
   and tests/test_h60a_protocol.py: HW 1.04.03, FW 1.00.41 power and page-one/
   page-four literals, 2026-10-09/10 decrypted owner sessions.
-  Android 7.6.01 full/sources/com/govee/pact_h60a0/pact/Support.java:
-  209-214,238-240,345-346,489-498: Pact 1/1 has one zone; 1/2+ has thirteen,
-  1/3+ adds masked Kelvin. base2light/kt/general_controller/
-  Controller4ColorInfoByGroup.java:173-187 consumes only meaningful records.
+  In Android 7.6.01 H60A capability metadata, Pact 1/1 has one zone, Pact 1/2+
+  has thirteen segments across four-slot pages, and Pact 1/3+ adds masked
+  Kelvin; the grouped segment-colour parser consumes only meaningful records.
   Unresolved: legacy one-zone reply layout, other revisions, identity presence,
-  unused bytes, rendered brightness vs register state, mode and Kelvin readback.
+  unused bytes, rendered brightness vs register state, mode, and Kelvin readback.
   Runtime gates segment use separately; brightness and mode remain opaque.
 seq:
   - id: header

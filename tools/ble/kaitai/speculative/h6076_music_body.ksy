@@ -11,9 +11,7 @@ doc: |
   Evidence source classes: a reporter's decrypted Android HCI snoop of the Govee
   app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
   session), which shows the Torch and Separation bodies in full, and Android
-  Govee 7.5.30 producer code (straightfloorlamp/MusicModeV1.d,
-  base2light/mode/music/bean/MusicEffect.toBytes and
-  base2light/ble/controller/MultipleController4Music).
+  Govee 7.5.30 music companion upload behaviour.
   Compatibility hypothesis: the app's default bodies for the five companion-backed
   effects other than Separation are the A3 command 0x41 body, a palette count and
   that many RGB triples, with no further field.  Separation appends the

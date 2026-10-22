@@ -7,12 +7,12 @@ meta:
     - govee_common
     - speculative/h617a_control_payload
 doc: >
-  Capture-backed H617A music envelope and presets. Generalized APK-backed tails
+  Capture-backed H617A music envelope and presets.  Generalised app-derived tails
   remain in speculative/h617a_control_payload.ksy under issue #286 (Fountain #129);
-  importing them does not promote their evidence class. Palette-relative tails are
-  read and written by the generated adapter. A structurally valid alternative
+  importing them does not promote their evidence class.  Palette-relative tails are
+  read and written by the generated adapter.  A structurally valid alternative
   palette or tail does not qualify model-specific bounds, defaults, style,
-  companion values, or physical IC geometry. Issue 286 synthetic tests reuse
+  companion values, or physical IC geometry.  Issue 286 synthetic tests reuse
   this structure without claiming new device support.
 seq:
   - id: header

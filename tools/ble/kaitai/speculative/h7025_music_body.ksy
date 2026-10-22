@@ -9,19 +9,19 @@ meta:
 doc: |
   SPECULATIVE H7025, issue #148.
   The reporter's working snapshot replays corroborate the IDs and tail prefixes
-  selected by Android 7.6.01 H7025MusicMode. This is not an H617A body alias.
-  Its exact caller supplies Hopping ID 48 to YueDongMusic4H7037, independently
-  of that producer's default ID 5E. The producer emits RGB, brightness and two
-  zero bytes. GunDongMusicH7033 and FenLiMusicH7033 similarly emit direction and
-  two zero bytes; RgbMusicOnlyColor emits three zero bytes. These bytes belong
-  to the serialized body, but their firmware meaning remains unknown.
-  H7025LiuDongMusicEffect emits direction, group count and ICs per group.
-  H7025XingShanMusicEffect emits background RGB and a field named distance;
-  the reported brightness interpretation of that byte is unconfirmed.
-  Piano and Day/Night reuse the named shared tails with exact-H7025 defaults
-  and editor permissions. Palette counts do not establish physical IC count.
-  MultipleControllerCommV1 emits 15 initial stream bytes and up to 17 final
-  bytes. The reporter's eight-byte final threshold remains a separate,
+  selected by Android 7.6.01 H7025 music authoring.  This is not an H617A body alias.
+  Its exact caller supplies Hopping ID 48, independently of the shared Hopping
+  builder's default ID 5E, and emits background RGB, brightness, and two zero
+  bytes.  Rolling and Separation similarly emit direction and two zero bytes,
+  and Sway and Twinkle emit three zero bytes.  These bytes belong to the
+  serialised body, but their firmware meaning remains unknown.
+  Flow emits direction, group count, and ICs per group.  Star emits background
+  RGB and a field named distance; the reported brightness interpretation of
+  that byte is unconfirmed.  Piano and Day/Night reuse the named shared tails
+  with exact-H7025 defaults and editor permissions.  Palette counts do not
+  establish physical IC count.
+  The app's multi-packet uploader emits 15 initial stream bytes and up to 17
+  final bytes.  The reporter's eight-byte final threshold remains a separate,
   unresolved snapshot/firmware observation; it does not change shared framing.
   Unresolved: revision differences, raw snapshot sequences, all field bounds
   on hardware, rendering, and the necessity of body zeros versus frame padding.

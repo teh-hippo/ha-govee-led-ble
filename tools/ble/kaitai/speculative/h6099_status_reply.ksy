@@ -6,27 +6,19 @@ meta:
     - ../govee_shared
     - ../govee_segment_page
 doc: |
-  SPECULATIVE H6099 reply frame for issue #258, ported from the issue branch
-  and checked against Android 7.6.01 pact_h6099/detail/Info4Detail constructor:
-  AA 05 15 contains a flag followed by big-endian Kelvin, zero for RGB.
-  Its music parser and ble/v1/SubModeMusicV1.parse return after mode/sensitivity
-  for new music; the remaining bytes are not legacy style or fixed colour.
-  Sub4Diy.parse reads a little-endian code. Support.getColorPieceSize and
-  getOneGroupColorSize select 14 zones in four-slot pages. Unused final records
-  remain opaque. Owner qualification, firmware differences and unknown tails
-  are unresolved; static readback does not contain rendered RGB.
-  ControllerIcNum queries AA40 with no payload. NewDetailVm$connectBleSuc$1
-  reads its first two payload bytes using BleUtil.getSignedShort (big endian)
-  into Info4Detail.z0; Info4BleIotDevice.q() supplies physical count to MusicMode.
-  PairAcV1's WifiHardVersionController (20) and WifiSoftVersionController (21)
-  decode ASCII identity. detail/Info4Detail uses BlackBorderRemoveController:
-  A9 0B length 01 followed by the enabled byte. No owner capture yet.
-  pact_h6099 ComposeCalibrationDirection reads the first AA30 payload byte.
-  HasCameraController and base2light CheckCameraVmInterface query AA32 and
-  read its first byte: VideoModeViewInterface/AbsVideoMode distinguish 0 absent,
-  1 healthy, 2 incompatible. Missing replies are not evidence of absence.
-  Direction image orientations and other camera values remain unknown; 31 is
-  camera position, not health. These are standalone reads, not calibration.
+  SPECULATIVE H6099 reply frame for issue #258, checked against Android 7.6.01
+  H6099 status parsing.  AA 05 15 contains a flag followed by big-endian Kelvin
+  (zero for RGB).  Companion-backed music replies carry only mode and
+  sensitivity; trailing bytes are not legacy style or fixed colour.  Mode 0x0a
+  reads a little-endian DIY code.  Segment pages carry 14 logical zones across
+  four four-slot pages, with unused final records kept opaque.  AA40 carries the
+  signed big-endian physical IC count in its first two payload bytes.  AA20 and
+  AA21 decode ASCII Wi-Fi hardware and software identity, and A9 0B length 01
+  carries the black-border enabled byte.  AA30 reads the installation direction
+  in its first payload byte, and AA32 reads camera health (0 absent, 1 healthy,
+  2 incompatible; missing replies are not evidence of absence).  Direction
+  orientations, other camera values, owner qualification, firmware differences,
+  and unknown tails remain unresolved; 31 is camera position, not health.
 seq:
   - id: header
     contents: [0xaa]

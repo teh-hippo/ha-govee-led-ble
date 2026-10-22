@@ -5,16 +5,16 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6099 command frame for issue #258, ported from the issue branch
-  and checked against Android 7.6.01 pact_h6099. SubModeColorV1.getWriteBytes
-  supplies static colours and masks, SubModeVideoV1 supplies the six-byte video
-  body, Sub4Diy supplies the little-endian 0x0a selector, and SubModeMusicV1
-  distinguishes legacy and new selectors. Controller4WhiteBalance uses a scalar.
-  This is the logical frame before encryption; owner acceptance, firmware
-  differences and unused bytes remain unqualified. No black-border runtime.
-  pact_h6099/ble/controller/compose/DirectionController writes 33 30 value;
-  add/Adapter4CalibrationDirection offers 2, 3, 4, 5. Image orientations remain
-  unqualified; no corner names or calibration-display commands are implied.
+  SPECULATIVE H6099 command frame for issue #258, checked against Android 7.6.01
+  H6099 command behaviour.  Mode 0x15 supplies static colours and segment masks,
+  mode 0x00 supplies the six-byte video body, mode 0x0a supplies the
+  little-endian DIY selector, and mode 0x13 distinguishes legacy and
+  companion-backed music selectors.  Display setting A9 06 writes scalar white
+  balance.  This is the logical frame before encryption; owner acceptance,
+  firmware differences, and unused bytes remain unqualified.  Installation
+  direction writes 33 30 value with candidate values 2, 3, 4, and 5; image
+  orientations remain unqualified and no corner names or calibration-display
+  commands are implied.
 seq:
   - id: header
     contents: [0x33]
@@ -183,7 +183,7 @@ types:
       - id: unknown_tail
         size-eos: true
   black_border_payload:
-    doc: Android 7.6.01 pact_h6099 BlackBorderRemoveController1 writes A9 0B 01 enabled.
+    doc: Android 7.6.01 H6099 black-border control writes A9 0B 01 enabled.
     seq:
       - id: is_on
         type: u1

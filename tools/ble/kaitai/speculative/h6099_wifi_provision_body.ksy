@@ -3,12 +3,11 @@ meta:
   title: H6099 Wi-Fi provisioning common body (documentation only)
   endian: be
 doc: |
-  SPECULATIVE H6099, support issue #258. Hypothesis: the inherited provisioning
-  route uses the common body emitted by Govee Android 7.6.01
-  base2light/ble/controller/MultipleWifiController.java:22-105, reached through
-  pact_h6099/add/WifiChooseAc.java:31 and
-  base2light/ac/AbsBleWifiChooseActivity.java:1503-1515 (under com/govee/).
-  Input is the reassembled logical body, not a BLE frame or encrypted envelope.
+  SPECULATIVE H6099, support issue #258.  Hypothesis: H6099 Wi-Fi provisioning
+  uses the shared multi-packet provisioning body in Govee Android 7.6.01:
+  byte-length-prefixed SSID and password fields, run mode, timezone hour, IoT
+  version, timezone minute, and branch-dependent extension bytes.  Input is the
+  reassembled logical body, not a BLE frame or encrypted envelope.
   Unknowns: exact-device capture, firmware/branch selection, string encoding,
   signed timezone interpretation, and optional API/Matter/security extensions.
   Preserve strings as bytes and the branch-dependent extension as opaque data.

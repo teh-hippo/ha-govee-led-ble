@@ -3,18 +3,17 @@ meta:
   title: H6099 MovieFeastV2 module commands and individual reads
   endian: be
 doc: |
-  SPECULATIVE H6099 issue #258. Android 7.6.01 AbsSingleFeastController selects
-  module 0x60. MovieOpenControllerV2 writes {on,1}, queries with discriminator 1,
-  and reads the first reply byte as on. controllerV2 MovieBrightnessController,
-  MovieSubDeviceController, MovieSaturationController, MovieGetColorController,
-  MovieSoundController and MovieDeleteController establish the named layouts;
-  FeastBrightnessUniteController supplies same brightness. Brightness reads
-  consume all returned bytes; connection reads copy ten bytes even though goods
-  191 supports seven members. Never trim zeros or infer membership from slots.
-  Sample bytes are preserved without assigning UI labels. Unknown trailing
-  bytes, slot occupancy and reply freshness beyond request timing are unresolved.
-  No digest 0x0c or camera heuristic. No official-app capture or owner
-  qualification exists for H6099. This root does not model command ACKs.
+  SPECULATIVE H6099 issue #258.  Android 7.6.01 MovieFeastV2 control selects
+  module 0x60.  Group switch writes {on, 1}, queries with discriminator 1, and
+  reads the first reply byte as on.  Individual module 0x60 commands establish
+  the member brightness, member connection, same brightness, saturation, sample,
+  sound, and delete layouts.  Brightness reads consume all 16 returned bytes;
+  connection reads copy 10 bytes even though goods type 191 supports seven
+  members.  Never trim zeros or infer membership from slots.  Sample bytes are
+  preserved without assigning UI labels.  Unknown trailing bytes, slot occupancy,
+  and reply freshness beyond request timing are unresolved.  No digest 0x0c or
+  camera heuristic is modelled.  No official-app capture or owner qualification
+  exists for H6099.  This root does not model command ACKs.
 params:
   - id: is_query
     type: bool

@@ -9,10 +9,9 @@ doc: |
   Evidence source classes: a reporter's decrypted Android HCI snoop of the Govee
   app driving an H6076 (hardware 3.05.00, software 1.04.05, V1 encrypted
   session), which lists an A3 reply of this shape after each companion upload,
-  and Android Govee 7.5.30 producer code (base2light/ble/controller/
-  AbsMultipleControllerV2.j reads the status at byte 3 and treats zero as
-  success).  The app matches replies on protocol and command only, so the mode
-  echo at byte 2 is capture-only evidence.
+  and Android Govee 7.5.30 upload acknowledgement handling, which reads the
+  status at byte 3 and treats zero as success.  The app matches replies on
+  protocol and command only, so the mode echo at byte 2 is capture-only evidence.
   Compatibility hypothesis: the lamp answers each A3 command 0x41 upload with a
   20-byte reply that repeats the uploaded mode and carries a zero status on
   success.  The reply does not establish applied device state.

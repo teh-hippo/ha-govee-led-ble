@@ -3,17 +3,16 @@ meta:
   title: H6099 MovieFeastV2 authored membership
   endian: be
 doc: |
-  SPECULATIVE H6099 issue #258. Android 7.6.01 goods type 191 selects the new
-  MovieFeastV2 path (base2light.Constant / moment.Constant.movieFeastVersion),
-  with maxSubDeviceNumMovie = 7. Constant.makeSubDeviceBytes prefixes a count;
-  Area4Device.j writes the records below. MultiSetSubDeviceController4MovieFeastV2
-  selects A3 type 0x50. MAC bytes are reversed display order. Name bytes use the
-  Android default UTF-8 charset. cmd_ver is supplied externally, never inferred.
-  Constant.getIndex4Portocol folds UI areas 1..20 onto wire 1..10; zero is
-  unassigned and 0xff disables an area. Area counts must be supplied explicitly.
-  Zero-area records and single-area disabled behaviour remain unresolved and
-  are not enabled. No membership readback, official-app capture or owner
-  qualification exists for H6099. A successful upload is not confirmation.
+  SPECULATIVE H6099 issue #258.  Android 7.6.01 goods type 191 selects the
+  MovieFeastV2 group upload over A3 type 0x50 with at most seven sub-devices.
+  The payload prefixes a member count followed by the member records below.
+  MAC bytes use reversed display order, and name bytes use UTF-8.  cmd_ver is
+  supplied externally, never inferred.  The protocol maps UI areas 1..20 onto
+  wire values 1..10; zero is unassigned and 0xff disables an area.  Area counts
+  must be supplied explicitly.  Zero-area records and single-area disabled
+  behaviour remain unresolved and are not enabled.  No membership readback,
+  official-app capture, or owner qualification exists for H6099.  A successful
+  upload is not confirmation.
 seq:
   - id: num_members
     type: u1

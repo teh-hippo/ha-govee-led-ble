@@ -2,12 +2,12 @@ meta:
   id: h66a0_video_command
   endian: le
 doc: |
-  SPECULATIVE H66A0 video-only fixture for issues #257 and #297. Based on
+  SPECULATIVE H66A0 video-only fixture for issues #257 and #297.  Based on
   Fredde87/ha-govee-led-ble round2 command_write.ksy video_body_h66a0 and
-  pact_tvlightv4/detail/mode/VideoVm. Contributor reports app preset reads
+  Android 7.6.01 TV-light video mode behaviour.  Contributor reports app preset reads
   08 Vivid, 09 Solid, 0a Smooth, 0b Delicate and a separate opaque byte.
   Independent captures, firmware coverage and owner qualification remain
-  unresolved. This codec does not register H66A0 as a supported model.
+  unresolved.  This codec does not register H66A0 as a supported model.
 seq:
   - id: header
     contents: [0x33]

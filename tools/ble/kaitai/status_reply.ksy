@@ -7,9 +7,9 @@ meta:
     - govee_common
     - speculative/h617a_control_payload
 doc: |
-  H617A 20-byte status reply. The final byte is the XOR of bytes 0 through 18.
+  H617A 20-byte status reply.  The final byte is the XOR of bytes 0 through 18.
   Segment replies have five groups of three records and four validated-zero bytes.
-  Issue #286 AA0F is an APK/direct-device extension, not official-app capture
+  Issue #286 AA0F is an app/direct-device extension, not official-app capture
   qualification; its payload remains in speculative/h617a_control_payload.ksy.
 seq:
   - id: header

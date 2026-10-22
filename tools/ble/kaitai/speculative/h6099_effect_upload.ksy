@@ -7,18 +7,16 @@ meta:
     - ../diy_type03
     - ../diy_type04
 doc: |
-  SPECULATIVE H6099 catalogue upload hypothesis for issue #258. Android 7.6.01
-  pact_h6099/Support.isMultiScenesV1 selects ScenesOp.parseSceneV1 types 1/2;
-  CmdPtReal.getNewScenesCmdPtReal uses MultipleBleBytes.getMultipleWriteBytesV1
-  then SubModeScenesV1, with a little-endian scene selector. Exact-SKU catalogue
-  parameters fit the shared type-1 and layered structures. Physical upload,
-  activation and restoration remain unqualified. H6099DiyConfig registers
-  DiyProtocolParseShare0x00 and RgbIcGraffitiShare0x08 for goods 191. Their V0
-  non-old controller uploads shared type04 (no FE prefix) and type03 bodies.
-  Graffiti indices address physical ICs, not the 14 logical segments.
-  DiyNewEditVm defaults ordinary Sub4Diy activation to code 254. This does not
-  authorize arbitrary Advanced or Workshop carriers. Exact physical topology
-  and visible behaviour still require owner qualification.
+  SPECULATIVE H6099 catalogue upload hypothesis for issue #258.  Android 7.6.01
+  H6099 scene handling uploads type-1 and type-2 A3 bodies before activating a
+  little-endian scene selector.  Exact-SKU catalogue parameters fit the shared
+  type-1 and layered structures.  Physical upload, activation, and restoration
+  remain unqualified.  Goods type 191 also uploads shared type-04 Basic/Mixed
+  bodies (without an FE prefix) and type-03 Graffiti bodies, then activates
+  ordinary 0x0a DIY with default code 254.  Graffiti indices address physical
+  ICs, not the 14 logical segments.  This does not authorise arbitrary Advanced
+  or Workshop carriers.  Exact physical topology and visible behaviour still
+  require owner qualification.
 seq:
   - id: header
     contents: [0x01]

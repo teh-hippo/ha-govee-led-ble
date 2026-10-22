@@ -19,9 +19,9 @@ types:
         type: u2le
   music_selector:
     doc: >
-      Android 7.6.01 dreamcolorlightv1/ble/SubModeMusicV3.getWriteBytes/parse:
-      new modes carry only mode and sensitivity. Legacy fixed colour is a
-      zero/nonzero flag, not a palette count. Uninterpreted suffix stays opaque.
+      In Android 7.6.01, companion-backed modes carry only mode and sensitivity.
+      Legacy fixed colour is a zero/nonzero flag, not a palette count.  The
+      uninterpreted suffix stays opaque.
     seq:
       - id: mode_id
         type: u1

@@ -3,9 +3,9 @@ meta:
   title: Govee H6125 legacy RGB-only segment query
 doc: |
   SPECULATIVE H6125, issue #117.
-  Compatibility hypothesis: BulbStringColorController queries four A2 groups
-  for fifteen logical segments. The command carries a one-based group and
-  zero-filled request bytes. Reply padding and hardware acceptance remain
+  Compatibility hypothesis: legacy segment readback queries four A2 groups
+  for fifteen logical segments.  The command carries a one-based group and
+  zero-filled request bytes.  Reply padding and hardware acceptance remain
   unqualified and are not constrained by this writer.
 seq:
   - id: header

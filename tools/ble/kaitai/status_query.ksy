@@ -3,18 +3,15 @@ meta:
   title: Govee H617A "aa" status-query envelope
   endian: le
 doc: |
-  H617A 20-byte status query. The final byte is the XOR of bytes 0 through 18.
-  Issue #286 AA0F reuses zero_body based on Android 7.6.01 LightNumController /
-  AbsOnlyReadSingleController and direct H617A queries, not official-app captures.
+  H617A 20-byte status query.  The final byte is the XOR of bytes 0 through 18.
+  Issue #286 AA0F reuses zero_body based on Android 7.6.01 light-count query
+  behaviour and direct H617A queries, not official-app captures.
   This route remains speculative; see speculative/h617a_control_payload.ksy.
-  AA0501 is also produced by Android 7.6.01
-  com/govee/base2light/ble/controller/AbsModeController.p(), inherited by
-  dreamcolorlightv1/ble/ModeController on the H6102 goods-18 route (#115).
-  Direct H617A queries answered both AA0500 and AA0501 (2026-09-16).
-  This does not establish that AA0500 fails on H6102.
-  H6102 #115 limit/gradual queries use the shared zero body: Android 7.6.01
-  dreamcolorlightv1/ble/LimitController and Gradual4BleWifiController inherit
-  AbsSingleController.p. Product authorization remains in the effective profile.
+  AA0501 is also emitted by the shared Android 7.6.01 mode query builder on the
+  H6102 goods-18 route (#115).  Direct H617A queries answered both AA0500 and
+  AA0501 (2026-09-16).  This does not establish that AA0500 fails on H6102.
+  H6102 #115 limit and gradual queries use the shared zero-body single-frame
+  query format.  Product authorisation remains in the effective profile.
 seq:
   - id: header
     contents: [0xaa]

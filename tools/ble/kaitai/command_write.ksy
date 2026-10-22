@@ -6,11 +6,11 @@ meta:
     - govee_shared
     - govee_common
 doc: |
-  H617A 20-byte command frame. The final byte is the XOR of bytes 0 through 18.
-  The shared boolean payload also covers H6102 limit opcode 0E (#115): Android
-  7.6.01 dreamcolorlightv1/ble/LimitController.getCommandType/q emits 0E and
-  one boolean byte. This APK extension is not H617A product authorization or
-  capture qualification; see docs/h6102-application-findings.md.
+  H617A 20-byte command frame.  The final byte is the XOR of bytes 0 through 18.
+  The shared boolean payload also covers H6102 limit opcode 0E (#115), which
+  emits 0E and one boolean byte in Android 7.6.01.  This app-derived extension is
+  not H617A product authorisation or capture qualification; see
+  docs/h6102-application-findings.md.
 seq:
   - id: header
     contents: [0x33]
@@ -43,7 +43,7 @@ enums:
     0x15: static
 instances:
   is_static:
-    doc: Recognized static operations only, for restricted profile authorization.
+    doc: Recognised static operations only, for restricted profile authorisation.
     value: >-
       opcode == command_op::multi and body.as<multi_cmd>.sub == multi_sub::static and
       (body.as<multi_cmd>.sub_body.as<static_cmd>.static_sub == 1 or
