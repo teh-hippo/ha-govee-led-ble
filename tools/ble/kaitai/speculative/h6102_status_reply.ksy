@@ -29,7 +29,7 @@ doc: |
   Gradual4BleWifiController.java:55-63 consumes AA A3's first payload byte.
   LimitController.java:25-38 writes 33 0E and consumes AA 0E boolean state;
   the app gates this setting at HW >=1.00.02. Unknown tails remain opaque.
-  See H6102.md beside this schema for outbound reachability and deferred legacy.
+  See docs/h6102-application-findings.md for outbound reachability and deferred legacy.
   Unresolved assumptions: physical mapping/IC count, firmware-specific response presence,
   legacy mode/readback layouts, unknown mode selectors and all unused bytes.
   Preserve these bytes; this root does not enable legacy RGB or A1 DIY writes.

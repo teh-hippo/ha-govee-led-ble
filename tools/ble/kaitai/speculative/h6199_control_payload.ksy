@@ -12,7 +12,7 @@ doc: |
   A3 and static detail expose Color > Subsection > Gradient, not HA transition
   duration or a proven visual blending algorithm. DIY code254 readback does
   not establish populated content, uploads or playback. Other revisions and
-  unknown tails remain unqualified. See docs/h6199-native-controls.md.
+  unknown tails remain unqualified.
 seq:
   - id: value
     type: u1

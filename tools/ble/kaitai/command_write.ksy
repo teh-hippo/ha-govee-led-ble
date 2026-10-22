@@ -10,7 +10,7 @@ doc: |
   The shared boolean payload also covers H6102 limit opcode 0E (#115): Android
   7.6.01 dreamcolorlightv1/ble/LimitController.getCommandType/q emits 0E and
   one boolean byte. This APK extension is not H617A product authorization or
-  capture qualification; see speculative/H6102.md.
+  capture qualification; see docs/h6102-application-findings.md.
 seq:
   - id: header
     contents: [0x33]
