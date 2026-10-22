@@ -276,6 +276,7 @@ the reported ignored files absent from `scripts/kaitai-runtime-outputs.txt`,
 then rerun the gate.
 
 Keep Conventional Commit merge parsing enabled in semantic-release so release-bearing merges still trigger releases when the branch commits are fixups.
+Write `feat:` and `fix:` commit subjects as clear, user-facing summaries of what changed; keep implementation details in normal body paragraphs (which semantic-release omits from release notes) and use `NOTICE: <text>` or `BREAKING CHANGE: <text>` paragraphs for extra user-facing release notes.
 
 For live qualification, distinguish optimistic entity state from fresh BLE readback.
 Use `homeassistant.update_entity` when verifying state outside the command's confirmation queries.
