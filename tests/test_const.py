@@ -56,11 +56,17 @@ def test_supports_segments_defaults_false():
 
 
 @pytest.mark.parametrize(
-    ("model", "grammar"), [("H617A", "H617A"), ("H617E", "H617A"), ("H6076", "H617A"), ("H6199", "H6199")]
+    ("model", "command_grammar", "status_grammar"),
+    [
+        ("H617A", "H617A", "H617A"),
+        ("H617E", "H617A", "H617A"),
+        ("H6076", "H617A", "H6076"),
+        ("H6199", "H6199", "H6199"),
+    ],
 )
-def test_existing_profiles_preserve_both_directional_grammars(model, grammar):
-    assert get_profile(model).command_grammar == grammar
-    assert get_profile(model).status_grammar == grammar
+def test_existing_profiles_preserve_both_directional_grammars(model, command_grammar, status_grammar):
+    assert get_profile(model).command_grammar == command_grammar
+    assert get_profile(model).status_grammar == status_grammar
 
 
 def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
@@ -217,34 +223,47 @@ def test_h7020_candidate_is_qualified_by_pact_not_guessed_firmware():
 
 def test_h6076_profile_is_basic_and_fail_closed_until_identity_qualifies_music():
     profile = device_profile("H6076", None, None)
-    assert profile is const._H6076_PROFILE
+    assert profile == const._H6076_PROFILE
     assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.state_readable
     assert profile.read_domains == {
         ReadDomain.POWER,
         ReadDomain.BRIGHTNESS,
+        ReadDomain.COLOUR_MODE,
         ReadDomain.FIRMWARE,
         ReadDomain.HARDWARE,
+        ReadDomain.SEGMENTS,
     }
     assert profile.setup_required_read_domains == {ReadDomain.POWER, ReadDomain.BRIGHTNESS}
     assert profile.supports_rgb and profile.supports_color_temperature
     assert (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin) == (2700, 6500)
-    assert not profile.supports_color_mode_readback
-    assert not profile.supports_custom_effects
-    assert not profile.supports_scenes
-    assert not profile.supports_music_mode
-    assert not profile.supports_segments
+    assert profile.readback_min_color_temp_kelvin == 2200
+    assert profile.supports_color_mode_readback
+    assert (
+        profile.supports_custom_effects and profile.supports_advanced_effects and profile.supports_multi_layered_effects
+    )
+    assert profile.supports_scenes
+    assert profile.supports_music_mode
+    assert profile.music_modes == ("energetic", "rhythm", "bounce", "hopping", "beat", "spray")
+    assert profile.readback_music_modes == const._H6076_ALL_MUSIC_MODES
+    assert profile.supports_segments and profile.supports_segment_brightness
+    assert not profile.supports_segment_color_temperature
+    assert (profile.segment_count, profile.segment_group_size, profile.physical_ic_count) == (7, 4, 14)
     assert profile.whole_device_mask == 0x007F
-    assert profile.command_grammar == profile.status_grammar == "H617A"
+    assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == ("H617A", "H6076", "H617A")
     assert protocol_model("H6076") == "H6076"
-    assert profile.effect_grammar is None
+    assert profile.boolean_controls == frozenset({"gradual"})
 
 
 def test_h6076_registry_profile_is_the_music_ceiling_of_the_basic_profile():
     ceiling = MODEL_PROFILES["H6076"]
 
     assert ceiling.music_grammar == "H6076"
-    assert ceiling.music_upload_before_selector and ceiling.music_requires_upload_ack
+    assert (
+        ceiling.music_upload_before_selector
+        and ceiling.music_requires_upload_ack
+        and ceiling.music_params_require_activation
+    )
     assert [slug for slug in ceiling.music_modes] == [
         "energetic",
         "rhythm",
@@ -262,37 +281,44 @@ def test_h6076_registry_profile_is_the_music_ceiling_of_the_basic_profile():
     assert (
         replace(
             ceiling,
-            music_grammar=None,
-            music_modes=(),
-            music_variants=(),
-            supports_music_color=False,
+            min_color_temp_kelvin=2700,
+            readback_min_color_temp_kelvin=2200,
+            music_modes=("energetic", "rhythm", "bounce", "hopping", "beat", "spray"),
+            readback_music_modes=const._H6076_ALL_MUSIC_MODES,
+            music_variants=const.H6076_LEGACY_MUSIC_VARIANTS,
             music_upload_before_selector=False,
             music_requires_upload_ack=False,
+            music_params_require_activation=False,
         )
         == const._H6076_PROFILE
     )
-    assert supported_effect_categories("H6076") == ("reactive",)
+    assert supported_effect_categories("H6076") == ("scenes", "effects", "multi_layered", "reactive", "advanced")
 
 
 @pytest.mark.parametrize(
-    ("pact", "firmware", "qualified"),
+    ("pact", "firmware", "qualified", "min_kelvin", "readback_min_kelvin"),
     [
-        ((1, 1), "1.02.00", True),
-        ((2, 1), "1.04.05", True),
-        ((1, 1), "1.04.08", True),
-        ((1, 1), "1.01.99", False),
-        ((1, 1), "1.2.0", False),
-        ((1, 1), None, False),
-        ((1, 2), "1.04.05", False),
-        ((3, 1), "1.04.05", False),
-        ((None, None), "1.04.05", False),
+        ((1, 1), "1.02.00", True, 2200, None),
+        ((2, 1), "1.04.05", True, 2700, None),
+        ((1, 1), "1.04.08", True, 2200, None),
+        ((1, 1), "1.01.99", False, 2200, None),
+        ((2, 1), "1.01.99", False, 2700, None),
+        ((1, 1), "1.2.0", False, 2200, None),
+        ((1, 1), None, False, 2200, None),
+        ((1, 2), "1.04.05", False, 2700, 2200),
+        ((3, 1), "1.04.05", False, 2700, 2200),
+        ((None, None), "1.04.05", False, 2700, 2200),
     ],
 )
-def test_h6076_music_needs_a_known_pact_and_software_1_02_or_newer(pact, firmware, qualified):
+def test_h6076_music_needs_a_known_pact_and_software_1_02_or_newer(
+    pact, firmware, qualified, min_kelvin, readback_min_kelvin
+):
     profile = device_profile("H6076", *pact, firmware=firmware, hardware="3.05.00")
 
-    assert (profile is MODEL_PROFILES["H6076"]) is qualified
-    assert (profile is const._H6076_PROFILE) is not qualified
+    assert (len(profile.music_modes) == 12) is qualified
+    assert (len(profile.music_modes) == 6) is not qualified
+    assert profile.min_color_temp_kelvin == min_kelvin
+    assert profile.readback_min_color_temp_kelvin == readback_min_kelvin
 
 
 def test_h6102_static_candidate_is_exact_and_manual_only():

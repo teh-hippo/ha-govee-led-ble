@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, device_profile
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, build_power
 from custom_components.ha_govee_led_ble.light_commands import (
     ALL_SEGMENTS,
@@ -51,10 +51,13 @@ def test_h6076_uses_its_whole_device_mask_and_kelvin_range() -> None:
     assert colour[12:14] == b"\x7f\x00"
     parsed = parse_static_write(colour, "H6076")
     assert parsed is not None and parsed.whole_strip
-    assert build_color_temp(2000, "H6076")[7:9] == (2700).to_bytes(2, "big")
+    assert build_color_temp(2000, "H6076")[7:9] == (2200).to_bytes(2, "big")
+    assert build_color_temp(2000, "H6076", profile=device_profile("H6076", 2, 1))[7:9] == (2700).to_bytes(2, "big")
     assert build_color_temp(9000, "H6076")[7:9] == (6500).to_bytes(2, "big")
     assert build_color_temp(4000, "H6076")[12:14] == b"\x7f\x00"
     assert build_white_brightness(50, "H6076") == H("33051502327f000000000000000000000000006c")
+    assert build_segment_color([1, 7], 10, 20, 30, "H6076")[12:14] == b"\x41\x00"
+    assert build_segment_brightness([1, 7], 50, "H6076")[5:7] == b"\x41\x00"
 
 
 def test_h7020_sends_percent_brightness_and_whole_string_static_commands() -> None:
@@ -138,9 +141,6 @@ def test_segment_builders_require_segment_capability(model):
     ):
         with pytest.raises(ValueError, match="per-segment control"):
             build(*args, model=model, profile=profile)
-        if model == "H6076":
-            with pytest.raises(ValueError, match="per-segment control"):
-                build(*args, model=model)
     with pytest.raises(ValueError, match="non-empty"):
         build_segment_paint(iter([]))
 

@@ -226,10 +226,10 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         title="Govee H617A",
     )
     unsupported_entry = SimpleNamespace(
-        entry_id="h6076-entry",
+        entry_id="h6125-entry",
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
-        runtime_data=SimpleNamespace(model="H6076", profile=device_profile("H6076", None, None)),
+        runtime_data=SimpleNamespace(model="H6125", profile=device_profile("H6125", None, None)),
     )
     registry_entry = MockConfigEntry(domain=DOMAIN, entry_id=entry.entry_id)
     registry_entry.add_to_hass(hass)

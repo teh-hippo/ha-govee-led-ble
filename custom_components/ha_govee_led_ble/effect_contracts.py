@@ -648,7 +648,18 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             diagnostics_evidence_classification=EvidenceClassification.STRUCTURAL,
         )
         for capability in _RELEASE_CAPABILITY_BASE
-        if capability.model == "H617A" and capability.workflow is CapabilityWorkflow.NATIVE_MUSIC
+        if capability.model == "H617A"
+        and capability.workflow
+        in {
+            CapabilityWorkflow.NATIVE_SCENES,
+            CapabilityWorkflow.LAYERED_SCENES,
+            CapabilityWorkflow.PAINTED,
+            CapabilityWorkflow.SINGLE,
+            CapabilityWorkflow.MULTI,
+            CapabilityWorkflow.NATIVE_MUSIC,
+            CapabilityWorkflow.ADVANCED,
+            CapabilityWorkflow.WORKSHOP,
+        }
     ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(replace(capability, model="H617C") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),

@@ -500,7 +500,7 @@ def test_profile_effect_grammar_enables_codecs_without_authorizing_application(m
     assert resolve_diy_code(item) == reference.diy_code
 
 
-@pytest.mark.parametrize("model", ["H6076", "H9999"])
+@pytest.mark.parametrize("model", ["H9999"])
 def test_basic_grammars_do_not_supply_effect_grammar(monkeypatch, model) -> None:
     if model == "H9999":
         monkeypatch.setitem(

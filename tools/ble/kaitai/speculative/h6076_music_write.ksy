@@ -70,6 +70,23 @@ types:
             'music_mode::spray': colour_settings
             'music_mode::bounce': colour_settings
             _: opaque_settings
+    instances:
+      is_legacy:
+        value: >-
+          mode_id == music_mode::rhythm or mode_id == music_mode::energetic or
+          mode_id == music_mode::hopping or mode_id == music_mode::beat or
+          mode_id == music_mode::spray or mode_id == music_mode::bounce
+      style:
+        value: 'mode_id == music_mode::rhythm ? (settings.as<rhythm_settings>.dynamic == 0 ? 1 : 0) : 0'
+      has_fixed_colour:
+        value: >-
+          mode_id == music_mode::rhythm ? settings.as<rhythm_settings>.has_fixed_colour :
+          (is_legacy ? settings.as<colour_settings>.has_fixed_colour : 0)
+      rgb:
+        value: >-
+          mode_id == music_mode::rhythm ? settings.as<rhythm_settings>.rgb :
+          settings.as<colour_settings>.rgb
+        if: is_legacy and has_fixed_colour != 0
   rhythm_settings:
     seq:
       - id: dynamic

@@ -45,7 +45,7 @@ def test_catalogue_and_identity_errors() -> None:
         resolve_scene("H617A", -1, -1)
 
     assert scene_catalogue_payload("H6199")["enabled"] is True
-    assert scene_catalogue_payload("H6076")["enabled"] is False
+    assert scene_catalogue_payload("H6076")["enabled"] is True
 
 
 def test_h617e_legacy_scene_identity_preserves_its_original_metadata() -> None:

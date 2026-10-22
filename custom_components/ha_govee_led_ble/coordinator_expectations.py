@@ -29,7 +29,7 @@ def expectations_from_packet(
     video = parse_video_command(packet, model, profile=profile)
     if video is not None:
         detail = video.detail
-        expectations = {
+        expectations: dict[str, Any] = {
             "color_mode": (ParsedMode.VIDEO, None),
             "video_mode": detail.source.name,
             "video_parameters": video_parameters_from_detail(detail, profile.video_grammar),
@@ -43,6 +43,22 @@ def expectations_from_packet(
     generated = parse_command(packet, model, profile=profile)
     if generated is None:
         return {}
+    if hasattr(generated, "selector"):
+        detail = generated.selector
+        music_mode = music_slug_for(model, int(detail.mode_id), profile=profile)
+        expectations = {
+            "color_mode": (ParsedMode.MUSIC, None),
+            "music_mode": music_mode,
+            "music_sensitivity": int(detail.sensitivity),
+        }
+        if not getattr(detail, "is_legacy", True):
+            return expectations
+        if music_mode == "rhythm" and hasattr(detail, "style"):
+            expectations["music_calm"] = bool(detail.style)
+        expectations["music_color"] = (
+            (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue)) if detail.has_fixed_colour else None
+        )
+        return expectations
     operation = getattr(generated.opcode, "name", None)
     if operation is None:
         return {}

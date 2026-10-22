@@ -660,7 +660,7 @@ async def test_h6076_identity_and_music_travel_over_v1_and_the_companion_is_ackn
     coordinator.config_entry = MagicMock(entry_id="test-entry")
     coordinator.pact_type, coordinator.pact_code = 1, 1
     coordinator._resolve_device_profile()
-    assert not coordinator.profile.music_modes
+    assert coordinator.profile.music_modes == ("energetic", "rhythm", "bounce", "hopping", "beat", "spray")
     device, phase, plain_writes, wire_writes = client(bytes((1, 1))), 0, [], []
 
     def reply(payload):

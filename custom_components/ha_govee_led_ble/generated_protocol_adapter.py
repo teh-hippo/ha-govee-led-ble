@@ -177,6 +177,9 @@ H6076MusicBody = cast(
 H6076MusicWrite = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write").H6076MusicWrite
 )
+H6076StatusReply = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_status_reply").H6076StatusReply
+)
 H7025MusicBody = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_body").H7025MusicBody
 )
@@ -330,6 +333,7 @@ _STATUS_ROOTS = {
     "H60A1": ("h60a1_status_reply", H60a1StatusReply),
     "H60A6": ("h60a6_status_reply", H60a6StatusReply),
     "H601C": ("h601c_status_reply", H601cStatusReply),
+    "H6076": ("h6076_status_reply", H6076StatusReply),
     "H6102": ("h6102_status_reply", H6102StatusReply),
     "H6125": ("h6125_status_reply", H6125StatusReply),
     "H6125-modern": ("h6125_modern_status_reply", H6125ModernStatusReply),
@@ -359,6 +363,10 @@ _STATUS_QUERY_ROOTS = {
     "H7020": ("h7020_status_query", H7020StatusQuery),
 }
 _H6076_ACK_ROOTS = {"H6076": ("h6076_music_ack", H6076MusicAck)}
+_MUSIC_WRITE_ROOTS = {
+    "H6076": ("h6076_music_write", H6076MusicWrite),
+    "H7025": ("h7025_music_write", H7025MusicWrite),
+}
 _COMMAND_ACK_ROOTS = {
     "H6125": ("h6125_command_ack", H6125CommandAck),
     "H6099": ("h6099_command_ack", H6099CommandAck),
@@ -424,8 +432,22 @@ def parse_status(frame: bytes, model: str = "H617A", *, profile: ModelProfile | 
 def parse_command_result(
     frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None
 ) -> ProtocolParseResult:
-    result = _parse_xor_frame(frame, (profile or get_profile(model)).command_grammar, _COMMAND_ROOTS)
-    if result.parsed is not None and _has_unknown_discriminator(result.parsed, result.parser or ""):
+    effective_profile = profile or get_profile(model)
+    if effective_profile.music_grammar in _MUSIC_WRITE_ROOTS:
+        music = _parse_xor_frame(frame, effective_profile.music_grammar, _MUSIC_WRITE_ROOTS)
+        if music.parsed is not None:
+            if getattr(music.parsed.selector.mode_id, "name", None) is None:
+                return ProtocolParseResult(None, music.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
+            return music
+    result = _parse_xor_frame(frame, effective_profile.command_grammar, _COMMAND_ROOTS)
+    if result.parsed is not None and (
+        _has_unknown_discriminator(result.parsed, result.parser or "")
+        or (
+            effective_profile.music_grammar in _MUSIC_WRITE_ROOTS
+            and getattr(result.parsed.opcode, "name", None) == "multi"
+            and getattr(result.parsed.body.sub, "name", None) == "music"
+        )
+    ):
         return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
     return result
 
@@ -479,7 +501,10 @@ def upload_ack_mode(
     """Return the music mode an exact-model acknowledgement must repeat, if its schema carries one."""
     if (profile or get_profile(model)).music_grammar != "H6076":
         return None
-    body = H6076MusicBody.from_bytes(_complete_a3_upload(packets, index, model, profile)[1])
+    subtype, envelope = _complete_a3_upload(packets, index, model, profile)
+    if subtype != 0x41:
+        return None
+    body = H6076MusicBody.from_bytes(envelope)
     body._read()
     return int(body.mode)
 
@@ -683,6 +708,20 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     """Revalidate operation capabilities and geometry at each physical attempt."""
     from .light_commands import parse_static_write
 
+    if profile.music_grammar in _MUSIC_WRITE_ROOTS:
+        music = _parse_xor_frame(frame, profile.music_grammar, _MUSIC_WRITE_ROOTS).parsed
+        if music is not None:
+            if profile.command_operations is not None and "music" not in profile.command_operations:
+                raise ValueError(f"{profile.name} does not support music")
+            slug = getattr(music.selector.mode_id, "name", None)
+            if slug not in profile.music_modes:
+                raise ValueError("music mode selector is outside profile capabilities")
+            variant = music_variant(profile, int(music.selector.mode_id))
+            if getattr(music.selector, "has_fixed_colour", 0) and (
+                not profile.supports_music_color or (variant is not None and not variant.supports_fixed_colour)
+            ):
+                raise ValueError("fixed music colour is outside profile capabilities")
+            return
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
@@ -692,12 +731,11 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             if profile.command_operations is not None and sub_operation not in {"static", "static_colour"}:
                 operation = sub_operation
             if sub_operation == "music" and getattr(command.opcode, "name", "") == "multi":
-                if profile.music_grammar == "H7025":
-                    music = _parse_xor_frame(frame, "H7025", {"H7025": ("h7025_music_write", H7025MusicWrite)}).parsed
-                    if music is None or getattr(music.selector.mode_id, "name", None) not in profile.music_modes:
-                        raise ValueError("music mode selector is outside profile capabilities")
-                elif (
-                    music_slug_for(profile.command_grammar or "", int(command.body.sub_body.mode_id), profile=profile)
+                if (
+                    profile.music_grammar in _MUSIC_WRITE_ROOTS
+                    or music_slug_for(
+                        profile.command_grammar or "", int(command.body.sub_body.mode_id), profile=profile
+                    )
                     not in profile.music_modes
                 ):
                     raise ValueError("music mode selector is outside profile capabilities")
@@ -770,8 +808,14 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             raise ValueError(f"{profile.name} does not support boolean control {control}")
         if profile.command_operations is None or domain in profile.read_domains:
             return
+    upload = _parse_xor_frame(frame, "A3", {"A3": ("command_write.upload_frame", CommandWrite.UploadFrame)}).parsed
+    if upload is not None and upload.index == 0 and upload.body.subtype == 0x41:
+        if (profile.command_operations is not None and "music" not in profile.command_operations) or not any(
+            variant.template for variant in profile.music_variants
+        ):
+            raise ValueError("music parameter upload is outside profile capabilities")
+        return
     if profile.command_operations is not None and "effect_upload" in profile.command_operations:
-        upload = _parse_xor_frame(frame, "A3", {"A3": ("command_write.upload_frame", CommandWrite.UploadFrame)}).parsed
         if upload is not None and profile.effect_grammar == "H617A":
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES

@@ -19,8 +19,6 @@ from custom_components.ha_govee_led_ble.const import (
     MODEL_PROFILES,
     ModelProfile,
     ReadDomain,
-    default_effect_categories,
-    default_effect_families,
     device_profile,
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -273,14 +271,15 @@ async def test_video_firmware_preflight_preserves_prepared_effect_boundary(
     coordinator.send_command.assert_not_awaited()
 
 
-async def test_h6076_exposes_only_basic_colour_controls(mock_h6076_coordinator):
+async def test_h6076_exposes_scenes_and_legacy_music_before_firmware_identity(mock_h6076_coordinator):
     light = GoveeBLELight(mock_h6076_coordinator)
     light.async_write_ha_state = MagicMock()
 
     assert light.supported_color_modes == {ColorMode.RGB, ColorMode.COLOR_TEMP}
     assert light.min_color_temp_kelvin == 2700
     assert light.max_color_temp_kelvin == 6500
-    assert light.effect_list == []
+    assert "Rhythm" in light.effect_list
+    assert "Torch" not in light.effect_list
 
     mock_h6076_coordinator.is_on = True
     await light.async_turn_on(color_temp_kelvin=2000)
@@ -290,12 +289,13 @@ async def test_h6076_exposes_only_basic_colour_controls(mock_h6076_coordinator):
 async def test_qualified_h6076_projects_its_twelve_music_effects(mock_h6076_coordinator):
     coordinator = mock_h6076_coordinator
     coordinator.profile = device_profile("H6076", 1, 1, firmware="1.04.05")
-    coordinator.effect_categories = frozenset(default_effect_categories("H6076"))
-    coordinator.effect_families = default_effect_families("H6076")
+    coordinator.effect_categories = frozenset({"reactive"})
+    coordinator.effect_families = frozenset({"music"})
     coordinator.music_sensitivity = 99
     coordinator.is_on = True
     light = GoveeBLELight(coordinator)
     light.async_write_ha_state = MagicMock()
+    assert light.min_color_temp_kelvin == 2200
 
     assert light.effect_list == [
         "off",
@@ -312,7 +312,7 @@ async def test_qualified_h6076_projects_its_twelve_music_effects(mock_h6076_coor
         "Spray",
         "Torch",
     ]
-    await light.async_turn_on(effect="Music: Candy Crush")
+    await light.async_turn_on(effect="Candy Crush")
     coordinator.async_select_music_slug.assert_awaited_once_with("candy_crush")
 
 

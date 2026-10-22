@@ -601,8 +601,16 @@ def test_h6076_rejects_what_the_selector_cannot_carry() -> None:
         prepare_music_request("H6076", "bounce", 100, None, False, {}, profile=_H6076)
     with pytest.raises(ValueError, match="does not support music mode"):
         prepare_music_request("H6076", "bloom", 99, None, False, {}, profile=_H6076)
-    with pytest.raises(ValueError, match="palette"):
-        prepare_music_request("H6076", "torch", 99, None, False, {}, profile=_H6076, palette=((1, 2, 3),))
+    with pytest.raises(ValueError, match="palette count is outside music variant bounds"):
+        prepare_music_request("H6076", "skittles", 99, None, False, {}, profile=_H6076, palette=((1, 2, 3),))
+    with pytest.raises(ValueError, match="fixed music colour"):
+        prepare_music_request(
+            "H6076", "energetic", 99, (1, 2, 3), False, {}, profile=device_profile("H6076", None, None)
+        )
+    *eight_colour_upload, _ = prepare_music_request(
+        "H6076", "torch", 99, None, False, {}, profile=_H6076, palette=((1, 2, 3),) * 8
+    )[1:]
+    assert len(eight_colour_upload) == 2
 
 
 def test_h6076_studio_native_music_follows_the_effective_profile() -> None:
@@ -618,8 +626,19 @@ def test_h6076_studio_native_music_follows_the_effective_profile() -> None:
         "beat",
         "spray",
     }
-    assert all(setting["available"] and not setting["parameters"] for setting in settings.values())
-    assert catalogue.to_dict(profile=device_profile("H6076", None, None))["music_modes"] == []
+    assert all(setting["available"] for setting in settings.values())
+    assert set(settings["separation"]["parameters"]) == {"point", "gradient"}
+    assert all(not setting["parameters"] for mode, setting in settings.items() if mode != "separation")
+    legacy_view = catalogue.to_dict(profile=device_profile("H6076", None, None))
+    assert [mode["id"] for mode in cast(list[dict[str, Any]], legacy_view["music_modes"])] == [
+        "energetic",
+        "rhythm",
+        "bounce",
+        "hopping",
+        "beat",
+        "spray",
+    ]
+    assert not cast(dict[str, dict[str, Any]], legacy_view["music_settings"])["energetic"]["colour"]
 
     item = LibraryItem.new("Torch", MusicProfile("H6076", "torch", 99, None, None, {}))
     assert compatibility(item, "H6076", profile=_H6076).state is CompatibilityState.COMPATIBLE

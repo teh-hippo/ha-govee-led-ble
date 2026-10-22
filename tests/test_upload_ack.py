@@ -238,10 +238,18 @@ def test_h6076_ack_must_repeat_the_uploaded_mode(prefix, expected):
     assert upload_ack_subtype(upload, index, "H6076", profile=profile) == 0x41
     assert upload_ack_mode(upload, index, "H6076", profile=profile) == 0x50
     result = parse_command_ack_result(frame(prefix), "H6076", profile=profile)
-    assert result.parser == "h6076_music_ack"
+    assert result.parser == ("h6076_music_ack" if prefix.startswith("a341") else "h617a_command_ack")
     assert upload_ack_success(result.parsed, 0x41, 0x50) is expected
     assert upload_ack_success(result.parsed, 0x41) is None
     assert parse_command_ack_result(frame("330100"), "H6076", profile=profile).parser == "h617a_command_ack"
+    for subtype in (0x02, 0x03, 0x04):
+        effect_upload = fragment_a3(subtype, b"\x01\x02\x03")
+        effect_index = len(effect_upload) - 1
+        assert upload_ack_subtype(effect_upload, effect_index, "H6076", profile=profile) == subtype
+        assert upload_ack_mode(effect_upload, effect_index, "H6076", profile=profile) is None
+        ack = parse_command_ack_result(frame(f"a3{subtype:02x}00"), "H6076", profile=profile)
+        assert ack.parser == "h617a_command_ack"
+        assert upload_ack_success(ack.parsed, subtype) is True
 
 
 def test_ack_uses_command_grammar_independently_of_video(monkeypatch):

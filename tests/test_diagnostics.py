@@ -113,16 +113,25 @@ async def test_h6076_diagnostics_expose_basic_capability_boundary(mock_h6076_coo
     coord = diag["coordinator"]
 
     assert coord["support_quality"] == "supported"
-    assert coord["read_domains"] == ["brightness", "firmware", "hardware", "power"]
+    assert coord["read_domains"] == ["brightness", "colour_mode", "firmware", "hardware", "power", "segments"]
     assert coord["setup_required_read_domains"] == ["brightness", "power"]
     assert coord["supports_rgb"] is True
     assert coord["supports_color_temperature"] is True
     assert coord["color_temperature_range"] == {"minimum_kelvin": 2700, "maximum_kelvin": 6500}
-    assert coord["supports_color_mode_readback"] is False
-    assert coord["supports_custom_effects"] is False
-    assert coord["supports_segments"] is False
-    assert coord["music_modes"] == []
-    assert [capability["workflow"] for capability in coord["release_capabilities"]["capabilities"]] == ["native_music"]
+    assert coord["supports_color_mode_readback"] is True
+    assert coord["supports_custom_effects"] is True
+    assert coord["supports_segments"] is True
+    assert coord["music_modes"] == ["energetic", "rhythm", "bounce", "hopping", "beat", "spray"]
+    assert [capability["workflow"] for capability in coord["release_capabilities"]["capabilities"]] == [
+        "native_scenes",
+        "layered_scenes",
+        "painted",
+        "single",
+        "multi",
+        "native_music",
+        "advanced",
+        "workshop",
+    ]
 
 
 @pytest.mark.parametrize(

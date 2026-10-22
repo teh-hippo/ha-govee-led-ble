@@ -196,16 +196,14 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         detail = getattr(body, "detail", getattr(body, "mode_body", None))
         mode_id = getattr(detail, "mode", getattr(detail, "mode_id", -1))
         music_mode = getattr(mode_id, "name", None)
-        if music_mode not in profile.music_modes:
+        if music_mode not in (profile.readback_music_modes or profile.music_modes):
             raise ValueError("music selector is unsupported for model")
     if mode_name in {"static", "static_colour"}:
         detail = getattr(body, "mode_body", getattr(body, "detail", None))
         rgb = getattr(detail, "rgb", None)
         raw_kelvin = getattr(detail, "kelvin", None) or None
-        if (
-            raw_kelvin is not None
-            and not profile.min_color_temp_kelvin <= int(raw_kelvin) <= profile.max_color_temp_kelvin
-        ):
+        min_kelvin = profile.readback_min_color_temp_kelvin or profile.min_color_temp_kelvin
+        if raw_kelvin is not None and not min_kelvin <= int(raw_kelvin) <= profile.max_color_temp_kelvin:
             raise ValueError("static Kelvin outside profile range")
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,

@@ -14,6 +14,7 @@ speculative/h6199_pact1_wire_write
 speculative/h6076_music_ack
 speculative/h6076_music_body
 speculative/h6076_music_write
+speculative/h6076_status_reply
 speculative/h7025_music_write
 speculative/h7025_music_body
 speculative/h7025_status_reply

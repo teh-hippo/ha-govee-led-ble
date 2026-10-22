@@ -23,6 +23,7 @@ seq:
     contents: [0xa3]
   - id: opcode
     type: u1
+    valid: 0x41
   - id: mode
     type: u1
     enum: h6076_music_body::music_mode

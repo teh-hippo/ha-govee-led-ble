@@ -50,7 +50,12 @@ def _raw_param(entry: SceneEntry) -> bytes:
     return base64.b64decode(entry.param, validate=True)
 
 
-def test_inert_catalogue_metadata_does_not_enable_scene_compilation() -> None:
+def test_inert_catalogue_metadata_does_not_enable_scene_compilation(monkeypatch) -> None:
+    monkeypatch.setitem(
+        MODEL_PROFILES,
+        "H6076",
+        replace(MODEL_PROFILES["H6076"], supports_scenes=False),
+    )
     entry = SCENE_ENTRIES["H6076"][0]
     item = LibraryItem.new("Unsupported scene", BuiltinScene(_reference("H6076", entry)))
 

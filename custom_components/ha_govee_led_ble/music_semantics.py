@@ -401,9 +401,25 @@ _H6076_PALETTE = "ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
 
 
 def _h6076_body(mode: int, tail: str = "") -> bytes:
-    body = bytes((mode, 7)) + bytes.fromhex(_H6076_PALETTE + tail)
-    return body + bytes(31 - len(body))
+    return bytes((mode, 7)) + bytes.fromhex(_H6076_PALETTE + tail)
 
+
+# Pre-1.02.00 firmware (OldMusicMode) supports the 6 selector-only modes; Energetic is auto-colour only.
+H6076_LEGACY_MUSIC_VARIANTS = (
+    MusicVariant(
+        int(_H6076_MODE.energetic), "H6076 OldMusicMode Energetic: auto-colour only", supports_fixed_colour=False
+    ),
+    *(
+        MusicVariant(int(mode), f"H6076 {mode.name}: fixed-colour flag and RGB in the selector; {evidence}")
+        for mode, evidence in (
+            (_H6076_MODE.bounce, "capture and app producer"),
+            (_H6076_MODE.hopping, "capture and app producer"),
+            (_H6076_MODE.beat, "capture and app producer"),
+            (_H6076_MODE.spray, "capture and app producer"),
+        )
+    ),
+    MusicVariant(int(_H6076_MODE.rhythm), "H6076 capture and app producer: Dynamic/Calm byte", supports_style=True),
+)
 
 # Legacy selectors keep their parameters in the selector; companion-backed effects upload an A3 body first.
 H6076_MUSIC_VARIANTS = (
@@ -423,6 +439,19 @@ H6076_MUSIC_VARIANTS = (
         "H6076 capture: default Separation companion, point 2 and gradient off",
         "h6076_music_body",
         _h6076_body(int(_H6076_MODE.separation), "020061"),
+        (
+            MusicParamSpec("music_separation_point", "point", "point", "number", 2, 1, 3),
+            MusicParamSpec(
+                "music_separation_gradient",
+                "gradient",
+                "gradient",
+                "switch",
+                False,
+                requires_physical_ic_count=True,
+            ),
+        ),
+        palette_bounds=(2, 8),
+        gradient_companions=(0x61, 0x5E),
         supports_fixed_colour=False,
     ),
     *(
@@ -431,14 +460,15 @@ H6076_MUSIC_VARIANTS = (
             f"H6076 {mode.name} default companion; {evidence}",
             "h6076_music_body",
             _h6076_body(int(mode)),
+            palette_bounds=bounds,
             supports_fixed_colour=False,
         )
-        for mode, evidence in (
-            (_H6076_MODE.torch, "captured"),
-            (_H6076_MODE.skittles, "app producer and reporter LAN replay"),
-            (_H6076_MODE.candy_crush, "app producer and reporter LAN replay"),
-            (_H6076_MODE.fusion, "app producer and reporter LAN replay"),
-            (_H6076_MODE.shiny, "app producer and reporter LAN replay"),
+        for mode, bounds, evidence in (
+            (_H6076_MODE.torch, (1, 8), "captured"),
+            (_H6076_MODE.skittles, (2, 8), "app producer and reporter LAN replay"),
+            (_H6076_MODE.candy_crush, (3, 8), "app producer and reporter LAN replay"),
+            (_H6076_MODE.fusion, (2, 8), "app producer and reporter LAN replay"),
+            (_H6076_MODE.shiny, (4, 8), "app producer and reporter LAN replay"),
         )
     ),
 )
@@ -604,7 +634,7 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
         )
     if (
         variant
-        and variant.layout == "music_body"
+        and variant.layout in {"music_body", "h6076_music_body"}
         and ic is not None
         and any(spec.requires_physical_ic_count for spec in variant.parameters)
     ):

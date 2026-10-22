@@ -402,21 +402,22 @@ def h6076(hass):
 
 def test_h6076_music_follows_advertised_pact_and_notified_software(h6076):
     h6076.config_entry = MagicMock(entry_id="test-entry")
-    assert not h6076.profile.music_modes
+    assert len(h6076.profile.music_modes) == 6
     h6076._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))}))
-    assert (h6076.pact_type, h6076.pact_code) == (1, 1) and not h6076.profile.music_modes
+    assert (h6076.pact_type, h6076.pact_code) == (1, 1) and len(h6076.profile.music_modes) == 6
+    assert h6076.profile.min_color_temp_kelvin == 2200
     h6076._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.01.99\0"))))
-    assert not h6076.profile.music_modes
+    assert len(h6076.profile.music_modes) == 6 and not h6076.profile.readback_music_modes
     generation = h6076._profile_generation
     h6076._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.04.05\0"))))
-    assert h6076.profile is MODEL_PROFILES["H6076"] and h6076._profile_generation == generation + 1
+    assert h6076.profile == MODEL_PROFILES["H6076"] and h6076._profile_generation == generation + 1
     h6076._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.01.00\0"))))
-    assert not h6076.profile.music_modes and h6076._profile_generation == generation + 2
+    assert len(h6076.profile.music_modes) == 6 and h6076._profile_generation == generation + 2
 
 
 def test_h6076_effect_studio_link_follows_the_effective_profile(hass):
     coordinator = GoveeBLECoordinator(hass, "22:33:44:55:66:77", "H6076", configuration_url=_CONFIGURATION_URL)
-    assert coordinator.configuration_url is None
+    assert coordinator.configuration_url == _CONFIGURATION_URL
     coordinator.pact_type, coordinator.pact_code = 1, 1
     coordinator.fw_version = "1.04.05"
     coordinator._resolve_device_profile()
@@ -430,25 +431,25 @@ def test_h6076_registered_effect_studio_link_follows_late_identity(hass):
     coordinator.config_entry = entry
     registry = dr.async_get(hass)
     device = registry.async_get_or_create(config_entry_id=entry.entry_id, **coordinator.device_info)
-    assert device.configuration_url is None
+    assert str(device.configuration_url) == _CONFIGURATION_URL
     coordinator.pact_type, coordinator.pact_code = 1, 1
 
     coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.04.05\0"))))
     assert str(registry.async_get(device.id).configuration_url) == _CONFIGURATION_URL
     coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x06, list(b"1.01.00\0"))))
-    assert registry.async_get(device.id).configuration_url is None
+    assert str(registry.async_get(device.id).configuration_url) == _CONFIGURATION_URL
 
 
 async def test_h6076_reconnect_retains_music_profile_but_revokes_write_authority(h6076, monkeypatch):
     h6076.pact_type, h6076.pact_code = 2, 1
     h6076.fw_version, h6076.hw_version = "1.04.05", "3.05.00"
     h6076._resolve_device_profile()
-    assert h6076.profile.music_modes
+    assert len(h6076.profile.music_modes) == 12
 
     async def establish(*args, **kwargs):
         assert h6076.fw_version == "1.04.05" and h6076.hw_version == "3.05.00"
-        assert h6076.profile.music_modes
-        assert not h6076._authorization_profile().music_modes
+        assert len(h6076.profile.music_modes) == 12
+        assert len(h6076._authorization_profile().music_modes) == 6
         raise RuntimeError("stop before connecting")
 
     monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", establish)
@@ -2791,7 +2792,7 @@ async def test_profile_without_colour_readback_rejects_colour_expectations(limit
     ensure.assert_not_awaited()
 
 
-async def test_h6076_refresh_all_uses_limited_readback_profile(hass):
+async def test_h6076_refresh_all_uses_colour_mode_and_segment_readback(hass):
     coordinator = GoveeBLECoordinator(
         hass,
         "33:44:55:66:77:88",
@@ -2801,9 +2802,10 @@ async def test_h6076_refresh_all_uses_limited_readback_profile(hass):
     coordinator._client = client = _c()
 
     async def _reply(**kwargs) -> bool:
-        assert kwargs["query_color_mode"] is False
+        assert kwargs["query_color_mode"] is True
         coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [0])))
         coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [40])))
+        coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 0x0A, 0x8C])))
         return True
 
     with (
@@ -2812,9 +2814,9 @@ async def test_h6076_refresh_all_uses_limited_readback_profile(hass):
     ):
         assert await coordinator.refresh_state(refresh_all=True, timeout=0.02)
 
-    assert coordinator.scene_name_set == frozenset()
-    with pytest.raises(ValueError, match="native scenes are not supported"):
-        await coordinator.async_apply_native_scene(next(iter(MODEL_SCENES["H6076"])))
+    assert coordinator.scene_name_set == frozenset(MODEL_SCENES["H6076"])
+    assert coordinator.color_temp_kelvin == 2700
+    assert coordinator.static_gradual is True
 
 
 async def test_refresh_reply_timeout_starts_after_connection(coord):

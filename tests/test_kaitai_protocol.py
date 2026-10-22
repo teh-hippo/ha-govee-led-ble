@@ -59,6 +59,7 @@ H6125StatusReply = _generated("h6125_status_reply", "H6125StatusReply")
 H6125WireWrite = _generated("h6125_wire_write", "H6125WireWrite")
 H6076MusicBody = _generated("h6076_music_body", "H6076MusicBody")
 H6076MusicWrite = _generated("h6076_music_write", "H6076MusicWrite")
+H6076StatusReply = _generated("h6076_status_reply", "H6076StatusReply")
 H6102StatusReply = _generated("h6102_status_reply", "H6102StatusReply")
 H6102WireWrite = _generated("h6102_wire_write", "H6102WireWrite")
 H7025MusicBody = _generated("h7025_music_body", "H7025MusicBody")
@@ -91,6 +92,9 @@ H6076_TORCH_BODY = (
     bytes.fromhex("a3000102415007ff0000ff7f00ffff0000ff0036"),
     bytes.fromhex("a3ff0000ff00ffff8b00ff0000000000000000d7"),
 )
+# Issue #247 owner-captured H6076 segment group 2 reply (3 records at 2700 K + 4 zero bytes).
+H6076_SEGMENT_GROUP2_STATUS = bytes.fromhex("aaa50264ff922764ff922764ff92270000000037")
+H6076_STATIC_KELVIN_STATUS = bytes.fromhex("aa0515010a8c000000000000000000000000003d")
 STATUS_SEGMENTS = bytes.fromhex("aaa50164ff880d64ff880d64ff880d0000000010")
 H617A_SEGMENT_QUERY = bytes.fromhex("aaa505000000000000000000000000000000000a")
 H6199_SEGMENT_QUERY = bytes.fromhex("aaa504000000000000000000000000000000000b")
@@ -880,7 +884,7 @@ async def test_static_restore_rechecks_companion_and_mode_revision(static_coordi
     assert "color_temp_kelvin" not in coord._field_revisions
 
 
-@pytest.mark.parametrize("model", ["H617A", "H6199", "H6076"])
+@pytest.mark.parametrize("model", ["H617A", "H6199"])
 async def test_static_direct_verification_is_not_enabled_for_existing_models(hass, model):
     coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url=None)
     coord._ensure_connected = AsyncMock()
@@ -934,6 +938,8 @@ REPRESENTATIVE_ROOTS = (
     pytest.param(H6125StatusReply, H6125_BRIGHTNESS_REPLY, id="H6125 brightness register reply"),
     pytest.param(H6125WireWrite, H6125_MUSIC_WRITE, id="H6125 submode 0x11 music write"),
     pytest.param(H6125StatusReply, H6125_MUSIC_STATUS, id="H6125 submode 0x11 music status"),
+    pytest.param(H6076StatusReply, H6076_SEGMENT_GROUP2_STATUS, id="H6076 owner segment group 2 status"),
+    pytest.param(H6076StatusReply, H6076_STATIC_KELVIN_STATUS, id="H6076 static Kelvin status"),
     *(
         (pytest.param(H6179ScheduleWrite, H6179_SCHEDULE, id="H6179 schedule evidence"),)
         if H6179ScheduleWrite is not None
@@ -1109,15 +1115,30 @@ def test_h6125_wire_and_status_fields_are_meaningful() -> None:
 def test_h6076_selector_and_companion_fields_match_the_reporter_capture() -> None:
     energetic = _parse(H6076MusicWrite, H6076_ENERGETIC).selector
     assert (energetic.mode_id.name, energetic.sensitivity, energetic.settings.has_fixed_colour) == ("energetic", 99, 1)
-    assert (energetic.settings.rgb.red, energetic.settings.rgb.green, energetic.settings.rgb.blue) == (255, 0, 0)
+    assert (energetic.is_legacy, energetic.has_fixed_colour) == (True, 1)
+    assert (energetic.rgb.red, energetic.rgb.green, energetic.rgb.blue) == (255, 0, 0)
 
     rhythm = _parse(H6076MusicWrite, H6076_RHYTHM_AT_LEFT).selector
     assert (rhythm.mode_id.name, rhythm.sensitivity) == ("rhythm", 0)
     assert (rhythm.settings.dynamic, rhythm.settings.has_fixed_colour) == (1, 0)
+    assert (rhythm.is_legacy, rhythm.style, rhythm.has_fixed_colour) == (True, 0, 0)
 
     torch = _parse(H6076MusicWrite, H6076_TORCH_SELECTOR).selector
     assert (torch.mode_id.name, torch.sensitivity) == ("torch", 99)
+    assert (torch.is_legacy, torch.has_fixed_colour) == (False, 0)
     assert type(torch.settings).__name__ == "OpaqueSettings"
+
+    seg_group2 = _parse(H6076StatusReply, H6076_SEGMENT_GROUP2_STATUS)
+    assert seg_group2.domain.name == "segments"
+    assert (seg_group2.body.group, seg_group2.body.num_segments, len(seg_group2.body.segments)) == (2, 3, 3)
+    assert all(
+        (rec.brightness, rec.colour.red, rec.colour.green, rec.colour.blue) == (100, 0xFF, 0x92, 0x27)
+        for rec in seg_group2.body.segments
+    )
+
+    static_kelvin = _parse(H6076StatusReply, H6076_STATIC_KELVIN_STATUS)
+    assert static_kelvin.domain.name == "colormode" and static_kelvin.body.mode.name == "static"
+    assert (static_kelvin.body.mode_body.sub, static_kelvin.body.mode_body.kelvin) == (1, 2700)
 
     for frame in H6076_TORCH_BODY:
         assert len(frame) == 20 and xor_checksum(frame) == 0

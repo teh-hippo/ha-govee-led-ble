@@ -703,7 +703,7 @@ def test_model_mismatch_fails_before_a_packet_can_be_compiled() -> None:
         compile_effect(workshop, "H6199")
 
 
-@pytest.mark.parametrize("model", ["H6076", "H6179"])
+@pytest.mark.parametrize("model", ["H6179"])
 def test_workshop_compatibility_rejects_models_without_a_workshop_grammar(model: str) -> None:
     content = replace(WORKSHOP_PROTOCOL_FIXTURES[0].content("H617A"), model=model)
     item = LibraryItem.new("Workshop", content)
@@ -768,7 +768,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
     assert h6199.advanced is CapabilityState.SUPPORTED
     assert h6199.to_dict()["readback"] == "scene_selector_for_user_effects"
     assert unknown.to_dict()["readback"] == "none"
-    assert h6076.to_dict()["readback"] == "none"
+    assert h6076.to_dict()["readback"] == "diy_code_only"
     assert h6102.to_dict()["readback"] == "none"
     assert all(
         capability is CapabilityState.UNSUPPORTED

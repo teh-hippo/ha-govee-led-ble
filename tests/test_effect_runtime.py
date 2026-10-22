@@ -2266,7 +2266,7 @@ async def test_workshop_uses_evidenced_model_application(
 
 @pytest.mark.parametrize(
     ("target", "source", "reason"),
-    [("H6199", "H617A", "targets H617A"), ("H6076", "H6076", "Workshop application is not supported")],
+    [("H6199", "H617A", "targets H617A"), ("H6179", "H6179", "Workshop application is not supported")],
 )
 async def test_incompatible_workshop_is_rejected_before_any_write(
     hass: HomeAssistant,

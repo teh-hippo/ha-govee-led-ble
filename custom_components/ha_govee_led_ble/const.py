@@ -10,6 +10,7 @@ from .h6199_calibration import WHITE_BALANCE_POSITIONS
 from .music_semantics import (
     H617A_MUSIC_VARIANTS,
     H617E_MUSIC_VARIANTS,
+    H6076_LEGACY_MUSIC_VARIANTS,
     H6076_MUSIC_VARIANTS,
     H6099_MUSIC_VARIANTS,
     H6102_MUSIC_VARIANTS,
@@ -152,6 +153,7 @@ class ModelProfile:
     supports_color_temperature: bool = False
     min_color_temp_kelvin: int = 2000
     max_color_temp_kelvin: int = 9000
+    readback_min_color_temp_kelvin: int | None = None
     kelvin_direct_rgb: tuple[int, int, int] = (0, 0, 0)
     supports_custom_effects: bool = False
     supports_scenes: bool = False
@@ -177,6 +179,7 @@ class ModelProfile:
     # Selects the music codebook and selector writer when they differ from command_grammar.
     music_grammar: str | None = None
     music_modes: tuple[str, ...] = ()
+    readback_music_modes: tuple[str, ...] = ()
     music_variants: tuple[MusicVariant, ...] = ()
     music_upload_before_selector: bool = False
     music_requires_upload_ack: bool = False
@@ -437,18 +440,36 @@ _H617A_PROFILE = ModelProfile(
 )
 
 
-# The owner-qualified controls.  Music needs software evidence, so it is added by _h6076_profile.
+_H6076_ALL_MUSIC_MODES = (
+    "energetic",
+    "rhythm",
+    "bounce",
+    "hopping",
+    "beat",
+    "spray",
+    "skittles",
+    "torch",
+    "candy_crush",
+    "fusion",
+    "shiny",
+    "separation",
+)
+
+# Baseline H6076 controls.  Companion music modes need software 1.02.00+, added by _h6076_profile.
 _H6076_PROFILE = ModelProfile(
     "H6076 Lyra Floor Lamp",
     support_quality=SupportQuality.SUPPORTED,
     command_grammar="H617A",
-    status_grammar="H617A",
+    status_grammar="H6076",
+    effect_grammar="H617A",
     read_domains=frozenset(
         {
             ReadDomain.POWER,
             ReadDomain.BRIGHTNESS,
+            ReadDomain.COLOUR_MODE,
             ReadDomain.FIRMWARE,
             ReadDomain.HARDWARE,
+            ReadDomain.SEGMENTS,
         }
     ),
     profile_identity_fields=frozenset({"fw_version"}),
@@ -457,12 +478,27 @@ _H6076_PROFILE = ModelProfile(
     supports_color_temperature=True,
     min_color_temp_kelvin=2700,
     max_color_temp_kelvin=6500,
+    readback_min_color_temp_kelvin=2200,
+    static_readback_kelvin=True,
+    static_readback_zero_kelvin_is_rgb=True,
+    static_readback_gradual=True,
+    physical_ic_count=14,
     whole_device_mask=0x007F,
+    segment_count=7,
+    segment_group_size=4,
+    supports_segment_writes=True,
+    supports_segment_brightness=True,
+    supports_segment_color_temperature=False,
+    supports_scenes=True,
+    supports_custom_effects=True,
+    supports_advanced_effects=True,
+    supports_multi_layered_effects=True,
+    effect_readback="diy_code_only",
+    advanced_diy_selector=402,
+    diy_requires_upload_ack=True,
+    boolean_controls=frozenset({"gradual"}),
+    connection_idle_timeout=3.0,
     scene_catalogue_sku="H6076",
-)
-
-_H6076_MUSIC_PROFILE = replace(
-    _H6076_PROFILE,
     music_grammar="H6076",
     music_modes=(
         "energetic",
@@ -471,18 +507,23 @@ _H6076_MUSIC_PROFILE = replace(
         "hopping",
         "beat",
         "spray",
-        "skittles",
-        "torch",
-        "candy_crush",
-        "fusion",
-        "shiny",
-        "separation",
     ),
-    music_variants=H6076_MUSIC_VARIANTS,
+    readback_music_modes=_H6076_ALL_MUSIC_MODES,
+    music_variants=H6076_LEGACY_MUSIC_VARIANTS,
     supports_music_color=True,
+)
+
+_H6076_MUSIC_PROFILE = replace(
+    _H6076_PROFILE,
+    min_color_temp_kelvin=2200,
+    readback_min_color_temp_kelvin=None,
+    music_modes=_H6076_ALL_MUSIC_MODES,
+    readback_music_modes=(),
+    music_variants=H6076_MUSIC_VARIANTS,
     # MultipleController4Music uploads the companion before the selector and the lamp acknowledges it.
     music_upload_before_selector=True,
     music_requires_upload_ack=True,
+    music_params_require_activation=True,
 )
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
@@ -1152,13 +1193,23 @@ def _h6125_profile(
 
 
 def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str | None) -> ModelProfile:
-    """Admit the music selector only on pact 1/1 or 2/1 with software 1.02.00 or newer."""
+    """Resolve H6076 music modes by software version and Kelvin floor by Pact type."""
     from .firmware_version import FirmwareVersion
 
     fw = FirmwareVersion.parse(firmware)
-    if (pact_type, pact_code) not in {(1, 1), (2, 1)} or fw is None or fw < FirmwareVersion((1, 2)):
-        return _H6076_PROFILE
-    return _H6076_MUSIC_PROFILE
+    known_pact = (pact_type, pact_code) in {(1, 1), (2, 1)}
+    base = (
+        _H6076_MUSIC_PROFILE
+        if known_pact and fw is not None and fw >= FirmwareVersion((1, 2))
+        else replace(_H6076_PROFILE, readback_music_modes=())
+        if known_pact and fw is not None
+        else _H6076_PROFILE
+    )
+    if (pact_type, pact_code) == (1, 1):
+        return replace(base, min_color_temp_kelvin=2200, readback_min_color_temp_kelvin=None)
+    if (pact_type, pact_code) == (2, 1):
+        return replace(base, min_color_temp_kelvin=2700, readback_min_color_temp_kelvin=None)
+    return replace(base, min_color_temp_kelvin=2700, readback_min_color_temp_kelvin=2200)
 
 
 def device_profile(

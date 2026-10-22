@@ -5005,16 +5005,41 @@
         },
         "H6076": {
           "apply": {
-            "multi": "unsupported",
-            "painted": "unsupported",
+            "multi": "supported",
+            "painted": "supported",
             "palette_diy": "unsupported",
-            "single": "unsupported",
-            "workshop": "unsupported"
+            "single": "supported",
+            "workshop": "supported"
           },
-          "effects": [],
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "1",
+                  "label": "Fade 1",
+                  "variant": 1
+                },
+                {
+                  "id": "0",
+                  "label": "Fade 2",
+                  "variant": 0
+                }
+              ]
+            }
+          ],
           "limits": {
             "brightness_max": 100,
-            "brightness_min": 0,
+            "brightness_min": 1,
             "multi_max": 4,
             "music_sensitivity_max": 99,
             "music_sensitivity_min": 0,
@@ -5053,6 +5078,47 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 candy_crush default companion; app producer and reporter LAN replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 3
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
@@ -5071,6 +5137,47 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 fusion default companion; app producer and reporter LAN replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
@@ -5098,8 +5205,64 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 capture: default Separation companion, point 2 and gradient off",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 2,
+                  "kind": "number",
+                  "max": 3,
+                  "min": 1,
+                  "options": []
+                }
+              },
               "style": false
             },
             "shiny": {
@@ -5107,6 +5270,47 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 shiny default companion; app producer and reporter LAN replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 4
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
@@ -5116,6 +5320,47 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 skittles default companion; app producer and reporter LAN replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
@@ -5134,19 +5379,475 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 torch default companion; captured",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
             }
           },
-          "painted_effects": [],
+          "painted_addressing": "physical_ic",
+          "painted_background": [
+            255,
+            255,
+            255
+          ],
+          "painted_effects": [
+            {
+              "id": "clockwise",
+              "label": "Clockwise"
+            }
+          ],
           "sku": "H6076",
           "supports": {
-            "advanced": "unsupported",
-            "multi": "unsupported",
-            "workshop": "unsupported"
+            "advanced": "supported",
+            "multi": "supported",
+            "workshop": "supported"
           },
           "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "addressing": "physical_ic",
+                "background": [
+                  255,
+                  255,
+                  255
+                ],
+                "brightness": 100,
+                "effect": "clockwise",
+                "kind": "h617a_painted",
+                "segments": [
+                  null
+                ],
+                "speed": 50
+              },
+              "id": "template:paint",
+              "label": "Paint"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 1
+              },
+              "id": "template:single:0:1",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 5,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 1
+              },
+              "id": "template:single:5:1",
+              "label": "Breathe"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 2
+              },
+              "id": "template:single:1:2",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 24,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:24:0",
+              "label": "Stacking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 13
+              },
+              "id": "template:single:9:13",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 25,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:25:0",
+              "label": "Spray"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
             {
               "category": "music",
               "content": {
@@ -5330,10 +6031,52 @@
           "video_settings": [],
           "workflows": [
             {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_painted",
+              "id": "painted",
+              "label": "Painted"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Multi"
+            },
+            {
               "application": "home_assistant",
               "content_kind": "music_profile",
               "id": "native_music",
               "label": "Music"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "advanced",
+              "id": "advanced",
+              "label": "Advanced"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "workshop",
+              "id": "workshop",
+              "label": "Workshop"
             }
           ],
           "workshop_templates": []
@@ -31717,16 +32460,214 @@
         "active_state": null,
         "catalogue": {
           "apply": {
-            "multi": "unsupported",
-            "painted": "unsupported",
+            "multi": "supported",
+            "painted": "supported",
             "palette_diy": "unsupported",
-            "single": "unsupported",
-            "workshop": "unsupported"
+            "single": "supported",
+            "workshop": "supported"
           },
-          "effects": [],
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "1",
+                  "label": "Fade 1",
+                  "variant": 1
+                },
+                {
+                  "id": "0",
+                  "label": "Fade 2",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 5,
+              "id": "breathe",
+              "label": "Breathe",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "1",
+                  "label": "Breathe 1",
+                  "variant": 1
+                },
+                {
+                  "id": "0",
+                  "label": "Breathe 2",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Breathe 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "2",
+                  "label": "Jumping 1",
+                  "variant": 2
+                },
+                {
+                  "id": "0",
+                  "label": "Jumping 2",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 24,
+              "id": "stacking",
+              "label": "Stacking",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Stacking",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Chase",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "13",
+                  "label": "Flow 1",
+                  "variant": 13
+                },
+                {
+                  "id": "14",
+                  "label": "Flow 2",
+                  "variant": 14
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 25,
+              "id": "spray",
+              "label": "Spray",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Spray",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Music 1",
+                  "variant": 8
+                },
+                {
+                  "id": "17",
+                  "label": "Music 2",
+                  "variant": 17
+                },
+                {
+                  "id": "18",
+                  "label": "Music 3",
+                  "variant": 18
+                },
+                {
+                  "id": "11",
+                  "label": "Music 4",
+                  "variant": 11
+                },
+                {
+                  "id": "16",
+                  "label": "Music 5",
+                  "variant": 16
+                }
+              ]
+            }
+          ],
           "limits": {
             "brightness_max": 100,
-            "brightness_min": 0,
+            "brightness_min": 1,
             "multi_max": 4,
             "music_sensitivity_max": 99,
             "music_sensitivity_min": 0,
@@ -31809,6 +32750,47 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 candy_crush default companion; app producer and reporter LAN replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 3
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
@@ -31827,6 +32809,47 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 fusion default companion; app producer and reporter LAN replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
@@ -31854,8 +32877,64 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 capture: default Separation companion, point 2 and gradient off",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 2,
+                  "kind": "number",
+                  "max": 3,
+                  "min": 1,
+                  "options": []
+                }
+              },
               "style": false
             },
             "shiny": {
@@ -31863,6 +32942,47 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 shiny default companion; app producer and reporter LAN replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 4
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
@@ -31872,6 +32992,47 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 skittles default companion; app producer and reporter LAN replay",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 2
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
@@ -31890,19 +33051,508 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6076 torch default companion; captured",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
               "parameters": {},
               "style": false
             }
           },
-          "painted_effects": [],
+          "painted_addressing": "physical_ic",
+          "painted_background": [
+            255,
+            255,
+            255
+          ],
+          "painted_effects": [
+            {
+              "id": "clockwise",
+              "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
+            }
+          ],
           "sku": "H6076",
           "supports": {
-            "advanced": "unsupported",
-            "multi": "unsupported",
-            "workshop": "unsupported"
+            "advanced": "supported",
+            "multi": "supported",
+            "workshop": "supported"
           },
           "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "addressing": "physical_ic",
+                "background": [
+                  255,
+                  255,
+                  255
+                ],
+                "brightness": 100,
+                "effect": "clockwise",
+                "kind": "h617a_painted",
+                "segments": [
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null
+                ],
+                "speed": 50
+              },
+              "id": "template:paint",
+              "label": "Paint"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 1
+              },
+              "id": "template:single:0:1",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 5,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 1
+              },
+              "id": "template:single:5:1",
+              "label": "Breathe"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 2
+              },
+              "id": "template:single:1:2",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 24,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:24:0",
+              "label": "Stacking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 13
+              },
+              "id": "template:single:9:13",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 25,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:25:0",
+              "label": "Spray"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
             {
               "category": "music",
               "content": {
@@ -32086,26 +33736,72 @@
           "video_settings": [],
           "workflows": [
             {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_painted",
+              "id": "painted",
+              "label": "Painted"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Multi"
+            },
+            {
               "application": "home_assistant",
               "content_kind": "music_profile",
               "id": "native_music",
               "label": "Music"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "advanced",
+              "id": "advanced",
+              "label": "Advanced"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "workshop",
+              "id": "workshop",
+              "label": "Workshop"
             }
           ],
           "workshop_templates": []
         },
         "config_entry_id": "h6076-main",
         "custom_effects": {
-          "advanced": "unsupported",
-          "multi": "unsupported",
-          "painted": "unsupported",
+          "advanced": "supported",
+          "multi": "supported",
+          "painted": "supported",
           "palette_diy": "unsupported",
-          "single": "unsupported",
-          "workshop": "unsupported"
+          "single": "supported",
+          "workshop": "supported"
         },
         "display_name": "H6076 Lyra Floor Lamp",
         "effect_categories": [
-          "reactive"
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive",
+          "advanced"
         ],
         "light_entity_id": null,
         "model": "H6076",
@@ -32133,6 +33829,47 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6076 candy_crush default companion; app producer and reporter LAN replay",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 3
+            },
             "palette_size": 7,
             "parameters": {},
             "style": false
@@ -32151,6 +33888,47 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6076 fusion default companion; app producer and reporter LAN replay",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 2
+            },
             "palette_size": 7,
             "parameters": {},
             "style": false
@@ -32178,8 +33956,64 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6076 capture: default Separation companion, point 2 and gradient off",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 2
+            },
             "palette_size": 7,
-            "parameters": {},
+            "parameters": {
+              "gradient": {
+                "default": false,
+                "kind": "switch",
+                "max": 0,
+                "min": 0,
+                "options": []
+              },
+              "point": {
+                "default": 2,
+                "kind": "number",
+                "max": 3,
+                "min": 1,
+                "options": []
+              }
+            },
             "style": false
           },
           "shiny": {
@@ -32187,6 +34021,47 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6076 shiny default companion; app producer and reporter LAN replay",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 4
+            },
             "palette_size": 7,
             "parameters": {},
             "style": false
@@ -32196,6 +34071,47 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6076 skittles default companion; app producer and reporter LAN replay",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 2
+            },
             "palette_size": 7,
             "parameters": {},
             "style": false
@@ -32214,12 +34130,53 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6076 torch default companion; captured",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
             "palette_size": 7,
             "parameters": {},
             "style": false
           }
         },
-        "physical_ic_count": null,
+        "physical_ic_count": 14,
         "preview_health": {
           "checked_at": "2026-08-17T00:00:00Z",
           "config_entry_id": "h6076-main",
@@ -32234,8 +34191,8 @@
           "music": "supported",
           "video": "unsupported"
         },
-        "readback": "none",
-        "segment_count": 0,
+        "readback": "diy_code_only",
+        "segment_count": 7,
         "support_quality": "supported"
       },
       {
@@ -36405,7 +38362,7 @@
             "name": "Life"
           }
         ],
-        "enabled": false,
+        "enabled": true,
         "scenes": [
           {
             "category": "Life",

@@ -296,6 +296,6 @@ def mock_h6076_coordinator():
         profile=device_profile("H6076", None, None),
         is_on=False,
         effect=None,
-        segment_colors=[],
-        segment_brightness=[],
+        segment_colors=[(255, 255, 255)] * 7,
+        segment_brightness=[100] * 7,
     )

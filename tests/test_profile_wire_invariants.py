@@ -78,6 +78,10 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H60A6-pact-1-2", "H60A6", 1, 2, None, None),
     ("H60A6-pact-1-3", "H60A6", 1, 3, "1.00.41", "1.04.03"),
     ("H6076-unqualified", "H6076", None, None, None, None),
+    ("H6076-pact1-unidentified-fw", "H6076", 1, 1, None, None),
+    ("H6076-pact1-legacy-music", "H6076", 1, 1, "1.01.00", "3.01.01"),
+    ("H6076-pact2-legacy-music", "H6076", 2, 1, "1.01.00", "3.01.01"),
+    ("H6076-pact2-music", "H6076", 2, 1, "1.04.05", "3.05.00"),
     ("H6102-bootstrap", "H6102", None, None, None, None),
     ("H6102-pact1-basic", "H6102", 1, 1, None, None),
     ("H6102-pact1-extended", "H6102", 1, 1, "1.06.00", "1.00.03"),
@@ -204,6 +208,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H6076":
+        return a.H6076MusicWrite.MusicMode
     if profile.status_grammar == "H6125-intermediate":
         return a.H6125StatusReply.MusicMode
     root_type = _status_root_type(profile)
@@ -600,19 +606,13 @@ def test_every_advertised_music_mode_has_a_way_to_be_applied(model: str, profile
             selector_index = len(packets) - 1 if active_profile.music_upload_before_selector else 1
             selector = packets[selector_index]
             assert writes[selector_index][1]["music_mode"] == slug
+            parsed_cmd = a.parse_command_result(selector, model, profile=active_profile)
+            assert parsed_cmd.rejection is None and parsed_cmd.parsed is not None
+            assert expectations_from_packet(selector, model, profile=active_profile)["music_mode"] == slug
             if active_profile.music_grammar == "H6076":
-                parsed_h6076 = a.H6076MusicWrite.from_bytes(selector)
-                parsed_h6076._read()
-                assert parsed_h6076.selector.mode_id.name == slug
+                assert parsed_cmd.parsed.selector.mode_id.name == slug
             elif active_profile.music_grammar == "H7025":
-                parsed_h7025 = a.H7025MusicWrite.from_bytes(selector)
-                parsed_h7025._read()
-                assert parsed_h7025.selector.mode_id.name == slug
-                assert expectations_from_packet(selector, model, profile=active_profile)["music_mode"] == slug
-            else:
-                parsed_cmd = a.parse_command_result(selector, model, profile=active_profile)
-                assert parsed_cmd.rejection is None and parsed_cmd.parsed is not None
-                assert expectations_from_packet(selector, model, profile=active_profile)["music_mode"] == slug
+                assert parsed_cmd.parsed.selector.mode_id.name == slug
             if active_profile.outbound_transform is not None:
                 wire = active_profile.outbound_transform(selector)
                 assert len(wire) == 20 and xor_checksum(wire) == 0
@@ -669,8 +669,9 @@ def test_every_advertised_music_mode_resolves_from_status_reply(hass, model: str
     music_byte = int(color_mode_enum.music)
     coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
     coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+    readable_modes = profile.readback_music_modes or profile.music_modes
 
-    for slug in profile.music_modes:
+    for slug in readable_modes:
         assert slug in status_music_enum.__members__, (
             f"{model} ({profile.name}) advertises {slug!r} but {profile.status_grammar} Kaitai enum lacks it"
         )
@@ -688,7 +689,7 @@ def test_every_advertised_music_mode_resolves_from_status_reply(hass, model: str
         assert coordinator.music_sensitivity == 50
 
     prior_mode = coordinator.music_mode
-    rejected_codes = [int(member) for member in status_music_enum if member.name not in profile.music_modes] + [0x7F]
+    rejected_codes = [int(member) for member in status_music_enum if member.name not in readable_modes] + [0x7F]
     for bad_code in rejected_codes:
         bad_reply = _status(0x05, bytes([music_byte, bad_code, 50]))
         coordinator._notify_callback(None, bytearray(bad_reply))
@@ -821,7 +822,8 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
     if profile.static_readback_kelvin:
         coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
         coordinator.profile = replace(profile, profile_identity_fields=frozenset())
-        for kelvin in (profile.min_color_temp_kelvin, profile.max_color_temp_kelvin):
+        min_kelvin = profile.readback_min_color_temp_kelvin or profile.min_color_temp_kelvin
+        for kelvin in (min_kelvin, profile.max_color_temp_kelvin):
             kelvin_bytes = kelvin.to_bytes(2, "big")
             body = (
                 bytes([static_byte, 255, 255, 255]) + kelvin_bytes
@@ -836,7 +838,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             coordinator._notify_callback(None, bytearray(reply))
             assert coordinator.color_mode is ParsedMode.COLOUR and coordinator.color_temp_kelvin == kelvin
 
-        for out_of_range in (profile.min_color_temp_kelvin - 1, profile.max_color_temp_kelvin + 1):
+        for out_of_range in (min_kelvin - 1, profile.max_color_temp_kelvin + 1):
             bad_bytes = out_of_range.to_bytes(2, "big")
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
