@@ -112,7 +112,7 @@ async def test_h6076_diagnostics_expose_basic_capability_boundary(mock_h6076_coo
     diag = await _run(_prep(mock_h6076_coordinator), entry)
     coord = diag["coordinator"]
 
-    assert coord["support_quality"] == "partial"
+    assert coord["support_quality"] == "supported"
     assert coord["read_domains"] == ["brightness", "firmware", "hardware", "power"]
     assert coord["setup_required_read_domains"] == ["brightness", "power"]
     assert coord["supports_rgb"] is True

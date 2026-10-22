@@ -21507,7 +21507,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 15,
-        "support_quality": "experimental"
+        "support_quality": "supported"
       },
       {
         "active_state": null,
@@ -30160,7 +30160,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 15,
-        "support_quality": "compatible"
+        "support_quality": "supported"
       },
       {
         "active_state": null,
@@ -31953,7 +31953,7 @@
         },
         "readback": "none",
         "segment_count": 0,
-        "support_quality": "partial"
+        "support_quality": "supported"
       },
       {
         "active_state": null,
@@ -33752,7 +33752,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 30,
-        "support_quality": "experimental"
+        "support_quality": "supported"
       },
       {
         "active_state": null,

@@ -64,8 +64,6 @@ _BLE_MODEL_PATTERN = re.compile(
 
 class SupportQuality(StrEnum):
     EXPERIMENTAL = "experimental"
-    PARTIAL = "partial"
-    COMPATIBLE = "compatible"
     SUPPORTED = "supported"
 
 
@@ -442,7 +440,7 @@ _H617A_PROFILE = ModelProfile(
 # The owner-qualified controls.  Music needs software evidence, so it is added by _h6076_profile.
 _H6076_PROFILE = ModelProfile(
     "H6076 Lyra Floor Lamp",
-    support_quality=SupportQuality.PARTIAL,
+    support_quality=SupportQuality.SUPPORTED,
     command_grammar="H617A",
     status_grammar="H617A",
     read_domains=frozenset(
@@ -490,6 +488,7 @@ _H6076_MUSIC_PROFILE = replace(
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H60A1": ModelProfile(
         "H60A1 Ceiling Light",
+        support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         status_grammar="H60A1",
         command_operations=frozenset({"power", "brightness", "static"}),
@@ -507,6 +506,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H60A6": ModelProfile(
         "H60A6 Ceiling Light Pro",
+        support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         status_grammar="H60A6",
         command_operations=frozenset({"power", "brightness", "static"}),
@@ -524,6 +524,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H601C": ModelProfile(
         "H601C Recessed Downlight",
+        support_quality=SupportQuality.SUPPORTED,
         command_grammar="H601C",
         command_operations=frozenset({"power", "brightness", "static"}),
         colour_mode_query_selector=1,
@@ -641,7 +642,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         music_variants=H617E_MUSIC_VARIANTS,
         music_upload_before_selector=False,
         music_requires_upload_ack=False,
-        support_quality=SupportQuality.COMPATIBLE,
+        support_quality=SupportQuality.SUPPORTED,
         effect_grammar="H617A",
         music_modes=(
             "energetic",
@@ -663,7 +664,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617C": replace(
         _H617A_PROFILE,
         name="H617C LED Strip",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         status_grammar="H617A",
         effect_grammar="H617A",
@@ -672,7 +673,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617F": replace(
         _H617A_PROFILE,
         name="H617F LED Strip",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         status_grammar="H617A",
         effect_grammar="H617A",
@@ -681,7 +682,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6076": _H6076_MUSIC_PROFILE,
     "H6102": ModelProfile(
         "H6102 LED Strip",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         status_grammar="H6102",
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
@@ -805,7 +806,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H7020": ModelProfile(
         "H7020 Outdoor String Lights",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         command_grammar="H7020",
         status_grammar="H7020",
         colour_mode_query_selector=1,
@@ -1038,7 +1039,7 @@ def _h6199_pact1_wire(packet: bytes) -> bytes:
 
 H6199_PACT1_PROFILE = ModelProfile(
     "H6199 Pact 1 (legacy RGB)",
-    support_quality=SupportQuality.PARTIAL,
+    support_quality=SupportQuality.SUPPORTED,
     command_grammar="H6199",
     command_operations=frozenset({"power", "brightness", "static"}),
     status_grammar="H6199",

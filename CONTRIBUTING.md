@@ -2,14 +2,14 @@
 
 ## Requesting support for another model
 
-Open one GitHub issue for the exact model.  Include:
+Open one GitHub issue for the exact model and apply its exact SKU label (for example `H617A`, `H6199`, or `H6076`); pull requests for a specific model should carry the same SKU label.  Include:
 
 - the SKU printed on the device;
 - the BLE local-name prefix with its unique suffix removed, for example `Govee_H617P_...`;
 - firmware and hardware versions;
 - whether the Govee app offers an update;
 - which controls already work or fail; and
-- whether you can install one model-specific prerelease and report manual results.
+- whether you can test candidate changes on the physical device and report results.
 
 Do not post the Bluetooth address, serial number, account details, or other unique identifiers.
 
@@ -104,53 +104,24 @@ The plan should describe only model-specific findings and work.  Link to this do
 
 | Status | Meaning |
 | --- | --- |
-| Experimental | Prerelease-only exact-model implementation awaiting owner qualification. |
-| Partial | Stable owner-confirmed support with known gaps that remain intentionally unavailable. |
-| Compatible | Stable owner-confirmed support with no known compatibility issue in the exposed feature set, but incomplete model documentation. |
-| Supported | Fully documented support where every known feature is implemented or explicitly excluded and every enabled wire path has evidence-backed repository Kaitai coverage. |
+| Experimental | Candidate support awaiting owner confirmation on hardware. |
+| Supported | Confirmed working on hardware by a device owner. |
 
 The progression is:
 
-1. A device owner requests an exact model and volunteers to test.
-2. A maintainer researches the complete known device surface and builds the broadest candidate that can be modelled without fabricating protocol facts.
-3. An immutable exact-SHA prerelease is published with a model suffix such as `.h617p`.
-4. The owner tries the available features and reports failures with redacted diagnostics.
-5. Failed capabilities are fixed or removed.
-6. The model moves to Partial or Compatible before stable merge.
-7. Supported is a later promotion after the model's features and explicit exclusions are completely documented.
+1. A device owner requests an exact model and volunteers to test on hardware.
+2. A contributor or maintainer researches the known device surface and builds the broadest candidate that can be modelled without fabricating protocol facts.
+3. New model candidates and speculative Kaitai schemas merge directly to `master` as `Experimental` once `make check` passes; no blocking prerelease gate is required before merging.
+4. The owner tests the available features on hardware and reports any failures with redacted diagnostics.
+5. Failed capabilities are fixed or removed, and the model is promoted to `Supported` once confirmed working on hardware by a device owner.
 
-An Experimental profile that receives no owner confirmation is not merged as stable support.
-Release 7.6.0 has an explicit maintainer-approved exception for H6099: its owner
-reported connection success, but control qualification remains outstanding.
-It remains labelled Experimental, with manual addition and documented limits;
-inclusion in a stable package is not a support or schema-evidence promotion.
-Release 7.8.0 has an explicit maintainer-approved exception for H6102 after
-shared-workflow regression qualification on H617A and H6199. H6102 remains
-Experimental pending its owner's physical qualification; stable inclusion does
-not promote its support status or speculative protocol evidence.
-Release 7.12.0 has an explicit maintainer-approved exception for H6125 after
-shared-workflow load and refresh checks on H617A and H6199. H6125 remains
-Experimental pending its owner's physical qualification; stable inclusion does
-not promote its support status or speculative protocol evidence.
-H6076 music and the H60A1/H60A6 colour-temperature additions also have explicit
-maintainer approval for stable inclusion before owner qualification. Their
-existing model support labels and speculative protocol evidence remain unchanged;
-physical qualification of these additions is still outstanding.
-H7020 also has explicit maintainer approval for stable inclusion: its owner
-confirmed basic power, brightness, RGB and colour-temperature control on Pact
-1/code 1, while the expanded candidate remains Experimental pending owner
-qualification of its additional controls and speculative protocol schemas.
-H7025 also has explicit maintainer approval for stable inclusion: its owner
-confirmed the two- and three-fragment music upload sequences over LAN, while
-the BLE candidate remains Experimental pending physical BLE qualification of
-its controls and speculative protocol schemas.
-Prerelease versions are stamped only in the packaged artifact; feature branches retain the current stable source version so release-candidate metadata cannot leak into master.
+Prerelease versions are stamped only in packaged artifacts when published for targeted testing; feature branches and `master` retain the current stable source version.
 
 ## Device-owner validation
 
-The first prerelease request should stay short: provide the release link, explain installation or reconfiguration, ask the owner to try the available features, and request redacted diagnostics immediately after anything fails.  Include the privacy warning above.
+The first validation request should stay short: provide the release or build link, explain installation or reconfiguration, ask the owner to try the available features, and request redacted diagnostics immediately after anything fails.  Include the privacy warning above.
 
-Use a targeted follow-up checklist only when a result needs clarification.  Ask for the action, expected and observed result, Home Assistant state, restoration result, exact prerelease, and immediate diagnostics.  Device owners are not expected to build the repository or run its developer test suite.
+Use a targeted follow-up checklist only when a result needs clarification.  Ask for the action, expected and observed result, Home Assistant state, restoration result, exact version, and immediate diagnostics.  Device owners are not expected to build the repository or run its developer test suite.
 
 If the config entry never loads, enable debug logging for
 `custom_components.ha_govee_led_ble` and copy only the address-free protocol
@@ -167,7 +138,7 @@ Enable each capability independently.  Document failures as well as successes so
 The repository has two protocol evidence classes:
 
 - `tools/ble/kaitai/*.ksy` contains evidence-backed H617A, H6199, and independently verified shared structures.
-- `tools/ble/kaitai/speculative/*.ksy` contains exact-model hypotheses for Experimental, Partial, and Compatible work.
+- `tools/ble/kaitai/speculative/*.ksy` contains exact-model hypotheses for `Experimental` candidates and `Supported` models whose wire paths have not yet been promoted from official-app BLE captures.
 
 When no official-app BLE capture is available, model the full known exact-model surface as far as the available evidence permits.  Every enabled wire path must use exact-model speculative KSY or a genuinely compatible evidence-backed root.
 
@@ -177,7 +148,7 @@ unresolved assumptions.  Preserve uncertain bytes as opaque or unknown data.
 Do not invent enum members, semantic names, `reserved` fields, or `valid`
 constraints.
 
-Speculative roots may be generated into an exact-model prerelease package, but
+Speculative roots may be generated into the runtime package, but
 only explicitly selected roots belong in the runtime root list.  Their presence
 is not protocol proof and does not justify enabling untested capabilities.
 

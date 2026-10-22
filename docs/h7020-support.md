@@ -4,7 +4,7 @@
 
 H7020 is an outdoor RGBIC string light with fifteen bulbs per string.  Its [manufacturer installation instructions](https://www.manualslib.com/manual/3497552/Govee-H7020.html?page=4#manual) permit joining at most two strings.  Follow those instructions for compatible connections, the adapter and waterproofing; this integration does not establish mixed-model compatibility.
 
-The owner of [#363](https://github.com/teh-hippo/ha-govee-led-ble/pull/363) confirmed the original power, percentage brightness, RGB and white controls through an ESPHome Bluetooth proxy on Pact 1/code 1.  Firmware and hardware versions were not recorded.  The expanded candidate is **Experimental**, not an extension of that qualification to every new feature.  Installation and promotion follow [CONTRIBUTING.md](../CONTRIBUTING.md).
+The owner of [#363](https://github.com/teh-hippo/ha-govee-led-ble/pull/363) confirmed the original power, percentage brightness, RGB and white controls through an ESPHome Bluetooth proxy on Pact 1/code 1.  Firmware and hardware versions were not recorded.  H7020 is **Supported**; its expanded APK-derived controls and speculative schemas still await physical confirmation per capability.  Installation and schema-promotion rules follow [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Research findings
 

@@ -2,10 +2,10 @@
 
 ## Request and known context
 
-These exact-model Experimental profiles are prerelease candidates awaiting device-owner
-qualification.  Manual addition or **Reconfigure** preserves the existing entry/entity
-identity.  Select the printed SKU; H601C is not H60C1.  Installation and promotion follow
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+These exact-model Supported profiles use revision-gated capabilities and speculative
+schemas for paths not yet backed by raw BLE captures.  Manual addition or **Reconfigure**
+preserves the existing entry/entity identity.  Select the printed SKU; H601C is not H60C1.
+Installation and schema-promotion rules follow [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Research findings
 
@@ -126,12 +126,12 @@ independently corroborated by the shared bulb mode parser.
 Reproduce with `make check` and `make package`; focused replay:
 `uv run pytest tests/test_ceiling_profiles.py tests/test_h60a_protocol.py tests/test_h601c_protocol.py -q`.
 
-Owner validation: install the exact prerelease through HACS beta versions, restart, add or
+Owner validation: install through HACS, restart, add or
 reconfigure the exact SKU, then try power, brightness, RGB and the enabled segment/Kelvin
 controls.  Test ring and panel independently on H60A, H601C RGB ↔ Kelvin at 2700/4000/6500,
 off/on, reconnect and restart.  For H601C, also exercise grouped actions across the
 proxy-routed fixtures and report latency, dropped commands and restoration.  Confirm physical
 output as well as HA state and restore the starting state.  After a failure export redacted
 diagnostics immediately, including exact release, Pact/hardware/firmware and expected/observed
-behaviour.  Do not share unique device identifiers.  Owner results remain required for support-status
-promotion; maintainer-approved stable inclusion does not qualify the implementation or its evidence.
+behaviour.  Do not share unique device identifiers.  Attributable captures and owner results
+remain required before promoting speculative schemas.

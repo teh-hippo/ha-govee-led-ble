@@ -2,7 +2,7 @@
 
 Owner baseline: firmware **3.02.02**, working power/brightness/RGB in RC4.
 Scenes and Effect Studio parity with the H617A 7.5.2 workflow remain owner acceptance targets.
-This implementation is Experimental; synthetic tests establish software behaviour, not physical qualification.
+H6102 is Supported; its APK-derived schemas remain speculative and synthetic tests establish software behaviour, not physical qualification of every revision branch.
 
 ## Evidence and independently resolved features
 

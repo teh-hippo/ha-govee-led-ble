@@ -68,7 +68,7 @@ def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
     h617e = MODEL_PROFILES["H617E"]
     assert h617e is not h617a
     assert h617e.name == "H617E LED Strip"
-    assert h617e.support_quality is SupportQuality.COMPATIBLE
+    assert h617e.support_quality is SupportQuality.SUPPORTED
     assert h617e.scene_catalogue_sku == "H617E"
     assert h617e.read_domains == h617a.read_domains
     assert h617e.supports_scenes
@@ -89,8 +89,21 @@ def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
 def test_h617c_and_h617f_use_exact_scene_catalogues_with_h617a_wire_grammars(model):
     profile = MODEL_PROFILES[model]
 
+    assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.scene_catalogue_sku == model
     assert profile.command_grammar == profile.status_grammar == profile.effect_grammar == "H617A"
+
+
+def test_support_quality_has_only_supported_and_experimental_states():
+    assert set(SupportQuality) == {SupportQuality.EXPERIMENTAL, SupportQuality.SUPPORTED}
+    assert const.H6199_PACT1_PROFILE.support_quality is SupportQuality.SUPPORTED
+    assert UNSUPPORTED_PROFILE.support_quality is SupportQuality.EXPERIMENTAL
+    assert {
+        model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.SUPPORTED
+    } == {"H601C", "H6076", "H60A1", "H60A6", "H6102", "H617A", "H617C", "H617E", "H617F", "H6199", "H7020"}
+    assert {
+        model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
+    } == {"H6099", "H6125", "H6179", "H7025"}
 
 
 def test_h6125_is_an_exact_experimental_profile_on_the_shared_dreamcolor_route():
@@ -185,7 +198,7 @@ def test_register_range_requires_the_transform_that_encodes_it():
 
 def test_h7020_candidate_is_qualified_by_pact_not_guessed_firmware():
     profile = MODEL_PROFILES["H7020"]
-    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.support_quality is SupportQuality.SUPPORTED
     assert "H7020" in BLE_DISCOVERABLE_MODELS
     assert profile.command_grammar == profile.status_grammar == "H7020"
     assert profile.effect_grammar == "H617A"
@@ -205,7 +218,7 @@ def test_h7020_candidate_is_qualified_by_pact_not_guessed_firmware():
 def test_h6076_profile_is_basic_and_fail_closed_until_identity_qualifies_music():
     profile = device_profile("H6076", None, None)
     assert profile is const._H6076_PROFILE
-    assert profile.support_quality is SupportQuality.PARTIAL
+    assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.state_readable
     assert profile.read_domains == {
         ReadDomain.POWER,
@@ -285,7 +298,7 @@ def test_h6076_music_needs_a_known_pact_and_software_1_02_or_newer(pact, firmwar
 def test_h6102_static_candidate_is_exact_and_manual_only():
     profile = MODEL_PROFILES["H6102"]
 
-    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.command_grammar == "H617A"
     assert profile.status_grammar == "H6102"
     assert profile.scene_catalogue_sku == "H6102"

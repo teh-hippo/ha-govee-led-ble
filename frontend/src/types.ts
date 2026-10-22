@@ -6,11 +6,7 @@ export interface JsonObject {
 }
 
 export type CapabilityState = "supported" | "unsupported" | "evidence_gap";
-export type SupportQuality =
-  | "experimental"
-  | "partial"
-  | "compatible"
-  | "supported";
+export type SupportQuality = "experimental" | "supported";
 export type ModelSku = string;
 export type ObservationConfidence =
   | "exact_session"

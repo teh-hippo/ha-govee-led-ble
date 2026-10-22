@@ -166,7 +166,7 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
       }),
       support_quality: enumString(
         device.support_quality,
-        ["experimental", "partial", "compatible", "supported"],
+        ["experimental", "supported"],
         `devices[${index}].support_quality`,
       ),
       display_name: boundedString(
