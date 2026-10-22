@@ -25,67 +25,21 @@ Do not post the Bluetooth address, serial number, account details, or other uniq
 
 Every exact SKU has its own profile, support quality, catalogue identity, and product capability data.  Compatible models may share a Kaitai wire adapter, but do not share whole profiles or exact-SKU metadata.
 
-### Reusing device protocol support
+### Protocol, profile, and wire invariants
 
-- Declare `command_grammar` and `status_grammar` explicitly, even when they select the same grammar. Basic commands, outgoing basic status queries, command echoes, and optimistic command expectations use `command_grammar`; incoming status frames and their semantic interpretation use `status_grammar`. Missing or unknown grammar keys fail closed, without falling back to another direction or exact model.
-- Declare `command_ack_grammar` when acknowledgements differ from the logical command codec.
-  Upload barriers match protocol and command, not just the command number.  Do not infer a transaction ID.
-- Any declared read domain requires `status_grammar`; power, brightness, colour mode, mode, firmware, hardware, and segment reads also require `command_grammar`. The selected complete status root must cover every declared read domain, proven by an exact-profile integration test. Do not add fallback or per-domain status routing, or a Python grammar-metadata registry.
-- Declare a device register that rescales a shared logical value with `brightness_wire_range` and the paired `outbound_transform`.  Shared builders, expectations and guards keep logical percentages; the transform re-encodes them through exact-model KSY wire roots, and readback decodes through the same range.  Declare `colour_mode_query_selector` for the accepted AA05 form and `a1_diy_selector` for Type04 uploads over A1 command 02.  Declare `profile_identity_fields` on every identity-qualified profile variant.  Reconnects retain the cached presentation profile but revoke identity-dependent query and write authorisation until valid replies confirm the required fields on the current notification subscription.
-- Declare `music_grammar` only when the music selector and its codebook differ from `command_grammar`, as for the H6076 submode `0x0f` selector.  It selects the model's mode codebook, selector writer and command music-mode expectations; incoming music names still come from the status root's enum.  It does not authorise music, which still needs explicit `music_modes` and qualified `music_variants`.
-- Declare `kelvin_direct_rgb` when a shared H617A-format Kelvin write requires a different direct-RGB value.  H7025 uses white; the default remains black.  This does not enable colour temperature or change its bounds.
-- Declare `effect_grammar` independently of basic command and status compatibility. It selects A3 and Workshop codecs, including their canonical semantics; it does not authorize effect application, catalogue reuse, activation, or readback policy. Workshop application also requires the exact-model capability contract and an implemented activation route.
-- Declare effect families, variations, per-family rate bounds, palette bounds, Painted parameters, and Multi limits in the exact-model `ModelEffectCatalogue`. Shared grammars do not inherit another product's catalogue. Structural imports preserve representable unknown pairs; application checks the target catalogue and compiles the complete immutable request before preview admission or other device-control side effects.
-- Use `effect_workflows` to narrow the exact-SKU workflow ceiling for a device revision.
-  Pass the effective profile through selector allocation, activation, compilation and catalogue projection.
-  Device responses carry the complete effective catalogue, including valid template defaults; editors use that view rather than a music-only override.
-  Prepared scenes must recheck selector eligibility and the selector-only/upload route before any power or effect write.
-- Declare video modes and setting capabilities on the exact-model profile. `video_grammar` selects compatible mode, query, writer, readback, and command-ACK semantics independently of the basic grammars; it does not authorize a model or imply support for every companion setting. Grammar keys select codecs directly, not another model's profile.
-- Declare `dreamview_grammar="H6099"` only with evidence of compatibility with the existing MovieFeastV2 encoding. Independently list evidenced `dreamview_operations` (`replace_group`, `delete_group`, `switch_group`, `member_brightness`, `same_brightness`, `member_connect`, `saturation`, `sample`, `sound`) and `dreamview_reads` (the same individual settings, excluding replacement/deletion). Both sets default to empty and authorize nothing. Basic command/status grammars, video support, and camera presence do not grant DreamView support.
-- Declare `dreamview_max_sub_devices` from product evidence for replacement and indexed writes only (1..255, subject to the A3 payload limit). Capacity zero still permits declared non-indexed settings, deletion, and reads. Service schemas enforce wire bounds; target validation enforces its capacity before preview or control side effects, then revalidates prepared packets at each physical attempt. DreamView authorization is independent of restrictions on basic `command_operations`.
-- DreamView reads enable notifications independently of ordinary `read_domains`. Read responses separate `unsupported_reads` from missing supported replies, preserve fixed raw slot arrays from the selected grammar, and never map them to locally authored identities or confirm membership. Cite per-operation write/read evidence and product capacity when contributing a profile; synthetic reuse tests in `tests/test_dreamview_profiles.py` establish software boundaries only. A different encoding needs its own evidenced KSY/semantics; H6199 legacy DreamView is not MovieFeastV2.
-- Declare each model's `music_modes` explicitly. The shared slug-to-wire-ID registry records encoding knowledge, not product support.
-- Qualify `music_variants` separately: `MusicParamSpec` defaults/bounds, named Kaitai fields, palette templates, style and companion semantics need their own evidence. An absent variant permits the native selector only. Unknown physical IC count must not be inferred from logical `segment_count`; it blocks only explicitly dependent parameter writes. Recovery retains legacy fields, validates against the effective variant before writes, and never promotes restored parameters to observed state.
-- Set `music_retry_after_upload=False` when an uncertain upload must not be replayed automatically; connection retries before the first upload attempt remain available.  Set `music_params_require_activation=True` when retained-body edits need the selector after uploading, rather than upload-only application.
-- Pass the effective device profile to semantic segment builders. Construct and validate the entire request before cancelling previews, acquiring user control, changing optimistic state, or writing to BLE. Whole-device masks remain separate from individually selectable segments.
-- Reuse `govee_segment_page` in status KSY with the evidenced segment count, page size, and unused-byte rule. Its fixed page body has four wire slots; only the declared meaningful records contribute to observed state. Keep profile counts consistent with the selected schema, and preserve uncertain unused bytes rather than treating zero-valued records as absent.
-- RGB-only pages use their own record shape and must not publish invented segment brightness.
-  Recovery retains colour-only layouts; absence of brightness is not a default percentage.
-- Configurable string counts are product configuration, not attachment detection or physical IC counts.  Confirm configuration before constructing a mask-dependent transaction, retain the same control intent through its writes, and reject prepared masks after a configuration or subscription change.  Cached presentation does not authorise writes; missing geometry must not disable topology-independent controls.
-- Keep incoming mode layouts independent of outgoing layouts.  A selector's presence does not prove its body or parameters, and companion RGB does not establish per-bulb white intent.  Declare `segment_colour_mode_ambiguous` when readback loses that distinction; previews and rollback must not claim lossless restoration.  Prior-off power cleanup remains independent of appearance recovery.
-
-Extension tests should demonstrate reuse through declarations without unrelated exact-model codec allowlist edits. Register a test-only exact-model profile and an independent status-root key rather than replacing an existing root or mocking profile lookup. Synthetic profiles and speculative fixtures establish these software boundaries, not physical device compatibility; the H66A0 fixture does not enable real H66A0 runtime support.
-
-Partial fixtures must declare only the minimal capabilities and read domains they exercise, rather than inherit a full device's contract.
-
-### BLE state lifecycle
-
-Keep cached identity and light capabilities stable across ordinary polling and intentional disconnects.  Capability presentation uses cached identity; operation admission and each physical write use current-connection confirmation.  Missing or malformed replies never erase cached identity or grant authorisation.  A genuine identity or Pact change may change the effective profile and invalidate its old control state.
-
-Legacy H6102 whole-strip RGB also accepts explicitly configured app-reported identity for fields not yet observed over BLE.  A valid BLE observation supersedes that field's configured fallback; cached BLE identity still requires current-connection confirmation for writes.
-
-Retain core light state while refreshing.  Optional installation, camera and boolean observations remain visible while a query is pending, and become unknown only after their own sent-query deadline or an unexpected disconnect.  Missing optional replies must not fail a basic poll.  Runtime-discovered physical IC geometry and uploaded bodies remain connection-scoped, separate from identity.
-
-For state-readable devices, successful required-state polling establishes availability independently of advertisements and survives intentional connection release.  A failed required-state poll revokes that read-based evidence without erasing independent advertisement presence.  Neither source grants identity-dependent write authorisation.
-
-Release is the default connection mode for state-readable devices.  Hold retains a healthy link, queries power every five seconds and refreshes readable basic state and optional controls every fifteen seconds.  Periodic Hold refreshes exclude multipart segment queries; explicit segment operations still query them.  Optional replies have bounded deadlines and cannot retire an otherwise healthy held link.  A held link consumes a proxy connection slot and blocks the Govee app's BLE connection.
-
-### Outbound transmission
-
-All outgoing BLE packets pass through `GoveeBLECoordinator._async_write_packet`.
-Callers retain connection, locking, priority, retry, transaction ordering, progress, and idle-lease policy.
-The shared writer must not reconnect or acquire locks: connection setup itself sends identity queries through it.
-
-An exact-model profile may declare a synchronous, stateless `outbound_transform` from logical packet bytes to non-empty wire bytes.
-The default sends the logical packet unchanged.  Transforms reject invalid input with `ValueError`; rejection never falls back to plaintext.
-Each physical attempt transforms the original logical packet, including retries.
-A control-write guard that changes the effective profile must abort before
-installing optimistic state or writing bytes encoded for the previous profile.
-Command expectations are derived from logical bytes after successful transformation and before writing; queries do not arm command expectations.
-Diagnostics record the actual wire bytes only after a successful write.  A successful write does not prove device state or effect activation.
-Prepare requested settings without replacing retained control state. Install packet-specific optimistic state only at its physical-write boundary, after transformation and guards; a failed request with no control-write attempts must not change later command construction. Do not advance observation revisions for these assignments or overwrite fresh notifications after awaiting a write.
-An exact-model register encoding, such as the H6125 brightness register and pact-1 music selector, may also use the hook when the logical frame is the shared H617A frame.
-This hook does not establish encrypted-device support or replace Kaitai ownership of wire structures.
+- **Kaitai owns wire structure and codebooks:**
+  Command frames, status replies, upload acknowledgements, mode and scene codebooks, companion mode enums, and register bounds live in `.ksy` schemas under `tools/ble/kaitai/`, never in handwritten Python tables or entity/coordinator offsets.
+  Shared builders keep logical domain values; register rescaling (`brightness_wire_range`, `kelvin_direct_rgb`) and frame transforms re-encode through exact-model KSY wire roots.
+- **Profiles own product capabilities:**
+  Every SKU explicitly declares its own `ModelProfile` in `const.py` and, when it exposes Effect Studio or DIY/music effect parameters, its own `ModelEffectCatalogue` in `effect_catalogue.py`.
+  Grammar keys (`command_grammar`, `command_ack_grammar`, `status_grammar`, `effect_grammar`, `music_grammar`, `video_grammar`, `dreamview_grammar`) independently select codecs and fail closed on unknown keys without granting product capabilities or inheriting another SKU's catalogue.
+  `device_profile()` narrows capabilities from confirmed Pact, hardware, and firmware identity (`profile_identity_fields`).
+  Cached identity stabilises UI presentation across polls and Release-mode disconnects, while operation admission and physical writes require current-connection confirmation.
+  State-readable devices default to Release mode and use Hold mode only when configured for periodic polling.
+- **Shared routing and wire invariants:**
+  Construct and validate the complete immutable request against the effective profile before cancelling previews, acquiring user control, or mutating state.
+  All outbound BLE writes pass through `GoveeBLECoordinator._async_write_packet` and optional synchronous, stateless `outbound_transform` hooks, installing packet-specific optimistic state and command expectations only at the physical write boundary after guards and transformation succeed.
+  `tests/test_profile_wire_invariants.py` verifies every registered `ModelProfile` and explicit `device_profile()` revision case end to end against its selected Kaitai schemas (add a case whenever `device_profile()` introduces a new runtime-distinct outcome); extension tests register isolated test-only profiles and status roots rather than mutating production allowlists.
 
 ## Planning support for a new model
 
