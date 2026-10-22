@@ -32,6 +32,7 @@ __all__ = [
 _CONFIG_BRIGHTNESS_BIT = 0x80
 _CONFIG_LAYOUT_SHIFT = 4
 _CONFIG_COLOUR_STRIDE = 3
+_CONFIG_INLINE_EXTRA_STRIDE = 5
 
 
 def decode_palette_scene(
@@ -43,11 +44,12 @@ def decode_palette_scene(
     """Decode a type-1 parameter into its lossless authored representation."""
     parsed, trailing_padding = parse_scene_type1_body(raw_param)
     layout = int(parsed.layout)
+    colour_stride = int(parsed.colour_stride)
     return PaletteScene(
         template=template,
         layout=layout,
         brightness_flag=bool(parsed.brightness_flag),
-        steps=tuple(_decode_step(step, layout) for step in parsed.steps),
+        steps=tuple(_decode_step(step, layout, colour_stride) for step in parsed.steps),
         palette=(tuple(_decode_colour(colour) for colour in parsed.palette) if layout == 0 else ()),
         speed_index=speed_index,
         config_flags=int(parsed.config) & PALETTE_CONFIG_RESERVED_MASK,
@@ -73,11 +75,16 @@ def encode_palette_scene(scene: PaletteScene) -> bytes:
     root = SceneType1Body()
     root.scene_type = 1
     content = new_child(GoveeShared.SceneType1Content, root)
+    colour_stride = (
+        _CONFIG_INLINE_EXTRA_STRIDE
+        if scene.layout == 1 and scene.steps and scene.steps[0].inline_extra is not None
+        else _CONFIG_COLOUR_STRIDE
+    )
     content.config = (
         (_CONFIG_BRIGHTNESS_BIT if scene.brightness_flag else 0)
         | (scene.layout << _CONFIG_LAYOUT_SHIFT)
         | (scene.config_flags & PALETTE_CONFIG_RESERVED_MASK)
-        | _CONFIG_COLOUR_STRIDE
+        | colour_stride
     )
     content.num_steps = len(scene.steps)
     content.steps = [_encode_step(content, step, scene.layout) for step in scene.steps]
@@ -92,7 +99,7 @@ def encode_palette_scene(scene: PaletteScene) -> bytes:
         raise EffectValidationError(str(error)) from error
 
 
-def _decode_step(step: Any, layout: int) -> SceneStep:
+def _decode_step(step: Any, layout: int, colour_stride: int = _CONFIG_COLOUR_STRIDE) -> SceneStep:
     if layout == 0:
         return SceneStep(
             value=int(step.value),
@@ -102,6 +109,7 @@ def _decode_step(step: Any, layout: int) -> SceneStep:
         value=int(step.param.value),
         colour=_decode_colour(step.param.colour),
         inline_colour=_decode_colour(step.colour),
+        inline_extra=int(step.unknown_extra) if colour_stride == _CONFIG_INLINE_EXTRA_STRIDE else None,
     )
 
 
@@ -117,6 +125,8 @@ def _encode_step(parent: Any, step: SceneStep, layout: int) -> Any:
     param.value = step.value
     inline.param = param
     inline.colour = new_rgb(inline, cast(tuple[int, int, int], step.inline_colour))
+    if step.inline_extra is not None:
+        inline.unknown_extra = step.inline_extra
     return inline
 
 

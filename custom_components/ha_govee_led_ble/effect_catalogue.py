@@ -646,6 +646,27 @@ H7025_DIY_FAMILIES: Final = tuple(
     for family in H7020_DIY_FAMILIES[:6]
 )
 
+H601C_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        name,
+        label,
+        family,
+        (DiyEffectVariation("0", label, 0),),
+        True,
+        rate="speed",
+        rate_min=0,
+        rate_max=100,
+        palette_max=8,
+        source_reference="H601C recessed downlight basic and mixed DIY codebook",
+    )
+    for name, label, family in (
+        ("fade", "Fade", 0),
+        ("jumping", "Jumping", 1),
+        ("blinking", "Blinking", 2),
+        ("breathe", "Breathe", 5),
+    )
+)
+
 
 def _mode_label(slug: str) -> str:
     return slug.replace("_", " ").title()
@@ -1512,6 +1533,28 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H7025", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H7025", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H7025", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H601C": ModelEffectCatalogue(
+        sku="H601C",
+        painted_effects=(),
+        effects=H601C_DIY_FAMILIES,
+        music_modes=(),
+        video_modes=(),
+        templates=tuple(_single_template("H601C", family) for family in H601C_DIY_FAMILIES),
+        workshop_templates=(),
+        advanced_create=False,
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H601C", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H601C", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H601C", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H601C", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H601C", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H601C", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H601C", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H601C", CapabilityWorkflow.WORKSHOP),
         ),
     ),
 }

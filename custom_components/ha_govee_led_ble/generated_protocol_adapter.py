@@ -262,7 +262,7 @@ def check_generated_tree(value: Any, seen: set[int] | None = None) -> None:
     if not isinstance(value, ReadWriteKaitaiStruct) or id(value) in seen:
         return
     seen.add(id(value))
-    for name, child in vars(value).items():
+    for name, child in tuple(vars(value).items()):
         if name.startswith("_"):
             continue
         if isinstance(child, ReadWriteKaitaiStruct):
@@ -686,11 +686,12 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
-        if operation == "multi":
-            sub_operation = getattr(command.body.sub, "name", "")
-            if profile.command_operations is not None and sub_operation != "static":
+        if operation in {"multi", "mode"}:
+            sub_attr = getattr(command.body, "sub", getattr(command.body, "sub_mode", None))
+            sub_operation = getattr(sub_attr, "name", "")
+            if profile.command_operations is not None and sub_operation not in {"static", "static_colour"}:
                 operation = sub_operation
-            if sub_operation == "music":
+            if sub_operation == "music" and getattr(command.opcode, "name", "") == "multi":
                 if profile.music_grammar == "H7025":
                     music = _parse_xor_frame(frame, "H7025", {"H7025": ("h7025_music_write", H7025MusicWrite)}).parsed
                     if music is None or getattr(music.selector.mode_id, "name", None) not in profile.music_modes:
@@ -773,8 +774,18 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
         upload = _parse_xor_frame(frame, "A3", {"A3": ("command_write.upload_frame", CommandWrite.UploadFrame)}).parsed
         if upload is not None and profile.effect_grammar == "H617A":
             if upload.index == 0:
+                from .scenes import SCENE_ENTRIES
+
+                scene_types = {
+                    entry.scene_type
+                    for entry in SCENE_ENTRIES.get(profile.scene_catalogue_sku or "", ())
+                    if not entry.selector_only
+                }
                 allowed = {
-                    2: profile.supports_scenes or profile.supports_multi_layered_effects,
+                    1: profile.supports_scenes and 1 in scene_types,
+                    2: (profile.supports_scenes and 2 in scene_types)
+                    or profile.supports_advanced_effects
+                    or profile.command_grammar == "H7020",
                     4: profile.supports_custom_effects,
                 }
                 if not allowed.get(upload.body.subtype, False):
@@ -1732,16 +1743,19 @@ def build_scene_activation(
         return build_h6179_scene(scene_code)
     if grammar == "H6199":
         return build_h6199_scene(scene_code, music_code)
-    if grammar == "H6099":
+    if grammar in {"H601C", "H6099"}:
         if music_code or scene_type:
-            raise ValueError("H6099 scene selector has no music-code or scene-type field")
-        root = H6099CommandWrite()
+            raise ValueError(f"{grammar} scene selector has no music-code or scene-type field")
+        root_type = _COMMAND_ROOTS[grammar][1]
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H6099CommandWrite.CommandOp.mode
-        mode = _child(H6099CommandWrite.ModeBody, root)
-        mode.sub_mode = H6099CommandWrite.ModeSel.scene
-        detail = _child(H6099CommandWrite.SceneBody, mode)
-        detail.scene_id = scene_code
+        root.opcode = root_type.CommandOp.mode
+        mode = _child(root_type.ModeBody, root)
+        mode.sub_mode = root_type.ModeSel.scene
+        detail = _child(root_type.SceneBody, mode)
+        detail.scene_id = max(0, min(0xFFFF, scene_code))
+        if grammar == "H601C":
+            detail.padding = bytes(14)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
@@ -1812,6 +1826,18 @@ def build_diy_activation(diy_code: int, model: str, *, profile: ModelProfile | N
     grammar = (profile or get_profile(model)).command_grammar
     if grammar in {"H617A", "H7020"}:
         return build_h617a_diy_activation(diy_code, root_type=_COMMAND_ROOTS[grammar][1])
+    if grammar == "H601C":
+        root = H601cCommandWrite()
+        root.header = b"\x33"
+        root.opcode = H601cCommandWrite.CommandOp.mode
+        mode = _child(H601cCommandWrite.ModeBody, root)
+        mode.sub_mode = H601cCommandWrite.ModeSel.diy
+        detail = _child(H601cCommandWrite.DiyBody, mode)
+        detail.code = diy_code
+        detail.padding = bytes(14)
+        mode.detail = detail
+        root.body = mode
+        return _serialize_xor(root)
     if grammar == "H6099":
         return build_h6099_diy_activation(diy_code)
     if grammar == "H6179":

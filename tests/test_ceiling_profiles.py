@@ -34,11 +34,18 @@ def test_exact_ceiling_profiles_have_no_catalogue_inheritance(model):
     assert resolve_model(model.lower()) == model and p.support_quality is SupportQuality.SUPPORTED
     expected_discovery = "H601C" if model == "H601C" else None
     assert model_from_ble_name(f"Govee_{model}_test") == expected_discovery
-    assert p.command_operations == {"power", "brightness", "static"}
-    assert supported_effect_categories(model) == ()
-    assert p.effect_grammar is None and p.scene_catalogue_sku is None
+    if model == "H601C":
+        assert p.command_operations == {"power", "brightness", "static", "scene", "diy", "effect_upload"}
+        assert supported_effect_categories(model) == ("scenes", "effects", "multi_layered")
+        assert p.effect_grammar == "H617A" and p.scene_catalogue_sku == "H601C"
+        assert p.supports_custom_effects and p.supports_scenes and p.supports_multi_layered_effects
+        assert not p.supports_music_mode and not p.supports_advanced_effects
+    else:
+        assert p.command_operations == {"power", "brightness", "static"}
+        assert supported_effect_categories(model) == ()
+        assert p.effect_grammar is None and p.scene_catalogue_sku is None
+        assert not p.supports_custom_effects and not p.supports_music_mode and not p.supports_scenes
     assert not p.supports_segment_brightness and not p.supports_segment_color_temperature
-    assert not p.supports_custom_effects and not p.supports_music_mode and not p.supports_scenes
     assert not p.static_readback_echoes_color
     require_profile_packet(build_brightness(50, model), p)
     assert resolve_model("H60C1") is None

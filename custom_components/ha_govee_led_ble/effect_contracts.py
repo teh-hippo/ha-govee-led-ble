@@ -403,6 +403,49 @@ _RELEASE_CAPABILITY_BASE: Final = (
 RELEASE_CAPABILITY_CONTRACT: Final = (
     *(
         _capability(
+            "H601C",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            VerificationConfidence.UNVERIFIED,
+            PhysicalValidationState.NOT_VALIDATED,
+            EvidenceClassification.STRUCTURAL,
+        )
+        for workflow, label, kind, route, strategy in (
+            (
+                CapabilityWorkflow.NATIVE_SCENES,
+                "Scenes",
+                "scene_builtin",
+                ApplicationRoute.STUDIO_SCENE_APPLY,
+                CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION,
+            ),
+            (
+                CapabilityWorkflow.EDITED_PALETTE_SCENES,
+                "Edited palette scenes",
+                "scene_palette",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.MODEL_SCENE_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.SINGLE,
+                "Basic DIY",
+                "h617a_single",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+            (
+                CapabilityWorkflow.MULTI,
+                "Mixed DIY",
+                "h617a_multi",
+                ApplicationRoute.HOME_ASSISTANT_CONTROL,
+                CompilerDeployerStrategy.H617A_CUSTOM_ENGINE,
+            ),
+        )
+    ),
+    *(
+        _capability(
             "H6102",
             workflow,
             label,

@@ -1,5 +1,6 @@
 import json
 import logging
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -25,6 +26,7 @@ from custom_components.ha_govee_led_ble.const import (
     CONNECTION_MODE_HOLD,
     CONNECTION_MODE_RELEASE,
     DOMAIN,
+    MODEL_PROFILES,
     model_from_ble_name,
 )
 
@@ -538,14 +540,44 @@ async def test_options_flow_exposes_connection_mode_for_readable_models(
         assert schema({}) == {CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE}
 
 
-async def test_options_flow_does_not_offer_hold_without_readable_state(hass: HomeAssistant):
+async def test_options_flow_does_not_offer_hold_without_readable_state(hass: HomeAssistant, monkeypatch):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H601C"}, unique_id=SVC_H6076.address)
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_options"
+    assert result["type"] is FlowResultType.FORM
+    schema = result["data_schema"]
+    assert schema is not None
+    fields = [marker.schema for marker in schema.schema]
+    assert CONF_CONNECTION_MODE not in fields
+    with patch.object(hass.config_entries, "async_schedule_reload"):
+        saved = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {
+                "scenes": True,
+                "effects": False,
+                "multi_layered": True,
+                CONF_PREFIX_EFFECT_NAMES: False,
+                CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,
+            },
+        )
+    assert saved["type"] is FlowResultType.CREATE_ENTRY
+    assert CONF_CONNECTION_MODE not in saved["data"]
+
+    monkeypatch.setitem(
+        MODEL_PROFILES,
+        "H601C",
+        replace(
+            MODEL_PROFILES["H601C"],
+            supports_scenes=False,
+            supports_custom_effects=False,
+            supports_multi_layered_effects=False,
+        ),
+    )
+    aborted = await hass.config_entries.options.async_init(entry.entry_id)
+    assert aborted["type"] is FlowResultType.ABORT
+    assert aborted["reason"] == "no_options"
 
 
 async def test_reconfigure_h6076_preserves_entry_identity(hass: HomeAssistant):

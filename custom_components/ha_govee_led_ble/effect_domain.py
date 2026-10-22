@@ -451,13 +451,23 @@ class SceneStep:
     value: int
     colour: RGB
     inline_colour: RGB | None = None
+    inline_extra: int | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.value, int) or not 0 <= self.value <= 0xFFFF:
+        if not isinstance(self.value, int) or isinstance(self.value, bool) or not 0 <= self.value <= 0xFFFF:
             raise EffectValidationError("scene step value must be from 0 to 65535")
         _validate_rgb(self.colour, "scene step colour")
         if self.inline_colour is not None:
             _validate_rgb(self.inline_colour, "scene inline colour")
+        if self.inline_extra is not None:
+            if self.inline_colour is None:
+                raise EffectValidationError("scene inline extra requires inline colour")
+            if (
+                not isinstance(self.inline_extra, int)
+                or isinstance(self.inline_extra, bool)
+                or not 0 <= self.inline_extra <= 0xFFFF
+            ):
+                raise EffectValidationError("scene inline extra must be from 0 to 65535")
 
 
 @dataclass(frozen=True, slots=True)
@@ -483,6 +493,8 @@ class PaletteScene:
             raise EffectValidationError("layout 1 scenes must not have a shared palette")
         elif any(step.inline_colour is None for step in self.steps):
             raise EffectValidationError("layout 1 steps require inline colours")
+        elif len({step.inline_extra is None for step in self.steps}) > 1:
+            raise EffectValidationError("layout 1 steps must agree on inline extra presence")
         if self.speed_index is not None:
             _validate_byte(self.speed_index, "scene speed index")
         if self.config_flags & ~PALETTE_CONFIG_RESERVED_MASK:
@@ -868,6 +880,7 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
                     "value": step.value,
                     "colour": list(step.colour),
                     "inline_colour": (list(step.inline_colour) if step.inline_colour is not None else None),
+                    **({"inline_extra": step.inline_extra} if step.inline_extra is not None else {}),
                 }
                 for step in content.steps
             ],
@@ -1055,6 +1068,7 @@ def _scene_step_from_dict(raw: Mapping[str, Any]) -> SceneStep:
         value=_required_int(raw, "value"),
         colour=_rgb_from_value(raw.get("colour"), "scene step colour"),
         inline_colour=(None if inline is None else _rgb_from_value(inline, "scene inline colour")),
+        inline_extra=_optional_int(raw, "inline_extra"),
     )
 
 

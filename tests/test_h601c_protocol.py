@@ -16,10 +16,12 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_brightness_query,
     build_colour_mode_query,
+    build_diy_activation,
     build_firmware_query,
     build_hardware_query,
     build_power,
     build_power_query,
+    build_scene_activation,
     build_segment_colour,
     parse_command_result,
     parse_status_result,
@@ -309,3 +311,42 @@ async def test_basic_optimism_waits_for_transform_and_authorization(device, buil
         )
     assert device.capture_effect_control_state() == before and device.control_write_attempts == 0
     device._client.write_gatt_char.assert_not_awaited()
+
+
+def test_h601c_scene_and_diy_vectors_status_and_upload_admission():
+    prod = MODEL_PROFILES["H601C"]
+    scene_pkt = build_scene_activation("H601C", 2657, profile=prod)
+    diy_pkt = build_diy_activation(24, "H601C", profile=prod)
+    assert scene_pkt.hex() == "330504610a000000000000000000000000000059"
+    assert diy_pkt.hex() == "33050a1800000000000000000000000000000024"
+    require_profile_packet(scene_pkt, prod)
+    require_profile_packet(diy_pkt, prod)
+    assert expectations_from_packet(scene_pkt, "H601C", profile=prod) == {
+        "color_mode": (ParsedMode.SCENE, None),
+        "scene_code": 2657,
+        "effect": "morning",
+        "unknown_scene_code": None,
+    }
+    assert expectations_from_packet(diy_pkt, "H601C", profile=prod) == {
+        "color_mode": (ParsedMode.DIY, 24),
+    }
+    with pytest.raises(ValueError, match="no music-code or scene-type"):
+        build_scene_activation("H601C", 2657, 1, profile=prod)
+    for bad in ("330504610a01", "33050a180001"):
+        assert parse_command_result(frame(bad), profile=prod).rejection is ProtocolParseRejection.SCHEMA_REJECTED
+    for allowed_upload in ("a300010201", "a300010204"):
+        require_profile_packet(frame(allowed_upload), prod)
+    for rejected_upload in ("a300010202", "a300010203"):
+        with pytest.raises(ValueError, match="outside profile capabilities"):
+            require_profile_packet(frame(rejected_upload), prod)
+
+    status_profile = replace(PROFILE, scene_catalogue_sku="H601C", supports_scenes=True)
+    scene_status = decode_status_frame(frame("aa0504610a"), "H601C", profile=status_profile)
+    assert scene_status is not None
+    parsed_scene = parse_color_mode(scene_status.generated, "H601C", profile=status_profile)
+    assert parsed_scene.mode is ParsedMode.SCENE and parsed_scene.scene_code == 2657
+    assert parsed_scene.effect == "morning"
+    diy_status = decode_status_frame(frame("aa050a1800"), "H601C", profile=status_profile)
+    assert diy_status is not None
+    parsed_diy = parse_color_mode(diy_status.generated, "H601C", profile=status_profile)
+    assert parsed_diy.mode is ParsedMode.DIY and parsed_diy.diy_code == 24

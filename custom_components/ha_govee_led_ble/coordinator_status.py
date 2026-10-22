@@ -274,14 +274,16 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         return ParsedColorModeResponse()
 
     if mode_name == "scene":
-        scene_code = int(body.mode_body.scene_id)
+        detail = getattr(body, "mode_body", getattr(body, "detail", body))
+        scene_code = int(detail.scene_id)
         return ParsedColorModeResponse(
             mode=ParsedMode.SCENE,
             effect=scene_key_for_code(model, scene_code, profile=profile),
             scene_code=scene_code,
         )
     if mode_name == "diy":
-        return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(body.mode_body.code))
+        detail = getattr(body, "mode_body", getattr(body, "detail", body))
+        return ParsedColorModeResponse(mode=ParsedMode.DIY, diy_code=int(detail.code))
     if mode_name == "music":
         detail = body.mode_body
         if not getattr(detail, "is_legacy", True):

@@ -62,7 +62,9 @@ test("canonical backend responses decode through the production validators", () 
     "H6076",
     "H7020",
     "H7025",
+    "H601C",
   ]);
+  expect(responses.scene_catalogues).toHaveProperty("H601C");
   expect(responses.scene_catalogues).toHaveProperty("H7025");
   expect(devices.find((device) => device.model === "H617A")?.light_entity_id).toBe("light.h617a_main");
   expect(devices.find((device) => device.model === "H617E")?.light_entity_id).toBeNull();
@@ -480,6 +482,18 @@ describe("focused effect-content mutations", () => {
       (payload) => {
         objectArray(payload.steps)[0].colour = [1, 2];
       },
+      (payload) => {
+        objectArray(payload.steps)[0].inline_extra = 0;
+      },
+      (payload) => {
+        payload.layout = 1;
+        payload.palette = [];
+        const steps = objectArray(payload.steps);
+        steps.forEach((step) => {
+          step.inline_colour = [1, 2, 3];
+        });
+        steps[0].inline_extra = 0xcafe;
+      },
     ];
 
     for (const mutate of mutations) {
@@ -489,6 +503,18 @@ describe("focused effect-content mutations", () => {
         "Malformed Effect Studio server payload",
       );
     }
+
+    const stride5 = cloneObject(contentSamples.scene_palette);
+    stride5.layout = 1;
+    stride5.palette = [];
+    objectArray(stride5.steps).forEach((step) => {
+      step.inline_colour = [4, 5, 6];
+      step.inline_extra = 0xcafe;
+    });
+    const decodedStride5 = decodeEffectContent(stride5);
+    expect(decodeEffectContent(effectContentToWire(decodedStride5))).toEqual(
+      decodedStride5,
+    );
   });
 
   test("layer and movement reserved bits round-trip while explicit bits are rejected", () => {

@@ -109,7 +109,7 @@ def test_encode_round_trips_every_committed_type_1_scene() -> None:
             assert encode_palette_scene(decoded) == raw_param
             fixtures += 1
 
-    assert fixtures == 16
+    assert fixtures == 77
 
 
 def test_committed_palette_scenes_compile_to_byte_exact_model_frames() -> None:
@@ -215,6 +215,24 @@ def test_layout_1_decoding_is_synthetic_schema_support_without_hardware_evidence
     )
     assert encode_palette_scene(decoded) == raw_param
     assert effect_content_from_dict(effect_content_to_dict(decoded)) == decoded
+
+    stride5_raw = bytes.fromhex("95010102033412040506feca")
+    stride5 = decode_palette_scene(CatalogueRef("SYNTHETIC", 1, 1), stride5_raw)
+    assert stride5.steps[0].inline_extra == 0xCAFE
+    assert encode_palette_scene(stride5) == stride5_raw
+    assert effect_content_from_dict(effect_content_to_dict(stride5)) == stride5
+    with pytest.raises(EffectValidationError, match="inline extra"):
+        SceneStep(value=1, colour=(1, 2, 3), inline_extra=0)
+    with pytest.raises(EffectValidationError, match="inline extra"):
+        PaletteScene(
+            template=CatalogueRef("SYNTHETIC", 1, 1),
+            layout=1,
+            brightness_flag=True,
+            steps=(
+                SceneStep(value=1, colour=(1, 2, 3), inline_colour=(4, 5, 6), inline_extra=0),
+                SceneStep(value=1, colour=(1, 2, 3), inline_colour=(4, 5, 6)),
+            ),
+        )
 
 
 @pytest.mark.parametrize(

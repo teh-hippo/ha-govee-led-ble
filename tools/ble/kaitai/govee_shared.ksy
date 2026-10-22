@@ -147,11 +147,12 @@ types:
         type: u1
         doc: >
           Packed colour stride, layout and brightness flag. Layout 1 is present in the
-          app parser and historical cross-SKU data, but a crafted H617A 0x93 body was
+          app parser and historical cross-SKU data, including stride-5 inline records on
+          exact-SKU downlight/backlight catalogues, while a crafted H617A 0x93 body was
           acknowledged without replacing the active layout-0 Halloween body. H617A
           support is therefore rejected rather than inferred from parser structure.
         valid:
-          expr: 'layout <= 1 and colour_stride == 3'
+          expr: 'layout <= 1 and (colour_stride == 3 or (layout == 1 and colour_stride == 5))'
       - id: num_steps
         type: u1
       - id: steps
@@ -193,6 +194,9 @@ types:
         type: scene_type1_step
       - id: colour
         type: rgb
+      - id: unknown_extra
+        type: u2
+        if: _parent.colour_stride == 5
 enums:
   brightness_order:
     0: brightest_darkest

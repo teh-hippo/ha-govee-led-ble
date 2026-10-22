@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from .const import ModelProfile, ReadDomain, get_profile
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
+from .coordinator_status import ParsedMode
 from .effect_active_workspace import (
     ActiveEffectWorkspace,
     ActiveEffectWorkspaceRepository,
@@ -321,9 +322,22 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="saved_effect",
         )
-        if result.phase is DeploymentPhase.CONFIRMED:
+        write_only_completed = (
+            not coordinator.profile.state_readable
+            and result.phase is DeploymentPhase.UNCERTAIN
+            and result.error_code == "device_state_unconfirmed"
+        )
+        if result.phase is DeploymentPhase.CONFIRMED or write_only_completed:
             if self._active_workspaces is not None:
                 self._active_workspaces.clear(config_entry_id)
+            if write_only_completed:
+                self._reconcile_observation(
+                    coordinator,
+                    config_entry_id=config_entry_id,
+                    observed_at=updated_at,
+                    refreshed=False,
+                    matched_record=result,
+                )
             self._publish_coordinator_state(coordinator)
         return result
 
@@ -346,7 +360,12 @@ class EffectDeploymentEngine:
             operation_id=operation_id,
             source_kind="snapshot",
         )
-        if result.phase is DeploymentPhase.CONFIRMED:
+        write_only_completed = (
+            not coordinator.profile.state_readable
+            and result.phase is DeploymentPhase.UNCERTAIN
+            and result.error_code == "device_state_unconfirmed"
+        )
+        if result.phase is DeploymentPhase.CONFIRMED or write_only_completed:
             if self._active_workspaces is not None:
                 signature = observable_signature_for_compiled(compiled)
                 if signature is not None:
@@ -363,9 +382,20 @@ class EffectDeploymentEngine:
                             observable_signature=signature,
                             updated_at=updated_at,
                             generation=self._active_workspaces.next_generation(),
-                            confidence=result.verification_confidence,
+                            confidence=(
+                                ObservationConfidence.WRITE_COMPLETED
+                                if write_only_completed
+                                else result.verification_confidence
+                            ),
                         )
                     )
+            if write_only_completed:
+                self._reconcile_observation(
+                    coordinator,
+                    config_entry_id=config_entry_id,
+                    observed_at=updated_at,
+                    refreshed=False,
+                )
             self._publish_coordinator_state(coordinator)
         return result
 
@@ -588,6 +618,18 @@ class EffectDeploymentEngine:
                             write_guard=validate_effect_write,
                             **ack_options,
                         )
+                        if not coordinator.profile.state_readable:
+                            if compiled.selector_kind == "scene":
+                                coordinator.color_mode = ParsedMode.SCENE
+                                coordinator.effect = compiled.expected_effect
+                                coordinator._scene_code = compiled.diy_code
+                                coordinator.diy_code = None
+                            else:
+                                coordinator.color_mode = ParsedMode.DIY
+                                coordinator._scene_code = None
+                                coordinator.effect = None
+                                coordinator.diy_code = compiled.diy_code
+                            coordinator.music_mode = coordinator.video_mode = "off"
                     else:
                         current = await self._async_apply_profile(coordinator, compiled, current)
 
@@ -817,7 +859,9 @@ class EffectDeploymentEngine:
         )
         await self._deployments.async_put(recovering, expected_version=None)
         recovered = False
-        if recovering.prior_state is not None:
+        if recovering.prior_state is not None and (
+            coordinator.profile.state_readable or error_code != "device_state_unconfirmed"
+        ):
             restore = getattr(coordinator, "async_restore_effect_control_state", None)
             if restore is not None:
                 try:
@@ -842,11 +886,13 @@ class EffectDeploymentEngine:
             phase=DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN,
         )
         await self._deployments.async_put(final, expected_version=None)
+        write_only_completed = not coordinator.profile.state_readable and error_code == "device_state_unconfirmed"
         self._reconcile_observation(
             coordinator,
             config_entry_id=record.config_entry_id,
             observed_at=record.updated_at,
             refreshed=recovered,
+            matched_record=final if write_only_completed and record.source_kind == "saved_effect" else None,
         )
         self._publish_coordinator_state(coordinator)
         return final
@@ -1109,7 +1155,14 @@ class EffectDeploymentEngine:
                 key=lambda record: record.updated_at,
                 default=None,
             )
-            if latest is not None and latest.phase is DeploymentPhase.CONFIRMED:
+            if latest is not None and (
+                latest.phase is DeploymentPhase.CONFIRMED
+                or (
+                    not coordinator.profile.state_readable
+                    and latest.phase is DeploymentPhase.UNCERTAIN
+                    and latest.error_code == "device_state_unconfirmed"
+                )
+            ):
                 if latest.target_mode in {"music", "video"} or _activation_matches(coordinator, latest):
                     matched_record = latest
         if matched_record is not None and matched_record.target_mode == ActivationMode.SCENE.value:
@@ -1151,6 +1204,8 @@ class EffectDeploymentEngine:
             )
         elif profile_match and matched_record is not None:
             confidence = matched_record.verification_confidence if verified_now else ObservationConfidence.MODE_MATCH
+        elif matched_record is not None and matched_record.phase is DeploymentPhase.UNCERTAIN:
+            confidence = ObservationConfidence.WRITE_COMPLETED
         elif diy_code is not None or effect is not None or scene_code is not None:
             confidence = (
                 ObservationConfidence.ACTIVATION_MATCH if matched_record is not None else ObservationConfidence.UNKNOWN
@@ -1174,6 +1229,7 @@ class EffectDeploymentEngine:
                 ObservationConfidence.ACTIVATION_MATCH,
                 ObservationConfidence.SETTINGS_MATCH,
                 ObservationConfidence.MODE_MATCH,
+                ObservationConfidence.WRITE_COMPLETED,
             }
             else None
         )
@@ -1203,6 +1259,7 @@ class EffectDeploymentEngine:
                     ObservationConfidence.ACTIVATION_MATCH,
                     ObservationConfidence.SETTINGS_MATCH,
                     ObservationConfidence.MODE_MATCH,
+                    ObservationConfidence.WRITE_COMPLETED,
                 }
                 else None
             ),

@@ -2004,6 +2004,54 @@ async def test_unreadable_device_is_uncertain_not_confirmed(
     coordinator.refresh_state.assert_not_awaited()
 
 
+async def test_write_only_h601c_deployment_installs_optimistic_state_without_rollback_writes(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, cache = await _repositories(hass)
+    active_workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await active_workspaces.async_load()
+    active_workspaces.set(replace(_flow_workspace(), model="H601C"))
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H601C", configuration_url=None)
+    coordinator.is_on = True
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+    item = _type04_item()
+    compiled = compile_h617a(item, 24, model="H601C")
+    engine = EffectDeploymentEngine(repository, cache, active_workspaces)
+
+    result = await engine.async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:00:00Z",
+    )
+
+    assert result.phase is DeploymentPhase.UNCERTAIN
+    assert result.error_code == "device_state_unconfirmed"
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
+    assert coordinator.active_mode == "custom"
+    assert coordinator.diy_code == 24
+    assert active_workspaces.get("entry-a") is None
+    observed = cache.get("entry-a")
+    assert observed is not None and observed.confidence is ObservationConfidence.WRITE_COMPLETED
+    assert observed.active_effect is not None and observed.active_effect.item_id == item.id
+
+    snapshot_item = LibraryItem.new("Draft Jump", SingleEffect(1, 0, 60, ((0, 0, 255),)))
+    snapshot_result = await engine.async_apply_snapshot(
+        coordinator,
+        snapshot_item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-11T00:01:00Z",
+    )
+    assert snapshot_result.phase is DeploymentPhase.UNCERTAIN
+    workspace = active_workspaces.get("entry-a")
+    assert workspace is not None and workspace.selector_label == "Draft Jump"
+    assert workspace.confidence is ObservationConfidence.WRITE_COMPLETED
+
+
 async def test_h6199_is_rejected_before_any_write(hass: HomeAssistant) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _coordinator()

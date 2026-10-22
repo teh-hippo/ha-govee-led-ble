@@ -489,6 +489,7 @@ interface SceneStepContent {
   value: number;
   colour: RGB;
   inline_colour: RGB | null;
+  inline_extra?: number;
 }
 
 export interface PaletteSceneContent {

@@ -58,7 +58,7 @@ def expectations_from_packet(
         profile=profile,
     ):
         expectations["color_mode"] = color_mode
-    if profile.command_grammar in {"H6099", "H6199"}:
+    if profile.command_grammar in {"H601C", "H6099", "H6199"}:
         if operation != "mode":
             return expectations
         mode = getattr(generated.body.sub_mode, "name", None)
@@ -188,9 +188,7 @@ def _expected_color_mode(
     profile: ModelProfile | None = None,
 ) -> tuple[ParsedMode, int | None] | None:
     profile = profile or get_profile(model)
-    if profile.command_grammar == "H601C":
-        return (ParsedMode.COLOUR, None) if generated.is_static else None
-    if profile.command_grammar in {"H6099", "H6199"}:
+    if profile.command_grammar in {"H601C", "H6099", "H6199"}:
         if generated.opcode.name != "mode":
             return None
         mode = getattr(generated.body.sub_mode, "name", None)
@@ -204,7 +202,10 @@ def _expected_color_mode(
         if mode == "scene":
             return ParsedMode.SCENE, None
         if mode == "static_colour":
-            return ParsedMode.COLOUR, (int(detail.operation) if static_echoes_color else None)
+            return (
+                ParsedMode.COLOUR,
+                (int(detail.operation) if static_echoes_color and hasattr(detail, "operation") else None),
+            )
         return None
     if generated.opcode.name != "multi":
         return None

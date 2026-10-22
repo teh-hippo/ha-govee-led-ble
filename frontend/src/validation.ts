@@ -1193,6 +1193,19 @@ function paletteSceneContent(
             step.inline_colour,
             `palette scene steps[${index}].inline_colour`,
           );
+    const inlineExtra =
+      step.inline_extra === undefined || step.inline_extra === null
+        ? undefined
+        : layout === 0
+          ? invalid(
+              `palette scene steps[${index}].inline_extra is not valid for layout 0`,
+            )
+          : integerValue(
+              step.inline_extra,
+              `palette scene steps[${index}].inline_extra`,
+              0,
+              65_535,
+            );
     return {
       value: integerValue(
         step.value,
@@ -1205,8 +1218,16 @@ function paletteSceneContent(
         `palette scene steps[${index}].colour`,
       ),
       inline_colour: inlineColour,
+      ...(inlineExtra === undefined ? {} : { inline_extra: inlineExtra }),
     };
   });
+  if (
+    layout === 1 &&
+    steps.some((step) => step.inline_extra !== undefined) &&
+    steps.some((step) => step.inline_extra === undefined)
+  ) {
+    invalid("palette scene layout 1 steps must agree on inline_extra presence");
+  }
   const palette = paletteValue(
     content.palette,
     "palette scene shared palette",

@@ -41,6 +41,8 @@ enums:
     0x06: firmware
     0x07: hardware
   color_mode:
+    0x04: scene
+    0x0a: diy
     0x0d: static_colour
 types:
   power_body:
@@ -65,7 +67,21 @@ types:
         type:
           switch-on: mode
           cases:
+            'color_mode::scene': scene_body
+            'color_mode::diy': diy_body
             'color_mode::static_colour': static_colour_body
+  scene_body:
+    seq:
+      - id: scene_id
+        type: u2le
+      - id: unknown_tail
+        size-eos: true
+  diy_body:
+    seq:
+      - id: code
+        type: u2le
+      - id: unknown_tail
+        size-eos: true
   static_colour_body:
     seq:
       - id: rgb
