@@ -20,7 +20,6 @@ doc: |
   (0x04) and DIY (0x0a), and mode/sensitivity for music (0x13).  AA A3 carries
   the gradual boolean in its first payload byte, and AA 0E carries the limit
   boolean gated at HW >= 1.00.02.  Unknown tails remain opaque.
-  See docs/h6102-application-findings.md for outbound reachability and deferred legacy.
   Unresolved assumptions: physical mapping/IC count, firmware-specific response presence,
   legacy mode/readback layouts, unknown mode selectors and all unused bytes.
   Preserve these bytes; this root does not enable legacy RGB or A1 DIY writes.

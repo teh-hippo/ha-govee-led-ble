@@ -52,7 +52,7 @@ Use the same short structure for human and agent plans:
 
 Research the exact device through available app behaviour, public sources, related projects, and supplied material.  Review contributed protocol files rather than accepting them as authoritative.  Aim for broad in-scope support, include defensible hypotheses as clearly speculative Kaitai, and preserve unknowns instead of inventing facts.
 
-The plan should describe only model-specific findings and work.  Link to this document instead of repeating repository architecture, protocol, support, release, or validation rules.
+The plan should describe only model-specific findings and work.  Keep the plan in the issue or pull request discussion rather than committing per-model files under docs/.  Link to this document instead of repeating repository architecture, protocol, support, release, or validation rules.
 
 ## Support lifecycle
 
@@ -156,10 +156,10 @@ and are exposed only by profiles that explicitly admit the selector.
 ## Repository non-goals
 
 These exclusions apply globally to every model, including Experimental profiles,
-services, Effect Studio, queries, and recovery. App availability or known BLE
-encoding does not override them. See [scope policy and evidence](docs/scope-policy.md).
-The repository may retain decode-only Kaitai documentation and protocol findings
-for excluded features; this does not authorize runtime control. It does not expose:
+services, Effect Studio, queries, and recovery.  App availability or known BLE
+encoding does not override them.  The repository may retain decode-only Kaitai
+documentation and protocol findings for excluded features; this does not
+authorise runtime control.  It does not expose:
 
 - AI filters, including their BLE selectors, configuration, and readback;
 - Wi-Fi provisioning, cloud control, or account and network setup;
