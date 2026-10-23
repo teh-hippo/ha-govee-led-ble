@@ -140,6 +140,10 @@ H6102StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_status_reply").H6102StatusReply,
 )
+H617cStatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617c_status_reply").H617cStatusReply,
+)
 H601cCommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h601c_command_write").H601cCommandWrite,
@@ -378,6 +382,7 @@ _STATUS_ROOTS = {
     "H6125-intermediate": ("h6125_intermediate_status_reply", H6125IntermediateStatusReply),
     "H6099": ("h6099_status_reply", H6099StatusReply),
     "H617A": ("status_reply", StatusReply),
+    "H617C": ("h617c_status_reply", H617cStatusReply),
     "H7025": ("h7025_status_reply", H7025StatusReply),
     "H6179": ("h6179_status_reply", H6179StatusReply),
     "H6199": ("h6199_status_reply", H6199StatusReply),
@@ -2747,6 +2752,16 @@ def encode_music_parameters(
             if not isinstance(current, IntEnum) or str(value) not in spec.options:
                 raise ValueError("music parameter requires a qualified enum value")
             setattr(tail, spec.wire_field, type(current)[str(value)])
+    if (
+        isinstance(tail, H617aControlPayload.HoppingTail)
+        and physical_ic_count is not None
+        and not preserve_companions
+        and (variant.requires_physical_ic_count or any(spec.requires_physical_ic_count for spec in variant.parameters))
+    ):
+        from math import ceil
+
+        tail.piece_count_min = max(1, ceil(physical_ic_count * 3 / 25))
+        tail.piece_count_max = max(1, ceil(physical_ic_count * 2 / 5))
     if variant.gradient_companions is not None and "gradient" in parameters:
         tail.speed = variant.gradient_companions[bool(parameters["gradient"])]
     if variant.piano_derived_half and "key_count" in parameters:
@@ -2757,7 +2772,11 @@ def encode_music_parameters(
         ):
             from math import ceil
 
-            tail.speed = 10 if physical_ic_count < 30 else 35
+            tail.speed = (
+                (10 if physical_ic_count <= 30 else 35)
+                if variant.physical_defaults == "rgbic"
+                else (10 if physical_ic_count < 30 else 35)
+            )
             tail.off_minimum = ceil(physical_ic_count / 4) if physical_ic_count < 30 else 1
         tail.off_maximum = max(tail.off_minimum, tail.key_count // 2)
     if variant.direction_values and "direction" in parameters:
@@ -2768,6 +2787,8 @@ def encode_music_parameters(
             spec.profile_key == "direction" and spec.requires_physical_ic_count for spec in variant.parameters
         ):
             tail.piece_len = 1 if physical_ic_count < 30 else 2 if tail.start_point == 1 else 3
+            if not preserve_companions:
+                tail.speed = 80 if physical_ic_count < 30 else 85
     if variant.style_companions is not None and calm is not None:
         value = variant.style_companions[calm]
         if isinstance(tail, H617aControlPayload.ShinyTail):
@@ -2829,7 +2850,9 @@ def _encode_h6099_music_parameters(
             tail.piece_count_max = max(1, ceil(ic * 2 / 5))
         elif root.mode == mode_enum.piano_keys and (not preserve_companions or "key_count" in parameters):
             if not preserve_companions:
-                tail.speed = 10 if ic < 30 else 35
+                tail.speed = (
+                    (10 if ic <= 30 else 35) if variant.physical_defaults == "rgbic" else (10 if ic < 30 else 35)
+                )
                 tail.off_minimum = ceil(ic / 4) if ic < 30 else 1
             tail.off_maximum = max(tail.off_minimum, tail.key_count // 2)
         elif root.mode == mode_enum.fountain and (not preserve_companions or "direction" in parameters):

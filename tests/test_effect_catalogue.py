@@ -83,6 +83,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "H6125",
         "H6179",
         "H617A",
+        "H617C",
         "H617E",
         "H6199",
         "H7020",
@@ -117,10 +118,120 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
 
 def test_h617e_has_exact_release_capability_records():
     h617a = release_capabilities_for_model("H617A")
+    h617c = release_capabilities_for_model("H617C")
     h617e = release_capabilities_for_model("H617E")
 
+    assert {capability.workflow for capability in h617c} == {capability.workflow for capability in h617a}
+    assert all(
+        capability.model == "H617C"
+        and capability.verification_confidence is VerificationConfidence.SELECTION_ONLY
+        and capability.physical_validation_state is PhysicalValidationState.NOT_VALIDATED
+        and capability.diagnostics_evidence_classification is EvidenceClassification.STRUCTURAL
+        for capability in h617c
+    )
     assert {capability.workflow for capability in h617e} == {capability.workflow for capability in h617a}
     assert all(capability.model == "H617E" for capability in h617e)
+
+
+def test_h617c_30_ic_music_and_diy_catalogue_contracts() -> None:
+    from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
+    from custom_components.ha_govee_led_ble.effect_compiler import compile_application
+    from custom_components.ha_govee_led_ble.music_commands import build_music_params
+    from custom_components.ha_govee_led_ble.music_semantics import compile_music_parameters, music_params_for_mode
+    from custom_components.ha_govee_led_ble.transport import reassemble_a3
+
+    profile = MODEL_PROFILES["H617C"]
+    expected = {
+        0x30: "3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50",
+        0x31: "3107ff0000ff7f00ffff0000ff000000ff00ffff8b00ff05640a",
+        0x32: "3207ff0000ff7f00ffff0000ff000000ff00ffff8b00ff030063",
+        0x33: "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ff01010119620103040c",
+        0x34: "3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f0a0107",
+        0x35: "3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff01020355",
+        0x37: "3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff061400",
+    }
+    for mode_code, body in expected.items():
+        defaults = {spec.profile_key: spec.default for spec in music_params_for_mode(mode_code, profile)}
+        compiled = compile_music_parameters(defaults, mode_code, profile)
+        companion = reassemble_a3(build_music_params(mode_code, compiled, profile=profile))
+        assert companion[2] == 0x41 and companion[3:].startswith(bytes.fromhex(body))
+    assert (music_params_for_mode(0x34, profile)[0].min_value, music_params_for_mode(0x34, profile)[0].max_value) == (
+        9,
+        18,
+    )
+    assert (music_params_for_mode(0x37, profile)[0].default, music_params_for_mode(0x37, profile)[0].max_value) == (
+        6,
+        6,
+    )
+    paint = resolve_catalogue_template("H617C", "template:paint", profile=profile).content
+    assert isinstance(paint, PaintedEffect) and paint.addressing == "physical_ic" and len(paint.segments) == 30
+    assert item_summary(LibraryItem.new("Paint", paint, target_hint=TargetHint("H617C")))["model"] == "H617C"
+    assert item_summary(LibraryItem.new("Paint", paint))["model"] == "H6099"
+    meteor = resolve_catalogue_template("H617C", "template:native-diy:504", profile=profile).content
+    bloom_diy = resolve_catalogue_template("H617C", "template:native-diy:506", profile=profile).content
+    assert isinstance(meteor, LayeredEffect) and all(layer.selection.quantity == 6 for layer in meteor.layers)
+    assert isinstance(bloom_diy, LayeredEffect) and [layer.selection.quantity for layer in bloom_diy.layers[2:]] == [
+        15,
+        15,
+    ]
+    studio = compile_application(LibraryItem.new("Studio", replace(meteor, native_diy=None)), "H617C", profile=profile)
+    assert studio.diy_code == 402 and studio.selector_kind == "scene"
+
+
+async def test_h617c_persisted_legacy_music_bodies_survive_upgrade() -> None:
+    from uuid import uuid4
+
+    from custom_components.ha_govee_led_ble.effect_deployments import (
+        DeploymentPhase,
+        DeploymentRecord,
+        EffectDeploymentRepository,
+        PriorControlState,
+    )
+    from custom_components.ha_govee_led_ble.music_commands import validate_music_body
+    from custom_components.ha_govee_led_ble.music_semantics import H617A_MUSIC_VARIANTS
+    from tests.storage_test_double import InMemoryVersionedDocumentStore
+
+    profile = MODEL_PROFILES["H617C"]
+    slugs = {value: key for key, value in MUSIC_MODE_SLUGS.items()}
+    records = {}
+    for variant in H617A_MUSIC_VARIANTS:
+        if not variant.template:
+            continue
+        slug = slugs[variant.mode_code]
+        validate_music_body(variant.template, slug, profile=profile)
+        prior = PriorControlState(
+            mode="music",
+            is_on=True,
+            brightness_pct=80,
+            rgb_color=(255, 255, 255),
+            music_mode=slug,
+            music_model="H617C",
+            music_sensitivity=50,
+            music_body=variant.template,
+        )
+        record = DeploymentRecord(
+            operation_id=uuid4(),
+            config_entry_id="entry-h617c",
+            diy_code=24,
+            content_kind="h617a_single",
+            phase=DeploymentPhase.CONFIRMED,
+            compiler_version=1,
+            artifact_sha256="a" * 64,
+            updated_at="2026-10-20T00:00:00Z",
+            target_mode="custom",
+            target_model="H617C",
+            source_kind="snapshot",
+            selector_label="Saved",
+            source_origin_kind="custom",
+            source_content_hash="b" * 64,
+            prior_state=prior,
+        )
+        records[str(record.operation_id)] = record.to_dict()
+    store = InMemoryVersionedDocumentStore({"version": 2, "records": records})
+    repo = EffectDeploymentRepository(store)
+    snapshot = await repo.async_load()
+    assert len(snapshot.records) == 7
+    assert store.save_count == 0
 
 
 def test_h617a_model_catalogue_preserves_type04_and_painted_contracts() -> None:

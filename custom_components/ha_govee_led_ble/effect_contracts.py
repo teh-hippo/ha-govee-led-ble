@@ -691,7 +691,17 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         }
     ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
-    *(replace(capability, model="H617C") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
+    *(
+        replace(
+            capability,
+            model="H617C",
+            verification_confidence=VerificationConfidence.SELECTION_ONLY,
+            physical_validation_state=PhysicalValidationState.NOT_VALIDATED,
+            diagnostics_evidence_classification=EvidenceClassification.STRUCTURAL,
+        )
+        for capability in _RELEASE_CAPABILITY_BASE
+        if capability.model == "H617A"
+    ),
     *(replace(capability, model="H617E") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6179"),
     *(replace(capability, model="H617F") for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),

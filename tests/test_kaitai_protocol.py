@@ -1461,6 +1461,40 @@ async def test_four_slot_profile_observes_every_declared_domain(hass, monkeypatc
     assert client.write_gatt_char.await_args_list == [call(WRITE_UUID, query, response=False) for query in replies]
 
 
+def test_h617c_status_root_preserves_opaque_tails_and_nonzero_segment_slots() -> None:
+    def _frame(prefix: str) -> bytes:
+        body = bytes.fromhex(prefix).ljust(19, b"\x00")
+        return body + bytes((xor_checksum(body),))
+
+    segment_frame = _frame("aaa505000000006420406032aabbccdeadbeef")
+    result = generated_protocol_adapter.parse_status_result(segment_frame, "H617C")
+    assert result.rejection is None and result.parser == "h617c_status_reply"
+    assert result.parsed is not None
+    assert result.parsed.body.group == 5 and len(result.parsed.body.segments) == 3
+    assert result.parsed.body.unused == [0xDE, 0xAD, 0xBE, 0xEF]
+    assert (
+        generated_protocol_adapter.parse_status_result(segment_frame, "H617A").rejection
+        is ProtocolParseRejection.SCHEMA_REJECTED
+    )
+    for group in (0, 6):
+        assert generated_protocol_adapter.parse_status_result(_frame(f"aaa5{group:02x}"), "H617C").rejection is not None
+    assert generated_protocol_adapter.build_colour_mode_query("H617C") == _frame("aa0501")
+    for prefix, field, expected in (
+        ("aa0101dead", "is_on", 1),
+        ("aa044bdead", "brightness_pct", 75),
+        ("aaa301dead", "flag", 1),
+        ("aa06332e30322e303200dead", "text", "3.02.02"),
+        ("aa0703332e30312e303100dead", "text", "3.01.01"),
+    ):
+        parsed = generated_protocol_adapter.parse_status_result(_frame(prefix), "H617C").parsed
+        assert parsed is not None
+        assert getattr(parsed.body, field) == expected
+        assert parsed.body.unknown_tail.startswith(b"\xde\xad")
+    static = generated_protocol_adapter.parse_status_result(_frame("aa0515010fa0dead"), "H617C").parsed
+    assert static is not None and static.body.mode_body.unknown_tail.startswith(b"\xde\xad")
+    assert (static.body.mode_body.sub, static.body.mode_body.kelvin) == (1, 4000)
+
+
 def test_diy_shapes_expose_painted_flat_and_combo_fields() -> None:
     painted = _parse(DiyType03, TYPE03_PAINTED)
     assert painted.effect.name == "clockwise"

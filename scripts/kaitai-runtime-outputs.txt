@@ -44,6 +44,7 @@ h6099_status_query.py
 h6099_status_reply.py
 h617a_command_ack.py
 h617a_control_payload.py
+h617c_status_reply.py
 h6179_command_write.py
 h6179_diy_body.py
 h6179_status_query.py

@@ -1168,6 +1168,7 @@ def _rgbic_native_templates(preset_ic_count: int) -> tuple[CatalogueTemplate, ..
 
 H6102_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(60)
 H6125_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(50)
+H617C_NATIVE_DIY_TEMPLATES: Final = _rgbic_native_templates(30)
 H617A_CATALOGUE_TEMPLATES: Final = (
     *_h617a_catalogue_templates("H617A", H617A_NATIVE_MUSIC_MODES),
     *H617A_NATIVE_DIY_TEMPLATES,
@@ -1278,6 +1279,10 @@ H6125_DIY_FAMILIES: Final = tuple(
     )
 )
 H6125_NATIVE_MUSIC_MODES: Final = _native_music_modes("H6125")
+H617C_DIY_FAMILIES: Final = tuple(
+    replace(family, source_reference="H617C DreamColor basic and mixed DIY") for family in H6125_DIY_FAMILIES
+)
+H617C_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617C")
 # The selector order follows the app, not the wire codes.
 H6076_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H6076"].music_modes
@@ -1485,6 +1490,52 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H617A", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H617A", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H617A", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H617C": ModelEffectCatalogue(
+        sku="H617C",
+        native_diy_palette_groups=(
+            (501, (0,), 1, 1),
+            (501, (1, 2), 4, 8),
+            (502, (0, 1), 2, 8),
+            (504, (0, 1, 2), 3, 8),
+            (505, (1,), 1, 1),
+            (506, (0, 1), 2, 8),
+            (506, (2, 3), 2, 8),
+        ),
+        painted_addressing="physical_ic",
+        painted_effects=tuple(
+            {"id": name, "label": name.replace("_", " ").capitalize()}
+            for name in ("clockwise", "counter_clockwise", "cycle", "gradient", "twinkle", "breathe")
+        ),
+        effects=H617C_DIY_FAMILIES,
+        music_modes=H617C_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=(
+            CatalogueTemplate(
+                id="template:paint",
+                label="Paint",
+                category="single-layer",
+                content=PaintedEffect(
+                    effect="clockwise", speed=50, brightness=100, segments=(None,), addressing="physical_ic"
+                ),
+            ),
+            *(_single_template("H617C", family) for family in H617C_DIY_FAMILIES),
+            *(_music_template("H617C", mode) for mode in H617C_NATIVE_MUSIC_MODES),
+            *H617C_NATIVE_DIY_TEMPLATES,
+        ),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H617C", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H617C", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H617C", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H617C", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H617C", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H617C", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H617C", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H617C", CapabilityWorkflow.WORKSHOP),
         ),
     ),
     "H617E": ModelEffectCatalogue(

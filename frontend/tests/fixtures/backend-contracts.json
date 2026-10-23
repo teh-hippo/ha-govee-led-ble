@@ -15716,6 +15716,2277 @@
           ],
           "workshop_templates": []
         },
+        "H617C": {
+          "apply": {
+            "multi": "supported",
+            "painted": "supported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "supported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            }
+          ],
+          "music_settings": {
+            "bloom": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "day_and_night": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 6,
+                  "kind": "number",
+                  "max": 6,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 20,
+                  "kind": "number",
+                  "max": 100,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "energetic": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "fountain": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "two_way",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "background": {
+                  "default": 65793,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                },
+                "relative_brightness": {
+                  "default": 25,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "piano_keys": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "key_count": {
+                  "default": 15,
+                  "kind": "number",
+                  "max": 18,
+                  "min": 9,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "shiny": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "spectrum": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_addressing": "physical_ic",
+          "painted_background": [
+            0,
+            0,
+            0
+          ],
+          "painted_effects": [
+            {
+              "id": "clockwise",
+              "label": "Clockwise"
+            }
+          ],
+          "sku": "H617C",
+          "supports": {
+            "advanced": "supported",
+            "multi": "supported",
+            "workshop": "supported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "addressing": "physical_ic",
+                "brightness": 100,
+                "effect": "clockwise",
+                "kind": "h617a_painted",
+                "segments": [
+                  null
+                ],
+                "speed": 50
+              },
+              "id": "template:paint",
+              "label": "Paint"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jump"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blink"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "fountain",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:fountain",
+              "label": "Fountain"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "bloom",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:bloom",
+              "label": "Bloom"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "shiny",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:shiny",
+              "label": "Shiny"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 1,
+                        "scope_high": 50,
+                        "scope_low": 50
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 200,
+                        "darkest_retention": 0,
+                        "order": 1,
+                        "scope_high": 255,
+                        "scope_low": 50
+                      }
+                    ],
+                    "colour_retention": 10,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 10,
+                      "param_2": 5,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 200,
+                        "darkest_retention": 0,
+                        "order": 1,
+                        "scope_high": 255,
+                        "scope_low": 50
+                      }
+                    ],
+                    "colour_retention": 10,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ]
+                    ],
+                    "priority": 2,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 30,
+                      "param_2": 10,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 501
+              },
+              "id": "template:native-diy:501",
+              "label": "Brilliant / Colorful"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 200,
+                        "darkest_retention": 50,
+                        "order": 1,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 200,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 15,
+                      "param_2": 1,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 200,
+                        "darkest_retention": 20,
+                        "order": 1,
+                        "scope_high": 255,
+                        "scope_low": 50
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 200,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 15,
+                      "param_2": 1,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 502
+              },
+              "id": "template:native-diy:502",
+              "label": "Colorful Sky"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 10
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 0,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 254,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        170,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        255,
+                        255,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 10,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 503
+              },
+              "id": "template:native-diy:503",
+              "label": "Meteor"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 10
+                      }
+                    ],
+                    "colour_retention": 100,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 253,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 6,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 4,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 10
+                      }
+                    ],
+                    "colour_retention": 100,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 253,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 6,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 7,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 10
+                      }
+                    ],
+                    "colour_retention": 100,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 253,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 6,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 504
+              },
+              "id": "template:native-diy:504",
+              "label": "Meteor Shower"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 240,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 200
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 240,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 240,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        255
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 255,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 20,
+                      "param_2": 10,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 20,
+                        "scope_low": 20
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 0,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 0,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 505
+              },
+              "id": "template:native-diy:505",
+              "label": "Shine"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 255,
+                        "darkest_retention": 50,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 2,
+                    "colour_speed": 255,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 2,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 15,
+                      "param_2": 5,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 255,
+                        "darkest_retention": 50,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 2,
+                    "colour_speed": 255,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 2,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 15,
+                      "param_2": 5,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 5
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 255,
+                        "darkest_retention": 50,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 100,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 255,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 5,
+                      "width_tenths": 5
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 255,
+                        "darkest_retention": 50,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 100,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 2,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 255,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 506
+              },
+              "id": "template:native-diy:506",
+              "label": "Bloom DIY"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 100,
+                        "scope_low": 100
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 200,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 2,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 206,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 100,
+                        "scope_low": 100
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 200,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 255,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 507
+              },
+              "id": "template:native-diy:507",
+              "label": "Stack"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_palette",
+              "id": "edited_palette_scenes",
+              "label": "Edited palette scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_painted",
+              "id": "painted",
+              "label": "Painted"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Multi"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "advanced",
+              "id": "advanced",
+              "label": "Advanced"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "workshop",
+              "id": "workshop",
+              "label": "Workshop"
+            }
+          ],
+          "workshop_templates": []
+        },
         "H617E": {
           "apply": {
             "multi": "supported",
@@ -33862,6 +36133,3052 @@
               "family": 0,
               "id": "fade",
               "label": "Fade",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jump",
+              "label": "Jump",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blink",
+              "label": "Blink",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "multi_rate_min": 0,
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Variation 1",
+                  "variant": 8
+                },
+                {
+                  "id": "6",
+                  "label": "Variation 2",
+                  "variant": 6
+                },
+                {
+                  "id": "7",
+                  "label": "Variation 3",
+                  "variant": 7
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
+            }
+          ],
+          "music_settings": {
+            "bloom": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "day_and_night": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 6,
+                  "kind": "number",
+                  "max": 6,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 20,
+                  "kind": "number",
+                  "max": 100,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "energetic": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "fountain": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "direction": {
+                  "default": "two_way",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
+              "style": false
+            },
+            "hopping": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "background": {
+                  "default": 65793,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                },
+                "relative_brightness": {
+                  "default": 25,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "piano_keys": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "key_count": {
+                  "default": 15,
+                  "kind": "number",
+                  "max": 18,
+                  "min": 9,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "rhythm": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette_size": 0,
+              "parameters": {},
+              "style": true
+            },
+            "rolling": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            },
+            "separation": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
+              "style": false
+            },
+            "shiny": {
+              "available": true,
+              "calm_default": false,
+              "colour": false,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
+              "palette_size": 7,
+              "parameters": {},
+              "style": true
+            },
+            "spectrum": {
+              "available": true,
+              "calm_default": false,
+              "colour": true,
+              "evidence": "H617C RGBIC MusicMode.d over music_body",
+              "palette_size": 0,
+              "parameters": {},
+              "style": false
+            }
+          },
+          "painted_addressing": "physical_ic",
+          "painted_background": [
+            0,
+            0,
+            0
+          ],
+          "painted_effects": [
+            {
+              "id": "clockwise",
+              "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
+            }
+          ],
+          "sku": "H617C",
+          "supports": {
+            "advanced": "supported",
+            "multi": "supported",
+            "workshop": "supported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "addressing": "physical_ic",
+                "brightness": 100,
+                "effect": "clockwise",
+                "kind": "h617a_painted",
+                "segments": [
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null
+                ],
+                "speed": 50
+              },
+              "id": "template:paint",
+              "label": "Paint"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jump"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blink"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 4,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 8
+              },
+              "id": "template:single:4:8",
+              "label": "Music"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "energetic",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:energetic",
+              "label": "Energetic"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rhythm",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "spectrum",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "rolling",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:rolling",
+              "label": "Rolling"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "separation",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:separation",
+              "label": "Separation"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "hopping",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:hopping",
+              "label": "Hopping"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "piano_keys",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "fountain",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:fountain",
+              "label": "Fountain"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": null,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "day_and_night",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "bloom",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:bloom",
+              "label": "Bloom"
+            },
+            {
+              "category": "music",
+              "content": {
+                "calm": false,
+                "colour": null,
+                "kind": "music_profile",
+                "mode": "shiny",
+                "model": "H617C",
+                "parameters": {},
+                "sensitivity": 99
+              },
+              "id": "template:music:shiny",
+              "label": "Shiny"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 1,
+                        "scope_high": 50,
+                        "scope_low": 50
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 200,
+                        "darkest_retention": 0,
+                        "order": 1,
+                        "scope_high": 255,
+                        "scope_low": 50
+                      }
+                    ],
+                    "colour_retention": 10,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 10,
+                      "param_2": 5,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 200,
+                        "darkest_retention": 0,
+                        "order": 1,
+                        "scope_high": 255,
+                        "scope_low": 50
+                      }
+                    ],
+                    "colour_retention": 10,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ]
+                    ],
+                    "priority": 2,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 30,
+                      "param_2": 10,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 501
+              },
+              "id": "template:native-diy:501",
+              "label": "Brilliant / Colorful"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 200,
+                        "darkest_retention": 50,
+                        "order": 1,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 200,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 15,
+                      "param_2": 1,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 20,
+                        "change_speed": 200,
+                        "darkest_retention": 20,
+                        "order": 1,
+                        "scope_high": 255,
+                        "scope_low": 50
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 200,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 15,
+                      "param_2": 1,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 502
+              },
+              "id": "template:native-diy:502",
+              "label": "Colorful Sky"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 10
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 0,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 254,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        170,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        255,
+                        255,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 10,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 503
+              },
+              "id": "template:native-diy:503",
+              "label": "Meteor"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 10
+                      }
+                    ],
+                    "colour_retention": 100,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 253,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 6,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 4,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 10
+                      }
+                    ],
+                    "colour_retention": 100,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 253,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 6,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 7,
+                      "width_tenths": 2
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 10
+                      }
+                    ],
+                    "colour_retention": 100,
+                    "colour_speed": 250,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 253,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 6,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 504
+              },
+              "id": "template:native-diy:504",
+              "label": "Meteor Shower"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": true,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 240,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 200
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 240,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 1
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 240,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        255
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 255,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 20,
+                      "param_2": 10,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 20,
+                        "scope_low": 20
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 0,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        0,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 0,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 505
+              },
+              "id": "template:native-diy:505",
+              "label": "Shine"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 255,
+                        "darkest_retention": 50,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 2,
+                    "colour_speed": 255,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 2,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 15,
+                      "param_2": 5,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 255,
+                        "darkest_retention": 50,
+                        "order": 2,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 2,
+                    "colour_speed": 255,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 2,
+                      "distance": 1,
+                      "enabled": true,
+                      "enter_exit": false,
+                      "speed": 250,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 15,
+                      "param_2": 5,
+                      "type": 2
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 5
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 255,
+                        "darkest_retention": 50,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 100,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 255,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 5,
+                      "width_tenths": 5
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 50,
+                        "change_speed": 255,
+                        "darkest_retention": 50,
+                        "order": 0,
+                        "scope_high": 255,
+                        "scope_low": 0
+                      }
+                    ],
+                    "colour_retention": 0,
+                    "colour_speed": 100,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 2
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 2,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 255,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 15,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 506
+              },
+              "id": "template:native-diy:506",
+              "label": "Bloom DIY"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "kind": "advanced",
+                "layers": [
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 100,
+                        "scope_low": 100
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 200,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ]
+                    ],
+                    "priority": 1,
+                    "selected_movement": {
+                      "direction": 2,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 206,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 0
+                    },
+                    "unknown_flags": 0
+                  },
+                  {
+                    "area": {
+                      "start_tenths": 0,
+                      "width_tenths": 0
+                    },
+                    "brightness_gradient": false,
+                    "brightness_patterns": [
+                      {
+                        "brightest_retention": 0,
+                        "change_speed": 0,
+                        "darkest_retention": 0,
+                        "order": 0,
+                        "scope_high": 100,
+                        "scope_low": 100
+                      }
+                    ],
+                    "colour_retention": 50,
+                    "colour_speed": 200,
+                    "distribution": {
+                      "backwards": false,
+                      "method": 0
+                    },
+                    "excess": "",
+                    "overall_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": false,
+                      "enter_exit": false,
+                      "speed": 0,
+                      "unknown_flags": 0
+                    },
+                    "palette": [
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ]
+                    ],
+                    "priority": 0,
+                    "selected_movement": {
+                      "direction": 0,
+                      "distance": 0,
+                      "enabled": true,
+                      "enter_exit": true,
+                      "speed": 255,
+                      "unknown_flags": 0
+                    },
+                    "selection": {
+                      "param_1": 0,
+                      "param_2": 1,
+                      "type": 1
+                    },
+                    "unknown_flags": 0
+                  }
+                ],
+                "native_diy": 507
+              },
+              "id": "template:native-diy:507",
+              "label": "Stack"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_palette",
+              "id": "edited_palette_scenes",
+              "label": "Edited palette scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_painted",
+              "id": "painted",
+              "label": "Painted"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Multi"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "music_profile",
+              "id": "native_music",
+              "label": "Music"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "advanced",
+              "id": "advanced",
+              "label": "Advanced"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "workshop",
+              "id": "workshop",
+              "label": "Workshop"
+            }
+          ],
+          "workshop_templates": []
+        },
+        "config_entry_id": "h617c-main",
+        "custom_effects": {
+          "advanced": "supported",
+          "multi": "supported",
+          "painted": "supported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "supported"
+        },
+        "display_name": "H617C LED Strip",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "reactive",
+          "advanced"
+        ],
+        "light_entity_id": null,
+        "model": "H617C",
+        "music_settings": {
+          "bloom": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {},
+            "style": true
+          },
+          "day_and_night": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "gradient": {
+                "default": false,
+                "kind": "switch",
+                "max": 0,
+                "min": 0,
+                "options": []
+              },
+              "segment_count": {
+                "default": 6,
+                "kind": "number",
+                "max": 6,
+                "min": 1,
+                "options": []
+              },
+              "speed": {
+                "default": 20,
+                "kind": "number",
+                "max": 100,
+                "min": 1,
+                "options": []
+              }
+            },
+            "style": false
+          },
+          "energetic": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette_size": 0,
+            "parameters": {},
+            "style": false
+          },
+          "fountain": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "direction": {
+                "default": "two_way",
+                "kind": "select",
+                "max": 0,
+                "min": 0,
+                "options": [
+                  "clockwise",
+                  "counterclockwise",
+                  "two_way"
+                ]
+              }
+            },
+            "style": false
+          },
+          "hopping": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "background": {
+                "default": 65793,
+                "kind": "number",
+                "max": 16777215,
+                "min": 0,
+                "options": []
+              },
+              "relative_brightness": {
+                "default": 25,
+                "kind": "number",
+                "max": 50,
+                "min": 0,
+                "options": []
+              }
+            },
+            "style": false
+          },
+          "piano_keys": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "gradient": {
+                "default": false,
+                "kind": "switch",
+                "max": 0,
+                "min": 0,
+                "options": []
+              },
+              "key_count": {
+                "default": 15,
+                "kind": "number",
+                "max": 18,
+                "min": 9,
+                "options": []
+              }
+            },
+            "style": false
+          },
+          "rhythm": {
+            "available": true,
+            "calm_default": false,
+            "colour": true,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette_size": 0,
+            "parameters": {},
+            "style": true
+          },
+          "rolling": {
+            "available": true,
+            "calm_default": false,
+            "colour": true,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette_size": 0,
+            "parameters": {},
+            "style": false
+          },
+          "separation": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {
+              "gradient": {
+                "default": false,
+                "kind": "switch",
+                "max": 0,
+                "min": 0,
+                "options": []
+              },
+              "point": {
+                "default": 3,
+                "kind": "number",
+                "max": 5,
+                "min": 1,
+                "options": []
+              }
+            },
+            "style": false
+          },
+          "shiny": {
+            "available": true,
+            "calm_default": false,
+            "colour": false,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
+            "palette_size": 7,
+            "parameters": {},
+            "style": true
+          },
+          "spectrum": {
+            "available": true,
+            "calm_default": false,
+            "colour": true,
+            "evidence": "H617C RGBIC MusicMode.d over music_body",
+            "palette_size": 0,
+            "parameters": {},
+            "style": false
+          }
+        },
+        "physical_ic_count": 30,
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h617c-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "supported",
+          "video": "unsupported"
+        },
+        "readback": "diy_code_only",
+        "segment_count": 15,
+        "static_composition": true,
+        "support_quality": "supported"
+      },
+      {
+        "active_state": null,
+        "catalogue": {
+          "apply": {
+            "multi": "supported",
+            "painted": "supported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "supported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
               "rate": "speed",
               "rate_max": 100,
               "rate_min": 0,
@@ -42701,6 +48018,66 @@
         ],
         "schema_version": 1,
         "sku": "H617A"
+      },
+      "H617C": {
+        "categories": [
+          {
+            "id": 2522,
+            "name": "House of the Dragon"
+          },
+          {
+            "id": 5,
+            "name": "Natural"
+          },
+          {
+            "id": 6,
+            "name": "Festival"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "House of the Dragon",
+            "category_id": 2522,
+            "display_name": "Dracarys",
+            "effect_id": 41599,
+            "name": "Dracarys",
+            "parameter_kind": "layers",
+            "scene_id": 29884,
+            "scene_type": 2,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 5,
+            "display_name": "Sunrise",
+            "effect_id": 110,
+            "name": "Sunrise",
+            "parameter_kind": "none",
+            "scene_id": 128,
+            "scene_type": 0,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Festival",
+            "category_id": 6,
+            "display_name": "Halloween-A",
+            "effect_id": 133,
+            "name": "Halloween",
+            "parameter_kind": "palette",
+            "scene_id": 151,
+            "scene_type": 1,
+            "selector_only": false,
+            "speed": null,
+            "variant": "A"
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H617C"
       },
       "H617E": {
         "categories": [

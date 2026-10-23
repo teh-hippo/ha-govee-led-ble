@@ -393,6 +393,33 @@ H6102_MUSIC_VARIANTS = (
 # dreamcolorlightv1 route; only the selector submode differs, and the transform owns that.
 H6125_MUSIC_VARIANTS = H6102_MUSIC_VARIANTS
 
+# H617C uses the same RGBIC MusicMode.d producers through music_body so legacy
+# zero-padded H617C recovery bodies and newly authored bodies both validate.
+H617C_MUSIC_VARIANTS = tuple(
+    replace(
+        variant,
+        evidence="H617C RGBIC MusicMode.d over music_body",
+        layout="music_body" if variant.layout == "h6099_music_parameters" else variant.layout,
+        style_companions=(0x50, 0x14)
+        if variant.mode_code == 0x30
+        else (0x0564, 0x1446)
+        if variant.mode_code == 0x31
+        else variant.style_companions,
+        gradient_companions=(99, 98) if variant.mode_code == 0x32 else variant.gradient_companions,
+        piano_derived_half=True if variant.mode_code == 0x34 else variant.piano_derived_half,
+        direction_values=(("clockwise", 0, 5), ("counterclockwise", 2, 5), ("two_way", 1, 3))
+        if variant.mode_code == 0x35
+        else variant.direction_values,
+        parameters=tuple(
+            replace(spec, wire_field="piece_num")
+            if variant.mode_code == 0x35 and spec.profile_key == "direction"
+            else spec
+            for spec in variant.parameters
+        ),
+    )
+    for variant in H6102_MUSIC_VARIANTS
+)
+
 _H6076_MODE = import_module(
     "custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write"
 ).H6076MusicWrite.MusicMode
@@ -648,13 +675,14 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
                 direction_values=(("clockwise", 0, pieces), ("counterclockwise", 2, pieces), ("two_way", 1, two_way)),
             )
         elif mode_code == 0x37:
+            max_value = ic // 2 if ic < 30 else ceil(ic / 5)
             variant = replace(
                 variant,
                 parameters=(
                     replace(
                         variant.parameters[0],
-                        max_value=ic // 2 if ic < 30 else ceil(ic / 5),
-                        default=(ic // 2 if ic < 30 else 7)
+                        max_value=max_value,
+                        default=min(max_value, ic // 2 if ic < 30 else 7)
                         if variant.physical_defaults == "rgbic"
                         else variant.parameters[0].default,
                     ),

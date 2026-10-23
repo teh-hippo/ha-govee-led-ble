@@ -200,3 +200,30 @@ def test_h6199_native_control_readbacks_remain_generated_fields() -> None:
     assert edges is not None
     body = edges.generated.body
     assert (body.left_percent, body.top_percent, body.right_percent, body.bottom_percent) == (51, 20, 31, 41)
+
+
+def test_invalid_static_gradual_flag_rejects_atomically_without_clearing_active_mode(hass) -> None:
+    from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H617C", configuration_url=None)
+    coordinator.color_mode = ParsedMode.MUSIC
+    coordinator.music_mode = "bloom"
+    coordinator._music_body = ("bloom", b"3007ff0000")
+    coordinator.effect = "dracarys"
+    coordinator.diy_code = 402
+    coordinator.rgb_color_source = "observed"
+    frame = bytearray.fromhex("aa0515020fa0" + "00" * 13)
+    frame.append(xor_checksum(frame))
+
+    coordinator._notify_callback(None, frame)
+
+    assert coordinator.packet_log[-1]["outcome"] == "rejected"
+    assert coordinator.packet_log[-1]["reason"] == "semantic_rejected"
+    assert coordinator.color_mode is ParsedMode.MUSIC
+    assert coordinator.music_mode == "bloom"
+    assert coordinator._music_body == ("bloom", b"3007ff0000")
+    assert coordinator.effect == "dracarys"
+    assert coordinator.diy_code == 402
+    assert coordinator.rgb_color_source == "observed"
+    assert StatusDomain.COLOUR_MODE not in coordinator._domain_revisions
+    assert not coordinator._field_revisions

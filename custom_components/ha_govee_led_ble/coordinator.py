@@ -1712,6 +1712,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         generated: Any,
     ) -> tuple[str, ...]:
         parsed = parse_color_mode(generated, self.model, profile=self.profile)
+        if (
+            parsed.mode is ParsedMode.COLOUR
+            and self.profile.static_readback_gradual
+            and parsed.multi_effect_flag not in (0, 1)
+        ):
+            raise ValueError("invalid static gradual flag")
         if parsed.mode is ParsedMode.DIY:
             mode_detail = parsed.diy_code
         elif parsed.mode is ParsedMode.COLOUR and self.profile.static_readback_echoes_color:
@@ -1813,10 +1819,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if parsed.mode is ParsedMode.COLOUR:
             if self.profile.static_readback_gradual:
                 # AA05 describes the colour mode; only AAA3 confirms a setting write.
-                flag = parsed.multi_effect_flag
-                if flag not in (0, 1):
-                    raise ValueError("invalid static gradual flag")
-                self.static_gradual = bool(flag)
+                self.static_gradual = bool(parsed.multi_effect_flag)
                 observed.append("static_gradual")
             if self.model == "H6199" and self.profile.status_grammar == "H6199":
                 values = parse_h6199_control(generated)

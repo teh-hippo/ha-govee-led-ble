@@ -91,12 +91,29 @@ def test_h617a_and_h617e_share_wire_behaviour_but_keep_exact_product_profiles():
     assert h617e.effect_grammar == h617a.effect_grammar == "H617A"
 
 
-@pytest.mark.parametrize("model", ["H617C", "H617F"])
-def test_h617c_and_h617f_use_exact_scene_catalogues_with_h617a_wire_grammars(model):
-    profile = MODEL_PROFILES[model]
+def test_h617c_is_an_exact_isolated_profile_with_its_own_status_grammar_and_30_ic_geometry():
+    profile = MODEL_PROFILES["H617C"]
+
+    assert profile is not MODEL_PROFILES["H617A"]
+    assert profile.support_quality is SupportQuality.SUPPORTED
+    assert profile.scene_catalogue_sku == "H617C"
+    assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == ("H617A", "H617C", "H617A")
+    assert (profile.segment_count, profile.segment_group_size, profile.physical_ic_count) == (15, 3, 30)
+    assert profile.whole_device_mask == 0x7FFF and profile.colour_mode_query_selector == 1
+    assert profile.static_readback_kelvin and profile.static_readback_zero_kelvin_is_rgb
+    assert profile.static_readback_gradual and profile.boolean_controls == frozenset({"gradual"})
+    assert profile.advanced_scene_carrier == (29884, 41599) and profile.advanced_diy_selector == 402
+    assert (
+        profile.diy_requires_upload_ack and profile.music_upload_before_selector and profile.music_requires_upload_ack
+    )
+    assert len(profile.music_modes) == 11 and profile.music_variants
+
+
+def test_h617f_uses_exact_scene_catalogue_with_h617a_wire_grammars():
+    profile = MODEL_PROFILES["H617F"]
 
     assert profile.support_quality is SupportQuality.SUPPORTED
-    assert profile.scene_catalogue_sku == model
+    assert profile.scene_catalogue_sku == "H617F"
     assert profile.command_grammar == profile.status_grammar == profile.effect_grammar == "H617A"
 
 
@@ -478,7 +495,7 @@ async def test_new_encoding_metadata_does_not_enable_music_before_profile_constr
     exec(compile(ast.fix_missing_locations(tree), const.__file__, "exec"), namespace.__dict__)  # noqa: S102
     monkeypatch.setitem(const.MUSIC_MODE_SLUGS, "future_mode", 5)
 
-    for model in ("H617A", "H617E", "H6199"):
+    for model in ("H617A", "H617C", "H617E", "H6199"):
         profile = namespace.MODEL_PROFILES[model]
         assert profile.music_modes == MODEL_PROFILES[model].music_modes
         assert "future_mode" not in profile.music_modes
