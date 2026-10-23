@@ -618,7 +618,7 @@ class EffectDeploymentEngine:
                             write_guard=validate_effect_write,
                             **ack_options,
                         )
-                        if not coordinator.profile.state_readable:
+                        if compiled_observation(compiled, profile=coordinator.profile)[0] is None:
                             if compiled.selector_kind == "scene":
                                 coordinator.color_mode = ParsedMode.SCENE
                                 coordinator.effect = compiled.expected_effect
@@ -860,7 +860,7 @@ class EffectDeploymentEngine:
         await self._deployments.async_put(recovering, expected_version=None)
         recovered = False
         if recovering.prior_state is not None and (
-            coordinator.profile.state_readable or error_code != "device_state_unconfirmed"
+            coordinator.profile.supports_color_mode_readback or error_code != "device_state_unconfirmed"
         ):
             restore = getattr(coordinator, "async_restore_effect_control_state", None)
             if restore is not None:
@@ -886,7 +886,9 @@ class EffectDeploymentEngine:
             phase=DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN,
         )
         await self._deployments.async_put(final, expected_version=None)
-        write_only_completed = not coordinator.profile.state_readable and error_code == "device_state_unconfirmed"
+        write_only_completed = (
+            not coordinator.profile.supports_color_mode_readback and error_code == "device_state_unconfirmed"
+        )
         self._reconcile_observation(
             coordinator,
             config_entry_id=record.config_entry_id,
@@ -1421,6 +1423,17 @@ async def async_prepare_effect_control_state(
     prior = capture() if require_restorable_static and capture is not None else None
     prior_mode = prior.mode if isinstance(prior, PriorControlState) else _coordinator_mode(coordinator)
     if require_restorable_static:
+        if any(
+            name in profile.boolean_controls and getattr(prior, name, None) is None
+            for name in ("panel_enabled", "ring_enabled")
+        ):
+            raise RuntimeError("Could not read restorable panel and ring enablement before preview")
+        if (
+            prior_mode == "music"
+            and isinstance(prior, PriorControlState)
+            and prior.music_mode not in profile.music_modes
+        ):
+            raise RuntimeError("The current music mode cannot be safely restored after preview")
         if prior_mode not in {"colour", "unknown"}:
             return True
         if profile.segment_colour_mode_ambiguous:
@@ -1471,6 +1484,7 @@ async def async_prepare_effect_control_state(
     refreshed = (
         await coordinator.refresh_state(
             refresh_all=True,
+            query_segments=False if profile.segment_colour_mode_ambiguous else None,
             required_domains=profile.read_domains
             & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.MODE},
         )
@@ -1481,7 +1495,8 @@ async def async_prepare_effect_control_state(
     ):
         raise RuntimeError("Could not read the current power, mode and brightness before applying the effect")
     if (
-        profile.supports_segments
+        not profile.segment_colour_mode_ambiguous
+        and profile.supports_segments
         and profile.can_read(ReadDomain.SEGMENTS)
         and _coordinator_mode(coordinator) in {"colour", "off"}
         and await coordinator.async_refresh_segments() is not True

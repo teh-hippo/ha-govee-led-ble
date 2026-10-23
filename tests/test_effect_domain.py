@@ -433,6 +433,47 @@ def test_newer_schema_is_not_silently_loaded() -> None:
         LibraryItem.from_dict(document)
 
 
+def test_h60a1_exact_single_roster_and_one_to_four_shared_palette_mixed_steps() -> None:
+    from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
+
+    pairs = (
+        (0, 0),
+        (0, 1),
+        (0, 2),
+        (1, 0),
+        (1, 2),
+        (2, 0),
+        (2, 1),
+        (2, 2),
+        (3, 3),
+        (3, 4),
+        (3, 5),
+        (8, 9),
+        (8, 10),
+        (9, 9),
+        (9, 10),
+        (10, 0),
+    )
+    palette = tuple((index, 0, 255) for index in range(8))
+    for family, variant in pairs:
+        content = SingleEffect(family, variant, 50, palette)
+        compiled = compile_effect(LibraryItem.new("Ceiling single", content), "H60A1")
+        assert compiled.diy_code == 254
+        assert compiled.upload_transport == "a3"
+        assert compiled.upload_subtype == 4
+        assert "native_diy_positive_ack_required" in compiled.evidence_codes
+        assert decode_effect_frames(compiled.upload_packets, "H60A1", "a3") == content
+    for count in range(1, 5):
+        mixed = MultiEffect(tuple(EffectPair(*pair) for pair in pairs[:count]), 0, palette)
+        compiled = compile_effect(LibraryItem.new("Ceiling mixed", mixed), "H60A1")
+        assert decode_effect_frames(compiled.upload_packets, "H60A1", "a3") == mixed
+    for invalid_content in (SingleEffect(4, 8, 50, palette), MultiEffect((EffectPair(10, 0),), 50, palette)):
+        assert (
+            compatibility(LibraryItem.new("Unsupported ceiling effect", invalid_content), "H60A1").state
+            is CompatibilityState.INCOMPATIBLE
+        )
+
+
 def test_h617a_compiler_emits_upload_then_activation() -> None:
     item = LibraryItem.new(
         "Paint",

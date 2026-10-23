@@ -1,4 +1,4 @@
-import { blankAdvancedContent, cloneLayeredSceneContent } from "./advanced-effect-model";
+import { blankAdvancedContent } from "./advanced-effect-model";
 import { cloneBuiltInDefaultBaselines } from "./built-in-default-state";
 import { newEffectKindForCategory, type CustomEffectListEntry } from "./custom-effect-list";
 import type { EditorOwner } from "./editor-state";
@@ -102,9 +102,9 @@ export class PanelEditorController {
       this.options.selectItem(entry.item.id);
     } else if (entry.kind === "native-diy") {
       const template = this.model.modelCatalogue?.templates?.find((template) => template.id === entry.key);
-      if (template?.content.kind !== "advanced") return;
+      if (template?.content.kind !== "advanced" && template?.content.kind !== "native_effect") return;
       this.openEditableTemplate(entry.label, cloneEditableEffect(template.content), entry.key,
-        { section: "custom", category: "advanced" }, true);
+        { section: "custom", category: entry.category }, true);
     } else if (entry.kind === "music") {
       this.openMusicTemplate(entry.mode, entry.label, true);
     } else if (entry.kind === "paint") {
@@ -513,11 +513,11 @@ export class PanelEditorController {
   }
 
   public openSceneEditor(detail: {
-    content: LayeredSceneContent;
+    content: LayeredSceneContent | import("./types").NativeEffectContent;
     config_entry_id: string;
     item?: LibraryItem;
     name: string;
-    catalogue_content?: LayeredSceneContent;
+    catalogue_content?: LayeredSceneContent | import("./types").NativeEffectContent;
     has_default?: boolean;
   }): void {
     if (!this.model.isAdmin || detail.config_entry_id !== this.model.selectedDeviceId) return;
@@ -529,9 +529,9 @@ export class PanelEditorController {
         owner: { section: "scenes" },
         ...(detail.item ? { itemId: detail.item.id } : {}),
       },
-      name: detail.name.trim() || "Layered scene template", content: cloneLayeredSceneContent(detail.content),
-      savedBaseline: detail.item?.content.kind === "scene_layered" ? serialiseEditable(detail.item.name, detail.item.content) : undefined,
-      resetBaseline: cloneLayeredSceneContent(
+      name: detail.name.trim() || "Layered scene template", content: cloneEditableEffect(detail.content),
+      savedBaseline: detail.item?.content.kind === detail.content.kind ? serialiseEditable(detail.item.name, detail.item.content) : undefined,
+      resetBaseline: cloneEditableEffect(
         detail.catalogue_content ?? detail.content,
       ),
       resetNameBaseline: undefined,
@@ -568,6 +568,12 @@ export class PanelEditorController {
 
   public musicContentChanged(content: MusicProfileContent, interaction?: LivePreviewInteraction): void {
     this.installEditedContent(cloneMusicProfileContent(content), interaction);
+  }
+
+  public nativeContentChanged(
+    content: import("./types").NativeEffectContent, interaction?: LivePreviewInteraction, scene?: ScenePreviewRequest,
+  ): void {
+    this.installEditedContent(cloneEditableEffect(content), interaction, scene);
   }
 
   public musicModeChanged(mode: string): void {

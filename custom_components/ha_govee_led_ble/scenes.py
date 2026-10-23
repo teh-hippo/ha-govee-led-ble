@@ -40,17 +40,32 @@ class ScenePage:
 @dataclass(frozen=True, slots=True)
 class SceneSpeed:
     default_index: int
-    pages: tuple[ScenePage, ...]
+    pages: tuple[ScenePage, ...] = ()
+    layer_speeds: tuple[tuple[int, ...], ...] = ()
 
     @property
     def option_count(self) -> int:
-        counts = {len(values) for page in self.pages for values in page.option_lists if values}
-        if len(counts) != 1:
-            raise ValueError(f"Scene Speed pages disagree on option count: {sorted(counts)}")
-        count = counts.pop()
+        if self.layer_speeds:
+            if self.pages:
+                raise ValueError("Scene Speed cannot combine page and per-layer options")
+            counts = {len(row) for row in self.layer_speeds}
+            if len(counts) != 1 or 0 in counts:
+                raise ValueError("Scene Speed rows disagree on layer count or contain no layers")
+            count = len(self.layer_speeds)
+        else:
+            counts = {len(values) for page in self.pages for values in page.option_lists if values}
+            if len(counts) != 1:
+                raise ValueError(f"Scene Speed pages disagree on option count: {sorted(counts)}")
+            count = counts.pop()
         if not 0 <= self.default_index < count:
             raise ValueError(f"Scene Speed default index {self.default_index} outside 0..{count - 1}")
         return count
+
+    def validate_layer_count(self, layer_count: int) -> None:
+        """Check every selectable row against the parsed native DIY layer count."""
+        _ = self.option_count
+        if not self.layer_speeds or any(len(row) != layer_count for row in self.layer_speeds):
+            raise ValueError(f"Scene Speed rows must each contain {layer_count} layer values")
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +83,7 @@ class SceneEntry:
     music_code: int = 0
     selector_only: bool = False
     local_only: bool = False
+    diy_effect_codes: tuple[int, ...] = ()
 
     @property
     def display_name(self) -> str:
@@ -91,9 +107,13 @@ def _load_speed(data: dict[str, Any] | None) -> SceneSpeed | None:
                 for brightness in page.get("brightness", [])
             ),
         )
-        for page in data["pages"]
+        for page in data.get("pages", [])
     )
-    speed = SceneSpeed(default_index=int(data["default_index"]), pages=pages)
+    speed = SceneSpeed(
+        default_index=int(data["default_index"]),
+        pages=pages,
+        layer_speeds=tuple(tuple(int(value) for value in row) for row in data.get("layer_speeds", [])),
+    )
     _ = speed.option_count
     return speed
 
@@ -120,6 +140,7 @@ def _load_catalogue(sku: str) -> tuple[SceneEntry, ...]:
             variant=str(effect.get("variant", "")),
             music_code=int(effect.get("music_code", 0)),
             selector_only=profile.selector_only_scene_bits is not None,
+            diy_effect_codes=tuple(int(code) for code in effect.get("diy_effect_codes", [])),
         )
         for effect in data["effects"]
     )

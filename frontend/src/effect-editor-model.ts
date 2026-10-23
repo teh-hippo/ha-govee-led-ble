@@ -20,6 +20,8 @@ import type {
   ModelEffectCatalogue,
   ModelSku,
   MusicProfileContent,
+  NativeEffectContent,
+  NativePaintLayer,
   OpaqueContent,
   PaletteDiyEffectContent,
   PaintedContent,
@@ -34,8 +36,21 @@ type AdvancedEditableContent =
   | AdvancedContent
   | LayeredSceneContent
   | WorkshopContent;
+
+export function paintNativeLayerPoint(layer: NativePaintLayer, index: number, colour: RGB | null): NativePaintLayer {
+  if (!Number.isInteger(index) || index < 0 || index >= 133) throw new Error("Native paint point is outside the 133-point geometry.");
+  const groups = layer.groups.map(group => ({ colour: [...group.colour] as RGB, indices: group.indices.filter(point => point !== index) }));
+  if (colour !== null) {
+    const group = groups.find(group => sameRgb(group.colour, colour));
+    if (group) group.indices.push(index);
+    else groups.push({ colour: [...colour], indices: [index] });
+  }
+  return { ...layer, groups };
+}
+
 type ProfileContent =
   | PaletteDiyEffectContent
+  | NativeEffectContent
   | MusicProfileContent
   | VideoProfileContent;
 export type EditableEffectContent =
@@ -115,6 +130,10 @@ export function effectContentEligible(
   model: string,
   segmentCount: number,
 ): boolean {
+  if (content.kind === "native_effect") {
+    return catalogue?.sku === model && content.model === model &&
+      (content.family === 798 ? catalogue.apply.painted === "supported" : catalogue.apply.single === "supported");
+  }
   if (content.kind === "advanced" && content.native_diy !== undefined) {
     return catalogue?.sku === model && catalogue?.templates?.some((template) =>
       template.content.kind === "advanced" && template.content.native_diy === content.native_diy) === true;
@@ -395,6 +414,9 @@ function cloneWorkshop(content: WorkshopContent): WorkshopContent {
 export function cloneEditableEffect(
   content: EditableEffectContent,
 ): EditableEffectContent {
+  if (content.kind === "native_effect") {
+    return structuredClone(content);
+  }
   if (content.kind === "advanced") {
     return cloneAdvancedContent(content);
   }
@@ -574,6 +596,7 @@ export function isEditableEffectContent(
       "kind" in content &&
       (isAdvancedEditableKind(content.kind) ||
         content.kind === "palette_diy" ||
+        content.kind === "native_effect" ||
         content.kind === "music_profile" ||
         content.kind === "video_profile"))
   );
@@ -600,6 +623,7 @@ function isKnownEffectKind(kind: string): boolean {
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "palette_diy" ||
+    kind === "native_effect" ||
     kind === "music_profile" ||
     kind === "video_profile" ||
     kind === "scene_builtin" ||
@@ -623,6 +647,8 @@ export function customKindLabel(kind: unknown): string {
       return "Advanced";
     case "palette_diy":
       return "Single";
+    case "native_effect":
+      return "Native layers";
     case "workshop":
       return "Workshop";
     default:
@@ -635,6 +661,7 @@ export function isMyEffectKind(kind: string): boolean {
     isCustomEffectKind(kind) ||
     isAdvancedEditableKind(kind) ||
     kind === "palette_diy" ||
+    kind === "native_effect" ||
     kind === "music_profile" ||
     !isKnownEffectKind(kind)
   );
@@ -741,8 +768,9 @@ export function upsertSummary(
       ...(model ? { model } : {}),
       ...(item.content.kind === "scene_builtin" ||
       item.content.kind === "scene_palette" ||
-      item.content.kind === "scene_layered"
-        ? { template: item.content.template }
+      item.content.kind === "scene_layered" ||
+      item.content.kind === "native_effect" && item.content.template !== null
+        ? { template: item.content.template! }
         : {}),
     },
   ].sort((left, right) => left.name.localeCompare(right.name));
@@ -754,6 +782,7 @@ function libraryItemModel(item: LibraryItem): ModelSku | undefined {
     content.kind === "h6179_single_diy" ||
     content.kind === "h6179_mixed_diy" ||
     content.kind === "palette_diy" ||
+    content.kind === "native_effect" ||
     content.kind === "workshop" ||
     content.kind === "music_profile" ||
     content.kind === "video_profile"

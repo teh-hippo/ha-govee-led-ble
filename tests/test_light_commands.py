@@ -17,11 +17,27 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_white_brightness,
     kelvin_to_rgb,
     parse_static_write,
+    scale_segment_groups,
     segments_to_mask,
 )
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 H = bytes.fromhex
+
+
+def test_rgb_scale_uses_supplied_palette_and_zero_is_black_not_power():
+    groups = [([1, 3], (255, 101, 9)), ([2], (1, 100, 200))]
+    scaled = scale_segment_groups(groups, 50)
+    assert scaled == [((1, 3), (128, 51, 5)), ((2,), (1, 50, 100))]
+    assert scale_segment_groups(groups, 0) == [((1, 3), (0, 0, 0)), ((2,), (0, 0, 0))]
+    assert scale_segment_groups(groups) == [((1, 3), (255, 101, 9)), ((2,), (1, 100, 200))]
+    groups[0][0].append(4)
+    assert scaled[0][0] == (1, 3)
+    for value in (-1, 101, True, 1.5):
+        with pytest.raises(ValueError):
+            scale_segment_groups(groups, value)
+    with pytest.raises(ValueError):
+        scale_segment_groups([([1], (256, 0, 0))], 0)
 
 
 def _assert_valid(frame: bytes) -> None:

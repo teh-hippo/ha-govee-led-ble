@@ -13,6 +13,7 @@ import {
   sameRgb,
   scrollSelectedIntoView,
   showHomeAssistantHeader,
+  staticCompositionRequest,
 } from "../../src/ui-utils";
 import type {
   DeviceCapabilities,
@@ -67,6 +68,23 @@ test("numeric clamps preserve or round values as requested", () => {
   expect(clamp(-1, 0, 5)).toBe(0);
   expect(clampInteger(2.6, 0, 5)).toBe(3);
   expect(clampInteger(5.8, 0, 5)).toBe(5);
+});
+
+test("static composition sends explicit unscaled groups and an absolute RGB scale to the existing HA service", () => {
+  const palette: (RGB | null)[] = [[200, 10, 0], null, [200, 10, 0], [0, 0, 0]];
+  const request = staticCompositionRequest("light.ceiling", palette, 25);
+  expect(request).toEqual({
+    type: "call_service", domain: "ha_govee_led_ble", service: "paint_segments",
+    target: { entity_id: "light.ceiling" },
+    service_data: { groups: [
+      { segments: [1, 3], rgb_color: [200, 10, 0] },
+      { segments: [4], rgb_color: [0, 0, 0] },
+    ], rgb_scale: 25 },
+  });
+  expect(staticCompositionRequest("light.ceiling", palette, 0).service_data.groups).toEqual(request.service_data.groups);
+  expect(palette).toEqual([[200, 10, 0], null, [200, 10, 0], [0, 0, 0]]);
+  expect(() => staticCompositionRequest("light.ceiling", [null], 100)).toThrow("Paint at least one");
+  expect(() => staticCompositionRequest("light.ceiling", palette, 101)).toThrow("RGB scale");
 });
 
 test("palette clones do not share colour arrays", () => {

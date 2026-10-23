@@ -27,6 +27,13 @@ h601c_command_write.py
 h601c_status_reply.py
 h60a1_status_reply.py
 h60a6_status_reply.py
+h60a_bulk.py
+h60a6_control.py
+h60a6_legacy_write.py
+h60a6_effect_frame.py
+h60a6_command_ack.py
+h60a6_diy_body.py
+h60a6_paint_body.py
 h6099_command_write.py
 h6099_command_ack.py
 h6099_dreamview_frame.py

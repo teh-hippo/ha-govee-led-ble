@@ -18,8 +18,8 @@ from .effect_limits import (
     MAX_SCENE_CATALOGUE_ENTRIES,
 )
 
-EDITOR_API_VERSION: Final = 16
-EDITOR_ASSET_VERSION: Final = 22
+EDITOR_API_VERSION: Final = 17
+EDITOR_ASSET_VERSION: Final = 23
 EFFECT_COMPILER_VERSION: Final = 6
 RELEASE_CAPABILITY_SCHEMA_VERSION: Final = 1
 
@@ -403,6 +403,35 @@ _RELEASE_CAPABILITY_BASE: Final = (
 RELEASE_CAPABILITY_CONTRACT: Final = (
     *(
         _capability(
+            model,
+            workflow,
+            label,
+            kind,
+            ApplicationRoute.STUDIO_SCENE_APPLY
+            if workflow is CapabilityWorkflow.NATIVE_SCENES
+            else ApplicationRoute.HOME_ASSISTANT_CONTROL,
+            CompilerDeployerStrategy.NATIVE_EFFECT_SELECTION
+            if workflow is CapabilityWorkflow.NATIVE_SCENES
+            else CompilerDeployerStrategy.A3_EFFECT_UPLOAD,
+            VerificationConfidence.SELECTION_ONLY,
+            PhysicalValidationState.NOT_VALIDATED,
+            EvidenceClassification.STRUCTURAL,
+        )
+        for model, workflow, label, kind in (
+            ("H60A1", CapabilityWorkflow.NATIVE_SCENES, "Scenes", "scene_builtin"),
+            ("H60A1", CapabilityWorkflow.LAYERED_SCENES, "Layered scenes", "scene_layered"),
+            ("H60A1", CapabilityWorkflow.SINGLE, "Single DIY", "h617a_single"),
+            ("H60A1", CapabilityWorkflow.MULTI, "Mixed DIY", "h617a_multi"),
+            ("H60A6", CapabilityWorkflow.NATIVE_SCENES, "Scenes", "scene_builtin"),
+            ("H60A6", CapabilityWorkflow.LAYERED_SCENES, "Native scenes", "native_effect"),
+            ("H60A6", CapabilityWorkflow.SINGLE, "Native DIY", "native_effect"),
+            ("H60A6", CapabilityWorkflow.MULTI, "Native layers", "native_effect"),
+            ("H60A6", CapabilityWorkflow.PAINTED, "Paint", "native_effect"),
+            ("H60A6", CapabilityWorkflow.ADVANCED, "Native meteor", "native_effect"),
+        )
+    ),
+    *(
+        _capability(
             "H601C",
             workflow,
             label,
@@ -775,7 +804,7 @@ def profile_supports_workflow(profile: ModelProfile, workflow: CapabilityWorkflo
 def require_effect_route(
     model: str,
     workflow: CapabilityWorkflow,
-    grammars: tuple[str, ...] = ("H617A", "H6199", "H6099", "H6179"),
+    grammars: tuple[str, ...] = ("H617A", "H6199", "H6099", "H6179", "H60A6"),
     *,
     profile: ModelProfile | None = None,
 ) -> str:
@@ -897,6 +926,7 @@ class DeviceEffectCapabilities:
     readback: str
     effect_categories: tuple[str, ...]
     physical_ic_count: int | None = None
+    static_composition: bool = False
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -907,6 +937,7 @@ class DeviceEffectCapabilities:
             "display_name": self.display_name,
             "segment_count": self.segment_count,
             "physical_ic_count": self.physical_ic_count,
+            "static_composition": self.static_composition,
             "custom_effects": {
                 "painted": self.painted.value,
                 "single": self.single.value,
@@ -943,6 +974,7 @@ def device_effect_capabilities(
         display_name=display_name,
         segment_count=segment_count,
         physical_ic_count=physical_ic_count,
+        static_composition=profile.supports_segments,
         painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED, profile=profile)
         if profile.supports_custom_effects
         else CapabilityState.UNSUPPORTED,

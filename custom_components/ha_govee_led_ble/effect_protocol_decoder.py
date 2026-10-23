@@ -17,11 +17,15 @@ from .effect_domain import (
 from .generated_protocol_adapter import (
     DiyType03,
     DiyType04,
+    H60a6DiyBody,
+    H60a6EffectFrame,
     H6199EffectUpload,
     SceneBody,
     SceneType1Body,
     parse_a3_effect_envelope,
+    serialize_native_body,
 )
+from .h60a6_effects import decode_native_body
 from .h6179_effect_codec import decode_h6179_effect
 from .layered_scene_decoder import decode_workshop_effect
 from .transport import reassemble_a1_02, reassemble_a3
@@ -59,12 +63,28 @@ def decode_effect_frames(
         if get_profile(model).effect_grammar != "H6179":
             raise ValueError(f"{model} cannot decode A1 02 effect frames")
         return decode_h6179_effect(reassemble_a1_02(frames))
+    if transport == "a4":
+        from .transport import reassemble_a4
+
+        subtype, body = reassemble_a4(frames)
+        if get_profile(model).effect_grammar != "H60A6" or subtype != int(H60a6EffectFrame.Subtype.native_effect):
+            raise ValueError("unsupported native paint transport or subtype")
+        return decode_native_body(body, family=798)
     raise ValueError(f"unsupported effect upload transport {transport!r}")
 
 
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
     grammar = get_profile(model).effect_grammar
+    if grammar == "H60A6":
+        if isinstance(tree, H60a6DiyBody):
+            return decode_native_body(serialize_native_body(tree), family=797)
+        if isinstance(getattr(tree, "body", None), H60a6DiyBody):
+            return decode_native_body(serialize_native_body(tree.body), family=797)
+        payload = getattr(tree, "payload", None)
+        if isinstance(payload, bytes):
+            return decode_native_body(payload, family=797)
+        raise TypeError("tree is not a generated native DIY body")
     if grammar == "H6099":
         if int(tree.kind) == 4:
             return _decode_h617a_type04(tree.diy)

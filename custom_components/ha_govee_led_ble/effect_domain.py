@@ -56,6 +56,8 @@ from .layered_scene import (
 from .layered_scene import (
     _catalogue_ref_to_value as _catalogue_ref_to_dict,
 )
+from .native_effect import NativeEffect as NativeEffect
+from .native_effect import native_effect_from_value, native_effect_to_value
 
 EFFECT_SCHEMA_VERSION = 2
 MAX_PALETTE_COLOURS = 0xFF // 3  # DIY palettes encode their RGB byte length in one byte.
@@ -531,6 +533,7 @@ class OpaqueContent:
 
 type EffectContent = (
     PaintedEffect
+    | NativeEffect
     | SingleEffect
     | PaletteDiyEffect
     | MusicProfile
@@ -758,6 +761,8 @@ def _validate_palette_scene_palette(palette: Sequence[RGB]) -> None:
 
 
 def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
+    if isinstance(content, NativeEffect):
+        return native_effect_to_value(content)
     if isinstance(content, PaintedEffect):
         return {
             "kind": "h617a_painted",
@@ -896,6 +901,8 @@ def _content_to_dict(content: EffectContent) -> dict[str, JsonValue]:
 
 def _content_from_dict(raw: Mapping[str, Any]) -> EffectContent:
     kind = _required_str(raw, "kind")
+    if kind == "native_effect":
+        return native_effect_from_value(raw)
     if kind == "h617a_painted":
         return PaintedEffect(
             effect=_required_str(raw, "effect"),

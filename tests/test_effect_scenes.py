@@ -12,6 +12,11 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.ha_govee_led_ble.const import device_profile, get_profile
+from custom_components.ha_govee_led_ble.effect_domain import (
+    NativeEffect,
+    effect_content_from_dict,
+    effect_content_to_dict,
+)
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_scenes import (
     async_apply_scene,
@@ -24,6 +29,8 @@ from custom_components.ha_govee_led_ble.effect_scenes import (
     scene_default_for,
     scene_detail_payload,
 )
+from custom_components.ha_govee_led_ble.h60a6_effects import encode_native_body
+from custom_components.ha_govee_led_ble.native_effect import NativeDiyLayer, NativePaintLayer
 from custom_components.ha_govee_led_ble.native_scenes import resolve_native_scene_body
 from custom_components.ha_govee_led_ble.scenes import (
     MODEL_SCENES,
@@ -32,6 +39,63 @@ from custom_components.ha_govee_led_ble.scenes import (
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 TIMESTAMP = "2026-08-17T00:00:00Z"
+
+
+@pytest.mark.parametrize("family", [797, 798])
+async def test_native_scene_details_and_defaults_preserve_manual_layer_speeds(hass, family):
+    scene = next(
+        item
+        for item in SCENE_ENTRIES["H60A6"]
+        if item.diy_effect_codes == (family,) and (family == 798 or item.speed is not None)
+    )
+    detail = scene_detail_payload("H60A6", scene.scene_id, scene.effect_id)
+    content = effect_content_from_dict(cast(dict[str, Any], detail["content"]))
+    assert isinstance(content, NativeEffect)
+    summary = cast(dict[str, Any], detail["scene"])
+    assert summary["parameter_kind"] == "layers"
+    if scene.speed is not None:
+        assert summary["speed"]["layer_speeds"] == [list(row) for row in scene.speed.layer_speeds]
+    layer = content.layers[0]
+    assert isinstance(layer, NativeDiyLayer | NativePaintLayer)
+    edited = replace(
+        content, layers=(replace(layer, speed=(layer.speed + 1) % 101), *content.layers[1:]), speed_index=None
+    )
+    repository = NativeSceneDefaultRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    coordinator = SimpleNamespace(model="H60A6", profile=get_profile("H60A6"), async_apply_native_scene=AsyncMock())
+    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator)
+    resolved = await async_set_scene_default(
+        entry,
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        content=effect_content_to_dict(edited),
+        updated_at=TIMESTAMP,
+        scene_defaults=repository,
+    )
+    stored = scene_default_for(repository, "entry-a", "H60A6", resolved.key, scene)
+    assert stored is not None and stored.speed_index is None
+    restored = scene_detail_payload("H60A6", scene.scene_id, scene.effect_id, scene_default=stored)
+    assert effect_content_from_dict(cast(dict[str, Any], restored["content"])) == edited
+    _, speed = await async_apply_scene(
+        hass,
+        entry,
+        scene_id=scene.scene_id,
+        effect_id=scene.effect_id,
+        speed_index=None,
+        user_id="admin",
+        scene_defaults=repository,
+    )
+    assert speed is None
+    coordinator.async_apply_native_scene.assert_awaited_once_with(
+        resolved.key, scene_entry=scene, speed_index=None, canonical_body=encode_native_body(edited)
+    )
+
+
+def test_bodyless_native_scene_keeps_selector_identity():
+    scene = next(item for item in SCENE_ENTRIES["H60A6"] if item.scene_type == 5 and not item.param)
+    detail = scene_detail_payload("H60A6", scene.scene_id, scene.effect_id)
+    assert cast(dict[str, Any], detail["content"])["kind"] == "scene_builtin"
+    assert cast(dict[str, Any], detail["scene"])["parameter_kind"] == "none"
 
 
 def test_catalogue_and_identity_errors() -> None:

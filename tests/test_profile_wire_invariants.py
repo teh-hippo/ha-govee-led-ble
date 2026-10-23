@@ -26,10 +26,12 @@ from custom_components.ha_govee_led_ble.coordinator_status import (
     _STATUS_DOMAIN_NAMES,
     ParsedH6179Status,
     ParsedMode,
-    decode_status_frame,
-    decode_status_frame_result,
+    ParsedStatusEnvelope,
     parse_color_mode,
     status_is_authorized,
+)
+from custom_components.ha_govee_led_ble.coordinator_status import (
+    decode_status_frame as decode_single_status_frame,
 )
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -65,18 +67,47 @@ def _xor(frame: bytes) -> bytes:
     return frame + bytes([xor_checksum(frame)])
 
 
-def _status(domain: int, body: bytes = b"") -> bytes:
+def _status(domain: int, body: bytes = b"", *, profile: ModelProfile | None = None) -> bytes:
+    if profile is not None and profile.bulk_status_grammar and domain == 0x05:
+        record = bytes([domain, len(body)]) + body
+        assert len(record) <= 12
+        return _xor(b"\xac\x00\x01\x00" + bytes([len(record)]) + b"\x03\x00" + record.ljust(12, b"\x00"))
     return _xor(bytes([0xAA, domain]) + body.ljust(17, b"\x00"))
+
+
+def _parse_status(frame: bytes, model: str, profile: ModelProfile):
+    if a.is_bulk_status_frame(frame, profile):
+        result = a.BulkStatusCollector().feed(frame)
+        assert result.rejection is None and result.parsed is not None
+        assert len(result.parsed.records) == 1
+        return a.ProtocolParseResult(result.parsed.records[0], result.parser, None)
+    return a.parse_status_result(frame, model, profile=profile)
+
+
+def decode_status_frame(frame: bytes, model: str, *, profile: ModelProfile):
+    if a.is_bulk_status_frame(frame, profile):
+        record = _parse_status(frame, model, profile).parsed
+        return ParsedStatusEnvelope(ReadDomain.COLOUR_MODE, int(record.domain), record._raw_body, record)
+    return decode_single_status_frame(frame, model, profile=profile)
+
+
+def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
+    if a.is_bulk_status_frame(frame, coordinator.profile):
+        coordinator._bulk_collector = a.BulkStatusCollector()
+        coordinator._bulk_query_incomplete = True
+    coordinator._notify_callback(None, bytearray(frame))
 
 
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
     ("H60A1-2200k", "H60A1", None, None, None, "1.04.02"),
-    ("H60A1-segmented", "H60A1", 2, 1, "1.02.20", "1.04.03"),
+    ("H60A1-segmented", "H60A1", 1, 1, "1.02.20", "1.04.03"),
     ("H60A1-segmented-2200k", "H60A1", 2, 1, "1.02.20", "1.04.02"),
     ("H60A6-pact-1-1", "H60A6", 1, 1, None, None),
     ("H60A6-pact-1-2", "H60A6", 1, 2, None, None),
     ("H60A6-pact-1-3", "H60A6", 1, 3, "1.00.41", "1.04.03"),
+    ("H60A6-unqualified", "H60A6", None, None, None, None),
+    ("H60A6-pact-1-4", "H60A6", 1, 4, None, None),
     ("H6076-unqualified", "H6076", None, None, None, None),
     ("H6076-pact1-unidentified-fw", "H6076", 1, 1, None, None),
     ("H6076-pact1-legacy-music", "H6076", 1, 1, "1.01.00", "3.01.01"),
@@ -199,6 +230,8 @@ def _status_root_type(profile: ModelProfile):
 
 
 def _status_color_mode_enum(profile: ModelProfile):
+    if profile.bulk_status_grammar:
+        return a.H60aBulk.Mode
     root_type = _status_root_type(profile)
     return getattr(
         root_type,
@@ -254,7 +287,7 @@ def _status_frames_for_domain(domain: ReadDomain, model: str, profile: ModelProf
     if domain in {ReadDomain.COLOUR_MODE, ReadDomain.MODE}:
         if profile.status_grammar == "H601C":
             return (_status(0x05, bytes.fromhex("0dff00000000000000")),)
-        return (_status(0x05, bytes.fromhex("0a2003")),)
+        return (_status(0x05, bytes.fromhex("0a2003"), profile=profile),)
     if domain is ReadDomain.FIRMWARE:
         return (bytes.fromhex("aa06332e30322e3234000000000000000000009b"),)
     if domain is ReadDomain.HARDWARE:
@@ -316,18 +349,20 @@ def test_every_claimed_read_domain_has_a_typed_body(model: str, profile: ModelPr
         frames = _status_frames_for_domain(domain, model, profile)
         assert frames, f"{model} claims {domain.value} but has no representative status frames"
         for frame in frames:
-            raw = a.parse_status_result(frame, model, profile=profile)
+            raw = _parse_status(frame, model, profile)
             assert raw.rejection is None and raw.parsed is not None, (
                 f"{model} ({profile.name}) rejected {domain.value} frame: {raw.rejection}"
             )
-            assert raw.parser == expected_parser
+            parser = "h60a_bulk.payload" if a.is_bulk_status_frame(frame, profile) else expected_parser
+            assert raw.parser == parser
             assert not isinstance(raw.parsed.body, (bytes, bytearray)), (
                 f"{model} ({profile.name}) leaves {domain.value} as raw bytes in {expected_parser}"
             )
-            decoded_result = decode_status_frame_result(frame, model, profile=profile)
-            assert decoded_result.rejection is None and decoded_result.parsed is not None
-            decoded = decoded_result.parsed
-            assert decoded.domain is domain and decoded.raw_domain == frame[1]
+            decoded = decode_status_frame(frame, model, profile=profile)
+            assert decoded is not None
+            assert decoded.domain is domain and decoded.raw_domain == (
+                int(raw.parsed.domain) if a.is_bulk_status_frame(frame, profile) else frame[1]
+            )
             if profile.status_grammar == "H6179":
                 assert isinstance(decoded.generated, ParsedH6179Status) and decoded.generated.values
             elif domain is ReadDomain.FIRMWARE:
@@ -434,6 +469,12 @@ def test_every_claimed_read_domain_can_actually_be_asked_for(model: str, profile
             query = build()
             assert len(query) == 20 and xor_checksum(query) == 0
             a.require_profile_packet(query, profile)
+            if a.is_bulk_status_frame(query, profile):
+                bulk_query = a.H60aBulk.Query.from_bytes(query)
+                bulk_query._read()
+                assert domain in {ReadDomain.COLOUR_MODE, ReadDomain.MODE}
+                assert {item.name for item in bulk_query.domains} == a.bulk_status_domains(profile)
+                continue
             parsed = a._parse_xor_frame(query, profile.command_grammar, a._STATUS_QUERY_ROOTS)
             assert parsed.rejection is None and parsed.parsed is not None, (
                 f"{model} ({profile.name}) {domain.value} query rejected by {profile.command_grammar} query root"
@@ -465,7 +506,7 @@ def test_every_claimed_read_domain_is_consumed(hass, model: str, profile: ModelP
         coordinator.segment_colors = [(255, 255, 255)] * profile.segment_count
         coordinator.segment_brightness = [100] * profile.segment_count
         for frame in _status_frames_for_domain(domain, model, profile):
-            coordinator._notify_callback(None, bytearray(frame))
+            _consume_status(coordinator, frame)
         assert coordinator._domain_revisions.get(domain, 0) > 0, (
             f"{model} ({profile.name}) did not record receipt for {domain.value}"
         )
@@ -731,7 +772,8 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
         packets = build_native_scene_packets(model, scene, profile=profile)
         assert packets
         for packet in packets:
-            assert len(packet) == 20 and xor_checksum(packet) == 0
+            assert 4 <= len(packet) <= 20 if packet[:1] == b"\xa4" else len(packet) == 20
+            assert xor_checksum(packet) == 0
             a.require_profile_packet(packet, profile)
         activation = packets[-1]
         assert expectations_from_packet(activation, model, profile=profile) == {
@@ -745,14 +787,14 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
             scene_bytes = (
                 bytes([selector]) if profile.status_grammar == "H6125-legacy" else selector.to_bytes(2, "little")
             )
-            reply = _status(0x05, bytes([int(color_mode_enum.scene)]) + scene_bytes)
+            reply = _status(0x05, bytes([int(color_mode_enum.scene)]) + scene_bytes, profile=profile)
             decoded = decode_status_frame(reply, model, profile=profile)
             assert decoded is not None
             parsed = parse_color_mode(decoded.generated, model, profile=profile)
             assert parsed.mode is ParsedMode.SCENE and parsed.effect == key and parsed.scene_code == selector
             coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
             coordinator.profile = replace(profile, profile_identity_fields=frozenset())
-            coordinator._notify_callback(None, bytearray(reply))
+            _consume_status(coordinator, reply)
             assert coordinator.color_mode is ParsedMode.SCENE
             assert coordinator.effect == key
             assert coordinator._scene_code == selector
@@ -768,10 +810,10 @@ def test_every_supported_scene_round_trips_between_command_and_status(hass, mode
         unknown_bytes = (
             bytes([unknown_code]) if profile.status_grammar == "H6125-legacy" else unknown_code.to_bytes(2, "little")
         )
-        unknown_reply = _status(0x05, bytes([int(color_mode_enum.scene)]) + unknown_bytes)
+        unknown_reply = _status(0x05, bytes([int(color_mode_enum.scene)]) + unknown_bytes, profile=profile)
         coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
         coordinator.profile = replace(profile, profile_identity_fields=frozenset())
-        coordinator._notify_callback(None, bytearray(unknown_reply))
+        _consume_status(coordinator, unknown_reply)
         assert coordinator.color_mode is ParsedMode.SCENE
         assert coordinator.effect is None
         assert coordinator._scene_code == unknown_code
@@ -790,14 +832,14 @@ def test_diy_commands_and_status_readback(hass, model: str, profile: ModelProfil
     assert expectations_from_packet(packet, model, profile=profile)["color_mode"] == (ParsedMode.DIY, diy_code)
     if profile.supports_color_mode_readback:
         color_mode_enum = _status_color_mode_enum(profile)
-        reply = _status(0x05, bytes([int(color_mode_enum.diy)]) + diy_code.to_bytes(2, "little"))
+        reply = _status(0x05, bytes([int(color_mode_enum.diy)]) + diy_code.to_bytes(2, "little"), profile=profile)
         decoded = decode_status_frame(reply, model, profile=profile)
         assert decoded is not None
         parsed = parse_color_mode(decoded.generated, model, profile=profile)
         assert parsed.mode is ParsedMode.DIY and parsed.diy_code == diy_code
         coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
         coordinator.profile = replace(profile, profile_identity_fields=frozenset())
-        coordinator._notify_callback(None, bytearray(reply))
+        _consume_status(coordinator, reply)
         assert coordinator.color_mode is ParsedMode.DIY and coordinator.diy_code == diy_code
 
 
@@ -811,7 +853,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
         rgb_body = bytes([static_byte, 10, 20, 30, 0, 0])
     else:
         rgb_body = bytes([static_byte, 0, 0, 0])
-    rgb_reply = _status(0x05, rgb_body)
+    rgb_reply = _status(0x05, rgb_body, profile=profile)
     decoded_rgb = decode_status_frame(rgb_reply, model, profile=profile)
     assert decoded_rgb is not None
     parsed_rgb = parse_color_mode(decoded_rgb.generated, model, profile=profile)
@@ -865,6 +907,15 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             cmd = a.build_boolean_control(control, enabled, model, profile=profile)
             assert len(cmd) == 20 and xor_checksum(cmd) == 0
             a.require_profile_packet(cmd, profile)
+            if profile.setting_grammar == "H60A6":
+                reply = _xor(b"\xee\x30\x01\x00" + bytes([int(enabled), int(enabled)]) + bytes(13))
+                result = a.parse_zone_notification(reply, profile)
+                assert result.parsed is not None and result.rejection is None
+                assert getattr(result.parsed, control) is enabled
+                _consume_status(coordinator, reply)
+                assert coordinator.boolean_control_state[control] is enabled
+                assert coordinator._field_revisions[f"boolean_{control}"] > 0
+                continue
             reply = _status(domain_byte, bytes([int(enabled)]))
             decoded = decode_status_frame(reply, model, profile=profile)
             assert decoded is not None and status_is_authorized(decoded, profile)
@@ -873,7 +924,9 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             assert coordinator.boolean_control_state[control] is enabled
             assert coordinator._field_revisions[f"boolean_{control}"] > 0
 
-        bad_reply = _status(domain_byte, b"\x02")
+        bad_reply = (
+            _xor(b"\xee\x30\x02" + bytes(16)) if profile.setting_grammar == "H60A6" else _status(domain_byte, b"\x02")
+        )
         coordinator._notify_callback(None, bytearray(bad_reply))
         assert coordinator.packet_log[-1]["reason"] in {"schema_rejected", "semantic_rejected"}
         assert coordinator.boolean_control_state[control] is True

@@ -78,7 +78,11 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     kelvin_to_rgb,
 )
-from custom_components.ha_govee_led_ble.light_services import _SEGMENTS, async_register_light_services
+from custom_components.ha_govee_led_ble.light_services import (
+    _PAINT_SEGMENTS_SCHEMA,
+    _SEGMENTS,
+    async_register_light_services,
+)
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
@@ -1806,6 +1810,16 @@ def test_segment_service_schema_preserves_integer_strings_only():
             schema(invalid)
 
 
+def test_paint_scale_schema_accepts_zero_and_one_but_not_boolean_or_fractional_values():
+    schema = vol.Schema(_PAINT_SEGMENTS_SCHEMA)
+    groups = [{"segments": [1], "rgb_color": [255, 100, 10]}]
+    for value in (0, 1, 100, "0", "1"):
+        assert schema({"groups": groups, "rgb_scale": value})["rgb_scale"] == int(value)
+    for value in (True, False, -1, 101, 0.5, 1.0, "1.5"):
+        with pytest.raises(vol.Invalid):
+            schema({"groups": groups, "rgb_scale": value})
+
+
 async def test_setup_entry_adds_light(mock_coordinator):
     entry = MagicMock(runtime_data=mock_coordinator)
     added: list = []
@@ -1903,12 +1917,23 @@ async def test_paint_service_serialization_failure_preserves_preview(light, mock
                     {"segments": [4, 5], "rgb_color": (0, 255, 0)},
                 ]
             },
-            [([1, 2, 3], (255, 0, 0)), ([4, 5], (0, 255, 0))],
+            [((1, 2, 3), (255, 0, 0)), ((4, 5), (0, 255, 0))],
+        ),
+        (
+            "async_paint_segments",
+            {
+                "groups": [
+                    {"segments": [1, 3], "rgb_color": (11, 21, 31)},
+                    {"segments": [4], "rgb_color": (99, 9, 1)},
+                ],
+                "rgb_scale": 50,
+            },
+            [((1, 3), (6, 11, 16)), ((4,), (50, 5, 1))],
         ),
         (
             "async_set_segment_color",
             {"segments": [2, 4], "color": (10, 20, 30)},
-            [([2, 4], (10, 20, 30))],
+            [((2, 4), (10, 20, 30))],
         ),
     ],
 )
@@ -1938,6 +1963,15 @@ async def test_paint_segments_reports_invalid_input(light, mock_coordinator, err
         await light.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}])
 
     assert exc.value.translation_key == "invalid_segments"
+
+
+async def test_invalid_paint_scale_does_not_supersede_preview(light, mock_coordinator, monkeypatch):
+    supersede = AsyncMock()
+    monkeypatch.setattr(light, "_async_supersede_preview", supersede)
+    with pytest.raises(ServiceValidationError):
+        await light.async_paint_segments([{"segments": [1], "rgb_color": (1, 2, 3)}], rgb_scale=True)
+    supersede.assert_not_awaited()
+    mock_coordinator.async_paint_segments.assert_not_awaited()
 
 
 async def test_segment_service_wraps_transport_failure(light, mock_coordinator):

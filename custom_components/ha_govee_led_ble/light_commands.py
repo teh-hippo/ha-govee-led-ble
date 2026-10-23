@@ -23,6 +23,22 @@ ALL_SEGMENTS_MASK = 0x7FFF
 type SegmentColorGroup = tuple[Iterable[int], tuple[int, int, int]]
 
 
+def scale_segment_groups(groups: Iterable[SegmentColorGroup], rgb_scale: int = 100) -> list[SegmentColorGroup]:
+    """Freeze an explicit palette and scale it once, without reading previous output."""
+    if type(rgb_scale) is not int or not 0 <= rgb_scale <= 100:
+        raise ValueError("RGB scale must be an integer percentage")
+    resolved: list[SegmentColorGroup] = []
+    for segments, rgb in groups:
+        colour = tuple(rgb)
+        if len(colour) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in colour):
+            raise ValueError("RGB colour must contain three byte values")
+        red, green, blue = ((channel * rgb_scale + 50) // 100 for channel in colour)
+        resolved.append((tuple(segments), (red, green, blue)))
+    if not resolved:
+        raise ValueError("At least one segment group is required")
+    return resolved
+
+
 def _clamp(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 

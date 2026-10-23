@@ -9,6 +9,7 @@ from .effect_domain import (
     BuiltinScene,
     LayeredScene,
     LibraryItem,
+    NativeEffect,
     PaintedEffect,
     PaletteScene,
     effect_content_to_dict,
@@ -76,6 +77,7 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
             "music_profile",
             "video_profile",
             "workshop",
+            "native_effect",
         }
         else None
     )
@@ -93,6 +95,8 @@ def item_summary(item: LibraryItem) -> dict[str, Any]:
     elif item.target_hint is None and kind in {"h617a_painted", "h617a_single", "h617a_multi"}:
         summary["model"] = "H617A"
     if isinstance(item.content, BuiltinScene | PaletteScene | LayeredScene):
+        summary["template"] = content["template"]
+    elif isinstance(item.content, NativeEffect) and item.content.template is not None:
         summary["template"] = content["template"]
     return summary
 

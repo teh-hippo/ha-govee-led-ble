@@ -5,12 +5,44 @@ import pytest
 from custom_components.ha_govee_led_ble.transport import (
     fragment_a1_02,
     fragment_a3,
+    fragment_a4,
     reassemble_a1_02,
     reassemble_a3,
+    reassemble_a4,
     xor_checksum,
 )
 
 H = bytes.fromhex
+
+
+@pytest.mark.parametrize("frame_size", [20, 64, 500])
+@pytest.mark.parametrize("length", [0, 1, 12, 13, 28, 29, 255, 4096])
+def test_a4_preserves_exact_native_body_and_short_final_frame(frame_size, length):
+    body = bytes(index % 256 for index in range(length))
+    packets = fragment_a4(0x58, body, frame_size=frame_size)
+    assert reassemble_a4(packets) == (0x58, body)
+    assert all(len(packet) <= frame_size and xor_checksum(packet) == 0 for packet in packets)
+    assert packets[0][4:6] == len(packets).to_bytes(2, "little")
+    assert packets[-1][1:3] == b"\xff\xff"
+    if length <= frame_size - 8:
+        assert len(packets[0]) == length + 8
+        assert packets[-1] == H("a4ffffa4")
+
+
+def test_a4_direct_boundaries_and_malformed_transfers():
+    assert fragment_a4(0x58, H("5020")) == [H("a400000102005850208f"), H("a4ffffa4")]
+    packets = fragment_a4(0x58, bytes(range(45)))
+    for malformed in (
+        packets[:-1],
+        [*packets[:1], *packets[2:]],
+        [packets[0], packets[0], *packets[1:]],
+        [*packets[:-1], packets[-1][:-1] + b"\x00"],
+        [*packets[:-1], H("a4ffffa4")],
+    ):
+        with pytest.raises(ValueError):
+            reassemble_a4(malformed)
+    with pytest.raises(ValueError):
+        fragment_a4(0x58, b"native", frame_size=19)
 
 
 def _assert_valid(frame: bytes) -> None:

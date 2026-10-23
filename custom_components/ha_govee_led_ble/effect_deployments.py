@@ -89,6 +89,8 @@ class PriorControlState:
     rgb_color: tuple[int, int, int]
     color_temp_kelvin: int | None = None
     static_gradual: bool | None = None
+    panel_enabled: bool | None = None
+    ring_enabled: bool | None = None
     effect: str | None = None
     scene_code: int | None = None
     diy_code: int | None = None
@@ -143,6 +145,9 @@ class PriorControlState:
     def __post_init__(self) -> None:
         if self.static_gradual is not None and type(self.static_gradual) is not bool:
             raise EffectStorageError("prior static gradual must be a boolean or null")
+        for zone_enabled in (self.panel_enabled, self.ring_enabled):
+            if zone_enabled is not None and type(zone_enabled) is not bool:
+                raise EffectStorageError("prior zone enablement must be a boolean or null")
         if self.video_parameters is not None:
             if not isinstance(self.video_parameters, Mapping):
                 raise EffectStorageError("prior video parameters must be a mapping")
@@ -361,6 +366,8 @@ class PriorControlState:
             "rgb_color": list(self.rgb_color),
             "color_temp_kelvin": self.color_temp_kelvin,
             **({"static_gradual": self.static_gradual} if self.static_gradual is not None else {}),
+            "panel_enabled": self.panel_enabled,
+            "ring_enabled": self.ring_enabled,
             **(
                 {
                     "segment_colors": [list(rgb) for rgb in self.segment_colors],
@@ -476,6 +483,8 @@ class PriorControlState:
             rgb_color=_required_rgb(raw, "rgb_color"),
             color_temp_kelvin=_optional_int(raw, "color_temp_kelvin"),
             static_gradual=_optional_bool(raw, "static_gradual"),
+            panel_enabled=_optional_bool(raw, "panel_enabled"),
+            ring_enabled=_optional_bool(raw, "ring_enabled"),
             segment_colors=segment_colors,
             segment_brightness=segment_brightness,
             effect=_optional_str(raw, "effect"),

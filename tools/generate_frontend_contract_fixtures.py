@@ -78,6 +78,7 @@ CONTENT_FAMILIES = {
     "scene_builtin",
     "scene_palette",
     "scene_layered",
+    "native_effect",
     "future_wave",
 }
 
@@ -163,7 +164,7 @@ def _representative_scene_details() -> dict[str, dict[str, Any]]:
             kind = cast(dict[str, Any], detail["content"])["kind"]
             if isinstance(kind, str):
                 details.setdefault(kind, detail)
-            if {"scene_builtin", "scene_palette", "scene_layered"} <= details.keys():
+            if {"scene_builtin", "scene_palette", "scene_layered", "native_effect"} <= details.keys():
                 return details
     raise RuntimeError("Native scene catalogues do not cover every frontend scene-content family")
 
@@ -223,6 +224,7 @@ def _content_samples(
         "scene_builtin": cast(dict[str, Any], scene_details["scene_builtin"]["content"]),
         "scene_palette": cast(dict[str, Any], scene_details["scene_palette"]["content"]),
         "scene_layered": cast(dict[str, Any], scene_details["scene_layered"]["content"]),
+        "native_effect": cast(dict[str, Any], scene_details["native_effect"]["content"]),
         "future_wave": effect_content_to_dict(
             OpaqueContent(
                 "future_wave",

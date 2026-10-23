@@ -41,6 +41,7 @@ import type {
   LibraryItem,
   LibrarySummary,
   MusicProfileContent,
+  NativeEffectContent,
   OpaqueContent,
   PaintedContent,
   PaletteDiyEffectContent,
@@ -57,6 +58,7 @@ import {
   lightControlEntityId,
   scrollSelectedIntoView,
   showHomeAssistantHeader,
+  staticCompositionRequest,
 } from "./ui-utils";
 
 const componentLoaders = {
@@ -92,6 +94,17 @@ export class GoveeLedEffectStudio extends LitElement {
 
   @state()
   private modelRevision = 0;
+
+  @state()
+  private staticPalette: (RGB | null)[] = [];
+
+  @state()
+  private staticScale = 100;
+
+  @state()
+  private staticApplying = false;
+
+  private staticDeviceId?: string;
 
   private readonly model = new PanelModel(() => {
     this.loadComponentsForCurrentView();
@@ -206,6 +219,13 @@ export class GoveeLedEffectStudio extends LitElement {
       void this.controller.load(this.hass, this.isAdmin);
     }
     if (changed.has("modelRevision")) {
+      const device = this.model.selectedDevice;
+      if (this.staticDeviceId !== undefined && device &&
+          (this.staticDeviceId !== device.config_entry_id || this.staticPalette.length !== device.segment_count)) {
+        this.staticDeviceId = device.config_entry_id;
+        this.staticPalette = Array.from({ length: device.segment_count }, () => null);
+        this.staticScale = 100;
+      }
       this.modal.syncScrollLock();
       this.syncSingleEffectSelects();
       this.syncVideoSelectionVisibility();
@@ -237,6 +257,7 @@ export class GoveeLedEffectStudio extends LitElement {
       case "h6179_single_diy":
       case "h6179_mixed_diy":
       case "palette_diy":
+      case "native_effect":
         this.requestComponentGroup("custom");
         break;
       case "music_profile":
@@ -497,7 +518,69 @@ export class GoveeLedEffectStudio extends LitElement {
             : nothing}
         </div>
       </div>
+      ${showAdminControls && device?.static_composition && lightEntityId
+        ? this.renderStaticComposition(lightEntityId) : nothing}
     `;
+  }
+
+  private renderStaticComposition(entityId: string) {
+    const device = this.model.selectedDevice!;
+    const current = this.staticDeviceId === device.config_entry_id && this.staticPalette.length === device.segment_count;
+    return html`
+      <details @toggle=${(event: Event) => {
+        if (!(event.target as HTMLDetailsElement).open) return;
+        this.requestComponentGroup("painted");
+        if (!current) {
+          this.staticDeviceId = device.config_entry_id;
+          this.staticPalette = Array.from({ length: device.segment_count }, () => null);
+          this.staticScale = 100;
+        }
+      }}>
+        <summary>Static RGB composition</summary>
+        <p>Paint explicit logical segments, then Apply. Unpainted segments are left unchanged.
+          This replaces the active effect. RGB scale is an input, not measured brightness.</p>
+        <govee-painted-segment-editor .segments=${current ? this.staticPalette : []} .emptyLabel=${"unchanged"} .disabled=${this.staticApplying}
+          @segment-selected=${(event: CustomEvent<{ index: number }>) => {
+            if (!current || this.staticApplying) return;
+            const palette = [...this.staticPalette];
+            palette[event.detail.index] = [...this.model.paintColour];
+            this.staticPalette = palette;
+          }}
+        ></govee-painted-segment-editor>
+        <govee-single-colour-field label="Static paint colour" .colour=${this.model.paintColour}
+          .disabled=${this.staticApplying}
+          @colour-changed=${(event: CustomEvent<{ colour: RGB }>) => this.editor.paintColourChanged(event.detail.colour)}
+        ></govee-single-colour-field>
+        <button type="button" ?disabled=${!current || this.staticApplying} @click=${() => {
+          this.staticPalette = this.staticPalette.map(() => [...this.model.paintColour]);
+        }}>Fill all logical segments</button>
+        <button type="button" ?disabled=${!current || this.staticApplying} @click=${() => {
+          this.staticPalette = this.staticPalette.map(() => null);
+        }}>Clear selection</button>
+        <govee-slider-control label="RGB scale" .value=${this.staticScale} .minimum=${0} .maximum=${100}
+          .disabled=${this.staticApplying}
+          @value-changed=${(event: CustomEvent<SliderControlChange>) => { this.staticScale = event.detail.value; }}
+        ></govee-slider-control>
+        <button type="button" ?disabled=${!current || this.staticApplying || !this.staticPalette.some(colour => colour !== null)}
+          @click=${() => void this.applyStaticComposition(entityId)}>Apply static RGB</button>
+      </details>
+    `;
+  }
+
+  private async applyStaticComposition(entityId: string): Promise<void> {
+    if (!this.hass || !this.isAdmin || this.staticApplying ||
+        this.staticDeviceId !== this.model.selectedDeviceId || !this.model.selectedDevice?.static_composition) return;
+    this.staticApplying = true;
+    try {
+      this.model.patch({ liveApplyEnabled: false });
+      this.preview.beginEditorTransition(false);
+      await this.preview.cancel(this.staticDeviceId, true);
+      await this.hass.callWS(staticCompositionRequest(entityId, this.staticPalette, this.staticScale));
+    } catch (error: unknown) {
+      this.modal.showError(error instanceof Error ? error.message : "Static RGB composition failed.");
+    } finally {
+      this.staticApplying = false;
+    }
   }
 
   private renderLightControl(displayName: string, entityId: string) {
@@ -764,6 +847,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderCurrentCustomEditor() {
+    if (this.content.kind === "native_effect") return this.renderNativeEditor();
     if (isCustomEffectContent(this.content)) {
       return this.content.kind === "h617a_painted"
         ? this.renderPaintedEditor()
@@ -1227,6 +1311,7 @@ export class GoveeLedEffectStudio extends LitElement {
   }
 
   private renderAdvancedEditor() {
+    if (this.content.kind === "native_effect") return this.renderNativeEditor();
     if (!isAdvancedEditableContent(this.content)) {
       return nothing;
     }
@@ -1251,6 +1336,18 @@ export class GoveeLedEffectStudio extends LitElement {
           );
         }}
       ></govee-advanced-effect-editor>
+    `;
+  }
+
+  private renderNativeEditor() {
+    if (this.content.kind !== "native_effect") return nothing;
+    return html`
+      ${this.renderEditorHeading()}
+      <govee-custom-effect-editor .nativeContent=${this.content} .catalogue=${this.model.modelCatalogue}
+        .disabled=${this.editorDisabled}
+        @native-content-changed=${(event: CustomEvent<{ content: NativeEffectContent; interaction?: LivePreviewInteraction }>) =>
+          this.editor.nativeContentChanged(event.detail.content, event.detail.interaction, this.currentScenePreviewRequest())}
+      ></govee-custom-effect-editor>
     `;
   }
 

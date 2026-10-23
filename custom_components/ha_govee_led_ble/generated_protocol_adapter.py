@@ -17,7 +17,16 @@ from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, Read
 from .const import H6199_PACT1_PROFILE, ModelProfile, ReadDomain, get_profile
 from .music_protocol import music_slug_for
 from .music_semantics import COMPANION_MUSIC_LAYOUTS, MusicVariant, music_variant
-from .transport import A1_02_COMMAND, A1_02_PREFIX, A3_CHUNK_SIZE, reassemble_a1_02_upload, reassemble_a3, xor_checksum
+from .transport import (
+    A1_02_COMMAND,
+    A1_02_PREFIX,
+    A3_CHUNK_SIZE,
+    A4_PREFIX,
+    reassemble_a1_02_upload,
+    reassemble_a3,
+    reassemble_a4_upload,
+    xor_checksum,
+)
 
 CommandWrite = cast(
     Any,
@@ -146,6 +155,25 @@ H60a1StatusReply = cast(
 H60a6StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_status_reply").H60a6StatusReply,
+)
+H60aBulk = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a_bulk").H60aBulk)
+H60a6Control = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_control").H60a6Control
+)
+H60a6LegacyWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_legacy_write").H60a6LegacyWrite
+)
+H60a6EffectFrame = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_effect_frame").H60a6EffectFrame
+)
+H60a6CommandAck = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_command_ack").H60a6CommandAck
+)
+H60a6DiyBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_diy_body").H60a6DiyBody
+)
+H60a6PaintBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_paint_body").H60a6PaintBody
 )
 DiyType03 = cast(
     Any,
@@ -298,7 +326,16 @@ def _serialized_length(value: ReadWriteKaitaiStruct) -> int:
         _write(value, _SERIALIZE_MEASURE_BOUND)
     except ConsistencyError as error:
         return _SERIALIZE_MEASURE_BOUND - int(error.actual)
-    return _SERIALIZE_MEASURE_BOUND
+    return cast(int, value._io.pos())
+
+
+def serialize_native_body(root: Any) -> bytes:
+    """Write a complete native body, retaining its generated lengths and opaque fields."""
+    _check_tree(root)
+    length = _serialized_length(root)
+    if not 0 < length <= _SERIALIZE_MEASURE_BOUND:
+        raise ValueError("Native effect body exceeds the serialization bound")
+    return _write(root, length)
 
 
 def _serialize_a3_scene_param(root: Any, *, scene_type_size: int = 1) -> bytes:
@@ -368,6 +405,7 @@ _MUSIC_WRITE_ROOTS = {
     "H7025": ("h7025_music_write", H7025MusicWrite),
 }
 _COMMAND_ACK_ROOTS = {
+    "H60A6": ("h60a6_command_ack", H60a6CommandAck),
     "H6125": ("h6125_command_ack", H6125CommandAck),
     "H6099": ("h6099_command_ack", H6099CommandAck),
     "H617A": ("h617a_command_ack", H617aCommandAck),
@@ -485,6 +523,13 @@ def _complete_a3_upload(
 def upload_ack_subtype(packets: Sequence[bytes], index: int, model: str, *, profile: ModelProfile | None = None) -> int:
     """Validate a complete upload ending at index, returning its ACK command."""
     profile = profile or get_profile(model)
+    if packets[index][0] == A4_PREFIX:
+        if profile.effect_grammar != "H60A6":
+            raise ValueError("A4 upload acknowledgement is not qualified for this profile")
+        subtype, _body = reassemble_a4_upload(packets, index)
+        if subtype != int(H60a6EffectFrame.Subtype.native_effect):
+            raise ValueError("A4 upload subtype is outside profile capabilities")
+        return subtype
     if packets[index][0] == A1_02_PREFIX:
         if profile.a1_diy_selector is None or profile.command_ack_grammar not in _COMMAND_ACK_ROOTS:
             raise ValueError("A1 upload acknowledgement is not qualified for this profile")
@@ -708,6 +753,41 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     """Revalidate operation capabilities and geometry at each physical attempt."""
     from .light_commands import parse_static_write
 
+    if profile.bulk_status_grammar == "H60A":
+        query = _parse_xor_frame(frame, "bulk", {"bulk": ("h60a_bulk.query", H60aBulk.Query)}).parsed
+        if query is not None:
+            bulk_allowed = bulk_status_domains(profile)
+            if all(getattr(domain, "name", None) in bulk_allowed for domain in query.domains):
+                return
+            raise ValueError("Bulk query domains are outside profile capabilities")
+    if profile.setting_grammar == "H60A6":
+        setting = _parse_xor_frame(frame, "setting", {"setting": ("h60a6_control", H60a6Control)}).parsed
+        if setting is not None:
+            operation = setting.opcode.name
+            if (
+                operation == "zone_enable"
+                and setting.body.zone.name in profile.boolean_controls
+                or operation == "power_on_behaviour"
+                and profile.supports_power_on_behaviour
+            ):
+                return
+            raise ValueError("Native setting is outside profile capabilities")
+    if (
+        profile.effect_grammar == "H60A6"
+        and profile.command_operations is not None
+        and "effect_upload" in profile.command_operations
+        and frame[:1] == bytes((A4_PREFIX,))
+    ):
+        if not 4 <= len(frame) <= 500 or xor_checksum(frame[:-1]) != frame[-1]:
+            raise ValueError("Invalid native effect frame")
+        try:
+            native_frame = H60a6EffectFrame.from_bytes(frame)
+            native_frame._read()
+        except KaitaiStructError as error:
+            raise ValueError("Invalid native effect frame") from error
+        if native_frame.index == 0 and native_frame.body.subtype != H60a6EffectFrame.Subtype.native_effect:
+            raise ValueError("Native effect subtype is outside profile capabilities")
+        return
     if profile.music_grammar in _MUSIC_WRITE_ROOTS:
         music = _parse_xor_frame(frame, profile.music_grammar, _MUSIC_WRITE_ROOTS).parsed
         if music is not None:
@@ -816,6 +896,10 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             raise ValueError("music parameter upload is outside profile capabilities")
         return
     if profile.command_operations is not None and "effect_upload" in profile.command_operations:
+        if upload is not None and profile.effect_grammar == "H60A6":
+            if upload.index == 0 and upload.body.subtype != H60a6EffectFrame.Subtype.native_effect:
+                raise ValueError("Native effect subtype is outside profile capabilities")
+            return
         if upload is not None and profile.effect_grammar == "H617A":
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES
@@ -865,6 +949,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         root_type = H6099EffectUpload
     elif grammar == "H6199":
         root_type = H6199EffectUpload
+    elif grammar == "H60A6":
+        root_type = H60a6EffectFrame.A3Envelope
     else:
         raise ValueError(f"{model} has no generated A3 effect grammar")
 
@@ -877,6 +963,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         raise ValueError(f"invalid {model} A3 effect envelope") from error
     if not parsed._io.is_eof():
         raise ValueError(f"{model} A3 effect grammar did not consume the envelope")
+    if grammar == "H60A6" and any(parsed.padding):
+        raise ValueError("Native A3 effect envelope contains non-zero transport fill")
     return parsed
 
 
@@ -977,6 +1065,10 @@ def build_colour_mode_query(
 ) -> bytes:
     """Select the profile's AA05 query form, with an explicit override."""
     profile = profile or get_profile(model)
+    if profile.bulk_status_grammar == "H60A":
+        if selector is not None:
+            raise ValueError("Bulk mode queries do not have an AA05 selector")
+        return build_bulk_status_query(profile)
     if selector is None:
         selector = profile.colour_mode_query_selector
     if type(selector) is not int or selector not in (0, 1):
@@ -999,6 +1091,15 @@ def build_boolean_control(control: str, enabled: bool, model: str, *, profile: M
         raise ValueError(f"{model} does not support boolean control {control}")
     if type(enabled) is not bool:
         raise ValueError("boolean control requires a boolean")
+    if profile.setting_grammar == "H60A6" and control in H60a6Control.Zone.__members__:
+        root = H60a6Control()
+        root.header = b"\x33"
+        root.opcode = H60a6Control.Command.zone_enable
+        root.body = _child(H60a6Control.ZoneCommand, root)
+        root.body.zone = H60a6Control.Zone[control]
+        root.body.enabled = int(enabled)
+        root.body.unknown_tail = bytes(15)
+        return _serialize_xor(root)
     operation = {"gradual": "multi_effect", "limit": "limit", "power_off_memory": "power_off_memory"}.get(control)
     root_type = _COMMAND_ROOTS[profile.command_grammar][1]
     if operation is None or operation not in root_type.CommandOp.__members__:
@@ -1020,11 +1121,119 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
     profile = profile or get_profile(model)
     if control not in profile.boolean_controls or profile.command_grammar not in {"H617A", "H7020"}:
         raise ValueError(f"{model} does not support boolean control {control}")
+    if profile.setting_grammar == "H60A6" and control in H60a6Control.Zone.__members__:
+        return build_bulk_status_query(profile, domains=("zone_enable",))
     domain = {"gradual": "multi_effect", "limit": "limit", "power_off_memory": "power_off_memory"}.get(control)
     root_type = _STATUS_QUERY_ROOTS[profile.command_grammar][1]
     if domain is None or domain not in root_type.QueryDomain.__members__:
         raise ValueError("unknown boolean control")
     return _build_status_query(domain, profile.command_grammar)
+
+
+def bulk_status_domains(profile: ModelProfile) -> frozenset[str]:
+    domains: set[str] = set()
+    if profile.boolean_controls & H60a6Control.Zone.__members__.keys():
+        domains.add("zone_enable")
+    if profile.supports_power_on_behaviour:
+        domains.add("power_on_behaviour")
+    return frozenset(domains)
+
+
+def build_bulk_status_query(profile: ModelProfile, *, domains: tuple[str, ...] | None = None) -> bytes:
+    """Request independently admitted extension records alongside the base observations."""
+    if profile.bulk_status_grammar != "H60A":
+        raise ValueError("Device profile does not support bulk observations")
+    allowed = bulk_status_domains(profile)
+    domains = tuple(sorted(allowed)) if domains is None else domains
+    if not set(domains) <= allowed:
+        raise ValueError("Bulk query domains are outside profile capabilities")
+    root = H60aBulk.Query()
+    root.header = b"\xac\x03"
+    root.domain_count = len(domains)
+    root.domains = [H60aBulk.Domain[name] for name in domains]
+    root.padding = bytes(16 - root.domain_count)
+    return _serialize_xor(root)
+
+
+def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
+    if (
+        profile.setting_grammar != "H60A6"
+        or not profile.supports_power_on_behaviour
+        or value not in H60aBulk.PowerOnState.__members__
+    ):
+        raise ValueError("Unsupported power-on behaviour")
+    root = H60a6Control()
+    root.header = b"\x33"
+    root.opcode = H60a6Control.Command.power_on_behaviour
+    root.body = _child(H60a6Control.PowerOnCommand, root)
+    root.body.selector = b"\x02"
+    root.body.state = H60aBulk.PowerOnState[value]
+    root.body.unknown_tail = bytes(15)
+    return _serialize_xor(root)
+
+
+def parse_zone_notification(frame: bytes, profile: ModelProfile) -> ProtocolParseResult:
+    grammar = "H60A6" if profile.setting_grammar == "H60A6" else None
+    return _parse_xor_frame(
+        frame, grammar, {"H60A6": ("h60a6_control.zone_notification", H60a6Control.ZoneNotification)}
+    )
+
+
+def is_bulk_status_frame(frame: bytes, profile: ModelProfile) -> bool:
+    return profile.bulk_status_grammar == "H60A" and frame[:1] == b"\xac"
+
+
+class BulkStatusCollector:
+    """Collect one bounded subscription-local response before interpreting any records."""
+
+    def __init__(self) -> None:
+        self._count: int | None = None
+        self._final_size = 0
+        self._position = 0
+        self._payload = bytearray()
+        self.complete = False
+        self.failed = False
+
+    def feed(self, frame: bytes) -> ProtocolParseResult:
+        if self.failed:
+            return ProtocolParseResult(None, "h60a_bulk", ProtocolParseRejection.SCHEMA_REJECTED)
+        result = _parse_xor_frame(frame, "H60A", {"H60A": ("h60a_bulk", H60aBulk)})
+        if result.parsed is None:
+            self.failed = True
+            return result
+        parsed = result.parsed
+        try:
+            if self.complete:
+                raise ValueError("Bulk response is already complete")
+            if self._position == 0:
+                if parsed.index != 0:
+                    raise ValueError("Bulk response has no start frame")
+                count, final_size = int(parsed.body.frame_count), int(parsed.body.final_size)
+                if not 1 <= count <= 256 or not 0 <= final_size <= (12 if count == 1 else 17):
+                    raise ValueError("Bulk response exceeds frame bounds")
+                self._count, self._final_size = count, final_size
+                self._payload.extend(parsed.body.payload[:final_size] if count == 1 else parsed.body.payload)
+            else:
+                declared_count = self._count
+                if declared_count is None:
+                    raise ValueError("Bulk response has no frame count")
+                expected = 255 if self._position == declared_count - 1 else self._position
+                if parsed.index != expected:
+                    raise ValueError("Bulk response is out of order")
+                self._payload.extend(parsed.body[: self._final_size] if expected == 255 else parsed.body)
+            self._position += 1
+            if self._position != self._count:
+                return ProtocolParseResult(None, result.parser, None)
+            payload = H60aBulk.Payload.from_bytes(bytes(self._payload))
+            payload._read()
+            domains = [int(record.domain) for record in payload.records]
+            if len(domains) != len(set(domains)):
+                raise ValueError("Bulk response has duplicate domains")
+            self.complete = True
+            return ProtocolParseResult(payload, "h60a_bulk.payload", None)
+        except KaitaiStructError, ValueError:
+            self.failed = True
+            return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SCHEMA_REJECTED)
 
 
 def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile | None = None) -> dict[str, bool]:
@@ -2408,6 +2617,24 @@ def h6102_outbound_transform(packet: bytes) -> bytes:
     if parsed is not None and parsed.opcode.name == "brightness":
         return _register_brightness(H6102WireWrite, int(parsed.body.percent), (20, 254))
     return packet
+
+
+def h60a6_legacy_outbound_transform(packet: bytes) -> bytes:
+    """Re-encode the admitted whole-device static request through the Pact 1/1 root."""
+    parsed = parse_command_result(packet, "H617A").parsed
+    if parsed is None or not parsed.is_static:
+        return packet
+    static = parsed.body.sub_body
+    if static.static_sub != 1 or static.static_body.mask.bits != 1:
+        raise ValueError("Legacy whole-device colour does not support selected segments")
+    colour = static.static_body
+    root = H60a6LegacyWrite()
+    root.header = b"\x33\x05\x0d"
+    root.rgb_direct = _rgb(root, colour.rgb_direct.red, colour.rgb_direct.green, colour.rgb_direct.blue)
+    root.kelvin = colour.kelvin
+    root.rgb_preview = _rgb(root, colour.rgb_preview.red, colour.rgb_preview.green, colour.rgb_preview.blue)
+    root.unknown_tail = bytes(8)
+    return _serialize_xor(root)
 
 
 @cache

@@ -29,6 +29,8 @@ from custom_components.ha_govee_led_ble.scenes import (
     SceneEntry,
     ScenePage,
     SceneSpeed,
+    _load_catalogue,
+    _load_speed,
     scene_selector_code,
 )
 from custom_components.ha_govee_led_ble.transport import fragment_a3
@@ -242,6 +244,75 @@ def test_scene_speed_capability_matches_physical_model_behaviour():
     assert glacier.speed is not None
     assert glacier.speed.pages[0].move_in == (237, 244, 250)
     assert all(entry.speed is None for entry in SCENE_ENTRIES["H6199"])
+
+
+def test_native_scene_speed_loads_a_distinct_per_layer_shape():
+    speed = _load_speed({"default_index": 1, "layer_speeds": [[74, 47], [85, 58], [93, 70]]})
+
+    assert speed is not None
+    assert speed.pages == ()
+    assert speed.option_count == 3
+    assert speed.layer_speeds[speed.default_index] == (85, 58)
+    speed.validate_layer_count(2)
+    with pytest.raises(ValueError, match="each contain 3 layer values"):
+        speed.validate_layer_count(3)
+
+
+@pytest.mark.parametrize(
+    ("data", "message"),
+    [
+        ({"default_index": 0, "layer_speeds": [[65], [85, 85]]}, "disagree on layer count"),
+        ({"default_index": 0, "layer_speeds": [[]]}, "contain no layers"),
+        ({"default_index": 2, "layer_speeds": [[65], [85]]}, "default index 2"),
+        (
+            {"default_index": 0, "pages": [{"page": 0, "move_in": [65]}], "layer_speeds": [[65]]},
+            "cannot combine",
+        ),
+    ],
+)
+def test_native_scene_speed_rejects_ambiguous_or_invalid_metadata(data, message):
+    with pytest.raises(ValueError, match=message):
+        _load_speed(data)
+
+
+def test_h60a1_catalogue_keeps_page_speed_defaults_and_applies_them():
+    scenes = _load_catalogue("H60A1")
+    fire = next(scene for scene in scenes if scene.effect_id == 17051)
+    assert fire.speed is not None
+    assert fire.speed.default_index == 1
+    assert fire.speed.pages[0].move_in == (244, 247, 249)
+    assert fire.speed.layer_speeds == ()
+    assert all(scene.scene_type == 2 and scene.speed.pages for scene in scenes if scene.speed is not None)
+    stored = base64.b64decode(fire.param, validate=True)
+
+    uploaded = apply_scene_speed(stored, fire.speed, fire.speed.default_index)
+    decoded = _decode_layered(uploaded)
+
+    assert uploaded != stored
+    assert decoded.effect.layers[0].selected_movement.speed == 247
+    assert decoded.effect.layers[1].selected_movement.speed == 247
+    assert decoded.effect.layers[3].selected_movement.speed == 247
+
+
+def test_h60a6_catalogue_preserves_native_family_identity_and_bodyless_scene():
+    scenes = _load_catalogue("H60A6")
+    halloween = next(scene for scene in scenes if scene.effect_id == 28629)
+    paint = next(scene for scene in scenes if scene.diy_effect_codes == (798,))
+    windy = next(scene for scene in scenes if scene.effect_id == 47845)
+
+    assert halloween.name == "Halloween B"
+    assert halloween.scene_type == paint.scene_type == 5
+    assert halloween.diy_effect_codes == (797,)
+    assert base64.b64decode(halloween.param, validate=True).startswith(b"\x50\x20")
+    assert base64.b64decode(paint.param, validate=True).startswith(b"\x50\x20")
+    assert halloween.speed is not None
+    assert halloween.speed.default_index == 1
+    assert halloween.speed.layer_speeds == ((65,), (86,), (100,))
+    assert halloween.speed.pages == ()
+    assert (windy.scene_id, windy.effect_id, windy.code) == (35521, 47845, 25023)
+    assert windy.name == "Windy Day"
+    assert windy.scene_type == 5 and windy.param == "" and windy.diy_effect_codes == ()
+    assert len({(scene.scene_id, scene.effect_id) for scene in scenes}) == len(scenes)
 
 
 def test_generated_scene_body_parser_round_trips_type_2_catalogues():

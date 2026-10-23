@@ -4,6 +4,7 @@ import type {
   BuiltinSceneContent,
   DeviceCapabilities,
   LayeredSceneContent,
+  NativeSceneContent,
   LibraryItem,
   LibrarySummary,
   PaletteSceneContent,
@@ -14,7 +15,7 @@ import type {
 import { compareLabels } from "./ui-utils";
 
 export type CategorySelection = "all" | "custom" | number;
-export type SceneContent = BuiltinSceneContent | PaletteSceneContent | LayeredSceneContent;
+export type SceneContent = BuiltinSceneContent | PaletteSceneContent | LayeredSceneContent | NativeSceneContent;
 export type SceneListEntry =
   | { kind: "custom"; item: LibrarySummary; label: string }
   | { kind: "builtin"; scene: SceneSummary; label: string };
@@ -187,11 +188,11 @@ export function findNativeScene(catalogue: SceneCatalogue, effect: string): Scen
 }
 
 export function isSceneContent(content: LibraryItem["content"]): content is SceneContent {
-  return isSceneKind(content.kind);
+  return isSceneKind(content.kind) && (content.kind !== "native_effect" || content.template !== null);
 }
 
 function isSceneKind(kind: string): boolean {
-  return kind === "scene_builtin" || kind === "scene_palette" || kind === "scene_layered";
+  return kind === "scene_builtin" || kind === "scene_palette" || kind === "scene_layered" || kind === "native_effect";
 }
 
 export function previewMayChangeSceneDefault(status: PreviewStatus | undefined, configEntryId: string | undefined): boolean {
@@ -199,7 +200,7 @@ export function previewMayChangeSceneDefault(status: PreviewStatus | undefined, 
     status &&
       configEntryId &&
       status.config_entry_id === configEntryId &&
-      ["scene_builtin", "scene_palette", "scene_layered"].includes(status.content_kind) &&
+      ["scene_builtin", "scene_palette", "scene_layered", "native_effect"].includes(status.content_kind) &&
         ["confirmed", "unconfirmed", "failed", "cancelled"].includes(status.phase) &&
         ["may_have_started", "completed", "unknown"].includes(status.write_disposition),
   );
@@ -279,6 +280,7 @@ export function clonePaletteSceneContent(content: PaletteSceneContent): PaletteS
 }
 
 export function cloneSceneContent(content: SceneContent): SceneContent {
+  if (content.kind === "native_effect") return structuredClone(content);
   if (content.kind === "scene_palette") {
     return clonePaletteSceneContent(content);
   }
@@ -288,8 +290,16 @@ export function cloneSceneContent(content: SceneContent): SceneContent {
   return { ...content, template: { ...content.template } };
 }
 
-export function sceneContentAtSpeed(content: SceneContent, speedIndex: number | null): SceneContent {
-  return { ...cloneSceneContent(content), speed_index: speedIndex };
+export function sceneContentAtSpeed(content: SceneContent, speedIndex: number | null, layerSpeeds?: readonly (readonly number[])[]): SceneContent {
+  const copy = cloneSceneContent(content);
+  if (copy.kind === "native_effect" && copy.family === 797 && speedIndex !== null && layerSpeeds !== undefined) {
+    const row = layerSpeeds[speedIndex];
+    if (!row || row.length !== copy.layers.length || copy.layers.some(layer => layer.type !== "diy")) {
+      throw new Error("Native scene speed metadata does not match its typed layers.");
+    }
+    copy.layers = copy.layers.map((layer, index) => ({ ...layer, speed: row[index] }));
+  }
+  return { ...copy, speed_index: speedIndex };
 }
 
 export function hasCurrentSceneContent(state: SceneBrowserViewState, activeSelectionIdentity: string | undefined): boolean {
@@ -298,9 +308,9 @@ export function hasCurrentSceneContent(state: SceneBrowserViewState, activeSelec
     catalogue &&
       selectedScene &&
       content &&
-      content.template.sku === catalogue.sku &&
-      content.template.scene_id === selectedScene.scene_id &&
-      content.template.effect_id === selectedScene.effect_id &&
+      content.template?.sku === catalogue.sku &&
+      content.template?.scene_id === selectedScene.scene_id &&
+      content.template?.effect_id === selectedScene.effect_id &&
       activeSelectionIdentity === sceneSelectionKey(state),
   );
 }

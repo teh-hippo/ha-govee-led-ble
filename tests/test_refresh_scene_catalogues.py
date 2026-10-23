@@ -204,7 +204,8 @@ def test_snapshot_omits_an_unverified_default_rewrite(monkeypatch):
     }
 
 
-def test_snapshot_uses_h7020_metadata_defaults_without_enabling_other_skus(monkeypatch):
+@pytest.mark.parametrize("sku", ["H60A1", "H7020", "H7025"])
+def test_snapshot_uses_metadata_defaults_without_enabling_other_skus(monkeypatch, sku):
     monkeypatch.setattr(
         "tools.ble.refresh_scene_catalogues._parse_scene_records",
         lambda _param: [
@@ -249,10 +250,10 @@ def test_snapshot_uses_h7020_metadata_defaults_without_enabling_other_skus(monke
         },
     }
 
-    h7020 = build_snapshot(raw, "H7020")["effects"][0]
+    metadata_entry = build_snapshot(raw, sku)["effects"][0]
     unrelated = build_snapshot(raw, "H6199")["effects"][0]
 
-    assert h7020["speed"] == {
+    assert metadata_entry["speed"] == {
         "default_index": 2,
         "pages": [
             {"page": 0, "colour_speed": [188, 198, 220]},
@@ -265,13 +266,125 @@ def test_snapshot_uses_h7020_metadata_defaults_without_enabling_other_skus(monke
     assert "speed" not in unrelated
 
     raw["data"]["categories"][0]["scenes"][0]["sceneId"] = 5042
-    assert build_snapshot(raw, "H7020")["effects"][0]["speed"] == h7020["speed"]
+    assert build_snapshot(raw, sku)["effects"][0]["speed"] == metadata_entry["speed"]
 
     speed_info = effect["speedInfo"]
     assert isinstance(speed_info, dict)
     speed_info["config"] = json.dumps([{"page": 2, "color": [188, 198, 220], "defaultIndex": 2}])
     with pytest.warns(UserWarning, match="outside 2 records; omitting Speed"):
-        assert "speed" not in build_snapshot(raw, "H7020")["effects"][0]
+        assert "speed" not in build_snapshot(raw, sku)["effects"][0]
+
+
+def _native_speed_effect(config: dict[str, object]) -> dict[str, object]:
+    effect = _speed_effect([])
+    effect.update(
+        {
+            "sceneType": 5,
+            "diyEffectCode": [797],
+            "speedInfo": {"supSpeed": True, "speedIndex": 0, "config": json.dumps(config)},
+        }
+    )
+    return effect
+
+
+def test_snapshot_native_speed_preserves_rows_and_metadata_default(monkeypatch):
+    monkeypatch.setattr(
+        "tools.ble.refresh_scene_catalogues._parse_native_scene_layers",
+        lambda _param: [SimpleNamespace(body=SimpleNamespace(speed=50)) for _ in range(2)],
+    )
+    monkeypatch.setattr(
+        "tools.ble.refresh_scene_catalogues._parse_scene_records",
+        lambda _param: pytest.fail("native DIY must not use SceneBody"),
+    )
+    effect = _native_speed_effect({"defSpeedIndex": 1, "speeds": [[74, 47], [85, 58], [93, 70]]})
+
+    assert _snapshot_speed(effect, "Firefly") == {
+        "default_index": 1,
+        "layer_speeds": [[74, 47], [85, 58], [93, 70]],
+    }
+
+
+@pytest.mark.parametrize(
+    ("config", "message"),
+    [
+        ({"defSpeedIndex": 3, "speeds": [[65, 65], [85, 85], [100, 100]]}, "default Speed position"),
+        ({"defSpeedIndex": 1, "speeds": [[65], [85], [100]]}, "each contain 2 layer values"),
+        ({"defSpeedIndex": 1, "speeds": [[65, 65], [85], [100, 100]]}, "each contain 2 layer values"),
+        ({"defSpeedIndex": 0, "speeds": [[]]}, "non-empty option rows"),
+    ],
+)
+def test_snapshot_native_speed_rejects_invalid_rows_and_default(monkeypatch, config, message):
+    monkeypatch.setattr(
+        "tools.ble.refresh_scene_catalogues._parse_native_scene_layers",
+        lambda _param: [SimpleNamespace(body=SimpleNamespace(speed=50)) for _ in range(2)],
+    )
+
+    with pytest.raises(ValueError, match=message):
+        _snapshot_speed(_native_speed_effect(config), "Invalid native Speed")
+
+
+def test_snapshot_native_speed_rejects_missing_family_and_opaque_layers(monkeypatch):
+    effect = _native_speed_effect({"defSpeedIndex": 0, "speeds": [[65]]})
+    effect["diyEffectCode"] = []
+    with pytest.raises(ValueError, match="native DIY family metadata"):
+        _snapshot_speed(effect, "Missing family")
+
+    effect["diyEffectCode"] = [797]
+    monkeypatch.setattr(
+        "tools.ble.refresh_scene_catalogues._parse_native_scene_layers",
+        lambda _param: [SimpleNamespace(body=SimpleNamespace(data=b"opaque"))],
+    )
+    with pytest.raises(ValueError, match="without a known speed field"):
+        _snapshot_speed(effect, "Opaque layer")
+
+
+def test_snapshot_keeps_native_routing_metadata_without_a_duplicate_body():
+    effect = _effect(28629, 24001, "B")
+    effect.update({"sceneType": 5, "diyEffectCode": [797], "scenceParam": "UCA=", "diyEffectStr": "UCA="})
+    bodyless = _effect(47845, 25023)
+    bodyless["sceneType"] = 5
+    raw = {
+        "status": 200,
+        "data": {
+            "categories": [
+                {
+                    "categoryId": 10,
+                    "categoryName": "Natural",
+                    "scenes": [
+                        {"sceneId": 20, "sceneName": "Halloween", "lightEffects": [effect]},
+                        {"sceneId": 35521, "sceneName": "Windy Day", "lightEffects": [bodyless]},
+                    ],
+                }
+            ]
+        },
+    }
+
+    entries = build_snapshot(raw, "H60A6")["effects"]
+
+    assert entries[0]["diy_effect_codes"] == [797]
+    assert entries[0]["param"] == "UCA="
+    assert "diy_effect_str" not in entries[0]
+    assert entries[1] == {
+        "category_id": 10,
+        "scene_id": 35521,
+        "effect_id": 47845,
+        "name": "Windy Day",
+        "code": 25023,
+        "scene_type": 5,
+    }
+
+
+def test_h60a6_snapshot_speed_rows_match_generated_native_layers():
+    data = json.loads((SNAPSHOT_DIR / "H60A6.json").read_text(encoding="utf-8"))
+    for entry in data["effects"]:
+        if "speed" not in entry:
+            continue
+        speed = entry["speed"]
+        effect = _native_speed_effect({"defSpeedIndex": speed["default_index"], "speeds": speed["layer_speeds"]})
+        effect["scenceParam"] = entry["param"]
+        effect["diyEffectCode"] = entry["diy_effect_codes"]
+
+        assert _snapshot_speed(effect, entry["name"]) == speed
 
 
 def test_h6102_candidate_uses_complete_exact_snapshot():
@@ -283,6 +396,18 @@ def test_h6102_candidate_uses_complete_exact_snapshot():
 @pytest.mark.parametrize(
     ("sku", "categories", "effects", "digest"),
     [
+        (
+            "H60A1",
+            5,
+            79,
+            "34dc5f5201697156f71419648ea3ed37130f3d750c5ef93bbeec2816a064661e",
+        ),
+        (
+            "H60A6",
+            5,
+            86,
+            "56b1c7f34f30fefec2f7f7c94c0203231cea87785a111fcc5846ef9900025c10",
+        ),
         (
             "H601C",
             6,

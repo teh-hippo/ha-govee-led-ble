@@ -12,12 +12,15 @@ import {
   sceneHasParameterSurface,
   sceneKey,
   sceneSpeedOptions,
+  sceneContentAtSpeed,
   sameSceneDeviceIdentity,
   visibleCategoryForBuiltin,
   visibleCategoryForCustom,
 } from "../../src/scene-browser-model";
 import type {
   LibrarySummary,
+  NativeDiyLayer,
+  NativeSceneContent,
   PaletteSceneContent,
   SceneCatalogue,
   SceneSummary,
@@ -40,6 +43,28 @@ const scene: SceneSummary = {
 test("scene identity and names use stable normalisation", () => {
   expect(sceneKey(scene)).toBe("builtin:1:2");
   expect(normaliseSceneName("  Glacier   Blue ")).toBe("glacier blue");
+});
+
+test("native speed choices materialise per-layer speeds without overwriting later manual edits", () => {
+  const layer: NativeDiyLayer = {
+    type: "diy", kind: 1, speed: 10, palette: [[255, 0, 0]], parameters: "00000000000000000000000000",
+    parameter: 0, flag: 0, points: [], direction: 0, angle: 0, opaque: "fa",
+  };
+  const content: NativeSceneContent = {
+    kind: "native_effect", model: "H60A6", family: 797, layers: [layer, { ...layer, speed: 20 }],
+    backgrounds: [[0, 0, 255]], background_flag: 15, background: [0, 0, 0],
+    background_brightness: 100, show_type: 1, opaque: "", preset_id: null,
+    template: { sku: "H60A6", scene_id: 1, effect_id: 2, catalogue_schema_version: 2 }, speed_index: 0,
+  };
+  const chosen = sceneContentAtSpeed(content, 1, [[10, 20], [50, 60]]);
+  expect(chosen.kind).toBe("native_effect");
+  if (chosen.kind !== "native_effect") throw new Error("Expected native content");
+  expect(chosen.layers.map(layer => layer.type === "diy" ? layer.speed : null)).toEqual([50, 60]);
+  expect(content.layers[0]).toEqual(layer);
+  const edited = sceneContentAtSpeed({ ...chosen, layers: [{ ...layer, speed: 75 }, chosen.layers[1]] }, null);
+  expect(edited.kind === "native_effect" && edited.layers[0]).toEqual({ ...layer, speed: 75 });
+  expect(edited.speed_index).toBeNull();
+  expect(() => sceneContentAtSpeed(content, 0, [[10]])).toThrow("does not match");
 });
 
 test("scene device identity ignores pushed state object replacement", () => {

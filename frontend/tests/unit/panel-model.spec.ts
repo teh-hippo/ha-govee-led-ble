@@ -22,6 +22,7 @@ import {
 } from "../../src/effect-editor-model";
 import { blankAdvancedContent } from "../../src/advanced-effect-model";
 import { cloneBuiltInDefaultBaselines } from "../../src/built-in-default-state";
+import { buildCustomEffectEntries } from "../../src/custom-effect-list";
 import { decodeCustomCatalogue, decodeDevices } from "../../src/validation";
 import type {
   CustomEffectCatalogue,
@@ -1150,6 +1151,72 @@ test("opening the layered editor transfers scene-work ownership", async () => {
   expect(model.sceneEditorOpen).toBe(true);
   expect(model.sceneWorkDirty).toBe(false);
   expect(model.editorSource.kind).toBe("scene");
+});
+
+test("every native DIY and paint template opens with Apply available in its declared category", () => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.liveApplyEnabled = false;
+  model.customCatalogue = decodeCustomCatalogue(backendContracts.responses.custom_catalogue);
+  const selected = device("ceiling", "H60A6");
+  selected.custom_effects.single = selected.custom_effects.multi = selected.custom_effects.advanced = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.section = "custom";
+  const { editorController } = panelControllerHarness(model);
+  const templates = model.modelCatalogue!.templates!.filter(template => template.content.kind === "native_effect");
+  const entries = buildCustomEffectEntries(model.customEffectListContext, "all");
+  expect(entries.map(entry => entry.key).sort()).toEqual(templates.map(template => template.id).sort());
+  expect(model.customEffectCategoryAvailable("single-layer")).toBe(true);
+  for (const entry of entries) {
+    model.customEffectCategory = entry.category;
+    editorController.selectCustomEffectEntry(entry);
+    expect(model.content).toEqual(templates.find(template => template.id === entry.key)!.content);
+    expect(model.previewCapability).toBe("supported");
+    expect(model.editorAction("apply")!.enabled).toBe(true);
+  }
+});
+
+test.each(["manual", "auto"] as const)("native scene %s saving persists manual layer speeds without applying", async (mode) => {
+  const model = new PanelModel(() => undefined);
+  model.isAdmin = true;
+  model.autoSaveEnabled = mode === "auto";
+  model.liveApplyEnabled = false;
+  model.section = "scenes";
+  model.customCatalogue = decodeCustomCatalogue(backendContracts.responses.custom_catalogue);
+  const selected = device("ceiling", "H60A6");
+  selected.custom_effects.single = "supported";
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  const template = model.modelCatalogue!.templates!.find(template => template.content.kind === "native_effect")!;
+  if (template.content.kind !== "native_effect") throw new Error("Expected native template");
+  const scene = {
+    ...structuredClone(template.content),
+    preset_id: null,
+    template: { sku: "H60A6" as const, scene_id: 1, effect_id: 2, catalogue_schema_version: 2 },
+  };
+  const edited = structuredClone(scene);
+  const layer = edited.layers[0];
+  if (layer.type === "opaque") throw new Error("Expected editable native layer");
+  layer.speed = layer.speed === 85 ? 58 : 85;
+  edited.speed_index = null;
+  const { controller, editorController } = panelControllerHarness(model);
+  editorController.openSceneEditor({ content: scene, config_entry_id: selected.config_entry_id, name: "Native scene" });
+  const setSceneDefault = vi.fn().mockResolvedValue({
+    content: edited, catalogue_content: scene, has_default: true,
+  });
+  const applySnapshot = vi.fn();
+  controller.api = { setSceneDefault, applySnapshot } as unknown as EffectStudioApi;
+  editorController.nativeContentChanged(edited, "committed");
+  if (mode === "manual") {
+    await expect(controller.save()).resolves.toBe(true);
+  } else {
+    controller.contentCommitted("committed");
+    await vi.waitFor(() => expect(setSceneDefault).toHaveBeenCalledOnce());
+  }
+  expect(setSceneDefault).toHaveBeenCalledWith(selected.config_entry_id, edited);
+  expect(applySnapshot).not.toHaveBeenCalled();
+  expect(model.builtInDefaultDirty).toBe(false);
 });
 
 test("external layered-scene transitions use the panel editor save", async () => {

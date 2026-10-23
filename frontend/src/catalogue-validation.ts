@@ -11,6 +11,7 @@ import {
   MAX_JSON_COLLECTION_ITEMS,
   objectValue,
   requireUnique,
+  stringValue,
 } from "./payload-validation";
 import type {
   CatalogueTemplate,
@@ -241,6 +242,12 @@ export function decodeModelEffectCatalogue(
         (channel) => integerValue(channel, "painted background channel", 0, 255),
       ) as [number, number, number],
     }),
+    ...(catalogue.native_actions === undefined ? {} : {
+      native_actions: arrayValue(catalogue.native_actions, "native actions", 255).map(value => {
+        const action = objectValue(value, "native action");
+        return { id: stringValue(action.id, "native action ID"), label: stringValue(action.label, "native action label") };
+      }),
+    }),
     painted_effects: decodePaintedEffectTemplates(
       catalogue.painted_effects,
       `${name} painted-effect templates`,
@@ -410,6 +417,7 @@ function decodeCatalogueTemplates(
         content.kind !== "music_profile" &&
         content.kind !== "video_profile" &&
         content.kind !== "advanced"
+        && content.kind !== "native_effect"
       ) {
         invalid(`${name}[${index}] content is not a supported built-in template`);
       }

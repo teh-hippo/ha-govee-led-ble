@@ -3,13 +3,16 @@
     "switch": {
       "gradual": {"name": "Gradual"},
       "limit": {"name": "Limit"},
-      "power_off_memory": {"name": "Power-off memory"}
+      "power_off_memory": {"name": "Power-off memory"},
+      "panel_enabled": {"name": "Panel enabled"},
+      "ring_enabled": {"name": "Ring enabled"}
     },
     "select": {
       "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},
       "camera_position": {"name": "Camera position", "state": {"top": "Top", "bottom": "Bottom"}},
       "gradient": {"name": "Gradient", "state": {"off": "Off", "on": "On"}},
-      "configured_strings": {"name": "Configured bulb strings", "state": {"1": "One string (15 bulbs)", "2": "Two strings (30 bulbs)"}}
+      "configured_strings": {"name": "Configured bulb strings", "state": {"1": "One string (15 bulbs)", "2": "Two strings (30 bulbs)"}},
+      "power_on_behaviour": {"name": "Power-on behaviour", "state": {"previous": "Previous state", "on": "On", "off": "Off"}}
     },
     "sensor": {
       "camera_status": {"name": "Camera status", "state": {"absent": "Absent", "healthy": "Connected", "incompatible": "Incompatible", "unknown": "Unknown"}}
@@ -129,6 +132,10 @@
         "groups": {
           "name": "Groups",
           "description": "List of {segments: [1-15], rgb_color: [R, G, B]} groups; each color is sent as one packet."
+        },
+        "rgb_scale": {
+          "name": "RGB scale",
+          "description": "Absolute percentage of the supplied RGB colours. Zero paints black without switching power off."
         }
       }
     },

@@ -20,6 +20,9 @@ export class GoveePaintedSegmentEditor extends LitElement {
   @property({ type: Boolean })
   public physical = false;
 
+  @property({ attribute: false })
+  public emptyLabel?: string;
+
   @property({ type: Boolean })
   public disabled = false;
 
@@ -45,7 +48,7 @@ export class GoveePaintedSegmentEditor extends LitElement {
                 class=${off ? "off" : ""}
                 style="--segment-colour: ${rendered}"
                 aria-label=${off
-                  ? `${this.physical ? "IC" : "Segment"} ${index + 1}, ${this.physical ? "background" : "off"}`
+                  ? `${this.physical ? "IC" : "Segment"} ${index + 1}, ${this.emptyLabel ?? (this.physical ? "background" : "off")}`
                   : `${this.physical ? "IC" : "Segment"} ${index + 1}, ${rendered}`}
                 ?disabled=${this.disabled}
                 @pointerdown=${(event: PointerEvent) =>

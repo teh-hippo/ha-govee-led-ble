@@ -266,6 +266,8 @@ test("queued default persistence remains dirty when Live is cancelled", async ()
   await preview.cancel();
 
   expect(model.builtInDefaultDirty).toBe(true);
+  vi.mocked(api.cancelPreview).mockRejectedValueOnce(new Error("Restore failed"));
+  await expect(preview.cancel("entry-a", true)).rejects.toThrow("Restore failed");
   vi.unstubAllGlobals();
 });
 

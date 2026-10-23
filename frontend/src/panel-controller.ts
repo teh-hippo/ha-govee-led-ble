@@ -30,6 +30,7 @@ import type {
 } from "./types";
 import type { SceneEditSelection } from "./scene-browser-workflow";
 import type { ScenePreviewRequest } from "./scene-browser";
+import { isSceneContent } from "./scene-browser-model";
 import { errorCode, errorMessage } from "./ui-utils";
 import { isCompatibleEditorInfo } from "./validation";
 
@@ -462,7 +463,8 @@ export class PanelController {
       device,
       this.model.library.items,
       (candidate) =>
-        candidate.kind === "scene_builtin" || candidate.kind === "scene_palette" || candidate.kind === "scene_layered"
+        candidate.kind === "scene_builtin" || candidate.kind === "scene_palette" || candidate.kind === "scene_layered" ||
+          candidate.kind === "native_effect" && candidate.template !== undefined
           ? candidate.template?.sku === this.model.selectedModel
           : this.model.libraryItemAvailable(candidate),
       this.model.modelCatalogue,
@@ -578,7 +580,10 @@ export class PanelController {
       return;
     }
     const item = context.item;
-    if (item.kind === "scene_builtin" || item.kind === "scene_palette" || item.kind === "scene_layered") {
+    if (
+      item.kind === "scene_builtin" || item.kind === "scene_palette" || item.kind === "scene_layered" ||
+      item.kind === "native_effect" && item.template !== undefined
+    ) {
       if (!this.model.scenesAvailable) {
         return;
       }
@@ -1404,6 +1409,7 @@ export class PanelController {
         throw new Error("The saved effect returned an unsupported definition.");
       }
       const savedContent = result.content;
+      const savingScene = savingSceneEditor && isSceneContent(savedContent);
       this.model.patch({
         library: {
           ...this.model.library,
@@ -1433,15 +1439,15 @@ export class PanelController {
           savedBaseline: serialiseEditable(result.name, savedContent),
           resetBaseline: cloneEditableEffect(savedContent),
           resetNameBaseline: undefined,
-          sceneEditorOpen: savingSceneEditor && savedContent.kind === "scene_layered" ? false : this.model.sceneEditorOpen,
-          section: savingSceneEditor && savedContent.kind === "scene_layered" ? "custom" : this.model.section,
-          customEffectCategory: savingSceneEditor && savedContent.kind === "scene_layered"
+          sceneEditorOpen: savingScene ? false : this.model.sceneEditorOpen,
+          section: savingScene ? "custom" : this.model.section,
+          customEffectCategory: savingScene
             ? this.categoryForKind(result.content.kind)
             : this.model.customEffectCategory,
-          savedSceneSelection: originatingItem && savedContent.kind === "scene_layered" ? result : this.model.savedSceneSelection,
+          savedSceneSelection: originatingItem && isSceneContent(savedContent) ? result : this.model.savedSceneSelection,
           autoSaveFailed: false,
         });
-        if (savingSceneEditor && savedContent.kind === "scene_layered") this.remember();
+        if (savingScene) this.remember();
         if (
           this.model.liveApplyEnabled &&
           !(await this.applySavedIdentity(result, transitionEpoch))
@@ -1538,7 +1544,7 @@ export class PanelController {
       } else if (
         source.kind === "scene" &&
         source.itemId === undefined &&
-        content.kind === "scene_layered"
+        isSceneContent(content)
       ) {
         const detail = await api.setSceneDefault(configEntryId, content);
         if (
@@ -1910,7 +1916,7 @@ export class PanelController {
             target.templateId,
             target.content as CatalogueTemplateContent,
           )
-        : target.content.kind === "scene_layered"
+        : isSceneContent(target.content)
           ? await api.setSceneDefault(target.configEntryId, target.content)
           : undefined;
       if (!detail) {

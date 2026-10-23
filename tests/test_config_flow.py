@@ -562,8 +562,7 @@ async def test_options_flow_exposes_connection_mode_for_readable_models(
     assert fields[0] == CONF_CONNECTION_MODE
     assert schema({})[CONF_CONNECTION_MODE] == CONNECTION_MODE_RELEASE
     if data[CONF_MODEL] in {"H60A1", "H60A6"}:
-        assert fields == [CONF_CONNECTION_MODE]
-        assert schema({}) == {CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE}
+        assert {"scenes", "effects", "multi_layered"} <= set(fields)
 
 
 async def test_options_flow_does_not_offer_hold_without_readable_state(hass: HomeAssistant, monkeypatch):

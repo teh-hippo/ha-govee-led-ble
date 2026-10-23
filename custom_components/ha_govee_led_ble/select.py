@@ -29,9 +29,13 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     added = False
     strings_added = False
+    power_on_added = False
 
     def add_qualified() -> None:
-        nonlocal added, strings_added
+        nonlocal added, strings_added, power_on_added
+        if not power_on_added and coordinator.profile.supports_power_on_behaviour:
+            power_on_added = True
+            async_add_entities([GoveeBLEPowerOnBehaviourSelect(entry)])
         if not strings_added and coordinator.profile.configured_string_counts:
             strings_added = True
             async_add_entities([GoveeBLEConfiguredStringsSelect(entry)])
@@ -113,5 +117,33 @@ class GoveeBLEConfiguredStringsSelect(GoveeBLEEntity, SelectEntity):
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
         try:
             await self.coordinator.async_set_configured_strings(int(option))
+        except (BleakError, ValueError, TimeoutError) as error:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
+
+
+class GoveeBLEPowerOnBehaviourSelect(GoveeBLEEntity, SelectEntity):
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "power_on_behaviour"
+    _attr_entity_registry_visible_default = False
+    _attr_options = ["previous", "on", "off"]
+
+    def __init__(self, entry: GoveeBLEConfigEntry) -> None:
+        super().__init__(entry.runtime_data)
+        self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_power_on_behaviour"
+        self._attr_device_info = self.coordinator.device_info
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.profile.supports_power_on_behaviour and super().available
+
+    @property
+    def current_option(self) -> str | None:
+        return self.coordinator.power_on_behaviour
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self.options:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="invalid_control_request")
+        try:
+            await self.coordinator.async_set_power_on_behaviour(option)
         except (BleakError, ValueError, TimeoutError) as error:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error

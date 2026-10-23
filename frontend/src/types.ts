@@ -57,6 +57,7 @@ export interface DeviceCapabilities {
   support_quality: SupportQuality;
   display_name: string;
   segment_count: number;
+  static_composition?: boolean;
   custom_effects: {
     painted: CapabilityState;
     single: CapabilityState;
@@ -184,6 +185,57 @@ export interface PaletteDiyEffectContent {
   speed: number;
   palette: RGB[];
 }
+
+export interface NativeDiyLayer {
+  type: "diy";
+  kind: number;
+  speed: number;
+  palette: RGB[];
+  parameters: string;
+  parameter: number;
+  flag: number;
+  points: number[];
+  direction: number;
+  angle: number;
+  opaque: string;
+}
+
+export interface NativePaintLayer {
+  type: "paint";
+  groups: { colour: RGB; indices: number[] }[];
+  action: number;
+  speed: number;
+  brightness: number;
+  priority: number;
+  duration: number;
+  opaque: string;
+  data_opaque: string;
+  trailing: string;
+}
+
+export interface NativeOpaqueLayer {
+  type: "opaque";
+  kind: number;
+  data: string;
+}
+
+export interface NativeEffectContent {
+  kind: "native_effect";
+  model: ModelSku;
+  family: 797 | 798;
+  layers: (NativeDiyLayer | NativePaintLayer | NativeOpaqueLayer)[];
+  backgrounds: RGB[];
+  background_flag: number;
+  background: RGB;
+  background_brightness: number;
+  show_type: number;
+  opaque: string;
+  preset_id: number | null;
+  template: CatalogueRef | null;
+  speed_index: number | null;
+}
+
+export type NativeSceneContent = NativeEffectContent & { template: CatalogueRef };
 
 export interface MusicProfileContent {
   kind: "music_profile";
@@ -377,6 +429,7 @@ export type CatalogueTemplateContent =
   | CustomEffectContent
   | AdvancedContent
   | PaletteDiyEffectContent
+  | NativeEffectContent
   | MusicProfileContent
   | VideoProfileContent;
 
@@ -422,6 +475,7 @@ export interface RetainedMusicEdit {
 }
 
 export interface ModelEffectCatalogue {
+  native_actions?: EffectStudioModeOption[];
   painted_addressing?: "segments" | "physical_ic";
   painted_background?: RGB;
   physical_ic_count?: number | null;
@@ -518,6 +572,7 @@ export interface LayeredSceneContent {
 export type KnownEffectContent =
   | CustomEffectContent
   | PaletteDiyEffectContent
+  | NativeEffectContent
   | MusicProfileContent
   | VideoProfileContent
   | AdvancedContent
@@ -654,6 +709,7 @@ export interface SceneSummary {
   speed: {
     option_count: number;
     default_index: number;
+    layer_speeds?: number[][];
   } | null;
 }
 
@@ -667,11 +723,12 @@ export interface SceneCatalogue {
 
 export interface SceneDetail {
   scene: SceneSummary;
-  content: BuiltinSceneContent | PaletteSceneContent | LayeredSceneContent;
+  content: BuiltinSceneContent | PaletteSceneContent | LayeredSceneContent | NativeSceneContent;
   catalogue_content:
     | BuiltinSceneContent
     | PaletteSceneContent
-    | LayeredSceneContent;
+    | LayeredSceneContent
+    | NativeSceneContent;
   has_default: boolean;
 }
 

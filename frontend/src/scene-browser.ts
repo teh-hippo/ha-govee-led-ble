@@ -178,7 +178,8 @@ export class GoveeSceneBrowser extends LitElement {
     if (
       this.viewState.selectedItem &&
       this.workflow.sceneDirty &&
-      this.viewState.content?.kind !== "scene_layered"
+      this.viewState.content?.kind !== "scene_layered" &&
+      this.viewState.content?.kind !== "native_effect"
     ) {
       void this.workflow.save(true, this.editorTransitionEpoch);
       return true;
@@ -387,9 +388,10 @@ export class GoveeSceneBrowser extends LitElement {
     const state = this.viewState;
     const scene = state.selectedScene!;
     const speed = scene.speed;
-    const speedIndex = state.speedIndex ?? speed?.default_index ?? 0;
+    const speedIndex = state.content?.kind === "native_effect" && state.speedIndex === null
+      ? undefined : state.speedIndex ?? speed?.default_index ?? 0;
     const custom = state.selectedItem !== undefined || state.editingCopy;
-    const layered = state.content?.kind === "scene_layered";
+    const layered = state.content?.kind === "scene_layered" || state.content?.kind === "native_effect";
     const nativeSelection = state.selectedItem === undefined && !state.editingCopy;
     const savingCopy = state.selectedItem === undefined && state.editingCopy;
     const saveDisabled = !state.name.trim() || (state.selectedItem !== undefined && !this.workflow.sceneDirty);
@@ -465,7 +467,7 @@ export class GoveeSceneBrowser extends LitElement {
               )
                 .filter(
                   (action) =>
-                    action.id !== "edit" || scene.scene_type === 2,
+                    action.id !== "edit" || layered,
                 )
                 .map((action) => this.renderNativeAction(action))
             : html`
@@ -530,9 +532,10 @@ export class GoveeSceneBrowser extends LitElement {
     `;
   }
 
-  private renderParameters(speed: NonNullable<SceneSummary["speed"]>, speedIndex: number) {
+  private renderParameters(speed: NonNullable<SceneSummary["speed"]>, speedIndex: number | undefined) {
     return html`
       <div class="card scene-parameters">
+        ${speedIndex === undefined ? html`<p>Layer speeds are customised.</p>` : nothing}
         <div class="parameter-list">
           <govee-segmented-control
             .label=${"Speed"}

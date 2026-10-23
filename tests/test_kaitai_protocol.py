@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble.const import (
     UNSUPPORTED_PROFILE,
     ModelProfile,
     ReadDomain,
+    device_profile,
     get_profile,
 )
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
@@ -30,7 +31,12 @@ from custom_components.ha_govee_led_ble.coordinator_expectations import expectat
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
-from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
+from custom_components.ha_govee_led_ble.light_commands import (
+    build_color_rgb,
+    build_color_temp,
+    build_segment_color,
+    kelvin_to_rgb,
+)
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 
 _GENERATED_DIR = os.environ.get("KAITAI_GENERATED_DIR")
@@ -57,6 +63,10 @@ H6179StatusQuery = _generated("h6179_status_query", "H6179StatusQuery")
 H6179StatusReply = _generated("h6179_status_reply", "H6179StatusReply")
 H6125StatusReply = _generated("h6125_status_reply", "H6125StatusReply")
 H6125WireWrite = _generated("h6125_wire_write", "H6125WireWrite")
+H60aBulk = _generated("h60a_bulk", "H60aBulk")
+H60a6Control = _generated("h60a6_control", "H60a6Control")
+H60a6CommandAck = _generated("h60a6_command_ack", "H60a6CommandAck")
+H60a6LegacyWrite = _generated("h60a6_legacy_write", "H60a6LegacyWrite")
 H6076MusicBody = _generated("h6076_music_body", "H6076MusicBody")
 H6076MusicWrite = _generated("h6076_music_write", "H6076MusicWrite")
 H6076StatusReply = _generated("h6076_status_reply", "H6076StatusReply")
@@ -237,6 +247,70 @@ def test_h7020_power_memory_ack_is_not_state(h7020_profile):
     ack = bytes.fromhex("3341000000000000000000000000000000000072")
     assert adapter.parse_status(ack, profile=h7020_profile) is None
     assert adapter.parse_command_ack_result(ack, "H7020", profile=h7020_profile).parsed.is_success
+
+
+@pytest.mark.parametrize(
+    ("literal", "protocol", "success"),
+    [
+        ("a3587f0000000000000000000000000000000084", 0xA3, True),
+        ("a3580001000000000000000000000000000000fa", 0xA3, False),
+        ("a4580000000000000000000000000000000000fc", 0xA4, True),
+        ("a4580100000000000000000000000000000000fd", 0xA4, False),
+    ],
+)
+def test_h60a6_native_ack_status_offsets(literal, protocol, success):
+    frame = bytes.fromhex(literal)
+    parsed = _parse(H60a6CommandAck, frame)
+    assert parsed.protocol_id == protocol and parsed.is_success is success
+    result = generated_protocol_adapter.parse_command_ack_result(frame, "H60A6")
+    assert result.rejection is None and result.parsed is not None
+    assert generated_protocol_adapter.upload_ack_success(result.parsed, 0x58, protocol=protocol) is success
+    assert generated_protocol_adapter.upload_ack_success(result.parsed, 0x58, protocol=0x33) is None
+
+
+def test_h60a_bulk_and_native_zone_direct_bytes():
+    """Synthetic producer fixtures, not physical-device captures."""
+    parsed = _parse(H60aBulk, bytes.fromhex("ac000100050300050304630000000000000000ca"))
+    assert parsed.body.frame_count == 1 and parsed.body.final_size == 5
+    payload = _parse(H60aBulk.Payload, parsed.body.payload[: parsed.body.final_size])
+    assert payload.records[0].body.detail.scene_id == 99
+    zones = _parse(H60a6Control.ZoneNotification, bytes.fromhex("ee3001018001000000000000000000000000005f"))
+    assert zones.is_on and not zones.panel_enabled and zones.ring_enabled
+    assert zones.panel_flags == 0x80
+
+
+@pytest.mark.parametrize(
+    ("literal", "rgb", "kelvin", "preview"),
+    [
+        ("33050d010203000000000000000000000000003b", (1, 2, 3), 0, (0, 0, 0)),
+        ("33050dffffff0fa0ffcea60000000000000000fc", (255, 255, 255), 4000, (255, 206, 166)),
+    ],
+)
+def test_h60a6_legacy_whole_device_direct_bytes(literal, rgb, kelvin, preview):
+    parsed = _parse(H60a6LegacyWrite, bytes.fromhex(literal))
+    assert (parsed.rgb_direct.red, parsed.rgb_direct.green, parsed.rgb_direct.blue) == rgb
+    assert parsed.kelvin == kelvin
+    assert (parsed.rgb_preview.red, parsed.rgb_preview.green, parsed.rgb_preview.blue) == preview
+
+
+@pytest.mark.parametrize("kelvin", [None, 4000])
+def test_h60a6_legacy_transform_preserves_whole_device_colour(kelvin):
+    profile = device_profile("H60A6", 1, 1)
+    logical = (
+        build_color_rgb(1, 2, 3, "H60A6", profile=profile)
+        if kelvin is None
+        else build_color_temp(kelvin, "H60A6", profile=profile)
+    )
+    wire = generated_protocol_adapter.h60a6_legacy_outbound_transform(logical)
+    parsed = _parse(H60a6LegacyWrite, wire)
+    assert parsed.kelvin == (kelvin or 0) and xor_checksum(wire) == 0
+    assert (parsed.rgb_direct.red, parsed.rgb_direct.green, parsed.rgb_direct.blue) == (
+        (1, 2, 3) if kelvin is None else (255, 255, 255)
+    )
+    segmented = device_profile("H60A6", 1, 2)
+    masked = build_segment_color([2], 1, 2, 3, "H60A6", profile=segmented)
+    with pytest.raises(ValueError):
+        generated_protocol_adapter.h60a6_legacy_outbound_transform(masked)
 
 
 @pytest.mark.parametrize("selector", [0, 1])

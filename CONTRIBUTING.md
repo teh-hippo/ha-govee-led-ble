@@ -32,10 +32,11 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Shared builders keep logical domain values; register rescaling (`brightness_wire_range`, `kelvin_direct_rgb`) and frame transforms re-encode through exact-model KSY wire roots.
 - **Profiles own product capabilities:**
   Every SKU explicitly declares its own `ModelProfile` in `const.py` and, when it exposes Effect Studio or DIY/music effect parameters, its own `ModelEffectCatalogue` in `effect_catalogue.py`.
-  Grammar keys (`command_grammar`, `command_ack_grammar`, `status_grammar`, `effect_grammar`, `music_grammar`, `video_grammar`, `dreamview_grammar`) independently select codecs and fail closed on unknown keys without granting product capabilities or inheriting another SKU's catalogue.
+  Grammar keys (`command_grammar`, `command_ack_grammar`, `status_grammar`, `bulk_status_grammar`, `setting_grammar`, `effect_grammar`, `music_grammar`, `video_grammar`, `dreamview_grammar`) independently select codecs and fail closed on unknown keys without granting product capabilities or inheriting another SKU's catalogue.
   `device_profile()` narrows capabilities from confirmed Pact, hardware, and firmware identity (`profile_identity_fields`).
   Cached identity stabilises UI presentation across polls and Release-mode disconnects, while operation admission and physical writes require current-connection confirmation.
   State-readable devices default to Release mode and use Hold mode only when configured for periodic polling.
+  Readable power does not imply observable effect activation.  A mode or selector reply confirms selection, not uploaded content, speed, or rendering.
 - **Shared routing and wire invariants:**
   Construct and validate the complete immutable request against the effective profile before cancelling previews, acquiring user control, or mutating state.
   All outbound BLE writes pass through `GoveeBLECoordinator._async_write_packet` and optional synchronous, stateless `outbound_transform` hooks, installing packet-specific optimistic state and command expectations only at the physical write boundary after guards and transformation succeed.
@@ -127,6 +128,12 @@ applied, preserved, decode-only, or unknown. Include a differential replay when
 two replies differ only in a mode/flag that recovery must retain. Legacy missing
 fields stay unknown; restored values never become fresh observations. Test
 partial writes and complete-but-mismatched readback, not only missing replies.
+Independent master and zone-enable flags stay independent in controls and recovery.
+Abandoned segment or bulk queries quarantine their subscription until reconnect; late replies never make it reusable.
+Deliberate effect Apply may skip unrelated ambiguous segment reads, but must retain fresh recovery snapshots for models with unambiguous static readback.
+Preview requires fresh native zone flags and a restorable mode, even when a selector alone can be observed.
+An aggregate Kelvin value or RGB segment page cannot establish every zone's native-white intent.
+Do not expose a persistent palette-bound scale control without independently reachable safe requalification after normal Release-mode disconnects.
 Keep every investigation finding in its verification ledger, including deferred
 paths and the evidence or approval needed to qualify them.
 

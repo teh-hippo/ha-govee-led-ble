@@ -34,7 +34,7 @@ async def async_setup_entry(
 
 
 class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category: EntityCategory | None = EntityCategory.CONFIG
 
     def __init__(self, entry: GoveeBLEConfigEntry, control: str) -> None:
         super().__init__(entry.runtime_data)
@@ -42,6 +42,9 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
         self._attr_translation_key = control
         self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_{control}"
         self._attr_device_info = self.coordinator.device_info
+        if control in {"panel_enabled", "ring_enabled"}:
+            self._attr_entity_category = None
+            self._attr_entity_registry_visible_default = False
 
     @property
     def available(self) -> bool:

@@ -22,11 +22,11 @@ from .h6099_controls import (
     installation_direction_value,
 )
 from .light_commands import (
-    SegmentColorGroup,
     build_segment_brightness,
     build_segment_color_temp,
     build_segment_paint,
     kelvin_companion_rgb,
+    scale_segment_groups,
 )
 from .native_profile_controls import apply_active_video_mode
 from .schema_compat import vol
@@ -46,10 +46,23 @@ def _segment(value: int | str) -> int:
     return value
 
 
+def _rgb_scale(value: int | str) -> int:
+    """Accept whole percentages without treating boolean flags as numbers."""
+    try:
+        if isinstance(value, str):
+            value = int(value)
+        if type(value) is not int or not 0 <= value <= 100:
+            raise ValueError("RGB scale must be an integer from 0 to 100")
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid(str(err)) from err
+    return value
+
+
 _PERCENTAGE = vol.All(vol.Coerce(int), vol.Range(min=0, max=100))
 _SEGMENTS = vol.All([_segment], vol.Length(min=1))
 _RGB = vol.All(vol.ExactSequence((cv.byte, cv.byte, cv.byte)), vol.Coerce(tuple))
 _PAINT_SEGMENTS_SCHEMA: VolDictType = {
+    vol.Optional("rgb_scale", default=100): _rgb_scale,
     vol.Required("groups"): vol.All(
         [
             {
@@ -179,25 +192,22 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             await apply_active_video_mode(c, mode=mode, requested_values=requested, parameters=values)
         self._notify_state_changed()
 
-    async def async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
-        async with self.coordinator.async_mask_transaction():
-            await self._async_paint_segments(groups)
-
-    async def _async_paint_segments(self, groups: list[dict[str, Any]]) -> None:
+    async def async_paint_segments(self, groups: list[dict[str, Any]], rgb_scale: int = 100) -> None:
         self._require_support(
             "paint_segments",
             supported=self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb,
         )
         try:
-            resolved: list[SegmentColorGroup] = [
-                (list(group.get("segments", [])), group["rgb_color"]) for group in groups
-            ]
+            resolved = scale_segment_groups(
+                ((group["segments"], group["rgb_color"]) for group in groups), rgb_scale
+            )
             # Preflight serialization before disturbing an active preview or claiming user control.
             build_segment_paint(resolved, self.coordinator.model, profile=self.coordinator.profile)
-            await self._async_supersede_preview()
-            async with async_control_intent(self.coordinator, ControlIntent.USER):
-                await self.coordinator.async_paint_segments(resolved)
-        except (TypeError, ValueError) as err:
+            async with self.coordinator.async_mask_transaction():
+                await self._async_supersede_preview()
+                async with async_control_intent(self.coordinator, ControlIntent.USER):
+                    await self.coordinator.async_paint_segments(resolved)
+        except (KeyError, TypeError, ValueError) as err:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="invalid_segments",

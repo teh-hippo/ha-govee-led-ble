@@ -1,8 +1,11 @@
 import { LitElement, css, html, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
+import { paintNativeLayerPoint } from "./effect-editor-model";
 
 import type { LivePreviewInteraction } from "./live-preview-controller";
 import "./palette-editor";
+import "./painted-segment-editor";
+import "./single-colour-field";
 import type { SliderControlChange } from "./slider-control";
 import "./slider-control";
 import {
@@ -18,6 +21,8 @@ import type {
   H6179SingleDiyContent,
   ModelEffectCatalogue,
   MultiContent,
+  NativeEffectContent,
+  NativePaintLayer,
   PaletteDiyEffectContent,
   RGB,
   SingleContent,
@@ -75,6 +80,9 @@ export class GoveeCustomEffectEditor extends LitElement {
   public content?: PaletteContent;
 
   @property({ attribute: false })
+  public nativeContent?: NativeEffectContent;
+
+  @property({ attribute: false })
   public catalogue?: ModelEffectCatalogue;
 
   @property({ type: Boolean })
@@ -82,6 +90,15 @@ export class GoveeCustomEffectEditor extends LitElement {
 
   @state()
   private openRowMenuIndex?: number;
+
+  @state()
+  private nativeLayerIndex = 0;
+
+  @state()
+  private nativePaintColour: RGB = [255, 0, 0];
+
+  @state()
+  private nativeErase = false;
 
   private draggedEffectIndex?: number;
   private pointerDragId?: number;
@@ -126,6 +143,15 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   protected updated(): void {
+    if (this.nativeContent) {
+      const index = Math.min(this.nativeLayerIndex, this.nativeContent.layers.length - 1);
+      const layer = this.nativeContent.layers[index];
+      const selector = this.shadowRoot?.querySelector<HTMLSelectElement>("select[data-native-layer]");
+      const action = this.shadowRoot?.querySelector<HTMLSelectElement>("select[data-native-action]");
+      if (selector) selector.value = String(index);
+      if (action && layer.type === "paint") action.value = String(layer.action);
+      return;
+    }
     if (!this.content) {
       return;
     }
@@ -156,9 +182,156 @@ export class GoveeCustomEffectEditor extends LitElement {
   }
 
   protected render() {
+    if (this.nativeContent && this.catalogue) {
+      return this.renderNative();
+    }
     if (!this.content || !this.catalogue) {
       return nothing;
     }
+    return this.renderPaletteContent();
+  }
+
+  private nativeChanged(content: NativeEffectContent, interaction: LivePreviewInteraction = "committed"): void {
+      if (this.disabled) return;
+      this.dispatchEvent(new CustomEvent("native-content-changed", {
+        detail: { content, interaction }, bubbles: true, composed: true,
+      }));
+    }
+
+    private nativeLayerChanged(update: Partial<NativeEffectContent["layers"][number]>, interaction?: LivePreviewInteraction): void {
+      if (!this.nativeContent) return;
+      const layers = structuredClone(this.nativeContent.layers);
+      const index = Math.min(this.nativeLayerIndex, layers.length - 1);
+      layers[index] = { ...layers[index], ...update } as NativeEffectContent["layers"][number];
+      this.nativeChanged({ ...this.nativeContent, layers, speed_index: null }, interaction);
+    }
+
+    private nativeNumber(label: string, value: number, maximum: number, change: (value: number) => void) {
+      return html`<label>${label}<input type="number" min="0" max=${maximum} .value=${String(value)}
+        ?disabled=${this.disabled} @change=${(event: Event) => {
+          const input = event.target as HTMLInputElement;
+          if (input.validity.valid && Number.isInteger(input.valueAsNumber)) change(input.valueAsNumber);
+        }}></label>`;
+    }
+
+    private nativeSlider(label: string, value: number, change: (value: number, interaction: LivePreviewInteraction) => void) {
+      return html`<govee-slider-control .label=${label} .value=${value} .minimum=${0} .maximum=${Math.max(100, value)}
+        .disabled=${this.disabled}
+        @value-changed=${(event: CustomEvent<SliderControlChange>) => change(event.detail.value, event.detail.interaction)}
+      ></govee-slider-control>`;
+    }
+
+    private paintNativePoint(index: number, interaction: LivePreviewInteraction): void {
+      if (!this.nativeContent) return;
+      const layer = this.nativeContent.layers[Math.min(this.nativeLayerIndex, this.nativeContent.layers.length - 1)];
+      if (layer.type !== "paint" || index < 0 || index >= 133) return;
+      this.nativeLayerChanged(paintNativeLayerPoint(layer, index, this.nativeErase ? null : this.nativePaintColour), interaction);
+    }
+
+    private renderNativePaint(layer: NativePaintLayer) {
+      const segments: (RGB | null)[] = Array.from({ length: 133 }, () => null);
+      for (const group of layer.groups) for (const point of group.indices) segments[point] = group.colour;
+      const actions = this.catalogue?.native_actions ?? [];
+      return html`
+        <govee-painted-segment-editor .segments=${segments} .physical=${true}
+          .background=${this.nativeContent!.background} .disabled=${this.disabled}
+          @segment-selected=${(event: CustomEvent<{ index: number; interaction: LivePreviewInteraction }>) =>
+            this.paintNativePoint(event.detail.index, event.detail.interaction)}
+        ></govee-painted-segment-editor>
+        <govee-single-colour-field label="Paint colour" .colour=${this.nativePaintColour} .disabled=${this.disabled}
+          @colour-changed=${(event: CustomEvent<{ colour: RGB }>) => {
+            this.nativePaintColour = event.detail.colour; this.nativeErase = false;
+          }}
+        ></govee-single-colour-field>
+        <button type="button" ?disabled=${this.disabled} aria-pressed=${this.nativeErase}
+          @click=${() => { this.nativeErase = !this.nativeErase; }}>Background brush</button>
+        <label>Action<select data-native-action ?disabled=${this.disabled} @change=${(event: Event) =>
+          this.nativeLayerChanged({ action: Number((event.target as HTMLSelectElement).value) })}>
+          ${!actions.some(action => Number(action.id) === layer.action) ? html`
+            <option selected value=${layer.action}>Unknown action ${layer.action}</option>` : nothing}
+          ${actions.map(action => html`<option value=${action.id} ?selected=${Number(action.id) === layer.action}>${action.label}</option>`)}
+        </select></label>
+        ${this.nativeSlider("Layer brightness", layer.brightness, (brightness, interaction) => this.nativeLayerChanged({ brightness }, interaction))}
+        ${this.nativeNumber("Priority", layer.priority, 255, priority => this.nativeLayerChanged({ priority }))}
+        ${this.nativeNumber("Duration (wire units)", layer.duration, 65535, duration => this.nativeLayerChanged({ duration }))}
+      `;
+    }
+
+    private renderNative() {
+      const content = this.nativeContent!;
+      const index = Math.min(this.nativeLayerIndex, content.layers.length - 1);
+      const layer = content.layers[index];
+      return html`
+        <section class="card">
+          <label>Layer<select data-native-layer ?disabled=${this.disabled} @change=${(event: Event) => {
+            this.nativeLayerIndex = Number((event.target as HTMLSelectElement).value);
+          }}>
+            ${content.layers.map((item, layerIndex) => html`
+              <option value=${layerIndex} ?selected=${layerIndex === index}>Layer ${layerIndex + 1} (${item.type})</option>`)}
+          </select></label>
+          <div>
+            ${layer.type !== "opaque" ? html`
+              <button type="button" ?disabled=${this.disabled || content.layers.length === 255} @click=${() => {
+                const copied = structuredClone(layer);
+                if (copied.type === "paint") copied.groups = [];
+                const layers = [...content.layers, copied];
+                this.nativeLayerIndex = layers.length - 1;
+                this.nativeChanged({ ...content, layers, speed_index: null });
+              }}>${layer.type === "paint" ? "Add empty paint layer" : "Duplicate layer"}</button>
+              <button type="button" ?disabled=${this.disabled || content.layers.length === 1} @click=${() => {
+                const layers = content.layers.filter((_, layerIndex) => layerIndex !== index);
+                this.nativeLayerIndex = Math.min(index, layers.length - 1);
+                this.nativeChanged({ ...content, layers, speed_index: null });
+              }}>${layer.type === "paint" ? "Remove paint layer" : "Remove layer"}</button>
+            ` : nothing}
+            <button type="button" ?disabled=${this.disabled || index === 0} @click=${() => {
+              const layers = [...content.layers];
+              [layers[index - 1], layers[index]] = [layers[index], layers[index - 1]];
+              this.nativeLayerIndex = index - 1; this.nativeChanged({ ...content, layers, speed_index: null });
+            }}>Move earlier</button>
+            <button type="button" ?disabled=${this.disabled || index === content.layers.length - 1} @click=${() => {
+              const layers = [...content.layers];
+              [layers[index + 1], layers[index]] = [layers[index], layers[index + 1]];
+              this.nativeLayerIndex = index + 1; this.nativeChanged({ ...content, layers, speed_index: null });
+            }}>Move later</button>
+          </div>
+          ${layer.type === "opaque" ? html`<p>Unknown layer ${layer.kind} is retained unchanged.</p>` : html`
+            ${this.nativeSlider("Speed", layer.speed, (speed, interaction) => this.nativeLayerChanged({ speed }, interaction))}
+            ${layer.type === "diy" ? html`
+              <govee-palette-editor .palette=${layer.palette} .minColours=${1} .maxColours=${Math.max(8, layer.palette.length)}
+                .disabled=${this.disabled} @palette-changed=${(event: CustomEvent<{ palette: RGB[]; interaction: LivePreviewInteraction }>) =>
+                  this.nativeLayerChanged({ palette: clonePalette(event.detail.palette) }, event.detail.interaction)}
+              ></govee-palette-editor>
+              ${layer.kind === 4 ? html`
+                ${this.nativeNumber("Direction (code)", layer.direction, 255, direction => this.nativeLayerChanged({ direction }))}
+                ${this.nativeNumber("Angle", layer.angle, 65535, angle => this.nativeLayerChanged({ angle }))}
+              ` : nothing}
+            ` : this.renderNativePaint(layer)}
+          `}
+        </section>
+        <section class="card">
+          ${content.family === 797 ? html`
+            <h3>Background palette</h3>
+            ${this.nativeNumber("Background flag (code)", content.background_flag, 255, background_flag =>
+              this.nativeChanged({ ...content, background_flag }))}
+            <govee-palette-editor .palette=${content.backgrounds} .minColours=${0} .maxColours=${Math.max(8, content.backgrounds.length)}
+              .disabled=${this.disabled} @palette-changed=${(event: CustomEvent<{ palette: RGB[]; interaction: LivePreviewInteraction }>) =>
+                this.nativeChanged({ ...content, backgrounds: clonePalette(event.detail.palette) }, event.detail.interaction)}
+            ></govee-palette-editor>
+          ` : html`
+            <govee-single-colour-field label="Background colour" .colour=${content.background} .disabled=${this.disabled}
+              @colour-changed=${(event: CustomEvent<{ colour: RGB }>) =>
+                this.nativeChanged({ ...content, background: event.detail.colour })}
+            ></govee-single-colour-field>
+            ${this.nativeSlider("Background brightness", content.background_brightness, (background_brightness, interaction) =>
+              this.nativeChanged({ ...content, background_brightness }, interaction))}
+            ${this.nativeNumber("Show type (code)", content.show_type, 255, show_type => this.nativeChanged({ ...content, show_type }))}
+          `}
+        </section>
+      `;
+    }
+  private renderPaletteContent() {
+    if (!this.content || !this.catalogue) return nothing;
     const rateLabel =
       isSinglePaletteContent(this.content) &&
       this.effectFamily(this.content)?.rate === "sensitivity"

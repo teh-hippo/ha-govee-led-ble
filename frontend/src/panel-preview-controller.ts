@@ -13,6 +13,7 @@ import {
   type PanelPreviewRequest,
 } from "./panel-preview";
 import type { ScenePreviewRequest } from "./scene-browser";
+import { isSceneContent } from "./scene-browser-model";
 import {
   cloneEditableEffect,
   isEditableEffectContent,
@@ -208,6 +209,7 @@ export class PanelPreviewController {
 
   public async cancel(
     configEntryId = this.model.selectedDeviceId,
+    propagateErrors = false,
   ): Promise<void> {
     const session = this.session;
     if (!session) {
@@ -217,6 +219,7 @@ export class PanelPreviewController {
       await session.cancel(configEntryId);
     } catch (error) {
       if (errorCode(error) !== "preview_session_not_found") {
+        if (propagateErrors) throw error;
         this.model.update((model) => {
           model.notice = `Could not cancel Live: ${errorMessage(error)}`;
         });
@@ -318,7 +321,7 @@ export class PanelPreviewController {
             )
           : source.kind === "scene" &&
               source.itemId === undefined &&
-              content.kind === "scene_layered"
+              isSceneContent(content)
             ? await api.sceneDetail(
                 configEntryId,
                 content.template.scene_id,

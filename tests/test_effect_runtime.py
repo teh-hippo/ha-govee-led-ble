@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, device_profile, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent, async_control_intent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_active_workspace import (
@@ -268,6 +268,7 @@ async def test_prior_preflight_refreshes_master_brightness_in_every_mode(mode):
 
     async def refresh(**kwargs):
         assert kwargs["refresh_all"] is True
+        assert kwargs["query_segments"] is None
         assert ReadDomain.BRIGHTNESS in kwargs["required_domains"]
         coordinator.brightness_pct = 37
         return True
@@ -309,15 +310,17 @@ async def test_preview_rejects_h7020_static_state_with_ambiguous_white_intent():
     coordinator.async_refresh_segments.assert_not_awaited()
 
 
-async def test_h7020_topology_independent_apply_does_not_require_segment_snapshot():
+@pytest.mark.parametrize("model", ["H7020", "H60A1", "H60A6"])
+async def test_topology_independent_apply_does_not_require_ambiguous_segment_snapshot(model):
     coordinator = _coordinator()
-    coordinator.model = "H7020"
-    coordinator.profile = get_profile("H7020")
+    coordinator.model = model
+    coordinator.profile = device_profile(model, 1, 3 if model == "H60A6" else 1)
     coordinator.active_mode = "colour"
     coordinator.async_refresh_segments.return_value = False
 
     assert await async_prepare_effect_control_state(coordinator, require_restorable_static=False)
-    coordinator.async_refresh_segments.assert_awaited_once()
+    assert coordinator.refresh_state.await_args.kwargs["query_segments"] is False
+    coordinator.async_refresh_segments.assert_not_awaited()
 
 
 async def test_truthy_mock_is_not_successful_preflight():
@@ -1986,11 +1989,20 @@ async def test_reconciliation_preserves_native_mode_with_unknown_confidence(
     assert stale.confidence is ObservationConfidence.UNKNOWN
 
 
-async def test_unreadable_device_is_uncertain_not_confirmed(
+@pytest.mark.parametrize("readable_power", [False, True])
+async def test_unobservable_effect_is_uncertain_without_rollback(
     hass: HomeAssistant,
+    readable_power: bool,
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _coordinator(readable=False)
+    if readable_power:
+        coordinator.profile = replace(
+            get_profile("H617A"),
+            read_domains=frozenset({ReadDomain.POWER}),
+            setup_required_read_domains=frozenset({ReadDomain.POWER}),
+        )
+    coordinator.async_restore_effect_control_state = AsyncMock(return_value=True)
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
@@ -2001,7 +2013,11 @@ async def test_unreadable_device_is_uncertain_not_confirmed(
 
     assert result.phase is DeploymentPhase.UNCERTAIN
     assert result.verification_confidence is ObservationConfidence.UNKNOWN
-    coordinator.refresh_state.assert_not_awaited()
+    if readable_power:
+        coordinator.refresh_state.assert_awaited_once()
+    else:
+        coordinator.refresh_state.assert_not_awaited()
+    coordinator.async_restore_effect_control_state.assert_not_awaited()
 
 
 async def test_write_only_h601c_deployment_installs_optimistic_state_without_rollback_writes(

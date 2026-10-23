@@ -22,7 +22,7 @@ export type CustomEffectListEntry =
       kind: "native-diy";
       key: string;
       label: string;
-      category: "advanced";
+      category: "single-layer" | "advanced";
     }
   | {
       kind: "paint";
@@ -60,9 +60,12 @@ export function buildCustomEffectEntries(
   const catalogue = context.catalogue;
   const entries: CustomEffectListEntry[] = [
     ...(catalogue?.templates?.filter((template) =>
-      template.content.kind === "advanced" && template.content.native_diy !== undefined,
+      (template.category === "single-layer" || template.category === "advanced") &&
+      (template.content.kind === "native_effect" ||
+        template.content.kind === "advanced" && template.content.native_diy !== undefined),
     ).map((template): CustomEffectListEntry => ({
-      kind: "native-diy", key: template.id, label: template.label, category: "advanced",
+      kind: "native-diy", key: template.id, label: template.label,
+      category: template.category === "single-layer" ? "single-layer" : "advanced",
     })) ?? []),
     ...(catalogue?.painted_effects.length
       ? [
@@ -153,6 +156,7 @@ export function customEffectCategoryAvailable(
       return Boolean(context.catalogue?.music_modes.length);
     case "single-layer":
       return (
+        customEffectKindAvailable(context, "native_effect") ||
         customEffectKindAvailable(context, "h617a_painted") ||
         customEffectKindAvailable(context, "h617a_single") ||
         customEffectKindAvailable(context, "h6179_single_diy") ||
@@ -180,6 +184,10 @@ export function customEffectKindAvailable(
   const catalogue = context.catalogue;
   if (!catalogue) {
     return false;
+  }
+  if (kind === "native_effect") {
+    return catalogue.workflows.some((workflow) => workflow.content_kind === kind) &&
+      (catalogue.apply.single !== "unsupported" || catalogue.apply.painted !== "unsupported");
   }
   if (kind === "h617a_painted") {
     return (
@@ -212,7 +220,7 @@ export function customEffectKindAvailable(
   if (kind === "h617a_multi") {
     return (
       !catalogue.workflows.some(
-        (workflow) => workflow.content_kind === "h6179_mixed_diy",
+        (workflow) => workflow.content_kind === "h6179_mixed_diy" || workflow.content_kind === "native_effect",
       ) &&
       catalogue.supports.multi !== "unsupported" &&
       catalogue.apply.multi !== "unsupported"
@@ -241,6 +249,9 @@ export function newEffectKindForCategory(
   context: CustomEffectListContext,
   category: CustomEffectCategory,
 ): NewEffectKind | undefined {
+  if (context.catalogue?.workflows.some((workflow) => workflow.content_kind === "native_effect")) {
+    return undefined;
+  }
   if (category === "single-layer") {
     if (customEffectKindAvailable(context, "h617a_single")) {
       return "h617a_single";
@@ -278,7 +289,7 @@ function customEffectEntryAvailable(
 ): boolean {
   switch (entry.kind) {
     case "native-diy":
-      return context.catalogue?.supports.advanced !== "unsupported";
+      return customEffectCategoryAvailable(context, entry.category);
     case "paint":
       return customEffectKindAvailable(context, "h617a_painted");
     case "single":
@@ -305,6 +316,7 @@ function customEffectsAvailable(context: CustomEffectListContext): boolean {
         catalogue.effects.length ||
         catalogue.music_modes.length ||
         catalogue.templates?.some((template) =>
+          template.content.kind === "native_effect" ||
           template.content.kind === "advanced" && template.content.native_diy !== undefined) ||
         catalogue.supports.advanced !== "unsupported"),
   );

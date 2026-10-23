@@ -11,12 +11,17 @@ read_installation_controls:
   description: Read H6099 installation direction and camera health over BLE. Returns direction 2..5 or null, and camera health absent (0), healthy (1), incompatible (2), or unknown for an unrecognized or missing reply. Camera position is separate and is not queried.
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
 paint_segments:
+  name: Paint Segments
+  description: Apply the supplied RGB palette to selected logical segments.  RGB scale is an absolute percentage of those supplied colours, not measured brightness.  Zero paints black without changing native power flags.
   target: {entity: {integration: ha_govee_led_ble}}
   fields:
     groups:
       required: true
       example: '[{"segments": [1, 2, 3], "rgb_color": [255, 0, 0]}, {"segments": [4, 5, 6], "rgb_color": [0, 0, 255]}]'
       selector: {object:}
+    rgb_scale:
+      default: 100
+      selector: {number: {min: 0, max: 100, step: 1, unit_of_measurement: "%"}}
 set_segment_color:
   target: {entity: {integration: ha_govee_led_ble}}
   fields:

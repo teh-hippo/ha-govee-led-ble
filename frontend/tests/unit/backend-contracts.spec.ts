@@ -37,6 +37,7 @@ const knownContentFamilies = [
   "scene_builtin",
   "scene_palette",
   "scene_layered",
+  "native_effect",
 ] as const;
 
 function cloneObject(value: unknown): JsonObject {
@@ -52,6 +53,8 @@ test("canonical backend responses decode through the production validators", () 
   expect(isCompatibleEditorInfo(info)).toBe(true);
   const devices = decodeDevices(responses.devices);
   expect(devices.map((device) => device.model)).toEqual([
+    "H60A1",
+    "H60A6",
     "H6102",
     "H6099",
     "H6125",

@@ -173,6 +173,8 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
 
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
+    if profile.bulk_status_grammar == "H60A" and mode_name == "music":
+        return ParsedColorModeResponse(mode=ParsedMode.MUSIC)
     if mode_name == "video" and profile.video_grammar == "H66A0-video":
         detail = body.detail
         source = getattr(detail.source, "name", None)

@@ -452,6 +452,8 @@ def test_unsaved_apply_records_content_free_source_metadata() -> None:
         ("segment_brightness", [True]),
         ("segment_brightness", [101]),
         ("segment_brightness", [-1]),
+        ("panel_enabled", 1),
+        ("ring_enabled", "on"),
     ],
 )
 def test_prior_state_rejects_invalid_body_and_segment_persistence(field, value):
@@ -469,6 +471,7 @@ def test_prior_state_legacy_missing_fields_stay_unknown():
         {"mode": "colour", "is_on": False, "brightness_pct": 37, "rgb_color": [1, 2, 3]}
     )
     assert prior.music_body is prior.segment_colors is prior.segment_brightness is None
+    assert prior.panel_enabled is prior.ring_enabled is None
     assert not {"music_body", "segment_colors", "segment_brightness"} & prior.to_dict().keys()
 
 
@@ -480,6 +483,8 @@ def test_prior_state_round_trips_thirty_segments():
         (1, 2, 3),
         segment_colors=((1, 2, 3),) * 30,
         segment_brightness=(50,) * 30,
+        panel_enabled=False,
+        ring_enabled=True,
     )
 
     assert PriorControlState.from_dict(prior.to_dict()) == prior

@@ -145,6 +145,7 @@ def _make_coord(**ov) -> MagicMock:
         _segment_query_colors=None,
         _segment_query_brightness=None,
         _segment_query_incomplete=False,
+        _bulk_query_incomplete=False,
         video_saturation=100,
         white_brightness=100,
         video_full_screen=True,

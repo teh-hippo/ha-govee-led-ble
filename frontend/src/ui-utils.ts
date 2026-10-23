@@ -7,6 +7,27 @@ import type {
 
 export type NativeLightState = "on" | "off" | "unavailable";
 
+export function staticCompositionRequest(entityId: string, palette: readonly (RGB | null)[], rgbScale: number) {
+  if (!entityId.startsWith("light.") || !Number.isInteger(rgbScale) || rgbScale < 0 || rgbScale > 100) {
+    throw new Error("Choose a light and an RGB scale from 0 to 100.");
+  }
+  const groups: { segments: number[]; rgb_color: RGB }[] = [];
+  palette.forEach((colour, index) => {
+    if (colour === null) return;
+    if (colour.length !== 3 || colour.some(channel => !Number.isInteger(channel) || channel < 0 || channel > 255)) {
+      throw new Error("Static colours must contain three RGB bytes.");
+    }
+    const existing = groups.find(group => sameRgb(group.rgb_color, colour));
+    if (existing) existing.segments.push(index + 1);
+    else groups.push({ segments: [index + 1], rgb_color: [...colour] });
+  });
+  if (!groups.length) throw new Error("Paint at least one logical segment before applying.");
+  return {
+    type: "call_service", domain: "ha_govee_led_ble", service: "paint_segments",
+    target: { entity_id: entityId }, service_data: { groups, rgb_scale: rgbScale },
+  };
+}
+
 export function clamp(
   value: number,
   minimum: number,

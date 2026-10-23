@@ -128,6 +128,8 @@ class ModelProfile:
     # None retains the grammar's shipped operations; a set restricts physical writes.
     command_operations: frozenset[str] | None = None
     status_grammar: str | None = None
+    bulk_status_grammar: str | None = None
+    setting_grammar: str | None = None
     outbound_transform: Callable[[bytes], bytes] | None = None
     # Device register range for the brightness byte; None means the wire carries percent.
     brightness_wire_range: tuple[int, int] | None = None
@@ -216,6 +218,7 @@ class ModelProfile:
     a1_diy_selector: int | None = None
     diy_requires_upload_ack: bool = False
     boolean_controls: frozenset[str] = frozenset()
+    supports_power_on_behaviour: bool = False
     default_effect_families_override: frozenset[str] | None = None
     effect_readback: str = "none"
 
@@ -224,7 +227,7 @@ class ModelProfile:
             type(channel) is not int or not 0 <= channel <= 255 for channel in self.kelvin_direct_rgb
         ):
             raise ValueError("Kelvin direct RGB must contain three byte values")
-        if not self.boolean_controls <= {"gradual", "limit", "power_off_memory"}:
+        if not self.boolean_controls <= {"gradual", "limit", "power_off_memory", "panel_enabled", "ring_enabled"}:
             raise ValueError("unknown boolean device setting")
         if self.configured_string_counts and (
             self.bulbs_per_string <= 0
@@ -531,9 +534,20 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H60A1 Ceiling Light",
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
+        command_ack_grammar="H617A",
         status_grammar="H60A1",
-        command_operations=frozenset({"power", "brightness", "static"}),
-        read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        bulk_status_grammar="H60A",
+        effect_grammar="H617A",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "effect_upload"}),
+        read_domains=frozenset({ReadDomain.POWER, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        supports_scenes=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        scene_catalogue_sku="H60A1",
+        advanced_diy_selector=254,
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        segment_colour_mode_ambiguous=True,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         min_color_temp_kelvin=2700,
@@ -549,9 +563,25 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         "H60A6 Ceiling Light Pro",
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
+        command_ack_grammar="H60A6",
         status_grammar="H60A6",
-        command_operations=frozenset({"power", "brightness", "static"}),
-        read_domains=frozenset({ReadDomain.POWER, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        bulk_status_grammar="H60A",
+        setting_grammar="H60A6",
+        effect_grammar="H60A6",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "effect_upload"}),
+        read_domains=frozenset({ReadDomain.POWER, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+        supports_scenes=True,
+        supports_custom_effects=True,
+        supports_advanced_effects=True,
+        supports_multi_layered_effects=True,
+        scene_catalogue_sku="H60A6",
+        advanced_diy_selector=254,
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        physical_ic_count=133,
+        boolean_controls=frozenset({"panel_enabled", "ring_enabled"}),
+        supports_power_on_behaviour=True,
+        segment_colour_mode_ambiguous=True,
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
         setup_required_read_domains=frozenset({ReadDomain.POWER}),
         min_color_temp_kelvin=2700,
@@ -559,9 +589,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         whole_device_mask=0x1FFF,
         segment_count=13,
         segment_group_size=4,
-        # Support.java:209-213,345-346,489-498: Pact 1/1 has one zone;
-        # 1/2+ has thirteen with whole-device Kelvin; 1/3 and the owner-reported
-        # 1.00.41/1.04.03 revision add candidate per-segment Kelvin.
+        # Pact 1/1 uses whole-device colour; 1/2+ has thirteen logical segments.
     ),
     "H601C": ModelProfile(
         "H601C Recessed Downlight",
@@ -1244,24 +1272,36 @@ def device_profile(
         from .firmware_version import FirmwareVersion
 
         profile = get_profile(model)
+        if model == "H60A6" and not (
+            (pact_type, pact_code) in {(1, 1), (1, 2), (1, 3)}
+            or (pact_type, pact_code, hardware, firmware) == (None, None, "1.04.03", "1.00.41")
+        ):
+            profile = replace(profile, boolean_controls=frozenset(), supports_power_on_behaviour=False)
         if model == "H60A6" and (pact_type, pact_code) == (1, 1):
-            return replace(profile, segment_count=1, whole_device_mask=1)
+            from .generated_protocol_adapter import h60a6_legacy_outbound_transform
+
+            return replace(
+                profile,
+                segment_count=1,
+                whole_device_mask=1,
+                supports_rgb=True,
+                supports_color_temperature=True,
+                kelvin_direct_rgb=(255, 255, 255),
+                outbound_transform=h60a6_legacy_outbound_transform,
+            )
         hw = FirmwareVersion.parse(hardware)
         # Android KelvinConfig.S2: HW >=1.04.03 uses the 2700 K table;
         # older hardware uses 2200 K. Unknown retains conservative bounds.
         if model == "H60A1" and hw is not None and hw.identity_number() < 10403:
             profile = replace(profile, min_color_temp_kelvin=2200)
-        # Android 7.6.01 pact_h60a0/pact/Support.java and reporter fork
-        # f8d4267 docs/h60a-support-findings.md. An exact tuple can qualify
-        # absent Pact metadata or H60A1's supported 1/1 route. H60A6 1/1
-        # positively identifies the incompatible one-zone topology.
+        # The owner tuple qualifies absent Pact metadata, never a contradictory topology.
         segmented = (
-            (pact_type == 2 and pact_code == 1)
+            ((pact_type, pact_code) in {(1, 1), (2, 1)})
             if model == "H60A1"
             else (pact_type == 1 and type(pact_code) is int and pact_code >= 2)
         )
         captured_firmware = "1.02.20" if model == "H60A1" else "1.00.41"
-        if (pact_type, pact_code) == (None, None) or model == "H60A1" and (pact_type, pact_code) == (1, 1):
+        if (pact_type, pact_code) == (None, None):
             segmented = (hardware, firmware) == ("1.04.03", captured_firmware)
         if segmented:
             segmented_kelvin = model == "H60A6" and (

@@ -40,10 +40,12 @@ def test_exact_ceiling_profiles_have_no_catalogue_inheritance(model):
         assert p.supports_custom_effects and p.supports_scenes and p.supports_multi_layered_effects
         assert not p.supports_music_mode and not p.supports_advanced_effects
     else:
-        assert p.command_operations == {"power", "brightness", "static"}
-        assert supported_effect_categories(model) == ()
-        assert p.effect_grammar is None and p.scene_catalogue_sku is None
-        assert not p.supports_custom_effects and not p.supports_music_mode and not p.supports_scenes
+        assert p.command_operations == {"power", "brightness", "static", "scene", "diy", "effect_upload"}
+        expected_categories = ("scenes", "effects", "multi_layered") + (("advanced",) if model == "H60A6" else ())
+        assert supported_effect_categories(model) == expected_categories
+        assert p.effect_grammar == ("H617A" if model == "H60A1" else "H60A6")
+        assert p.scene_catalogue_sku == model
+        assert p.supports_custom_effects and p.supports_scenes and not p.supports_music_mode
     assert not p.supports_segment_brightness and not p.supports_segment_color_temperature
     assert not p.static_readback_echoes_color
     require_profile_packet(build_brightness(50, model), p)
@@ -56,8 +58,8 @@ def test_exact_ceiling_profiles_have_no_catalogue_inheritance(model):
         ("H60A1", (None, None), None, None, False),
         ("H60A1", (2, 1), None, None, True),
         ("H60A1", (1, 1), "1.04.03", "1.02.20", True),
-        ("H60A1", (1, 1), None, None, False),
-        ("H60A1", (1, 1), "1.04.03", "1.02.21", False),
+        ("H60A1", (1, 1), None, None, True),
+        ("H60A1", (1, 1), "1.04.03", "1.02.21", True),
         ("H60A1", (3, 1), "1.04.03", "1.02.20", False),
         ("H60A1", (None, None), "1.04.03", "1.02.20", True),
         ("H60A1", (None, None), "1.04.04", "1.02.20", False),
@@ -75,8 +77,10 @@ def test_exact_ceiling_profiles_have_no_catalogue_inheritance(model):
 )
 def test_geometry_requires_positive_revision_evidence(model, pact, hardware, firmware, segmented):
     p = device_profile(model, *pact, hardware=hardware, firmware=firmware)
-    assert p.supports_segments is segmented and p.supports_rgb is segmented
-    assert p.supports_color_temperature is segmented
+    legacy_colour = model == "H60A6" and pact == (1, 1)
+    assert p.supports_segments is segmented
+    assert p.supports_rgb is (segmented or legacy_colour)
+    assert p.supports_color_temperature is (segmented or legacy_colour)
     expected_seg_kelvin = (
         segmented and model == "H60A6" and (pact == (1, 3) or (hardware, firmware) == ("1.04.03", "1.00.41"))
     )
@@ -84,7 +88,7 @@ def test_geometry_requires_positive_revision_evidence(model, pact, hardware, fir
     assert p.can_read(ReadDomain.SEGMENTS) is segmented
     assert p.segment_count == (14 if model == "H60A1" else 1 if pact == (1, 1) else 13)
     assert p.segment_group_count == (4 if segmented else 0)
-    assert not p.can_read(ReadDomain.BRIGHTNESS) and not p.supports_color_mode_readback
+    assert not p.can_read(ReadDomain.BRIGHTNESS) and p.supports_color_mode_readback
     if segmented:
         require_profile_packet(build_color_temp(4000, model, profile=p), p)
         require_profile_packet(build_segment_color([p.segment_count], 1, 2, 3, model, profile=p), p)
@@ -95,6 +99,12 @@ def test_geometry_requires_positive_revision_evidence(model, pact, hardware, fir
                 build_segment_color_temp([p.segment_count], 4000, model, profile=p)
         with pytest.raises(ValueError, match="out of range"):
             build_segment_color([p.segment_count + 1], 1, 2, 3, model, profile=p)
+    elif legacy_colour:
+        require_profile_packet(build_color_rgb(1, 2, 3, model, profile=p), p)
+        require_profile_packet(build_color_temp(4000, model, profile=p), p)
+        assert p.outbound_transform is not None
+        with pytest.raises(ValueError, match="per-segment"):
+            build_segment_color([1], 1, 2, 3, model, profile=p)
     else:
         with pytest.raises(ValueError, match="RGB"):
             build_color_rgb(1, 2, 3, model, profile=p)
@@ -111,7 +121,7 @@ def test_h60a1_kelvin_bounds_track_hardware(hass, hardware, minimum):
     p = device_profile("H60A1", 2, 1, hardware=hardware)
     assert (p.min_color_temp_kelvin, p.max_color_temp_kelvin) == (minimum, 6500)
     assert p.supports_color_temperature and not p.supports_segment_color_temperature
-    unqualified = device_profile("H60A1", 1, 1, hardware=hardware)
+    unqualified = device_profile("H60A1", 3, 1, hardware=hardware)
     assert (unqualified.min_color_temp_kelvin, unqualified.max_color_temp_kelvin) == (minimum, 6500)
     assert not unqualified.supports_color_temperature
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H60A1", configuration_url=None)
@@ -160,16 +170,17 @@ async def test_late_identity_and_pact_revalidate_prepared_segment_write(hass, mo
     assert not c.profile.supports_segments
     c._note_identity(hw_version="1.04.03")
     assert not c.profile.supports_segments
+    initial_generation = c._profile_generation
     c._note_identity(fw_version="1.02.20" if model == "H60A1" else "1.00.41")
-    assert c.profile.supports_segments and c._profile_generation == 1
+    assert c.profile.supports_segments and c._profile_generation == initial_generation + 1
     packet = build_segment_color([1], 1, 2, 3, model, profile=c.profile)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
     c._client = client
     # Drop the tuple before selecting the unqualified legacy advertisement.
     c._note_identity(fw_version="1.00.00")
-    assert not c.profile.supports_segments and c._profile_generation == 2
-    c._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))}))
-    assert not c.profile.supports_segments and c._profile_generation == (3 if model == "H60A6" else 2)
+    assert not c.profile.supports_segments and c._profile_generation == initial_generation + 2
+    c._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 3, 1, 0))}))
+    assert not c.profile.supports_segments and c._profile_generation == initial_generation + 2
     before = c.capture_effect_control_state()
     with pytest.raises(ValueError):
         await c._async_write_packet(client, packet, arm_expected=True)

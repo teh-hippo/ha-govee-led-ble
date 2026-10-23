@@ -58,11 +58,13 @@ from .effect_contracts import CapabilityState
 from .effect_deployments import PriorControlState
 from .generated_protocol_adapter import (
     H6199_NATIVE_CONTROLS,
+    BulkStatusCollector,
     ParsedH6179Status,
     build_black_border_query,
     build_blank_screen_query,
     build_brightness,
     build_brightness_query,
+    build_bulk_status_query,
     build_colour_mode_query,
     build_configured_strings,
     build_configured_strings_query,
@@ -73,16 +75,19 @@ from .generated_protocol_adapter import (
     build_hardware_query,
     build_physical_ic_count_query,
     build_power,
+    build_power_on_behaviour,
     build_power_query,
     build_relative_brightness_query,
     build_segment_query,
     build_subordinate_query,
     build_white_balance_query,
     decode_wire_brightness,
+    is_bulk_status_frame,
     parse_command_ack_result,
     parse_command_result,
     parse_h6199_control,
     parse_physical_ic_count,
+    parse_zone_notification,
     require_profile_packet,
     upload_ack_mode,
     upload_ack_subtype,
@@ -286,6 +291,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self.pact_type: int | None = None
         self.pact_code: int | None = None
         self.boolean_control_state: dict[str, bool] = {}
+        self.power_on_behaviour: str | None = None
+        self._bulk_collector: BulkStatusCollector | None = None
+        self._bulk_query_deadline: float | None = None
+        self._bulk_query_incomplete = False
         self.configured_strings: int | None = None
         self._configured_strings_confirmed = False
         self._mask_transaction: tuple[asyncio.Task[Any] | None, object | None, int] | None = None
@@ -395,6 +404,13 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         )
 
     def capture_effect_control_state(self) -> PriorControlState:
+        zone_flags = {
+            name: value
+            for name, value in self.boolean_control_state.items()
+            if name in {"panel_enabled", "ring_enabled"}
+            and self._notify_started_monotonic is not None
+            and self._field_received_at.get(f"boolean_{name}", -1) >= self._notify_started_monotonic
+        }
         # active_mode hides the resident mode while powered off and maps unknown to colour.
         mode = (
             "unknown"
@@ -404,7 +420,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             else "scene"
             if self.effect is not None or self.scene_code is not None
             else "music"
-            if self.music_mode not in (None, "off")
+            if self.color_mode is ParsedMode.MUSIC or self.music_mode not in (None, "off")
             else "video"
             if self.video_mode not in (None, "off")
             else "colour"
@@ -416,6 +432,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             rgb_color=self.rgb_color,
             color_temp_kelvin=self.color_temp_kelvin,
             static_gradual=self.static_gradual if self.color_mode is ParsedMode.COLOUR else None,
+            panel_enabled=zone_flags.get("panel_enabled"),
+            ring_enabled=zone_flags.get("ring_enabled"),
             segment_colors=tuple(self.segment_colors) if self.segment_state_source == "observed" else None,
             segment_brightness=tuple(self.segment_brightness)
             if self.segment_state_source == "observed" and self.segment_brightness_readable
@@ -472,6 +490,34 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         *,
         overwritten_diy_code: int | None,
     ) -> bool:
+        restored = await self._async_restore_effect_appearance(state, overwritten_diy_code=overwritten_diy_code)
+        native_zones = self.profile.boolean_controls & {"panel_enabled", "ring_enabled"}
+        if not native_zones:
+            return restored
+        expected = {name: value for name in native_zones if (value := getattr(state, name)) is not None}
+        if not expected:
+            return False
+        async with self._lock:
+            client = await self._ensure_connected()
+            if not await self._async_read_bulk_status(
+                client, deadline=time.monotonic() + 4.0, domains=("zone_enable",)
+            ):
+                return False
+        for name, value in expected.items():
+            if self.boolean_control_state.get(name) != value:
+                await self.async_set_boolean_control(name, value)
+        return (
+            restored
+            and set(expected) == native_zones
+            and all(self.boolean_control_state.get(name) == value for name, value in expected.items())
+        )
+
+    async def _async_restore_effect_appearance(
+        self,
+        state: PriorControlState,
+        *,
+        overwritten_diy_code: int | None,
+    ) -> bool:
         if not state.is_on:
             return await self._async_restore_effect_control_state(state, overwritten_diy_code=overwritten_diy_code)
         if state.mode == "colour" and self.profile.segment_colour_mode_ambiguous:
@@ -498,7 +544,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         if not state.is_on:
             attempts = self.control_write_attempts
             try:
-                appearance_restored = await self.async_restore_effect_control_state(
+                appearance_restored = await self._async_restore_effect_appearance(
                     replace(state, is_on=True), overwritten_diy_code=overwritten_diy_code
                 )
             except BaseException:
@@ -1218,6 +1264,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 and (self._encryption is None or self._encryption.ready)
                 and not self._receive_is_stale()
                 and not self._segment_query_incomplete
+                and not self._bulk_query_incomplete
             ):
                 return self._state_snapshot()
             try:
@@ -1269,6 +1316,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 (self._encryption is None or self._encryption.ready)
                 and not self._receive_is_stale()
                 and not self._segment_query_incomplete
+                and not self._bulk_query_incomplete
             ):
                 self._renew_foreground_lease()
                 return self._client
@@ -1430,6 +1478,9 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._last_rx_monotonic = None
         self._expected_state.clear()
         self._segment_query_incomplete = False
+        self._bulk_query_incomplete = False
+        self._bulk_collector = None
+        self._bulk_query_deadline = None
         self._segment_groups_observed.clear()
         self._segment_query_colors = self._segment_query_brightness = None
         if client is None or self._intentional_disconnect_client is not client:
@@ -1437,6 +1488,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             self.strip_direction = self.camera_position = self.gradient = None
             self.camera_status = "unknown"
             self.boolean_control_state.clear()
+            self.power_on_behaviour = None
         if self.profile.command_grammar == "H6099":
             self.profile = replace(self.profile, physical_ic_count=None)
         self._stop_keep_alive()
@@ -1687,7 +1739,13 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         # Readback mirror of _enter_static_mode: committing one mode clears the others.
         if parsed.mode is ParsedMode.MUSIC:
             self._scene_code = None
-            if parsed.music_mode is not None and self._accept_expected("music_mode", parsed.music_mode):
+            if parsed.music_mode is None:
+                self.music_mode = "off"
+                self.effect = self.diy_code = None
+                self.video_mode = "off"
+                observed.extend(("effect", "diy_code"))
+                accept_parameters = False
+            elif self._accept_expected("music_mode", parsed.music_mode):
                 if parsed.music_mode != self.music_mode:
                     self._music_palette = self._music_body = None
                 self.music_mode = parsed.music_mode
@@ -1796,6 +1854,108 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 observed.extend(static_values)
         return tuple(observed)
 
+    def _handle_bulk_notification(self, frame: bytes) -> bool:
+        if not is_bulk_status_frame(frame, self.profile):
+            return False
+        collector = self._bulk_collector
+        if collector is None:
+            self._record_packet("rx", frame, outcome="rejected", reason="unsolicited_bulk_status", parser="h60a_bulk")
+            return True
+        if self._bulk_query_deadline is not None and time.monotonic() >= self._bulk_query_deadline:
+            self._bulk_collector = None
+            self._record_packet("rx", frame, outcome="rejected", reason="expired_bulk_status", parser="h60a_bulk")
+            return True
+        result = collector.feed(frame)
+        entry = self._record_packet(
+            "rx",
+            frame,
+            outcome="rejected" if result.rejection else "parsed",
+            reason=result.rejection.value if result.rejection else "bulk_status_fragment",
+            parser=result.parser,
+        )
+        if result.parsed is None:
+            return True
+        try:
+            records = result.parsed.records
+            for record in records:
+                domain = getattr(record.domain, "name", None)
+                if domain == "colour_mode":
+                    parse_color_mode(record, self.model, profile=self.profile)
+                elif domain == "power" and record.body.is_on not in (0, 1):
+                    raise ValueError("Bulk power flag is invalid")
+                elif domain == "brightness" and not 0 <= record.body.percent <= 100:
+                    raise ValueError("Bulk brightness is outside percentage bounds")
+                elif domain == "power_on_behaviour" and getattr(record.body.state, "name", None) is None:
+                    raise ValueError("Bulk power-on behaviour is unknown")
+            for record in records:
+                domain = getattr(record.domain, "name", None)
+                if domain == "colour_mode" and self.profile.supports_color_mode_readback:
+                    self._mark_received(StatusDomain.COLOUR_MODE, *self._apply_color_mode_payload(record))
+                elif domain == "power" and self.profile.can_read(ReadDomain.POWER):
+                    value = bool(record.body.is_on)
+                    if self._accept_expected("is_on", value):
+                        self.is_on = value
+                        self._mark_received(StatusDomain.POWER, "is_on")
+                elif domain == "brightness" and self.profile.can_read(ReadDomain.BRIGHTNESS):
+                    percent = int(record.body.percent)
+                    if self._accept_expected("brightness_pct", percent):
+                        self.brightness_pct = percent
+                        self._mark_received(StatusDomain.BRIGHTNESS, "brightness_pct")
+                elif domain == "zone_enable":
+                    zone_values: dict[str, bool] = {
+                        name: bool(getattr(record.body, name))
+                        for name in ("panel_enabled", "ring_enabled")
+                        if name in self.profile.boolean_controls
+                    }
+                    self.boolean_control_state.update(zone_values)
+                    self._mark_received(StatusDomain.OTHER, *(f"boolean_{name}" for name in zone_values))
+                elif domain == "power_on_behaviour" and self.profile.supports_power_on_behaviour:
+                    self.power_on_behaviour = record.body.state.name
+                    self._mark_received(StatusDomain.OTHER, "power_on_behaviour")
+            self._bulk_query_incomplete = False
+            self._bulk_collector = None
+            self._mark_received(StatusDomain.OTHER, "bulk_status")
+            self.async_set_updated_data(self.data or {})
+        except ValueError:
+            collector.failed = True
+            entry.update(outcome="rejected", reason="semantic_rejected")
+            _LOGGER.debug("Rejected complete bulk status for %s", self.model, exc_info=True)
+        return True
+
+    async def _async_read_bulk_status(
+        self, client: BleakClient, *, deadline: float, domains: tuple[str, ...] | None = None
+    ) -> bool:
+        if self._bulk_query_incomplete:
+            return False
+        packet = build_bulk_status_query(self._authorization_profile(), domains=domains)
+        baseline = {"bulk_status": self._field_revisions.get("bulk_status", 0)}
+        generation, token = self._profile_generation, self._notification_token
+        attempted = succeeded = False
+
+        def before_write() -> None:
+            nonlocal attempted
+            attempted = True
+            self._bulk_collector = BulkStatusCollector()
+            self._bulk_query_deadline = deadline
+            self._bulk_query_incomplete = True
+
+        try:
+            await self._async_write_packet(client, packet, before_write=before_write, cleanup_deadline=deadline)
+            succeeded = (
+                await self._wait_for_revisions(baseline, {}, deadline)
+                and generation == self._profile_generation
+                and self._client is client
+                and client.is_connected
+                and self._notification_token is token
+                and not self._bulk_query_incomplete
+            )
+            return succeeded
+        finally:
+            if attempted and self._client is client and self._notification_token is token:
+                self._bulk_collector = None
+                self._bulk_query_deadline = None
+                self._bulk_query_incomplete = not succeeded
+
     def _notify_callback(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
         if self._encryption is not None:
@@ -1804,6 +1964,24 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 return
             frame = decoded_frame
         self._last_rx_monotonic = time.monotonic()
+        if self._handle_bulk_notification(frame):
+            return
+        zone_result = parse_zone_notification(frame, self.profile)
+        if zone_result.parsed is not None:
+            status = zone_result.parsed
+            zone_values: dict[str, bool] = {
+                name: bool(getattr(status, name))
+                for name in ("panel_enabled", "ring_enabled")
+                if name in self.profile.boolean_controls
+            }
+            self.boolean_control_state.update(zone_values)
+            self._mark_received(StatusDomain.OTHER, *(f"boolean_{name}" for name in zone_values))
+            if self.profile.can_read(ReadDomain.POWER) and self._accept_expected("is_on", bool(status.is_on)):
+                self.is_on = bool(status.is_on)
+                self._mark_received(StatusDomain.POWER, "is_on")
+            self._record_packet("rx", frame, outcome="parsed", reason="native_zone_status", parser=zone_result.parser)
+            self.async_set_updated_data(self.data or {})
+            return
         ack = parse_command_ack_result(frame, self.model, profile=self.profile)
         if ack.parsed is not None:
             setting = self._setting_ack
@@ -2097,9 +2275,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         packet_validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
     ) -> None:
         """Write on the caller's connection without changing its transaction policy."""
-        if arm_expected and self._segment_query_incomplete:
+        if arm_expected and (self._segment_query_incomplete or self._bulk_query_incomplete):
             # The caller owns reconnect/retry policy; never write across an abandoned query.
-            raise BleakError("Incomplete segment query requires a new connection")
+            query_kind = "segment" if self._segment_query_incomplete else "bulk"
+            raise BleakError(f"Incomplete {query_kind} query requires a new connection")
         packet_validator(packet, self.profile)
         self._validate_authorized_packet(packet)
         if (
@@ -2218,7 +2397,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         deadline: float | None = None,
     ) -> bool:
         client = self._client
-        if client is None or not client.is_connected or self._segment_query_incomplete:
+        if client is None or not client.is_connected or self._segment_query_incomplete or self._bulk_query_incomplete:
             return False
         token = self._notification_token
         if deadline is None:
@@ -2361,7 +2540,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
                         for control in H6199_NATIVE_CONTROLS
                     )
-            if full_query and profile.boolean_controls:
+            if full_query and profile.boolean_controls and profile.setting_grammar != "H60A6":
                 from .generated_protocol_adapter import build_boolean_control_query
 
                 queries.extend(
@@ -2398,6 +2577,13 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 if time.monotonic() >= deadline:
                     return all(d not in required for _, d, _ in queries[index:])
                 baselines = {field: self._field_revisions.get(field, 0) for field in fields}
+                if domain is ReadDomain.COLOUR_MODE and profile.bulk_status_grammar is not None:
+                    if optional_baselines is not None and domain not in required:
+                        for field, revision in baselines.items():
+                            optional_baselines.setdefault(field, revision)
+                    if not await self._async_read_bulk_status(client, deadline=deadline):
+                        return domain not in required and all(d not in required for _, d, _ in queries[index + 1 :])
+                    continue
 
                 def before_segment_write() -> None:
                     # A rejected transform has not started a batch. Once any page is
@@ -2699,14 +2885,31 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                 raise ValueError("Configured strings changed but bulb state could not be read")
 
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
+        await self._async_set_verified_setting(control, enabled)
+
+    async def async_set_power_on_behaviour(self, value: str) -> None:
+        await self._async_set_verified_setting("power_on_behaviour", value)
+
+    async def _async_set_verified_setting(self, control: str, value: bool | str) -> None:
         from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query
 
         def qualified() -> None:
-            if control not in self.profile.boolean_controls:
+            if not (
+                self.profile.supports_power_on_behaviour
+                if control == "power_on_behaviour"
+                else control in self.profile.boolean_controls
+            ):
                 raise ValueError("Device profile does not support this setting")
 
         qualified()
-        packet = build_boolean_control(control, enabled, self.model, profile=self.profile)
+        if control == "power_on_behaviour":
+            if not isinstance(value, str):
+                raise ValueError("Power-on behaviour requires an option")
+            packet = build_power_on_behaviour(value, self.profile)
+        else:
+            if type(value) is not bool:
+                raise ValueError("Boolean setting requires a boolean")
+            packet = build_boolean_control(control, value, self.model, profile=self.profile)
         async with async_control_intent(self, ControlIntent.USER):
             async with self._lock:
                 await self._ensure_connected()
@@ -2719,6 +2922,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         self.config_entry.entry_id, reason="home_assistant_control"
                     )
             generation = self._profile_generation
+            field = control if control == "power_on_behaviour" else f"boolean_{control}"
+            baseline = {field: self._field_revisions.get(field, 0)}
             await self.send_command(packet, write_guard=qualified)
             async with self._lock:
                 qualified()
@@ -2727,15 +2932,24 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     raise BleakError("Device disconnected before setting readback")
                 if generation != self._profile_generation:
                     raise ValueError("Device profile changed during setting write")
-                field = f"boolean_{control}"
-                baseline = {field: self._field_revisions.get(field, 0)}
                 deadline = time.monotonic() + 4.0
-                await self._async_write_packet(
-                    client, build_boolean_control_query(control, self.model, profile=self.profile)
-                )
+                if self.profile.setting_grammar == "H60A6":
+                    if self._field_revisions.get(field, 0) <= baseline[field]:
+                        domain = "power_on_behaviour" if control == "power_on_behaviour" else "zone_enable"
+                        if not await self._async_read_bulk_status(client, deadline=deadline, domains=(domain,)):
+                            raise ValueError("Device did not provide complete setting readback")
+                else:
+                    await self._async_write_packet(
+                        client, build_boolean_control_query(control, self.model, profile=self.profile)
+                    )
                 if not await self._wait_for_revisions(baseline, {}, deadline) or generation != self._profile_generation:
                     raise ValueError("Device did not provide fresh setting readback")
-                if self.boolean_control_state.get(control) is not enabled:
+                actual = (
+                    self.power_on_behaviour
+                    if control == "power_on_behaviour"
+                    else self.boolean_control_state.get(control)
+                )
+                if actual != value:
                     raise ValueError("Device did not confirm the requested setting")
 
     def _identity_incomplete(self) -> bool:

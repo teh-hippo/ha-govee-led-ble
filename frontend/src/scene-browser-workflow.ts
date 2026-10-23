@@ -26,6 +26,7 @@ import {
 import type {
   DeviceCapabilities,
   LayeredSceneContent,
+  NativeEffectContent,
   LibraryItem,
   LibrarySnapshot,
   LibrarySummary,
@@ -124,8 +125,8 @@ class SerialLatestWriter<T> {
 }
 
 export interface SceneEditSelection {
-  content: LayeredSceneContent;
-  catalogue_content?: LayeredSceneContent;
+  content: LayeredSceneContent | NativeEffectContent;
+  catalogue_content?: LayeredSceneContent | NativeEffectContent;
   has_default?: boolean;
   config_entry_id: string;
   item?: LibraryItem;
@@ -355,7 +356,7 @@ export class SceneBrowserWorkflow {
     this.patch({
       speedIndex,
       ...(this.stateValue.content
-        ? { content: sceneContentAtSpeed(this.stateValue.content, speedIndex) }
+        ? { content: sceneContentAtSpeed(this.stateValue.content, speedIndex, this.stateValue.selectedScene?.speed?.layer_speeds) }
         : {}),
     });
   }
@@ -845,6 +846,16 @@ export class SceneBrowserWorkflow {
     if (!selectedItem) {
       this.invalidateDefaultWrites(true);
     }
+    if (content?.kind === "native_effect") {
+      const catalogueContent = this.stateValue.catalogueContent?.kind === "native_effect"
+        ? this.stateValue.catalogueContent : content;
+      return {
+        content: structuredClone(content), catalogue_content: structuredClone(catalogueContent),
+        has_default: selectedItem ? false : this.stateValue.hasDefault,
+        config_entry_id: this.device!.config_entry_id, ...(selectedItem ? { item: selectedItem } : {}),
+        name: selectedItem?.name ?? selectedScene.display_name,
+      };
+    }
     if (selectedScene.scene_type === 2 && content?.kind === "scene_layered") {
       const catalogueContent =
         selectedItem?.content.kind === "scene_layered"
@@ -1052,7 +1063,7 @@ export class SceneBrowserWorkflow {
       content: selectedContent,
       hasDefault: false,
       name: item.name,
-      speedIndex: selectedContent.speed_index ?? scene.speed?.default_index ?? null,
+      speedIndex: selectedContent.kind === "native_effect" ? selectedContent.speed_index : selectedContent.speed_index ?? scene.speed?.default_index ?? null,
     });
   }
 

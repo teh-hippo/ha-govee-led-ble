@@ -25,6 +25,7 @@ from .effect_domain import (
     LayeredEffect,
     MultiEffect,
     MusicProfile,
+    NativeEffect,
     PaintedEffect,
     PaletteDiyEffect,
     RelativeBrightness,
@@ -34,7 +35,8 @@ from .effect_domain import (
     effect_content_to_dict,
 )
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
-from .generated_protocol_adapter import music_default_palette
+from .generated_protocol_adapter import H60a6PaintBody, music_default_palette
+from .h60a6_effects import native_diy_preset
 from .layered_scene_decoder import decode_workshop_effect
 from .music_commands import music_default_available
 from .music_protocol import music_code_for, music_codebook
@@ -255,12 +257,15 @@ class ModelEffectCatalogue:
     native_diy_templates: tuple[NativeDiyTemplateContract, ...] = ()
     diy_slot_policy: str = "fixed"
     advanced_create: bool = True
+    temporary_diy_selector: int | None = None
+    native_actions: tuple[NativeModeOption, ...] = ()
 
     def to_dict(self, *, profile: ModelProfile | None = None) -> dict[str, JsonValue]:
         device_profile = profile
         profile = MODEL_PROFILES[self.sku] if profile is None else profile
         result: dict[str, JsonValue] = {
             "sku": self.sku,
+            **({"native_actions": [action.to_dict() for action in self.native_actions]} if self.native_actions else {}),
             "painted_effects": [
                 dict(effect)
                 for effect in self.painted_effects
@@ -1281,7 +1286,58 @@ H7025_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H7025"].music_modes
 )
 
+H60A1_DIY_FAMILIES: Final = tuple(
+    replace(family, palette_max=8, source_reference="H60A1 #402")
+    for family in H617A_TYPE04_FAMILIES
+    if family.family in (0, 1, 2, 3, 8, 9, 10)
+)
+
+
+def _ceiling_catalogue(model: str) -> ModelEffectCatalogue:
+    native = model == "H60A6"
+    return ModelEffectCatalogue(
+        sku=model,
+        painted_effects=(),
+        effects=() if native else H60A1_DIY_FAMILIES,
+        music_modes=(),
+        video_modes=(),
+        workshop_templates=(),
+        templates=tuple(
+            CatalogueTemplate(
+                id=f"template:native:{preset}",
+                label="Paint" if preset == 15 else f"Native preset {preset}",
+                category="advanced" if preset in (11, 12, 15) else "single-layer",
+                content=native_diy_preset(preset, DEFAULT_PALETTE),
+            )
+            for preset in range(1, 16)
+        )
+        if native
+        else tuple(_single_template(model, family, grammar="H617A") for family in H60A1_DIY_FAMILIES),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state(model, CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state(model, CapabilityWorkflow.ADVANCED),
+            workshop=CapabilityState.UNSUPPORTED,
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state(model, CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state(model, CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state(model, CapabilityWorkflow.MULTI),
+            palette_diy=CapabilityState.UNSUPPORTED,
+            workshop=CapabilityState.UNSUPPORTED,
+        ),
+        advanced_create=False,
+        temporary_diy_selector=254,
+        native_actions=tuple(
+            NativeModeOption(str(int(action)), f"Native action {int(action)}") for action in H60a6PaintBody.ActionCode
+        )
+        if native
+        else (),
+    )
+
+
 MODEL_EFFECT_CATALOGUES: Final = {
+    "H60A1": _ceiling_catalogue("H60A1"),
+    "H60A6": _ceiling_catalogue("H60A6"),
     "H6102": ModelEffectCatalogue(
         sku="H6102",
         native_diy_palette_groups=(
@@ -1802,6 +1858,14 @@ def _template_available(template: CatalogueTemplate, profile: ModelProfile) -> b
         workflow = CapabilityWorkflow.PAINTED
     elif isinstance(content, LayeredEffect):
         workflow = CapabilityWorkflow.ADVANCED
+    elif isinstance(content, NativeEffect):
+        workflow = (
+            CapabilityWorkflow.PAINTED
+            if content.family == 798
+            else CapabilityWorkflow.ADVANCED
+            if content.preset_id in (11, 12)
+            else CapabilityWorkflow.SINGLE
+        )
     elif isinstance(content, SingleEffect | H6179SingleDiyEffect):
         workflow = CapabilityWorkflow.SINGLE
     elif isinstance(content, MultiEffect | H6179MixedDiyEffect):
@@ -1963,7 +2027,11 @@ def validate_catalogue_template_identity(
         raise EffectValidationError(f"{model} template {template_id!r} was not found")
     canonical = template.content
     valid = (
-        isinstance(canonical, PaintedEffect)
+        isinstance(canonical, NativeEffect)
+        and isinstance(content, NativeEffect)
+        and (content.model, content.family, content.preset_id, content.template)
+        == (canonical.model, canonical.family, canonical.preset_id, canonical.template)
+        or isinstance(canonical, PaintedEffect)
         and isinstance(content, PaintedEffect)
         and canonical.addressing == content.addressing
         or isinstance(canonical, SingleEffect)

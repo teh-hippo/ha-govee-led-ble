@@ -9,6 +9,7 @@ ENCRYPTION_UUID = "00010203-0405-0607-0809-0a0b0c0d2b12"
 
 _A3_FRAME_PREFIX = 0xA3
 A3_CHUNK_SIZE = 17
+A4_PREFIX = 0xA4
 
 A1_02_PREFIX = 0xA1
 A1_02_COMMAND = 0x02
@@ -155,3 +156,60 @@ def reassemble_a3(frames: Sequence[bytes]) -> bytes:
     if envelope[1] != len(frames):
         raise ValueError(f"A3 envelope declares {envelope[1]} frames, received {len(frames)}")
     return envelope
+
+
+def fragment_a4(subtype: int, body: bytes, *, frame_size: int = 20) -> list[bytes]:
+    """Frame an unpadded native body with sixteen-bit indices and a final marker."""
+    if type(subtype) is not int or not 0 <= subtype <= 255 or not isinstance(body, bytes):
+        raise ValueError("A4 requires a byte subtype and bytes body")
+    if type(frame_size) is not int or not 20 <= frame_size <= 500:
+        raise ValueError("A4 frame size must be between 20 and 500")
+    first_size, next_size = frame_size - 8, frame_size - 4
+    count = max(2, 1 + math.ceil(max(0, len(body) - first_size) / next_size))
+    if count > 0xFFFF:
+        raise ValueError("A4 transfer exceeds its sixteen-bit frame count")
+    first = bytes((A4_PREFIX, 0, 0, 1)) + count.to_bytes(2, "little") + bytes((subtype,)) + body[:first_size]
+    frames = [first + bytes((xor_checksum(first),))]
+    remaining = body[first_size:]
+    chunks = [remaining[index : index + next_size] for index in range(0, len(remaining), next_size)] or [b""]
+    for index, chunk in enumerate(chunks, 1):
+        position = 0xFFFF if index == len(chunks) else index
+        frame = bytes((A4_PREFIX,)) + position.to_bytes(2, "little") + chunk
+        frames.append(frame + bytes((xor_checksum(frame),)))
+    return frames
+
+
+def reassemble_a4(frames: Sequence[bytes]) -> tuple[int, bytes]:
+    """Validate a complete A4 upload without inventing final-frame padding."""
+    if not 2 <= len(frames) <= 0xFFFF:
+        raise ValueError("A4 requires a bounded complete frame sequence")
+    for position, frame in enumerate(frames):
+        if not isinstance(frame, bytes) or not 4 <= len(frame) <= 500 or frame[0] != A4_PREFIX:
+            raise ValueError(f"Invalid A4 frame {position}")
+        if xor_checksum(frame[:-1]) != frame[-1]:
+            raise ValueError(f"A4 frame {position} has an invalid checksum")
+        index = int.from_bytes(frame[1:3], "little")
+        expected = 0xFFFF if position == len(frames) - 1 else position
+        if index != expected:
+            raise ValueError(f"A4 frame {position} has an unexpected index")
+    first = frames[0]
+    if len(first) < 8 or first[3] != 1 or int.from_bytes(first[4:6], "little") != len(frames):
+        raise ValueError("A4 start frame does not match the transfer")
+    if any(len(frame) != len(first) for frame in frames[1:-1]) or len(frames[-1]) > max(20, len(first)):
+        raise ValueError("A4 continuation size does not match the transfer")
+    if len(frames) > 2 and (len(first) < 20 or len(frames[-1]) == 4):
+        raise ValueError("A4 multipart transfer has an invalid final payload")
+    return first[6], first[7:-1] + b"".join(frame[3:-1] for frame in frames[1:])
+
+
+def reassemble_a4_upload(frames: Sequence[bytes], final_index: int) -> tuple[int, bytes]:
+    """Find the complete A4 upload ending within a larger guarded transaction."""
+    if type(final_index) is not int or not 0 <= final_index < len(frames):
+        raise ValueError("A4 upload requires a valid final index")
+    for start in range(final_index, -1, -1):
+        frame = frames[start]
+        if len(frame) < 4 or frame[0] != A4_PREFIX:
+            break
+        if frame[1:3] == b"\x00\x00":
+            return reassemble_a4(frames[start : final_index + 1])
+    raise ValueError("A4 upload has no start frame")

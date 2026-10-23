@@ -15,6 +15,7 @@ import type {
   LibraryItem,
   LibrarySnapshot,
   MusicProfileContent,
+  NativeEffectContent,
   PaletteSceneContent,
   PaletteDiyEffectContent,
   PreviewHealthStatus,
@@ -161,6 +162,9 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         `devices[${index}].light_entity_id`,
       ),
       model,
+      ...(device.static_composition === undefined ? {} : {
+        static_composition: booleanValue(device.static_composition, "static composition capability"),
+      }),
       ...(device.catalogue === undefined ? {} : {
         catalogue: decodeModelEffectCatalogue(device.catalogue, `devices[${index}].catalogue`, model, decodeEffectContent),
       }),
@@ -749,22 +753,24 @@ export function decodeSceneDetail(value: unknown): SceneDetail {
   if (
     content.kind !== "scene_builtin" &&
     content.kind !== "scene_palette" &&
-    content.kind !== "scene_layered"
+    content.kind !== "scene_layered" &&
+    !(content.kind === "native_effect" && content.template !== null)
   ) {
     invalid("scene detail content is unsupported");
   }
   if (
     catalogueContent.kind !== "scene_builtin" &&
     catalogueContent.kind !== "scene_palette" &&
-    catalogueContent.kind !== "scene_layered"
+    catalogueContent.kind !== "scene_layered" &&
+    !(catalogueContent.kind === "native_effect" && catalogueContent.template !== null)
   ) {
     invalid("scene detail catalogue content is unsupported");
   }
   const scene = decodeSceneSummary(detail.scene);
   return {
     scene,
-    content,
-    catalogue_content: catalogueContent,
+    content: content as SceneDetail["content"],
+    catalogue_content: catalogueContent as SceneDetail["content"],
     has_default: booleanValue(detail.has_default, "scene stored default"),
   };
 }
@@ -824,6 +830,8 @@ export function decodeEffectContent(value: unknown): EffectContent {
     MAX_IDENTIFIER_LENGTH,
   );
   switch (kind) {
+    case "native_effect":
+      return nativeEffectContent(content);
     case "h617a_painted":
       const addressing = content.addressing === undefined ? "segments" : enumString(
         content.addressing, ["segments", "physical_ic"], "painted addressing",
@@ -1153,6 +1161,58 @@ export function decodeEffectContent(value: unknown): EffectContent {
   }
 }
 
+function nativeEffectContent(content: Record<string, unknown>): NativeEffectContent {
+  const family = integerValue(content.family, "native family", 797, 798) as 797 | 798;
+  const layerValues = arrayValue(content.layers, "native layers", 255);
+  if (!layerValues.length) invalid("native effects require at least one layer");
+  return {
+    kind: "native_effect",
+    model: enumString(content.model, ["H60A6"], "native model"),
+    family,
+    layers: layerValues.map(value => {
+      const layer = objectValue(value, "native layer");
+      const type = enumString(layer.type, ["diy", "paint", "opaque"], "native layer type");
+      if (type === "opaque") return { type, kind: byteValue(layer.kind, "native kind"), data: hexString(layer.data, "native data") };
+      if (type === "diy") {
+        if (family !== 797) invalid("DIY layer does not match native family");
+        return {
+          type, kind: byteValue(layer.kind, "native kind"), speed: integerValue(layer.speed, "native speed", 0, 100),
+          palette: arrayValue(layer.palette, "native palette", 255).map(value => rgbValue(value, "native colour")),
+          parameters: hexString(layer.parameters, "native parameters"),
+          parameter: byteValue(layer.parameter, "native parameter"), flag: byteValue(layer.flag, "native flag"),
+          points: arrayValue(layer.points, "native points", 255).map(value => byteValue(value, "native point")),
+          direction: byteValue(layer.direction, "native direction"), angle: integerValue(layer.angle, "native angle", 0, 65535),
+          opaque: hexString(layer.opaque, "native opaque"),
+        };
+      }
+      if (family !== 798) invalid("paint layer does not match native family");
+      const opaque = hexString(layer.opaque, "native paint opaque");
+      if (opaque.length !== 8) invalid("native paint opaque must contain four bytes");
+      return {
+        type, groups: arrayValue(layer.groups, "native groups", 65535).map(value => {
+          const group = objectValue(value, "native group");
+          return {
+            colour: rgbValue(group.colour, "native group colour"),
+            indices: arrayValue(group.indices, "native indices", 65535).map(value => integerValue(value, "native physical point", 0, 132)),
+          };
+        }),
+        action: byteValue(layer.action, "native action"), speed: byteValue(layer.speed, "native speed"),
+        brightness: byteValue(layer.brightness, "native brightness"), priority: byteValue(layer.priority, "native priority"),
+        duration: integerValue(layer.duration, "native duration", 0, 65535), opaque,
+        data_opaque: hexString(layer.data_opaque, "native data opaque"), trailing: hexString(layer.trailing, "native trailing"),
+      };
+    }),
+    backgrounds: arrayValue(content.backgrounds, "native backgrounds", 255).map(value => rgbValue(value, "native background")),
+    background_flag: byteValue(content.background_flag, "native background flag"),
+    background: rgbValue(content.background, "native background"),
+    background_brightness: byteValue(content.background_brightness, "native background brightness"),
+    show_type: byteValue(content.show_type, "native show type"), opaque: hexString(content.opaque, "native opaque"),
+    preset_id: nullableInteger(content.preset_id, "native preset", 0, 255),
+    template: content.template === null ? null : catalogueRef(content.template, "native scene template"),
+    speed_index: nullableInteger(content.speed_index, "native scene speed index", 0, 255),
+  };
+}
+
 function sceneTrailingPadding(
   value: unknown,
   label: string,
@@ -1307,13 +1367,16 @@ export function decodeSceneSummary(value: unknown): SceneSummary {
       ? null
       : (() => {
           const raw = objectValue(scene.speed, "scene speed");
+          const optionCount = integerValue(raw.option_count, "scene speed option count", 1, 256);
+          const layerSpeeds = raw.layer_speeds === undefined ? undefined :
+            arrayValue(raw.layer_speeds, "native scene speed rows", 256).map(row =>
+              arrayValue(row, "native scene layer speeds", 255).map(speed => integerValue(speed, "native scene layer speed", 0, 100)));
+          if (layerSpeeds !== undefined && (layerSpeeds.length !== optionCount || layerSpeeds.some(row => !row.length))) {
+            invalid("native scene speed rows must match the option count and contain layer speeds");
+          }
           return {
-            option_count: integerValue(
-              raw.option_count,
-              "scene speed option count",
-              1,
-              256,
-            ),
+            option_count: optionCount,
+            ...(layerSpeeds === undefined ? {} : { layer_speeds: layerSpeeds }),
             default_index: integerValue(
               raw.default_index,
               "scene default speed",

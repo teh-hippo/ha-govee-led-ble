@@ -1,7 +1,51 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { GoveeCustomEffectEditor } from "../../src/custom-effect-editor";
+import type { NativeEffectContent } from "../../src/types";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/tests/browser/fixtures/palette-editor.html");
+});
+
+test("native layer moves retain authored speeds and allow building a mixed effect", async ({ page }) => {
+  await page.evaluate(async () => {
+    const modulePath = "/src/custom-effect-editor.ts";
+    await import(modulePath);
+    const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
+    const templates = contracts.responses.custom_catalogue.models.H60A6.templates;
+    const content: NativeEffectContent = structuredClone(templates.find(
+      (template: {content: NativeEffectContent}) =>
+        template.content.kind === "native_effect" && template.content.family === 797,
+    ).content);
+    const layer = content.layers[0];
+    if (layer.type !== "diy") throw new Error("Expected native DIY layer");
+    content.layers = [{ ...layer, speed: 85 }, { ...layer, speed: 58 }];
+    content.speed_index = 1;
+    const editor = document.createElement("govee-custom-effect-editor") as GoveeCustomEffectEditor;
+    editor.nativeContent = content;
+    editor.catalogue = contracts.responses.custom_catalogue.models.H60A6;
+    editor.addEventListener("native-content-changed", event => {
+      editor.nativeContent = (event as CustomEvent<{ content: NativeEffectContent }>).detail.content;
+    });
+    document.body.replaceChildren(editor);
+    await editor.updateComplete;
+  });
+  const editor = page.locator("govee-custom-effect-editor");
+  const state = () => editor.evaluate(element => (element as GoveeCustomEffectEditor).nativeContent!);
+  const speeds = (content: NativeEffectContent) => content.layers.map(layer => layer.type === "opaque" ? null : layer.speed);
+  await editor.getByRole("button", {name: "Move later", exact: true}).click();
+  expect(speeds(await state())).toEqual([58, 85]);
+  expect((await state()).speed_index).toBeNull();
+  await editor.evaluate(element => {
+    const target = element as GoveeCustomEffectEditor;
+    target.nativeContent = {...target.nativeContent!, speed_index: 1};
+  });
+  await editor.getByRole("button", {name: "Move earlier", exact: true}).click();
+  expect(speeds(await state())).toEqual([85, 58]);
+  expect((await state()).speed_index).toBeNull();
+  await editor.getByRole("button", {name: "Duplicate layer", exact: true}).click();
+  expect(speeds(await state())).toEqual([85, 58, 85]);
+  await editor.getByRole("button", {name: "Remove layer", exact: true}).click();
+  expect(speeds(await state())).toEqual([85, 58]);
 });
 
 test("painted segment taps finish with a committed interaction", async ({

@@ -13,6 +13,7 @@ import {
   libraryItemSyncResult,
   libraryKindPriority,
   mergedPaintBrushes,
+  paintNativeLayerPoint,
   PAINTED_SEGMENT_COUNT,
   reactiveParameterValueText,
   serialiseEditable,
@@ -29,9 +30,38 @@ import type {
   EffectContent,
   LibraryItem,
   ModelEffectCatalogue,
+  NativeEffectContent,
+  NativePaintLayer,
   PaintedContent,
 } from "../../src/types";
 import { decodeEffectContent } from "../../src/validation";
+
+test("native paint round-trips through canonical validation and edits only the selected physical point", () => {
+  const layer: NativePaintLayer = {
+    type: "paint", groups: [
+      { colour: [1, 2, 3], indices: [0, 132] },
+      { colour: [9, 8, 7], indices: [12, 0] },
+    ], action: 7, speed: 87, brightness: 99, priority: 4, duration: 4660,
+    opaque: "deadbeef", data_opaque: "fa", trailing: "bb",
+  };
+  const content: NativeEffectContent = {
+    kind: "native_effect", model: "H60A6", family: 798, layers: [layer],
+    backgrounds: [], background_flag: 0, background: [10, 20, 30],
+    background_brightness: 90, show_type: 2, opaque: "ef",
+    preset_id: null, template: { sku: "H60A6", scene_id: 1, effect_id: 2, catalogue_schema_version: 2 }, speed_index: null,
+  };
+  expect(decodeEffectContent(content)).toEqual(content);
+  expect(cloneEditableEffect(content)).toEqual(content);
+  const edited = paintNativeLayerPoint(layer, 0, [4, 5, 6]);
+  expect(edited).toEqual({ ...layer, groups: [
+    { colour: [1, 2, 3], indices: [132] },
+    { colour: [9, 8, 7], indices: [12] },
+    { colour: [4, 5, 6], indices: [0] },
+  ] });
+  expect(layer.groups[0].indices).toEqual([0, 132]);
+  expect(paintNativeLayerPoint(layer, 132, null).groups[0].indices).toEqual([0]);
+  expect(() => paintNativeLayerPoint(layer, 133, null)).toThrow("133-point");
+});
 
 const catalogue = {
   sku: "H617A",

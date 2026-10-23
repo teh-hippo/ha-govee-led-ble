@@ -267,6 +267,231 @@
       },
       "sensitivity": 50
     },
+    "native_effect": {
+      "background": [
+        1,
+        1,
+        1
+      ],
+      "background_brightness": 67,
+      "background_flag": 0,
+      "backgrounds": [],
+      "family": 798,
+      "kind": "native_effect",
+      "layers": [
+        {
+          "action": 2,
+          "brightness": 100,
+          "data_opaque": "",
+          "duration": 10000,
+          "groups": [
+            {
+              "colour": [
+                255,
+                0,
+                0
+              ],
+              "indices": [
+                4,
+                5,
+                6,
+                7,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39
+              ]
+            },
+            {
+              "colour": [
+                255,
+                34,
+                1
+              ],
+              "indices": [
+                8,
+                26,
+                27,
+                28,
+                40,
+                41,
+                42,
+                43,
+                70,
+                71,
+                72,
+                73,
+                74,
+                75,
+                76,
+                77,
+                78,
+                79,
+                80,
+                81,
+                82,
+                103,
+                104,
+                105,
+                106,
+                107,
+                108,
+                109,
+                110
+              ]
+            },
+            {
+              "colour": [
+                255,
+                88,
+                1
+              ],
+              "indices": [
+                2,
+                3,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                44,
+                45,
+                46,
+                47,
+                48,
+                49,
+                65,
+                66,
+                67,
+                68,
+                69,
+                83,
+                84,
+                85,
+                86,
+                87,
+                88,
+                98,
+                99,
+                100,
+                101,
+                102,
+                111,
+                112,
+                113,
+                114,
+                115,
+                120,
+                121,
+                122,
+                123,
+                124,
+                125,
+                126,
+                127,
+                128,
+                129,
+                130,
+                131,
+                132
+              ]
+            },
+            {
+              "colour": [
+                255,
+                132,
+                1
+              ],
+              "indices": [
+                9
+              ]
+            },
+            {
+              "colour": [
+                255,
+                151,
+                1
+              ],
+              "indices": [
+                1,
+                10,
+                15,
+                16,
+                17,
+                18,
+                19,
+                50,
+                51,
+                52,
+                53,
+                54,
+                60,
+                61,
+                62,
+                63,
+                64,
+                89,
+                90,
+                91,
+                92,
+                93,
+                94,
+                95,
+                96,
+                97,
+                116,
+                117,
+                118,
+                119
+              ]
+            },
+            {
+              "colour": [
+                255,
+                167,
+                1
+              ],
+              "indices": [
+                0,
+                11,
+                12,
+                13,
+                14,
+                55,
+                56,
+                57,
+                58,
+                59
+              ]
+            }
+          ],
+          "opaque": "00000000",
+          "priority": 1,
+          "speed": 0,
+          "trailing": "",
+          "type": "paint"
+        }
+      ],
+      "model": "H60A6",
+      "opaque": "",
+      "preset_id": null,
+      "show_type": 0,
+      "speed_index": null,
+      "template": {
+        "catalogue_schema_version": 1,
+        "effect_id": 28608,
+        "scene_id": 18444,
+        "sku": "H60A6"
+      }
+    },
     "palette_diy": {
       "family": 2,
       "kind": "palette_diy",
@@ -286,127 +511,14 @@
       "speed_index": null,
       "template": {
         "catalogue_schema_version": 1,
-        "effect_id": 110,
-        "scene_id": 128,
-        "sku": "H6102"
+        "effect_id": 17040,
+        "scene_id": 10170,
+        "sku": "H60A1"
       }
     },
     "scene_layered": {
       "effect": {
         "layers": [
-          {
-            "area": {
-              "start_tenths": 4,
-              "width_tenths": 2
-            },
-            "brightness_gradient": true,
-            "brightness_patterns": [
-              {
-                "brightest_retention": 20,
-                "change_speed": 128,
-                "darkest_retention": 20,
-                "order": 3,
-                "scope_high": 235,
-                "scope_low": 148
-              }
-            ],
-            "colour_retention": 10,
-            "colour_speed": 227,
-            "distribution": {
-              "backwards": false,
-              "method": 2
-            },
-            "excess": "",
-            "overall_movement": {
-              "direction": 3,
-              "distance": 0,
-              "enabled": true,
-              "enter_exit": false,
-              "speed": 249,
-              "unknown_flags": 0
-            },
-            "palette": [
-              [
-                255,
-                57,
-                7
-              ],
-              [
-                255,
-                75,
-                7
-              ]
-            ],
-            "priority": 0,
-            "selected_movement": {
-              "direction": 3,
-              "distance": 0,
-              "enabled": true,
-              "enter_exit": true,
-              "speed": 247,
-              "unknown_flags": 0
-            },
-            "selection": {
-              "param_1": 0,
-              "param_2": 1,
-              "type": 0
-            },
-            "unknown_flags": 0
-          },
-          {
-            "area": {
-              "start_tenths": 2,
-              "width_tenths": 2
-            },
-            "brightness_gradient": true,
-            "brightness_patterns": [
-              {
-                "brightest_retention": 20,
-                "change_speed": 128,
-                "darkest_retention": 20,
-                "order": 3,
-                "scope_high": 228,
-                "scope_low": 133
-              }
-            ],
-            "colour_retention": 20,
-            "colour_speed": 128,
-            "distribution": {
-              "backwards": false,
-              "method": 2
-            },
-            "excess": "",
-            "overall_movement": {
-              "direction": 0,
-              "distance": 0,
-              "enabled": false,
-              "enter_exit": false,
-              "speed": 128,
-              "unknown_flags": 0
-            },
-            "palette": [
-              [
-                255,
-                71,
-                7
-              ]
-            ],
-            "priority": 0,
-            "selected_movement": {
-              "direction": 3,
-              "distance": 0,
-              "enabled": true,
-              "enter_exit": true,
-              "speed": 242,
-              "unknown_flags": 0
-            },
-            "selection": {
-              "param_1": 0,
-              "param_2": 1,
-              "type": 0
-            },
-            "unknown_flags": 0
-          },
           {
             "area": {
               "start_tenths": 0,
@@ -416,74 +528,15 @@
             "brightness_patterns": [
               {
                 "brightest_retention": 10,
-                "change_speed": 218,
+                "change_speed": 180,
                 "darkest_retention": 10,
-                "order": 2,
-                "scope_high": 177,
-                "scope_low": 88
+                "order": 1,
+                "scope_high": 255,
+                "scope_low": 25
               }
             ],
             "colour_retention": 20,
-            "colour_speed": 244,
-            "distribution": {
-              "backwards": false,
-              "method": 0
-            },
-            "excess": "",
-            "overall_movement": {
-              "direction": 0,
-              "distance": 0,
-              "enabled": false,
-              "enter_exit": false,
-              "speed": 128,
-              "unknown_flags": 0
-            },
-            "palette": [
-              [
-                255,
-                64,
-                7
-              ],
-              [
-                255,
-                74,
-                28
-              ]
-            ],
-            "priority": 0,
-            "selected_movement": {
-              "direction": 0,
-              "distance": 0,
-              "enabled": false,
-              "enter_exit": false,
-              "speed": 128,
-              "unknown_flags": 0
-            },
-            "selection": {
-              "param_1": 0,
-              "param_2": 1,
-              "type": 0
-            },
-            "unknown_flags": 0
-          },
-          {
-            "area": {
-              "start_tenths": 6,
-              "width_tenths": 2
-            },
-            "brightness_gradient": true,
-            "brightness_patterns": [
-              {
-                "brightest_retention": 20,
-                "change_speed": 128,
-                "darkest_retention": 20,
-                "order": 3,
-                "scope_high": 231,
-                "scope_low": 128
-              }
-            ],
-            "colour_retention": 20,
-            "colour_speed": 128,
+            "colour_speed": 200,
             "distribution": {
               "backwards": false,
               "method": 2
@@ -494,23 +547,166 @@
               "distance": 0,
               "enabled": false,
               "enter_exit": false,
-              "speed": 128,
+              "speed": 0,
               "unknown_flags": 0
             },
             "palette": [
               [
                 255,
-                23,
-                7
+                255,
+                0
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                255,
+                255,
+                255
+              ],
+              [
+                0,
+                255,
+                255
+              ],
+              [
+                148,
+                255,
+                0
               ]
             ],
             "priority": 0,
             "selected_movement": {
-              "direction": 3,
-              "distance": 1,
+              "direction": 0,
+              "distance": 0,
               "enabled": true,
-              "enter_exit": true,
-              "speed": 247,
+              "enter_exit": false,
+              "speed": 150,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 0,
+              "param_2": 10,
+              "type": 1
+            },
+            "unknown_flags": 0
+          },
+          {
+            "area": {
+              "start_tenths": 0,
+              "width_tenths": 9
+            },
+            "brightness_gradient": true,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 0,
+                "change_speed": 215,
+                "darkest_retention": 0,
+                "order": 1,
+                "scope_high": 255,
+                "scope_low": 20
+              }
+            ],
+            "colour_retention": 10,
+            "colour_speed": 234,
+            "distribution": {
+              "backwards": false,
+              "method": 1
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                4,
+                255,
+                0
+              ],
+              [
+                180,
+                255,
+                0
+              ],
+              [
+                71,
+                255,
+                255
+              ],
+              [
+                227,
+                255,
+                0
+              ]
+            ],
+            "priority": 0,
+            "selected_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
+              "unknown_flags": 0
+            },
+            "selection": {
+              "param_1": 6,
+              "param_2": 3,
+              "type": 2
+            },
+            "unknown_flags": 0
+          },
+          {
+            "area": {
+              "start_tenths": 0,
+              "width_tenths": 0
+            },
+            "brightness_gradient": false,
+            "brightness_patterns": [
+              {
+                "brightest_retention": 20,
+                "change_speed": 0,
+                "darkest_retention": 20,
+                "order": 1,
+                "scope_high": 115,
+                "scope_low": 115
+              }
+            ],
+            "colour_retention": 20,
+            "colour_speed": 238,
+            "distribution": {
+              "backwards": false,
+              "method": 2
+            },
+            "excess": "",
+            "overall_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
+              "unknown_flags": 0
+            },
+            "palette": [
+              [
+                0,
+                255,
+                0
+              ]
+            ],
+            "priority": 0,
+            "selected_movement": {
+              "direction": 0,
+              "distance": 0,
+              "enabled": false,
+              "enter_exit": false,
+              "speed": 0,
               "unknown_flags": 0
             },
             "selection": {
@@ -523,13 +719,13 @@
         ]
       },
       "kind": "scene_layered",
-      "raw_param": "041d240000010201eb940380141402e30a02ff3907ff4b071700f71300f9001a220000010201e4850380141402801401ff47071700f2000080001d000000010201b15802da0a0a00f41402ff4007ff4a1c000080000080001a260000010201e7800380141402801401ff17071701f700008000",
+      "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff001000960000000023900206030201ff1401d7000001ea0a0404ff00b4ff0047ffffe3ff00000000000000001a00000001000173730100141402ee140100ff0000000000000000",
       "speed_index": null,
       "template": {
         "catalogue_schema_version": 1,
-        "effect_id": 41599,
-        "scene_id": 29884,
-        "sku": "H6102"
+        "effect_id": 17042,
+        "scene_id": 10172,
+        "sku": "H60A1"
       },
       "trailing_padding": 0
     },
@@ -3831,6 +4027,7 @@
       },
       "readback": "diy_code_only",
       "segment_count": 15,
+      "static_composition": true,
       "support_quality": "experimental"
     },
     "original": {
@@ -4667,6 +4864,7 @@
       },
       "readback": "diy_code_only",
       "segment_count": 15,
+      "static_composition": true,
       "support_quality": "experimental"
     }
   },
@@ -6989,6 +7187,1772 @@
               "content_kind": "video_profile",
               "id": "video",
               "label": "Video"
+            }
+          ],
+          "workshop_templates": []
+        },
+        "H60A1": {
+          "advanced_create": false,
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [],
+          "music_settings": {},
+          "painted_effects": [],
+          "sku": "H60A1",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Mixed DIY"
+            }
+          ],
+          "workshop_templates": []
+        },
+        "H60A6": {
+          "advanced_create": false,
+          "apply": {
+            "multi": "supported",
+            "painted": "supported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "effects": [],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [],
+          "music_settings": {},
+          "native_actions": [
+            {
+              "id": "1",
+              "label": "Native action 1"
+            },
+            {
+              "id": "2",
+              "label": "Native action 2"
+            },
+            {
+              "id": "3",
+              "label": "Native action 3"
+            },
+            {
+              "id": "4",
+              "label": "Native action 4"
+            },
+            {
+              "id": "5",
+              "label": "Native action 5"
+            },
+            {
+              "id": "6",
+              "label": "Native action 6"
+            },
+            {
+              "id": "7",
+              "label": "Native action 7"
+            }
+          ],
+          "painted_effects": [],
+          "sku": "H60A6",
+          "supports": {
+            "advanced": "supported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 1,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "ce003232040000000064640101",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  },
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 1,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "9c003232040000000064640101",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 1,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:1",
+              "label": "Native preset 1"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 1,
+                    "kind": 2,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 8,
+                    "parameters": "6464010100",
+                    "points": [
+                      1,
+                      61
+                    ],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 2,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:2",
+              "label": "Native preset 2"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 1,
+                    "kind": 2,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 9,
+                    "parameters": "6464010100",
+                    "points": [
+                      1,
+                      61
+                    ],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 3,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:3",
+              "label": "Native preset 3"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 1,
+                    "kind": 2,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 10,
+                    "parameters": "6464010100",
+                    "points": [
+                      1,
+                      61
+                    ],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 4,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:4",
+              "label": "Native preset 4"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 3,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "01050664640101",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 5,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:5",
+              "label": "Native preset 5"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 3,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "01050564640101",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 6,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:6",
+              "label": "Native preset 6"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 90,
+                    "direction": 8,
+                    "flag": 0,
+                    "kind": 4,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 7,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:7",
+              "label": "Native preset 7"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 90,
+                    "direction": 8,
+                    "flag": 1,
+                    "kind": 4,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 8,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:8",
+              "label": "Native preset 8"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 5,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 5,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "0a01",
+                    "points": [],
+                    "speed": 100,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 9,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:9",
+              "label": "Native preset 9"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 5,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "0a00",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 10,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:10",
+              "label": "Native preset 10"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 5,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 6,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "0805030501",
+                    "points": [],
+                    "speed": 100,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 11,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:11",
+              "label": "Native preset 11"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 5,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 6,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "0805030500",
+                    "points": [],
+                    "speed": 100,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 12,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:12",
+              "label": "Native preset 12"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 7,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "010c",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 13,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:13",
+              "label": "Native preset 13"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 8,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 1,
+                    "parameters": "",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 14,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:14",
+              "label": "Native preset 14"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 0,
+                "backgrounds": [],
+                "family": 798,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "action": 1,
+                    "brightness": 100,
+                    "data_opaque": "",
+                    "duration": 0,
+                    "groups": [],
+                    "opaque": "00000000",
+                    "priority": 1,
+                    "speed": 50,
+                    "trailing": "",
+                    "type": "paint"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 15,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:15",
+              "label": "Paint"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "layered_scenes",
+              "label": "Native scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "single",
+              "label": "Native DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "multi",
+              "label": "Native layers"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "painted",
+              "label": "Paint"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "advanced",
+              "label": "Native meteor"
             }
           ],
           "workshop_templates": []
@@ -20096,6 +22060,1996 @@
       {
         "active_state": null,
         "catalogue": {
+          "advanced_create": false,
+          "apply": {
+            "multi": "supported",
+            "painted": "unsupported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "effects": [
+            {
+              "category": "single_layer",
+              "family": 0,
+              "id": "fade",
+              "label": "Fade",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "all",
+                  "label": "Together",
+                  "variant": 3
+                },
+                {
+                  "id": "gathered",
+                  "label": "Gather",
+                  "variant": 4
+                },
+                {
+                  "id": "dispersive",
+                  "label": "Disperse",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            }
+          ],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [],
+          "music_settings": {},
+          "painted_effects": [],
+          "sku": "H60A1",
+          "supports": {
+            "advanced": "unsupported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 0,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:0:0",
+              "label": "Fade"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 1,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:1:0",
+              "label": "Jumping"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 2,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:2:0",
+              "label": "Blinking"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 3,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 3
+              },
+              "id": "template:single:3:3",
+              "label": "Marquee"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 8,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:8:9",
+              "label": "Stream"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 9,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 9
+              },
+              "id": "template:single:9:9",
+              "label": "Flow"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "family": 10,
+                "kind": "h617a_single",
+                "palette": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "speed": 50,
+                "variant": 0
+              },
+              "id": "template:single:10:0",
+              "label": "Chase"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "scene_layered",
+              "id": "layered_scenes",
+              "label": "Layered scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_single",
+              "id": "single",
+              "label": "Single DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "h617a_multi",
+              "id": "multi",
+              "label": "Mixed DIY"
+            }
+          ],
+          "workshop_templates": []
+        },
+        "config_entry_id": "h60a1-main",
+        "custom_effects": {
+          "advanced": "unsupported",
+          "multi": "supported",
+          "painted": "unsupported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H60A1 Ceiling Light",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered"
+        ],
+        "light_entity_id": null,
+        "model": "H60A1",
+        "music_settings": {},
+        "physical_ic_count": null,
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h60a1-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "unsupported",
+          "video": "unsupported"
+        },
+        "readback": "diy_code_only",
+        "segment_count": 14,
+        "static_composition": false,
+        "support_quality": "supported"
+      },
+      {
+        "active_state": null,
+        "catalogue": {
+          "advanced_create": false,
+          "apply": {
+            "multi": "supported",
+            "painted": "supported",
+            "palette_diy": "unsupported",
+            "single": "supported",
+            "workshop": "unsupported"
+          },
+          "effects": [],
+          "limits": {
+            "brightness_max": 100,
+            "brightness_min": 0,
+            "multi_max": 4,
+            "music_sensitivity_max": 99,
+            "music_sensitivity_min": 0,
+            "palette_max": 8,
+            "palette_min": 1,
+            "speed_max": 100,
+            "speed_min": 0
+          },
+          "music_modes": [],
+          "music_settings": {},
+          "native_actions": [
+            {
+              "id": "1",
+              "label": "Native action 1"
+            },
+            {
+              "id": "2",
+              "label": "Native action 2"
+            },
+            {
+              "id": "3",
+              "label": "Native action 3"
+            },
+            {
+              "id": "4",
+              "label": "Native action 4"
+            },
+            {
+              "id": "5",
+              "label": "Native action 5"
+            },
+            {
+              "id": "6",
+              "label": "Native action 6"
+            },
+            {
+              "id": "7",
+              "label": "Native action 7"
+            }
+          ],
+          "painted_effects": [],
+          "sku": "H60A6",
+          "supports": {
+            "advanced": "supported",
+            "multi": "supported",
+            "workshop": "unsupported"
+          },
+          "templates": [
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 1,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "ce003232040000000064640101",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  },
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 1,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "9c003232040000000064640101",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 1,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:1",
+              "label": "Native preset 1"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 1,
+                    "kind": 2,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 8,
+                    "parameters": "6464010100",
+                    "points": [
+                      1,
+                      61
+                    ],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 2,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:2",
+              "label": "Native preset 2"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 1,
+                    "kind": 2,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 9,
+                    "parameters": "6464010100",
+                    "points": [
+                      1,
+                      61
+                    ],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 3,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:3",
+              "label": "Native preset 3"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 1,
+                    "kind": 2,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 10,
+                    "parameters": "6464010100",
+                    "points": [
+                      1,
+                      61
+                    ],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 4,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:4",
+              "label": "Native preset 4"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 3,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "01050664640101",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 5,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:5",
+              "label": "Native preset 5"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 3,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "01050564640101",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 6,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:6",
+              "label": "Native preset 6"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 90,
+                    "direction": 8,
+                    "flag": 0,
+                    "kind": 4,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 7,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:7",
+              "label": "Native preset 7"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 90,
+                    "direction": 8,
+                    "flag": 1,
+                    "kind": 4,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 8,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:8",
+              "label": "Native preset 8"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 5,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 5,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "0a01",
+                    "points": [],
+                    "speed": 100,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 9,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:9",
+              "label": "Native preset 9"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 5,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "0a00",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 10,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:10",
+              "label": "Native preset 10"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 5,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 6,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "0805030501",
+                    "points": [],
+                    "speed": 100,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 11,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:11",
+              "label": "Native preset 11"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 5,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 6,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "0805030500",
+                    "points": [],
+                    "speed": 100,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 12,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:12",
+              "label": "Native preset 12"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 7,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 0,
+                    "parameters": "010c",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 13,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:13",
+              "label": "Native preset 13"
+            },
+            {
+              "category": "single-layer",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 15,
+                "backgrounds": [
+                  [
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                "family": 797,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "angle": 0,
+                    "direction": 0,
+                    "flag": 0,
+                    "kind": 8,
+                    "opaque": "",
+                    "palette": [
+                      [
+                        255,
+                        0,
+                        0
+                      ],
+                      [
+                        255,
+                        127,
+                        0
+                      ],
+                      [
+                        255,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        255,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        255
+                      ],
+                      [
+                        0,
+                        255,
+                        255
+                      ],
+                      [
+                        139,
+                        0,
+                        255
+                      ]
+                    ],
+                    "parameter": 1,
+                    "parameters": "",
+                    "points": [],
+                    "speed": 50,
+                    "type": "diy"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 14,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:14",
+              "label": "Native preset 14"
+            },
+            {
+              "category": "advanced",
+              "content": {
+                "background": [
+                  0,
+                  0,
+                  0
+                ],
+                "background_brightness": 100,
+                "background_flag": 0,
+                "backgrounds": [],
+                "family": 798,
+                "kind": "native_effect",
+                "layers": [
+                  {
+                    "action": 1,
+                    "brightness": 100,
+                    "data_opaque": "",
+                    "duration": 0,
+                    "groups": [],
+                    "opaque": "00000000",
+                    "priority": 1,
+                    "speed": 50,
+                    "trailing": "",
+                    "type": "paint"
+                  }
+                ],
+                "model": "H60A6",
+                "opaque": "",
+                "preset_id": 15,
+                "show_type": 1,
+                "speed_index": null,
+                "template": null
+              },
+              "id": "template:native:15",
+              "label": "Paint"
+            }
+          ],
+          "video_controls": {
+            "brightness_zones": [],
+            "saturation_min": 0,
+            "white_balance": {
+              "default": 17,
+              "maximum": 20,
+              "minimum": 1,
+              "representation": "position"
+            }
+          },
+          "video_modes": [],
+          "video_settings": [],
+          "workflows": [
+            {
+              "application": "studio",
+              "content_kind": "scene_builtin",
+              "id": "native_scenes",
+              "label": "Scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "layered_scenes",
+              "label": "Native scenes"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "single",
+              "label": "Native DIY"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "multi",
+              "label": "Native layers"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "painted",
+              "label": "Paint"
+            },
+            {
+              "application": "home_assistant",
+              "content_kind": "native_effect",
+              "id": "advanced",
+              "label": "Native meteor"
+            }
+          ],
+          "workshop_templates": []
+        },
+        "config_entry_id": "h60a6-main",
+        "custom_effects": {
+          "advanced": "supported",
+          "multi": "supported",
+          "painted": "supported",
+          "palette_diy": "unsupported",
+          "single": "supported",
+          "workshop": "unsupported"
+        },
+        "display_name": "H60A6 Ceiling Light Pro",
+        "effect_categories": [
+          "scenes",
+          "effects",
+          "multi_layered",
+          "advanced"
+        ],
+        "light_entity_id": null,
+        "model": "H60A6",
+        "music_settings": {},
+        "physical_ic_count": 133,
+        "preview_health": {
+          "checked_at": "2026-08-17T00:00:00Z",
+          "config_entry_id": "h60a6-main",
+          "error_code": null,
+          "error_message": null,
+          "incident_id": null,
+          "phase": "healthy",
+          "revision": 1,
+          "write_disposition": "completed"
+        },
+        "profiles": {
+          "music": "unsupported",
+          "video": "unsupported"
+        },
+        "readback": "diy_code_only",
+        "segment_count": 13,
+        "static_composition": false,
+        "support_quality": "supported"
+      },
+      {
+        "active_state": null,
+        "catalogue": {
           "apply": {
             "multi": "supported",
             "painted": "supported",
@@ -22533,6 +26487,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 15,
+        "static_composition": true,
         "support_quality": "supported"
       },
       {
@@ -23902,6 +27857,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 14,
+        "static_composition": true,
         "support_quality": "experimental"
       },
       {
@@ -26967,6 +30923,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 15,
+        "static_composition": true,
         "support_quality": "experimental"
       },
       {
@@ -29886,6 +33843,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 15,
+        "static_composition": true,
         "support_quality": "supported"
       },
       {
@@ -31186,6 +35144,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 15,
+        "static_composition": true,
         "support_quality": "supported"
       },
       {
@@ -31572,6 +35531,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 0,
+        "static_composition": false,
         "support_quality": "experimental"
       },
       {
@@ -32454,6 +36414,7 @@
         },
         "readback": "scene_selector_for_user_effects",
         "segment_count": 15,
+        "static_composition": true,
         "support_quality": "supported"
       },
       {
@@ -34193,6 +38154,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 7,
+        "static_composition": true,
         "support_quality": "supported"
       },
       {
@@ -35992,6 +39954,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 30,
+        "static_composition": true,
         "support_quality": "supported"
       },
       {
@@ -37788,6 +41751,7 @@
         },
         "readback": "diy_code_only",
         "segment_count": 15,
+        "static_composition": true,
         "support_quality": "experimental"
       },
       {
@@ -38164,11 +42128,12 @@
         },
         "readback": "none",
         "segment_count": 0,
+        "static_composition": false,
         "support_quality": "supported"
       }
     ],
     "editor_info": {
-      "api_version": 16,
+      "api_version": 17,
       "compiler_version": 6,
       "effect_schema_version": 2,
       "limits": {
@@ -38453,6 +42418,84 @@
         ],
         "schema_version": 1,
         "sku": "H6099"
+      },
+      "H60A1": {
+        "categories": [
+          {
+            "id": 914,
+            "name": "Natural"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "Natural",
+            "category_id": 914,
+            "display_name": "Sunrise",
+            "effect_id": 17040,
+            "name": "Sunrise",
+            "parameter_kind": "none",
+            "scene_id": 10170,
+            "scene_type": 0,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 914,
+            "display_name": "Forest",
+            "effect_id": 17042,
+            "name": "Forest",
+            "parameter_kind": "layers",
+            "scene_id": 10172,
+            "scene_type": 2,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H60A1"
+      },
+      "H60A6": {
+        "categories": [
+          {
+            "id": 1563,
+            "name": "Natural"
+          }
+        ],
+        "enabled": true,
+        "scenes": [
+          {
+            "category": "Natural",
+            "category_id": 1563,
+            "display_name": "Sunrise",
+            "effect_id": 28608,
+            "name": "Sunrise",
+            "parameter_kind": "layers",
+            "scene_id": 18444,
+            "scene_type": 5,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          },
+          {
+            "category": "Natural",
+            "category_id": 1563,
+            "display_name": "Windy Day",
+            "effect_id": 47845,
+            "name": "Windy Day",
+            "parameter_kind": "none",
+            "scene_id": 35521,
+            "scene_type": 5,
+            "selector_only": false,
+            "speed": null,
+            "variant": ""
+          }
+        ],
+        "schema_version": 1,
+        "sku": "H60A6"
       },
       "H6102": {
         "categories": [
@@ -38862,15 +42905,481 @@
       }
     },
     "scene_details": {
+      "native_effect": {
+        "catalogue_content": {
+          "background": [
+            1,
+            1,
+            1
+          ],
+          "background_brightness": 67,
+          "background_flag": 0,
+          "backgrounds": [],
+          "family": 798,
+          "kind": "native_effect",
+          "layers": [
+            {
+              "action": 2,
+              "brightness": 100,
+              "data_opaque": "",
+              "duration": 10000,
+              "groups": [
+                {
+                  "colour": [
+                    255,
+                    0,
+                    0
+                  ],
+                  "indices": [
+                    4,
+                    5,
+                    6,
+                    7,
+                    29,
+                    30,
+                    31,
+                    32,
+                    33,
+                    34,
+                    35,
+                    36,
+                    37,
+                    38,
+                    39
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    34,
+                    1
+                  ],
+                  "indices": [
+                    8,
+                    26,
+                    27,
+                    28,
+                    40,
+                    41,
+                    42,
+                    43,
+                    70,
+                    71,
+                    72,
+                    73,
+                    74,
+                    75,
+                    76,
+                    77,
+                    78,
+                    79,
+                    80,
+                    81,
+                    82,
+                    103,
+                    104,
+                    105,
+                    106,
+                    107,
+                    108,
+                    109,
+                    110
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    88,
+                    1
+                  ],
+                  "indices": [
+                    2,
+                    3,
+                    20,
+                    21,
+                    22,
+                    23,
+                    24,
+                    25,
+                    44,
+                    45,
+                    46,
+                    47,
+                    48,
+                    49,
+                    65,
+                    66,
+                    67,
+                    68,
+                    69,
+                    83,
+                    84,
+                    85,
+                    86,
+                    87,
+                    88,
+                    98,
+                    99,
+                    100,
+                    101,
+                    102,
+                    111,
+                    112,
+                    113,
+                    114,
+                    115,
+                    120,
+                    121,
+                    122,
+                    123,
+                    124,
+                    125,
+                    126,
+                    127,
+                    128,
+                    129,
+                    130,
+                    131,
+                    132
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    132,
+                    1
+                  ],
+                  "indices": [
+                    9
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    151,
+                    1
+                  ],
+                  "indices": [
+                    1,
+                    10,
+                    15,
+                    16,
+                    17,
+                    18,
+                    19,
+                    50,
+                    51,
+                    52,
+                    53,
+                    54,
+                    60,
+                    61,
+                    62,
+                    63,
+                    64,
+                    89,
+                    90,
+                    91,
+                    92,
+                    93,
+                    94,
+                    95,
+                    96,
+                    97,
+                    116,
+                    117,
+                    118,
+                    119
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    167,
+                    1
+                  ],
+                  "indices": [
+                    0,
+                    11,
+                    12,
+                    13,
+                    14,
+                    55,
+                    56,
+                    57,
+                    58,
+                    59
+                  ]
+                }
+              ],
+              "opaque": "00000000",
+              "priority": 1,
+              "speed": 0,
+              "trailing": "",
+              "type": "paint"
+            }
+          ],
+          "model": "H60A6",
+          "opaque": "",
+          "preset_id": null,
+          "show_type": 0,
+          "speed_index": null,
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 28608,
+            "scene_id": 18444,
+            "sku": "H60A6"
+          }
+        },
+        "content": {
+          "background": [
+            1,
+            1,
+            1
+          ],
+          "background_brightness": 67,
+          "background_flag": 0,
+          "backgrounds": [],
+          "family": 798,
+          "kind": "native_effect",
+          "layers": [
+            {
+              "action": 2,
+              "brightness": 100,
+              "data_opaque": "",
+              "duration": 10000,
+              "groups": [
+                {
+                  "colour": [
+                    255,
+                    0,
+                    0
+                  ],
+                  "indices": [
+                    4,
+                    5,
+                    6,
+                    7,
+                    29,
+                    30,
+                    31,
+                    32,
+                    33,
+                    34,
+                    35,
+                    36,
+                    37,
+                    38,
+                    39
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    34,
+                    1
+                  ],
+                  "indices": [
+                    8,
+                    26,
+                    27,
+                    28,
+                    40,
+                    41,
+                    42,
+                    43,
+                    70,
+                    71,
+                    72,
+                    73,
+                    74,
+                    75,
+                    76,
+                    77,
+                    78,
+                    79,
+                    80,
+                    81,
+                    82,
+                    103,
+                    104,
+                    105,
+                    106,
+                    107,
+                    108,
+                    109,
+                    110
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    88,
+                    1
+                  ],
+                  "indices": [
+                    2,
+                    3,
+                    20,
+                    21,
+                    22,
+                    23,
+                    24,
+                    25,
+                    44,
+                    45,
+                    46,
+                    47,
+                    48,
+                    49,
+                    65,
+                    66,
+                    67,
+                    68,
+                    69,
+                    83,
+                    84,
+                    85,
+                    86,
+                    87,
+                    88,
+                    98,
+                    99,
+                    100,
+                    101,
+                    102,
+                    111,
+                    112,
+                    113,
+                    114,
+                    115,
+                    120,
+                    121,
+                    122,
+                    123,
+                    124,
+                    125,
+                    126,
+                    127,
+                    128,
+                    129,
+                    130,
+                    131,
+                    132
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    132,
+                    1
+                  ],
+                  "indices": [
+                    9
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    151,
+                    1
+                  ],
+                  "indices": [
+                    1,
+                    10,
+                    15,
+                    16,
+                    17,
+                    18,
+                    19,
+                    50,
+                    51,
+                    52,
+                    53,
+                    54,
+                    60,
+                    61,
+                    62,
+                    63,
+                    64,
+                    89,
+                    90,
+                    91,
+                    92,
+                    93,
+                    94,
+                    95,
+                    96,
+                    97,
+                    116,
+                    117,
+                    118,
+                    119
+                  ]
+                },
+                {
+                  "colour": [
+                    255,
+                    167,
+                    1
+                  ],
+                  "indices": [
+                    0,
+                    11,
+                    12,
+                    13,
+                    14,
+                    55,
+                    56,
+                    57,
+                    58,
+                    59
+                  ]
+                }
+              ],
+              "opaque": "00000000",
+              "priority": 1,
+              "speed": 0,
+              "trailing": "",
+              "type": "paint"
+            }
+          ],
+          "model": "H60A6",
+          "opaque": "",
+          "preset_id": null,
+          "show_type": 0,
+          "speed_index": null,
+          "template": {
+            "catalogue_schema_version": 1,
+            "effect_id": 28608,
+            "scene_id": 18444,
+            "sku": "H60A6"
+          }
+        },
+        "has_default": false,
+        "scene": {
+          "category": "Natural",
+          "category_id": 1563,
+          "display_name": "Sunrise",
+          "effect_id": 28608,
+          "name": "Sunrise",
+          "parameter_kind": "layers",
+          "scene_id": 18444,
+          "scene_type": 5,
+          "selector_only": false,
+          "speed": null,
+          "variant": ""
+        }
+      },
       "scene_builtin": {
         "catalogue_content": {
           "kind": "scene_builtin",
           "speed_index": null,
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 110,
-            "scene_id": 128,
-            "sku": "H6102"
+            "effect_id": 17040,
+            "scene_id": 10170,
+            "sku": "H60A1"
           }
         },
         "content": {
@@ -38878,20 +43387,20 @@
           "speed_index": null,
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 110,
-            "scene_id": 128,
-            "sku": "H6102"
+            "effect_id": 17040,
+            "scene_id": 10170,
+            "sku": "H60A1"
           }
         },
         "has_default": false,
         "scene": {
           "category": "Natural",
-          "category_id": 5,
+          "category_id": 914,
           "display_name": "Sunrise",
-          "effect_id": 110,
+          "effect_id": 17040,
           "name": "Sunrise",
           "parameter_kind": "none",
-          "scene_id": 128,
+          "scene_id": 10170,
           "scene_type": 0,
           "selector_only": false,
           "speed": null,
@@ -38904,81 +43413,22 @@
             "layers": [
               {
                 "area": {
-                  "start_tenths": 4,
-                  "width_tenths": 2
+                  "start_tenths": 0,
+                  "width_tenths": 0
                 },
                 "brightness_gradient": true,
                 "brightness_patterns": [
                   {
-                    "brightest_retention": 20,
-                    "change_speed": 128,
-                    "darkest_retention": 20,
-                    "order": 3,
-                    "scope_high": 235,
-                    "scope_low": 148
-                  }
-                ],
-                "colour_retention": 10,
-                "colour_speed": 227,
-                "distribution": {
-                  "backwards": false,
-                  "method": 2
-                },
-                "excess": "",
-                "overall_movement": {
-                  "direction": 3,
-                  "distance": 0,
-                  "enabled": true,
-                  "enter_exit": false,
-                  "speed": 249,
-                  "unknown_flags": 0
-                },
-                "palette": [
-                  [
-                    255,
-                    57,
-                    7
-                  ],
-                  [
-                    255,
-                    75,
-                    7
-                  ]
-                ],
-                "priority": 0,
-                "selected_movement": {
-                  "direction": 3,
-                  "distance": 0,
-                  "enabled": true,
-                  "enter_exit": true,
-                  "speed": 247,
-                  "unknown_flags": 0
-                },
-                "selection": {
-                  "param_1": 0,
-                  "param_2": 1,
-                  "type": 0
-                },
-                "unknown_flags": 0
-              },
-              {
-                "area": {
-                  "start_tenths": 2,
-                  "width_tenths": 2
-                },
-                "brightness_gradient": true,
-                "brightness_patterns": [
-                  {
-                    "brightest_retention": 20,
-                    "change_speed": 128,
-                    "darkest_retention": 20,
-                    "order": 3,
-                    "scope_high": 228,
-                    "scope_low": 133
+                    "brightest_retention": 10,
+                    "change_speed": 180,
+                    "darkest_retention": 10,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 25
                   }
                 ],
                 "colour_retention": 20,
-                "colour_speed": 128,
+                "colour_speed": 200,
                 "distribution": {
                   "backwards": false,
                   "method": 2
@@ -38989,29 +43439,118 @@
                   "distance": 0,
                   "enabled": false,
                   "enter_exit": false,
-                  "speed": 128,
+                  "speed": 0,
                   "unknown_flags": 0
                 },
                 "palette": [
                   [
                     255,
-                    71,
-                    7
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    255,
+                    255,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    148,
+                    255,
+                    0
                   ]
                 ],
                 "priority": 0,
                 "selected_movement": {
-                  "direction": 3,
+                  "direction": 0,
                   "distance": 0,
                   "enabled": true,
-                  "enter_exit": true,
-                  "speed": 242,
+                  "enter_exit": false,
+                  "speed": 150,
                   "unknown_flags": 0
                 },
                 "selection": {
                   "param_1": 0,
-                  "param_2": 1,
-                  "type": 0
+                  "param_2": 10,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 9
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 0,
+                    "change_speed": 215,
+                    "darkest_retention": 0,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 20
+                  }
+                ],
+                "colour_retention": 10,
+                "colour_speed": 234,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    4,
+                    255,
+                    0
+                  ],
+                  [
+                    180,
+                    255,
+                    0
+                  ],
+                  [
+                    71,
+                    255,
+                    255
+                  ],
+                  [
+                    227,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 6,
+                  "param_2": 3,
+                  "type": 2
                 },
                 "unknown_flags": 0
               },
@@ -39020,78 +43559,19 @@
                   "start_tenths": 0,
                   "width_tenths": 0
                 },
-                "brightness_gradient": true,
-                "brightness_patterns": [
-                  {
-                    "brightest_retention": 10,
-                    "change_speed": 218,
-                    "darkest_retention": 10,
-                    "order": 2,
-                    "scope_high": 177,
-                    "scope_low": 88
-                  }
-                ],
-                "colour_retention": 20,
-                "colour_speed": 244,
-                "distribution": {
-                  "backwards": false,
-                  "method": 0
-                },
-                "excess": "",
-                "overall_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 128,
-                  "unknown_flags": 0
-                },
-                "palette": [
-                  [
-                    255,
-                    64,
-                    7
-                  ],
-                  [
-                    255,
-                    74,
-                    28
-                  ]
-                ],
-                "priority": 0,
-                "selected_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 128,
-                  "unknown_flags": 0
-                },
-                "selection": {
-                  "param_1": 0,
-                  "param_2": 1,
-                  "type": 0
-                },
-                "unknown_flags": 0
-              },
-              {
-                "area": {
-                  "start_tenths": 6,
-                  "width_tenths": 2
-                },
-                "brightness_gradient": true,
+                "brightness_gradient": false,
                 "brightness_patterns": [
                   {
                     "brightest_retention": 20,
-                    "change_speed": 128,
+                    "change_speed": 0,
                     "darkest_retention": 20,
-                    "order": 3,
-                    "scope_high": 231,
-                    "scope_low": 128
+                    "order": 1,
+                    "scope_high": 115,
+                    "scope_low": 115
                   }
                 ],
                 "colour_retention": 20,
-                "colour_speed": 128,
+                "colour_speed": 238,
                 "distribution": {
                   "backwards": false,
                   "method": 2
@@ -39102,23 +43582,23 @@
                   "distance": 0,
                   "enabled": false,
                   "enter_exit": false,
-                  "speed": 128,
+                  "speed": 0,
                   "unknown_flags": 0
                 },
                 "palette": [
                   [
+                    0,
                     255,
-                    23,
-                    7
+                    0
                   ]
                 ],
                 "priority": 0,
                 "selected_movement": {
-                  "direction": 3,
-                  "distance": 1,
-                  "enabled": true,
-                  "enter_exit": true,
-                  "speed": 247,
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
                   "unknown_flags": 0
                 },
                 "selection": {
@@ -39131,13 +43611,13 @@
             ]
           },
           "kind": "scene_layered",
-          "raw_param": "041d240000010201eb940380141402e30a02ff3907ff4b071700f71300f9001a220000010201e4850380141402801401ff47071700f2000080001d000000010201b15802da0a0a00f41402ff4007ff4a1c000080000080001a260000010201e7800380141402801401ff17071701f700008000",
+          "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff001000960000000023900206030201ff1401d7000001ea0a0404ff00b4ff0047ffffe3ff00000000000000001a00000001000173730100141402ee140100ff0000000000000000",
           "speed_index": null,
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 41599,
-            "scene_id": 29884,
-            "sku": "H6102"
+            "effect_id": 17042,
+            "scene_id": 10172,
+            "sku": "H60A1"
           },
           "trailing_padding": 0
         },
@@ -39146,81 +43626,22 @@
             "layers": [
               {
                 "area": {
-                  "start_tenths": 4,
-                  "width_tenths": 2
+                  "start_tenths": 0,
+                  "width_tenths": 0
                 },
                 "brightness_gradient": true,
                 "brightness_patterns": [
                   {
-                    "brightest_retention": 20,
-                    "change_speed": 128,
-                    "darkest_retention": 20,
-                    "order": 3,
-                    "scope_high": 235,
-                    "scope_low": 148
-                  }
-                ],
-                "colour_retention": 10,
-                "colour_speed": 227,
-                "distribution": {
-                  "backwards": false,
-                  "method": 2
-                },
-                "excess": "",
-                "overall_movement": {
-                  "direction": 3,
-                  "distance": 0,
-                  "enabled": true,
-                  "enter_exit": false,
-                  "speed": 249,
-                  "unknown_flags": 0
-                },
-                "palette": [
-                  [
-                    255,
-                    57,
-                    7
-                  ],
-                  [
-                    255,
-                    75,
-                    7
-                  ]
-                ],
-                "priority": 0,
-                "selected_movement": {
-                  "direction": 3,
-                  "distance": 0,
-                  "enabled": true,
-                  "enter_exit": true,
-                  "speed": 247,
-                  "unknown_flags": 0
-                },
-                "selection": {
-                  "param_1": 0,
-                  "param_2": 1,
-                  "type": 0
-                },
-                "unknown_flags": 0
-              },
-              {
-                "area": {
-                  "start_tenths": 2,
-                  "width_tenths": 2
-                },
-                "brightness_gradient": true,
-                "brightness_patterns": [
-                  {
-                    "brightest_retention": 20,
-                    "change_speed": 128,
-                    "darkest_retention": 20,
-                    "order": 3,
-                    "scope_high": 228,
-                    "scope_low": 133
+                    "brightest_retention": 10,
+                    "change_speed": 180,
+                    "darkest_retention": 10,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 25
                   }
                 ],
                 "colour_retention": 20,
-                "colour_speed": 128,
+                "colour_speed": 200,
                 "distribution": {
                   "backwards": false,
                   "method": 2
@@ -39231,29 +43652,118 @@
                   "distance": 0,
                   "enabled": false,
                   "enter_exit": false,
-                  "speed": 128,
+                  "speed": 0,
                   "unknown_flags": 0
                 },
                 "palette": [
                   [
                     255,
-                    71,
-                    7
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    255,
+                    255,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    148,
+                    255,
+                    0
                   ]
                 ],
                 "priority": 0,
                 "selected_movement": {
-                  "direction": 3,
+                  "direction": 0,
                   "distance": 0,
                   "enabled": true,
-                  "enter_exit": true,
-                  "speed": 242,
+                  "enter_exit": false,
+                  "speed": 150,
                   "unknown_flags": 0
                 },
                 "selection": {
                   "param_1": 0,
-                  "param_2": 1,
-                  "type": 0
+                  "param_2": 10,
+                  "type": 1
+                },
+                "unknown_flags": 0
+              },
+              {
+                "area": {
+                  "start_tenths": 0,
+                  "width_tenths": 9
+                },
+                "brightness_gradient": true,
+                "brightness_patterns": [
+                  {
+                    "brightest_retention": 0,
+                    "change_speed": 215,
+                    "darkest_retention": 0,
+                    "order": 1,
+                    "scope_high": 255,
+                    "scope_low": 20
+                  }
+                ],
+                "colour_retention": 10,
+                "colour_speed": 234,
+                "distribution": {
+                  "backwards": false,
+                  "method": 1
+                },
+                "excess": "",
+                "overall_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "palette": [
+                  [
+                    4,
+                    255,
+                    0
+                  ],
+                  [
+                    180,
+                    255,
+                    0
+                  ],
+                  [
+                    71,
+                    255,
+                    255
+                  ],
+                  [
+                    227,
+                    255,
+                    0
+                  ]
+                ],
+                "priority": 0,
+                "selected_movement": {
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
+                  "unknown_flags": 0
+                },
+                "selection": {
+                  "param_1": 6,
+                  "param_2": 3,
+                  "type": 2
                 },
                 "unknown_flags": 0
               },
@@ -39262,78 +43772,19 @@
                   "start_tenths": 0,
                   "width_tenths": 0
                 },
-                "brightness_gradient": true,
-                "brightness_patterns": [
-                  {
-                    "brightest_retention": 10,
-                    "change_speed": 218,
-                    "darkest_retention": 10,
-                    "order": 2,
-                    "scope_high": 177,
-                    "scope_low": 88
-                  }
-                ],
-                "colour_retention": 20,
-                "colour_speed": 244,
-                "distribution": {
-                  "backwards": false,
-                  "method": 0
-                },
-                "excess": "",
-                "overall_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 128,
-                  "unknown_flags": 0
-                },
-                "palette": [
-                  [
-                    255,
-                    64,
-                    7
-                  ],
-                  [
-                    255,
-                    74,
-                    28
-                  ]
-                ],
-                "priority": 0,
-                "selected_movement": {
-                  "direction": 0,
-                  "distance": 0,
-                  "enabled": false,
-                  "enter_exit": false,
-                  "speed": 128,
-                  "unknown_flags": 0
-                },
-                "selection": {
-                  "param_1": 0,
-                  "param_2": 1,
-                  "type": 0
-                },
-                "unknown_flags": 0
-              },
-              {
-                "area": {
-                  "start_tenths": 6,
-                  "width_tenths": 2
-                },
-                "brightness_gradient": true,
+                "brightness_gradient": false,
                 "brightness_patterns": [
                   {
                     "brightest_retention": 20,
-                    "change_speed": 128,
+                    "change_speed": 0,
                     "darkest_retention": 20,
-                    "order": 3,
-                    "scope_high": 231,
-                    "scope_low": 128
+                    "order": 1,
+                    "scope_high": 115,
+                    "scope_low": 115
                   }
                 ],
                 "colour_retention": 20,
-                "colour_speed": 128,
+                "colour_speed": 238,
                 "distribution": {
                   "backwards": false,
                   "method": 2
@@ -39344,23 +43795,23 @@
                   "distance": 0,
                   "enabled": false,
                   "enter_exit": false,
-                  "speed": 128,
+                  "speed": 0,
                   "unknown_flags": 0
                 },
                 "palette": [
                   [
+                    0,
                     255,
-                    23,
-                    7
+                    0
                   ]
                 ],
                 "priority": 0,
                 "selected_movement": {
-                  "direction": 3,
-                  "distance": 1,
-                  "enabled": true,
-                  "enter_exit": true,
-                  "speed": 247,
+                  "direction": 0,
+                  "distance": 0,
+                  "enabled": false,
+                  "enter_exit": false,
+                  "speed": 0,
                   "unknown_flags": 0
                 },
                 "selection": {
@@ -39373,25 +43824,25 @@
             ]
           },
           "kind": "scene_layered",
-          "raw_param": "041d240000010201eb940380141402e30a02ff3907ff4b071700f71300f9001a220000010201e4850380141402801401ff47071700f2000080001d000000010201b15802da0a0a00f41402ff4007ff4a1c000080000080001a260000010201e7800380141402801401ff17071701f700008000",
+          "raw_param": "03260001000a0201ff1901b40a0a02c81405ffff0000ffffffffff00ffff94ff001000960000000023900206030201ff1401d7000001ea0a0404ff00b4ff0047ffffe3ff00000000000000001a00000001000173730100141402ee140100ff0000000000000000",
           "speed_index": null,
           "template": {
             "catalogue_schema_version": 1,
-            "effect_id": 41599,
-            "scene_id": 29884,
-            "sku": "H6102"
+            "effect_id": 17042,
+            "scene_id": 10172,
+            "sku": "H60A1"
           },
           "trailing_padding": 0
         },
         "has_default": false,
         "scene": {
-          "category": "House of the Dragon",
-          "category_id": 2522,
-          "display_name": "Dracarys",
-          "effect_id": 41599,
-          "name": "Dracarys",
+          "category": "Natural",
+          "category_id": 914,
+          "display_name": "Forest",
+          "effect_id": 17042,
+          "name": "Forest",
           "parameter_kind": "layers",
-          "scene_id": 29884,
+          "scene_id": 10172,
           "scene_type": 2,
           "selector_only": false,
           "speed": null,

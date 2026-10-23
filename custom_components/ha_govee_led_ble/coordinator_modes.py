@@ -117,7 +117,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             return "custom"
         if self.effect is not None or (self.color_mode is ParsedMode.SCENE and self._scene_code is not None):
             return "scene"
-        if self.music_mode not in (None, "off"):
+        if self.color_mode is ParsedMode.MUSIC or self.music_mode not in (None, "off"):
             return "music"
         if self.video_mode not in (None, "off"):
             return "video"

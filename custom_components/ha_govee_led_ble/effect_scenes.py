@@ -19,11 +19,13 @@ from .effect_domain import (
     EffectValidationError,
     JsonValue,
     LayeredScene,
+    NativeEffect,
     PaletteScene,
     effect_content_from_dict,
     effect_content_to_dict,
 )
 from .effect_scene_defaults import NativeSceneDefault, NativeSceneDefaultRepository
+from .h60a6_effects import decode_native_scene
 from .layered_scene_decoder import decode_layered_scene
 from .native_scenes import (
     apply_scene_speed,
@@ -75,7 +77,9 @@ def scene_default_for(
     speed_index = value.speed_index
     if entry.speed is None:
         speed_index = None
-    elif speed_index is None or not 0 <= speed_index < entry.speed.option_count:
+    elif (speed_index is None and entry.scene_type != 5) or (
+        speed_index is not None and not 0 <= speed_index < entry.speed.option_count
+    ):
         speed_index = entry.speed.default_index
     return replace(
         value,
@@ -303,7 +307,7 @@ async def async_set_scene_default(
         raise EffectValidationError(f"{coordinator.model} selector-only scenes do not support device-specific defaults")
     parsed = effect_content_from_dict(content)
     _validate_scene_content_identity(coordinator.model, resolved.entry, parsed)
-    if isinstance(parsed, PaletteScene | LayeredScene):
+    if isinstance(parsed, PaletteScene | LayeredScene | NativeEffect):
         canonical_body, resolved_speed = encode_authored_scene_body(parsed, resolved.entry)
     else:
         assert isinstance(parsed, BuiltinScene)
@@ -343,6 +347,14 @@ def _scene_content(
         return decode_palette_scene(template, body, speed_index=speed_index)
     if entry.scene_type == 2 and body:
         return decode_layered_scene(template, body, speed_index=speed_index)
+    if entry.scene_type == 5 and body:
+        body, resolved_speed = resolve_native_scene_body(entry, speed_index=speed_index, canonical_body=canonical_body)
+        if len(entry.diy_effect_codes) != 1:
+            raise EffectValidationError("native scene has no documented body family")
+        return replace(
+            decode_native_scene(template, body, family=entry.diy_effect_codes[0]),
+            speed_index=resolved_speed,
+        )
     return BuiltinScene(template, speed_index=speed_index)
 
 
@@ -351,11 +363,12 @@ def _validate_scene_content_identity(
     entry: SceneEntry,
     content: EffectContent,
 ) -> None:
-    if not isinstance(content, BuiltinScene | PaletteScene | LayeredScene):
+    if not isinstance(content, BuiltinScene | PaletteScene | LayeredScene | NativeEffect):
         raise EffectValidationError("scene default content must be a native-scene definition")
     template = content.template
     if (
-        template.sku != model
+        template is None
+        or template.sku != model
         or template.scene_id != entry.scene_id
         or template.effect_id != entry.effect_id
         or template.catalogue_schema_version != CATALOGUE_SCHEMA_VERSION
@@ -363,11 +376,12 @@ def _validate_scene_content_identity(
         raise EffectValidationError("scene default content has mismatched catalogue identity")
     expected_type = (
         BuiltinScene
-        if entry.selector_only
+        if entry.selector_only or not entry.param
         else {
             0: BuiltinScene,
             1: PaletteScene,
             2: LayeredScene,
+            5: NativeEffect,
         }.get(entry.scene_type)
     )
     if expected_type is None or not isinstance(content, expected_type):
@@ -397,6 +411,8 @@ def resolve_scene_application_body(
             raise ValueError("this scene does not expose a documented Speed control")
         return scene_default.canonical_body, None
     resolved_speed = scene_default.speed_index if speed_index is None else speed_index
+    if scene.scene_type == 5 and resolved_speed is None:
+        return scene_default.canonical_body, None
     if resolved_speed is None:
         resolved_speed = speed.default_index
     if not 0 <= resolved_speed < speed.option_count:
@@ -415,7 +431,7 @@ def _scene_summary(model: str, entry: SceneEntry) -> dict[str, JsonValue]:
         else "palette"
         if entry.scene_type == 1
         else "layers"
-        if entry.scene_type == 2
+        if entry.scene_type == 2 or (entry.scene_type == 5 and entry.diy_effect_codes in {(797,), (798,)})
         else "opaque"
     )
     return {
@@ -433,6 +449,11 @@ def _scene_summary(model: str, entry: SceneEntry) -> dict[str, JsonValue]:
             {
                 "option_count": entry.speed.option_count,
                 "default_index": entry.speed.default_index,
+                **(
+                    {"layer_speeds": [list(values) for values in entry.speed.layer_speeds]}
+                    if entry.speed.layer_speeds
+                    else {}
+                ),
             }
             if entry.speed is not None and not entry.selector_only
             else None

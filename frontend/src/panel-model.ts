@@ -541,6 +541,10 @@ export class PanelModel {
         return device.custom_effects.multi;
       case "palette_diy":
         return device.custom_effects.palette_diy;
+      case "native_effect":
+        return this.content.family === 798
+          ? device.custom_effects.painted
+          : device.custom_effects.single;
       case "advanced":
       case "scene_layered":
         return device.custom_effects.advanced;

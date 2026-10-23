@@ -30,11 +30,11 @@ APP_VERSION = "9999999"
 SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_ble" / "scene_catalogues"
 DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
-_SPEED_METADATA_SKUS = frozenset({"H617A", "H7020", "H7025"})
+_SPEED_METADATA_SKUS = frozenset({"H60A1", "H60A6", "H617A", "H7020", "H7025"})
 
-# H7020 and H7025 derive the initial speed selection from metadata and rewrite every
+# These models derive the initial speed selection from metadata and rewrite every
 # configured field before upload, so embedded field values are not the default-speed invariant.
-_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H7020", "H7025"})
+_METADATA_DEFAULT_SPEED_SKUS = frozenset({"H60A1", "H7020", "H7025"})
 
 # Glacier's application path was captured rewriting its stale stored movement fields.
 _CAPTURE_VERIFIED_SPEED_DEFAULT_REWRITES = frozenset({("H617A", 1026, 1088)})
@@ -74,14 +74,14 @@ def _resolved_effect(effect: dict[str, Any], sku: str) -> dict[str, Any]:
     return resolved
 
 
-def _speed_config(effect: dict[str, Any]) -> list[dict[str, Any]]:
+def _speed_config(effect: dict[str, Any]) -> list[dict[str, Any]] | dict[str, Any]:
     config = effect.get("speedInfo", {}).get("config") or ""
     if not config:
         return []
     parsed = json.loads(config)
-    if not isinstance(parsed, list):
-        raise ValueError("scene speed config must be a list")
-    return cast(list[dict[str, Any]], parsed)
+    if not isinstance(parsed, list | dict):
+        raise ValueError("scene speed config must be a list or per-layer object")
+    return cast(list[dict[str, Any]] | dict[str, Any], parsed)
 
 
 def _parse_scene_records(param: str) -> list[Any]:
@@ -95,6 +95,37 @@ def _parse_scene_records(param: str) -> list[Any]:
     return cast(list[Any], parsed.records)
 
 
+def _parse_native_scene_layers(param: str) -> list[Any]:
+    body_type = import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_diy_body").H60a6DiyBody
+    parsed = body_type(KaitaiStream(io.BytesIO(base64.b64decode(param, validate=True))))
+    parsed._read()
+    return cast(list[Any], parsed.payload.layers)
+
+
+def _snapshot_layer_speed(
+    effect: dict[str, Any],
+    config: dict[str, Any],
+    label: str,
+) -> dict[str, Any]:
+    if effect.get("diyEffectCode") != [797]:
+        raise ValueError(f"{label}: per-layer Speed requires native DIY family metadata")
+    rows = config.get("speeds")
+    if not isinstance(rows, list) or not rows or any(not isinstance(row, list) or not row for row in rows):
+        raise ValueError(f"{label}: per-layer Speed requires non-empty option rows")
+    default_index = int(config["defSpeedIndex"])
+    if not 0 <= default_index < len(rows):
+        raise ValueError(f"{label}: default Speed position outside option list")
+    layers = _parse_native_scene_layers(str(effect["scenceParam"]))
+    if any(len(row) != len(layers) for row in rows):
+        raise ValueError(f"{label}: Speed rows must each contain {len(layers)} layer values")
+    if any(not hasattr(layer.body, "speed") for layer in layers):
+        raise ValueError(f"{label}: Speed refers to a native DIY layer without a known speed field")
+    return {
+        "default_index": default_index,
+        "layer_speeds": [[int(value) for value in row] for row in rows],
+    }
+
+
 def _snapshot_speed(
     effect: dict[str, Any],
     label: str,
@@ -103,14 +134,17 @@ def _snapshot_speed(
 ) -> dict[str, Any] | None:
     if not effect.get("speedInfo", {}).get("supSpeed"):
         return None
+    config = _speed_config(effect)
+    if int(effect.get("sceneType", 2)) == 5:
+        if not isinstance(config, dict):
+            raise ValueError(f"{label}: native DIY Speed config must be a per-layer object")
+        return _snapshot_layer_speed(effect, config, label)
     if int(effect.get("sceneType", 2)) != 2:
         raise ValueError(f"{label}: only type-2 scenes can expose Speed")
+    if not isinstance(config, list):
+        raise ValueError(f"{label}: type-2 Speed config must be a page list")
 
-    entries = [
-        entry
-        for entry in _speed_config(effect)
-        if any(key in entry for key in ("moveIn", "moveAll", "color", "bright"))
-    ]
+    entries = [entry for entry in config if any(key in entry for key in ("moveIn", "moveAll", "color", "bright"))]
     if not entries:
         return None
 
@@ -239,6 +273,8 @@ def build_snapshot(raw: dict[str, Any], sku: str) -> dict[str, Any]:
                     entry["variant"] = variant or f"#{index}"
                 if param := str(effect.get("scenceParam") or ""):
                     entry["param"] = param
+                if codes := effect.get("diyEffectCode"):
+                    entry["diy_effect_codes"] = [int(code) for code in codes]
                 if sku in _SPEED_METADATA_SKUS and (
                     speed := _snapshot_speed(
                         effect,

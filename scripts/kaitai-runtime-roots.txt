@@ -22,6 +22,13 @@ speculative/h601c_command_write
 speculative/h601c_status_reply
 speculative/h60a1_status_reply
 speculative/h60a6_status_reply
+speculative/h60a_bulk
+speculative/h60a6_control
+speculative/h60a6_legacy_write
+speculative/h60a6_effect_frame
+speculative/h60a6_command_ack
+speculative/h60a6_diy_body
+speculative/h60a6_paint_body
 speculative/govee_encryption
 speculative/h6099_command_write
 speculative/h6099_command_ack
