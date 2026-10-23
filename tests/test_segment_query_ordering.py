@@ -485,7 +485,7 @@ async def test_one_deadline_rejects_late_pages_even_before_timeout_waiter(device
 
 
 @pytest.mark.parametrize("producer", ["segments", "refresh", "observe", "background"])
-async def test_stalled_segment_query_write_is_bounded_and_releases_locks(device, producer):
+async def test_stalled_segment_query_write_is_bounded_and_releases_locks(device, producer, virtual_clock):
     c, client, receive = device
     cancelled = asyncio.Event()
     basic = {

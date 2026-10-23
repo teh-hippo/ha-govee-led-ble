@@ -121,8 +121,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
-    env:
-      UV_CACHE_DIR: /tmp/.uv-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -133,25 +131,15 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: false
-      - id: runner-image
-        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
-      # Release commits change uv.lock, so fall back to the newest cache with the same image and Python.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ${{ env.UV_CACHE_DIR }}
-          key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
-          restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
-      - run: uv sync --locked
-      - run: uv cache prune --ci
       - name: Build reference package
         run: |
-          make clean package
-          uv run --no-sync python scripts/package.py \
+          make clean build
+          uv run --no-project --python "$(cat .python-version)" python scripts/package.py \
             --source custom_components/ha_govee_led_ble \
-            --verify-archive dist/ha_govee_led_ble.zip
+            --output dist/ha_govee_led_ble.zip
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         id: upload
         with:

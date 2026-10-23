@@ -190,9 +190,9 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
-CI builds and verifies the runtime package, then passes that exact artifact to the hosted core checks and an independent reproducibility rebuild in parallel.
+CI compiles a reference runtime package, then passes that exact artifact to the hosted core checks and an independent reproducibility rebuild in parallel.
 Restore generated outputs after dependency installation without overwriting checkout sources or restoring the ZIP's fixed 1980 timestamps.
-Generated-output freshness verification runs in the build and reproducibility jobs; the core checks do not repeat compilation.
+Generated-output freshness verification runs in the independent clean rebuild, which must match the reference package byte for byte; the core checks do not repeat compilation.
 Browser tests run independently against source fixtures in the official Playwright image, whose version must match `@playwright/test`.
 The required Check job requires core, browser and reproducibility checks to succeed.
 The CI-only `make check-code` target requires verified build outputs and is not a replacement for the complete local `make check` gate.
