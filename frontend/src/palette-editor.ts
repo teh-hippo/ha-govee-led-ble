@@ -272,10 +272,11 @@ export class GoveePaletteEditor extends LitElement {
 
   private paletteFocusOut(event: FocusEvent): void {
     const strip = event.currentTarget as HTMLElement;
+    // WebKit can blur without a focus destination while completing a touch.
     if (
       this.editingIndex !== undefined &&
-      !(event.relatedTarget instanceof Node &&
-        strip.contains(event.relatedTarget))
+      event.relatedTarget instanceof Node &&
+      !strip.contains(event.relatedTarget)
     ) {
       if (this.colourInteractionActive) {
         return;

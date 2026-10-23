@@ -49,6 +49,30 @@ test("touch compatibility clicks do not double-activate colours", async ({
   ).toBeVisible();
 });
 
+test("destination-less blur before a touch compatibility click keeps the picker usable", async ({
+  page,
+}) => {
+  const context = page.getByTestId("direct-context");
+  await touchItem(context.getByRole("button", { name: /Edit colour 1,/ }));
+  const picker = context.getByRole("dialog", { name: "Edit colour" });
+  const preset = picker.getByRole("button").first();
+  await expect(preset).toBeFocused();
+
+  await preset.blur();
+
+  await expect(picker).toBeVisible();
+  await context.getByRole("button", { name: "Remove colour 1" }).dispatchEvent("click", {
+    detail: 1,
+  });
+  await expect(picker).toBeVisible();
+  await expect(context.getByRole("listitem")).toHaveCount(3);
+  await picker.getByRole("button", { name: "Use #ff453a" }).tap();
+  await expect(context.getByRole("button", {
+    name: "Edit colour 1, #ff453a. Drag to reorder or use arrow keys.",
+  })).toBeVisible();
+  await expect(picker).toHaveCount(0);
+});
+
 test("secondary touches do not replace the active palette gesture", async ({
   page,
 }) => {
@@ -163,7 +187,7 @@ test("touch cancellation and vertical movement do not activate colours", async (
   ).toHaveCount(0);
 });
 
-test("keyboard activation remains available after a touch without click", async ({
+test("keyboard activation and outside focus work after a touch without click", async ({
   page,
 }) => {
   const context = page.getByTestId("direct-context");
@@ -182,6 +206,10 @@ test("keyboard activation remains available after a touch without click", async 
   await expect(
     context.getByRole("dialog", { name: "Edit colour" }),
   ).toBeVisible();
+  await page.getByTestId("outside").focus();
+  await expect(
+    context.getByRole("dialog", { name: "Edit colour" }),
+  ).toHaveCount(0);
 });
 
 test("native WebKit drag-and-drop reorders without activating a colour", async ({
