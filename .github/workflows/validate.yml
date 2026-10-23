@@ -50,7 +50,7 @@ jobs:
 
   core:
     name: Core checks
-    needs: package
+    needs: build
     runs-on: ubuntu-latest
     env:
       UV_CACHE_DIR: /tmp/.uv-cache
@@ -72,16 +72,13 @@ jobs:
           path: ${{ env.UV_CACHE_DIR }}
           key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
           restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5
-        with:
-          install_args: github:kaitai-io/kaitai_struct_compiler
       - name: Install project dependencies
         run: |
           uv sync --locked
           npm --prefix frontend ci --ignore-scripts
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          artifact-ids: ${{ needs.package.outputs.artifact_id }}
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
           path: .build/ci-package
       - name: Verify build artifact checksum
         working-directory: .build/ci-package
@@ -99,27 +96,28 @@ jobs:
           path: .mypy_cache
           key: mypy-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           restore-keys: mypy-${{ runner.os }}-${{ runner.arch }}-
-      - run: make check-core
+      - run: make check-code
       - run: uv cache prune --ci
 
   check:
     name: Check
     if: ${{ always() }}
-    needs: [core, browser]
+    needs: [core, browser, package]
     runs-on: ubuntu-latest
     steps:
-      - name: Require core and browser checks
+      - name: Require code, browser and reproducibility checks
         env:
           CORE_RESULT: ${{ needs.core.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
         run: |
-          if [[ "$CORE_RESULT" != "success" || "$BROWSER_RESULT" != "success" ]]; then
-            echo "::error::Core checks: $CORE_RESULT; browser tests: $BROWSER_RESULT"
+          if [[ "$CORE_RESULT" != "success" || "$BROWSER_RESULT" != "success" || "$PACKAGE_RESULT" != "success" ]]; then
+            echo "::error::Core checks: $CORE_RESULT; browser tests: $BROWSER_RESULT; package: $PACKAGE_RESULT"
             exit 1
           fi
 
-  package:
-    name: Package
+  build:
+    name: Build
     runs-on: ubuntu-latest
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
@@ -154,13 +152,6 @@ jobs:
           uv run --no-sync python scripts/package.py \
             --source custom_components/ha_govee_led_ble \
             --verify-archive dist/ha_govee_led_ble.zip
-          cp dist/ha_govee_led_ble.zip "$RUNNER_TEMP/ha_govee_led_ble-first.zip"
-          cp dist/ha_govee_led_ble.zip.sha256 "$RUNNER_TEMP/ha_govee_led_ble-first.zip.sha256"
-      - name: Rebuild package deterministically
-        run: |
-          make clean package
-          cmp "$RUNNER_TEMP/ha_govee_led_ble-first.zip" dist/ha_govee_led_ble.zip
-          cmp "$RUNNER_TEMP/ha_govee_led_ble-first.zip.sha256" dist/ha_govee_led_ble.zip.sha256
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         id: upload
         with:
@@ -170,3 +161,45 @@ jobs:
             dist/ha_govee_led_ble.zip.sha256
           if-no-files-found: error
           retention-days: 7
+
+  package:
+    name: Package
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      UV_CACHE_DIR: /tmp/.uv-cache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+      - id: runner-image
+        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+      # Release commits change uv.lock, so fall back to the newest cache with the same image and Python.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ steps.runner-image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('.python-version') }}-
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5
+        with:
+          install_args: github:kaitai-io/kaitai_struct_compiler
+      - run: uv sync --locked
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: ${{ runner.temp }}/reference-package
+      - name: Verify reference package checksum
+        working-directory: ${{ runner.temp }}/reference-package
+        run: sha256sum --check ha_govee_led_ble.zip.sha256
+      - name: Rebuild package deterministically
+        run: |
+          make clean package
+          cmp "$RUNNER_TEMP/reference-package/ha_govee_led_ble.zip" dist/ha_govee_led_ble.zip
+          cmp "$RUNNER_TEMP/reference-package/ha_govee_led_ble.zip.sha256" dist/ha_govee_led_ble.zip.sha256
+      - run: uv cache prune --ci

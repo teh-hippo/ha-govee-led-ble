@@ -190,11 +190,12 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
-CI builds and verifies the reproducible runtime package, then passes that exact artifact to the hosted core checks.
+CI builds and verifies the runtime package, then passes that exact artifact to the hosted core checks and an independent reproducibility rebuild in parallel.
 Restore generated outputs after dependency installation without overwriting checkout sources or restoring the ZIP's fixed 1980 timestamps.
-Generated-output freshness verification still runs against the restored files.
+Generated-output freshness verification runs in the build and reproducibility jobs; the core checks do not repeat compilation.
 Browser tests run independently against source fixtures in the official Playwright image, whose version must match `@playwright/test`.
-The required Check job requires both core and browser checks to succeed.  The CI-only `make check-core` target is not a replacement for the complete local `make check` gate.
+The required Check job requires core, browser and reproducibility checks to succeed.
+The CI-only `make check-code` target requires verified build outputs and is not a replacement for the complete local `make check` gate.
 
 The full Python suite uses four worker processes and combines their branch coverage.
 Use `make check PYTEST_WORKERS=2` on memory-constrained machines, or `PYTEST_WORKERS=0` to investigate a serial full-suite failure.

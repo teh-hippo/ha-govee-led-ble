@@ -51,7 +51,7 @@ FRONTEND_INPUTS := $(sort $(FRONTEND_SOURCE) $(FRONTEND_CONFIG) $(FRONTEND_CONTR
 
 PACKAGE_PATH := $(DIST_DIR)/ha_govee_led_ble.zip
 
-.PHONY: protocol frontend build check check-core package clean verify-node verify-kaitai verify-protocol verify-frontend verify-generated
+.PHONY: protocol frontend build check check-core check-code package clean verify-node verify-kaitai verify-protocol verify-frontend verify-generated
 
 verify-node:
 	@expected="$$(cat .node-version)"; actual="$$($(NODE) --version)"; \
@@ -100,12 +100,15 @@ check: check-core
 check-core:
 	uv sync --locked
 	$(MAKE) --no-print-directory build
+	$(MAKE) --no-print-directory verify-generated
+	$(MAKE) --no-print-directory check-code
+
+check-code:
+	uv sync --locked
 	$(NPM) --prefix frontend run typecheck
-	$(MAKE) --no-print-directory verify-frontend
 	$(NPM) --prefix frontend run test:unit
 	uv run --no-sync ruff check .
 	uv run --no-sync ruff format --check .
-	$(MAKE) --no-print-directory verify-protocol
 	uv run --no-sync mypy custom_components/ha_govee_led_ble tests
 	uv run --no-sync pytest tests/ -n $(PYTEST_WORKERS) --dist worksteal --cov=$(INTEGRATION_DIR) --cov-branch --cov-report= -v --tb=short
 	uv run --no-sync coverage report --precision=2 --include='custom_components/ha_govee_led_ble/*'
