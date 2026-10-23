@@ -33,8 +33,24 @@ jobs:
           comment: false
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-  check:
-    name: Check
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci --ignore-scripts
+      - run: npm --prefix frontend run test:browser
+
+  core:
+    name: Core checks
+    needs: package
     runs-on: ubuntu-latest
     env:
       UV_CACHE_DIR: /tmp/.uv-cache
@@ -59,21 +75,54 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5
         with:
           install_args: github:kaitai-io/kaitai_struct_compiler
-      - run: npm --prefix frontend ci --ignore-scripts
-      - run: npm --prefix frontend exec -- playwright install --with-deps webkit
+      - name: Install project dependencies
+        run: |
+          uv sync --locked
+          npm --prefix frontend ci --ignore-scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ needs.package.outputs.artifact_id }}
+          path: .build/ci-package
+      - name: Verify build artifact checksum
+        working-directory: .build/ci-package
+        run: sha256sum --check ha_govee_led_ble.zip.sha256
+      - name: Restore generated build outputs
+        run: |
+          # Keep checkout sources and avoid restoring ZIP timestamps older than the build inputs.
+          unzip -q -n -DD .build/ci-package/ha_govee_led_ble.zip -d custom_components/ha_govee_led_ble
+          uv run --no-sync python scripts/package.py \
+            --source custom_components/ha_govee_led_ble \
+            --verify-archive .build/ci-package/ha_govee_led_ble.zip
       # mypy validates each cached module itself, so any earlier cache is a safe starting point.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .mypy_cache
           key: mypy-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
           restore-keys: mypy-${{ runner.os }}-${{ runner.arch }}-
-      - run: make check
+      - run: make check-core
       - run: uv cache prune --ci
+
+  check:
+    name: Check
+    if: ${{ always() }}
+    needs: [core, browser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require core and browser checks
+        env:
+          CORE_RESULT: ${{ needs.core.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          if [[ "$CORE_RESULT" != "success" || "$BROWSER_RESULT" != "success" ]]; then
+            echo "::error::Core checks: $CORE_RESULT; browser tests: $BROWSER_RESULT"
+            exit 1
+          fi
 
   package:
     name: Package
-    if: ${{ github.ref == 'refs/heads/ux' || github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
     env:
       UV_CACHE_DIR: /tmp/.uv-cache
     steps:
@@ -113,8 +162,9 @@ jobs:
           cmp "$RUNNER_TEMP/ha_govee_led_ble-first.zip" dist/ha_govee_led_ble.zip
           cmp "$RUNNER_TEMP/ha_govee_led_ble-first.zip.sha256" dist/ha_govee_led_ble.zip.sha256
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        id: upload
         with:
-          name: package-${{ github.sha }}
+          name: package-${{ github.sha }}-${{ github.run_attempt }}
           path: |
             dist/ha_govee_led_ble.zip
             dist/ha_govee_led_ble.zip.sha256
