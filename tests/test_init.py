@@ -235,11 +235,7 @@ async def test_setup_entry_migrates_known_advertised_model_mismatch(
         if expected_model == "H6102"
         else {CONF_MODEL: expected_model}
     )
-    expected_options = (
-        {"connection_mode": "hold"}
-        if expected_model == "H60A6"
-        else {"effect_categories": ["scenes"], "connection_mode": "hold"}
-    )
+    expected_options = {"effect_categories": ["scenes"], "connection_mode": "hold"}
     assert entry.data == expected_data
     assert entry.title == f"Govee {expected_model}"
     assert entry.options == expected_options
