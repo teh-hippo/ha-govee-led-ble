@@ -96,23 +96,40 @@ async def test_bluetooth_discovery_unsupported_aborts(hass: HomeAssistant):
     assert not hass.config_entries.async_entries(DOMAIN)
 
 
-async def test_h6102_is_not_automatically_discovered(hass: HomeAssistant):
-    result = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_H6102)
+@pytest.mark.parametrize(
+    ("name", "expected_model"),
+    [
+        ("Govee_H6099_ABCD", "H6099"),
+        ("Govee_H60A1_ABCD", "H60A1"),
+        ("GVH60A6_ABCD", "H60A6"),
+        ("Govee_H6102_ABCD", "H6102"),
+        ("Govee_H7025_ABCD", "H7025"),
+    ],
+)
+async def test_bluetooth_discovery_newly_discoverable_models(
+    hass: HomeAssistant,
+    mock_manual_validation,
+    name: str,
+    expected_model: str,
+):
+    service_info = BluetoothServiceInfo(name, "44:55:66:77:88:99", -60, {}, {}, [], "local")
+    result = await _init(hass, config_entries.SOURCE_BLUETOOTH, service_info)
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_supported"
-
-
-def test_h6102_is_absent_from_bluetooth_manifest() -> None:
-    manifest = (Path(__file__).parents[1] / "custom_components/ha_govee_led_ble/manifest.json").read_text()
-
-    assert "H6102" not in manifest
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "bluetooth_confirm"
+    assert result["description_placeholders"] == {"model": expected_model}
+    created = await _confirm(hass, result)
+    assert created["type"] is FlowResultType.CREATE_ENTRY
+    assert created["title"] == f"Govee {expected_model}"
+    assert created["data"] == {CONF_MODEL: expected_model}
+    mock_manual_validation.assert_not_awaited()
 
 
 def test_bluetooth_manifest_covers_discoverable_models() -> None:
     manifest_path = Path(__file__).parents[1] / "custom_components/ha_govee_led_ble/manifest.json"
     patterns = {entry["local_name"] for entry in json.loads(manifest_path.read_text())["bluetooth"]}
 
+    assert BLE_DISCOVERABLE_MODELS == frozenset(MODEL_PROFILES)
     expected = {
         *(
             f"{prefix}_{model}*"
@@ -123,7 +140,7 @@ def test_bluetooth_manifest_covers_discoverable_models() -> None:
         *(f"GV{model[1:]}*" for model in BLE_DISCOVERABLE_MODELS),
         *(f"{model}_*" for model in BLE_DISCOVERABLE_MODELS),
     }
-    assert expected <= patterns
+    assert patterns == expected
 
 
 async def test_bluetooth_discovery_normalizes_unique_id(hass: HomeAssistant):
@@ -430,13 +447,22 @@ _EM += [
     ("Govee_H6199_ABCD", "H6199"),
     ("GBK_H6199_ABCD", "H6199"),
     ("GVH_H6199_ABCD", "H6199"),
-    ("ihoment_H6102_ABCD", None),
-    ("Govee_H6102_ABCD", None),
-    ("Minger_H6102_ABCD", None),
-    ("GBK_H6102_ABCD", None),
-    ("GVH_H6102_ABCD", None),
-    ("GVH6102_ABCD", None),
-    ("H6102_ABCD", None),
+    ("Govee_H6099_ABCD", "H6099"),
+    ("GVH6099_ABCD", "H6099"),
+    ("Govee_H60A1_ABCD", "H60A1"),
+    ("GVH60A1_ABCD", "H60A1"),
+    ("Govee_H60A6_ABCD", "H60A6"),
+    ("GVH60A6_ABCD", "H60A6"),
+    ("GVH60A6ABCD", "H60A6"),
+    ("ihoment_H6102_ABCD", "H6102"),
+    ("Govee_H6102_ABCD", "H6102"),
+    ("Minger_H6102_ABCD", "H6102"),
+    ("GBK_H6102_ABCD", "H6102"),
+    ("GVH_H6102_ABCD", "H6102"),
+    ("GVH6102_ABCD", "H6102"),
+    ("H6102_ABCD", "H6102"),
+    ("Govee_H7025_ABCD", "H7025"),
+    ("GVH7025_ABCD", "H7025"),
 ]
 
 

@@ -187,7 +187,19 @@ async def test_setup_entry_rejects_unknown_model(hass: HomeAssistant, data):
     assert issue.severity is ir.IssueSeverity.ERROR
 
 
-async def test_setup_entry_migrates_known_advertised_model_mismatch(hass: HomeAssistant):
+@pytest.mark.parametrize(
+    ("advertised_name", "expected_model"),
+    [
+        ("ihoment_H6125_311D", "H6125"),
+        ("Govee_H6102_ABCD", "H6102"),
+        ("GVH60A6_ABCD", "H60A6"),
+    ],
+)
+async def test_setup_entry_migrates_known_advertised_model_mismatch(
+    hass: HomeAssistant,
+    advertised_name: str,
+    expected_model: str,
+):
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="AA:BB:CC:DD:EE:FF",
@@ -197,7 +209,7 @@ async def test_setup_entry_migrates_known_advertised_model_mismatch(hass: HomeAs
     )
     entry.add_to_hass(hass)
     service_info = MagicMock()
-    service_info.name = "ihoment_H6125_311D"
+    service_info.name = advertised_name
     backend = MagicMock(
         engine=MagicMock(),
         preview=MagicMock(async_load_device=AsyncMock()),
@@ -215,13 +227,23 @@ async def test_setup_entry_migrates_known_advertised_model_mismatch(hass: HomeAs
         patch.object(hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock),
     ):
         cls.return_value.async_config_entry_first_refresh = AsyncMock()
-        cls.return_value.profile = MODEL_PROFILES["H6125"]
+        cls.return_value.profile = MODEL_PROFILES[expected_model]
         assert await async_setup_entry(hass, entry) is True
 
-    assert entry.data == {CONF_MODEL: "H6125"}
-    assert entry.title == "Govee H6125"
-    assert entry.options == {"effect_categories": ["scenes"], "connection_mode": "hold"}
-    assert cls.call_args.args[2] == "H6125"
+    expected_data = (
+        {CONF_MODEL: "H6102", CONF_H6102_APP_FIRMWARE: "1.03.01"}
+        if expected_model == "H6102"
+        else {CONF_MODEL: expected_model}
+    )
+    expected_options = (
+        {"connection_mode": "hold"}
+        if expected_model == "H60A6"
+        else {"effect_categories": ["scenes"], "connection_mode": "hold"}
+    )
+    assert entry.data == expected_data
+    assert entry.title == f"Govee {expected_model}"
+    assert entry.options == expected_options
+    assert cls.call_args.args[2] == expected_model
     backend.scene_defaults.async_delete_device.assert_awaited_once_with(entry.entry_id)
     backend.template_defaults.async_delete_device.assert_awaited_once_with(entry.entry_id)
     backend.active_workspaces.async_delete_device.assert_awaited_once_with(entry.entry_id)

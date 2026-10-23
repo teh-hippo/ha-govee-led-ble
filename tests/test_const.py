@@ -321,7 +321,7 @@ def test_h6076_music_needs_a_known_pact_and_software_1_02_or_newer(
     assert profile.readback_min_color_temp_kelvin == readback_min_kelvin
 
 
-def test_h6102_static_candidate_is_exact_and_manual_only():
+def test_h6102_static_candidate_is_exact_and_discoverable():
     profile = MODEL_PROFILES["H6102"]
 
     assert profile.support_quality is SupportQuality.SUPPORTED
@@ -330,8 +330,8 @@ def test_h6102_static_candidate_is_exact_and_manual_only():
     assert profile.scene_catalogue_sku == "H6102"
     assert profile.requires_notifications
     assert profile.supports_rgb
-    assert "H6102" not in BLE_DISCOVERABLE_MODELS
-    assert model_from_ble_name("Govee_H6102_ABCD") is None
+    assert BLE_DISCOVERABLE_MODELS == frozenset(MODEL_PROFILES)
+    assert model_from_ble_name("Govee_H6102_ABCD") == "H6102"
 
 
 def test_h6179_profile_uses_exact_experimental_capabilities():

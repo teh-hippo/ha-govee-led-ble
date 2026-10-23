@@ -32,8 +32,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 def test_exact_ceiling_profiles_have_no_catalogue_inheritance(model):
     p = get_profile(model)
     assert resolve_model(model.lower()) == model and p.support_quality is SupportQuality.SUPPORTED
-    expected_discovery = "H601C" if model == "H601C" else None
-    assert model_from_ble_name(f"Govee_{model}_test") == expected_discovery
+    assert model_from_ble_name(f"Govee_{model}_test") == model
     if model == "H601C":
         assert p.command_operations == {"power", "brightness", "static", "scene", "diy", "effect_upload"}
         assert supported_effect_categories(model) == ("scenes", "effects", "multi_layered")
