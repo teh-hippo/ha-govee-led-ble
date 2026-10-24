@@ -19,14 +19,10 @@ from custom_components.ha_govee_led_ble.coordinator_status import (
     parse_color_mode,
 )
 from custom_components.ha_govee_led_ble.effect_domain import VideoProfile
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _STATUS_ROOTS,
-    H6199StatusReply,
-    build_white_balance,
-    build_white_balance_query,
-)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_white_balance, build_white_balance_query
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode
+from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS, H6199StatusReply
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import validate_video_request, white_balance_readback_state
 from tests.test_h6199_native_controls import frame, qualify

@@ -20,11 +20,7 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectStorageError
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    build_scene_activation,
-    decode_wire_brightness,
-    encode_wire_brightness,
-)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -33,6 +29,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_profile_writes
+from custom_components.ha_govee_led_ble.protocol_core import decode_wire_brightness, encode_wire_brightness
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_h6199_native_controls import frame
 

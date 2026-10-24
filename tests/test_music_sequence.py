@@ -12,7 +12,7 @@ from custom_components.ha_govee_led_ble.effect_compiler import compile_applicati
 from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile, compiled_observation
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, music_default_palette
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness
 from custom_components.ha_govee_led_ble.govee_encryption import (
     KEY_HANDSHAKE,
     GoveeCryptoError,
@@ -24,6 +24,7 @@ from custom_components.ha_govee_led_ble.govee_encryption import (
 )
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_body_writes, prepare_music_profile_writes
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
+from custom_components.ha_govee_led_ble.protocol_music_params import music_default_palette
 from tests.test_govee_encryption import client, v1_reply, v2_reply
 
 

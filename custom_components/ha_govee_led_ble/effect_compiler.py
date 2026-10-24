@@ -56,13 +56,7 @@ from .effect_domain import (
     VideoProfile,
     WorkshopEffect,
 )
-from .generated_protocol_adapter import (
-    H60a6EffectFrame,
-    H6199EffectUpload,
-    SceneBody,
-    build_diy_activation,
-    build_scene_activation,
-)
+from .generated_protocol_adapter import build_diy_activation, build_scene_activation
 from .h60a6_effects import encode_native_body
 from .layered_scene import CatalogueRef
 from .layered_scene_decoder import encode_layered_scene, encode_workshop_effect
@@ -71,6 +65,7 @@ from .music_protocol import music_code_for
 from .music_semantics import music_parameters_depend_on_ic, music_variant
 from .native_effect import NativeDiyLayer
 from .native_scenes import apply_scene_speed, build_native_scene_packets, encode_authored_scene_body
+from .protocol_core import H60a6EffectFrame, H6199EffectUpload, SceneBody
 from .scenes import MODEL_SCENES, SceneEntry, resolve_scene_identity, scene_for_profile, scene_selector_code
 from .transport import fragment_a3
 

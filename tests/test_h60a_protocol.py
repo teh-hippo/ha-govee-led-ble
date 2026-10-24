@@ -15,7 +15,6 @@ from custom_components.ha_govee_led_ble.effect_deployments import PriorControlSt
 from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     BulkStatusCollector,
-    ProtocolParseRejection,
     build_boolean_control,
     build_brightness,
     build_bulk_status_query,
@@ -35,6 +34,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color_temp,
     kelvin_to_rgb,
 )
+from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 CAPTURED_PAGES = {

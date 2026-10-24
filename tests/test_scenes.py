@@ -9,8 +9,6 @@ from custom_components.ha_govee_led_ble.const import get_profile
 from custom_components.ha_govee_led_ble.effect_compiler import require_native_scenes
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _check_tree,
-    _write,
     build_h617a_scene,
     build_scene_activation,
     parse_scene_body_param,
@@ -21,6 +19,7 @@ from custom_components.ha_govee_led_ble.native_scenes import (
     apply_scene_speed,
     build_native_scene_packets,
 )
+from custom_components.ha_govee_led_ble.protocol_core import _check_tree, _write
 from custom_components.ha_govee_led_ble.scenes import (
     MODEL_SCENE_ALIASES,
     MODEL_SCENES,

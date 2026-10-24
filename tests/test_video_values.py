@@ -13,9 +13,10 @@ from custom_components.ha_govee_led_ble.effect_compiler import compile_video_pro
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, VideoProfile
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import _STATUS_ROOTS, build_video_mode
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_video_mode
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.native_profile_controls import apply_active_video_mode, prepare_video_mode
+from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS
 from tests.test_h6099 import frame
 
 

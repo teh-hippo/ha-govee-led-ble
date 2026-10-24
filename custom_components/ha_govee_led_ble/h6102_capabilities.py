@@ -107,7 +107,7 @@ def resolve_h6102_capabilities(
         return H6102CapabilityResolution(profile, variant, firmware_source, None)
     profile = replace(_BOOTSTRAP_PROFILE, physical_ic_count=resolved_ic_count)
     if pact_type == 1 and pact_code in (1, 2):
-        from .generated_protocol_adapter import h6102_outbound_transform_for
+        from .protocol_transforms import h6102_outbound_transform_for
 
         if variant is not None and version is not None and hw is not None and version >= FirmwareVersion((1, 3, 1)):
             extended_colour = variant is H6102RgbVariant.EXTENDED

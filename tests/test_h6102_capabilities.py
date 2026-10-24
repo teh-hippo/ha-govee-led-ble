@@ -37,12 +37,13 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     SingleEffect,
 )
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine, compiled_observation
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation, parse_music_parameters
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_scene_activation
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import edit_music_body, prepare_music_request
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
+from custom_components.ha_govee_led_ble.protocol_music_params import parse_music_parameters
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_h6199_native_controls import frame

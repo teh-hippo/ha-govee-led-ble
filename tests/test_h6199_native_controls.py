@@ -12,16 +12,18 @@ from custom_components.ha_govee_led_ble import PLATFORMS, select, sensor
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    H6199_NATIVE_CONTROLS,
-    H6199StatusQuery,
-    build_h6199_control,
-    build_h6199_control_query,
     parse_command,
     parse_command_ack_result,
-    parse_h6199_control,
     parse_status,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
+from custom_components.ha_govee_led_ble.protocol_core import H6199StatusQuery
+from custom_components.ha_govee_led_ble.protocol_h6199 import (
+    H6199_NATIVE_CONTROLS,
+    build_h6199_control,
+    build_h6199_control_query,
+    parse_h6199_control,
+)
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
 

@@ -17,13 +17,13 @@ from custom_components.ha_govee_led_ble.coordinator_status import (
 )
 from custom_components.ha_govee_led_ble.firmware_version import FirmwareVersion
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    ProtocolParseRejection,
     build_boolean_control,
     build_boolean_control_query,
-    build_h6199_control,
     require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
+from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import identity_version
 

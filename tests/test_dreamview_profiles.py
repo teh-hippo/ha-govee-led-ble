@@ -16,12 +16,8 @@ from custom_components.ha_govee_led_ble.dreamview import (
     build_dreamview_query,
 )
 from custom_components.ha_govee_led_ble.dreamview_services import _async_dreamview_service
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _STATUS_ROOTS,
-    H6199StatusReply,
-    build_brightness,
-    build_power,
-)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, build_power
+from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS, H6199StatusReply
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
 from tests.test_govee_encryption import client as ble_client
 from tests.test_h6099_dreamview import coordinator, frame, member

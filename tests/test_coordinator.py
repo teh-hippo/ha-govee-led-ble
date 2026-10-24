@@ -39,8 +39,6 @@ from custom_components.ha_govee_led_ble.effect_deployments import (
 from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, CatalogueRef, LibraryItem, SingleEffect
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    H6199StatusReply,
-    StatusReply,
     build_blank_screen,
     build_blank_screen_query,
     build_brightness,
@@ -48,8 +46,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_colour_mode_query,
     build_firmware_query,
     build_h617a_scene,
-    build_h6199_subordinate_query,
-    build_h6199_video,
     build_hardware_query,
     build_music_mode,
     build_power,
@@ -75,6 +71,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
     kelvin_to_rgb,
 )
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.protocol_core import H6199StatusReply, StatusReply
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_subordinate_query, build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields

@@ -5,16 +5,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .const import ModelProfile, get_profile
-from .generated_protocol_adapter import (
-    build_colour_temperature,
-    build_segment_colour,
-    parse_command,
-    parse_h6179_command,
-    table_kelvin_rgb,
-)
+from .generated_protocol_adapter import build_colour_temperature, build_segment_colour, parse_command, table_kelvin_rgb
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
 )
+from .protocol_h6179 import parse_h6179_command
 
 SEGMENT_COUNT = 15
 ALL_SEGMENTS: tuple[int, ...] = tuple(range(1, SEGMENT_COUNT + 1))

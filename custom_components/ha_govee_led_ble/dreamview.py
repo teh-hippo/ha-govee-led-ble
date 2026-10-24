@@ -16,7 +16,7 @@ from typing import Any, cast
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from .const import ModelProfile
-from .generated_protocol_adapter import _check_tree, _serialize_xor, _serialized_length, _write
+from .protocol_core import _check_tree, _serialize_xor, _serialized_length, _write
 from .transport import A3_CHUNK_SIZE, fragment_a3, xor_checksum
 
 Frame = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_frame").H6099DreamviewFrame)

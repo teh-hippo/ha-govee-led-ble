@@ -11,11 +11,8 @@ from custom_components.ha_govee_led_ble.effect_deployments import PriorControlSt
 from custom_components.ha_govee_led_ble.effect_domain import EffectValidationError, RelativeBrightness
 from custom_components.ha_govee_led_ble.effect_persistence_validation import EffectStorageError
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _check_tree,
-    _write,
     build_black_border,
     build_blank_screen,
-    build_h6199_control,
     build_music_mode,
     build_relative_brightness,
     build_white_balance,
@@ -23,6 +20,8 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command_ack_result,
     parse_status,
 )
+from custom_components.ha_govee_led_ble.protocol_core import _check_tree, _write
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 

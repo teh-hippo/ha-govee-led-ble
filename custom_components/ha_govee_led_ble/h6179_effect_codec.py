@@ -8,7 +8,7 @@ from typing import Any, cast
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
 from .effect_domain import EffectContent, EffectPair, H6179MixedDiyEffect, H6179SingleDiyEffect
-from .generated_protocol_adapter import GoveeShared, H6179DiyBody, check_generated_tree, new_child
+from .protocol_core import GoveeShared, H6179DiyBody, check_generated_tree, new_child
 
 
 class H6179EffectCodecError(ValueError):

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 
-from custom_components.ha_govee_led_ble import generated_protocol_adapter as protocol
+from custom_components.ha_govee_led_ble import protocol_core
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, ModelProfile, ReadDomain, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -53,8 +53,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power_query,
     build_scene_activation,
     build_segment_query,
-    decode_wire_brightness,
-    encode_wire_brightness,
 )
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -64,6 +62,7 @@ from custom_components.ha_govee_led_ble.music_semantics import (
     compile_music_parameters,
     music_params_for_mode,
 )
+from custom_components.ha_govee_led_ble.protocol_core import decode_wire_brightness, encode_wire_brightness
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, scene_supported
 from custom_components.ha_govee_led_ble.transport import reassemble_a1_02, reassemble_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -493,9 +492,9 @@ async def test_independent_sku_and_status_root_use_shared_control_paths(hass, mo
     )
     monkeypatch.setitem(MODEL_PROFILES, "H9908", profile)
     monkeypatch.setitem(
-        protocol._STATUS_ROOTS,
+        protocol_core._STATUS_ROOTS,
         "independent-status",
-        ("h6125_modern_status_reply", protocol.H6125ModernStatusReply),
+        ("h6125_modern_status_reply", protocol_core.H6125ModernStatusReply),
     )
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H9908", configuration_url=None)
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())

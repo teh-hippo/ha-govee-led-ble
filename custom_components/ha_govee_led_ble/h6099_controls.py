@@ -12,11 +12,11 @@ from .const import DOMAIN, ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_status import ParsedStatusEnvelope
 from .generated_protocol_adapter import (
-    INSTALLATION_DIRECTIONS,
     build_camera_health_query,
     build_installation_direction,
     build_installation_direction_query,
 )
+from .protocol_h6199 import INSTALLATION_DIRECTIONS
 
 if TYPE_CHECKING:
     from .coordinator import GoveeBLECoordinator

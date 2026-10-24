@@ -9,18 +9,15 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    MusicBody,
-    build_music_mode,
-    encode_music_parameters,
-    music_default_palette,
-)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_music_mode
 from custom_components.ha_govee_led_ble.music_commands import (
     build_music_params,
     prepare_music_profile_writes,
     resolve_music_profile,
 )
 from custom_components.ha_govee_led_ble.music_semantics import music_params_for_mode, music_variant
+from custom_components.ha_govee_led_ble.protocol_core import MusicBody
+from custom_components.ha_govee_led_ble.protocol_music_params import encode_music_parameters, music_default_palette
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 
 NEW_MODES = (0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37)
@@ -41,7 +38,7 @@ def parse_body(body):
 @pytest.mark.parametrize("model", ("H617A", "H617E", "H6099"))
 @pytest.mark.parametrize("mode", NEW_MODES)
 def test_tail_schema_ownership_is_independent_of_product_permissions(model, mode):
-    from custom_components.ha_govee_led_ble.generated_protocol_adapter import parse_music_parameters
+    from custom_components.ha_govee_led_ble.protocol_music_params import parse_music_parameters
 
     profile = get_profile(model)
     variant = music_variant(profile, mode)

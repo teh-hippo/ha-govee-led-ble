@@ -14,12 +14,7 @@ from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CAT
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application
 from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _STATUS_ROOTS,
-    MusicBody,
-    StatusReply,
-    build_segment_colour,
-)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_segment_colour
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
@@ -28,6 +23,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     parse_static_write,
 )
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
+from custom_components.ha_govee_led_ble.protocol_core import _STATUS_ROOTS, MusicBody, StatusReply
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 
 

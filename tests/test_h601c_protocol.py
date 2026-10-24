@@ -12,7 +12,6 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, decode_status_frame, parse_color_mode
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    ProtocolParseRejection,
     build_brightness,
     build_brightness_query,
     build_colour_mode_query,
@@ -34,6 +33,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color,
     parse_static_write,
 )
+from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 PROFILE = ModelProfile(

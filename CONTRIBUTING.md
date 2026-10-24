@@ -17,7 +17,7 @@ Do not post the Bluetooth address, serial number, account details, or other uniq
 
 - `custom_components/ha_govee_led_ble/const.py` owns the exact-model `ModelProfile` registry.  Profiles declare product capabilities and runtime policy; `command_grammar` and `status_grammar` independently select compatible outbound and inbound protocols.
 - `tools/ble/kaitai/**/*.ksy` is the only BLE wire-structure source.  Generated modules under `generated_protocol/` are build outputs and are never edited manually.
-- `generated_protocol_adapter.py` connects generated structures to semantic builders and parsers.  Handwritten protocol code is limited to semantic transforms, checksums, and transport framing.
+- `generated_protocol_adapter.py` connects generated structures to semantic builders and parsers; `protocol_core.py` holds the shared Kaitai roots and framing helpers, and `protocol_<grammar>.py` modules hold single-grammar codecs and wire transforms.  Handwritten protocol code is limited to semantic transforms, checksums, and transport framing.
 - `coordinator*.py` owns connection lifecycle, queries, notifications, state, verification, and diagnostics.
 - `light.py`, `light_services.py`, and the model profile expose only capabilities declared for the configured device.
 - Effect Studio uses the same model profiles, capability contracts, and exact-SKU catalogues rather than a separate model architecture.

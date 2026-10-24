@@ -56,11 +56,11 @@ from custom_components.ha_govee_led_ble.generated_protocol.diy_type04 import Diy
 from custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload import H6199EffectUpload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_diy_activation,
-    build_h6199_palette_diy_envelope,
     parse_a3_effect_envelope,
     parse_command,
 )
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect, encode_workshop_effect
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_palette_diy_envelope
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 
 H = bytes.fromhex

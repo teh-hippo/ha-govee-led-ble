@@ -8,17 +8,8 @@ from typing import Any
 
 from .const import ModelProfile, get_profile
 from .generated_protocol_adapter import (
-    GoveeShared,
-    H6199EffectUpload,
-    SceneBody,
-    SceneParameterTooLargeError,
-    WorkshopBody,
-    new_child,
-    new_rgb,
-    parse_h6199_workshop_content,
     parse_scene_body,
     parse_workshop_body,
-    serialize_h6199_workshop_content,
     serialize_scene_body_param,
     serialize_workshop_body_param,
 )
@@ -36,6 +27,16 @@ from .layered_scene import (
     Movement,
     Selection,
 )
+from .protocol_core import (
+    GoveeShared,
+    H6199EffectUpload,
+    SceneBody,
+    SceneParameterTooLargeError,
+    WorkshopBody,
+    new_child,
+    new_rgb,
+)
+from .protocol_h6199 import parse_h6199_workshop_content, serialize_h6199_workshop_content
 from .scenes import SceneEntry
 
 __all__ = [

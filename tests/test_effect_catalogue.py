@@ -63,8 +63,9 @@ from custom_components.ha_govee_led_ble.effect_domain import (
 )
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
 from custom_components.ha_govee_led_ble.generated_protocol.diy_type03 import DiyType03
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene, build_h6199_scene
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
 from custom_components.ha_govee_led_ble.layered_scene_decoder import encode_workshop_effect
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 
 

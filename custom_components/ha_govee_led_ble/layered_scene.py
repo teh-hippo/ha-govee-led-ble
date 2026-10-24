@@ -23,7 +23,7 @@ from enum import IntEnum
 from importlib import import_module
 from typing import Any, cast
 
-from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES
+from .protocol_core import MAX_SCENE_PARAM_BYTES
 
 type RGB = tuple[int, int, int]
 type JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]

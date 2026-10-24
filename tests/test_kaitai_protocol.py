@@ -17,7 +17,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.restore_state import RestoredExtraData
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
-from custom_components.ha_govee_led_ble import generated_protocol_adapter
+from custom_components.ha_govee_led_ble import generated_protocol_adapter, protocol_core, protocol_transforms
 from custom_components.ha_govee_led_ble.const import (
     MODEL_PROFILES,
     UNSUPPORTED_PROFILE,
@@ -29,7 +29,6 @@ from custom_components.ha_govee_led_ble.const import (
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -37,6 +36,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color,
     kelvin_to_rgb,
 )
+from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 
 _GENERATED_DIR = os.environ.get("KAITAI_GENERATED_DIR")
@@ -325,7 +325,7 @@ def test_h60a6_legacy_transform_preserves_whole_device_colour(kelvin):
         if kelvin is None
         else build_color_temp(kelvin, "H60A6", profile=profile)
     )
-    wire = generated_protocol_adapter.h60a6_legacy_outbound_transform(logical)
+    wire = protocol_transforms.h60a6_legacy_outbound_transform(logical)
     parsed = _parse(H60a6LegacyWrite, wire)
     assert parsed.kelvin == (kelvin or 0) and xor_checksum(wire) == 0
     assert (parsed.rgb_direct.red, parsed.rgb_direct.green, parsed.rgb_direct.blue) == (
@@ -334,7 +334,7 @@ def test_h60a6_legacy_transform_preserves_whole_device_colour(kelvin):
     segmented = device_profile("H60A6", 1, 2)
     masked = build_segment_color([2], 1, 2, 3, "H60A6", profile=segmented)
     with pytest.raises(ValueError):
-        generated_protocol_adapter.h60a6_legacy_outbound_transform(masked)
+        protocol_transforms.h60a6_legacy_outbound_transform(masked)
 
 
 @pytest.mark.parametrize("selector", [0, 1])
@@ -446,7 +446,7 @@ def static_coordinator(hass, monkeypatch):
         pytest.skip("Synthetic static layout is an all-schema fixture, not a runtime root")
     schema = "synthetic_static_status_reply"
     monkeypatch.setitem(
-        generated_protocol_adapter._STATUS_ROOTS,
+        protocol_core._STATUS_ROOTS,
         "test-static",
         (schema, _generated(schema, "SyntheticStaticStatusReply")),
     )
@@ -1396,7 +1396,7 @@ async def test_four_slot_profile_observes_every_declared_domain(hass, monkeypatc
         whole_device_mask=0x3FFF,
     )
     monkeypatch.setitem(MODEL_PROFILES, model, profile)
-    monkeypatch.setitem(generated_protocol_adapter._STATUS_ROOTS, status_grammar, (schema, root))
+    monkeypatch.setitem(protocol_core._STATUS_ROOTS, status_grammar, (schema, root))
     coordinator = GoveeBLECoordinator(
         hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="homeassistant://ha-govee-led-ble/editor/test"
     )

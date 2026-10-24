@@ -57,7 +57,6 @@ from .coordinator_status import (
 from .effect_contracts import CapabilityState
 from .effect_deployments import PriorControlState
 from .generated_protocol_adapter import (
-    H6199_NATIVE_CONTROLS,
     BulkStatusCollector,
     build_black_border_query,
     build_blank_screen_query,
@@ -66,8 +65,6 @@ from .generated_protocol_adapter import (
     build_configured_strings,
     build_configured_strings_query,
     build_firmware_query,
-    build_h6199_control,
-    build_h6199_control_query,
     build_hardware_query,
     build_physical_ic_count_query,
     build_power_on_behaviour,
@@ -102,6 +99,7 @@ from .music_semantics import (
 from .native_profile_controls import (
     ProfileWriter,
 )
+from .protocol_h6199 import H6199_NATIVE_CONTROLS, build_h6199_control, build_h6199_control_query
 from .scenes import (
     scene_code_is_ambiguous,
 )

@@ -14,13 +14,13 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_camera_health_query,
     build_colour_mode_query,
-    build_h6199_control_query,
     build_installation_direction_query,
     build_power_query,
     build_relative_brightness_query,
     build_segment_query,
     build_white_balance_query,
 )
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control_query
 from tests.test_h6199_capabilities import set_qualified_identity
 from tests.test_h6199_native_controls import frame
 

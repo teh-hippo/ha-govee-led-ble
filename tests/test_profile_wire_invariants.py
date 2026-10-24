@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.ha_govee_led_ble import generated_protocol_adapter as a
+from custom_components.ha_govee_led_ble import protocol_core, protocol_music_params
 from custom_components.ha_govee_led_ble.const import (
     MODEL_PROFILES,
     ModelProfile,
@@ -80,7 +81,7 @@ def _parse_status(frame: bytes, model: str, profile: ModelProfile):
         result = a.BulkStatusCollector().feed(frame)
         assert result.rejection is None and result.parsed is not None
         assert len(result.parsed.records) == 1
-        return a.ProtocolParseResult(result.parsed.records[0], result.parser, None)
+        return protocol_core.ProtocolParseResult(result.parsed.records[0], result.parser, None)
     return a.parse_status_result(frame, model, profile=profile)
 
 
@@ -229,28 +230,28 @@ _BOOLEAN_CONTROL_PROFILES = tuple(
 
 
 def _status_root_type(profile: ModelProfile):
-    assert profile.status_grammar in a._STATUS_ROOTS
-    return a._STATUS_ROOTS[profile.status_grammar][1]
+    assert profile.status_grammar in protocol_core._STATUS_ROOTS
+    return protocol_core._STATUS_ROOTS[profile.status_grammar][1]
 
 
 def _status_color_mode_enum(profile: ModelProfile):
     if profile.bulk_status_grammar:
-        return a.H60aBulk.Mode
+        return protocol_core.H60aBulk.Mode
     root_type = _status_root_type(profile)
     return getattr(
         root_type,
         "ColorMode",
-        getattr(root_type, "ModeSel", getattr(root_type, "ModeSelector", a.H6102StatusReply.ColorMode)),
+        getattr(root_type, "ModeSel", getattr(root_type, "ModeSelector", protocol_core.H6102StatusReply.ColorMode)),
     )
 
 
 def _status_music_enum(profile: ModelProfile):
     if profile.status_grammar == "H6076":
-        return a.H6076MusicWrite.MusicMode
+        return protocol_core.H6076MusicWrite.MusicMode
     if profile.status_grammar == "H6125-intermediate":
-        return a.H6125StatusReply.MusicMode
+        return protocol_core.H6125StatusReply.MusicMode
     root_type = _status_root_type(profile)
-    return getattr(root_type, "MusicMode", getattr(root_type, "MusicEffect", a.GoveeCommon.MusicMode))
+    return getattr(root_type, "MusicMode", getattr(root_type, "MusicEffect", protocol_core.GoveeCommon.MusicMode))
 
 
 def _segment_domain_byte(profile: ModelProfile) -> int:
@@ -349,8 +350,10 @@ def test_every_claimed_read_domain_has_a_typed_body(model: str, profile: ModelPr
     """A claimed domain whose body falls through to raw bytes is the `.text`/`.value` bug:
     the reply parses, the reader reaches for a field, and AttributeError is raised inside the
     notification callback, losing the notification rather than degrading."""
-    assert profile.status_grammar in a._STATUS_ROOTS, f"{model} status_grammar {profile.status_grammar} is unrouted"
-    expected_parser = a._STATUS_ROOTS[profile.status_grammar][0]
+    assert profile.status_grammar in protocol_core._STATUS_ROOTS, (
+        f"{model} status_grammar {profile.status_grammar} is unrouted"
+    )
+    expected_parser = protocol_core._STATUS_ROOTS[profile.status_grammar][0]
     for domain in sorted(profile.read_domains, key=lambda d: d.value):
         frames = _status_frames_for_domain(domain, model, profile)
         assert frames, f"{model} claims {domain.value} but has no representative status frames"
@@ -477,12 +480,12 @@ def test_every_claimed_read_domain_can_actually_be_asked_for(model: str, profile
             assert len(query) == 20 and xor_checksum(query) == 0
             a.require_profile_packet(query, profile)
             if a.is_bulk_status_frame(query, profile):
-                bulk_query = a.H60aBulk.Query.from_bytes(query)
+                bulk_query = protocol_core.H60aBulk.Query.from_bytes(query)
                 bulk_query._read()
                 assert domain in {ReadDomain.COLOUR_MODE, ReadDomain.MODE}
                 assert {item.name for item in bulk_query.domains} == a.bulk_status_domains(profile)
                 continue
-            parsed = a._parse_xor_frame(query, profile.command_grammar, a._STATUS_QUERY_ROOTS)
+            parsed = protocol_core._parse_xor_frame(query, profile.command_grammar, protocol_core._STATUS_QUERY_ROOTS)
             assert parsed.rejection is None and parsed.parsed is not None, (
                 f"{model} ({profile.name}) {domain.value} query rejected by {profile.command_grammar} query root"
             )
@@ -494,7 +497,7 @@ def test_every_claimed_read_domain_can_actually_be_asked_for(model: str, profile
                 wire = profile.outbound_transform(query)
                 assert len(wire) == 20 and xor_checksum(wire) == 0
                 if domain is ReadDomain.SEGMENTS and _segment_domain_byte(profile) == 0xA2:
-                    legacy_query = a.H6125LegacySegmentQuery.from_bytes(wire)
+                    legacy_query = protocol_core.H6125LegacySegmentQuery.from_bytes(wire)
                     legacy_query._read()
                     assert legacy_query.domain.name == "segments"
 
@@ -586,7 +589,7 @@ def test_every_declared_video_mode_can_be_built(hass, model: str, profile: Model
     readback is supported) decodes back from its status root."""
     assert profile.video_modes, f"{model} claims video mode without naming any"
     values = (
-        {"picture_preset": next(iter(a.H66a0VideoCommand.PicturePreset.__members__)), "opaque": 0}
+        {"picture_preset": next(iter(protocol_core.H66a0VideoCommand.PicturePreset.__members__)), "opaque": 0}
         if profile.video_grammar == "H66A0-video"
         else {}
     )
@@ -606,8 +609,8 @@ def test_every_declared_video_mode_can_be_built(hass, model: str, profile: Model
             color_mode_enum = _status_color_mode_enum(profile)
             video_byte = int(color_mode_enum.video)
             if profile.video_grammar == "H66A0-video":
-                source_code = int(a.H66a0VideoCommand.VideoSource[mode])
-                preset_code = int(a.H66a0VideoCommand.PicturePreset[values["picture_preset"]])
+                source_code = int(protocol_core.H66a0VideoCommand.VideoSource[mode])
+                preset_code = int(protocol_core.H66a0VideoCommand.PicturePreset[values["picture_preset"]])
                 body = bytes([video_byte, source_code, preset_code, saturation, 1, int(values["opaque"]), 50])
             else:
                 source_code = int(root_type.VideoSource[mode])
@@ -670,7 +673,7 @@ def test_every_advertised_music_mode_has_a_way_to_be_applied(model: str, profile
                 wire = active_profile.outbound_transform(selector)
                 assert len(wire) == 20 and xor_checksum(wire) == 0
                 if model == "H6125":
-                    parsed_wire = a.H6125WireWrite.from_bytes(wire)
+                    parsed_wire = protocol_core.H6125WireWrite.from_bytes(wire)
                     parsed_wire._read()
                     assert parsed_wire.body.sub_body.mode_id.name == slug
             if variant is not None and variant.template and available:
@@ -682,7 +685,7 @@ def test_every_advertised_music_mode_has_a_way_to_be_applied(model: str, profile
                 companion_index = len(packets) - 2 if active_profile.music_upload_before_selector else len(packets) - 1
                 mode_name, body = writes[companion_index][1]["_music_body"]
                 assert mode_name == slug
-                parsed_body = a.parse_music_parameters(variant, body)
+                parsed_body = protocol_music_params.parse_music_parameters(variant, body)
                 assert int(parsed_body.mode) == variant.mode_code
                 assert envelope[3:] == body.ljust(len(envelope) - 3, b"\x00")
 

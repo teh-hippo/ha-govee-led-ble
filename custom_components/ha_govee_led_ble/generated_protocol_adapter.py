@@ -4,19 +4,74 @@ from __future__ import annotations
 
 import io
 import math
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from enum import IntEnum, StrEnum
-from functools import cache
-from importlib import import_module
-from types import MappingProxyType
-from typing import Any, cast
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-from kaitaistruct import ConsistencyError, KaitaiStream, KaitaiStructError, ReadWriteKaitaiStruct
+from kaitaistruct import KaitaiStream, KaitaiStructError
 
-from .const import H6199_PACT1_PROFILE, ModelProfile, ReadDomain, get_profile
+from .const import ModelProfile, ReadDomain, get_profile
 from .music_protocol import music_slug_for
-from .music_semantics import COMPANION_MUSIC_LAYOUTS, MusicVariant, music_variant
+from .music_semantics import music_variant
+from .protocol_core import (
+    _BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS,
+    _BLANK_SCREEN_SAME_TONE_SECONDS,
+    _COMMAND_ACK_ROOTS,
+    _COMMAND_ROOTS,
+    _H6076_ACK_ROOTS,
+    _MUSIC_WRITE_ROOTS,
+    _STATUS_QUERY_ROOTS,
+    _STATUS_ROOTS,
+    CommandWrite,
+    DiyType03,
+    DiyType04,
+    GoveeCommon,
+    H1a42MusicWrite,
+    H60a6Control,
+    H60a6EffectFrame,
+    H60aBulk,
+    H61f5MusicWrite,
+    H66a0MusicWrite,
+    H66a0VideoCommand,
+    H601cCommandWrite,
+    H6076MusicAck,
+    H6076MusicBody,
+    H6076MusicWrite,
+    H6099CommandWrite,
+    H6099EffectUpload,
+    H6179CommandWrite,
+    H6199EffectUpload,
+    H7020CommandWrite,
+    H7025MusicWrite,
+    ProtocolParseRejection,
+    ProtocolParseResult,
+    SceneBody,
+    SceneType1Body,
+    StatusQuery,
+    WorkshopBody,
+    _a3_header,
+    _child,
+    _has_unknown_discriminator,
+    _parse_xor_frame,
+    _rgb,
+    _serialize_a3_scene_param,
+    _serialize_xor,
+    _set_effect_layer_lengths,
+    _write,
+    check_generated_tree,
+)
+from .protocol_h6179 import (
+    _build_h6179_static_colour,
+    build_h6179_diy_activation,
+    build_h6179_scene,
+    encode_h6179_brightness,
+)
+from .protocol_h6199 import (
+    INSTALLATION_DIRECTIONS,
+    build_h6199_scene,
+)
+from .protocol_transforms import (
+    h6102_outbound_transform_for,
+)
 from .transport import (
     A1_02_COMMAND,
     A1_02_PREFIX,
@@ -27,464 +82,6 @@ from .transport import (
     reassemble_a4_upload,
     xor_checksum,
 )
-
-CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.command_write").CommandWrite,
-)
-H6099CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_command_write").H6099CommandWrite,
-)
-H6099StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_status_query").H6099StatusQuery,
-)
-H6099StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_status_reply").H6099StatusReply,
-)
-H6099EffectUpload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_effect_upload").H6099EffectUpload,
-)
-H6099CommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_command_ack").H6099CommandAck,
-)
-H617aCommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617a_command_ack").H617aCommandAck,
-)
-H617aControlPayload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617a_control_payload").H617aControlPayload,
-)
-H6199CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_write").H6199CommandWrite,
-)
-H6199Pact1WireWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_pact1_wire_write").H6199Pact1WireWrite,
-)
-H6179CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_command_write").H6179CommandWrite,
-)
-H6179DiyBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_diy_body").H6179DiyBody,
-)
-H6199CommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_command_ack").H6199CommandAck,
-)
-H6199ControlPayload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_control_payload").H6199ControlPayload,
-)
-H6199EffectUpload = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_effect_upload").H6199EffectUpload,
-)
-StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.status_query").StatusQuery,
-)
-H6199StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_query").H6199StatusQuery,
-)
-H6179StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_status_query").H6179StatusQuery,
-)
-GoveeShared = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_shared").GoveeShared,
-)
-GoveeCommon = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.govee_common").GoveeCommon,
-)
-StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.status_reply").StatusReply,
-)
-H6102WireWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_wire_write").H6102WireWrite,
-)
-H66a0StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_status_reply").H66a0StatusReply,
-)
-H6199StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6199_status_reply").H6199StatusReply,
-)
-H6179StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6179_status_reply").H6179StatusReply,
-)
-H7020CommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7020_command_write").H7020CommandWrite,
-)
-H7020StatusQuery = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7020_status_query").H7020StatusQuery,
-)
-H7020StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h7020_status_reply").H7020StatusReply,
-)
-H6102StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6102_status_reply").H6102StatusReply,
-)
-H617cStatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h617c_status_reply").H617cStatusReply,
-)
-H601cCommandWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h601c_command_write").H601cCommandWrite,
-)
-H601cStatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h601c_status_reply").H601cStatusReply,
-)
-H60a1StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a1_status_reply").H60a1StatusReply,
-)
-H60a6StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_status_reply").H60a6StatusReply,
-)
-H60aBulk = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a_bulk").H60aBulk)
-H60a6Control = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_control").H60a6Control
-)
-H60a6LegacyWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_legacy_write").H60a6LegacyWrite
-)
-H60a6EffectFrame = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_effect_frame").H60a6EffectFrame
-)
-H60a6CommandAck = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_command_ack").H60a6CommandAck
-)
-H60a6DiyBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_diy_body").H60a6DiyBody
-)
-H60a6PaintBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h60a6_paint_body").H60a6PaintBody
-)
-DiyType03 = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type03").DiyType03,
-)
-DiyType04 = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.diy_type04").DiyType04,
-)
-SceneBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_body").SceneBody,
-)
-SceneType1Body = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.scene_type1_body").SceneType1Body,
-)
-WorkshopBody = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.workshop_body").WorkshopBody,
-)
-MusicBody = cast(Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.music_body").MusicBody)
-H6076MusicAck = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_ack").H6076MusicAck
-)
-H6076MusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_body").H6076MusicBody
-)
-H6076MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_music_write").H6076MusicWrite
-)
-H6076StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6076_status_reply").H6076StatusReply
-)
-H7025MusicBody = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_body").H7025MusicBody
-)
-H7025MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_music_write").H7025MusicWrite
-)
-H66a0MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_write").H66a0MusicWrite
-)
-H1a42MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h1a42_music_write").H1a42MusicWrite
-)
-H1a42StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h1a42_status_reply").H1a42StatusReply
-)
-H61f5MusicWrite = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_write").H61f5MusicWrite
-)
-H61f5StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h61f5_status_reply").H61f5StatusReply
-)
-H7025StatusReply = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h7025_status_reply").H7025StatusReply
-)
-H6125StatusReply = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_status_reply").H6125StatusReply,
-)
-H6125ModernStatusReply = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6125_modern_status_reply"
-    ).H6125ModernStatusReply,
-)
-H6125IntermediateStatusReply = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6125_intermediate_status_reply"
-    ).H6125IntermediateStatusReply,
-)
-H6125CommandAck = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_command_ack").H6125CommandAck,
-)
-H6125LegacyStatusReply = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6125_legacy_status_reply"
-    ).H6125LegacyStatusReply,
-)
-H6125LegacySegmentQuery = cast(
-    Any,
-    import_module(
-        "custom_components.ha_govee_led_ble.generated_protocol.h6125_legacy_segment_query"
-    ).H6125LegacySegmentQuery,
-)
-H6125WireWrite = cast(
-    Any,
-    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6125_wire_write").H6125WireWrite,
-)
-H66a0VideoCommand = cast(
-    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_video_command").H66a0VideoCommand
-)
-
-_U1_MAX = 0xFF
-_A3_MAX_CONTENT = _U1_MAX * A3_CHUNK_SIZE
-# The A3 line count is a u1, so a framed scene parameter spans at most 255 lines of 17 bytes.
-MAX_SCENE_PARAM_BYTES = _A3_MAX_CONTENT
-
-
-class SceneParameterTooLargeError(ValueError):
-    """A built scene exceeds the byte limits the generated A3 fields can encode."""
-
-
-class ProtocolParseRejection(StrEnum):
-    INVALID_LENGTH = "invalid_length"
-    INVALID_CHECKSUM = "invalid_checksum"
-    UNSUPPORTED_MODEL = "unsupported_model"
-    SCHEMA_REJECTED = "schema_rejected"
-    SEMANTIC_REJECTED = "semantic_rejected"
-
-
-@dataclass(frozen=True, slots=True)
-class ProtocolParseResult:
-    parsed: Any | None
-    parser: str | None
-    rejection: ProtocolParseRejection | None
-
-
-DIY_PAINTED_EFFECTS = frozenset(DiyType03.Effect.__members__)
-
-_BLANK_SCREEN_LOW_BRIGHTNESS_SECONDS = 10
-_BLANK_SCREEN_SAME_TONE_SECONDS = 120
-
-
-def check_generated_tree(value: Any, seen: set[int] | None = None) -> None:
-    seen = seen or set()
-    if not isinstance(value, ReadWriteKaitaiStruct) or id(value) in seen:
-        return
-    seen.add(id(value))
-    for name, child in tuple(vars(value).items()):
-        if name.startswith("_"):
-            continue
-        if isinstance(child, ReadWriteKaitaiStruct):
-            check_generated_tree(child, seen)
-        elif isinstance(child, list):
-            for item in child:
-                check_generated_tree(item, seen)
-    value._check()
-
-
-_check_tree = check_generated_tree
-
-
-def _write(value: ReadWriteKaitaiStruct, length: int) -> bytes:
-    stream = KaitaiStream(io.BytesIO(bytes(length)))
-    value._write(stream)
-    return cast(bytes, stream.to_byte_array())
-
-
-_SERIALIZE_MEASURE_BOUND = 1 << 16
-
-
-def _serialized_length(value: ReadWriteKaitaiStruct) -> int:
-    """Return the serialized length of a checked struct from the generated writer.
-
-    Kaitai's writer needs a pre-sized buffer, so an oversized write is measured by the
-    trailing ``size-eos`` consistency check, whose ``actual`` is the unused byte count.
-    """
-    try:
-        _write(value, _SERIALIZE_MEASURE_BOUND)
-    except ConsistencyError as error:
-        return _SERIALIZE_MEASURE_BOUND - int(error.actual)
-    return cast(int, value._io.pos())
-
-
-def serialize_native_body(root: Any) -> bytes:
-    """Write a complete native body, retaining its generated lengths and opaque fields."""
-    _check_tree(root)
-    length = _serialized_length(root)
-    if not 0 < length <= _SERIALIZE_MEASURE_BOUND:
-        raise ValueError("Native effect body exceeds the serialization bound")
-    return _write(root, length)
-
-
-def _serialize_a3_scene_param(root: Any, *, scene_type_size: int = 1) -> bytes:
-    """Frame a built A3 scene root and return its parameter bytes without envelope padding.
-
-    ``linecount`` only sits in the stripped header, so the parameter is independent of it;
-    it is still set to the value a reassembled capture would carry.
-    """
-    root.header = _a3_header(root)
-    _check_tree(root)
-    content_size = _serialized_length(root)
-    if content_size > _A3_MAX_CONTENT:
-        raise SceneParameterTooLargeError(
-            f"scene content is {content_size} bytes but the A3 line count only encodes {_A3_MAX_CONTENT}"
-        )
-    root.header.linecount = max(2, math.ceil(content_size / A3_CHUNK_SIZE))
-    _check_tree(root)
-    envelope = _write(root, content_size)
-    return envelope[len(root.header.marker) + 1 + scene_type_size :]
-
-
-def _serialize_xor(root: Any, length: int = 20) -> bytes:
-    root.checksum = 0
-    _check_tree(root)
-    provisional = _write(root, length)
-    root.checksum = xor_checksum(provisional[:-1])
-    _check_tree(root)
-    return _write(root, length)
-
-
-_STATUS_ROOTS = {
-    "H60A1": ("h60a1_status_reply", H60a1StatusReply),
-    "H60A6": ("h60a6_status_reply", H60a6StatusReply),
-    "H601C": ("h601c_status_reply", H601cStatusReply),
-    "H6076": ("h6076_status_reply", H6076StatusReply),
-    "H6102": ("h6102_status_reply", H6102StatusReply),
-    "H6125": ("h6125_status_reply", H6125StatusReply),
-    "H6125-modern": ("h6125_modern_status_reply", H6125ModernStatusReply),
-    "H6125-legacy": ("h6125_legacy_status_reply", H6125LegacyStatusReply),
-    "H6125-intermediate": ("h6125_intermediate_status_reply", H6125IntermediateStatusReply),
-    "H6099": ("h6099_status_reply", H6099StatusReply),
-    "H66A0": ("h66a0_status_reply", H66a0StatusReply),
-    "H1A42": ("h1a42_status_reply", H1a42StatusReply),
-    "H61F5": ("h61f5_status_reply", H61f5StatusReply),
-    "H617A": ("status_reply", StatusReply),
-    "H617C": ("h617c_status_reply", H617cStatusReply),
-    "H7025": ("h7025_status_reply", H7025StatusReply),
-    "H6179": ("h6179_status_reply", H6179StatusReply),
-    "H6199": ("h6199_status_reply", H6199StatusReply),
-    "H7020": ("h7020_status_reply", H7020StatusReply),
-}
-_COMMAND_ROOTS = {
-    "H601C": ("h601c_command_write", H601cCommandWrite),
-    "H6099": ("h6099_command_write", H6099CommandWrite),
-    "H617A": ("command_write", CommandWrite),
-    "H6179": ("h6179_command_write", H6179CommandWrite),
-    "H6199": ("h6199_command_write", H6199CommandWrite),
-    "H7020": ("h7020_command_write", H7020CommandWrite),
-}
-_STATUS_QUERY_ROOTS = {
-    "H601C": ("status_query", StatusQuery),
-    "H6099": ("h6099_status_query", H6099StatusQuery),
-    "H617A": ("status_query", StatusQuery),
-    "H6179": ("h6179_status_query", H6179StatusQuery),
-    "H6199": ("h6199_status_query", H6199StatusQuery),
-    "H7020": ("h7020_status_query", H7020StatusQuery),
-}
-_H6076_ACK_ROOTS = {"H6076": ("h6076_music_ack", H6076MusicAck)}
-_MUSIC_WRITE_ROOTS = {
-    "H6076": ("h6076_music_write", H6076MusicWrite),
-    "H66A0": ("h66a0_music_write", H66a0MusicWrite),
-    "H1A42": ("h1a42_music_write", H1a42MusicWrite),
-    "H61F5": ("h61f5_music_write", H61f5MusicWrite),
-    "H7025": ("h7025_music_write", H7025MusicWrite),
-}
-_COMMAND_ACK_ROOTS = {
-    "H60A6": ("h60a6_command_ack", H60a6CommandAck),
-    "H6125": ("h6125_command_ack", H6125CommandAck),
-    "H6099": ("h6099_command_ack", H6099CommandAck),
-    "H617A": ("h617a_command_ack", H617aCommandAck),
-    "H6199": ("h6199_command_ack", H6199CommandAck),
-    "H7020": ("h617a_command_ack", H617aCommandAck),
-}
-
-
-def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
-    if getattr(parsed.opcode, "name", None) is None:
-        return True
-    if parser in {"command_write", "h7020_command_write"} and parsed.opcode.name == "multi":
-        sub = getattr(parsed.body.sub, "name", None)
-        return (
-            sub is None
-            or (parser == "h7020_command_write" and sub == "static" and not parsed.is_static)
-            or (
-                parser == "h7020_command_write"
-                and sub == "music"
-                and getattr(parsed.body.sub_body.mode_id, "name", None) is None
-            )
-        )
-    if parser == "h6199_command_write" and parsed.opcode.name == "mode":
-        mode = getattr(parsed.body.sub_mode, "name", None)
-        return mode is None or (mode == "static_colour" and getattr(parsed.body.detail.operation, "name", None) is None)
-    return False
-
-
-def _parse_xor_frame(
-    frame: bytes,
-    grammar: str | None,
-    roots: dict[str, tuple[str, Any]],
-) -> ProtocolParseResult:
-    if len(frame) != 20:
-        return ProtocolParseResult(None, None, ProtocolParseRejection.INVALID_LENGTH)
-    if xor_checksum(frame[:-1]) != frame[-1]:
-        return ProtocolParseResult(None, None, ProtocolParseRejection.INVALID_CHECKSUM)
-    if grammar is None:
-        return ProtocolParseResult(None, None, ProtocolParseRejection.UNSUPPORTED_MODEL)
-    root = roots.get(grammar)
-    if root is None:
-        return ProtocolParseResult(None, None, ProtocolParseRejection.UNSUPPORTED_MODEL)
-    parser, root_type = root
-    try:
-        parsed = root_type(KaitaiStream(io.BytesIO(frame)))
-        parsed._read()
-    except KaitaiStructError, UnicodeDecodeError, EOFError:
-        return ProtocolParseResult(None, parser, ProtocolParseRejection.SCHEMA_REJECTED)
-    return ProtocolParseResult(parsed, parser, None)
 
 
 def parse_status_result(
@@ -628,168 +225,6 @@ def upload_ack_success(
 
 def parse_command(frame: bytes, model: str = "H617A", *, profile: ModelProfile | None = None) -> Any | None:
     return parse_command_result(frame, model, profile=profile).parsed
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedH6179Command:
-    operation: str
-    values: Mapping[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedH6179Status:
-    domain: str
-    values: Mapping[str, Any]
-
-
-def _values(**values: Any) -> Mapping[str, Any]:
-    return MappingProxyType(values)
-
-
-def _has_zero_opaque(body: Any) -> bool:
-    return not any(body.opaque)
-
-
-def _h6179_mode_values(body: Any, *, command: bool) -> Mapping[str, Any] | None:
-    mode = getattr(body.mode, "name", None)
-    if mode is None:
-        return None
-    detail = body.payload if command else body.detail
-    profile = get_profile("H6179")
-    if not _has_zero_opaque(detail):
-        return None
-    if mode == "static":
-        direct = detail.rgb_direct if command else detail.colour
-        preview = detail.rgb_preview if command else detail.temperature_colour
-        kelvin = int(detail.kelvin)
-        if kelvin and not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
-            return None
-        return _values(
-            mode=mode,
-            raw_mode=int(body.mode),
-            rgb=(int(direct.red), int(direct.green), int(direct.blue)),
-            kelvin=kelvin,
-            preview_rgb=(int(preview.red), int(preview.green), int(preview.blue)),
-        )
-    if mode == "scene":
-        return _values(mode=mode, raw_mode=int(body.mode), scene_code=int(detail.scene_id))
-    if mode == "diy":
-        return _values(mode=mode, raw_mode=int(body.mode), diy_code=int(detail.diy_id))
-    if mode == "music":
-        mode_field = detail.effect_id if command else detail.music_id
-        music_mode = getattr(mode_field, "name", None)
-        mode_id = int(mode_field)
-        if (
-            music_mode is None
-            or not profile.music_sensitivity_min <= int(detail.sensitivity) <= profile.music_sensitivity_max
-            or detail.colour_mode not in {0, 1}
-        ):
-            return None
-        colour = None
-        if detail.colour_mode:
-            colour = (
-                int(detail.fixed_colour.red),
-                int(detail.fixed_colour.green),
-                int(detail.fixed_colour.blue),
-            )
-        return _values(
-            mode=mode,
-            raw_mode=int(body.mode),
-            music_mode=music_mode,
-            music_mode_id=mode_id,
-            sensitivity=int(detail.sensitivity),
-            colour=colour,
-        )
-    return None
-
-
-def parse_h6179_command(frame: bytes) -> ParsedH6179Command | None:
-    """Parse an H6179 command into semantic values without exposing generated classes."""
-    parsed = parse_command(frame, "H6179")
-    if parsed is None:
-        return None
-    operation = getattr(parsed.opcode, "name", None)
-    if operation == "power":
-        if parsed.body.is_on not in {0, 1} or not _has_zero_opaque(parsed.body):
-            return None
-        values = _values(is_on=bool(parsed.body.is_on))
-    elif operation == "brightness":
-        if not 20 <= int(parsed.body.raw) <= 254 or not _has_zero_opaque(parsed.body):
-            return None
-        try:
-            brightness_pct = decode_h6179_brightness(int(parsed.body.raw))
-        except ValueError:
-            return None
-        values = _values(brightness_pct=brightness_pct)
-    elif operation == "mode":
-        mode_values = _h6179_mode_values(parsed.body, command=True)
-        if mode_values is None:
-            return None
-        values = mode_values
-    else:
-        return None
-    return ParsedH6179Command(operation=operation, values=values)
-
-
-def parse_h6179_status_query(frame: bytes) -> str | None:
-    """Return the semantic H6179 domain selected by a valid status query."""
-    parsed = _parse_xor_frame(frame, "H6179", _STATUS_QUERY_ROOTS).parsed
-    if parsed is None:
-        return None
-    domain = getattr(parsed.domain, "name", None)
-    if domain is None or not _has_zero_opaque(parsed.body):
-        return None
-    if domain == "mode" and getattr(parsed.body.selector, "name", None) != "current":
-        return None
-    if domain == "hardware" and getattr(parsed.body.selector, "name", None) != "primary":
-        return None
-    return cast(str, domain)
-
-
-def _parse_h6179_status(parsed: Any) -> ParsedH6179Status | None:
-    domain = getattr(parsed.domain, "name", None)
-    if domain is None:
-        return None
-    body = parsed.body
-    if domain != "mode" and not _has_zero_opaque(body):
-        return None
-    if domain == "power":
-        if body.state not in {0, 1}:
-            return None
-        values = _values(is_on=bool(body.is_on))
-    elif domain == "brightness":
-        values = _values(brightness_pct=decode_h6179_brightness(int(body.raw_brightness)))
-    elif domain in {"firmware", "hardware"}:
-        if domain == "hardware" and getattr(body.selector, "name", None) != "primary":
-            return None
-        values = _values(version=body.text or None)
-    elif domain == "mode":
-        mode_values = _h6179_mode_values(body, command=False)
-        if mode_values is None:
-            return None
-        values = mode_values
-    else:
-        return None
-    return ParsedH6179Status(domain=domain, values=values)
-
-
-def parse_h6179_status_result(frame: bytes) -> ProtocolParseResult:
-    """Parse an H6179 reply into stable semantic fields and preserve rejection detail."""
-    result = parse_status_result(frame, "H6179")
-    if result.parsed is None:
-        return result
-    try:
-        parsed = _parse_h6179_status(result.parsed)
-    except AttributeError, IndexError, TypeError, ValueError:
-        parsed = None
-    if parsed is None:
-        return ProtocolParseResult(None, result.parser, ProtocolParseRejection.SEMANTIC_REJECTED)
-    return ProtocolParseResult(parsed, result.parser, None)
-
-
-def parse_h6179_status(frame: bytes) -> ParsedH6179Status | None:
-    """Parse an H6179 reply into stable semantic fields."""
-    return cast(ParsedH6179Status | None, parse_h6179_status_result(frame).parsed)
 
 
 def boolean_control_name(operation: str) -> str | None:
@@ -1067,14 +502,6 @@ def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any
     if resolved != "H617A":
         raise ValueError(f"{model} has no generated command grammar")
     return CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
-
-
-def new_child(struct_type: Any, parent: Any) -> Any:
-    """Construct a read-write child struct bound to ``parent`` and its root."""
-    return struct_type(None, parent, parent._root)
-
-
-_child = new_child
 
 
 def _build_status_query(
@@ -1364,45 +791,6 @@ def build_physical_ic_count_query(model: str, *, profile: ModelProfile | None = 
     return _build_status_query("physical_ic_count", profile.command_grammar)
 
 
-INSTALLATION_DIRECTIONS = (2, 3, 4, 5)
-
-H6199_NATIVE_CONTROLS = ("strip_direction", "camera_position", "gradient", "camera_status")
-
-
-def build_h6199_control_query(control: str) -> bytes:
-    """Encode a named register query; callers must check runtime applicability."""
-    if control not in H6199_NATIVE_CONTROLS:
-        raise ValueError("Unknown H6199 control")
-    return _build_status_query(control, "H6199")
-
-
-def build_h6199_control(control: str, value: int) -> bytes:
-    """Encode an independently writable register, without changing the active mode."""
-    if control not in H6199_NATIVE_CONTROLS[:-1] or type(value) is not int or value not in (0, 1):
-        raise ValueError("H6199 control requires a writable setting and integer 0 or 1")
-    root = H6199CommandWrite()
-    root.header = b"\x33"
-    root.opcode = getattr(H6199CommandWrite.CommandOp, control)
-    root.body = _child(H6199ControlPayload.WriteValue, root)
-    root.body.value = value
-    root.body.unknown_tail = bytes(16)
-    return _serialize_xor(root)
-
-
-def parse_h6199_control(generated: Any) -> dict[str, int | str | None]:
-    """Read named generated fields, retaining unknown state rather than coercing it."""
-    control = getattr(generated.domain, "name", None)
-    if control in H6199_NATIVE_CONTROLS:
-        value = generated.body.value
-        if control == "camera_status":
-            return {control: getattr(value, "name", "unknown")}
-        return {control: int(value) if value in (0, 1) else None}
-    if control == "colour_mode" and getattr(generated.body.mode, "name", None) == "static_colour":
-        value = generated.body.detail.gradient
-        return {"gradient": int(value) if value in (0, 1) else None}
-    return {}
-
-
 def build_installation_direction(value: int, model: str, *, profile: ModelProfile | None = None) -> bytes:
     profile = profile or get_profile(model)
     if not profile.supports_installation_direction or profile.command_grammar != "H6099":
@@ -1483,10 +871,6 @@ def build_relative_brightness_query(model: str, *, profile: ModelProfile | None 
     raise ValueError(f"{model} has no generated relative-brightness query grammar")
 
 
-def build_h6199_subordinate_query(domain: int) -> bytes:
-    return build_subordinate_query(domain, "H6199")
-
-
 def build_subordinate_query(domain: int, model: str, *, profile: ModelProfile | None = None) -> bytes:
     if domain not in {0x20, 0x21}:
         raise ValueError("subordinate query domain must be 0x20 or 0x21")
@@ -1516,61 +900,6 @@ def build_segment_query(group: int, model: str = "H617A", *, profile: ModelProfi
         return _build_status_query("segments", resolved, segment_group=group)
     except KaitaiStructError as error:
         raise ValueError("segment query group is outside the selected grammar") from error
-
-
-def _rgb(parent: Any, red: int, green: int, blue: int) -> Any:
-    colour = _child(GoveeShared.Rgb, parent)
-    colour.red = max(0, min(255, red))
-    colour.green = max(0, min(255, green))
-    colour.blue = max(0, min(255, blue))
-    return colour
-
-
-def new_rgb(parent: Any, rgb: tuple[int, int, int]) -> Any:
-    """Construct a shared RGB triple bound to ``parent`` from a colour tuple."""
-    return _rgb(parent, *rgb)
-
-
-def h6199_diy_padding_len(palette_size: int) -> int:
-    """Return the zero padding required by the captured two-chunk DIY envelope."""
-    if not isinstance(palette_size, int) or isinstance(palette_size, bool) or palette_size < 0:
-        raise ValueError("H6199 DIY palette size must be a non-negative integer")
-    root = H6199EffectUpload()
-    content = _child(H6199EffectUpload.DiyContent, root)
-    content.palette_len = palette_size * 3
-    padding_len = int(content.padding_len)
-    if padding_len < 0:
-        raise ValueError("H6199 DIY palette does not fit the fixed two-chunk envelope")
-    return padding_len
-
-
-def build_h6199_palette_diy_envelope(
-    family: int,
-    variant: int,
-    speed: int,
-    palette: tuple[tuple[int, int, int], ...],
-) -> bytes:
-    root = H6199EffectUpload()
-    root.header = b"\x01"
-    root.chunk_count = root.diy_chunk_count
-    root.kind = H6199EffectUpload.BodyKind.diy
-    content = _child(H6199EffectUpload.DiyContent, root)
-    content.family = KaitaiStream.resolve_enum(H6199EffectUpload.EffectFamily, family)
-    content.variant = variant
-    content.speed = speed
-    content.palette_len = len(palette) * 3
-    content.palette = [new_rgb(content, colour) for colour in palette]
-    root.content = content
-    content.padding = [0] * h6199_diy_padding_len(len(palette))
-    check_generated_tree(root)
-    return _write(root, root.diy_chunk_count * A3_CHUNK_SIZE)
-
-
-def _a3_header(parent: Any) -> Any:
-    header = _child(GoveeCommon.A3Header, parent)
-    header.marker = b"\x01"
-    header.linecount = 2
-    return header
 
 
 def _parse_a3_scene(
@@ -1618,16 +947,6 @@ def parse_workshop_body(raw_param: bytes) -> tuple[Any, int]:
     return _parse_a3_scene(WorkshopBody, 2, raw_param, lambda root: root.padding)
 
 
-def parse_h6199_workshop_content(raw_param: bytes) -> tuple[Any, int]:
-    """Parse an H6199 Workshop parameter through the generated effect-upload content."""
-    if not isinstance(raw_param, bytes):
-        raise TypeError("Workshop parameter must be bytes")
-    root = H6199EffectUpload()
-    parsed = H6199EffectUpload.SceneContent(KaitaiStream(io.BytesIO(raw_param)), root, root)
-    parsed._read()
-    return parsed, len(parsed.padding)
-
-
 def parse_scene_type1_body(raw_param: bytes) -> tuple[Any, int]:
     """Parse a catalogue type-1 parameter, returning its tree and real trailing padding."""
     return _parse_a3_scene(SceneType1Body, 1, raw_param, lambda root: root.content.padding)
@@ -1648,29 +967,6 @@ def serialize_workshop_body_param(root: Any) -> bytes:
     """Serialize a built H617A WorkshopBody root and return its parameter bytes."""
     _set_effect_layer_lengths(root.layers)
     return _serialize_a3_scene_param(root)
-
-
-def serialize_h6199_workshop_content(content: Any) -> bytes:
-    """Serialize built H6199 Workshop content without its A3 envelope."""
-    _set_effect_layer_lengths(content.blocks)
-    check_generated_tree(content)
-    content_size = _serialized_length(content)
-    if content_size + 3 > _A3_MAX_CONTENT:
-        raise SceneParameterTooLargeError(
-            f"Workshop content is {content_size + 3} bytes but the A3 line count only encodes {_A3_MAX_CONTENT}"
-        )
-    return _write(content, content_size)
-
-
-def _set_effect_layer_lengths(records: list[Any]) -> None:
-    for record in records:
-        check_generated_tree(record.body)
-        body_length = _serialized_length(record.body)
-        if body_length > _U1_MAX:
-            raise SceneParameterTooLargeError(
-                f"layer body is {body_length} bytes but the record length field only encodes {_U1_MAX}"
-            )
-        record.len_body = body_length
 
 
 def serialize_scene_type1_body_param(root: Any) -> bytes:
@@ -1780,38 +1076,6 @@ def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None 
     return _serialize_xor(root)
 
 
-def encode_wire_brightness(percent: int, wire_range: tuple[int, int]) -> int:
-    """Map a 1..100 percentage onto a device register range with the app's linear rule."""
-    if not isinstance(percent, int) or isinstance(percent, bool) or not 1 <= percent <= 100:
-        raise ValueError("brightness must be an integer from 1 to 100")
-    low, high = wire_range
-    return (low * 100 + (percent - 1) * (high - low + 3)) // 100
-
-
-def decode_wire_brightness(raw: int, wire_range: tuple[int, int] | None) -> int:
-    """Invert encode_wire_brightness; clamp non-zero unsigned bytes to the declared range."""
-    if wire_range is None:
-        raise ValueError("brightness register range is not declared")
-    low, high = wire_range
-    if not isinstance(raw, int) or isinstance(raw, bool) or not 1 <= raw <= 255:
-        raise ValueError(f"brightness register must be an integer from {low} to {high}")
-    clamped = min(max(raw, low), high)
-    return max(1, min(100, 1 - (-((clamped - low) * 100) // (high - low + 3))))
-
-
-_H6179_BRIGHTNESS_RANGE = (20, 254)
-
-
-def encode_h6179_brightness(percent: int) -> int:
-    """Convert a semantic 1..100 brightness percentage to H6179 raw brightness."""
-    return encode_wire_brightness(percent, _H6179_BRIGHTNESS_RANGE)
-
-
-def decode_h6179_brightness(raw: int) -> int:
-    """Convert a candidate H6179 raw brightness byte to a percentage."""
-    return decode_wire_brightness(raw, _H6179_BRIGHTNESS_RANGE)
-
-
 def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
     root_type, _, brightness_type = _command_types(model, profile)
     root = root_type()
@@ -1902,27 +1166,6 @@ def _build_h601c_static_colour(mask: int, direct: tuple[int, int, int], kelvin: 
     detail.companion_rgb = _rgb(detail, *_TABLE_KELVIN_RGB.get(kelvin, bytes(3)))
     detail.padding = bytes(8)
     mode.detail = detail
-    root.body = mode
-    return _serialize_xor(root)
-
-
-def _build_h6179_static_colour(
-    *,
-    direct: tuple[int, int, int],
-    kelvin: int,
-    preview: tuple[int, int, int],
-) -> bytes:
-    root = H6179CommandWrite()
-    root.header = b"\x33"
-    root.opcode = H6179CommandWrite.CommandOpcode.mode
-    mode = _child(H6179CommandWrite.ModeBody, root)
-    mode.mode = H6179CommandWrite.ModeSelector.static
-    static = _child(H6179CommandWrite.StaticBody, mode)
-    static.rgb_direct = _rgb(static, *direct)
-    static.kelvin = kelvin
-    static.rgb_preview = _rgb(static, *preview)
-    static.opaque = bytes(8)
-    mode.payload = static
     root.body = mode
     return _serialize_xor(root)
 
@@ -2115,37 +1358,6 @@ def build_scene_activation(
     raise ValueError(f"{model} has no generated scene activation grammar")
 
 
-def build_h6199_scene(scene_code: int, music_code: int = 0) -> bytes:
-    root = H6199CommandWrite()
-    root.header = b"\x33"
-    root.opcode = H6199CommandWrite.CommandOp.mode
-    mode = _child(H6199CommandWrite.ModeBody, root)
-    mode.sub_mode = H6199CommandWrite.ModeSel.scene
-    detail = _child(H6199CommandWrite.SceneBody, mode)
-    detail.scene_id = max(0, min(0xFFFF, scene_code))
-    detail.music_code = max(0, min(0xFFFF, music_code))
-    detail.reserved = bytes(12)
-    mode.detail = detail
-    root.body = mode
-    return _serialize_xor(root)
-
-
-def build_h6179_scene(scene_code: int) -> bytes:
-    if not isinstance(scene_code, int) or isinstance(scene_code, bool) or not 0 <= scene_code <= 0xFF:
-        raise ValueError("H6179 scene code must be an integer from 0 to 255")
-    root = H6179CommandWrite()
-    root.header = b"\x33"
-    root.opcode = H6179CommandWrite.CommandOpcode.mode
-    mode = _child(H6179CommandWrite.ModeBody, root)
-    mode.mode = H6179CommandWrite.ModeSelector.scene
-    detail = _child(H6179CommandWrite.SceneBody, mode)
-    detail.scene_id = scene_code
-    detail.opaque = bytes(15)
-    mode.payload = detail
-    root.body = mode
-    return _serialize_xor(root)
-
-
 def build_h617a_scene(scene_code: int, *, scene_type: int = 0, root_type: Any = CommandWrite) -> bytes:
     root = root_type()
     root.header = b"\x33"
@@ -2210,22 +1422,6 @@ def build_h6099_diy_activation(diy_code: int = 254) -> bytes:
     detail = _child(H6099CommandWrite.DiyBody, mode)
     detail.code = diy_code
     mode.detail = detail
-    root.body = mode
-    return _serialize_xor(root)
-
-
-def build_h6179_diy_activation(diy_code: int) -> bytes:
-    if not isinstance(diy_code, int) or isinstance(diy_code, bool) or not 0 <= diy_code <= 0xFFFF:
-        raise ValueError("H6179 DIY code must be an integer from 0 to 65535")
-    root = H6179CommandWrite()
-    root.header = b"\x33"
-    root.opcode = H6179CommandWrite.CommandOpcode.mode
-    mode = _child(H6179CommandWrite.ModeBody, root)
-    mode.mode = H6179CommandWrite.ModeSelector.diy
-    detail = _child(H6179CommandWrite.DiyBody, mode)
-    detail.diy_id = diy_code
-    detail.opaque = bytes(14)
-    mode.payload = detail
     root.body = mode
     return _serialize_xor(root)
 
@@ -2318,16 +1514,6 @@ def parse_video_command(frame: bytes, model: str, *, profile: ModelProfile | Non
         (profile or get_profile(model)).video_grammar,
         {"H66A0-video": ("h66a0_video_command", H66a0VideoCommand)},
     ).parsed
-
-
-def build_h6199_video(
-    full_screen: bool,
-    game_mode: bool,
-    saturation: int,
-    sound_effects: bool,
-    softness: int,
-) -> bytes:
-    return build_video_mode("game" if game_mode else "movie", full_screen, saturation, sound_effects, softness, "H6199")
 
 
 def build_white_balance(red: int, blue: int | None, model: str, *, flag: int = 1) -> bytes:
@@ -2601,39 +1787,6 @@ def build_music_mode(
     return _serialize_xor(root)
 
 
-def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
-    """Re-encode authorised logical H6199 brightness and RGB through the legacy wire root."""
-    profile = H6199_PACT1_PROFILE
-    require_profile_packet(packet, profile)
-    parsed = parse_command(packet, profile=profile)
-    if parsed is None or parsed.opcode.name == "power":
-        return packet
-
-    root = H6199Pact1WireWrite()
-    root.header = b"\x33"
-    if parsed.opcode.name == "brightness":
-        root.opcode = H6199Pact1WireWrite.CommandOp.brightness
-        body = _child(H6199Pact1WireWrite.BrightnessBody, root)
-        wire_range = profile.brightness_wire_range
-        if wire_range is None:
-            raise ValueError("H6199 Pact 1 brightness register range is not declared")
-        body.register = encode_wire_brightness(int(parsed.body.percent), wire_range)
-        body.unknown_tail = bytes(16)
-    else:
-        root.opcode = H6199Pact1WireWrite.CommandOp.mode
-        body = _child(H6199Pact1WireWrite.ModeBody, root)
-        body.sub_mode = H6199Pact1WireWrite.ModeSel.static_colour
-        detail = _child(H6199Pact1WireWrite.StaticColourBody, body)
-        colour = parsed.body.detail
-        detail.rgb = _rgb(detail, int(colour.red), int(colour.green), int(colour.blue))
-        detail.kelvin = 0
-        detail.segment_mask = int(colour.segment_mask)
-        detail.unknown_tail = bytes(9)
-        body.detail = detail
-    root.body = body
-    return _serialize_xor(root)
-
-
 def _build_h6076_music_selector(
     mode_id: int, sensitivity: int, colour: tuple[int, int, int] | None, calm: bool
 ) -> bytes:
@@ -2662,381 +1815,4 @@ def _build_h6076_music_selector(
     return _serialize_xor(root)
 
 
-def _h6125_wire_music(selector: Any, *, legacy: bool = False, root_type: Any = H6125WireWrite) -> bytes:
-    root = root_type()
-    root.header = b"\x33"
-    root.opcode = root_type.CommandOp.mode
-    mode = _child(root_type.ModeBody, root)
-    mode.sub = root_type.ModeSub.legacy_music if legacy else root_type.ModeSub.music
-    wire = _child(root_type.LegacyMusicSelector if legacy else root_type.MusicSelector, mode)
-    mode_type = root_type.LegacyMusicMode if legacy else root_type.MusicMode
-    name = getattr(selector.mode_id, "name", None)
-    if name not in mode_type.__members__:
-        raise ValueError(f"{root_type.__name__} has no music selector for mode {selector.mode_id}")
-    wire.mode_id = mode_type[name]
-    wire.sensitivity = selector.sensitivity
-    if name in {"rhythm", "spectrum", "rolling"}:
-        colour = selector.rgb if selector.has_fixed_colour else None
-        rhythm = name == "rhythm" and not legacy
-        settings = _child(root_type.RhythmSettings if rhythm else root_type.ColourSettings, wire)
-        if rhythm:
-            settings.style = selector.style
-        settings.has_fixed_colour = int(colour is not None)
-        if colour is not None:
-            settings.rgb = _rgb(settings, colour.red, colour.green, colour.blue)
-        settings.padding = bytes(14 - (2 if rhythm else 1) - (3 if colour is not None else 0))
-    else:
-        settings = _child(root_type.OpaqueSettings, wire)
-        settings.padding = bytes(14)
-    wire.settings = settings
-    mode.sub_body = wire
-    root.body = mode
-    return _serialize_xor(root)
-
-
-def _register_brightness(root_type: Any, percent: int, wire_range: tuple[int, int]) -> bytes:
-    root = root_type()
-    root.header = b"\x33"
-    root.opcode = root_type.CommandOp.brightness
-    body = _child(root_type.BrightnessBody, root)
-    body.register = encode_wire_brightness(percent, wire_range)
-    body.padding = bytes(16)
-    root.body = body
-    return _serialize_xor(root)
-
-
-def _h6125_wire_colour(static: Any, *, root_type: Any = H6125WireWrite) -> bytes:
-    if static.static_sub != 1 or static.static_body.kelvin:
-        raise ValueError("Legacy RGB does not support Kelvin or segment brightness")
-    root = root_type()
-    root.header = b"\x33"
-    root.opcode = root_type.CommandOp.mode
-    mode = _child(root_type.ModeBody, root)
-    mode.sub = root_type.ModeSub.legacy_colour
-    body = _child(root_type.LegacyColour, mode)
-    rgb = static.static_body.rgb_direct
-    body.rgb = _rgb(body, rgb.red, rgb.green, rgb.blue)
-    body.segment_mask = static.static_body.mask.bits
-    body.padding = bytes(11)
-    mode.sub_body = body
-    root.body = mode
-    return _serialize_xor(root)
-
-
-@cache
-def h6102_outbound_transform_for(*, legacy_colour: bool = False) -> Callable[[bytes], bytes]:
-    """Re-encode H6102 Pact 1 brightness, 0x11 music, and optional 0x0b segment RGB."""
-
-    def transform(packet: bytes) -> bytes:
-        parsed = parse_command_result(packet, "H617A").parsed
-        if parsed is None:
-            return packet
-        if parsed.opcode.name == "brightness":
-            return _register_brightness(H6102WireWrite, int(parsed.body.percent), (20, 254))
-        if parsed.opcode.name == "multi" and parsed.body.sub.name == "music":
-            return _h6125_wire_music(parsed.body.sub_body, root_type=H6102WireWrite)
-        if legacy_colour and parsed.opcode.name == "multi" and parsed.body.sub.name == "static":
-            return _h6125_wire_colour(parsed.body.sub_body, root_type=H6102WireWrite)
-        return packet
-
-    return transform
-
-
 h6102_outbound_transform = h6102_outbound_transform_for()
-
-
-def h60a6_legacy_outbound_transform(packet: bytes) -> bytes:
-    """Re-encode the admitted whole-device static request through the Pact 1/1 root."""
-    parsed = parse_command_result(packet, "H617A").parsed
-    if parsed is None or not parsed.is_static:
-        return packet
-    static = parsed.body.sub_body
-    if static.static_sub != 1 or static.static_body.mask.bits != 1:
-        raise ValueError("Legacy whole-device colour does not support selected segments")
-    colour = static.static_body
-    root = H60a6LegacyWrite()
-    root.header = b"\x33\x05\x0d"
-    root.rgb_direct = _rgb(root, colour.rgb_direct.red, colour.rgb_direct.green, colour.rgb_direct.blue)
-    root.kelvin = colour.kelvin
-    root.rgb_preview = _rgb(root, colour.rgb_preview.red, colour.rgb_preview.green, colour.rgb_preview.blue)
-    root.unknown_tail = bytes(8)
-    return _serialize_xor(root)
-
-
-@cache
-def h6125_outbound_transform(
-    wire_range: tuple[int, int], *, legacy_colour: bool = False, legacy_music: bool = False
-) -> Callable[[bytes], bytes]:
-    """Re-encode the revision's differing fields through its generated wire roots."""
-
-    def transform(packet: bytes) -> bytes:
-        if legacy_colour:
-            query = _parse_xor_frame(packet, "H617A", _STATUS_QUERY_ROOTS).parsed
-            if query is not None and getattr(query.domain, "name", None) == "segments":
-                root = H6125LegacySegmentQuery()
-                root.header = b"\xaa"
-                root.domain = H6125LegacySegmentQuery.QueryDomain.segments
-                root.group = query.body.group
-                root.padding = bytes(16)
-                return _serialize_xor(root)
-        parsed = parse_command_result(packet, "H617A").parsed
-        if parsed is None:
-            return packet
-        if parsed.opcode.name == "brightness":
-            return _register_brightness(H6125WireWrite, int(parsed.body.percent), wire_range)
-        if parsed.opcode.name == "multi" and parsed.body.sub.name == "music":
-            return _h6125_wire_music(parsed.body.sub_body, legacy=legacy_music)
-        if legacy_colour and parsed.opcode.name == "multi" and parsed.body.sub.name == "static":
-            return _h6125_wire_colour(parsed.body.sub_body)
-        return packet
-
-    return transform
-
-
-def music_default_palette(variant: MusicVariant | None) -> tuple[tuple[int, int, int], ...]:
-    """Read the qualified default through its schema, not palette byte offsets."""
-    if variant is None or not variant.template:
-        raise ValueError("music palette layout is unqualified")
-    root = parse_music_parameters(variant, variant.template)
-    return tuple((int(rgb.red), int(rgb.green), int(rgb.blue)) for rgb in root.palette)
-
-
-def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
-    """Validate a complete retained body with the selected KSY, independent of authoring bounds."""
-    if not isinstance(body, bytes) or not body or len(body) > 255 * 17 - 3:
-        raise ValueError("invalid music body length")
-    if variant.layout in {
-        "h6099_music_parameters",
-        "h66a0_music_parameters",
-        "h1a42_music_parameters",
-        "h61f5_music_parameters",
-    }:
-        root_type = (
-            import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_parameters"
-            ).H61f5MusicParameters
-            if variant.layout == "h61f5_music_parameters"
-            else import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h1a42_music_parameters"
-            ).H1a42MusicParameters
-            if variant.layout == "h1a42_music_parameters"
-            else import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_parameters"
-            ).H66a0MusicParameters
-            if variant.layout == "h66a0_music_parameters"
-            else import_module(
-                "custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters"
-            ).H6099MusicParameters
-        )
-        root = root_type.from_bytes(body)
-    elif variant.layout in COMPANION_MUSIC_LAYOUTS:
-        root_type = {
-            "music_body": MusicBody,
-            "h6076_music_body": H6076MusicBody,
-            "h7025_music_body": H7025MusicBody,
-        }[variant.layout]
-        root = root_type.from_bytes(b"\x01\x02\x41" + body)
-    else:
-        raise ValueError("music palette layout is unqualified")
-    root._read()
-    if int(root.mode) != variant.mode_code or root.tail is None or not root._io.is_eof():
-        raise ValueError("music body does not match qualified layout")
-    return root
-
-
-def encode_music_parameters(
-    variant: MusicVariant,
-    parameters: dict[str, int | bool | str],
-    *,
-    palette: list[tuple[int, int, int]] | None,
-    calm: bool | None,
-    physical_ic_count: int | None = None,
-    preserve_companions: bool = False,
-) -> bytes:
-    """Edit named Kaitai fields; palette length never becomes an absolute tail offset."""
-    if variant.layout in {
-        "h6099_music_parameters",
-        "h66a0_music_parameters",
-        "h1a42_music_parameters",
-        "h61f5_music_parameters",
-    }:
-        return _encode_h6099_music_parameters(
-            variant, parameters, palette, calm, physical_ic_count, preserve_companions
-        )
-    if variant.layout not in COMPANION_MUSIC_LAYOUTS or not variant.evidence or not variant.template:
-        raise ValueError("music parameter layout is unqualified")
-    root = parse_music_parameters(variant, variant.template)
-    length = len(variant.template) + 3
-    if palette is not None:
-        if variant.palette_bounds is None or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]:
-            raise ValueError("palette count is outside music variant bounds")
-        if any(
-            len(rgb) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in rgb)
-            for rgb in palette
-        ):
-            raise ValueError("invalid music palette")
-        length += 3 * (len(palette) - root.num_palette)
-        root.num_palette = len(palette)
-        root.palette = [_rgb(root, *rgb) for rgb in palette]
-    tail = root.tail
-    for spec in variant.parameters:
-        if spec.profile_key not in parameters:
-            continue
-        if spec.requires_physical_ic_count and physical_ic_count is None:
-            raise ValueError("music parameter requires known physical IC count")
-        value = parameters[spec.profile_key]
-        if not hasattr(tail, spec.wire_field):
-            raise ValueError("music parameter field is absent from qualified layout")
-        if spec.wire_field == "background":
-            rgb = int(value)
-            tail.background = _rgb(tail, rgb >> 16, (rgb >> 8) & 255, rgb & 255)
-        elif spec.kind != "select":
-            setattr(tail, spec.wire_field, int(value))
-        elif not variant.direction_values:
-            current = getattr(tail, spec.wire_field)
-            if not isinstance(current, IntEnum) or str(value) not in spec.options:
-                raise ValueError("music parameter requires a qualified enum value")
-            setattr(tail, spec.wire_field, type(current)[str(value)])
-    if (
-        isinstance(tail, H617aControlPayload.HoppingTail)
-        and physical_ic_count is not None
-        and not preserve_companions
-        and (variant.requires_physical_ic_count or any(spec.requires_physical_ic_count for spec in variant.parameters))
-    ):
-        from math import ceil
-
-        tail.piece_count_min = max(1, ceil(physical_ic_count * 3 / 25))
-        tail.piece_count_max = max(1, ceil(physical_ic_count * 2 / 5))
-    if variant.gradient_companions is not None and "gradient" in parameters:
-        tail.speed = variant.gradient_companions[bool(parameters["gradient"])]
-    if variant.piano_derived_half and "key_count" in parameters:
-        if (
-            physical_ic_count is not None
-            and not preserve_companions
-            and any(spec.profile_key == "key_count" and spec.requires_physical_ic_count for spec in variant.parameters)
-        ):
-            from math import ceil
-
-            tail.speed = (
-                (10 if physical_ic_count <= 30 else 35)
-                if variant.physical_defaults == "rgbic"
-                else (10 if physical_ic_count < 30 else 35)
-            )
-            tail.off_minimum = ceil(physical_ic_count / 4) if physical_ic_count < 30 else 1
-        tail.off_maximum = max(tail.off_minimum, tail.key_count // 2)
-    if variant.direction_values and "direction" in parameters:
-        tail.start_point, tail.piece_num = {name: (start, pieces) for name, start, pieces in variant.direction_values}[
-            str(parameters["direction"])
-        ]
-        if physical_ic_count is not None and any(
-            spec.profile_key == "direction" and spec.requires_physical_ic_count for spec in variant.parameters
-        ):
-            tail.piece_len = 1 if physical_ic_count < 30 else 2 if tail.start_point == 1 else 3
-            if not preserve_companions:
-                tail.speed = 80 if physical_ic_count < 30 else 85
-    if variant.style_companions is not None and calm is not None:
-        value = variant.style_companions[calm]
-        if isinstance(tail, H617aControlPayload.ShinyTail):
-            tail.minimum_brightness, tail.maximum_brightness = value >> 8, value & 255
-        else:
-            tail.no_rhythm_speed, tail.rhythm_speed = 10, value
-    _check_tree(root)
-    return _write(root, length)[3:]
-
-
-def _encode_h6099_music_parameters(
-    variant: MusicVariant,
-    parameters: dict[str, int | bool | str],
-    palette: list[tuple[int, int, int]] | None,
-    calm: bool | None,
-    ic: int | None,
-    preserve_companions: bool = False,
-) -> bytes:
-    from math import ceil
-
-    root_type = (
-        import_module(
-            "custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_parameters"
-        ).H61f5MusicParameters
-        if variant.layout == "h61f5_music_parameters"
-        else import_module(
-            "custom_components.ha_govee_led_ble.generated_protocol.h1a42_music_parameters"
-        ).H1a42MusicParameters
-        if variant.layout == "h1a42_music_parameters"
-        else import_module(
-            "custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_parameters"
-        ).H66a0MusicParameters
-        if variant.layout == "h66a0_music_parameters"
-        else import_module(
-            "custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters"
-        ).H6099MusicParameters
-    )
-    root = root_type.from_bytes(variant.template)
-    root._read()
-    if root.mode != variant.mode_code or not variant.evidence:
-        raise ValueError("music template does not match qualified variant")
-    length = len(variant.template)
-    if palette is not None:
-        if variant.palette_bounds is None or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]:
-            raise ValueError("palette count is outside music variant bounds")
-        if any(len(rgb) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in rgb) for rgb in palette):
-            raise ValueError("invalid music palette")
-        length += 3 * (len(palette) - root.num_palette)
-        root.num_palette = len(palette)
-        root.palette = [_rgb(root, *rgb) for rgb in palette]
-    tail = root.tail
-    for spec in variant.parameters:
-        if spec.profile_key not in parameters:
-            continue
-        value = parameters[spec.profile_key]
-        if spec.wire_field == "background":
-            rgb = int(value)
-            tail.background = _rgb(tail, rgb >> 16, (rgb >> 8) & 255, rgb & 255)
-        elif spec.kind != "select":
-            setattr(tail, spec.wire_field, int(value))
-    if variant.requires_physical_ic_count and ic is None:
-        raise ValueError("music parameters require known physical IC count")
-    mode_name = getattr(root.mode, "name", None)
-    if mode_name == "bloom" and calm is not None:
-        tail.no_rhythm_speed, tail.rhythm_speed = 10, 20 if calm else 80
-    elif mode_name == "shiny" and calm is not None:
-        tail.minimum_brightness, tail.maximum_brightness = (20, 70) if calm else (5, 100)
-    elif ic is not None:
-        if mode_name == "separation" and (not preserve_companions or "gradient" in parameters):
-            tail.companion = (99, 98)[bool(tail.gradient)] if ic >= 30 else (97, 94)[bool(tail.gradient)]
-        elif mode_name == "hopping" and not preserve_companions:
-            tail.piece_count_min = max(1, ceil(ic * 3 / 25))
-            tail.piece_count_max = max(1, ceil(ic * 2 / 5))
-        elif mode_name == "piano_keys" and (not preserve_companions or "key_count" in parameters):
-            if not preserve_companions:
-                tail.speed = (
-                    (10 if ic <= 30 else 35) if variant.physical_defaults == "rgbic" else (10 if ic < 30 else 35)
-                )
-                tail.off_minimum = ceil(ic / 4) if ic < 30 else 1
-            tail.off_maximum = max(tail.off_minimum, tail.key_count // 2)
-        elif mode_name == "fountain" and (not preserve_companions or "direction" in parameters):
-            tail.start_point = {"clockwise": 0, "counterclockwise": 2, "two_way": 1}[str(parameters["direction"])]
-            two_way = tail.start_point == 1
-            tail.piece_length = 1 if ic < 30 else 2 if two_way else 3
-            tail.piece_count = (
-                (ic // 4 if two_way else ic // 3) if ic < 30 else ceil(ic / 10 if two_way else ic * 4 / 25)
-            )
-            if not preserve_companions:
-                tail.speed = 80 if ic < 30 else 85
-        elif mode_name == "day_and_night" and not preserve_companions:
-            if not variant.parameters:
-                tail.piece_count = max(1, ic // 2) if ic < 30 else ceil(ic * 7 / 50)
-                # MusicMode.d uses default subEffect[0] (piece) as speed and [1] (10/20) as fade.
-                tail.speed = max(1, min(50, tail.piece_count))
-                tail.gradient = 0
-            else:
-                if "segment_count" not in parameters:
-                    tail.piece_count = max(1, ic // 2) if ic < 30 else ceil(ic * 7 / 50)
-                if "speed" not in parameters:
-                    tail.speed = 10 if ic < 30 else 20
-    if any(
-        type(value) is int and not 0 <= value <= 255 for key, value in vars(tail).items() if not key.startswith("_")
-    ):
-        raise ValueError("physical IC geometry exceeds music wire bounds")
-    _check_tree(root)
-    return _write(root, length)

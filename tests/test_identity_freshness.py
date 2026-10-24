@@ -10,11 +10,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, ReadDomain, VideoFirmwareCondition
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    build_firmware_query,
-    build_h6199_subordinate_query,
-    build_hardware_query,
-)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_firmware_query, build_hardware_query
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_subordinate_query
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_control_states
 from tests.test_video_semantics import alternate

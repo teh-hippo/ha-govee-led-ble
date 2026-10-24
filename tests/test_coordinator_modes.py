@@ -10,7 +10,6 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_modes import PreModeSnapshot
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityWorkflow, release_capability
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    build_h6199_video,
     build_music_mode,
     build_power,
     build_scene_activation,
@@ -23,6 +22,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.light_services import apply_active_video_mode
 from custom_components.ha_govee_led_ble.music_commands import build_music_params
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.test_music_commands import _music_transport

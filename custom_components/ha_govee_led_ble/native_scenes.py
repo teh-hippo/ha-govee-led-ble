@@ -8,17 +8,12 @@ from kaitaistruct import KaitaiStructError
 
 from .const import ModelProfile, get_profile
 from .effect_domain import LayeredScene, NativeEffect, PaletteScene
-from .generated_protocol_adapter import (
-    H60a6DiyBody,
-    H60a6EffectFrame,
-    H60a6PaintBody,
-    build_scene_activation,
-    serialize_native_body,
-)
+from .generated_protocol_adapter import build_scene_activation
 from .h60a6_effects import encode_native_body
 from .layered_scene import CatalogueRef, LayeredEffect
 from .layered_scene_decoder import decode_layered_scene, encode_layered_scene
 from .palette_scene_decoder import encode_palette_scene
+from .protocol_core import H60a6DiyBody, H60a6EffectFrame, H60a6PaintBody, serialize_native_body
 from .scenes import SceneEntry, SceneSpeed, scene_for_profile, scene_selector_code
 from .transport import fragment_a3, fragment_a4
 

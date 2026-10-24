@@ -26,8 +26,9 @@ from custom_components.ha_govee_led_ble.effect_persistence_validation import Eff
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase, PreviewWriteDisposition
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile, compiled_observation
 from custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters import H6099MusicParameters
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import MusicBody, build_brightness
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
+from custom_components.ha_govee_led_ble.protocol_core import MusicBody
 from custom_components.ha_govee_led_ble.transport import reassemble_a3
 from tests.test_effect_preview import _manager, _open
 from tests.test_h6099_music import frame

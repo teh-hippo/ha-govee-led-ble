@@ -63,7 +63,6 @@ from custom_components.ha_govee_led_ble.effect_websocket import _device_payload
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_h617a_scene,
-    build_h6199_video,
     build_power,
 )
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
@@ -86,6 +85,7 @@ from custom_components.ha_govee_led_ble.light_services import (
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENE_ENTRIES, SCENES
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore

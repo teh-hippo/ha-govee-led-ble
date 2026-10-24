@@ -13,7 +13,7 @@ from custom_components.ha_govee_led_ble.coordinator_status import (
     decode_status_frame_result,
     parse_color_mode,
 )
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import ProtocolParseRejection
+from custom_components.ha_govee_led_ble.protocol_core import ProtocolParseRejection
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 

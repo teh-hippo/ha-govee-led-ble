@@ -64,15 +64,15 @@ from custom_components.ha_govee_led_ble.effect_runtime import resolve_diy_code
 from custom_components.ha_govee_led_ble.effect_scene_defaults import NativeSceneDefaultRepository
 from custom_components.ha_govee_led_ble.effect_template_defaults import CatalogueTemplateDefaultRepository
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    MusicBody,
     build_blank_screen,
-    build_h6199_video,
     build_power,
     build_relative_brightness,
     build_white_balance,
 )
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
+from custom_components.ha_govee_led_ble.protocol_core import MusicBody
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore

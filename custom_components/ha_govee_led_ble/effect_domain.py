@@ -22,7 +22,6 @@ from .effect_limits import (
     validate_revision,
     validate_timestamp,
 )
-from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES
 from .layered_scene import AppliedArea as AppliedArea
 from .layered_scene import BrightnessOrder as BrightnessOrder
 from .layered_scene import BrightnessPattern as BrightnessPattern
@@ -58,6 +57,7 @@ from .layered_scene import (
 )
 from .native_effect import NativeEffect as NativeEffect
 from .native_effect import native_effect_from_value, native_effect_to_value
+from .protocol_core import MAX_SCENE_PARAM_BYTES
 
 EFFECT_SCHEMA_VERSION = 2
 MAX_PALETTE_COLOURS = 0xFF // 3  # DIY palettes encode their RGB byte length in one byte.

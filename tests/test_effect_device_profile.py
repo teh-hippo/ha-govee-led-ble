@@ -27,10 +27,11 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_TEMPLATE_DEFAULT_GET,
 )
 from custom_components.ha_govee_led_ble.effect_websocket_payloads import item_summary
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, music_default_palette
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
 from custom_components.ha_govee_led_ble.music_commands import music_body_parameters, prepare_music_profile_writes
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
+from custom_components.ha_govee_led_ble.protocol_music_params import music_default_palette
 from tests.test_effect_preview import _manager, _open
 from tests.test_effect_websocket import _setup_backend
 from tests.test_h6099_music import frame

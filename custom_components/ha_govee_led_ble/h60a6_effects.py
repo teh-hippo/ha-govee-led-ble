@@ -8,7 +8,6 @@ from typing import Any
 
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
-from .generated_protocol_adapter import GoveeShared, H60a6DiyBody, H60a6PaintBody
 from .layered_scene import CatalogueRef
 from .native_effect import (
     NativeDiyLayer,
@@ -18,6 +17,7 @@ from .native_effect import (
     NativePaintGroup,
     NativePaintLayer,
 )
+from .protocol_core import GoveeShared, H60a6DiyBody, H60a6PaintBody
 
 
 def _rgb(value: Any) -> tuple[int, int, int]:
@@ -113,7 +113,7 @@ def _colour(colour: tuple[int, int, int]) -> Any:
 
 
 def _serialise(value: Any) -> bytes:
-    from .generated_protocol_adapter import serialize_native_body
+    from .protocol_core import serialize_native_body
 
     try:
         return serialize_native_body(value)

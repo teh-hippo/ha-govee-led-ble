@@ -35,12 +35,13 @@ from .effect_domain import (
     effect_content_to_dict,
 )
 from .generated_protocol.diy_type03 import DiyType03  # type: ignore[attr-defined]
-from .generated_protocol_adapter import H60a6PaintBody, music_default_palette
 from .h60a6_effects import native_diy_preset
 from .layered_scene_decoder import decode_workshop_effect
 from .music_commands import music_default_available
 from .music_protocol import music_code_for, music_codebook
 from .music_semantics import music_parameters_available, music_params_for_mode, music_variant
+from .protocol_core import H60a6PaintBody
+from .protocol_music_params import music_default_palette
 
 EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION: Final = 11
 LEGACY_CATALOGUE_SKU: Final = "H617A"

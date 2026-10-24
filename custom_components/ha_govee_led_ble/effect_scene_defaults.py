@@ -29,7 +29,7 @@ from .effect_persistence_validation import (
     required_persisted_string,
 )
 from .effect_store import HomeAssistantVersionedDocumentStore, VersionedDocumentStore
-from .generated_protocol_adapter import MAX_SCENE_PARAM_BYTES
+from .protocol_core import MAX_SCENE_PARAM_BYTES
 
 SCENE_DEFAULT_STORE_VERSION: Final = 1
 SCENE_DEFAULT_STORE_MINOR_VERSION: Final = 0

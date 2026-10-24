@@ -16,8 +16,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
     build_colour_mode_query,
     build_firmware_query,
-    build_h6199_control,
-    build_h6199_control_query,
     build_hardware_query,
     build_power_query,
     build_relative_brightness_query,
@@ -28,6 +26,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.music_commands import resolve_music_profile
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_control, build_h6199_control_query
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import (
     h6199_camera_controls_state,

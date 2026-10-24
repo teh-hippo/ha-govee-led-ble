@@ -29,7 +29,7 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     compiled_observation,
 )
 from custom_components.ha_govee_led_ble.effect_selector import compatible_saved_effects
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import MusicBody, build_brightness, build_power
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, build_power
 from custom_components.ha_govee_led_ble.music_commands import (
     build_music_params,
     prepare_music_profile_writes,
@@ -42,6 +42,7 @@ from custom_components.ha_govee_led_ble.music_semantics import (
     capture_music_parameters,
     music_variant,
 )
+from custom_components.ha_govee_led_ble.protocol_core import MusicBody
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, reassemble_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 

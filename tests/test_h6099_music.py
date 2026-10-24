@@ -16,7 +16,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_music_mode,
     build_physical_ic_count_query,
-    music_default_palette,
     parse_physical_ic_count,
     parse_status_result,
     require_profile_packet,
@@ -27,6 +26,7 @@ from custom_components.ha_govee_led_ble.music_commands import (
     prepare_music_request,
 )
 from custom_components.ha_govee_led_ble.music_semantics import music_params_for_mode, music_variant
+from custom_components.ha_govee_led_ble.protocol_music_params import music_default_palette
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 from tests.test_music_commands import _music_transport
 

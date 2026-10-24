@@ -33,10 +33,6 @@ from custom_components.ha_govee_led_ble.effect_domain import (
     effect_content_to_dict,
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _A3_MAX_CONTENT,
-    MAX_SCENE_PARAM_BYTES,
-    _check_tree,
-    _write,
     build_h617a_scene,
     parse_scene_type1_body_param,
 )
@@ -46,6 +42,7 @@ from custom_components.ha_govee_led_ble.palette_scene_decoder import (
     decode_palette_scene,
     encode_palette_scene,
 )
+from custom_components.ha_govee_led_ble.protocol_core import _A3_MAX_CONTENT, MAX_SCENE_PARAM_BYTES, _check_tree, _write
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
 from custom_components.ha_govee_led_ble.transport import fragment_a3
 

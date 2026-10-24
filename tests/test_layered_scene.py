@@ -15,16 +15,7 @@ from kaitaistruct import KaitaiStructError
 from custom_components.ha_govee_led_ble.effect_compiler import ActivationMode, compile_effect
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem
 from custom_components.ha_govee_led_ble.generated_protocol.scene_body import SceneBody
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
-    _A3_MAX_CONTENT,
-    _U1_MAX,
-    MAX_SCENE_PARAM_BYTES,
-    _check_tree,
-    _write,
-    build_h617a_scene,
-    build_h6199_scene,
-    parse_scene_body_param,
-)
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene, parse_scene_body_param
 from custom_components.ha_govee_led_ble.layered_scene import (
     _LAYER_UNKNOWN_FLAGS_MASK,
     _MOVEMENT_UNKNOWN_FLAGS_MASK,
@@ -50,6 +41,14 @@ from custom_components.ha_govee_led_ble.layered_scene_decoder import (
     decode_layered_scene,
     encode_layered_scene,
 )
+from custom_components.ha_govee_led_ble.protocol_core import (
+    _A3_MAX_CONTENT,
+    _U1_MAX,
+    MAX_SCENE_PARAM_BYTES,
+    _check_tree,
+    _write,
+)
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3
 

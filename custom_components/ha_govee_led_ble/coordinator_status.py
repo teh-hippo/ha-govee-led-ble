@@ -6,14 +6,13 @@ from typing import Any, cast
 
 from .const import PERCENT_BRIGHTNESS_STATUS_GRAMMARS, VIDEO_GRAMMARS, ModelProfile, ReadDomain, get_profile
 from .generated_protocol_adapter import (
-    ParsedH6179Status,
-    ProtocolParseResult,
     boolean_control_is_authorized,
     boolean_control_name,
-    parse_h6179_status_result,
     parse_status_result,
     video_parameters_from_detail,
 )
+from .protocol_core import ProtocolParseResult
+from .protocol_h6179 import ParsedH6179Status, parse_h6179_status_result
 from .scenes import scene_key_for_code
 
 StatusDomain = ReadDomain

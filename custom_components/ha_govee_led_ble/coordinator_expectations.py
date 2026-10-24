@@ -4,14 +4,10 @@ from typing import Any
 
 from .const import MODE_COMMAND_GRAMMARS, VIDEO_GRAMMARS, ModelProfile, get_profile
 from .coordinator_status import ParsedMode
-from .generated_protocol_adapter import (
-    parse_command,
-    parse_h6179_command,
-    parse_video_command,
-    video_parameters_from_detail,
-)
+from .generated_protocol_adapter import parse_command, parse_video_command, video_parameters_from_detail
 from .light_commands import parse_static_write
 from .music_protocol import music_slug_for
+from .protocol_h6179 import parse_h6179_command
 from .scenes import scene_key_for_code
 
 

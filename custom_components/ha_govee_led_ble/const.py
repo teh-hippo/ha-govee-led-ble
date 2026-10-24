@@ -1430,7 +1430,7 @@ PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H6099", "H6199", "H66A0"})
 
 
 def _h6199_pact1_wire(packet: bytes) -> bytes:
-    from .generated_protocol_adapter import h6199_pact1_outbound_transform
+    from .protocol_transforms import h6199_pact1_outbound_transform
 
     return h6199_pact1_outbound_transform(packet)
 
@@ -1467,11 +1467,8 @@ def _h6125_profile(
 ) -> ModelProfile:
     """Resolve independently gated H6125 controls from the controller's full identity."""
     from .firmware_version import FirmwareVersion
-    from .generated_protocol_adapter import (
-        H6125IntermediateStatusReply,
-        H6125LegacyStatusReply,
-        h6125_outbound_transform,
-    )
+    from .protocol_core import H6125IntermediateStatusReply, H6125LegacyStatusReply
+    from .protocol_transforms import h6125_outbound_transform
 
     fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
     if fw is None or hw is None:
@@ -1604,7 +1601,7 @@ def device_profile(
         ):
             profile = replace(profile, boolean_controls=frozenset(), supports_power_on_behaviour=False)
         if model == "H60A6" and (pact_type, pact_code) == (1, 1):
-            from .generated_protocol_adapter import h60a6_legacy_outbound_transform
+            from .protocol_transforms import h60a6_legacy_outbound_transform
 
             return replace(
                 profile,

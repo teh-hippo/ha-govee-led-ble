@@ -7,13 +7,7 @@ from typing import Any
 from kaitaistruct import KaitaiStructError
 
 from .const import ModelProfile, get_profile
-from .generated_protocol_adapter import (
-    build_music_mode,
-    build_power,
-    encode_music_parameters,
-    music_default_palette,
-    parse_music_parameters,
-)
+from .generated_protocol_adapter import build_music_mode, build_power
 from .music_protocol import music_code_for, music_codebook, music_mode_has_parameter_write
 from .music_semantics import (
     COMPANION_MUSIC_LAYOUTS,
@@ -25,6 +19,7 @@ from .music_semantics import (
     music_variant,
     retained_music_profile,
 )
+from .protocol_music_params import encode_music_parameters, music_default_palette, parse_music_parameters
 from .transport import fragment_a3
 
 

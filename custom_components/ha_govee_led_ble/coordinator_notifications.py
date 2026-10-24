@@ -24,13 +24,10 @@ from .coordinator_status import (
 )
 from .generated_protocol_adapter import (
     BulkStatusCollector,
-    ParsedH6179Status,
     build_bulk_status_query,
-    decode_wire_brightness,
     is_bulk_status_frame,
     parse_command_ack_result,
     parse_command_result,
-    parse_h6199_control,
     parse_physical_ic_count,
     parse_zone_notification,
     upload_ack_success,
@@ -42,6 +39,9 @@ from .light_commands import (
 from .music_semantics import (
     music_body_params_for_mode,
 )
+from .protocol_core import decode_wire_brightness
+from .protocol_h6179 import ParsedH6179Status
+from .protocol_h6199 import parse_h6199_control
 
 _LOGGER = logging.getLogger(__name__)
 
