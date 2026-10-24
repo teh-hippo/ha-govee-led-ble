@@ -42,6 +42,7 @@ Effect Studio adds a dedicated panel to the Home Assistant sidebar for lights th
 Saved effects are stored in Home Assistant and exposed directly through the standard `light` entity effect selector for use in dashboards, scripts, and automations.  Non-admin users can browse scenes and saved effects in read-only mode.
 
 Experimental devices show a small, non-blocking notice with an optional **Share feedback** action.
+Their native Home Assistant device information also marks the model as Experimental while retaining the exact SKU and the Studio configuration link.
 It displays the observed model, hardware and firmware, and prepares a report to copy into the model's existing [owner-confirmation issue](https://github.com/teh-hippo/ha-govee-led-ble/issues/442).
 Sharing is voluntary; nothing is uploaded automatically and no controls depend on reporting.
 Fill missing versions from the Govee app and identify that source.  Review diagnostics before attaching them because GitHub comments and attachments are public.
