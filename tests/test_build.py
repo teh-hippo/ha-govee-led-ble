@@ -113,6 +113,7 @@ printf 'v{node_version}\\n'
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -125,7 +126,14 @@ output.mkdir(parents=True, exist_ok=True)
 inputs = [Path(value) for value in sys.argv if value.endswith(".ksy")]
 digest = hashlib.sha256(b"".join(path.read_bytes() for path in inputs)).hexdigest()
 for path in inputs:
-    (output / f"{path.stem}.py").write_text(f'BUILD = "{digest}"\\n', encoding="utf-8")
+    source = f'BUILD = "{digest}"\\n'
+    if path.stem == "sample" and (order := os.environ.get("FAKE_IMPORT_ORDER")):
+        prefix = (
+            f"from {sys.argv[sys.argv.index('--python-package') + 1]} import "
+            if "--python-package" in sys.argv else "import "
+        )
+        source = "import sys\\n" + "".join(prefix + name + "\\n" for name in order.split(",")) + source
+    (output / f"{path.stem}.py").write_text(source, encoding="utf-8")
 """,
     )
     _executable(
@@ -269,6 +277,30 @@ def test_protocol_build_tracks_and_generates_nested_roots(build_repo: tuple[Path
     _make(root, env, "protocol")
     assert candidate.stat().st_mtime_ns > first_mtime
 
+    _make(root, env, "verify-protocol")
+
+
+def test_protocol_generation_canonicalises_peer_imports(build_repo: tuple[Path, dict[str, str]]) -> None:
+    root, env = build_repo
+    _write(root / "scripts/kaitai-runtime-roots.txt", "sample\nshared\nspeculative/candidate\n")
+    _write(root / "scripts/kaitai-runtime-outputs.txt", "__init__.py\nsample.py\nshared.py\ncandidate.py\n")
+    env["FAKE_IMPORT_ORDER"] = "shared,candidate"
+
+    _make(root, env, "protocol", "verify-protocol")
+
+    runtime = root / "custom_components/ha_govee_led_ble/generated_protocol/sample.py"
+    assert runtime.read_text(encoding="utf-8").splitlines()[:3] == [
+        "import sys",
+        "from custom_components.ha_govee_led_ble.generated_protocol import candidate",
+        "from custom_components.ha_govee_led_ble.generated_protocol import shared",
+    ]
+    assert (root / ".build/verify-protocol/all/sample.py").read_text(encoding="utf-8").splitlines()[:3] == [
+        "import sys",
+        "import candidate",
+        "import shared",
+    ]
+
+    env["FAKE_IMPORT_ORDER"] = "candidate,shared"
     _make(root, env, "verify-protocol")
 
 

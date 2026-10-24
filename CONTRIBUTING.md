@@ -195,6 +195,8 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 `generated_protocol/` is a gitignored build output.  Run `make protocol` after a fresh clone, a new worktree, or any `.ksy` change, before running `pytest` directly.
 
+Generation canonicalises peer-schema import order in staging.  Preserve that step so identical schema inputs produce byte-identical runtime packages.
+
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
 Browser tests run independently against source fixtures in the official Playwright image, whose version must match `@playwright/test`.

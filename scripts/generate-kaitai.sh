@@ -80,6 +80,29 @@ done
   "${package_args[@]}" \
   "${inputs[@]}"
 
+# Peer-schema imports come from an unordered compiler collection.
+python3 - "$stage" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+paths = list(Path(sys.argv[1]).glob("*.py"))
+modules = {path.stem for path in paths}
+for path in paths:
+    source = path.read_text(encoding="utf-8")
+    lines = source.splitlines(keepends=True)
+    imports = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.Import | ast.ImportFrom)
+        and all(alias.name in modules for alias in node.names)
+    ]
+    blocks = sorted("".join(lines[node.lineno - 1 : node.end_lineno]) for node in imports)
+    for node, block in reversed(list(zip(imports, blocks, strict=True))):
+        lines[node.lineno - 1 : node.end_lineno] = block.splitlines(keepends=True)
+    path.write_text("".join(lines), encoding="utf-8")
+PY
+
 if [[ "$mode" == runtime ]]; then
   : >"$stage/__init__.py"
   mapfile -t expected < <(sed -e '/^[[:space:]]*$/d' -e '/^[[:space:]]*#/d' "$outputs_file" | LC_ALL=C sort)
