@@ -309,8 +309,14 @@ export class GoveeLedEffectStudio extends LitElement {
         ${this.model.experimentalSupport
           ? html`
               <p class="support-notice" role="note">
-                ${this.model.selectedModel} Effect Studio support is
-                Experimental and has not been physically validated.
+                <span><strong>Experimental support.</strong> If you'd like, share your experience.</span>
+                ${this.model.selectedDevice?.confirmation_issue
+                  ? html`<button
+                      class="secondary"
+                      type="button"
+                      @click=${(event: Event) => this.modal.requestFeedback(event.currentTarget as HTMLElement)}
+                    >Share feedback</button>`
+                  : nothing}
               </p>
             `
           : nothing}
@@ -331,6 +337,9 @@ export class GoveeLedEffectStudio extends LitElement {
         : nothing}
       ${this.model.modalState?.kind === "error"
         ? this.renderErrorDialog()
+        : nothing}
+      ${this.model.modalState?.kind === "feedback"
+        ? this.renderFeedbackDialog()
         : nothing}
     `;
   }
@@ -1308,6 +1317,85 @@ export class GoveeLedEffectStudio extends LitElement {
         </section>
       </div>
     `;
+  }
+
+  private renderFeedbackDialog() {
+    const dialog = this.model.modalState;
+    if (dialog?.kind !== "feedback") return nothing;
+    const device = dialog.device;
+    return html`
+      <div class="dialog-backdrop" @click=${() => this.modal.closeFeedback()}>
+        <section
+          class="dialog-card feedback-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="feedback-title"
+          aria-describedby="feedback-description"
+          tabindex="-1"
+          @click=${(event: Event) => event.stopPropagation()}
+          @keydown=${(event: KeyboardEvent) => this.modal.dialogKeyDown(event, () => this.modal.closeFeedback())}
+        >
+          <h2 id="feedback-title">Share ${device.model} feedback</h2>
+          <p id="feedback-description">
+            Sharing is optional.  Nothing is sent automatically.
+            GitHub comments and attachments are public.
+          </p>
+          <dl class="feedback-identity">
+            <dt>Model</dt><dd>${device.model}</dd>
+            <dt>Hardware</dt><dd>${device.hw_version ?? "Not yet observed"}</dd>
+            <dt>Firmware</dt><dd>${device.fw_version ?? "Not yet observed"}</dd>
+            <dt>Integration</dt><dd>${this.model.integrationVersion ?? "Not available"}</dd>
+          </dl>
+          <p>Details are captured when you open this report.  Reopen to refresh.
+            Fill any missing versions from the Govee app and identify that source.</p>
+          <label class="field">
+            Report to copy
+            <textarea readonly rows="10" spellcheck="false" .value=${dialog.report}></textarea>
+          </label>
+          <p>Copy the report, open this model's issue, and paste it into a comment.
+            Describe only what you tried.  You do not need to test every feature.</p>
+          <p>If something failed, download diagnostics immediately afterwards.
+            Review the file before attaching it; known redactions do not guarantee anonymity.
+            ${this.isAdmin
+              ? html`<a
+                    href=${integrationSettingsPath(this.panel?.config?.configuration_path ?? "/config/integrations", device.config_entry_id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >Open integration settings (new tab)</a>
+                  and use the entry's menu to download diagnostics.`
+              : html`Ask an administrator to download diagnostics from the integration's settings.`}
+          </p>
+          ${dialog.copyMessage ? html`<p role="status">${dialog.copyMessage}</p>` : nothing}
+          <div class="dialog-actions">
+            <button class="secondary" type="button" @click=${() => this.modal.closeFeedback()}>Close</button>
+            <button class="secondary" type="button" @click=${() => void this.copyFeedbackReport()}>Copy report</button>
+            <a
+              href=${`https://github.com/teh-hippo/ha-govee-led-ble/issues/${device.confirmation_issue}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >Open model issue on GitHub (new tab)</a>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  private async copyFeedbackReport(): Promise<void> {
+    const dialog = this.model.modalState;
+    if (dialog?.kind !== "feedback") return;
+    let copyMessage = "Report copied.  Paste it into a comment on the model issue.";
+    if (!navigator.clipboard?.writeText) {
+      copyMessage = "Automatic copying is unavailable.  Select the report text and copy it using your device's menu.";
+    } else {
+      try {
+        await navigator.clipboard.writeText(dialog.report);
+      } catch {
+        copyMessage = "Automatic copying failed.  Select the report text and copy it using your device's menu.";
+      }
+    }
+    if (this.model.modalState === dialog) {
+      this.model.patch({ modalState: { ...dialog, copyMessage } });
+    }
   }
 
   private renderAdvancedEditor() {

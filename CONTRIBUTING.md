@@ -2,7 +2,9 @@
 
 ## Requesting support for another model
 
-Open one GitHub issue for the exact model and apply its exact SKU label (for example `H617A`, `H6199`, or `H6076`); pull requests for a specific model should carry the same SKU label.  Include:
+Open a support-request issue for the exact model and apply its exact SKU label (for example `H617A`, `H6199`, or `H6076`); pull requests for a specific model should carry the same SKU label.
+For owner confirmations, comment on the model's confirmation child under [the owner-confirmation tracker](https://github.com/teh-hippo/ha-govee-led-ble/issues/442) instead of opening another confirmation issue.
+Include:
 
 - the SKU printed on the device;
 - the BLE local-name prefix with its unique suffix removed, for example `Govee_H617P_...`;
@@ -78,6 +80,20 @@ The progression is:
 Prerelease versions are stamped only in packaged artifacts when published for targeted testing; feature branches and `master` retain the current stable source version.
 
 ## Device-owner validation
+
+Sharing confirmations is voluntary and never unlocks controls or blocks normal use.
+Each Experimental model must have a new, canonical confirmation child under the owner-confirmation tracker before release.
+Keep its issue number in the exact-SKU `ModelProfile.confirmation_issue`; compatible codecs or replaced profiles must not inherit another model's issue.
+Historical support requests remain separate context.  Keep confirmation links valid after promotion or issue closure so older releases still reach the correct thread.
+
+Use a consistent child-issue description: exact SKU and current support status, optional reporting instructions, a short comment template, and diagnostics/privacy guidance.
+The template asks for exact model, hardware and firmware versions, integration version, version source, what was tried, visible successes/failures, untested features and restoration problems.
+Do not infer support for an unreported revision or promote a model automatically from successful writes.
+
+Effect Studio's Share feedback action prepares a selectable report and opens the existing model issue; it does not create issues or upload anything.
+Owners edit the report in their GitHub comment.  Missing versions stay unknown until supplied from an identified source such as the Govee app.
+Feedback presentation uses existing observations only and must not trigger BLE queries, create Repairs or notifications, or interfere with editor work.
+Known diagnostic redactions do not guarantee anonymity; owners should review downloads before attaching them publicly.
 
 The first validation request should stay short: provide the release or build link, explain installation or reconfiguration, ask the owner to try the available features, and request redacted diagnostics immediately after anything fails.  Include the privacy warning above.
 

@@ -786,6 +786,7 @@ def test_editor_contract_reports_first_slice_boundaries() -> None:
 
     assert api == {
         "api_version": EDITOR_API_VERSION,
+        "integration_version": None,
         "effect_schema_version": 2,
         "compiler_version": EFFECT_COMPILER_VERSION,
         "limits": {

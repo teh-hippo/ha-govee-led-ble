@@ -93,6 +93,12 @@ def _device_payload(model: str, profile: ModelProfile, config_entry_id: str) -> 
         physical_ic_count=profile.physical_ic_count,
         profile=profile,
     ).to_dict()
+    device.update(
+        hw_version="1.00.01" if model == "H617A" else None,
+        fw_version="1.02.03" if model == "H617A" else None,
+        subordinate_20_version=None,
+        subordinate_21_version=None,
+    )
     device.update(device_catalogue_settings(model, profile=profile))
     device["active_state"] = None
     device["preview_health"] = PreviewHealthStatus(
@@ -302,7 +308,11 @@ def rendered_data() -> str:
     document = {
         "schema_version": 1,
         "responses": {
-            "editor_info": EditorApiInfo().to_dict(),
+            "editor_info": EditorApiInfo(
+                integration_version=json.loads(
+                    (REPO_ROOT / "custom_components" / "ha_govee_led_ble" / "manifest.json").read_text()
+                )["version"],
+            ).to_dict(),
             "devices": devices,
             "custom_catalogue": catalogue,
             "library_snapshot": library_snapshot_payload(library_snapshot),

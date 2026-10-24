@@ -1,10 +1,105 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { GoveeCustomEffectEditor } from "../../src/custom-effect-editor";
 import type { NativeEffectContent } from "../../src/types";
+import type { HomeAssistant } from "../../src/types";
+import type { GoveeLedEffectStudio } from "../../src/panel";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/tests/browser/fixtures/palette-editor.html");
 });
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`voluntary feedback remains copyable and links to one issue at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.evaluate(async () => {
+      const modulePath = "/src/panel.ts";
+      const { GoveeLedEffectStudio } = await import(modulePath);
+      const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
+      const device = {
+        ...contracts.responses.devices.find((item: { model: string }) => item.model === "H6125"),
+        hw_version: "3.01.10",
+        fw_version: null,
+        confirmation_issue: 447,
+        display_name: "Private device name",
+        effect_categories: [],
+      };
+      const responses: Record<string, unknown> = {
+        info: { ...contracts.responses.editor_info, integration_version: "7.24.4rc1" },
+        devices: { devices: [device] },
+        "library/list": { generation: 0, items: [] },
+        "custom/catalogue": { catalogue: contracts.responses.custom_catalogue },
+        "user_state/get": {
+          user_state: { owner_id: "private-owner", recent_colours: [], selected_config_entry_id: device.config_entry_id, navigation: {} },
+        },
+      };
+      const calls: string[] = [];
+      const panel = new GoveeLedEffectStudio() as GoveeLedEffectStudio;
+      const hass: HomeAssistant = {
+        user: { is_admin: false },
+        async callWS<T>(message: Record<string, unknown>): Promise<T> {
+          const type = String(message.type).replace("ha_govee_led_ble/editor/", "");
+          calls.push(type);
+          panel.dataset.calls = JSON.stringify(calls);
+          if (!(type in responses)) throw new Error(`Unexpected WebSocket call: ${type}`);
+          return structuredClone(responses[type]) as T;
+        },
+        async callService() { throw new Error("Feedback must not call services"); },
+        connection: { async subscribeMessage() { return () => undefined; } },
+      };
+      panel.hass = hass;
+      document.body.replaceChildren(panel);
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: window.innerWidth < 1000
+          ? { writeText: () => Promise.reject(new DOMException("Denied", "NotAllowedError")) }
+          : undefined,
+      });
+    });
+    const share = page.getByRole("button", { name: "Share feedback", exact: true });
+    await expect(share).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const callsBefore = await page.locator("ha-govee-led-ble-editor").getAttribute("data-calls");
+    await share.click();
+    const dialog = page.getByRole("dialog", { name: "Share H6125 feedback" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Sharing is optional");
+    await expect(dialog).toContainText("Not yet observed");
+    const report = dialog.getByRole("textbox", { name: "Report to copy" });
+    await expect(report).toHaveValue(/Hardware version: 3\.01\.10/);
+    await expect(report).toHaveValue(/Firmware version: not yet observed/);
+    await expect(report).not.toHaveValue(/Private device name|private-owner|h6125-main/);
+    await dialog.getByRole("button", { name: "Copy report", exact: true }).click();
+    await expect(dialog.getByRole("status")).toContainText(viewport.width < 1000 ? "Automatic copying failed" : "Automatic copying is unavailable");
+    expect(await report.evaluate((element: HTMLTextAreaElement) => {
+      element.focus();
+      element.select();
+      return element.selectionEnd === element.value.length;
+    })).toBe(true);
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { async writeText(text: string) { document.body.dataset.copiedReport = text; } },
+      });
+    });
+    await dialog.getByRole("button", { name: "Copy report", exact: true }).click();
+    await expect(dialog.getByRole("status")).toContainText("Report copied");
+    expect(await page.locator("body").getAttribute("data-copied-report")).toBe(await report.inputValue());
+    const link = dialog.getByRole("link", { name: "Open model issue on GitHub" });
+    await expect(link).toHaveAttribute("href", "https://github.com/teh-hippo/ha-govee-led-ble/issues/447");
+    await page.context().route("https://github.com/teh-hippo/ha-govee-led-ble/issues/447", route =>
+      route.fulfill({ contentType: "text/html", body: "<h1>Model confirmation issue</h1>" }));
+    const opened = page.waitForEvent("popup");
+    await link.click();
+    const issuePage = await opened;
+    await expect(issuePage).toHaveURL("https://github.com/teh-hippo/ha-govee-led-ble/issues/447");
+    await issuePage.close();
+    expect(await page.locator("ha-govee-led-ble-editor").getAttribute("data-calls")).toBe(callsBefore);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(share).toBeFocused();
+  });
+}
 
 test("native layer moves retain authored speeds and allow building a mixed effect", async ({ page }) => {
   await page.evaluate(async () => {

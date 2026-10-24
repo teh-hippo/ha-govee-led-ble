@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -12,7 +13,8 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.ha_govee_led_ble.const import DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
@@ -32,6 +34,7 @@ from custom_components.ha_govee_led_ble.effect_websocket import (
     WS_APPLY,
     WS_APPLY_SNAPSHOT,
     WS_CUSTOM_CATALOGUE,
+    WS_DEVICE_SUBSCRIBE,
     WS_INFO,
     WS_LIBRARY_CREATE,
     WS_LIBRARY_DELETE,
@@ -144,6 +147,43 @@ async def test_authenticated_users_can_read_contracts(
         "H7020",
         "H7025",
     }
+
+
+async def test_device_subscription_reports_observed_identity_without_querying(
+    hass: HomeAssistant,
+    hass_ws_client,
+    mock_coordinator,
+    monkeypatch,
+) -> None:
+    await _setup_backend(hass)
+    entry = SimpleNamespace(
+        entry_id="entry-a",
+        title="Private device name",
+        domain=DOMAIN,
+        state=ConfigEntryState.LOADED,
+        runtime_data=mock_coordinator,
+    )
+    monkeypatch.setattr(hass.config_entries, "async_get_entry", lambda _: entry)
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": WS_DEVICE_SUBSCRIBE, "config_entry_id": entry.entry_id})
+    assert (await client.receive_json())["success"] is True
+    device = (await client.receive_json())["event"]["device"]
+    assert device["confirmation_issue"] == get_profile("H617A").confirmation_issue
+    assert device["hw_version"] is None and device["fw_version"] is None
+
+    mock_coordinator.hw_version = "1.00.01"
+    mock_coordinator.fw_version = "1.02.03"
+    mock_coordinator.subordinate_20_version = "2.03.04"
+    mock_coordinator.async_add_listener.call_args.args[0]()
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=1))
+    await hass.async_block_till_done()
+    device = (await client.receive_json())["event"]["device"]
+    assert device["model"] == "H617A"
+    assert device["hw_version"] == "1.00.01"
+    assert device["fw_version"] == "1.02.03"
+    assert device["subordinate_20_version"] == "2.03.04"
+    mock_coordinator.async_request_refresh.assert_not_called()
+    mock_coordinator._async_write_packet.assert_not_called()
 
 
 async def test_non_admin_cannot_mutate_library(

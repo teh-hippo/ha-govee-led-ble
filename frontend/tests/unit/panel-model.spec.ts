@@ -84,6 +84,33 @@ function device(
   };
 }
 
+test("experimental feedback stays visible without enabled workflows and uses only explicit report fields", () => {
+  const model = new PanelModel(() => undefined);
+  const selected = {
+    ...device("private-entry", "H6125"),
+    display_name: "Private device name",
+    support_quality: "experimental" as const,
+    confirmation_issue: 447,
+    hw_version: "3.01.10",
+    fw_version: "3.04.37",
+    effect_categories: [],
+  };
+  model.devices = [selected];
+  model.selectedDeviceId = selected.config_entry_id;
+  model.integrationVersion = "7.24.4rc1";
+  expect(model.experimentalSupport).toBe(true);
+  const report = model.deviceFeedbackReport(selected);
+  expect(report).toContain("- Model: H6125");
+  expect(report).toContain("- Hardware version: 3.01.10");
+  expect(report).toContain("- Firmware version: 3.04.37");
+  expect(report).toContain("- Integration version: 7.24.4rc1");
+  expect(report).not.toContain("private-entry");
+  expect(report).not.toContain("Private device name");
+  expect(model.deviceFeedbackReport({ ...selected, hw_version: null, fw_version: null })).toContain("not yet observed");
+  model.devices = [{ ...selected, support_quality: "supported" }];
+  expect(model.experimentalSupport).toBe(false);
+});
+
 test("device music geometry replaces catalogue defaults without leaking across devices", () => {
   const model = new PanelModel(() => undefined);
   installH6199Catalogue(model);

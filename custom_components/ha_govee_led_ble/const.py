@@ -130,6 +130,7 @@ class VideoFirmwareCondition:
 class ModelProfile:
     name: str
     support_quality: SupportQuality = SupportQuality.EXPERIMENTAL
+    confirmation_issue: int | None = None
     command_grammar: str | None = None
     command_ack_grammar: str | None = None
     # None retains the grammar's shipped operations; a set restricts physical writes.
@@ -409,6 +410,7 @@ _H6199_MUSIC_MODES = ("energetic", "rhythm", "spectrum", "rolling")
 _H617A_PROFILE = ModelProfile(
     "H617A LED Strip",
     support_quality=SupportQuality.SUPPORTED,
+    confirmation_issue=443,
     command_grammar="H617A",
     status_grammar="H617A",
     effect_grammar="H617A",
@@ -641,6 +643,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6097": ModelProfile(
         "H6097 TV Backlight 3 Lite (40-50 inch)",
         support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=445,
         command_grammar="H6099",
         command_ack_grammar="H617A",
         status_grammar="H6097",
@@ -752,6 +755,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6099": ModelProfile(
         "H6099 TV Backlight 3 Lite",
         support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=446,
         command_grammar="H6099",
         status_grammar="H6099",
         effect_grammar="H6099",
@@ -853,6 +857,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H66A0": ModelProfile(
         "H66A0 TV Backlight 3 Pro",
         support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=450,
         command_grammar="H6099",
         status_grammar="H66A0",
         effect_grammar="H6099",
@@ -961,6 +966,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H1A42": ModelProfile(
         "H1A42 LED Strip Light 2",
         support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=444,
         command_grammar="H617A",
         status_grammar="H1A42",
         effect_grammar="H617A",
@@ -1021,6 +1027,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H61F5": ModelProfile(
         "H61F5 Strip Light 2 Pro",
         support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=449,
         command_grammar="H617A",
         status_grammar="H61F5",
         effect_grammar="H617A",
@@ -1091,6 +1098,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617E": replace(
         _H617A_PROFILE,
         name="H617E LED Strip",
+        confirmation_issue=None,
         music_variants=H617E_MUSIC_VARIANTS,
         music_upload_before_selector=False,
         music_requires_upload_ack=False,
@@ -1181,6 +1189,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H617F": replace(
         _H617A_PROFILE,
         name="H617F LED Strip",
+        confirmation_issue=None,
         support_quality=SupportQuality.SUPPORTED,
         command_grammar="H617A",
         status_grammar="H617A",
@@ -1251,6 +1260,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6125": ModelProfile(
         "H6125 LED Strip",
         support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=447,
         command_grammar="H617A",
         command_ack_grammar="H6125",
         status_grammar="H6125",
@@ -1370,6 +1380,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6179": ModelProfile(
         "H6179 RGB TV Backlight",
         support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=448,
         command_grammar="H6179",
         status_grammar="H6179",
         effect_grammar="H6179",
@@ -1505,6 +1516,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H7025": ModelProfile(
         "H7025 Outdoor String Lights",
         support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=451,
         command_grammar="H617A",
         status_grammar="H7025",
         effect_grammar="H617A",

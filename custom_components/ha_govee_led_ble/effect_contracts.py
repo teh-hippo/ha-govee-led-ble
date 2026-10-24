@@ -901,12 +901,14 @@ class EditorApiInfo:
     api_version: int = EDITOR_API_VERSION
     effect_schema_version: int = EFFECT_SCHEMA_VERSION
     compiler_version: int = EFFECT_COMPILER_VERSION
+    integration_version: str | None = None
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
             "api_version": self.api_version,
             "effect_schema_version": self.effect_schema_version,
             "compiler_version": self.compiler_version,
+            "integration_version": self.integration_version,
             "limits": {
                 "effect_name": MAX_EFFECT_NAME_LENGTH,
                 "effect_document_bytes": MAX_EFFECT_DOCUMENT_BYTES,
@@ -945,6 +947,7 @@ class DeviceEffectCapabilities:
             "light_entity_id": self.light_entity_id,
             "model": self.model,
             "support_quality": get_profile(self.model).support_quality.value,
+            "confirmation_issue": get_profile(self.model).confirmation_issue,
             "display_name": self.display_name,
             "segment_count": self.segment_count,
             "physical_ic_count": self.physical_ic_count,
