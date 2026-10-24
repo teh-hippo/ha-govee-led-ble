@@ -271,6 +271,7 @@ export class PanelModel {
       ...(device.subordinate_20_version ? [`- Sub-controller 20 version: ${device.subordinate_20_version}`] : []),
       ...(device.subordinate_21_version ? [`- Sub-controller 21 version: ${device.subordinate_21_version}`] : []),
       `- Integration version: ${this.integrationVersion ?? "not available (fill from Home Assistant)"}`,
+      ...(device.model === "H617A" ? ["- Reporting UI trial: Experimental presentation is simulated; H617A remains Supported."] : []),
       "- Version source: integration observations; fill missing versions from the Govee app and identify any changes.",
       "",
       "### Observations",

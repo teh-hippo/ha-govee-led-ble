@@ -107,6 +107,7 @@ test("experimental feedback stays visible without enabled workflows and uses onl
   expect(report).toContain("- Integration version: 7.24.4rc1");
   expect(report).not.toContain("private-entry");
   expect(report).not.toContain("Private device name");
+  expect(model.deviceFeedbackReport({ ...selected, model: "H617A" })).toContain("Experimental presentation is simulated");
   expect(model.deviceFeedbackReport({ ...selected, hw_version: null, fw_version: null })).toContain("not yet observed");
   model.devices = [{ ...selected, support_quality: "supported" }];
   expect(model.experimentalSupport).toBe(false);

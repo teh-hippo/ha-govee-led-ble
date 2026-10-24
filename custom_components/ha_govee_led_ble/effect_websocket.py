@@ -226,6 +226,8 @@ def _device_payload(
         physical_ic_count=coordinator.profile.physical_ic_count,
         profile=coordinator.profile,
     ).to_dict()
+    if coordinator.model == "H617A":
+        device["support_quality"] = "experimental"
     device["show_experimental_feedback"] = entry.options.get(CONF_SHOW_EXPERIMENTAL_FEEDBACK, True)
     device["hw_version"] = coordinator.hw_version
     device["fw_version"] = coordinator.fw_version
