@@ -23,10 +23,12 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_H6102_APP_HARDWARE,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
+    CONF_SHOW_EXPERIMENTAL_FEEDBACK,
     CONNECTION_MODE_HOLD,
     CONNECTION_MODE_RELEASE,
     DOMAIN,
     MODEL_PROFILES,
+    SupportQuality,
     model_from_ble_name,
 )
 
@@ -84,7 +86,13 @@ async def test_bluetooth_discovery_h6076(hass: HomeAssistant, mock_manual_valida
 async def test_bluetooth_discovery_h6179(hass: HomeAssistant, mock_manual_validation):
     result = await _init(hass, config_entries.SOURCE_BLUETOOTH, SVC_H6179)
     assert result["type"] is FlowResultType.FORM
-    created = await _confirm(hass, result)
+    notice = await _confirm(hass, result)
+    assert notice["type"] is FlowResultType.FORM and notice["step_id"] == "experimental"
+    assert notice["description_placeholders"] == {
+        "feedback_url": "https://github.com/teh-hippo/ha-govee-led-ble/issues/448",
+    }
+    assert not hass.config_entries.async_entries(DOMAIN)
+    created = await _confirm(hass, notice)
     assert created["type"] is FlowResultType.CREATE_ENTRY
     assert created["data"] == {CONF_MODEL: "H6179"}
     mock_manual_validation.assert_not_awaited()
@@ -121,6 +129,9 @@ async def test_bluetooth_discovery_newly_discoverable_models(
     assert result["step_id"] == "bluetooth_confirm"
     assert result["description_placeholders"] == {"model": expected_model}
     created = await _confirm(hass, result)
+    if MODEL_PROFILES[expected_model].support_quality is SupportQuality.EXPERIMENTAL:
+        assert created["type"] is FlowResultType.FORM and created["step_id"] == "experimental"
+        created = await _confirm(hass, created)
     assert created["type"] is FlowResultType.CREATE_ENTRY
     assert created["title"] == f"Govee {expected_model}"
     assert created["data"] == {CONF_MODEL: expected_model}
@@ -235,8 +246,21 @@ async def test_user_step_shows_form(hass: HomeAssistant):
 @pytest.mark.parametrize("model", ["H617A", "H7025"])
 async def test_user_step_creates_entry(hass: HomeAssistant, mock_manual_validation, model):
     r = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: model})
+    if MODEL_PROFILES[model].support_quality is SupportQuality.EXPERIMENTAL:
+        assert r["type"] is FlowResultType.FORM and r["step_id"] == "experimental"
+        assert not hass.config_entries.async_entries(DOMAIN)
+        r = await _confirm(hass, r)
     assert r["type"] == FlowResultType.CREATE_ENTRY and r["data"][CONF_MODEL] == model
     mock_manual_validation.assert_awaited_once_with(hass, "AA:BB:CC:DD:EE:FF")
+
+
+async def test_experimental_confirmation_rechecks_duplicate_entry(hass: HomeAssistant):
+    notice = await _init(hass, config_entries.SOURCE_USER, {CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", CONF_MODEL: "H7025"})
+    assert notice["step_id"] == "experimental"
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H7025"}, unique_id="AA:BB:CC:DD:EE:FF")
+    entry.add_to_hass(hass)
+    result = await _confirm(hass, notice)
+    assert result["type"] is FlowResultType.ABORT and result["reason"] == "already_configured"
 
 
 async def test_user_step_creates_manual_h6102_entry_without_promoting_discovery(
@@ -496,13 +520,34 @@ async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssist
         *expected,
         CONF_PREFIX_EFFECT_NAMES,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
+        *([CONF_SHOW_EXPERIMENTAL_FEEDBACK] if MODEL_PROFILES[model].confirmation_issue is not None else []),
     ]
     assert schema({}) == {
         CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
         **dict.fromkeys(expected, True),
         CONF_PREFIX_EFFECT_NAMES: False,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,
+        **({CONF_SHOW_EXPERIMENTAL_FEEDBACK: True} if MODEL_PROFILES[model].confirmation_issue is not None else {}),
     }
+
+
+async def test_options_flow_persists_feedback_notice_opt_out(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6125"}, unique_id="AA:BB:CC:DD:EE:FF")
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    schema = result["data_schema"]
+    assert schema is not None
+    values = schema({})
+    assert values[CONF_SHOW_EXPERIMENTAL_FEEDBACK] is True
+    values[CONF_SHOW_EXPERIMENTAL_FEEDBACK] = False
+    with patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock):
+        saved = await hass.config_entries.options.async_configure(result["flow_id"], values)
+    assert saved["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_SHOW_EXPERIMENTAL_FEEDBACK] is False
+    reopened = await hass.config_entries.options.async_init(entry.entry_id)
+    reopened_schema = reopened["data_schema"]
+    assert reopened_schema is not None
+    assert reopened_schema({})[CONF_SHOW_EXPERIMENTAL_FEEDBACK] is False
 
 
 async def test_options_flow_uses_stored_category_list_for_checkbox_defaults(hass: HomeAssistant):

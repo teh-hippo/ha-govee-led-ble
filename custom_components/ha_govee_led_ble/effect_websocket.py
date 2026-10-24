@@ -23,7 +23,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, ModelProfile, supported_effect_categories
+from .const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, ModelProfile, supported_effect_categories
 from .control_arbiter import ControlIntent
 from .effect_backend import EffectBackend
 from .effect_catalogue import (
@@ -226,6 +226,7 @@ def _device_payload(
         physical_ic_count=coordinator.profile.physical_ic_count,
         profile=coordinator.profile,
     ).to_dict()
+    device["show_experimental_feedback"] = entry.options.get(CONF_SHOW_EXPERIMENTAL_FEEDBACK, True)
     device["hw_version"] = coordinator.hw_version
     device["fw_version"] = coordinator.fw_version
     device["subordinate_20_version"] = coordinator.subordinate_20_version

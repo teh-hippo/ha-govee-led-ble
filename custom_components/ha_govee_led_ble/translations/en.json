@@ -20,6 +20,10 @@
   },
   "config": {
     "step": {
+      "experimental": {
+        "title": "Experimental support",
+        "description": "Support for this model has not yet been confirmed on actual hardware.  After trying the device, please share what works and what doesn't.  This will help other owners.\n\n[Feedback on GitHub]({feedback_url})"
+      },
       "bluetooth": {
         "description": "Govee {name} found via Bluetooth"
       },
@@ -232,10 +236,12 @@
           "reactive": "Reactive",
           "advanced": "Advanced",
           "prefix_effect_names": "Prefix effects with their category (e.g., \"Scene: Aurora\")",
-          "always_include_custom_effects": "Always include my custom effects"
+          "always_include_custom_effects": "Always include my custom effects",
+          "show_experimental_feedback": "Show experimental feedback notice"
         },
         "data_description": {
-          "connection_mode": "Release disconnects after use so the Govee app can connect. Hold keeps the BLE connection open and may prevent the app from connecting."
+          "connection_mode": "Release disconnects after use so the Govee app can connect. Hold keeps the BLE connection open and may prevent the app from connecting.",
+          "show_experimental_feedback": "Show the feedback notice in Effect Studio for this light.  Turning this off hides it for all users.  Hide in Studio dismisses it only for the current tab session."
         }
       }
     }

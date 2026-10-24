@@ -57,6 +57,7 @@ export interface DeviceCapabilities {
   model: string;
   support_quality: SupportQuality;
   confirmation_issue?: number | null;
+  show_experimental_feedback?: boolean;
   hw_version?: string | null;
   fw_version?: string | null;
   subordinate_20_version?: string | null;

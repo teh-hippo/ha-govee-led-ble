@@ -26,8 +26,12 @@ def test_effect_category_options_have_direct_labels():
         "advanced": "Advanced",
         "prefix_effect_names": 'Prefix effects with their category (e.g., "Scene: Aurora")',
         "always_include_custom_effects": "Always include my custom effects",
+        "show_experimental_feedback": "Show experimental feedback notice",
     }
-    assert set(strings["options"]["step"]["init"]["data_description"]) == {"connection_mode"}
+    assert set(strings["options"]["step"]["init"]["data_description"]) == {
+        "connection_mode",
+        "show_experimental_feedback",
+    }
 
 
 def test_home_assistant_exceptions_declare_translation_metadata():

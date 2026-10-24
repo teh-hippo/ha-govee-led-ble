@@ -90,10 +90,14 @@ Use a consistent child-issue description: exact SKU and current support status, 
 The template asks for exact model, hardware and firmware versions, integration version, version source, what was tried, visible successes/failures, untested features and restoration problems.
 Do not infer support for an unreported revision or promote a model automatically from successful writes.
 
-Effect Studio's Share feedback action prepares a selectable report and opens the existing model issue; it does not create issues or upload anything.
+Effect Studio's Feedback action prepares a selectable report and opens the existing model issue; it does not create issues or upload anything.
 Owners edit the report in their GitHub comment.  Missing versions stay unknown until supplied from an identified source such as the Govee app.
 Feedback presentation uses existing observations only and must not trigger BLE queries, create Repairs or notifications, or interfere with editor work.
 Known diagnostic redactions do not guarantee anonymity; owners should review downloads before attaching them publicly.
+Session dismissal is per config entry and browser tab, using session storage rather than a durable user preference.
+The permanent integration option is per config entry and affects all users; neither setting changes the model's native Experimental classification.
+New Experimental devices receive an informational setup step with the canonical issue link before entry creation, without a feedback requirement.
+Keep existing-entry reconfiguration unchanged and recheck duplicate identity after the informational step.
 
 The first validation request should stay short: provide the release or build link, explain installation or reconfiguration, ask the owner to try the available features, and request redacted diagnostics immediately after anything fails.  Include the privacy warning above.
 

@@ -16,7 +16,7 @@ from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, get_profile
+from custom_components.ha_govee_led_ble.const import CONF_SHOW_EXPERIMENTAL_FEEDBACK, DOMAIN, get_profile
 from custom_components.ha_govee_led_ble.effect_backend import EffectBackend
 from custom_components.ha_govee_led_ble.effect_catalogue import resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_contracts import EDITOR_API_VERSION
@@ -159,6 +159,7 @@ async def test_device_subscription_reports_observed_identity_without_querying(
     entry = SimpleNamespace(
         entry_id="entry-a",
         title="Private device name",
+        options={},
         domain=DOMAIN,
         state=ConfigEntryState.LOADED,
         runtime_data=mock_coordinator,
@@ -170,7 +171,9 @@ async def test_device_subscription_reports_observed_identity_without_querying(
     device = (await client.receive_json())["event"]["device"]
     assert device["confirmation_issue"] == get_profile("H617A").confirmation_issue
     assert device["hw_version"] is None and device["fw_version"] is None
+    assert device["show_experimental_feedback"] is True
 
+    entry.options[CONF_SHOW_EXPERIMENTAL_FEEDBACK] = False
     mock_coordinator.hw_version = "1.00.01"
     mock_coordinator.fw_version = "1.02.03"
     mock_coordinator.subordinate_20_version = "2.03.04"
@@ -182,6 +185,7 @@ async def test_device_subscription_reports_observed_identity_without_querying(
     assert device["hw_version"] == "1.00.01"
     assert device["fw_version"] == "1.02.03"
     assert device["subordinate_20_version"] == "2.03.04"
+    assert device["show_experimental_feedback"] is False
     mock_coordinator.async_request_refresh.assert_not_called()
     mock_coordinator._async_write_packet.assert_not_called()
 

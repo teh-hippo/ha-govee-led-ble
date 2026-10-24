@@ -96,6 +96,7 @@ export class PanelModel {
   public devices: DeviceCapabilities[] = [];
   public selectedDeviceId?: string;
   public integrationVersion?: string;
+  public sessionHiddenFeedback = new Set<string>();
   public userState?: EffectUserState;
   public sceneInitialSelection?: SceneInitialSelection;
   public section: StudioSection = "custom";
@@ -254,8 +255,14 @@ export class PanelModel {
     return this.selectedDevice?.support_quality === "experimental";
   }
 
+  public get showFeedbackNotice(): boolean {
+    const device = this.selectedDevice;
+    return this.experimentalSupport && device !== undefined &&
+      device.show_experimental_feedback !== false && !this.sessionHiddenFeedback.has(device.config_entry_id);
+  }
+
   public deviceFeedbackReport(device: DeviceCapabilities): string {
-    const unknown = "not yet observed (fill from the Govee app)";
+    const unknown = "not yet observed";
     return [
       "### Device details",
       `- Model: ${device.model}`,
@@ -264,7 +271,7 @@ export class PanelModel {
       ...(device.subordinate_20_version ? [`- Sub-controller 20 version: ${device.subordinate_20_version}`] : []),
       ...(device.subordinate_21_version ? [`- Sub-controller 21 version: ${device.subordinate_21_version}`] : []),
       `- Integration version: ${this.integrationVersion ?? "not available (fill from Home Assistant)"}`,
-      "- Version source: last observed by the integration; identify any values filled from the Govee app.",
+      "- Version source: integration observations; fill missing versions from the Govee app and identify any changes.",
       "",
       "### Observations",
       "- What I tried:",
@@ -276,9 +283,6 @@ export class PanelModel {
       "### Follow-up",
       "- Available to test a follow-up fix: yes / no",
       "- Diagnostics attached: yes / no",
-      "",
-      "Sharing is optional.  If something failed, download diagnostics immediately afterwards and review them before attaching.",
-      "GitHub comments and attachments are public.  Do not include Bluetooth addresses, serial numbers, account details or unredacted logs.",
     ].join("\n");
   }
 

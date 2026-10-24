@@ -390,6 +390,7 @@ async def test_public_device_catalogues_and_music_defaults_are_revision_scoped(h
             entry_id=name,
             domain=DOMAIN,
             title=name,
+            options={},
             state=ConfigEntryState.LOADED,
             runtime_data=coordinator,
         )

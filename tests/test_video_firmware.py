@@ -167,7 +167,7 @@ async def test_live_payload_changes_with_identity_notifications(hass: HomeAssist
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H7000", configuration_url="test")
     backend = MagicMock()
     backend.active_workspaces.get.return_value = None
-    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator, title="Synthetic")
+    entry = SimpleNamespace(entry_id="entry-a", runtime_data=coordinator, title="Synthetic", options={})
     assert _device_payload(hass, backend, entry)["video_control_states"]["white_balance"] == "evidence_gap"
     # Attributable opcode mapping, synthetic version and checksum.
     from custom_components.ha_govee_led_ble.transport import xor_checksum

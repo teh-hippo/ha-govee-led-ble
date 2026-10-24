@@ -262,7 +262,7 @@ export const effectStudioPanelStyles = [
 
     .support-notice {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
       justify-content: space-between;
       gap: var(--studio-tight-gap);
@@ -277,21 +277,20 @@ export const effectStudioPanelStyles = [
       );
       font-size: var(--studio-parameter-label-size);
       line-height: var(--studio-muted-line-height);
+      white-space: nowrap;
+    }
+
+    .support-notice > span {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .support-notice button {
       flex: 0 0 auto;
-    }
-
-    .feedback-identity {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      gap: var(--studio-tight-gap);
-    }
-
-    .feedback-identity dd {
-      margin: 0;
-      overflow-wrap: anywhere;
+      min-width: var(--studio-touch-target-size);
+      padding-inline: var(--studio-tight-gap);
     }
 
     .feedback-dialog textarea {
