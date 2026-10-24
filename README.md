@@ -11,31 +11,35 @@ Each device protocol is captured in [Kaitai Struct](https://kaitai.io/) (`.ksy`)
 
 ## Device support
 
-| Model | Status |
-| --- | --- |
-| **H1A42** | 🚧 Experimental |
-| **H601C** | ✅ Supported |
-| **H6076** | ✅ Supported |
-| **H6097** | 🚧 Experimental |
-| **H6099** | 🚧 Experimental |
-| **H60A1** | ✅ Supported |
-| **H60A6** | ✅ Supported |
-| **H6102** | ✅ Supported |
-| **H6125** | 🚧 Experimental |
-| **H6179** | 🚧 Experimental |
-| **H617A** | ✅ Supported |
-| **H617C** | ✅ Supported |
-| **H617E** | ✅ Supported |
-| **H617F** | ✅ Supported |
-| **H6199** | ✅ Supported |
-| **H61F5** | 🚧 Experimental |
-| **H66A0** | 🚧 Experimental |
-| **H7020** | ✅ Supported |
-| **H7025** | 🚧 Experimental |
+| Model | Status | Owner evidence or confirmation thread |
+| --- | --- | --- |
+| **H1A42** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/429) |
+| **H601C** | ✅ Supported | [Corrected owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/329#issuecomment-6117023962) |
+| **H6076** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/247#issuecomment-5482287413) |
+| **H6097** | 🚧 Experimental | [Awaiting confirmation](https://github.com/teh-hippo/ha-govee-led-ble/issues/445) |
+| **H6099** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/258#issuecomment-5703821314) |
+| **H60A1** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/339#issuecomment-6125571117) |
+| **H60A6** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/339#issuecomment-6125571117) |
+| **H6102** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/310#issuecomment-6369891853) |
+| **H6125** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/117#issuecomment-6308131348) |
+| **H6179** | 🚧 Experimental | [Awaiting confirmation](https://github.com/teh-hippo/ha-govee-led-ble/issues/448) |
+| **H617A** | ✅ Supported | [Maintainer hardware validation](https://github.com/teh-hippo/ha-govee-led-ble/issues/97#issuecomment-4934291245) |
+| **H617C** | ✅ Supported | [Owner contribution](https://github.com/teh-hippo/ha-govee-led-ble/pull/331) |
+| **H617E** | ✅ Supported | [Owner hardware validation](https://github.com/teh-hippo/ha-govee-led-ble/pull/137) |
+| **H617F** | ✅ Supported | [Owner contribution](https://github.com/teh-hippo/ha-govee-led-ble/pull/331) |
+| **H6199** | ✅ Supported | [Maintainer hardware validation](https://github.com/teh-hippo/ha-govee-led-ble/issues/97#issuecomment-4934291245) |
+| **H61F5** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/429#issuecomment-6379396864) |
+| **H66A0** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/429) |
+| **H7020** | ✅ Supported | [Owner hardware validation](https://github.com/teh-hippo/ha-govee-led-ble/pull/363) |
+| **H7025** | 🚧 Experimental | [Awaiting BLE confirmation](https://github.com/teh-hippo/ha-govee-led-ble/issues/451) |
+
+Supported means an owner, including the maintainer, has confirmed working controls on the exact model, not that every feature or hardware/firmware revision has been tested.
+The linked reports describe what was tested and any limitations.  Known failures remain separate bug reports, including [Kelvin confirmation on H1A42, H61F5 and H66A0](https://github.com/teh-hippo/ha-govee-led-ble/issues/429).
 
 Experimental models await owner confirmation on actual hardware.
 Share your exact model, hardware, firmware, integration version and results in the model's existing [confirmation thread](https://github.com/teh-hippo/ha-govee-led-ble/issues/442), rather than opening another issue.
 Maintainers review the evidence and deliver Supported status in an integration release; submitting feedback or hiding its notice does not change that status.
+Confirmed model threads may be closed but still accept comments about other revisions.
 See the [support lifecycle and issue-creation process](CONTRIBUTING.md#support-lifecycle).
 
 To request support for another model or contribute protocol schemas, see [CONTRIBUTING.md](CONTRIBUTING.md).

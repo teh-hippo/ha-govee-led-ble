@@ -4175,7 +4175,7 @@ def test_device_info_carries_versions_and_omits_connections(coord):
 
 @pytest.mark.parametrize(
     ("model", "display_model"),
-    [("H6099", "H6099 (Experimental)"), ("H617A", "H617A")],
+    [("H6179", "H6179 (Experimental)"), ("H6099", "H6099"), ("H617A", "H617A")],
 )
 def test_device_info_shows_support_maturity_without_changing_sku_or_studio_link(hass, model, display_model):
     coordinator = GoveeBLECoordinator(

@@ -4034,7 +4034,7 @@
       "static_composition": true,
       "subordinate_20_version": null,
       "subordinate_21_version": null,
-      "support_quality": "experimental"
+      "support_quality": "supported"
     },
     "original": {
       "active_state": null,
@@ -4877,7 +4877,7 @@
       "static_composition": true,
       "subordinate_20_version": null,
       "subordinate_21_version": null,
-      "support_quality": "experimental"
+      "support_quality": "supported"
     }
   },
   "responses": {
@@ -41722,7 +41722,7 @@
         "static_composition": true,
         "subordinate_20_version": null,
         "subordinate_21_version": null,
-        "support_quality": "experimental"
+        "support_quality": "supported"
       },
       {
         "active_state": null,
@@ -44542,7 +44542,7 @@
         "static_composition": true,
         "subordinate_20_version": null,
         "subordinate_21_version": null,
-        "support_quality": "experimental"
+        "support_quality": "supported"
       },
       {
         "active_state": null,
@@ -45913,7 +45913,7 @@
         "static_composition": true,
         "subordinate_20_version": null,
         "subordinate_21_version": null,
-        "support_quality": "experimental"
+        "support_quality": "supported"
       },
       {
         "active_state": null,
@@ -48424,7 +48424,7 @@
         "static_composition": true,
         "subordinate_20_version": null,
         "subordinate_21_version": null,
-        "support_quality": "experimental"
+        "support_quality": "supported"
       },
       {
         "active_state": null,
@@ -51496,7 +51496,7 @@
         "static_composition": true,
         "subordinate_20_version": null,
         "subordinate_21_version": null,
-        "support_quality": "experimental"
+        "support_quality": "supported"
       },
       {
         "active_state": {

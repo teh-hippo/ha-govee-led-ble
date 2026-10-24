@@ -102,9 +102,11 @@ Studio and setup use the declared issue number, so simultaneous owners all reach
 Support status is declared in code, not inferred from GitHub activity or a device preference:
 
 1. Review owner-observed behaviour for the exact model and record the tested hardware, firmware and integration versions, restoration behaviour and remaining gaps in the confirmation thread.
+   Existing issues, pull requests and maintainer-owned hardware count when they identify the exact SKU and observed working controls.  Link the original evidence, retain corrections and contrary results, and leave missing versions or untested features explicit rather than inferring them.
 2. Change that SKU's `ModelProfile.support_quality` to `SupportQuality.SUPPORTED` in `const.py`, including any separate revision profiles for the same SKU.  Do not change another model or a shared codec.
 3. Update the README support table and the supported/experimental model expectations in `tests/test_const.py`.  Regenerate fixtures with `uv run python -m tools.generate_frontend_contract_fixtures`, then run `make check`.
-4. Ship the reviewed change in a release and update the confirmation thread's status summary with the release and confirmed revisions.
+4. Ship the reviewed change in a release and update the confirmation thread's status summary with the release, original evidence links and confirmed revisions.
+   Close the confirmed model's confirmation issue as completed; leave it unlocked for later revision reports and keep unresolved bug reports open.
 
 Owners receive the new status after installing that release, restarting Home Assistant and reloading the frontend.
 The native device label and Studio/setup notices follow the declared status; hiding feedback, submitting a report or closing an issue does not promote a model.
@@ -112,6 +114,7 @@ Keep the same confirmation URL available after promotion or issue closure so old
 
 An accepted write, a UI-only trial or another SKU's report is not hardware confirmation.
 Supported means owner-confirmed hardware, not that every hardware/firmware revision has been tested; keep unreported revisions and known gaps explicit.
+Keep models without exact-SKU owner confirmation Experimental, regardless of shared codecs, passing tests, successful setup alone or results obtained only through another integration or transport.
 Promoting support does not promote speculative Kaitai schemas to evidence-backed schemas; those have their own capture requirements below.
 
 ## Device-owner validation

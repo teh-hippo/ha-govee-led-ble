@@ -755,7 +755,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6099": ModelProfile(
         "H6099 TV Backlight 3 Lite",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=446,
         command_grammar="H6099",
         status_grammar="H6099",
@@ -857,7 +857,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H66A0": ModelProfile(
         "H66A0 TV Backlight 3 Pro",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=450,
         command_grammar="H6099",
         status_grammar="H66A0",
@@ -966,7 +966,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H1A42": ModelProfile(
         "H1A42 LED Strip Light 2",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=444,
         command_grammar="H617A",
         status_grammar="H1A42",
@@ -1027,7 +1027,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H61F5": ModelProfile(
         "H61F5 Strip Light 2 Pro",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=449,
         command_grammar="H617A",
         status_grammar="H61F5",
@@ -1260,7 +1260,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6125": ModelProfile(
         "H6125 LED Strip",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=447,
         command_grammar="H617A",
         command_ack_grammar="H6125",
@@ -1637,6 +1637,8 @@ H6199_PACT1_PROFILE = ModelProfile(
 # Unresolved revisions authorise only the independently shared bootstrap operations.
 H6125_POWER_ONLY_PROFILE = ModelProfile(
     "H6125 (power only)",
+    support_quality=SupportQuality.SUPPORTED,
+    confirmation_issue=MODEL_PROFILES["H6125"].confirmation_issue,
     command_grammar="H617A",
     command_operations=frozenset({"power"}),
     status_grammar="H6125",

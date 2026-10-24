@@ -123,16 +123,33 @@ def test_support_quality_has_only_supported_and_experimental_states():
     assert UNSUPPORTED_PROFILE.support_quality is SupportQuality.EXPERIMENTAL
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.SUPPORTED
-    } == {"H601C", "H6076", "H60A1", "H60A6", "H6102", "H617A", "H617C", "H617E", "H617F", "H6199", "H7020"}
+    } == {
+        "H1A42",
+        "H601C",
+        "H6076",
+        "H6099",
+        "H60A1",
+        "H60A6",
+        "H6102",
+        "H6125",
+        "H617A",
+        "H617C",
+        "H617E",
+        "H617F",
+        "H6199",
+        "H61F5",
+        "H66A0",
+        "H7020",
+    }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H1A42", "H6097", "H6099", "H6125", "H6179", "H61F5", "H66A0", "H7025"}
+    } == {"H6097", "H6179", "H7025"}
 
 
-def test_h6125_is_an_exact_experimental_profile_on_the_shared_dreamcolor_route():
+def test_h6125_is_an_exact_supported_profile_on_the_shared_dreamcolor_route():
     profile = MODEL_PROFILES["H6125"]
 
-    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.support_quality is SupportQuality.SUPPORTED
     assert (profile.command_grammar, profile.status_grammar, profile.effect_grammar) == ("H617A", "H6125", "H617A")
     assert profile.scene_catalogue_sku == "H6125" and "H6125" in BLE_DISCOVERABLE_MODELS
     assert (profile.segment_count, profile.segment_group_size, profile.physical_ic_count) == (15, 3, 50)
@@ -201,6 +218,8 @@ def test_h6097_pact_admission_does_not_depend_on_version_query_success(pact):
 def test_h6125_pact1_register_and_invalid_identity_gates(pact, firmware, hardware, wire_range):
     profile = device_profile("H6125", *pact, firmware=firmware, hardware=hardware)
 
+    assert profile.support_quality is SupportQuality.SUPPORTED
+    assert profile.confirmation_issue == MODEL_PROFILES["H6125"].confirmation_issue
     if wire_range is None:
         assert profile is const.H6125_POWER_ONLY_PROFILE
         assert profile.command_operations == frozenset({"power"}) and profile.outbound_transform is None
@@ -233,6 +252,7 @@ def test_h6125_colour_and_music_have_independent_revision_gates(
     pact, firmware, hardware, music_count, colour_temperature, groups
 ):
     profile = device_profile("H6125", *pact, firmware=firmware, hardware=hardware)
+    assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.supports_rgb
     assert profile.supports_color_temperature is colour_temperature
     assert profile.segment_group_count == groups

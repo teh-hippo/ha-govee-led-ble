@@ -80,7 +80,7 @@ def frame(prefix: str) -> bytes:
 
 def test_exact_profile_and_truthful_effect_authorization() -> None:
     profile = get_profile("H6099")
-    assert profile.support_quality is SupportQuality.EXPERIMENTAL
+    assert profile.support_quality is SupportQuality.SUPPORTED
     assert profile.command_grammar == profile.status_grammar == profile.video_grammar == "H6099"
     assert profile.segment_count == 14 and profile.segment_group_count == 4
     assert profile.whole_device_mask == 0x3FFF
