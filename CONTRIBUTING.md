@@ -191,6 +191,8 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 ## Validation
 
+`generated_protocol/` is a gitignored build output.  Run `make protocol` after a fresh clone, a new worktree, or any `.ksy` change, before running `pytest` directly.
+
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
 CI compiles a reference runtime package, then passes that exact artifact to the hosted core checks and an independent reproducibility rebuild in parallel.
