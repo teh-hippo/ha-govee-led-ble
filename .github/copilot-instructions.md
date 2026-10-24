@@ -17,17 +17,7 @@ The Makefile owns build orchestration and the full local gate.
 
 ## Canonical contributor guidance
 
-Read and follow [`CONTRIBUTING.md`](../CONTRIBUTING.md) before planning or implementing changes.  It is the provider-agnostic source for:
-
-- project structure and model architecture;
-- new-model research and planning;
-- support quality and promotion;
-- Kaitai protocol ownership and speculative schemas;
-- exact-SKU scene catalogues;
-- repository non-goals; and
-- validation.
-
-Do not duplicate those rules here.  Update `CONTRIBUTING.md` when a contributor-wide invariant changes.
+Read and follow [`CONTRIBUTING.md`](../CONTRIBUTING.md) before planning or implementing changes; do not duplicate its rules here.  Update it when a contributor-wide invariant changes.
 
 ## Agent-specific reminders
 

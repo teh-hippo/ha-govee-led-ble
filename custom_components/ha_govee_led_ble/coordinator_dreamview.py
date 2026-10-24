@@ -2,6 +2,19 @@
 
 Like issue #257 this is a coordinator mixin, but local authorship is not a slot
 identity map. It never probes members or claims membership was read back.
+
+Ownership rules:
+DreamView member devices are single-client BLE peripherals claimed directly by the sync centre after
+`0x50` group upload. When `replace_dreamview_group` includes a member managed by Home Assistant,
+atomically validate and persist its opaque `entry_id` ownership in
+`ha_govee_led_ble.dreamview.claims`, enforce the coordinator claim barrier, disable the member
+config entry, and confirm physical BLE disconnect before uploading `0x50`. Successful replacement
+restores dropped members; successful deletion or sync-centre removal restores all owned members.
+Persist a non-blocking restoration marker before re-enabling an entry, and remove it only after
+native enabled state is durably saved so interrupted restoration resumes after restart. Native re-
+enable schedules a delayed save, so the shared restoration helper flushes the native config-entry
+store and independently checks its persisted state before clearing recovery intent. Preserve pre-
+existing user-disabled entries unless the user explicitly re-enables them while claimed.
 """
 
 from __future__ import annotations

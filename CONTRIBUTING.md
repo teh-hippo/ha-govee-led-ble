@@ -39,7 +39,7 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Identity observations invalidate authorisation only when a capability depends on that field.  Background setup and polling retry a changed identity or profile once with fresh queries; command verification remains strict.
   State-readable devices default to Release mode and use Hold mode only when configured for periodic polling.
   Readable power does not imply observable effect activation.  A mode or selector reply confirms selection, not uploaded content, speed, or rendering.
-  DreamView member devices are single-client BLE peripherals claimed directly by the sync centre after `0x50` group upload.  When `replace_dreamview_group` includes a member managed by Home Assistant, atomically validate and persist its opaque `entry_id` ownership in `ha_govee_led_ble.dreamview.claims`, enforce the coordinator claim barrier, disable the member config entry, and confirm physical BLE disconnect before uploading `0x50`.  Successful replacement restores dropped members; successful deletion or sync-centre removal restores all owned members.  Persist a non-blocking restoration marker before re-enabling an entry, and remove it only after native enabled state is durably saved so interrupted restoration resumes after restart.  Native re-enable schedules a delayed save, so the shared restoration helper flushes the native config-entry store and independently checks its persisted state before clearing recovery intent.  Preserve pre-existing user-disabled entries unless the user explicitly re-enables them while claimed.
+  DreamView member claim, disable and restoration rules: see the `coordinator_dreamview.py` module docstring.
 - **Shared routing and wire invariants:**
   Construct and validate the complete immutable request against the effective profile before cancelling previews, acquiring user control, or mutating state.
   All outbound BLE writes pass through `GoveeBLECoordinator._async_write_packet` and optional synchronous, stateless `outbound_transform` hooks, installing packet-specific optimistic state and command expectations only at the physical write boundary after guards and transformation succeed.
@@ -195,11 +195,7 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
-CI compiles a reference runtime package, then passes that exact artifact to the hosted core checks and an independent reproducibility rebuild in parallel.
-Restore generated outputs after dependency installation without overwriting checkout sources or restoring the ZIP's fixed 1980 timestamps.
-Generated-output freshness verification runs in the independent clean rebuild, which must match the reference package byte for byte; the core checks do not repeat compilation.
 Browser tests run independently against source fixtures in the official Playwright image, whose version must match `@playwright/test`.
-The required Check job requires core, browser and reproducibility checks to succeed.
 The CI-only `make check-code` target requires verified build outputs and is not a replacement for the complete local `make check` gate.
 
 The full Python suite uses four worker processes and combines their branch coverage.
@@ -227,31 +223,4 @@ For live qualification, distinguish optimistic entity state from fresh BLE readb
 Use `homeassistant.update_entity` when verifying state outside the command's confirmation queries.
 H617A static RGB is confirmed through complete segment replies, not the colour-mode reply.
 
-### Maintainer release-candidate qualification
-
-Use a published RC installed through HACS for live qualification, not SSH deployment or direct file copying.
-When release and live testing are authorised, follow this established route without asking the owner to choose a deployment mechanism again.
-
-The [prerelease workflow](.github/workflows/prerelease.yml) delegates packaging and publication to the
-[shared Home Assistant prerelease workflow](https://github.com/teh-hippo/common-repo-configs).
-The caller pins a released provider commit by full SHA, with its release tag alongside the pin.  Review a provider release before updating that pin.
-Build-only runs (`publish=false`) upload the deterministic ZIP, checksum and build metadata without creating a release.
-Only the artifact manifest receives the normalised version: `7.13.1-rc.2.h6102` becomes `7.13.1rc2`.
-Feature branches keep the stable source version, and prereleases never move GitHub's latest release.
-
-1. Run the final `make check`, commit the reviewed candidate, and push its feature branch.
-   Dispatch the prerelease workflow with that branch selected, its exact lowercase 40-character commit SHA as `target_sha`,
-   a fresh `version` in `MAJOR.MINOR.PATCH-rc.N.SUFFIX` form, and `publish=true`.
-   The SHA must be reachable from the selected branch.  Set `release_notes` to the exact maintainer-approved public notes; publishing requires non-empty notes.
-   Require a successful run and verify the tag's target SHA and the package checksum.
-2. Before deployment, capture the installed release and the test devices' restorable state, including hidden mode/settings when a light is off.
-   If a state cannot be safely restored, resolve that before changing it.
-3. Discover the integration's HACS `update` entity through Home Assistant.
-   Refresh it with `homeassistant.update_entity`, then call `update.install` with the exact RC tag as `version`; do not rely on `latest_version`.
-   Confirm the installed tag, then restart Home Assistant with `homeassistant.restart` to load the new Python code.
-4. Wait for Home Assistant and the target config entries to load, then confirm the runtime manifest version in diagnostics matches the RC.
-   HACS installation metadata alone proves downloaded files, not running code.
-   Exercise the affected workflows through the normal REST/WebSocket interfaces and require fresh BLE readback rather than optimistic entity state.
-5. Clean up temporary previews and restore each device's captured state even if a test fails, then verify restoration through fresh readback.
-   Keep diagnostics private and bounded.  Report the exact RC, observed results and any unverified behaviour.
-   Publish another exact-SHA RC for subsequent source fixes rather than hotpatching the installation or reusing a tag.
+Maintainers: the release-candidate qualification runbook is in [docs/release-candidates.md](docs/release-candidates.md).
