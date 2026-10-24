@@ -260,6 +260,7 @@ Keep the custom-effect catalogue response complete in frontend contract fixtures
 The aggregate budget is separate from the individual model-catalogue limit; do not weaken unrelated JSON limits when the inventory grows.
 
 Browser tests run independently against source fixtures in the official Playwright image, whose version must match `@playwright/test`.
+CI passes the backend contract fixture from the core-check job to browser tests as an artifact.  The browser image needs no Python toolchain.
 The CI-only `make check-code` target requires verified build outputs and is not a replacement for the complete local `make check` gate.
 
 The full Python suite uses four worker processes and combines their branch coverage.
