@@ -73,20 +73,50 @@ The progression is:
 
 1. A device owner requests an exact model and volunteers to test on hardware.
 2. A contributor or maintainer researches the known device surface and builds the broadest candidate that can be modelled without fabricating protocol facts.
-3. New model candidates and speculative Kaitai schemas merge directly to `master` as `Experimental` once `make check` passes; no blocking prerelease gate is required before merging.
-4. The owner tests the available features on hardware and reports any failures with redacted diagnostics.
-5. Failed capabilities are fixed or removed, and the model is promoted to `Supported` once confirmed working on hardware by a device owner.
+3. Provision the model's confirmation issue and wire its number into the exact-SKU profile.  New candidates and speculative Kaitai schemas can then merge directly to `master` as `Experimental` once `make check` passes; no blocking prerelease gate is required.
+4. Owners test the available features on actual hardware and comment on that model's confirmation issue, recording exact hardware, firmware and integration versions, successes and failures.
+5. Maintainers review those observations, resolve reported failures and promote the model in code once working hardware is confirmed.
 
 Prerelease versions are stamped only in packaged artifacts when published for targeted testing; feature branches and `master` retain the current stable source version.
+
+### Creating model confirmation issues
+
+Maintainers provision one canonical confirmation child per exact SKU under [the owner-confirmation tracker](https://github.com/teh-hippo/ha-govee-led-ble/issues/442).
+Check the tracker first: use an existing confirmation child rather than creating another for each owner, hardware revision, firmware version or release.
+For a model without one:
+
+1. Draft a new child with the title `<MODEL>: owner confirmations by hardware and firmware revision` and its exact SKU label.
+2. Review the title and body before publishing.  State the current support status, invite reports after evaluation, and include the comment template and diagnostics/privacy instructions below.
+3. Create the child under the tracker and verify its parent and SKU label.  Historical support requests and bug reports remain separate context; do not repurpose them as confirmation threads.
+4. Store the new issue number in `ModelProfile.confirmation_issue` for that exact SKU before merging or releasing Experimental support.
+
+Compatible codecs and replaced profiles must not inherit another SKU's issue.
+The invariant tests require every registered Experimental model to have a valid, distinct confirmation destination.
+Supported models can retain their confirmation child for later revision reports without becoming Experimental again.
+
+The integration never creates issues, looks them up on GitHub, or changes their state.
+Studio and setup use the declared issue number, so simultaneous owners all reach the same thread and add comments.
+
+### Promoting Experimental support
+
+Support status is declared in code, not inferred from GitHub activity or a device preference:
+
+1. Review owner-observed behaviour for the exact model and record the tested hardware, firmware and integration versions, restoration behaviour and remaining gaps in the confirmation thread.
+2. Change that SKU's `ModelProfile.support_quality` to `SupportQuality.SUPPORTED` in `const.py`, including any separate revision profiles for the same SKU.  Do not change another model or a shared codec.
+3. Update the README support table and the supported/experimental model expectations in `tests/test_const.py`.  Regenerate fixtures with `uv run python -m tools.generate_frontend_contract_fixtures`, then run `make check`.
+4. Ship the reviewed change in a release and update the confirmation thread's status summary with the release and confirmed revisions.
+
+Owners receive the new status after installing that release, restarting Home Assistant and reloading the frontend.
+The native device label and Studio/setup notices follow the declared status; hiding feedback, submitting a report or closing an issue does not promote a model.
+Keep the same confirmation URL available after promotion or issue closure so older installations and new revision reports still reach it.
+
+An accepted write, a UI-only trial or another SKU's report is not hardware confirmation.
+Supported means owner-confirmed hardware, not that every hardware/firmware revision has been tested; keep unreported revisions and known gaps explicit.
+Promoting support does not promote speculative Kaitai schemas to evidence-backed schemas; those have their own capture requirements below.
 
 ## Device-owner validation
 
 Sharing confirmations is voluntary and never unlocks controls or blocks normal use.
-Each Experimental model must have a new, canonical confirmation child under the owner-confirmation tracker before release.
-Keep its issue number in the exact-SKU `ModelProfile.confirmation_issue`; compatible codecs or replaced profiles must not inherit another model's issue.
-Historical support requests remain separate context.  Keep confirmation links valid after promotion or issue closure so older releases still reach the correct thread.
-
-Use a consistent child-issue description: exact SKU and current support status, optional reporting instructions, a short comment template, and diagnostics/privacy guidance.
 The template asks for exact model, hardware and firmware versions, integration version, version source, what was tried, visible successes/failures, untested features and restoration problems.
 Do not infer support for an unreported revision or promote a model automatically from successful writes.
 
