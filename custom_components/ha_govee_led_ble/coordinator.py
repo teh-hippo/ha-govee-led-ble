@@ -46,6 +46,7 @@ from .const import (
 from .control_arbiter import BLEControlArbiter, ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_dreamview import DreamviewClaimedError, _DreamviewMixin, is_dreamview_claimed
 from .coordinator_expectations import expectations_from_packet
+from .coordinator_h6102 import _H6102Mixin
 from .coordinator_modes import PreModeSnapshot, _ActiveModeMixin
 from .coordinator_notifications import _OPTIONAL_CONTROL_DOMAINS, _NotificationMixin
 from .coordinator_recovery import _RecoveryMixin
@@ -84,11 +85,9 @@ from .govee_encryption import GoveeCryptoError
 from .govee_encryption.session import GoveeEncryptionSession
 from .h6099_controls import h6099_control_queries
 from .h6102_capabilities import (
-    H6102CapabilityResolutionReason,
     H6102FirmwareSource,
     resolve_h6102_capabilities,
 )
-from .h6102_protocol import H6102_PACTS, H6102RgbVariant
 from .light_commands import (
     SegmentColorGroup,
     build_segment_brightness,
@@ -140,7 +139,7 @@ _CORE_STATE_FIELDS = (
 )
 
 
-class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin, _RecoveryMixin):
+class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin, _RecoveryMixin, _H6102Mixin):
     """Manages BLE connection lifecycle for a Govee device."""
 
     def __init__(
@@ -174,17 +173,13 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin,
             update_interval=timedelta(seconds=30) if profile.state_readable else None,
         )
         self.address, self.model, self.profile = address, model, profile
-        self.rgb_variant: H6102RgbVariant | None = resolution.rgb_variant if resolution is not None else None
-        self.firmware_source: H6102FirmwareSource | None = (
-            resolution.firmware_source if resolution is not None else None
+        self._init_h6102(
+            resolution,
+            firmware=h6102_firmware,
+            firmware_source=h6102_firmware_source,
+            hardware=h6102_hardware,
+            pact=h6102_pact,
         )
-        self.capability_resolution_reason: H6102CapabilityResolutionReason | None = (
-            resolution.capability_resolution_reason if resolution is not None else None
-        )
-        self._configured_h6102_firmware = h6102_firmware if h6102_firmware_source == "configured" else None
-        self._configured_h6102_hardware = h6102_hardware
-        if h6102_pact is not None and h6102_pact not in H6102_PACTS:
-            raise ValueError("Unknown H6102 Pact context")
         self._profile_generation = 0
         self._configuration_url = configuration_url
         self.effect_families = default_effect_families(model) if effect_families is None else effect_families
@@ -232,7 +227,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin,
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.effect: str | None = None
         # Device identity from the aa 06/aa 07 handshake replies; None until first read.
-        self.fw_version: str | None = h6102_firmware if model == "H6102" and h6102_firmware_source == "ble" else None
+        self.fw_version: str | None = None
         self.hw_version: str | None = None
         self.subordinate_20_version: str | None = None
         self.subordinate_21_version: str | None = None
@@ -330,12 +325,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin,
         self._model_reload_scheduled = False
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
         self._init_dreamview()
-        if model == "H6102":
-            if h6102_pact is not None:
-                self.pact_type, self.pact_code = H6102_PACTS[h6102_pact]
-            self._resolve_device_profile()
-        else:
-            self._resolve_device_profile()
+        self._apply_h6102_context(firmware=h6102_firmware, firmware_source=h6102_firmware_source, pact=h6102_pact)
+        self._resolve_device_profile()
 
     @property
     def configuration_url(self) -> str | None:
@@ -443,13 +434,11 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin,
         if fw_version is not None and identity_version(fw_version) is not None and fw_version != self.fw_version:
             self.fw_version = fw_version
             changed_fields.add("fw_version")
-            if self.model == "H6102":
-                self._configured_h6102_firmware = None
+            self._forget_configured_identity("fw_version")
         if hw_version is not None and identity_version(hw_version) is not None and hw_version != self.hw_version:
             self.hw_version = hw_version
             changed_fields.add("hw_version")
-            if self.model == "H6102":
-                self._configured_h6102_hardware = None
+            self._forget_configured_identity("hw_version")
         if changed_fields:
             if changed_fields & authorization_fields:
                 self._authorization_generation += 1
@@ -597,21 +586,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin,
         ):
             return
         if self.model == "H6102":
-            context = (self.pact_type, self.pact_code, self.fw_version, self.hw_version, self.profile.physical_ic_count)
-            context_changed = context != getattr(self, "_h6102_context", context)
-            self._h6102_context = context
-            resolution = resolve_h6102_capabilities(
-                self.fw_version or self._configured_h6102_firmware,
-                "ble" if self.fw_version else "configured" if self._configured_h6102_firmware else None,
-                hardware=self.hw_version or self._configured_h6102_hardware,
-                pact_type=self.pact_type,
-                pact_code=self.pact_code,
-                physical_ic_count=self.profile.physical_ic_count,
-            )
-            self.rgb_variant = resolution.rgb_variant
-            self.firmware_source = resolution.firmware_source
-            self.capability_resolution_reason = resolution.capability_resolution_reason
-            profile = resolution.profile
+            profile, context_changed = self._resolve_h6102_profile()
         else:
             context_changed = False
             profile = device_profile(
@@ -1659,29 +1634,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin,
         if not fields or self.identity_fields_confirmed(fields):
             return self.profile
         if self.model == "H6102":
-            confirmed_firmware = "fw_version" in self._confirmed_identity_fields
-            firmware = (
-                self.fw_version
-                if confirmed_firmware
-                else self._configured_h6102_firmware
-                if self.pact_type == 1
-                else None
-            )
-            hardware = (
-                self.hw_version
-                if "hw_version" in self._confirmed_identity_fields
-                else self._configured_h6102_hardware
-                if self.pact_type == 1
-                else None
-            )
-            return resolve_h6102_capabilities(
-                firmware,
-                "ble" if confirmed_firmware else "configured" if firmware else None,
-                hardware=hardware,
-                pact_type=self.pact_type,
-                pact_code=self.pact_code,
-                physical_ic_count=self.profile.physical_ic_count,
-            ).profile
+            return self._h6102_authorization_profile()
         return device_profile(self.model, self.pact_type, self.pact_code, firmware=None, hardware=None)
 
     def _validate_authorized_packet(self, packet: bytes) -> None:

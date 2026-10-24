@@ -52,6 +52,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     color_mode: ParsedMode | None
     _control_lock: BLEControlArbiter
     _lock: asyncio.Lock
+    pact_type: int | None
+    pact_code: int | None
+    _confirmed_identity_fields: set[str]
     control_write_attempts: int
     _profile_generation: int
     _pre_mode_snapshot: PreModeSnapshot
