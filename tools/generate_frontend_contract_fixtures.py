@@ -308,11 +308,7 @@ def rendered_data() -> str:
     document = {
         "schema_version": 1,
         "responses": {
-            "editor_info": EditorApiInfo(
-                integration_version=json.loads(
-                    (REPO_ROOT / "custom_components" / "ha_govee_led_ble" / "manifest.json").read_text()
-                )["version"],
-            ).to_dict(),
+            "editor_info": EditorApiInfo(integration_version="0.0.0-test").to_dict(),
             "devices": devices,
             "custom_catalogue": catalogue,
             "library_snapshot": library_snapshot_payload(library_snapshot),

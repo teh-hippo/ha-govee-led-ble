@@ -65788,7 +65788,7 @@
       "api_version": 17,
       "compiler_version": 6,
       "effect_schema_version": 2,
-      "integration_version": "7.25.0",
+      "integration_version": "0.0.0-test",
       "limits": {
         "deployment_records": 128,
         "devices": 512,
