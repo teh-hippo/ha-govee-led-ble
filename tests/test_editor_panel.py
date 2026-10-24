@@ -224,6 +224,7 @@ async def test_container_process_contract_uses_production_panel_websocket_storag
         state=ConfigEntryState.LOADED,
         runtime_data=coordinator,
         title="Govee H617A",
+        options={},
     )
     unsupported_entry = SimpleNamespace(
         entry_id="h6125-entry",

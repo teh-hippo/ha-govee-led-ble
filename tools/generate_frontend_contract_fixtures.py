@@ -94,6 +94,7 @@ def _device_payload(model: str, profile: ModelProfile, config_entry_id: str) -> 
         profile=profile,
     ).to_dict()
     device.update(
+        show_experimental_feedback=True,
         hw_version="1.00.01" if model == "H617A" else None,
         fw_version="1.02.03" if model == "H617A" else None,
         subordinate_20_version=None,

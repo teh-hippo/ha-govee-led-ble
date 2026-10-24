@@ -99,6 +99,7 @@ test("experimental feedback stays visible without enabled workflows and uses onl
   model.selectedDeviceId = selected.config_entry_id;
   model.integrationVersion = "7.24.4rc1";
   expect(model.experimentalSupport).toBe(true);
+  expect(model.showFeedbackNotice).toBe(true);
   const report = model.deviceFeedbackReport(selected);
   expect(report).toContain("- Model: H6125");
   expect(report).toContain("- Hardware version: 3.01.10");
@@ -109,6 +110,20 @@ test("experimental feedback stays visible without enabled workflows and uses onl
   expect(model.deviceFeedbackReport({ ...selected, hw_version: null, fw_version: null })).toContain("not yet observed");
   model.devices = [{ ...selected, support_quality: "supported" }];
   expect(model.experimentalSupport).toBe(false);
+});
+
+test("feedback visibility is per light and does not change support classification", () => {
+  const model = new PanelModel(() => undefined);
+  model.devices = ["first", "second"].map(id => ({ ...device(id, "H6125"), support_quality: "experimental" }));
+  model.selectedDeviceId = "first";
+  model.sessionHiddenFeedback.add("first");
+  expect(model.showFeedbackNotice).toBe(false);
+  expect(model.experimentalSupport).toBe(true);
+  model.selectedDeviceId = "second";
+  expect(model.showFeedbackNotice).toBe(true);
+  model.devices[1] = { ...model.devices[1], show_experimental_feedback: false };
+  expect(model.showFeedbackNotice).toBe(false);
+  expect(model.experimentalSupport).toBe(true);
 });
 
 test("device music geometry replaces catalogue defaults without leaking across devices", () => {

@@ -30,10 +30,12 @@ from .const import (
     CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
+    CONF_SHOW_EXPERIMENTAL_FEEDBACK,
     CONNECTION_MODE_HOLD,
     CONNECTION_MODE_RELEASE,
     DOMAIN,
     MODEL_PROFILES,
+    SupportQuality,
     default_effect_categories,
     model_from_ble_name,
     resolve_model,
@@ -60,6 +62,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 8
 
     _discovered: dict[str, str]
+    _pending_device: dict[str, str]
 
     @staticmethod
     @callback
@@ -82,7 +85,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is None:
             self._set_confirm_only()
             return self.async_show_form(step_id="bluetooth_confirm", description_placeholders={"model": model})
-        return self.async_create_entry(title=f"Govee {model}", data=self._discovered)
+        return await self._async_finish_new_device(self._discovered)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
@@ -107,7 +110,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             if selected_model == "H6102":
                 return await self.async_step_h6102_firmware()
-            return self.async_create_entry(title=f"Govee {selected_model}", data={CONF_MODEL: selected_model})
+            return await self._async_finish_new_device({CONF_MODEL: selected_model})
         return self._show_user_form()
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -150,7 +153,30 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             data[CONF_H6102_APP_HARDWARE] = hardware
         if pact:
             data[CONF_H6102_PACT] = pact
-        return self.async_create_entry(title="Govee H6102", data=data)
+        return await self._async_finish_new_device(data)
+
+    async def _async_finish_new_device(self, data: dict[str, str]) -> ConfigFlowResult:
+        model = data[CONF_MODEL]
+        if MODEL_PROFILES[model].support_quality is SupportQuality.EXPERIMENTAL:
+            self._pending_device = data
+            self.context["title_placeholders"] = {"name": model}
+            return await self.async_step_experimental()
+        return self.async_create_entry(title=f"Govee {model}", data=data)
+
+    async def async_step_experimental(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        model = self._pending_device[CONF_MODEL]
+        if user_input is not None:
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(title=f"Govee {model}", data=self._pending_device)
+        issue = MODEL_PROFILES[model].confirmation_issue
+        assert issue is not None
+        self._set_confirm_only()
+        return self.async_show_form(
+            step_id="experimental",
+            description_placeholders={
+                "feedback_url": f"https://github.com/teh-hippo/ha-govee-led-ble/issues/{issue}",
+            },
+        )
 
     async def _finish_reconfigure(
         self,
@@ -258,6 +284,7 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
             return self.async_abort(reason="not_supported")
         supported = supported_effect_categories(model)
         readable = MODEL_PROFILES[model].state_readable
+        feedback = MODEL_PROFILES[model].confirmation_issue is not None
         if not supported and not readable:
             return self.async_abort(reason="no_options")
         if user_input is not None:
@@ -268,6 +295,8 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
                 options[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS] = user_input[CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS]
             if readable:
                 options[CONF_CONNECTION_MODE] = user_input[CONF_CONNECTION_MODE]
+            if feedback:
+                options[CONF_SHOW_EXPERIMENTAL_FEEDBACK] = user_input[CONF_SHOW_EXPERIMENTAL_FEEDBACK]
             return self.async_create_entry(data=options)
         defaults = default_effect_categories(model)
         current = self.config_entry.options.get(CONF_EFFECT_CATEGORIES, list(defaults))
@@ -283,4 +312,11 @@ class GoveeOptionsFlow(OptionsFlowWithReload):
             schema.update({vol.Required(category, default=category in current): bool for category in supported})
             schema[vol.Required(CONF_PREFIX_EFFECT_NAMES, default=prefix_effect_names)] = bool
             schema[vol.Required(CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS, default=always_include_custom_effects)] = bool
+        if feedback:
+            schema[
+                vol.Required(
+                    CONF_SHOW_EXPERIMENTAL_FEEDBACK,
+                    default=self.config_entry.options.get(CONF_SHOW_EXPERIMENTAL_FEEDBACK, True),
+                )
+            ] = bool
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))

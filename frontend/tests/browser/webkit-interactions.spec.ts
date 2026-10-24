@@ -8,68 +8,76 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/tests/browser/fixtures/palette-editor.html");
 });
 
-for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
-  test(`voluntary feedback remains copyable and links to one issue at ${viewport.width}px`, async ({ page }) => {
-    await page.setViewportSize(viewport);
-    await page.evaluate(async () => {
-      const modulePath = "/src/panel.ts";
-      const { GoveeLedEffectStudio } = await import(modulePath);
-      const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
-      const device = {
-        ...contracts.responses.devices.find((item: { model: string }) => item.model === "H6125"),
-        hw_version: "3.01.10",
-        fw_version: null,
-        confirmation_issue: 447,
-        display_name: "Private device name",
-        effect_categories: [],
-      };
-      const responses: Record<string, unknown> = {
-        info: { ...contracts.responses.editor_info, integration_version: "7.24.4rc1" },
-        devices: { devices: [device] },
-        "library/list": { generation: 0, items: [] },
-        "custom/catalogue": { catalogue: contracts.responses.custom_catalogue },
-        "user_state/get": {
-          user_state: { owner_id: "private-owner", recent_colours: [], selected_config_entry_id: device.config_entry_id, navigation: {} },
-        },
-      };
-      const calls: string[] = [];
-      const panel = new GoveeLedEffectStudio() as GoveeLedEffectStudio;
-      const hass: HomeAssistant = {
-        user: { is_admin: false },
-        async callWS<T>(message: Record<string, unknown>): Promise<T> {
-          const type = String(message.type).replace("ha_govee_led_ble/editor/", "");
-          calls.push(type);
-          panel.dataset.calls = JSON.stringify(calls);
-          if (!(type in responses)) throw new Error(`Unexpected WebSocket call: ${type}`);
-          return structuredClone(responses[type]) as T;
-        },
-        async callService() { throw new Error("Feedback must not call services"); },
-        connection: { async subscribeMessage() { return () => undefined; } },
-      };
-      panel.hass = hass;
-      document.body.replaceChildren(panel);
-      Object.defineProperty(navigator, "clipboard", {
-        configurable: true,
-        value: window.innerWidth < 1000
-          ? { writeText: () => Promise.reject(new DOMException("Denied", "NotAllowedError")) }
-          : undefined,
-      });
+async function mountFeedbackPanel(page: Page, model = "H6125", showFeedback = true): Promise<void> {
+  await page.evaluate(async ({ model, showFeedback }) => {
+    const modulePath = "/src/panel.ts";
+    const { GoveeLedEffectStudio } = await import(modulePath);
+    const contracts = await fetch("/tests/fixtures/backend-contracts.json").then(response => response.json());
+    const device = {
+      ...contracts.responses.devices.find((item: { model: string }) => item.model === model),
+      hw_version: "3.01.10",
+      fw_version: null,
+      show_experimental_feedback: showFeedback,
+      display_name: "Private device name",
+      effect_categories: [],
+    };
+    const responses: Record<string, unknown> = {
+      info: { ...contracts.responses.editor_info, integration_version: "7.24.4rc1" },
+      devices: { devices: [device] },
+      "library/list": { generation: 0, items: [] },
+      "custom/catalogue": { catalogue: contracts.responses.custom_catalogue },
+      "user_state/get": {
+        user_state: { owner_id: "private-owner", recent_colours: [], selected_config_entry_id: device.config_entry_id, navigation: {} },
+      },
+    };
+    const calls: string[] = [];
+    const panel = new GoveeLedEffectStudio() as GoveeLedEffectStudio;
+    const hass: HomeAssistant = {
+      user: { is_admin: false },
+      async callWS<T>(message: Record<string, unknown>): Promise<T> {
+        const type = String(message.type).replace("ha_govee_led_ble/editor/", "");
+        calls.push(type);
+        panel.dataset.calls = JSON.stringify(calls);
+        if (!(type in responses)) throw new Error(`Unexpected WebSocket call: ${type}`);
+        return structuredClone(responses[type]) as T;
+      },
+      async callService() { throw new Error("Feedback must not call services"); },
+      connection: { async subscribeMessage() { return () => undefined; } },
+    };
+    panel.hass = hass;
+    document.body.replaceChildren(panel);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: window.innerWidth < 1000
+        ? { writeText: () => Promise.reject(new DOMException("Denied", "NotAllowedError")) }
+        : undefined,
     });
-    const share = page.getByRole("button", { name: "Share feedback", exact: true });
+  }, { model, showFeedback });
+}
+
+for (const viewport of [{ width: 320, height: 844 }, { width: 1280, height: 900 }]) {
+  test(`compact feedback remains copyable and links to one issue at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mountFeedbackPanel(page);
+    const share = page.getByRole("button", { name: "Feedback", exact: true });
     await expect(share).toBeVisible();
+    const notice = page.locator(".support-notice");
+    expect(await notice.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    expect(await notice.locator(":scope > span").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    const centres = await notice.locator(":scope > span, button").evaluateAll(elements =>
+      elements.map(element => { const rect = element.getBoundingClientRect(); return rect.y + rect.height / 2; }));
+    expect(Math.max(...centres) - Math.min(...centres)).toBeLessThan(1);
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const callsBefore = await page.locator("ha-govee-led-ble-editor").getAttribute("data-calls");
     await share.click();
-    const dialog = page.getByRole("dialog", { name: "Share H6125 feedback" });
+    const dialog = page.getByRole("dialog", { name: "Device feedback" });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText("Sharing is optional");
-    await expect(dialog).toContainText("Not yet observed");
-    const report = dialog.getByRole("textbox", { name: "Report to copy" });
+    const report = dialog.getByRole("textbox", { name: "Details", exact: true });
     await expect(report).toHaveValue(/Hardware version: 3\.01\.10/);
     await expect(report).toHaveValue(/Firmware version: not yet observed/);
     await expect(report).not.toHaveValue(/Private device name|private-owner|h6125-main/);
-    await dialog.getByRole("button", { name: "Copy report", exact: true }).click();
-    await expect(dialog.getByRole("status")).toContainText(viewport.width < 1000 ? "Automatic copying failed" : "Automatic copying is unavailable");
+    await dialog.getByRole("button", { name: "Copy details", exact: true }).click();
+    await expect(dialog.getByRole("status")).toContainText(viewport.width < 1000 ? "Copying failed" : "Copying is unavailable");
     expect(await report.evaluate((element: HTMLTextAreaElement) => {
       element.focus();
       element.select();
@@ -82,10 +90,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
         value: { async writeText(text: string) { document.body.dataset.copiedReport = text; } },
       });
     });
-    await dialog.getByRole("button", { name: "Copy report", exact: true }).click();
-    await expect(dialog.getByRole("status")).toContainText("Report copied");
+    await dialog.getByRole("button", { name: "Copy details", exact: true }).click();
+    await expect(dialog.getByRole("status")).toContainText("Copied.");
     expect(await page.locator("body").getAttribute("data-copied-report")).toBe(await report.inputValue());
-    const link = dialog.getByRole("link", { name: "Open model issue on GitHub" });
+    const link = dialog.getByRole("link", { name: "Open GitHub (new tab)", exact: true });
     await expect(link).toHaveAttribute("href", "https://github.com/teh-hippo/ha-govee-led-ble/issues/447");
     await page.context().route("https://github.com/teh-hippo/ha-govee-led-ble/issues/447", route =>
       route.fulfill({ contentType: "text/html", body: "<h1>Model confirmation issue</h1>" }));
@@ -100,6 +108,25 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
     await expect(share).toBeFocused();
   });
 }
+
+test("feedback dismissal survives reloads, stays per light and does not leak to another tab", async ({ page }) => {
+  await mountFeedbackPanel(page);
+  await page.getByRole("button", { name: "Hide feedback for this session" }).click();
+  await expect(page.locator(".support-notice")).toHaveCount(0);
+  await page.reload();
+  await mountFeedbackPanel(page);
+  await expect(page.locator(".support-notice")).toHaveCount(0);
+  await mountFeedbackPanel(page, "H6179");
+  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toBeVisible();
+  await mountFeedbackPanel(page, "H6099", false);
+  await expect(page.locator(".support-notice")).toHaveCount(0);
+
+  const otherTab = await page.context().newPage();
+  await otherTab.goto("/tests/browser/fixtures/palette-editor.html");
+  await mountFeedbackPanel(otherTab);
+  await expect(otherTab.getByRole("button", { name: "Feedback", exact: true })).toBeVisible();
+  await otherTab.close();
+});
 
 test("native layer moves retain authored speeds and allow building a mixed effect", async ({ page }) => {
   await page.evaluate(async () => {

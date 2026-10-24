@@ -179,6 +179,9 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
       confirmation_issue: device.confirmation_issue == null
         ? null
         : integerValue(device.confirmation_issue, "confirmation issue", 1),
+      ...(device.show_experimental_feedback === undefined ? {} : {
+        show_experimental_feedback: booleanValue(device.show_experimental_feedback, "experimental feedback preference"),
+      }),
       hw_version: device.hw_version == null ? null : boundedString(device.hw_version, "hardware version", MAX_IDENTIFIER_LENGTH),
       fw_version: device.fw_version == null ? null : boundedString(device.fw_version, "firmware version", MAX_IDENTIFIER_LENGTH),
       subordinate_20_version: device.subordinate_20_version == null

@@ -60,6 +60,9 @@ import {
   showHomeAssistantHeader,
   staticCompositionRequest,
 } from "./ui-utils";
+import { MAX_EDITOR_DEVICES, MAX_IDENTIFIER_LENGTH } from "./validation-constants";
+
+const FEEDBACK_SESSION_STORAGE_KEY = "ha_govee_led_ble/effect_studio/hidden_feedback";
 
 const componentLoaders = {
   shell: () =>
@@ -180,6 +183,7 @@ export class GoveeLedEffectStudio extends LitElement {
 
   public connectedCallback(): void {
     super.connectedCallback();
+    this.restoreFeedbackVisibility();
     this.addEventListener("keydown", this.keyDown);
     window.addEventListener("click", this.navigationClick, true);
     this.syncUnloadProtection();
@@ -306,17 +310,24 @@ export class GoveeLedEffectStudio extends LitElement {
         <h1 class="visually-hidden">Effect Studio</h1>
 
         ${this.renderStudioToolbar()}
-        ${this.model.experimentalSupport
+        ${this.model.showFeedbackNotice
           ? html`
               <p class="support-notice" role="note">
-                <span><strong>Experimental support.</strong> If you'd like, share your experience.</span>
+                <span title="Experimental support"><strong>Experimental</strong></span>
                 ${this.model.selectedDevice?.confirmation_issue
                   ? html`<button
                       class="secondary"
                       type="button"
                       @click=${(event: Event) => this.modal.requestFeedback(event.currentTarget as HTMLElement)}
-                    >Share feedback</button>`
+                    >Feedback</button>`
                   : nothing}
+                <button
+                  class="secondary"
+                  type="button"
+                  aria-label="Hide feedback for this session"
+                  title="Hide until this tab or app view closes"
+                  @click=${() => this.hideFeedbackNotice()}
+                >Hide</button>
               </p>
             `
           : nothing}
@@ -1335,45 +1346,26 @@ export class GoveeLedEffectStudio extends LitElement {
           @click=${(event: Event) => event.stopPropagation()}
           @keydown=${(event: KeyboardEvent) => this.modal.dialogKeyDown(event, () => this.modal.closeFeedback())}
         >
-          <h2 id="feedback-title">Share ${device.model} feedback</h2>
+          <h2 id="feedback-title">Device feedback</h2>
           <p id="feedback-description">
-            Sharing is optional.  Nothing is sent automatically.
-            GitHub comments and attachments are public.
+            Support for this model has not yet been confirmed on actual hardware.
+            If you can, share what works and what doesn't to help other owners.
           </p>
-          <dl class="feedback-identity">
-            <dt>Model</dt><dd>${device.model}</dd>
-            <dt>Hardware</dt><dd>${device.hw_version ?? "Not yet observed"}</dd>
-            <dt>Firmware</dt><dd>${device.fw_version ?? "Not yet observed"}</dd>
-            <dt>Integration</dt><dd>${this.model.integrationVersion ?? "Not available"}</dd>
-          </dl>
-          <p>Details are captured when you open this report.  Reopen to refresh.
-            Fill any missing versions from the Govee app and identify that source.</p>
           <label class="field">
-            Report to copy
-            <textarea readonly rows="10" spellcheck="false" .value=${dialog.report}></textarea>
+            Details
+            <textarea readonly rows="8" spellcheck="false" .value=${dialog.report}></textarea>
           </label>
-          <p>Copy the report, open this model's issue, and paste it into a comment.
-            Describe only what you tried.  You do not need to test every feature.</p>
-          <p>If something failed, download diagnostics immediately afterwards.
-            Review the file before attaching it; known redactions do not guarantee anonymity.
-            ${this.isAdmin
-              ? html`<a
-                    href=${integrationSettingsPath(this.panel?.config?.configuration_path ?? "/config/integrations", device.config_entry_id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >Open integration settings (new tab)</a>
-                  and use the entry's menu to download diagnostics.`
-              : html`Ask an administrator to download diagnostics from the integration's settings.`}
-          </p>
+          <p>Copy these details and paste them into the model issue on GitHub.</p>
           ${dialog.copyMessage ? html`<p role="status">${dialog.copyMessage}</p>` : nothing}
           <div class="dialog-actions">
-            <button class="secondary" type="button" @click=${() => this.modal.closeFeedback()}>Close</button>
-            <button class="secondary" type="button" @click=${() => void this.copyFeedbackReport()}>Copy report</button>
+            <button class="secondary" type="button" @click=${() => void this.copyFeedbackReport()}>Copy details</button>
             <a
               href=${`https://github.com/teh-hippo/ha-govee-led-ble/issues/${device.confirmation_issue}`}
               target="_blank"
               rel="noopener noreferrer"
-            >Open model issue on GitHub (new tab)</a>
+              aria-label="Open GitHub (new tab)"
+            >Open GitHub</a>
+            <button class="secondary" type="button" @click=${() => this.modal.closeFeedback()}>Close</button>
           </div>
         </section>
       </div>
@@ -1383,18 +1375,45 @@ export class GoveeLedEffectStudio extends LitElement {
   private async copyFeedbackReport(): Promise<void> {
     const dialog = this.model.modalState;
     if (dialog?.kind !== "feedback") return;
-    let copyMessage = "Report copied.  Paste it into a comment on the model issue.";
+    let copyMessage = "Copied.";
     if (!navigator.clipboard?.writeText) {
-      copyMessage = "Automatic copying is unavailable.  Select the report text and copy it using your device's menu.";
+      copyMessage = "Copying is unavailable.  Select and copy the details manually.";
     } else {
       try {
         await navigator.clipboard.writeText(dialog.report);
       } catch {
-        copyMessage = "Automatic copying failed.  Select the report text and copy it using your device's menu.";
+        copyMessage = "Copying failed.  Select and copy the details manually.";
       }
     }
     if (this.model.modalState === dialog) {
       this.model.patch({ modalState: { ...dialog, copyMessage } });
+    }
+  }
+
+  private restoreFeedbackVisibility(): void {
+    try {
+      const stored = sessionStorage.getItem(FEEDBACK_SESSION_STORAGE_KEY);
+      if (stored === null) return;
+      const value: unknown = JSON.parse(stored);
+      if (!Array.isArray(value) || value.length > MAX_EDITOR_DEVICES ||
+          !value.every(id => typeof id === "string" && id.length > 0 && id.length <= MAX_IDENTIFIER_LENGTH)) {
+        throw new Error("Invalid feedback session preference");
+      }
+      this.model.patch({ sessionHiddenFeedback: new Set<string>(value) });
+    } catch (error) {
+      console.warn("Could not restore the feedback session preference.", error);
+    }
+  }
+
+  private hideFeedbackNotice(): void {
+    const device = this.model.selectedDevice;
+    if (!device) return;
+    const hidden = new Set(this.model.sessionHiddenFeedback).add(device.config_entry_id);
+    this.model.patch({ sessionHiddenFeedback: hidden });
+    try {
+      sessionStorage.setItem(FEEDBACK_SESSION_STORAGE_KEY, JSON.stringify([...hidden]));
+    } catch (error) {
+      console.warn("Could not remember hidden feedback for this session.", error);
     }
   }
 

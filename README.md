@@ -41,10 +41,13 @@ Effect Studio adds a dedicated panel to the Home Assistant sidebar for lights th
 
 Saved effects are stored in Home Assistant and exposed directly through the standard `light` entity effect selector for use in dashboards, scripts, and automations.  Non-admin users can browse scenes and saved effects in read-only mode.
 
-Experimental devices show a small, non-blocking notice with an optional **Share feedback** action.
+Experimental devices show a compact **Experimental**, **Feedback** and **Hide** row.
 Their native Home Assistant device information also marks the model as Experimental while retaining the exact SKU and the Studio configuration link.
-It displays the observed model, hardware and firmware, and prepares a report to copy into the model's existing [owner-confirmation issue](https://github.com/teh-hippo/ha-govee-led-ble/issues/442).
+The Feedback dialog displays the observed model, hardware and firmware, and prepares a report to copy into the model's existing [owner-confirmation issue](https://github.com/teh-hippo/ha-govee-led-ble/issues/442).
 Sharing is voluntary; nothing is uploaded automatically and no controls depend on reporting.
+**Hide** dismisses the Studio notice for that light for the current tab/app-view session, including across page reloads.
+To hide it across sessions for all users of that light, turn off **Show experimental feedback notice** in its integration options.  The native device's Experimental status is unchanged.
+New Experimental devices also show setup guidance linking to their existing confirmation issue; there is no report or feedback requirement during setup.
 Fill missing versions from the Govee app and identify that source.  Review diagnostics before attaching them because GitHub comments and attachments are public.
 
 H60A1 and H60A6 include their exact-model scene catalogues and DIY effects.  H60A6 also supports native layered effects and 133-point paint, with independent **Panel enabled** and **Ring enabled** switches and a **Power-on behaviour** select.  These additional entities are hidden by default; enabling a zone does not switch on master power.  Newly added ceiling-light effect and setting paths still need owner confirmation on hardware.

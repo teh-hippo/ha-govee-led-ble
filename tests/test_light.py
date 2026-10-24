@@ -1196,6 +1196,7 @@ async def test_workspace_identity_agrees_between_device_payload_and_light_effect
         entry_id="entry-a",
         runtime_data=mock_coordinator,
         title="Govee H617A",
+        options={},
     )
 
     payload = _device_payload(hass, backend, entry)
@@ -1288,7 +1289,7 @@ async def test_ambiguous_workspace_agrees_across_runtime_light_and_device(
         preview=SimpleNamespace(health=MagicMock()),
     )
     entity = GoveeBLELight(mock_coordinator, config_entry_id="entry-a", effect_backend=backend)
-    entry = SimpleNamespace(entry_id="entry-a", runtime_data=mock_coordinator, title="H617E")
+    entry = SimpleNamespace(entry_id="entry-a", runtime_data=mock_coordinator, title="H617E", options={})
     payload = _device_payload(hass, backend, entry)
     matches = effect == "aurora-a"
     assert (payload["active_workspace"] is not None) is matches
