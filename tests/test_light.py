@@ -64,6 +64,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness,
     build_h617a_scene,
     build_power,
+    build_video_mode,
 )
 from custom_components.ha_govee_led_ble.h6102_capabilities import resolve_h6102_capabilities
 from custom_components.ha_govee_led_ble.light import (
@@ -317,7 +318,9 @@ async def test_qualified_h6076_projects_its_twelve_music_effects(mock_h6076_coor
         "Torch",
     ]
     await light.async_turn_on(effect="Candy Crush")
-    coordinator.async_select_music_slug.assert_awaited_once_with("candy_crush")
+    coordinator.async_select_music_slug.assert_awaited_once_with(
+        "candy_crush", on_write=light._clear_active_effect_origin
+    )
 
 
 def test_hidden_scene_family_does_not_project_internal_scene_state(
@@ -1644,7 +1647,7 @@ async def test_turn_on_music_effect_is_first_class(light, mock_coordinator, effe
     video_preflight = AsyncMock()
     monkeypatch.setattr("custom_components.ha_govee_led_ble.light.async_require_video_controls", video_preflight)
     await light.async_turn_on(effect=effect)
-    co.async_select_music_slug.assert_awaited_once_with(slug)
+    co.async_select_music_slug.assert_awaited_once_with(slug, on_write=light._clear_active_effect_origin)
     video_preflight.assert_not_awaited()
 
 
@@ -1776,6 +1779,232 @@ async def test_effect_reflects_active_video_mode(h6199_light, mock_h6199_coordin
     mock_h6199_coordinator.video_mode = "off"
     mock_h6199_coordinator.effect = "rainbow"
     assert h6199_light.effect == "off"
+
+
+@pytest.fixture(params=["movie", "game"])
+async def saved_video_light(hass, monkeypatch, request):
+    mode = request.param
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6097", configuration_url=None)
+    coordinator.pact_type, coordinator.pact_code = 2, 1
+    coordinator._resolve_device_profile()
+    coordinator.is_on = True
+    coordinator.video_mode = mode
+    coordinator.color_mode = ParsedMode.VIDEO
+    coordinator.video_full_screen = True
+    coordinator.video_saturation = 63
+    coordinator.video_sound_effects = False
+    coordinator.video_sound_effects_softness = 27
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coordinator, "_renew_foreground_lease", lambda: None)
+
+    async def refresh(**kwargs):
+        if kwargs.get("refresh_all"):
+            for field in ("is_on", "brightness_pct", "color_mode"):
+                coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+        return True
+
+    monkeypatch.setattr(coordinator, "refresh_state", AsyncMock(side_effect=refresh))
+
+    async def observe(expectations, **kwargs):
+        return all(getattr(coordinator, field) == value for field, value in expectations.items())
+
+    monkeypatch.setattr(coordinator, "async_observe_effect", AsyncMock(side_effect=observe))
+    deployments = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    cache = EffectDeviceCache(InMemoryVersionedDocumentStore())
+    workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await deployments.async_load()
+    await cache.async_load()
+    await workspaces.async_load()
+    engine = EffectDeploymentEngine(deployments, cache, workspaces)
+    item = LibraryItem.new(f"Saved {mode}", VideoProfile("H6097", mode, True, 63, False, 27, None, None, None))
+    backend = SimpleNamespace(
+        application=SimpleNamespace(library_snapshot=lambda: LibrarySnapshot((item,))),
+        device_cache=cache,
+        active_workspaces=workspaces,
+        engine=engine,
+        template_defaults=SimpleNamespace(get=MagicMock(return_value=None)),
+    )
+    entity = GoveeBLELight(coordinator, config_entry_id="entry-a", effect_backend=backend)
+    entity.async_write_ha_state = MagicMock()
+    await engine.async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-26T00:00:00Z",
+    )
+    assert entity.effect == item.name
+    client.write_gatt_char.reset_mock()
+    return entity, coordinator, backend, item, client
+
+
+@pytest.mark.parametrize("same_settings", [False, True])
+async def test_native_video_label_supersedes_saved_copy_through_reconciliation_and_reload(
+    saved_video_light, same_settings
+):
+    entity, coordinator, backend, item, client = saved_video_light
+    mode = item.content.mode
+    saturation = 63 if same_settings else 100
+    native = replace(item.content, saturation=saturation)
+    backend.template_defaults.get.side_effect = lambda _entry, template: (
+        SimpleNamespace(model="H6097", content=native) if template == f"template:video:{mode}" else None
+    )
+
+    async def in_flight(_uuid, _packet, **kwargs):
+        observed = backend.engine.reconcile_current(
+            coordinator,
+            config_entry_id="entry-a",
+            observed_at="2026-08-26T00:01:00Z",
+            refreshed=False,
+        )
+        assert observed.active_effect is None
+        assert entity.effect == mode.capitalize()
+
+    client.write_gatt_char.side_effect = in_flight
+    await entity.async_turn_on(effect=mode.capitalize())
+    assert coordinator.video_saturation == saturation
+    await backend.device_cache.async_flush()
+    backend.device_cache = EffectDeviceCache(backend.device_cache._store)
+    await backend.device_cache.async_load()
+    backend.engine = EffectDeploymentEngine(
+        backend.engine._deployments, backend.device_cache, backend.active_workspaces
+    )
+    for _ in range(2):
+        observed = backend.engine.reconcile_current(
+            coordinator,
+            config_entry_id="entry-a",
+            observed_at="2026-08-26T00:02:00Z",
+            refreshed=True,
+        )
+        assert observed.active_effect is None
+        assert entity.effect == mode.capitalize()
+
+    client.write_gatt_char.side_effect = None
+    await backend.engine.async_apply_saved(
+        coordinator,
+        item,
+        config_entry_id="entry-a",
+        updated_at="2026-08-26T00:03:00Z",
+    )
+    assert entity.effect == item.name
+
+
+@pytest.mark.parametrize("attempted", [False, True], ids=["final-guard-rejection", "physical-write-failure"])
+async def test_native_profile_identity_changes_only_at_admitted_effect_packet(
+    saved_video_light, monkeypatch, attempted
+):
+    entity, coordinator, backend, item, client = saved_video_light
+    coordinator.is_on = False
+    original_validate = coordinator._validate_authorized_packet
+    validations = 0
+
+    def validate(packet, validator):
+        nonlocal validations
+        original_validate(packet, validator)
+        if packet == build_video_mode(item.content.mode, True, 63, False, 27, "H6097"):
+            validations += 1
+            if validations == 2 and not attempted:
+                raise ValueError("Final identity guard rejected the mode")
+
+    monkeypatch.setattr(coordinator, "_validate_authorized_packet", validate)
+
+    async def fail_mode(_uuid, packet, **kwargs):
+        if packet != build_power(True, "H6097"):
+            observed = backend.engine.reconcile_current(
+                coordinator,
+                config_entry_id="entry-a",
+                observed_at="2026-08-26T00:01:00Z",
+                refreshed=False,
+            )
+            assert observed.active_effect is None
+            raise RuntimeError("Mode write interrupted")
+
+    client.write_gatt_char.side_effect = fail_mode
+    with pytest.raises(HomeAssistantError):
+        await entity.async_turn_on(effect=item.content.mode.capitalize())
+    assert validations == 2
+    assert (backend.device_cache.get("entry-a").active_effect is None) is attempted
+    assert client.write_gatt_char.await_count == (2 if attempted else 1)
+
+
+@pytest.mark.parametrize("rejected", [False, True])
+async def test_native_music_power_packet_does_not_supersede_saved_origin(saved_video_light, monkeypatch, rejected):
+    entity, coordinator, backend, item, client = saved_video_light
+    coordinator.effect_families = frozenset({"video", "music"})
+    coordinator.effect_categories = frozenset({"video", "reactive"})
+    coordinator.music_sensitivity = 42
+    coordinator._music_calm = False
+    coordinator.music_color = None
+    selector = prepare_music_request("H6097", "rhythm", 42, None, False, {}, profile=coordinator.profile)[-1]
+    validate_packet = coordinator._validate_authorized_packet
+    validations = 0
+
+    def validate(packet, validator):
+        nonlocal validations
+        validate_packet(packet, validator)
+        if packet == selector:
+            validations += 1
+            if rejected and validations == 2:
+                raise ValueError("Music identity changed before the selector")
+
+    monkeypatch.setattr(coordinator, "_validate_authorized_packet", validate)
+
+    async def observe_write(_uuid, packet, **kwargs):
+        hint = backend.device_cache.get("entry-a").active_effect
+        if packet == build_power(True, "H6097"):
+            assert hint is not None and hint.item_id == item.id
+        else:
+            assert packet == selector and hint is None
+
+    client.write_gatt_char.side_effect = observe_write
+    if rejected:
+        with pytest.raises(HomeAssistantError):
+            await entity.async_turn_on(effect="Music: Rhythm")
+    else:
+        await entity.async_turn_on(effect="Music: Rhythm")
+    assert validations == 2
+    assert client.write_gatt_char.await_count == (1 if rejected else 2)
+    assert (backend.device_cache.get("entry-a").active_effect is not None) is rejected
+
+
+async def test_failed_live_profile_does_not_revive_saved_origin_or_restore_lighting(
+    saved_video_light, hass, monkeypatch
+):
+    from tests.test_effect_preview import PreviewPhase, _manager, _open
+
+    entity, coordinator, backend, item, client = saved_video_light
+    monkeypatch.setattr(coordinator, "async_preview_preflight", AsyncMock())
+    manager, _cache = await _manager(hass, monkeypatch, coordinator)
+    manager._device_cache = backend.device_cache
+    manager._active_workspaces = backend.active_workspaces
+    owner = object()
+    events = []
+    session = _open(manager, owner, events)
+    client.write_gatt_char.side_effect = RuntimeError("Interrupted Live write")
+    try:
+        await manager.async_queue_snapshot(
+            session_id=session,
+            owner=owner,
+            config_entry_id="entry-a",
+            sequence=1,
+            updated_at="2026-08-26T00:01:00Z",
+            item=replace(item, content=replace(item.content, saturation=80), content_hash=""),
+        )
+        await manager.async_wait_idle("entry-a")
+        assert events[-1].phase is PreviewPhase.FAILED
+        await manager.async_cancel(session_id=session, owner=owner, config_entry_id="entry-a")
+        assert client.write_gatt_char.await_count == 1
+        observed = backend.engine.reconcile_current(
+            coordinator,
+            config_entry_id="entry-a",
+            observed_at="2026-08-26T00:02:00Z",
+            refreshed=False,
+        )
+        assert observed.active_effect is None
+        assert entity.effect != item.name
+    finally:
+        await manager.async_shutdown()
 
 
 def test_registers_light_services_during_integration_setup():

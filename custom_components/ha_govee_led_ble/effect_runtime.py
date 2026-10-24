@@ -7,6 +7,7 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from functools import partial
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -77,6 +78,8 @@ VERIFICATION_ATTEMPTS = 2
 
 _LOGGER = logging.getLogger(__name__)
 
+type _PriorEffectOrigin = tuple[ObservedDeviceState | None, ActiveEffectWorkspace | None]
+
 
 async def async_apply_compiled_profile(
     coordinator: GoveeBLECoordinator,
@@ -85,6 +88,7 @@ async def async_apply_compiled_profile(
     writer: ProfileWriter | None = None,
     verify: bool = True,
     progress: Callable[[int], Awaitable[None]] | None = None,
+    on_write: Callable[[], None] | None = None,
 ) -> None:
     if isinstance(compiled, CompiledMusicProfile):
         if coordinator.model != compiled.model:
@@ -109,6 +113,7 @@ async def async_apply_compiled_profile(
             physical_ic_count=compiled.physical_ic_count,
             intent=ControlIntent.APPLY,
             writer=writer,
+            on_write=on_write,
         )
         if progress is not None:
             await progress(1)
@@ -128,6 +133,7 @@ async def async_apply_compiled_profile(
         write_guard: Callable[[], None] | None = None,
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         await _send_video_setting(
             coordinator,
@@ -137,6 +143,7 @@ async def async_apply_compiled_profile(
             write_guard=write_guard,
             state_values=state_values,
             expected_values=expected_values,
+            on_write=on_write,
         )
 
     writer = guarded_writer
@@ -219,6 +226,7 @@ async def async_apply_compiled_profile(
         requested_values=mode_values,
         writer=writer,
         verify=verify,
+        on_write=on_write,
     )
     completed = 1
     if progress is not None:
@@ -273,6 +281,12 @@ class EffectDeploymentEngine:
         self._operation_locks_guard = asyncio.Lock()
         self._operation_locks: dict[UUID, asyncio.Lock] = {}
         self._operation_lock_users: dict[UUID, int] = {}
+
+    def clear_active_origin(self, config_entry_id: str) -> None:
+        if self._device_cache is not None:
+            self._device_cache.clear_active_effect(config_entry_id)
+        if self._active_workspaces is not None:
+            self._active_workspaces.clear(config_entry_id)
 
     async def _apply_library_item(
         self,
@@ -504,6 +518,7 @@ class EffectDeploymentEngine:
             )
         current = record
         lock_acquired = False
+        prior_origin: _PriorEffectOrigin | None = None
         try:
             async with async_control_intent(
                 coordinator,
@@ -532,6 +547,12 @@ class EffectDeploymentEngine:
                         config_entry_id=record.config_entry_id,
                         observed_at=record.updated_at,
                         refreshed=refreshed,
+                    )
+                    prior_origin = (
+                        self._device_cache.get(record.config_entry_id) if self._device_cache is not None else None,
+                        self._active_workspaces.get(record.config_entry_id)
+                        if self._active_workspaces is not None
+                        else None,
                     )
                     prior_state = self._capture_prior_state(
                         coordinator,
@@ -647,6 +668,7 @@ class EffectDeploymentEngine:
                             current,
                             error_code="device_state_unconfirmed",
                             writes_attempted=writes_attempted(),
+                            prior_origin=prior_origin,
                         )
                     completed = replace(
                         current,
@@ -670,6 +692,7 @@ class EffectDeploymentEngine:
                         current,
                         error_code="operation_cancelled",
                         writes_attempted=writes_attempted(),
+                        prior_origin=prior_origin,
                     )
                     raise
                 except Exception as exc:
@@ -679,6 +702,7 @@ class EffectDeploymentEngine:
                         current,
                         error_code=type(exc).__name__,
                         writes_attempted=writes_attempted(),
+                        prior_origin=prior_origin,
                     )
                     raise
         except asyncio.CancelledError:
@@ -748,6 +772,7 @@ class EffectDeploymentEngine:
             coordinator,
             compiled,
             progress=record_progress,
+            on_write=partial(self.clear_active_origin, record.config_entry_id),
         )
         return current
 
@@ -842,6 +867,7 @@ class EffectDeploymentEngine:
         *,
         error_code: str,
         writes_attempted: bool | None = None,
+        prior_origin: _PriorEffectOrigin | None = None,
     ) -> DeploymentRecord:
         writes_may_have_started = record.phase in {
             DeploymentPhase.UPLOADING,
@@ -895,6 +921,27 @@ class EffectDeploymentEngine:
             phase=DeploymentPhase.FAILED if recovered else DeploymentPhase.UNCERTAIN,
         )
         await self._deployments.async_put(final, expected_version=None)
+        if recovered and prior_origin is not None:
+            observed, workspace = prior_origin
+            if self._device_cache is not None and observed is not None:
+                self._device_cache.set(
+                    replace(
+                        observed,
+                        confidence=ObservationConfidence.UNKNOWN,
+                        matched_operation_id=None,
+                        active_effect=(
+                            replace(observed.active_effect, confidence=ObservationConfidence.UNKNOWN)
+                            if observed.active_effect is not None
+                            else None
+                        ),
+                    )
+                )
+            if (
+                self._active_workspaces is not None
+                and workspace is not None
+                and self._active_workspaces.get(record.config_entry_id) != workspace
+            ):
+                self._active_workspaces.set(replace(workspace, confidence=ObservationConfidence.UNKNOWN))
         write_only_completed = (
             not coordinator.profile.supports_color_mode_readback and error_code == "device_state_unconfirmed"
         )
@@ -942,6 +989,7 @@ class EffectDeploymentEngine:
         *,
         error_code: str,
         writes_attempted: bool | None = None,
+        prior_origin: _PriorEffectOrigin | None = None,
     ) -> None:
         try:
             await self._async_finish_failure(
@@ -949,6 +997,7 @@ class EffectDeploymentEngine:
                 record,
                 error_code=error_code,
                 writes_attempted=writes_attempted,
+                prior_origin=prior_origin,
             )
         except Exception:
             _LOGGER.exception(
@@ -1161,6 +1210,7 @@ class EffectDeploymentEngine:
                     record
                     for record in self._deployments.snapshot().records
                     if record.config_entry_id == config_entry_id
+                    and record.target_mode not in {"music", "video"}
                     and _record_signature(record, coordinator.model) in observable_signatures
                 ),
                 key=lambda record: record.updated_at,
@@ -1174,7 +1224,7 @@ class EffectDeploymentEngine:
                     and latest.error_code == "device_state_unconfirmed"
                 )
             ):
-                if latest.target_mode in {"music", "video"} or _activation_matches(coordinator, latest):
+                if _activation_matches(coordinator, latest):
                     matched_record = latest
         if matched_record is not None and matched_record.target_mode == ActivationMode.SCENE.value:
             observable_signature = f"scene-code:{scene_code}" if scene_code is not None else observable_signature
@@ -1247,10 +1297,12 @@ class EffectDeploymentEngine:
         if (
             active_effect is None
             and not workspace_matches
-            and observable_signature is not None
             and previous is not None
             and previous.active_effect is not None
-            and previous.active_effect.observable_signature == observable_signature
+            and (
+                previous.active_effect.observable_signature == observable_signature
+                or (mode == "off" and previous.active_effect.observable_signature.startswith(("music:", "video:")))
+            )
         ):
             confidence = ObservationConfidence.UNKNOWN
             active_effect = replace(previous.active_effect, confidence=confidence)

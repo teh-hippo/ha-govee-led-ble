@@ -281,6 +281,7 @@ class _PreviewWriter:
         write_guard: Callable[[], None] | None = None,
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         await self.begin()
         if self._manager._stopping or self._manager._hass.is_stopping:
@@ -290,6 +291,7 @@ class _PreviewWriter:
             or write_guard is not None
             or state_values is not None
             or expected_values is not None
+            or on_write is not None
         ):
 
             def check() -> None:
@@ -303,6 +305,7 @@ class _PreviewWriter:
                 before_write=check,
                 state_values=state_values,
                 expected_values=expected_values,
+                **({"on_write": on_write} if on_write is not None else {}),
             )
         else:
             await self._coordinator.async_preview_write(packet)
@@ -1014,6 +1017,7 @@ class EffectPreviewManager:
                             compiled,
                             writer=writer,
                             verify=False,
+                            on_write=lambda: self._supersede_active_origin(request),
                         )
             writer.completed = True
             if not await self._async_request_is_current(request):
@@ -1425,18 +1429,12 @@ class EffectPreviewManager:
             )
 
     def _invalidate_observed_match(self, request: _PreviewRequest) -> None:
-        observed = self._device_cache.get(request.config_entry_id)
-        if observed is None or (observed.matched_operation_id is None and observed.active_effect is None):
-            return
-        self._device_cache.set(
-            replace(
-                observed,
-                observed_at=request.updated_at,
-                confidence=ObservationConfidence.UNKNOWN,
-                matched_operation_id=None,
-                active_effect=None,
-            )
-        )
+        self._device_cache.clear_active_effect(request.config_entry_id)
+
+    def _supersede_active_origin(self, request: _PreviewRequest) -> None:
+        self._invalidate_observed_match(request)
+        if self._active_workspaces is not None:
+            self._active_workspaces.clear(request.config_entry_id)
 
     def _loaded_coordinator(self, config_entry_id: str) -> Any:
         entry = self._hass.config_entries.async_get_entry(config_entry_id)
