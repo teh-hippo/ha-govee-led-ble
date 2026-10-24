@@ -15,6 +15,7 @@ export class PanelModalController {
   private saveNameReturnFocus?: HTMLElement;
   private overwriteReturnFocus?: HTMLElement;
   private errorReturnFocus?: HTMLElement;
+  private feedbackReturnFocus?: HTMLElement;
   private scrollLock?: { bodyOverflow: string; documentOverflow: string };
   private transitionDialogTeardown?: () => void;
   private overwriteResolution?: (confirmed: boolean) => void;
@@ -48,6 +49,7 @@ export class PanelModalController {
       this.transitionDialogTeardown?.();
     }
     this.saveNameReturnFocus = undefined;
+    this.feedbackReturnFocus = undefined;
     if (!preserveStandaloneError) {
       this.errorReturnFocus = undefined;
     }
@@ -61,6 +63,30 @@ export class PanelModalController {
 
   public setTransitionDialogTeardown(callback: () => void): void {
     this.transitionDialogTeardown = callback;
+  }
+
+  public requestFeedback(returnFocus: HTMLElement): void {
+    const device = this.model.selectedDevice;
+    if (this.open || !device?.confirmation_issue) return;
+    this.feedbackReturnFocus = returnFocus;
+    this.model.patch({
+      modalState: {
+        kind: "feedback",
+        device,
+        report: this.model.deviceFeedbackReport(device),
+      },
+    });
+    void this.host.updateComplete().then(() =>
+      this.host.root()?.querySelector<HTMLElement>(".feedback-dialog")?.focus(),
+    );
+  }
+
+  public closeFeedback(): void {
+    if (this.model.modalState?.kind !== "feedback") return;
+    const returnFocus = this.feedbackReturnFocus;
+    this.feedbackReturnFocus = undefined;
+    this.model.patch({ modalState: undefined });
+    this.restoreFocus(returnFocus);
   }
 
   public requestTransition(
@@ -334,6 +360,7 @@ export class PanelModalController {
     const current = this.model.modalState;
     if (
       current?.kind === "delete" ||
+      current?.kind === "feedback" ||
       current?.kind === "error" ||
       current?.kind === "overwrite"
     ) {
@@ -443,7 +470,9 @@ export class PanelModalController {
             ? ".delete-dialog .secondary"
             : modal.kind === "overwrite"
               ? ".overwrite-dialog .secondary"
-              : ".error-dialog .secondary";
+              : modal.kind === "feedback"
+                ? ".feedback-dialog"
+                : ".error-dialog .secondary";
     this.host.root()?.querySelector<HTMLElement>(selector)?.focus();
   }
 

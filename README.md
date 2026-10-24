@@ -41,6 +41,11 @@ Effect Studio adds a dedicated panel to the Home Assistant sidebar for lights th
 
 Saved effects are stored in Home Assistant and exposed directly through the standard `light` entity effect selector for use in dashboards, scripts, and automations.  Non-admin users can browse scenes and saved effects in read-only mode.
 
+Experimental devices show a small, non-blocking notice with an optional **Share feedback** action.
+It displays the observed model, hardware and firmware, and prepares a report to copy into the model's existing [owner-confirmation issue](https://github.com/teh-hippo/ha-govee-led-ble/issues/442).
+Sharing is voluntary; nothing is uploaded automatically and no controls depend on reporting.
+Fill missing versions from the Govee app and identify that source.  Review diagnostics before attaching them because GitHub comments and attachments are public.
+
 H60A1 and H60A6 include their exact-model scene catalogues and DIY effects.  H60A6 also supports native layered effects and 133-point paint, with independent **Panel enabled** and **Ring enabled** switches and a **Power-on behaviour** select.  These additional entities are hidden by default; enabling a zone does not switch on master power.  Newly added ceiling-light effect and setting paths still need owner confirmation on hardware.
 
 The `ha_govee_led_ble.paint_segments` action accepts `rgb_scale` from 0 to 100, applied once to the unscaled RGB groups supplied in that request.  Zero paints black rather than switching power off.  This is static RGB composition, not native ring brightness; retained RGB cannot safely recover native-white intent after a disconnect, so no separate ring-scale number is exposed.

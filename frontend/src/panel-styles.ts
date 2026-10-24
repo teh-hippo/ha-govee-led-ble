@@ -261,6 +261,11 @@ export const effectStudioPanelStyles = [
     }
 
     .support-notice {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--studio-tight-gap);
       margin: 0;
       padding: var(--studio-tight-gap) var(--studio-section-gap);
       border-bottom: var(--studio-border-width) solid var(--studio-border);
@@ -272,6 +277,36 @@ export const effectStudioPanelStyles = [
       );
       font-size: var(--studio-parameter-label-size);
       line-height: var(--studio-muted-line-height);
+    }
+
+    .support-notice button {
+      flex: 0 0 auto;
+    }
+
+    .feedback-identity {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: var(--studio-tight-gap);
+    }
+
+    .feedback-identity dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .feedback-dialog textarea {
+      width: 100%;
+      resize: vertical;
+      font: inherit;
+    }
+
+    .feedback-dialog .dialog-actions {
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .feedback-dialog a {
+      overflow-wrap: anywhere;
     }
 
     .light-control-button {

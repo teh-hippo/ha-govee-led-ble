@@ -74,12 +74,20 @@ export interface OverwriteDialog {
   resume?: SaveNameDialog | PendingTransitionModal;
 }
 
+export interface FeedbackDialog {
+  kind: "feedback";
+  device: DeviceCapabilities;
+  report: string;
+  copyMessage?: string;
+}
+
 export type PanelModalState =
   | SaveNameDialog
   | DeleteDialog
   | PendingTransitionModal
   | ErrorDialog
-  | OverwriteDialog;
+  | OverwriteDialog
+  | FeedbackDialog;
 
 export class PanelModel {
   public loading = true;
@@ -87,6 +95,7 @@ export class PanelModel {
   public notice?: string;
   public devices: DeviceCapabilities[] = [];
   public selectedDeviceId?: string;
+  public integrationVersion?: string;
   public userState?: EffectUserState;
   public sceneInitialSelection?: SceneInitialSelection;
   public section: StudioSection = "custom";
@@ -242,10 +251,35 @@ export class PanelModel {
   }
 
   public get experimentalSupport(): boolean {
-    return (
-      this.selectedDevice?.support_quality === "experimental" &&
-      (this.modelCatalogue?.workflows.length ?? 0) > 0
-    );
+    return this.selectedDevice?.support_quality === "experimental";
+  }
+
+  public deviceFeedbackReport(device: DeviceCapabilities): string {
+    const unknown = "not yet observed (fill from the Govee app)";
+    return [
+      "### Device details",
+      `- Model: ${device.model}`,
+      `- Hardware version: ${device.hw_version ?? unknown}`,
+      `- Firmware version: ${device.fw_version ?? unknown}`,
+      ...(device.subordinate_20_version ? [`- Sub-controller 20 version: ${device.subordinate_20_version}`] : []),
+      ...(device.subordinate_21_version ? [`- Sub-controller 21 version: ${device.subordinate_21_version}`] : []),
+      `- Integration version: ${this.integrationVersion ?? "not available (fill from Home Assistant)"}`,
+      "- Version source: last observed by the integration; identify any values filled from the Govee app.",
+      "",
+      "### Observations",
+      "- What I tried:",
+      "- What visibly worked:",
+      "- What failed or behaved unexpectedly:",
+      "- Anything unexpected in Home Assistant state or after restoring a preview:",
+      "- What I did not test:",
+      "",
+      "### Follow-up",
+      "- Available to test a follow-up fix: yes / no",
+      "- Diagnostics attached: yes / no",
+      "",
+      "Sharing is optional.  If something failed, download diagnostics immediately afterwards and review them before attaching.",
+      "GitHub comments and attachments are public.  Do not include Bluetooth addresses, serial numbers, account details or unredacted logs.",
+    ].join("\n");
   }
 
   public get h6179DiyCodeRequired(): boolean {

@@ -93,6 +93,9 @@ export function decodeEditorApiInfo(value: unknown): EditorApiInfo {
   const info = objectValue(value, "editor info");
   const limits = objectValue(info.limits, "editor limits");
   return {
+    integration_version: info.integration_version == null
+      ? null
+      : boundedString(info.integration_version, "integration version", MAX_IDENTIFIER_LENGTH),
     api_version: integerValue(info.api_version, "API version", 1),
     effect_schema_version: integerValue(
       info.effect_schema_version,
@@ -173,6 +176,17 @@ export function decodeDevices(value: unknown): DeviceCapabilities[] {
         ["experimental", "supported"],
         `devices[${index}].support_quality`,
       ),
+      confirmation_issue: device.confirmation_issue == null
+        ? null
+        : integerValue(device.confirmation_issue, "confirmation issue", 1),
+      hw_version: device.hw_version == null ? null : boundedString(device.hw_version, "hardware version", MAX_IDENTIFIER_LENGTH),
+      fw_version: device.fw_version == null ? null : boundedString(device.fw_version, "firmware version", MAX_IDENTIFIER_LENGTH),
+      subordinate_20_version: device.subordinate_20_version == null
+        ? null
+        : boundedString(device.subordinate_20_version, "sub-controller 20 version", MAX_IDENTIFIER_LENGTH),
+      subordinate_21_version: device.subordinate_21_version == null
+        ? null
+        : boundedString(device.subordinate_21_version, "sub-controller 21 version", MAX_IDENTIFIER_LENGTH),
       display_name: boundedString(
         device.display_name,
         `devices[${index}].display_name`,

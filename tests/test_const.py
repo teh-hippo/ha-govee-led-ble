@@ -143,6 +143,23 @@ def test_h6125_is_an_exact_experimental_profile_on_the_shared_dreamcolor_route()
     assert supported_effect_categories("H6125") == ("scenes", "effects", "multi_layered", "reactive", "advanced")
 
 
+def test_owner_confirmation_issues_are_exact_sku_and_cover_experimental_models():
+    issues = {
+        model: profile.confirmation_issue
+        for model, profile in MODEL_PROFILES.items()
+        if profile.confirmation_issue is not None
+    }
+    assert all(
+        profile.confirmation_issue is not None
+        for profile in MODEL_PROFILES.values()
+        if profile.support_quality is SupportQuality.EXPERIMENTAL
+    )
+    assert len(set(issues.values())) == len(issues)
+    assert all(isinstance(issue, int) and issue > 0 for issue in issues.values())
+    assert MODEL_PROFILES["H617E"].confirmation_issue is None
+    assert MODEL_PROFILES["H617F"].confirmation_issue is None
+
+
 @pytest.mark.parametrize("pact", [(1, 1), (2, 1), (None, None), (10, 3)])
 def test_h6097_pact_admission_does_not_depend_on_version_query_success(pact):
     profile = device_profile("H6097", *pact)

@@ -20,6 +20,7 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, ModelProfile, supported_effect_categories
@@ -144,13 +145,14 @@ _LOGGER = logging.getLogger(__name__)
 
 
 @websocket_command({vol.Required("type"): WS_INFO})
-@callback
-def ws_editor_info(
+@async_response
+async def ws_editor_info(
     hass: HomeAssistant,
     connection: ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    connection.send_result(msg["id"], EditorApiInfo().to_dict())
+    integration = await async_get_integration(hass, DOMAIN)
+    connection.send_result(msg["id"], EditorApiInfo(integration_version=integration.version).to_dict())
 
 
 @websocket_command({vol.Required("type"): WS_DEVICES})
@@ -224,6 +226,10 @@ def _device_payload(
         physical_ic_count=coordinator.profile.physical_ic_count,
         profile=coordinator.profile,
     ).to_dict()
+    device["hw_version"] = coordinator.hw_version
+    device["fw_version"] = coordinator.fw_version
+    device["subordinate_20_version"] = coordinator.subordinate_20_version
+    device["subordinate_21_version"] = coordinator.subordinate_21_version
     device["active_state"] = observed.to_public_dict()
     device.update(device_catalogue_settings(coordinator.model, profile=coordinator.profile))
     device["retained_music_edit"] = retained_music_edit(coordinator)

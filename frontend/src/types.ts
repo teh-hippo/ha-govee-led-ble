@@ -33,6 +33,7 @@ type ReleaseWorkflowApplication =
   | "planned";
 
 export interface EditorApiInfo {
+  integration_version?: string | null;
   api_version: number;
   effect_schema_version: number;
   compiler_version: number;
@@ -55,6 +56,11 @@ export interface DeviceCapabilities {
   light_entity_id: string | null;
   model: string;
   support_quality: SupportQuality;
+  confirmation_issue?: number | null;
+  hw_version?: string | null;
+  fw_version?: string | null;
+  subordinate_20_version?: string | null;
+  subordinate_21_version?: string | null;
   display_name: string;
   segment_count: number;
   static_composition?: boolean;

@@ -3525,6 +3525,7 @@
         "workshop_templates": []
       },
       "config_entry_id": "h6125-modern",
+      "confirmation_issue": 447,
       "custom_effects": {
         "advanced": "supported",
         "multi": "supported",
@@ -3541,6 +3542,8 @@
         "reactive",
         "advanced"
       ],
+      "fw_version": null,
+      "hw_version": null,
       "light_entity_id": null,
       "model": "H6125",
       "music_settings": {
@@ -4028,6 +4031,8 @@
       "readback": "diy_code_only",
       "segment_count": 15,
       "static_composition": true,
+      "subordinate_20_version": null,
+      "subordinate_21_version": null,
       "support_quality": "experimental"
     },
     "original": {
@@ -4792,6 +4797,7 @@
         "workshop_templates": []
       },
       "config_entry_id": "h6125-original",
+      "confirmation_issue": 447,
       "custom_effects": {
         "advanced": "unsupported",
         "multi": "supported",
@@ -4807,6 +4813,8 @@
         "multi_layered",
         "reactive"
       ],
+      "fw_version": null,
+      "hw_version": null,
       "light_entity_id": null,
       "model": "H6125",
       "music_settings": {
@@ -4865,6 +4873,8 @@
       "readback": "diy_code_only",
       "segment_count": 15,
       "static_composition": true,
+      "subordinate_20_version": null,
+      "subordinate_21_version": null,
       "support_quality": "experimental"
     }
   },
@@ -30333,6 +30343,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h60a1-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -30347,6 +30358,8 @@
           "effects",
           "multi_layered"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H60A1",
         "music_settings": {},
@@ -30368,6 +30381,8 @@
         "readback": "diy_code_only",
         "segment_count": 14,
         "static_composition": false,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -31702,6 +31717,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h60a6-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "supported",
           "multi": "supported",
@@ -31717,6 +31733,8 @@
           "multi_layered",
           "advanced"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H60A6",
         "music_settings": {},
@@ -31738,6 +31756,8 @@
         "readback": "diy_code_only",
         "segment_count": 13,
         "static_composition": false,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -34305,6 +34325,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h6102-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "supported",
           "multi": "supported",
@@ -34321,6 +34342,8 @@
           "reactive",
           "advanced"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H6102",
         "music_settings": {
@@ -34808,6 +34831,8 @@
         "readback": "diy_code_only",
         "segment_count": 15,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -36257,6 +36282,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h6097-main",
+        "confirmation_issue": 445,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -36273,6 +36299,8 @@
           "multi_layered",
           "reactive"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H6097",
         "music_settings": {
@@ -36738,6 +36766,8 @@
         "readback": "diy_code_only",
         "segment_count": 14,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "experimental"
       },
       {
@@ -37890,6 +37920,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h6099-main",
+        "confirmation_issue": 446,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -37905,6 +37936,8 @@
           "effects",
           "reactive"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H6099",
         "music_settings": {
@@ -38108,6 +38141,8 @@
         "readback": "diy_code_only",
         "segment_count": 14,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "experimental"
       },
       {
@@ -40170,6 +40205,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h66a0-main",
+        "confirmation_issue": 450,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -40185,6 +40221,8 @@
           "effects",
           "reactive"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H66A0",
         "music_settings": {
@@ -40922,6 +40960,8 @@
         "readback": "diy_code_only",
         "segment_count": 14,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "experimental"
       },
       {
@@ -42015,6 +42055,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h1a42-main",
+        "confirmation_issue": 444,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -42029,6 +42070,8 @@
           "effects",
           "reactive"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H1A42",
         "music_settings": {
@@ -42287,6 +42330,8 @@
         "readback": "diy_code_only",
         "segment_count": 5,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "experimental"
       },
       {
@@ -44041,6 +44086,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h61f5-main",
+        "confirmation_issue": 449,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -44055,6 +44101,8 @@
           "effects",
           "reactive"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H61F5",
         "music_settings": {
@@ -44792,6 +44840,8 @@
         "readback": "diy_code_only",
         "segment_count": 10,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "experimental"
       },
       {
@@ -47355,6 +47405,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h6125-main",
+        "confirmation_issue": 447,
         "custom_effects": {
           "advanced": "supported",
           "multi": "supported",
@@ -47371,6 +47422,8 @@
           "reactive",
           "advanced"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H6125",
         "music_settings": {
@@ -47858,6 +47911,8 @@
         "readback": "diy_code_only",
         "segment_count": 15,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "experimental"
       },
       {
@@ -50328,6 +50383,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h617a-main",
+        "confirmation_issue": 443,
         "custom_effects": {
           "advanced": "supported",
           "multi": "supported",
@@ -50344,6 +50400,8 @@
           "reactive",
           "advanced"
         ],
+        "fw_version": "1.02.03",
+        "hw_version": "1.00.01",
         "light_entity_id": "light.h617a_main",
         "model": "H617A",
         "music_settings": {
@@ -50778,6 +50836,8 @@
         "readback": "diy_code_only",
         "segment_count": 15,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -53321,6 +53381,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h617c-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "supported",
           "multi": "supported",
@@ -53337,6 +53398,8 @@
           "reactive",
           "advanced"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H617C",
         "music_settings": {
@@ -53824,6 +53887,8 @@
         "readback": "diy_code_only",
         "segment_count": 15,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -54923,6 +54988,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h617e-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "supported",
           "multi": "supported",
@@ -54939,6 +55005,8 @@
           "reactive",
           "advanced"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H617E",
         "music_settings": {
@@ -55125,6 +55193,8 @@
         "readback": "diy_code_only",
         "segment_count": 15,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -55457,6 +55527,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h6179-main",
+        "confirmation_issue": 448,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -55472,6 +55543,8 @@
           "multi_layered",
           "reactive"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H6179",
         "music_settings": {
@@ -55512,6 +55585,8 @@
         "readback": "diy_code_only",
         "segment_count": 0,
         "static_composition": false,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "experimental"
       },
       {
@@ -56321,6 +56396,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h6199-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "supported",
           "multi": "unsupported",
@@ -56337,6 +56413,8 @@
           "reactive",
           "advanced"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H6199",
         "music_settings": {
@@ -56395,6 +56473,8 @@
         "readback": "scene_selector_for_user_effects",
         "segment_count": 15,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -57728,6 +57808,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h6076-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "supported",
           "multi": "supported",
@@ -57744,6 +57825,8 @@
           "reactive",
           "advanced"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H6076",
         "music_settings": {
@@ -58135,6 +58218,8 @@
         "readback": "diy_code_only",
         "segment_count": 7,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -59851,6 +59936,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h7020-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "supported",
           "multi": "supported",
@@ -59866,6 +59952,8 @@
           "multi_layered",
           "reactive"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H7020",
         "music_settings": {
@@ -59935,6 +60023,8 @@
         "readback": "diy_code_only",
         "segment_count": 30,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       },
       {
@@ -61172,6 +61262,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h7025-main",
+        "confirmation_issue": 451,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -61187,6 +61278,8 @@
           "multi_layered",
           "reactive"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H7025",
         "music_settings": {
@@ -61732,6 +61825,8 @@
         "readback": "diy_code_only",
         "segment_count": 15,
         "static_composition": true,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "experimental"
       },
       {
@@ -62074,6 +62169,7 @@
           "workshop_templates": []
         },
         "config_entry_id": "h601c-main",
+        "confirmation_issue": null,
         "custom_effects": {
           "advanced": "unsupported",
           "multi": "supported",
@@ -62088,6 +62184,8 @@
           "effects",
           "multi_layered"
         ],
+        "fw_version": null,
+        "hw_version": null,
         "light_entity_id": null,
         "model": "H601C",
         "music_settings": {},
@@ -62109,6 +62207,8 @@
         "readback": "none",
         "segment_count": 0,
         "static_composition": false,
+        "subordinate_20_version": null,
+        "subordinate_21_version": null,
         "support_quality": "supported"
       }
     ],
@@ -62116,6 +62216,7 @@
       "api_version": 17,
       "compiler_version": 6,
       "effect_schema_version": 2,
+      "integration_version": "7.25.0",
       "limits": {
         "deployment_records": 128,
         "devices": 512,

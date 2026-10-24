@@ -136,6 +136,7 @@ export class PanelController {
       }
       this.model.patch({
         devices,
+        integrationVersion: info.integration_version ?? undefined,
         library,
         customCatalogue,
         userState,
