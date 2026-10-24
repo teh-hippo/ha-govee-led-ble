@@ -739,7 +739,11 @@ def compile_scene_effect(
             activation_packet=activation,
             artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
             evidence_codes=(
-                "native_diy_positive_ack_required",
+                *(
+                    ("native_diy_positive_ack_required",)
+                    if contract is not None or profile.diy_requires_upload_ack or profile.supports_color_mode_readback
+                    else ()
+                ),
                 "effect_content_readback_unavailable",
                 "native_diy_rendering_unqualified",
             ),

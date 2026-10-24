@@ -161,11 +161,12 @@ def test_bloom_one_way_active_palette_excludes_black_inactive_layer(direction, s
         for index, layer in enumerate(content.layers[2:])
     )
     edited = replace(content, layers=(*content.layers[:2], *moving))
-    profile = replace(get_profile("H6102"), physical_ic_count=60)
+    profile = get_profile("H6102")
+    assert profile.physical_ic_count == 60
     if valid:
         assert validate_native_diy(edited, "H6102", profile)
         with pytest.raises(ValueError, match="known physical IC"):
-            validate_native_diy(edited, "H6102", get_profile("H6102"))
+            validate_native_diy(edited, "H6102", replace(profile, physical_ic_count=None))
         invalid = replace(edited, layers=(*edited.layers[:3], replace(moving[1], palette=((1, 0, 0),))))
         with pytest.raises(ValueError, match="inactive layer"):
             validate_native_diy(invalid, "H6102", profile)
@@ -191,7 +192,7 @@ def test_bloom_rejects_inconsistent_direction_topology(change):
         validate_native_diy(
             replace(content, layers=(*content.layers[:3], layer)),
             "H6102",
-            replace(get_profile("H6102"), physical_ic_count=60),
+            get_profile("H6102"),
         )
 
 
@@ -199,6 +200,7 @@ def test_bloom_rejects_inconsistent_direction_topology(change):
 async def test_retained_music_actual_endpoint_preserves_companions(hass, hass_ws_client, monkeypatch, failure):
     await _setup_backend(hass)
     coordinator = _coordinator(hass)
+    coordinator.profile = replace(coordinator.profile, physical_ic_count=None)
     _entry(hass, monkeypatch, coordinator)
     coordinator.music_mode = "hopping"
     coordinator._music_body = ("hopping", BODY)
@@ -240,7 +242,7 @@ async def test_retained_music_actual_endpoint_preserves_companions(hass, hass_ws
 
 
 def test_fresh_geometry_authoring_stays_gated():
-    profile = device_profile("H6102", 10, 1, hardware="3.02.01", firmware="3.02.02")
+    profile = replace(device_profile("H6102", 10, 1, hardware="3.02.01", firmware="3.02.02"), physical_ic_count=None)
     with pytest.raises(ValueError, match="unavailable"):
         compile_music_profile(
             LibraryItem.new("Fresh", MusicProfile("H6102", "hopping", 50, parameters={"relative_brightness": 17})),
@@ -252,6 +254,7 @@ def test_fresh_geometry_authoring_stays_gated():
 async def test_retained_piano_endpoint_allows_gradient_but_rejects_key_count(hass, hass_ws_client, monkeypatch):
     await _setup_backend(hass)
     coordinator = _coordinator(hass)
+    coordinator.profile = replace(coordinator.profile, physical_ic_count=None)
     _entry(hass, monkeypatch, coordinator)
     coordinator.music_mode = "piano_keys"
     body = bytes.fromhex("3402010203040506000f0a0407")

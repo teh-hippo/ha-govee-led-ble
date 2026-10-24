@@ -2648,23 +2648,23 @@ def _build_h6076_music_selector(
     return _serialize_xor(root)
 
 
-def _h6125_wire_music(selector: Any, *, legacy: bool = False) -> bytes:
-    root = H6125WireWrite()
+def _h6125_wire_music(selector: Any, *, legacy: bool = False, root_type: Any = H6125WireWrite) -> bytes:
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H6125WireWrite.CommandOp.mode
-    mode = _child(H6125WireWrite.ModeBody, root)
-    mode.sub = H6125WireWrite.ModeSub.legacy_music if legacy else H6125WireWrite.ModeSub.music
-    wire = _child(H6125WireWrite.LegacyMusicSelector if legacy else H6125WireWrite.MusicSelector, mode)
-    mode_type = H6125WireWrite.LegacyMusicMode if legacy else H6125WireWrite.MusicMode
+    root.opcode = root_type.CommandOp.mode
+    mode = _child(root_type.ModeBody, root)
+    mode.sub = root_type.ModeSub.legacy_music if legacy else root_type.ModeSub.music
+    wire = _child(root_type.LegacyMusicSelector if legacy else root_type.MusicSelector, mode)
+    mode_type = root_type.LegacyMusicMode if legacy else root_type.MusicMode
     name = getattr(selector.mode_id, "name", None)
     if name not in mode_type.__members__:
-        raise ValueError(f"H6125 has no music selector for mode {selector.mode_id}")
+        raise ValueError(f"{root_type.__name__} has no music selector for mode {selector.mode_id}")
     wire.mode_id = mode_type[name]
     wire.sensitivity = selector.sensitivity
     if name in {"rhythm", "spectrum", "rolling"}:
         colour = selector.rgb if selector.has_fixed_colour else None
         rhythm = name == "rhythm" and not legacy
-        settings = _child(H6125WireWrite.RhythmSettings if rhythm else H6125WireWrite.ColourSettings, wire)
+        settings = _child(root_type.RhythmSettings if rhythm else root_type.ColourSettings, wire)
         if rhythm:
             settings.style = selector.style
         settings.has_fixed_colour = int(colour is not None)
@@ -2672,7 +2672,7 @@ def _h6125_wire_music(selector: Any, *, legacy: bool = False) -> bytes:
             settings.rgb = _rgb(settings, colour.red, colour.green, colour.blue)
         settings.padding = bytes(14 - (2 if rhythm else 1) - (3 if colour is not None else 0))
     else:
-        settings = _child(H6125WireWrite.OpaqueSettings, wire)
+        settings = _child(root_type.OpaqueSettings, wire)
         settings.padding = bytes(14)
     wire.settings = settings
     mode.sub_body = wire
@@ -2691,15 +2691,15 @@ def _register_brightness(root_type: Any, percent: int, wire_range: tuple[int, in
     return _serialize_xor(root)
 
 
-def _h6125_wire_colour(static: Any) -> bytes:
+def _h6125_wire_colour(static: Any, *, root_type: Any = H6125WireWrite) -> bytes:
     if static.static_sub != 1 or static.static_body.kelvin:
         raise ValueError("Legacy RGB does not support Kelvin or segment brightness")
-    root = H6125WireWrite()
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H6125WireWrite.CommandOp.mode
-    mode = _child(H6125WireWrite.ModeBody, root)
-    mode.sub = H6125WireWrite.ModeSub.legacy_colour
-    body = _child(H6125WireWrite.LegacyColour, mode)
+    root.opcode = root_type.CommandOp.mode
+    mode = _child(root_type.ModeBody, root)
+    mode.sub = root_type.ModeSub.legacy_colour
+    body = _child(root_type.LegacyColour, mode)
     rgb = static.static_body.rgb_direct
     body.rgb = _rgb(body, rgb.red, rgb.green, rgb.blue)
     body.segment_mask = static.static_body.mask.bits
@@ -2709,12 +2709,26 @@ def _h6125_wire_colour(static: Any) -> bytes:
     return _serialize_xor(root)
 
 
-def h6102_outbound_transform(packet: bytes) -> bytes:
-    """Pact 1 rescales master brightness without changing static RGB or upload framing."""
-    parsed = parse_command_result(packet, "H617A").parsed
-    if parsed is not None and parsed.opcode.name == "brightness":
-        return _register_brightness(H6102WireWrite, int(parsed.body.percent), (20, 254))
-    return packet
+@cache
+def h6102_outbound_transform_for(*, legacy_colour: bool = False) -> Callable[[bytes], bytes]:
+    """Re-encode H6102 Pact 1 brightness, 0x11 music, and optional 0x0b segment RGB."""
+
+    def transform(packet: bytes) -> bytes:
+        parsed = parse_command_result(packet, "H617A").parsed
+        if parsed is None:
+            return packet
+        if parsed.opcode.name == "brightness":
+            return _register_brightness(H6102WireWrite, int(parsed.body.percent), (20, 254))
+        if parsed.opcode.name == "multi" and parsed.body.sub.name == "music":
+            return _h6125_wire_music(parsed.body.sub_body, root_type=H6102WireWrite)
+        if legacy_colour and parsed.opcode.name == "multi" and parsed.body.sub.name == "static":
+            return _h6125_wire_colour(parsed.body.sub_body, root_type=H6102WireWrite)
+        return packet
+
+    return transform
+
+
+h6102_outbound_transform = h6102_outbound_transform_for()
 
 
 def h60a6_legacy_outbound_transform(packet: bytes) -> bytes:

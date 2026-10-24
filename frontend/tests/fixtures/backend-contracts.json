@@ -9920,8 +9920,71 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d case 55; Support.t/u/v",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 7,
+                  "kind": "number",
+                  "max": 12,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 20,
+                  "kind": "number",
+                  "max": 100,
+                  "min": 1,
+                  "options": []
+                }
+              },
               "style": false
             },
             "energetic": {
@@ -9938,8 +10001,61 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "direction": {
+                  "default": "two_way",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
               "style": false
             },
             "hopping": {
@@ -9947,8 +10063,64 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "background": {
+                  "default": 65793,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                },
+                "relative_brightness": {
+                  "default": 25,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
               "style": false
             },
             "piano_keys": {
@@ -9956,8 +10128,64 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "key_count": {
+                  "default": 15,
+                  "kind": "number",
+                  "max": 36,
+                  "min": 9,
+                  "options": []
+                }
+              },
               "style": false
             },
             "rhythm": {
@@ -9983,8 +10211,64 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
               "style": false
             },
             "shiny": {
@@ -29160,8 +29444,71 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d case 55; Support.t/u/v",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "segment_count": {
+                  "default": 7,
+                  "kind": "number",
+                  "max": 12,
+                  "min": 1,
+                  "options": []
+                },
+                "speed": {
+                  "default": 20,
+                  "kind": "number",
+                  "max": 100,
+                  "min": 1,
+                  "options": []
+                }
+              },
               "style": false
             },
             "energetic": {
@@ -29178,8 +29525,61 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "direction": {
+                  "default": "two_way",
+                  "kind": "select",
+                  "max": 0,
+                  "min": 0,
+                  "options": [
+                    "clockwise",
+                    "counterclockwise",
+                    "two_way"
+                  ]
+                }
+              },
               "style": false
             },
             "hopping": {
@@ -29187,8 +29587,64 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "background": {
+                  "default": 65793,
+                  "kind": "number",
+                  "max": 16777215,
+                  "min": 0,
+                  "options": []
+                },
+                "relative_brightness": {
+                  "default": 25,
+                  "kind": "number",
+                  "max": 50,
+                  "min": 0,
+                  "options": []
+                }
+              },
               "style": false
             },
             "piano_keys": {
@@ -29196,8 +29652,64 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "key_count": {
+                  "default": 15,
+                  "kind": "number",
+                  "max": 36,
+                  "min": 9,
+                  "options": []
+                }
+              },
               "style": false
             },
             "rhythm": {
@@ -29223,8 +29735,64 @@
               "calm_default": false,
               "colour": false,
               "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+              "palette": {
+                "default": [
+                  [
+                    255,
+                    0,
+                    0
+                  ],
+                  [
+                    255,
+                    127,
+                    0
+                  ],
+                  [
+                    255,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    255,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    255
+                  ],
+                  [
+                    0,
+                    255,
+                    255
+                  ],
+                  [
+                    139,
+                    0,
+                    255
+                  ]
+                ],
+                "max": 8,
+                "min": 1
+              },
               "palette_size": 7,
-              "parameters": {},
+              "parameters": {
+                "gradient": {
+                  "default": false,
+                  "kind": "switch",
+                  "max": 0,
+                  "min": 0,
+                  "options": []
+                },
+                "point": {
+                  "default": 3,
+                  "kind": "number",
+                  "max": 5,
+                  "min": 1,
+                  "options": []
+                }
+              },
               "style": false
             },
             "shiny": {
@@ -29334,6 +29902,65 @@
                 "effect": "clockwise",
                 "kind": "h617a_painted",
                 "segments": [
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
                   null
                 ],
                 "speed": 50
@@ -31124,8 +31751,71 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6102 RGBIC MusicMode.d case 55; Support.t/u/v",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
             "palette_size": 7,
-            "parameters": {},
+            "parameters": {
+              "gradient": {
+                "default": false,
+                "kind": "switch",
+                "max": 0,
+                "min": 0,
+                "options": []
+              },
+              "segment_count": {
+                "default": 7,
+                "kind": "number",
+                "max": 12,
+                "min": 1,
+                "options": []
+              },
+              "speed": {
+                "default": 20,
+                "kind": "number",
+                "max": 100,
+                "min": 1,
+                "options": []
+              }
+            },
             "style": false
           },
           "energetic": {
@@ -31142,8 +31832,61 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
             "palette_size": 7,
-            "parameters": {},
+            "parameters": {
+              "direction": {
+                "default": "two_way",
+                "kind": "select",
+                "max": 0,
+                "min": 0,
+                "options": [
+                  "clockwise",
+                  "counterclockwise",
+                  "two_way"
+                ]
+              }
+            },
             "style": false
           },
           "hopping": {
@@ -31151,8 +31894,64 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
             "palette_size": 7,
-            "parameters": {},
+            "parameters": {
+              "background": {
+                "default": 65793,
+                "kind": "number",
+                "max": 16777215,
+                "min": 0,
+                "options": []
+              },
+              "relative_brightness": {
+                "default": 25,
+                "kind": "number",
+                "max": 50,
+                "min": 0,
+                "options": []
+              }
+            },
             "style": false
           },
           "piano_keys": {
@@ -31160,8 +31959,64 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
             "palette_size": 7,
-            "parameters": {},
+            "parameters": {
+              "gradient": {
+                "default": false,
+                "kind": "switch",
+                "max": 0,
+                "min": 0,
+                "options": []
+              },
+              "key_count": {
+                "default": 15,
+                "kind": "number",
+                "max": 36,
+                "min": 9,
+                "options": []
+              }
+            },
             "style": false
           },
           "rhythm": {
@@ -31187,8 +32042,64 @@
             "calm_default": false,
             "colour": false,
             "evidence": "H6102 RGBIC MusicMode.d, palette/tail shared with H6099",
+            "palette": {
+              "default": [
+                [
+                  255,
+                  0,
+                  0
+                ],
+                [
+                  255,
+                  127,
+                  0
+                ],
+                [
+                  255,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  255,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  255
+                ],
+                [
+                  0,
+                  255,
+                  255
+                ],
+                [
+                  139,
+                  0,
+                  255
+                ]
+              ],
+              "max": 8,
+              "min": 1
+            },
             "palette_size": 7,
-            "parameters": {},
+            "parameters": {
+              "gradient": {
+                "default": false,
+                "kind": "switch",
+                "max": 0,
+                "min": 0,
+                "options": []
+              },
+              "point": {
+                "default": 3,
+                "kind": "number",
+                "max": 5,
+                "min": 1,
+                "options": []
+              }
+            },
             "style": false
           },
           "shiny": {
@@ -31251,7 +32162,7 @@
             "style": false
           }
         },
-        "physical_ic_count": null,
+        "physical_ic_count": 60,
         "preview_health": {
           "checked_at": "2026-08-17T00:00:00Z",
           "config_entry_id": "h6102-main",

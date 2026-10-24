@@ -24,7 +24,14 @@ def classify_h6102_rgb(
     """The APK's 1.03.01 UI migration is not a wire-encoding boundary."""
     if pact_type == 10 and pact_code in (1, 2):
         return H6102RgbVariant.EXTENDED
-    if pact_type == 1 and pact_code in (1, 2) and version is not None and hardware is not None:
+    if (
+        pact_type == 1
+        and pact_code in (1, 2)
+        and version is not None
+        and hardware is not None
+        and hardware.identity_number() // 10000 == 1
+        and version.identity_number() // 10000 == 1
+    ):
         if hardware >= FirmwareVersion((1, 0, 3)) and version >= FirmwareVersion((1, 6)):
             return H6102RgbVariant.EXTENDED
         return H6102RgbVariant.LEGACY

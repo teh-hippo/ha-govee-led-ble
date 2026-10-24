@@ -170,6 +170,30 @@ def test_h6102_owner_register_reply_and_candidate_write():
     write = bytes.fromhex("33048800000000000000000000000000000000bf")
     assert xor_checksum(write) == 0
     assert _parse(H6102WireWrite, write).body.register == 136
+    for mode_name, frame_hex in (
+        ("energetic", "3305111032000000000000000000000000000005"),
+        ("rhythm", "3305111132000000000000000000000000000004"),
+        ("spectrum", "3305111232000000000000000000000000000007"),
+        ("rolling", "3305111332000000000000000000000000000006"),
+        ("bloom", "3305113032000000000000000000000000000025"),
+        ("shiny", "3305113132000000000000000000000000000024"),
+        ("separation", "3305113232000000000000000000000000000027"),
+        ("hopping", "3305113332000000000000000000000000000026"),
+        ("piano_keys", "3305113432000000000000000000000000000021"),
+        ("fountain", "3305113532000000000000000000000000000020"),
+        ("day_and_night", "3305113732000000000000000000000000000022"),
+    ):
+        music_frame = bytes.fromhex(frame_hex)
+        assert xor_checksum(music_frame) == 0
+        parsed_music = _parse(H6102WireWrite, music_frame)
+        assert parsed_music.body.sub == H6102WireWrite.ModeSub.music
+        assert parsed_music.body.sub_body.mode_id.name == mode_name
+        assert parsed_music.body.sub_body.sensitivity == 50
+    legacy_rgb = bytes.fromhex("33050b0c2238ff7f0000000000000000000000ab")
+    assert xor_checksum(legacy_rgb) == 0
+    parsed_rgb = _parse(H6102WireWrite, legacy_rgb)
+    assert parsed_rgb.body.sub == H6102WireWrite.ModeSub.legacy_colour
+    assert parsed_rgb.body.sub_body.segment_mask == 0x7FFF
 
 
 @pytest.fixture

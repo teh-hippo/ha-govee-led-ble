@@ -1,5 +1,6 @@
 """Active-mode derivation and mode-switching for the Govee BLE coordinator."""
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -211,7 +212,9 @@ class _ActiveModeMixin(_CoordinatorBase):
         async def apply() -> None:
             require_ack = bool(upload_count and self.profile.diy_requires_upload_ack)
             if writer is not None and not require_ack:
-                for packet in packets:
+                for index, packet in enumerate(packets, start=1):
+                    if index > 1 and self.profile.packet_write_delay > 0:
+                        await asyncio.sleep(self.profile.packet_write_delay)
                     qualified()
                     await writer(packet)
                     qualified()
@@ -231,7 +234,11 @@ class _ActiveModeMixin(_CoordinatorBase):
         qualified()
         if power_in_sequence:
             self.is_on = True
-        if verify and self.profile.state_readable and not await self.refresh_state(expected_scene_code=selector):
+        if (
+            verify
+            and self.profile.supports_color_mode_readback
+            and not await self.refresh_state(expected_scene_code=selector)
+        ):
             await apply()
             if not await self.refresh_state(expected_scene_code=selector):
                 raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
@@ -362,8 +369,11 @@ class _ActiveModeMixin(_CoordinatorBase):
                 attempted_upload = True
                 # The shared writer installs the first-fragment None immediately after this guard.
                 revision = self._music_body_revision + 1
-            if "music_mode" in writes[index][1] and self.active_mode == "colour":
-                self._pre_mode_snapshot = self._capture_static_state()
+            if "music_mode" in writes[index][1]:
+                if self.active_mode == "colour":
+                    self._pre_mode_snapshot = self._capture_static_state()
+                self._scene_code = None
+                self.color_mode = ParsedMode.MUSIC
 
         async with async_control_intent(self, intent):
             try:

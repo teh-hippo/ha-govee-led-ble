@@ -323,6 +323,10 @@ async def test_qualified_pact1_static_is_owner_confirmed_whole_strip_rgb(radio):
     assert red == bytes.fromhex("33051501ff00000000000000ff7f00000000005d")
     with pytest.raises(ValueError, match="colour temperature"):
         build_color_temp(4000, c.model, profile=c.profile)
+    c.fw_version = "1.05.00"
+    c._resolve_device_profile()
+    assert c.profile.outbound_transform is not None
+    assert c.profile.outbound_transform(red) == frame("33050bff0000ff7f")
 
 
 @pytest.mark.parametrize("identity", [None, "ble", "configured", "configured_fw", "configured_hw"])
@@ -562,3 +566,101 @@ async def test_engine_failed_upload_never_reselects_overwritten_scene_slot(radio
         )
     assert build_scene_activation(c.model, code, profile=c.profile) not in packets
     assert repository.snapshot().records[0].phase is DeploymentPhase.UNCERTAIN
+
+
+async def test_issue424_pact1_scenes_music_studio_and_segments(radio, virtual_clock):
+    from custom_components.ha_govee_led_ble.effect_active_workspace import ActiveEffectWorkspaceRepository
+    from custom_components.ha_govee_led_ble.effect_deployments import ObservationConfidence
+    from custom_components.ha_govee_led_ble.effect_domain import MusicProfile
+    from custom_components.ha_govee_led_ble.effect_identity import EffectDeviceCache
+    from custom_components.ha_govee_led_ble.transport import reassemble_a1_02, reassemble_a3
+
+    c, state, packets, _ = radio
+    c.pact_type, c.pact_code = 1, 1
+    state.update(hw="1.00.03", fw="1.08.08", register_brightness=True)
+    assert await c.refresh_state(refresh_all=True)
+
+    # 1. Built-in scenes (type 0 selector-only and type 2 multi-packet A3 02 + selector)
+    packets.clear()
+    await c.async_apply_native_scene("sunrise", verify=True)
+    assert packets == [bytes.fromhex("3305040000000000000000000000000000000032")]
+    assert c.effect == "sunrise" and c.scene_code == 0
+
+    packets.clear()
+    await c.async_apply_native_scene("fire & blood", verify=True)
+    assert len(packets) == 4
+    assert all(packet[0] == 0xA3 for packet in packets[:-1])
+    assert packets[-1] == bytes.fromhex("330504383f000000000000000000000000000035")
+    assert c.effect == "fire & blood" and c.scene_code == 16184
+
+    # 2. All 11 music modes (basic 4 selector-only + expanded 7 A3 41 upload before 33 05 11 selector)
+    expected_music = (
+        ("energetic", None, "3305111063000000000000000000000000000054"),
+        ("rhythm", None, "3305111163000000000000000000000000000055"),
+        ("spectrum", None, "3305111263000000000000000000000000000056"),
+        ("rolling", None, "3305111363000000000000000000000000000057"),
+        ("bloom", "3007ff0000ff7f00ffff0000ff000000ff00ffff8b00ff0a50", "3305113063000000000000000000000000000074"),
+        ("shiny", "3107ff0000ff7f00ffff0000ff000000ff00ffff8b00ff05640a", "3305113163000000000000000000000000000075"),
+        (
+            "separation",
+            "3207ff0000ff7f00ffff0000ff000000ff00ffff8b00ff030063",
+            "3305113263000000000000000000000000000076",
+        ),
+        (
+            "hopping",
+            "3307ff0000ff7f00ffff0000ff000000ff00ffff8b00ff010101196201030818",
+            "3305113363000000000000000000000000000077",
+        ),
+        (
+            "piano_keys",
+            "3407ff0000ff7f00ffff0000ff000000ff00ffff8b00ff000f230107",
+            "3305113463000000000000000000000000000070",
+        ),
+        (
+            "fountain",
+            "3507ff0000ff7f00ffff0000ff000000ff00ffff8b00ff01020655",
+            "3305113563000000000000000000000000000071",
+        ),
+        (
+            "day_and_night",
+            "3707ff0000ff7f00ffff0000ff000000ff00ffff8b00ff071400",
+            "3305113763000000000000000000000000000073",
+        ),
+    )
+    for slug, body_hex, selector_hex in expected_music:
+        packets.clear()
+        await c.async_select_music_slug(slug)
+        assert packets[-1] == bytes.fromhex(selector_hex)
+        if body_hex is None:
+            assert len(packets) == 2
+        else:
+            assert len(packets) >= 4
+            envelope = reassemble_a3(packets[1:-1])
+            assert envelope[2] == 0x41 and envelope[3:].startswith(bytes.fromhex(body_hex))
+
+    # 3. Saved music & A1 DIY deployments reconcile as WRITE_COMPLETED without AA05 readback
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    await repository.async_load()
+    cache = EffectDeviceCache(InMemoryVersionedDocumentStore())
+    await cache.async_load()
+    workspaces = ActiveEffectWorkspaceRepository(InMemoryVersionedDocumentStore())
+    await workspaces.async_load()
+    engine = EffectDeploymentEngine(repository, device_cache=cache, active_workspaces=workspaces)
+    music_item = LibraryItem.new("Saved Hopping", MusicProfile("H6102", "hopping", 50))
+    record = await engine.async_apply_saved(c, music_item, config_entry_id="entry", updated_at="2026-10-24T00:00:00Z")
+    assert record.phase is DeploymentPhase.UNCERTAIN and record.error_code == "device_state_unconfirmed"
+    observed = cache.get("entry")
+    assert observed is not None and observed.mode == "music"
+    assert observed.confidence is ObservationConfidence.WRITE_COMPLETED
+    assert observed.active_effect is not None and observed.active_effect.item_id == music_item.id
+
+    packets.clear()
+    diy_item = LibraryItem.new("Saved Fade", SingleEffect(0, 1, 40, ((255, 0, 0), (0, 0, 255))))
+    diy_record = await engine.async_apply_snapshot(
+        c, diy_item, config_entry_id="entry", updated_at="2026-10-24T00:01:00Z"
+    )
+    assert diy_record.phase is DeploymentPhase.UNCERTAIN
+    a1_frames = [packet for packet in packets if packet[0] == 0xA1]
+    assert reassemble_a1_02(a1_frames)[0] == 0xFE
+    assert packets[-1] == frame("33050afe00")
+    assert workspaces.get("entry") is not None

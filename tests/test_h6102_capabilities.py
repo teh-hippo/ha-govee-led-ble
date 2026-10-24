@@ -65,7 +65,7 @@ def test_modern_candidate_exact_catalogue_and_no_donor_policy(pact_code):
     assert profile.command_grammar == profile.effect_grammar == "H617A"
     assert profile.status_grammar == "H6102"
     assert (profile.segment_count, profile.segment_group_count) == (15, 5)
-    assert profile.physical_ic_count is None and profile.music_requires_upload_ack
+    assert profile.physical_ic_count == 60 and profile.music_requires_upload_ack
     assert len(profile.music_modes) == 4
     assert len(SCENE_ENTRIES["H6102"]) == 240
     catalogue = MODEL_EFFECT_CATALOGUES["H6102"]
@@ -107,15 +107,16 @@ def test_music_condition_is_independent_of_rgb_and_diy(hardware, firmware, modes
 
 def test_exact_h6102_catalogue_compiles_without_foreign_scene_identity():
     profile = device_profile("H6102", 10, 1, firmware="3.02.02", hardware="3.02.01")
+    unknown_ic = replace(profile, physical_ic_count=None)
     for scene in SCENE_ENTRIES["H6102"]:
         item = LibraryItem.new(scene.name, BuiltinScene(CatalogueRef("H6102", scene.scene_id, scene.effect_id)))
         assert compile_application(item, "H6102", profile=profile).packets
     for template in MODEL_EFFECT_CATALOGUES["H6102"].templates:
         if isinstance(template.content, PaintedEffect):
             with pytest.raises(ValueError, match="physical IC"):
-                resolve_catalogue_template("H6102", template.id, profile=profile)
-            continue
-        item = LibraryItem.new(template.label, template.content)
+                resolve_catalogue_template("H6102", template.id, profile=unknown_ic)
+        resolved = resolve_catalogue_template("H6102", template.id, profile=profile)
+        item = LibraryItem.new(resolved.label, resolved.content)
         assert compile_application(
             item,
             "H6102",
@@ -125,7 +126,8 @@ def test_exact_h6102_catalogue_compiles_without_foreign_scene_identity():
 
 
 def test_physical_painted_and_advanced_selector_use_exact_contracts():
-    profile = replace(MODEL_PROFILES["H6102"], physical_ic_count=60)
+    profile = MODEL_PROFILES["H6102"]
+    assert profile.physical_ic_count == 60
     template = resolve_catalogue_template("H6102", "template:paint", profile=profile)
     assert isinstance(template.content, PaintedEffect)
     painted = replace(template.content, segments=(None,) * 59 + ((1, 2, 3),))
@@ -133,7 +135,9 @@ def test_physical_painted_and_advanced_selector_use_exact_contracts():
     assert compiled.physical_ic_count == 60
     assert "native_diy_positive_ack_required" in compiled.evidence_codes
     with pytest.raises(ValueError):
-        compile_application(LibraryItem.new("Paint", painted), "H6102", diy_code=800)
+        compile_application(
+            LibraryItem.new("Paint", painted), "H6102", diy_code=800, profile=replace(profile, physical_ic_count=None)
+        )
     native = resolve_catalogue_template("H6102", "template:native-diy:504").content
     assert isinstance(native, LayeredEffect)
     assert all(layer.selection.quantity == 12 for layer in native.layers)
@@ -154,8 +158,8 @@ def test_single_and_mixed_have_independent_rate_ranges():
 
 
 def test_native_music_geometry_and_upload_order():
-    unknown = MODEL_PROFILES["H6102"]
-    known = replace(unknown, physical_ic_count=60)
+    known = MODEL_PROFILES["H6102"]
+    unknown = replace(known, physical_ic_count=None)
     for mode in unknown.music_modes[:4]:
         assert len(prepare_music_request("H6102", mode, 50, None, False, {}, profile=unknown)) == 2
     for mode in ("bloom", "shiny"):
@@ -360,11 +364,19 @@ def test_limit_and_pact1_static_conditions_are_independent():
     old = device_profile("H6102", 10, 1, hardware="1.00.01")
     new = device_profile("H6102", 10, 1, hardware="1.00.02")
     assert old.boolean_controls == {"gradual"} and new.boolean_controls == {"gradual", "limit"}
-    static = device_profile("H6102", 1, 1, hardware="1.00.03", firmware="1.06.00")
-    assert static.supports_rgb and not static.supports_custom_effects
+    extended = device_profile("H6102", 1, 1, hardware="1.00.03", firmware="1.06.00")
+    assert extended.supports_rgb and not extended.supports_color_temperature and not extended.supports_segments
+    assert extended.supports_scenes and extended.supports_custom_effects and extended.supports_advanced_effects
+    assert len(extended.music_modes) == 4 and extended.a1_diy_selector == 0xFE
+    assert extended.packet_write_delay == 0.1 and not extended.diy_requires_upload_ack
+    expanded = device_profile("H6102", 1, 1, hardware="1.00.03", firmware="1.08.08")
+    assert len(expanded.music_modes) == 11
+    intermediate = device_profile("H6102", 1, 1, hardware="1.00.03", firmware="1.03.01")
+    assert intermediate.supports_rgb and not intermediate.supports_color_temperature
+    assert intermediate.selector_only_scene_bits == 16 and intermediate.scene_codes is not None
+    assert not intermediate.supports_advanced_effects
     from custom_components.ha_govee_led_ble.generated_protocol_adapter import require_profile_packet
     from custom_components.ha_govee_led_ble.light_commands import build_color_rgb
 
-    require_profile_packet(build_color_rgb(1, 2, 3, "H6102", profile=static), static)
-    with pytest.raises(ValueError):
-        require_profile_packet(build_scene_activation("H6102", 402), static)
+    require_profile_packet(build_color_rgb(1, 2, 3, "H6102", profile=extended), extended)
+    require_profile_packet(build_scene_activation("H6102", 402), extended)

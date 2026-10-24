@@ -1347,8 +1347,6 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
         self._authorization_generation += 1
         self._music_palette = self._music_body = None
         self.video_parameters = None
-        if self.model == "H6102":
-            self.profile = replace(self.profile, physical_ic_count=None)
         self._configured_strings_confirmed = False
         if self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT) and get_profile(self.model).physical_ic_count is None:
             self._observed_physical_ic_count = None
@@ -3624,6 +3622,12 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         if before_write is not None:
                             await before_write()
                         for index, packet in enumerate(packets, start=1):
+                            if (
+                                index > 1
+                                and self.profile.packet_write_delay > 0
+                                and not (require_upload_ack and index - 2 == upload_ack_index)
+                            ):
+                                await asyncio.sleep(self.profile.packet_write_delay)
 
                             def guard(
                                 index: int = index,
@@ -3697,6 +3701,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                         if future is not None:
                             future.cancel()
                 if final_packet is not None:
+                    if not require_upload_ack and self.profile.packet_write_delay > 0:
+                        await asyncio.sleep(self.profile.packet_write_delay)
                     if before_final is not None:
                         await before_final()
 

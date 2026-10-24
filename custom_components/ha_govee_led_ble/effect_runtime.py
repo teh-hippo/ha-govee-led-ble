@@ -323,7 +323,7 @@ class EffectDeploymentEngine:
             source_kind="saved_effect",
         )
         write_only_completed = (
-            not coordinator.profile.state_readable
+            not coordinator.profile.supports_color_mode_readback
             and result.phase is DeploymentPhase.UNCERTAIN
             and result.error_code == "device_state_unconfirmed"
         )
@@ -361,7 +361,7 @@ class EffectDeploymentEngine:
             source_kind="snapshot",
         )
         write_only_completed = (
-            not coordinator.profile.state_readable
+            not coordinator.profile.supports_color_mode_readback
             and result.phase is DeploymentPhase.UNCERTAIN
             and result.error_code == "device_state_unconfirmed"
         )
@@ -1160,7 +1160,7 @@ class EffectDeploymentEngine:
             if latest is not None and (
                 latest.phase is DeploymentPhase.CONFIRMED
                 or (
-                    not coordinator.profile.state_readable
+                    not coordinator.profile.supports_color_mode_readback
                     and latest.phase is DeploymentPhase.UNCERTAIN
                     and latest.error_code == "device_state_unconfirmed"
                 )
@@ -1204,10 +1204,10 @@ class EffectDeploymentEngine:
                 if mode in {"music", "video"} and workspace.confidence is ObservationConfidence.SETTINGS_MATCH
                 else workspace.confidence
             )
-        elif profile_match and matched_record is not None:
-            confidence = matched_record.verification_confidence if verified_now else ObservationConfidence.MODE_MATCH
         elif matched_record is not None and matched_record.phase is DeploymentPhase.UNCERTAIN:
             confidence = ObservationConfidence.WRITE_COMPLETED
+        elif profile_match and matched_record is not None:
+            confidence = matched_record.verification_confidence if verified_now else ObservationConfidence.MODE_MATCH
         elif diy_code is not None or effect is not None or scene_code is not None:
             confidence = (
                 ObservationConfidence.ACTIVATION_MATCH if matched_record is not None else ObservationConfidence.UNKNOWN

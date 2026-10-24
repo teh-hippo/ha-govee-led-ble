@@ -224,6 +224,7 @@ class ModelProfile:
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
     diy_requires_upload_ack: bool = False
+    packet_write_delay: float = 0.0
     boolean_controls: frozenset[str] = frozenset()
     supports_power_on_behaviour: bool = False
     default_effect_families_override: frozenset[str] | None = None
@@ -253,6 +254,12 @@ class ModelProfile:
             type(self.a1_diy_selector) is not int or not 0 <= self.a1_diy_selector <= 255
         ):
             raise ValueError("A1 DIY selector must be an unsigned byte")
+        if (
+            isinstance(self.packet_write_delay, bool)
+            or not isinstance(self.packet_write_delay, int | float)
+            or self.packet_write_delay < 0
+        ):
+            raise ValueError("packet write delay must be non-negative")
         if type(self.dreamview_max_sub_devices) is not int or not 0 <= self.dreamview_max_sub_devices <= 255:
             raise ValueError("DreamView member capacity must be from 0 to 255")
         if self.physical_ic_count is not None and (
@@ -1009,6 +1016,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
             "shiny",
         ),
         music_variants=H6102_MUSIC_VARIANTS,
+        physical_ic_count=60,
         supports_music_color=True,
         whole_device_mask=0x7FFF,
         segment_count=15,
