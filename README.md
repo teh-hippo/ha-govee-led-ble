@@ -51,7 +51,8 @@ The `ha_govee_led_ble.paint_segments` action accepts `rgb_scale` from 0 to 100, 
 
 ## DreamView
 
-H6099 and H66A0 expose DreamView group actions separately from the backlight's standalone video effects.  Set both DreamView choices explicitly:
+On compatible revisions, H6097, H6099 and H66A0 expose DreamView group actions separately from the backlight's standalone video effects.  H6097 and H6099 support up to
+seven members; H66A0 supports up to ten.  Set both DreamView choices explicitly:
 
 ```yaml
 action: ha_govee_led_ble.set_dreamview_video_settings
