@@ -33,6 +33,11 @@ Each device protocol is captured in [Kaitai Struct](https://kaitai.io/) (`.ksy`)
 | **H7020** | ✅ Supported |
 | **H7025** | 🚧 Experimental |
 
+Experimental models await owner confirmation on actual hardware.
+Share your exact model, hardware, firmware, integration version and results in the model's existing [confirmation thread](https://github.com/teh-hippo/ha-govee-led-ble/issues/442), rather than opening another issue.
+Maintainers review the evidence and deliver Supported status in an integration release; submitting feedback or hiding its notice does not change that status.
+See the [support lifecycle and issue-creation process](CONTRIBUTING.md#support-lifecycle).
+
 To request support for another model or contribute protocol schemas, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Effect Studio
