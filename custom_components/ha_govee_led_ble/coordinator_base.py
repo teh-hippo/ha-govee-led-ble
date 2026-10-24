@@ -51,9 +51,12 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     diy_code: int | None
     color_mode: ParsedMode | None
     _control_lock: BLEControlArbiter
+    _lock: asyncio.Lock
+    control_write_attempts: int
     _profile_generation: int
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]
+    segment_brightness: list[int]
     boolean_control_state: dict[str, bool]
     _music_palette: tuple[str, tuple[tuple[int, int, int], ...]] | None
     _music_body: tuple[str, bytes] | None
@@ -141,7 +144,38 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
 
         def async_mask_transaction(self) -> AbstractAsyncContextManager[None]: ...
 
-        async def send_command(self, packet: bytes, *, write_guard: Callable[[], None] | None = None) -> None: ...
+        async def send_command(
+            self,
+            packet: bytes,
+            *,
+            write_guard: Callable[[], None] | None = None,
+            state_values: Mapping[str, Any] | None = None,
+        ) -> None: ...
+
+        async def async_observe_effect(
+            self, expectations: Mapping[str, Any], *, timeout: float = 4.0
+        ) -> bool | None: ...
+
+        async def async_write_music_sequence(
+            self,
+            writes: Sequence[tuple[bytes, Mapping[str, Any]]],
+            *,
+            mode_code: int,
+            physical_ic_count: int | None,
+            intent: ControlIntent,
+            writer: ProfileWriter | None = None,
+            retained_body_revision: int | None = None,
+        ) -> None: ...
+
+        async def async_set_boolean_control(self, control: str, enabled: bool) -> None: ...
+
+        async def _ensure_connected(self) -> BleakClient: ...
+
+        async def _async_read_bulk_status(
+            self, client: BleakClient, *, deadline: float, domains: tuple[str, ...] | None = None
+        ) -> bool: ...
+
+        async def async_refresh_segments(self, *, timeout: float = 2.0) -> bool: ...
 
         async def async_write_effect_sequence(
             self,
@@ -163,13 +197,10 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             packet_validator: Callable[[bytes, ModelProfile], None] = ...,
         ) -> None: ...
 
-        async def refresh_state(
-            self,
-            *,
-            expected_effect: str | None = None,
-            expected_scene_code: int | None = None,
-            expected_on: bool | None = None,
-        ) -> bool: ...
+        async def refresh_state(self, **kwargs: Any) -> bool: ...
+
+        @property
+        def active_mode(self) -> str: ...
 
         @property
         def scene_name_set(self) -> frozenset[str]: ...

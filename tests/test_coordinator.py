@@ -766,10 +766,12 @@ async def test_restore_effect_control_state_reapplies_complete_video_profile(h61
     )
 
     with (
-        patch(f"{M}.apply_white_balance", new_callable=AsyncMock, return_value=True) as white_balance,
-        patch(f"{M}.apply_relative_brightness", new_callable=AsyncMock, return_value=True) as relative_brightness,
-        patch(f"{M}.apply_blank_screen", new_callable=AsyncMock, return_value=True) as blank_screen,
-        patch(f"{M}.apply_active_video_mode", new_callable=AsyncMock, return_value=True) as video_mode,
+        patch(f"{M}_recovery.apply_white_balance", new_callable=AsyncMock, return_value=True) as white_balance,
+        patch(
+            f"{M}_recovery.apply_relative_brightness", new_callable=AsyncMock, return_value=True
+        ) as relative_brightness,
+        patch(f"{M}_recovery.apply_blank_screen", new_callable=AsyncMock, return_value=True) as blank_screen,
+        patch(f"{M}_recovery.apply_active_video_mode", new_callable=AsyncMock, return_value=True) as video_mode,
         patch.object(h6199, "send_command", new=AsyncMock()),
         patch.object(h6199, "refresh_state", new=AsyncMock(return_value=True)),
     ):

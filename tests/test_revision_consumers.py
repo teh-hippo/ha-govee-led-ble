@@ -40,7 +40,7 @@ async def test_non_video_failure_restores_power_without_white_balance(coordinato
     before = c.capture_effect_control_state()
     assert before.video_restore_controls is None
     wb = AsyncMock(side_effect=RuntimeError("optional white balance silent"))
-    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator.apply_white_balance", wb)
+    monkeypatch.setattr("custom_components.ha_govee_led_ble.coordinator_recovery.apply_white_balance", wb)
 
     async def refresh(**kwargs):
         for prefix in ("aa0100", "aa0464", "aa0504ffff"):

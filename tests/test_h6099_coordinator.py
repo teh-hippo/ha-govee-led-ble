@@ -468,8 +468,8 @@ async def test_video_recovery_restores_policy_and_border_only_when_requested(dev
         video_restore_controls=("blank_screen", "blank_screen_policy", "black_border"),
     )
     blank, border = AsyncMock(), AsyncMock()
-    monkeypatch.setattr(f"{M}.apply_blank_screen", blank)
-    monkeypatch.setattr(f"{M}.apply_black_border", border)
+    monkeypatch.setattr(f"{M}_recovery.apply_blank_screen", blank)
+    monkeypatch.setattr(f"{M}_recovery.apply_black_border", border)
     monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
 
     async def transmit(_uuid, packet, **kwargs):

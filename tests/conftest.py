@@ -34,6 +34,10 @@ async def virtual_clock():
             "custom_components.ha_govee_led_ble.coordinator_notifications.time",
             SimpleNamespace(monotonic=clock.virtual_time),
         ),
+        patch(
+            "custom_components.ha_govee_led_ble.coordinator_recovery.time",
+            SimpleNamespace(monotonic=clock.virtual_time),
+        ),
     ):
         yield clock
 
