@@ -36,6 +36,7 @@ import {
   LEGACY_CUSTOM_CATALOGUE_SKU,
   MAX_CATALOGUE_BYTES,
   MAX_CATALOGUE_JSON_NODES,
+  MAX_CUSTOM_CATALOGUE_BYTES,
   MAX_EFFECT_NAME_LENGTH,
   MAX_IDENTIFIER_LENGTH,
 } from "./validation-constants";
@@ -90,13 +91,14 @@ export function decodeCustomCataloguePayload(
   assertBoundedJson(
     value,
     "custom-effect catalogue",
-    MAX_CATALOGUE_BYTES,
+    MAX_CUSTOM_CATALOGUE_BYTES,
     MAX_CATALOGUE_JSON_NODES,
   );
   const catalogue = objectValue(value, "custom-effect catalogue");
-  const models = decodeModelCatalogues(catalogue.models, decodeContent);
+  const { models: modelPayloads, ...legacyPayload } = catalogue;
+  const models = decodeModelCatalogues(modelPayloads, decodeContent);
   const legacy = decodeModelEffectCatalogue(
-    catalogue,
+    legacyPayload,
     "custom-effect catalogue",
     LEGACY_CUSTOM_CATALOGUE_SKU,
     decodeContent,
