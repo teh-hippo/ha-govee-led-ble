@@ -61,6 +61,39 @@ def notify(device, prefix):
     device._notify_callback(None, bytearray(frame(prefix)))
 
 
+@pytest.mark.parametrize("late_reply", ["aa20" + b"1.03.00".hex(), "aa40000e"])
+@pytest.mark.parametrize("previous", [None, "1.00.00"])
+async def test_setup_accepts_late_identity_without_authorization_conditions(
+    device, late_reply, previous, virtual_clock
+):
+    device.subordinate_20_version = previous
+    client = device._client
+    generation = device._authorization_generation
+    replies = {
+        build_power_query("H6099"): "aa0101",
+        build_brightness_query("H6099"): "aa042a",
+        build_colour_mode_query("H6099"): "aa0515011194",
+    }
+
+    async def respond(_uuid, packet, **kwargs):
+        if packet == build_power_query("H6099"):
+            notify(device, late_reply)
+        if packet in replies:
+            notify(device, replies[packet])
+
+    client.write_gatt_char.side_effect = respond
+    await device._async_update_data()
+
+    assert device.is_on and device.available and device.brightness_pct == 42
+    if late_reply.startswith("aa20"):
+        assert device.subordinate_20_version == "1.03.00"
+    else:
+        assert device.profile.physical_ic_count == 14
+    assert device._authorization_generation == generation
+    packets = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert packets.count(build_power_query("H6099")) == 1
+
+
 def test_baseline_and_absent_music_fields(device):
     notify(device, "aa042a")
     assert device.brightness_pct == 42 and device._field_revisions["brightness_pct"] == 1

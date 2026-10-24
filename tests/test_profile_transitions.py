@@ -16,6 +16,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_hardware_query,
     build_power,
     build_power_query,
+    build_subordinate_query,
     build_white_balance_query,
 )
 from custom_components.ha_govee_led_ble.light import GoveeBLELight
@@ -86,6 +87,54 @@ async def test_identity_batch_rebuilds_with_real_setup(transition_lifecycle):  #
     assert len(clients) == 1 and c._client is None
 
 
+@pytest.mark.parametrize("domain", [0x06, 0x07, 0x20, 0x21])
+async def test_setup_retries_late_identity(transition_lifecycle, domain, virtual_clock):  # noqa: F811
+    c, replies, clients, packets = transition_lifecycle
+    query = (
+        build_firmware_query(c.model)
+        if domain == 0x06
+        else build_hardware_query(c.model)
+        if domain == 0x07
+        else build_subordinate_query(domain, c.model)
+    )
+    delayed = replies.pop(query)
+    original = c._async_write_packet
+
+    async def write(client, packet, **kwargs):
+        nonlocal delayed
+        await original(client, packet, **kwargs)
+        if packet == build_power_query(c.model) and delayed is not None:
+            c._notify_callback(None, bytearray(delayed))
+            delayed = None
+
+    c._async_write_packet = write
+    await c._async_update_data()
+
+    assert c.is_on and c.available and c.brightness_pct == 50
+    assert packets.count(build_power_query(c.model)) == 2
+    assert len(clients) == 1 and c._client is None
+
+
+async def test_setup_identity_retry_is_bounded(transition_lifecycle, virtual_clock):  # noqa: F811
+    c, _, clients, packets = transition_lifecycle
+    original = c._async_write_packet
+    revision = 0
+
+    async def write(client, packet, **kwargs):
+        nonlocal revision
+        await original(client, packet, **kwargs)
+        if packet == build_power_query(c.model):
+            revision += 1
+            c._notify_callback(None, bytearray(frame("aa20" + f"1.03.{revision:02}".encode().hex())))
+
+    c._async_write_packet = write
+    with pytest.raises(UpdateFailed):
+        await c._async_update_data()
+
+    assert packets.count(build_power_query(c.model)) == 2
+    assert len(clients) == 1 and c._client is None
+
+
 @pytest.mark.parametrize("roundtrip", [False, True])
 @pytest.mark.parametrize("operation", ["scene", "brightness", "power"])
 async def test_transition_during_awaited_control_does_not_reinstall_state(device, roundtrip, operation):
@@ -125,7 +174,7 @@ async def test_transition_during_awaited_control_does_not_reinstall_state(device
     assert not c._lock.locked() and not c._control_arbiter.locked()
 
 
-@pytest.mark.parametrize("failure", ["optional", "required", "disconnect", "value"])
+@pytest.mark.parametrize("failure", ["optional", "required", "disconnect", "value", "identity"])
 async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure):
     c, client = device
     c._keep_alive_ticks = 2
@@ -142,6 +191,9 @@ async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure
             c._notify_callback(None, bytearray(frame("aa0101")))
         bad = build_brightness_query(c.model) if failure == "required" else build_white_balance_query(c.model)
         if packet == bad:
+            if failure == "identity":
+                c._notify_callback(None, bytearray(frame("aa21" + b"1.00.34".hex())))
+                return
             if failure == "disconnect":
                 client.is_connected = False
             raise ValueError("unexpected failure") if failure == "value" else BleakError("query failed")
@@ -157,7 +209,7 @@ async def test_keepalive_uses_basic_required_policy(device, monkeypatch, failure
             assert (c._client is None) is (failure in {"required", "disconnect"})
     finally:
         monkeypatch.undo()
-    if failure == "optional":
+    if failure in {"optional", "identity"}:
         assert c._client is client and c.is_on and ticks == 2
     assert not c._lock.locked() and not c._control_arbiter.locked()
 
@@ -183,14 +235,18 @@ async def test_targeted_register_remains_strict(device):
     assert client.write_gatt_char.await_count == 1 and c._client is None
 
 
-async def test_refresh_transition_never_confirms_old_expectation(device):
+@pytest.mark.parametrize("transition", ["profile", "identity"])
+async def test_refresh_transition_never_confirms_old_expectation(device, transition):
     c, client = device
 
     async def write(_uuid, packet, **kwargs):
         assert packet == build_brightness_query(c.model)
         c._notify_callback(None, bytearray(frame("aa0432")))
-        advertise(c, 1)
+        if transition == "profile":
+            advertise(c, 1)
+        else:
+            c._notify_callback(None, bytearray(frame("aa21" + b"1.00.34".hex())))
 
     client.write_gatt_char.side_effect = write
     assert not await c.refresh_state(expected_brightness=50)
-    assert c.brightness_pct == 100 and c._client is client
+    assert c.brightness_pct == (100 if transition == "profile" else 50) and c._client is client

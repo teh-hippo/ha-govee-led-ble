@@ -35,6 +35,7 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Grammar keys (`command_grammar`, `command_ack_grammar`, `status_grammar`, `bulk_status_grammar`, `setting_grammar`, `effect_grammar`, `music_grammar`, `video_grammar`, `dreamview_grammar`) independently select codecs and fail closed on unknown keys without granting product capabilities or inheriting another SKU's catalogue.
   `device_profile()` narrows capabilities from confirmed Pact, hardware, and firmware identity (`profile_identity_fields`).
   Cached identity stabilises UI presentation across polls and Release-mode disconnects, while operation admission and physical writes require current-connection confirmation.
+  Identity observations invalidate authorisation only when a capability depends on that field.  Background setup and polling retry a changed identity or profile once with fresh queries; command verification remains strict.
   State-readable devices default to Release mode and use Hold mode only when configured for periodic polling.
   Readable power does not imply observable effect activation.  A mode or selector reply confirms selection, not uploaded content, speed, or rendering.
 - **Shared routing and wire invariants:**

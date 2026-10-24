@@ -1033,7 +1033,8 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             self._note_identity(hw_version=value)
         elif previous != value:
             setattr(self, field, value)
-            self._authorization_generation += 1
+            if field in self._authorization_identity_fields():
+                self._authorization_generation += 1
         return bool(previous != value)
 
     def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool:
@@ -1276,11 +1277,16 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     try:
                         for _ in range(2):
                             generation = self._profile_generation
+                            authorization_generation = self._authorization_generation
                             refreshed = await self.refresh_state(
                                 refresh_all=True,
                                 required_domains=self.profile.setup_required_read_domains,
                             )
-                            if generation == self._profile_generation:
+                            if generation == self._profile_generation and (
+                                refreshed
+                                or authorization_generation == self._authorization_generation
+                                or self._client is None
+                            ):
                                 break
                         else:
                             refreshed = False
@@ -2245,7 +2251,6 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
             elif (count := parse_physical_ic_count(generated)) is not None:
                 if self.profile.physical_ic_count != count:
                     self.profile = replace(self.profile, physical_ic_count=count)
-                    self._authorization_generation += 1
                 if self.model == "H6102":
                     self._resolve_device_profile()
                 for variant in self.profile.music_variants:
@@ -3376,7 +3381,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                             **query_options,
                         )
                 if not ok:
-                    if generation == self._profile_generation:
+                    if (
+                        generation == self._profile_generation
+                        and authorization_generation == self._authorization_generation
+                    ):
                         await self._disconnect_if_current_locked(client)
                     return False
                 attempt_deadline = deadline if attempt else min(deadline, (time.monotonic() + deadline) / 2)
@@ -3834,6 +3842,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                     full = self._keep_alive_ticks % STATE_QUERY_EVERY_N_KEEP_ALIVES == 0
                     client = self._client
                     generation = self._profile_generation
+                    authorization_generation = self._authorization_generation
                     if self.connection_mode == CONNECTION_MODE_HOLD and full:
                         ok = await self._refresh_connected_state(
                             refresh_all=True,
@@ -3853,7 +3862,10 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin):
                                 ),
                             )
                     if not ok:
-                        if generation != self._profile_generation:
+                        if (
+                            generation != self._profile_generation
+                            or authorization_generation != self._authorization_generation
+                        ):
                             continue
                         if client is not None:
                             await self._disconnect_if_current(client)
