@@ -145,6 +145,7 @@ class _NotificationMixin(_CoordinatorBase):
         if not self._accept_expected("color_mode", observed_color_mode):
             return ()
         if parsed.mode is not ParsedMode.COLOUR or self.color_mode is not ParsedMode.COLOUR:
+            self._static_rgb_known = False
             # Direct authority belongs to one uninterrupted static-mode interval.
             # Keep the values as last-known knowledge, not current readback evidence.
             if self.rgb_color_source == "observed":
@@ -256,6 +257,8 @@ class _NotificationMixin(_CoordinatorBase):
                 if kelvin is None or static_values["rgb_color"] != kelvin_companion_rgb(kelvin, self.profile):
                     accepted_values["color_temp_kelvin"] = None
             if self._accept_expected_values(accepted_values):
+                if static_values.get("color_temp_kelvin") is not None:
+                    self._static_rgb_known = False
                 if (
                     self.profile.status_grammar == "H601C"
                     and parsed.color_temp_kelvin is not None

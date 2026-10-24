@@ -96,7 +96,7 @@ class _RecoveryMixin(_CoordinatorBase):
     ) -> bool:
         if not state.is_on:
             return await self._async_restore_effect_control_state(state, overwritten_diy_code=overwritten_diy_code)
-        if state.mode == "colour" and self.profile.segment_colour_mode_ambiguous:
+        if state.mode == "colour" and self.profile.segment_colour_mode_ambiguous and not state.static_rgb_known:
             return False
         async with self.async_mask_transaction() if state.mode == "colour" else nullcontext():
             if (
@@ -566,7 +566,7 @@ class _RecoveryMixin(_CoordinatorBase):
             expected_zero_kelvin=self.profile.static_readback_zero_kelvin_is_rgb and not kelvin_restore,
         )
         segments_match = await self.async_refresh_segments()
-        return (
+        restored = (
             basic_matches is True
             and segments_match is True
             and self.is_on
@@ -579,6 +579,9 @@ class _RecoveryMixin(_CoordinatorBase):
             and (state.static_gradual is None or self.static_gradual == state.static_gradual)
             and complete
         )
+        if restored:
+            self._static_rgb_known = state.static_rgb_known
+        return restored
 
     async def _restore_static_colour(self, state: PriorControlState, complete: bool) -> bool:
         await self.send_command(build_power(True, self.model))

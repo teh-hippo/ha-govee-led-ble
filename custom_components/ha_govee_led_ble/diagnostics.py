@@ -58,6 +58,8 @@ async def async_get_config_entry_diagnostics(
         "color_temperature_range": {
             "minimum_kelvin": coordinator.profile.min_color_temp_kelvin,
             "maximum_kelvin": coordinator.profile.max_color_temp_kelvin,
+            "step_kelvin": coordinator.profile.color_temp_step_kelvin,
+            "table_companion": coordinator.profile.kelvin_companion_uses_table,
         },
         "supports_color_mode_readback": coordinator.profile.supports_color_mode_readback,
         "supports_custom_effects": coordinator.profile.supports_custom_effects,
@@ -109,6 +111,7 @@ async def async_get_config_entry_diagnostics(
         "brightness_pct": coordinator.brightness_pct,
         "brightness_wire_range": coordinator.profile.brightness_wire_range,
         "rgb_color": coordinator.rgb_color,
+        "rgb_color_source": coordinator.rgb_color_source,
         "segment_colors": coordinator.segment_colors,
         "segment_brightness": coordinator.segment_brightness
         if coordinator.profile.supports_segment_brightness or coordinator.segment_brightness_readable
@@ -116,6 +119,8 @@ async def async_get_config_entry_diagnostics(
         "segment_state_source": coordinator.segment_state_source,
         "segment_state_observed_at": coordinator.segment_state_observed_at,
         "color_temp_kelvin": coordinator.color_temp_kelvin,
+        "color_temp_kelvin_source": coordinator.color_temp_kelvin_source,
+        "static_rgb_known": coordinator._static_rgb_known,
         "effect": coordinator.effect,
         "diy_code": coordinator.diy_code,
         "color_mode": coordinator.color_mode.name.lower() if coordinator.color_mode is not None else None,

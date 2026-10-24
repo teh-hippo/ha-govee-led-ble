@@ -191,6 +191,10 @@ Abandoned segment or bulk queries quarantine their subscription until reconnect;
 Deliberate effect Apply may skip unrelated ambiguous segment reads, but must retain fresh recovery snapshots for models with unambiguous static readback.
 Preview requires fresh native zone flags and a restorable mode, even when a selector alone can be observed.
 An aggregate Kelvin value or RGB segment page cannot establish every zone's native-white intent.
+Kelvin confirmation may retry complete transitional segment snapshots within a bounded deadline, without replaying the write or changing the original sibling/brightness baseline.
+H66A0 partial writes confirm plausible settled rendering, not exact Kelvin.  H1A42 and H61F5 compare their rendered palette; H61F5 retains commanded Kelvin without treating its zero aggregate register as RGB proof.
+The three models round requests to 100 K with upward ties before building, presenting or verifying them.  Their direct RGB sentinel remains independent of companion conversion.
+Unknown native-white intent prevents lossless preview/recovery.  A captured known-RGB layout must come from complete observations following a successful RGB write on the current subscription; failed writes, optimistic or legacy state do not qualify.
 Do not expose a persistent palette-bound scale control without independently reachable safe requalification after normal Release-mode disconnects.
 Keep every investigation finding in its verification ledger, including deferred
 paths and the evidence or approval needed to qualify them.
@@ -270,6 +274,7 @@ It advances asyncio timers and coordinator monotonic timestamps together, preser
 Do not patch a monotonic clock independently of absolute asyncio deadlines, or mock successful verification to avoid a timeout.
 Keep filesystem/executor-backed operations and real-time lifecycle smoke tests outside virtual time.
 Callbacks with the same deadline have no guaranteed order; fake radios that require ordered delivery must schedule replies in that order.
+Fake radios compare absolute transition deadlines, not subtracted monotonic floats, so replies at the boundary remain stable across host uptimes.
 
 Python upgrades must keep `project.requires-python`, `.python-version`, `uv.lock`, and the Ruff and mypy Python targets aligned.  CI reads its interpreter version from `.python-version`; regenerate the lockfile with `uv lock` and validate with `make check`.
 

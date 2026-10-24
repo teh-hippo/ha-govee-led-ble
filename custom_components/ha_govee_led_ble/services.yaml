@@ -29,7 +29,7 @@ set_segment_color:
     color: {required: true, selector: {color_rgb:}}
 set_segment_color_temp:
   name: Set Segment Color Temperature
-  description: Apply Kelvin to selected segments within the device's temperature range. Confirmation reads rendered RGB; native per-segment Kelvin is not retained.
+  description: Apply Kelvin to selected segments within the device's temperature range. H66A0, H1A42 and H61F5 round to the nearest 100 K, with ties rounded up. Confirmation waits for settled rendered RGB, not measured per-segment Kelvin.
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
   fields:
     segments: {required: true, selector: {select: {multiple: true, options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]}}}
