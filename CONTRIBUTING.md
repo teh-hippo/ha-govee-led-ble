@@ -199,6 +199,9 @@ Generation canonicalises peer-schema import order in staging.  Preserve that ste
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
+Keep the custom-effect catalogue response complete in frontend contract fixtures so production decoding checks the aggregate model inventory against its byte budget.
+The aggregate budget is separate from the individual model-catalogue limit; do not weaken unrelated JSON limits when the inventory grows.
+
 Browser tests run independently against source fixtures in the official Playwright image, whose version must match `@playwright/test`.
 The CI-only `make check-code` target requires verified build outputs and is not a replacement for the complete local `make check` gate.
 

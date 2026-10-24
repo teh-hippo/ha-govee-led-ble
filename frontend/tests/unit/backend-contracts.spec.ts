@@ -48,6 +48,12 @@ function objectArray(value: unknown): JsonObject[] {
   return value as JsonObject[];
 }
 
+test("custom catalogue admission remains bounded with the complete model inventory", () => {
+  const catalogue = cloneObject(responses.custom_catalogue);
+  catalogue.excess = Array.from({ length: 100 }, () => "x".repeat(4096));
+  expect(() => decodeCustomCatalogue(catalogue)).toThrow(/custom-effect catalogue must not exceed .* bytes/);
+});
+
 test("canonical backend responses decode through the production validators", () => {
   const info = decodeEditorApiInfo(responses.editor_info);
   expect(isCompatibleEditorInfo(info)).toBe(true);

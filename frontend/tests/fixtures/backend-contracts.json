@@ -4904,6 +4904,171 @@
               "variant": 2
             }
           ]
+        },
+        {
+          "category": "single_layer",
+          "family": 1,
+          "id": "jumping",
+          "label": "Jumping",
+          "rate": "speed",
+          "rate_max": 100,
+          "rate_min": 0,
+          "supports_multi": true,
+          "variations": [
+            {
+              "id": "whole",
+              "label": "Whole strip",
+              "variant": 0
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle",
+              "variant": 2
+            }
+          ]
+        },
+        {
+          "category": "single_layer",
+          "family": 2,
+          "id": "blinking",
+          "label": "Blinking",
+          "rate": "speed",
+          "rate_max": 100,
+          "rate_min": 0,
+          "supports_multi": true,
+          "variations": [
+            {
+              "id": "whole",
+              "label": "Whole strip",
+              "variant": 0
+            },
+            {
+              "id": "sections",
+              "label": "Sections",
+              "variant": 1
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle",
+              "variant": 2
+            }
+          ]
+        },
+        {
+          "category": "single_layer",
+          "family": 3,
+          "id": "marquee",
+          "label": "Marquee",
+          "rate": "speed",
+          "rate_max": 100,
+          "rate_min": 0,
+          "supports_multi": true,
+          "variations": [
+            {
+              "id": "all",
+              "label": "Together",
+              "variant": 3
+            },
+            {
+              "id": "gathered",
+              "label": "Gather",
+              "variant": 4
+            },
+            {
+              "id": "dispersive",
+              "label": "Disperse",
+              "variant": 5
+            }
+          ]
+        },
+        {
+          "category": "single_layer",
+          "family": 4,
+          "id": "music",
+          "label": "Music",
+          "rate": "sensitivity",
+          "rate_max": 100,
+          "rate_min": 0,
+          "supports_multi": false,
+          "variations": [
+            {
+              "id": "rhythm",
+              "label": "Rhythm",
+              "variant": 8
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum",
+              "variant": 6
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling",
+              "variant": 7
+            }
+          ]
+        },
+        {
+          "category": "single_layer",
+          "family": 8,
+          "id": "stream",
+          "label": "Stream",
+          "rate": "speed",
+          "rate_max": 100,
+          "rate_min": 0,
+          "supports_multi": true,
+          "variations": [
+            {
+              "id": "clockwise",
+              "label": "Clockwise",
+              "variant": 9
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counterclockwise",
+              "variant": 10
+            }
+          ]
+        },
+        {
+          "category": "single_layer",
+          "family": 9,
+          "id": "flow",
+          "label": "Flow",
+          "rate": "speed",
+          "rate_max": 100,
+          "rate_min": 0,
+          "supports_multi": true,
+          "variations": [
+            {
+              "id": "clockwise",
+              "label": "Clockwise",
+              "variant": 9
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counterclockwise",
+              "variant": 10
+            }
+          ]
+        },
+        {
+          "category": "single_layer",
+          "family": 10,
+          "id": "chase",
+          "label": "Chase",
+          "palette_max": 3,
+          "rate": "speed",
+          "rate_max": 100,
+          "rate_min": 0,
+          "supports_multi": false,
+          "variations": [
+            {
+              "id": "default",
+              "label": "Default",
+              "variant": 0
+            }
+          ]
         }
       ],
       "limits": {
@@ -4955,6 +5120,184 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "multi_rate_min": 0,
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Variation 1",
+                  "variant": 8
+                },
+                {
+                  "id": "6",
+                  "label": "Variation 2",
+                  "variant": 6
+                },
+                {
+                  "id": "7",
+                  "label": "Variation 3",
+                  "variant": 7
+                }
+              ]
             }
           ],
           "limits": {
@@ -4972,6 +5315,34 @@
             {
               "id": "rhythm",
               "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "energetic",
+              "label": "Energetic"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "splash",
+              "label": "Splash"
+            },
+            {
+              "id": "spring",
+              "label": "Spring"
+            },
+            {
+              "id": "ripple",
+              "label": "Ripple"
+            },
+            {
+              "id": "orbit",
+              "label": "Orbit"
             }
           ],
           "music_settings": {
@@ -5222,6 +5593,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H1A42",
@@ -5796,6 +6187,60 @@
                   "variant": 0
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Jumping",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Blinking",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 5,
+              "id": "breathe",
+              "label": "Breathe",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Breathe",
+                  "variant": 0
+                }
+              ]
             }
           ],
           "limits": {
@@ -6084,6 +6529,179 @@
                   "variant": 0
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 5,
+              "id": "breathe",
+              "label": "Breathe",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "1",
+                  "label": "Breathe 1",
+                  "variant": 1
+                },
+                {
+                  "id": "0",
+                  "label": "Breathe 2",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Breathe 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "2",
+                  "label": "Jumping 1",
+                  "variant": 2
+                },
+                {
+                  "id": "0",
+                  "label": "Jumping 2",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 24,
+              "id": "stacking",
+              "label": "Stacking",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Stacking",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Chase",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "13",
+                  "label": "Flow 1",
+                  "variant": 13
+                },
+                {
+                  "id": "14",
+                  "label": "Flow 2",
+                  "variant": 14
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 25,
+              "id": "spray",
+              "label": "Spray",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Spray",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "multi_rate_min": 1,
+              "palette_max": 8,
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Music 1",
+                  "variant": 8
+                },
+                {
+                  "id": "17",
+                  "label": "Music 2",
+                  "variant": 17
+                },
+                {
+                  "id": "18",
+                  "label": "Music 3",
+                  "variant": 18
+                },
+                {
+                  "id": "11",
+                  "label": "Music 4",
+                  "variant": 11
+                },
+                {
+                  "id": "16",
+                  "label": "Music 5",
+                  "variant": 16
+                }
+              ]
             }
           ],
           "limits": {
@@ -6101,6 +6719,50 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "bounce",
+              "label": "Bounce"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "beat",
+              "label": "Beat"
+            },
+            {
+              "id": "spray",
+              "label": "Spray"
+            },
+            {
+              "id": "skittles",
+              "label": "Skittles"
+            },
+            {
+              "id": "torch",
+              "label": "Torch"
+            },
+            {
+              "id": "candy_crush",
+              "label": "Candy Crush"
+            },
+            {
+              "id": "fusion",
+              "label": "Fusion"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
             }
           ],
           "music_settings": {
@@ -6484,6 +7146,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H6076",
@@ -7166,6 +7848,177 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "palette_max": 8,
+              "rate": "none",
+              "rate_max": 50,
+              "rate_min": 50,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Variation 1",
+                  "variant": 8
+                },
+                {
+                  "id": "6",
+                  "label": "Variation 2",
+                  "variant": 6
+                },
+                {
+                  "id": "7",
+                  "label": "Variation 3",
+                  "variant": 7
+                }
+              ]
             }
           ],
           "limits": {
@@ -7183,6 +8036,46 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
             }
           ],
           "music_settings": {
@@ -7640,6 +8533,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H6097",
@@ -8253,6 +9166,10 @@
             {
               "id": "movie",
               "label": "Movie"
+            },
+            {
+              "id": "game",
+              "label": "Game"
             }
           ],
           "video_settings": [
@@ -8352,6 +9269,177 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "palette_max": 8,
+              "rate": "none",
+              "rate_max": 50,
+              "rate_min": 50,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Variation 1",
+                  "variant": 8
+                },
+                {
+                  "id": "6",
+                  "label": "Variation 2",
+                  "variant": 6
+                },
+                {
+                  "id": "7",
+                  "label": "Variation 3",
+                  "variant": 7
+                }
+              ]
             }
           ],
           "limits": {
@@ -8369,6 +9457,46 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
             }
           ],
           "music_settings": {
@@ -8564,6 +9692,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H6099",
@@ -9177,6 +10325,10 @@
             {
               "id": "movie",
               "label": "Movie"
+            },
+            {
+              "id": "game",
+              "label": "Game"
             }
           ],
           "video_settings": [
@@ -9263,6 +10415,149 @@
                   "id": "cycle",
                   "label": "Cycle",
                   "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "all",
+                  "label": "Together",
+                  "variant": 3
+                },
+                {
+                  "id": "gathered",
+                  "label": "Gather",
+                  "variant": 4
+                },
+                {
+                  "id": "dispersive",
+                  "label": "Disperse",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
                 }
               ]
             }
@@ -11031,6 +12326,184 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jump",
+              "label": "Jump",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blink",
+              "label": "Blink",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "multi_rate_min": 0,
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Variation 1",
+                  "variant": 8
+                },
+                {
+                  "id": "6",
+                  "label": "Variation 2",
+                  "variant": 6
+                },
+                {
+                  "id": "7",
+                  "label": "Variation 3",
+                  "variant": 7
+                }
+              ]
             }
           ],
           "limits": {
@@ -11048,6 +12521,46 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
             }
           ],
           "music_settings": {
@@ -11527,6 +13040,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H6102",
@@ -13296,6 +14829,184 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jump",
+              "label": "Jump",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blink",
+              "label": "Blink",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "multi_rate_min": 0,
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Variation 1",
+                  "variant": 8
+                },
+                {
+                  "id": "6",
+                  "label": "Variation 2",
+                  "variant": 6
+                },
+                {
+                  "id": "7",
+                  "label": "Variation 3",
+                  "variant": 7
+                }
+              ]
             }
           ],
           "limits": {
@@ -13313,6 +15024,46 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
             }
           ],
           "music_settings": {
@@ -13792,6 +15543,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H6125",
@@ -15556,6 +17327,40 @@
                   "variant": 0
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "twinkle",
+              "label": "Twinkle",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
             }
           ],
           "limits": {
@@ -15573,6 +17378,10 @@
             {
               "id": "mode_0",
               "label": "Mode 1"
+            },
+            {
+              "id": "mode_1",
+              "label": "Mode 2"
             }
           ],
           "music_settings": {
@@ -15854,6 +17663,171 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "all",
+                  "label": "Together",
+                  "variant": 3
+                },
+                {
+                  "id": "gathered",
+                  "label": "Gather",
+                  "variant": 4
+                },
+                {
+                  "id": "dispersive",
+                  "label": "Disperse",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "rhythm",
+                  "label": "Rhythm",
+                  "variant": 8
+                },
+                {
+                  "id": "spectrum",
+                  "label": "Spectrum",
+                  "variant": 6
+                },
+                {
+                  "id": "rolling",
+                  "label": "Rolling",
+                  "variant": 7
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
             }
           ],
           "limits": {
@@ -15871,6 +17845,46 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
             }
           ],
           "music_settings": {
@@ -16291,6 +18305,26 @@
             {
               "id": "cycle",
               "label": "Cycle"
+            },
+            {
+              "id": "clockwise",
+              "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counterclockwise"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H617A",
@@ -18074,6 +20108,184 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jump",
+              "label": "Jump",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blink",
+              "label": "Blink",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "multi_rate_min": 0,
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Variation 1",
+                  "variant": 8
+                },
+                {
+                  "id": "6",
+                  "label": "Variation 2",
+                  "variant": 6
+                },
+                {
+                  "id": "7",
+                  "label": "Variation 3",
+                  "variant": 7
+                }
+              ]
             }
           ],
           "limits": {
@@ -18091,6 +20303,46 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
             }
           ],
           "music_settings": {
@@ -18570,6 +20822,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H617C",
@@ -20343,6 +22615,170 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "whole",
+                  "label": "Whole strip",
+                  "variant": 0
+                },
+                {
+                  "id": "sections",
+                  "label": "Sections",
+                  "variant": 1
+                },
+                {
+                  "id": "cycle",
+                  "label": "Cycle",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "all",
+                  "label": "Together",
+                  "variant": 3
+                },
+                {
+                  "id": "gathered",
+                  "label": "Gather",
+                  "variant": 4
+                },
+                {
+                  "id": "dispersive",
+                  "label": "Disperse",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "rhythm",
+                  "label": "Rhythm",
+                  "variant": 8
+                },
+                {
+                  "id": "spectrum",
+                  "label": "Spectrum",
+                  "variant": 6
+                },
+                {
+                  "id": "rolling",
+                  "label": "Rolling",
+                  "variant": 7
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
             }
           ],
           "limits": {
@@ -20360,6 +22796,46 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
             }
           ],
           "music_settings": {
@@ -20532,6 +23008,26 @@
             {
               "id": "cycle",
               "label": "Cycle"
+            },
+            {
+              "id": "clockwise",
+              "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counterclockwise"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H617E",
@@ -21203,6 +23699,130 @@
                   "variant": 0
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "twinkle",
+              "label": "Twinkle",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 3
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 8
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "chasing",
+              "label": "Chasing",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "clockwise",
+                  "label": "Clockwise",
+                  "variant": 9
+                },
+                {
+                  "id": "counter_clockwise",
+                  "label": "Counterclockwise",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "rainbow",
+              "label": "Rainbow",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 9
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "crossing",
+              "label": "Crossing",
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 0,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "variant": 0
+                }
+              ]
             }
           ],
           "limits": {
@@ -21220,6 +23840,18 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
             }
           ],
           "music_settings": {
@@ -21780,6 +24412,10 @@
             {
               "id": "movie",
               "label": "Movie"
+            },
+            {
+              "id": "game",
+              "label": "Game"
             }
           ],
           "video_settings": [
@@ -21879,6 +24515,184 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "multi_rate_min": 0,
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 4,
+              "id": "music",
+              "label": "Music",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "sensitivity",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "8",
+                  "label": "Variation 1",
+                  "variant": 8
+                },
+                {
+                  "id": "6",
+                  "label": "Variation 2",
+                  "variant": 6
+                },
+                {
+                  "id": "7",
+                  "label": "Variation 3",
+                  "variant": 7
+                }
+              ]
             }
           ],
           "limits": {
@@ -21896,6 +24710,66 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "shiny",
+              "label": "Shiny"
+            },
+            {
+              "id": "splash",
+              "label": "Splash"
+            },
+            {
+              "id": "spring",
+              "label": "Spring"
+            },
+            {
+              "id": "meteor",
+              "label": "Meteor"
+            },
+            {
+              "id": "ripple",
+              "label": "Ripple"
+            },
+            {
+              "id": "orbit",
+              "label": "Orbit"
             }
           ],
           "music_settings": {
@@ -22625,6 +25499,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H61F5",
@@ -23320,6 +26214,231 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                },
+                {
+                  "id": "2",
+                  "label": "Variation 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "3",
+                  "label": "Variation 1",
+                  "variant": 3
+                },
+                {
+                  "id": "4",
+                  "label": "Variation 2",
+                  "variant": 4
+                },
+                {
+                  "id": "5",
+                  "label": "Variation 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Variation 1",
+                  "variant": 9
+                },
+                {
+                  "id": "10",
+                  "label": "Variation 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 37,
+              "id": "fill",
+              "label": "Fill",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 38,
+              "id": "confrontation",
+              "label": "Confrontation",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 39,
+              "id": "stretch",
+              "label": "Stretch",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 40,
+              "id": "halo_dyeing",
+              "label": "Halo Dyeing",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "0",
+                  "label": "Variation 1",
+                  "variant": 0
+                },
+                {
+                  "id": "1",
+                  "label": "Variation 2",
+                  "variant": 1
+                }
+              ]
             }
           ],
           "limits": {
@@ -23337,6 +26456,66 @@
             {
               "id": "energetic",
               "label": "Energetic"
+            },
+            {
+              "id": "rhythm",
+              "label": "Rhythm"
+            },
+            {
+              "id": "spectrum",
+              "label": "Spectrum"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "fountain",
+              "label": "Fountain"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "bloom",
+              "label": "Bloom"
+            },
+            {
+              "id": "splash",
+              "label": "Splash"
+            },
+            {
+              "id": "spring",
+              "label": "Spring"
+            },
+            {
+              "id": "painting",
+              "label": "Painting"
+            },
+            {
+              "id": "beat",
+              "label": "Beat"
+            },
+            {
+              "id": "windmill",
+              "label": "Windmill"
+            },
+            {
+              "id": "flowing_light",
+              "label": "Flowing Light"
             }
           ],
           "music_settings": {
@@ -24066,6 +27245,26 @@
             {
               "id": "clockwise",
               "label": "Clockwise"
+            },
+            {
+              "id": "counter_clockwise",
+              "label": "Counter clockwise"
+            },
+            {
+              "id": "cycle",
+              "label": "Cycle"
+            },
+            {
+              "id": "gradient",
+              "label": "Gradient"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "breathe",
+              "label": "Breathe"
             }
           ],
           "sku": "H66A0",
@@ -24893,6 +28092,10 @@
             {
               "id": "movie",
               "label": "Movie"
+            },
+            {
+              "id": "game",
+              "label": "Game"
             }
           ],
           "video_settings": [
@@ -24979,6 +28182,149 @@
                   "id": "3",
                   "label": "Fade 3",
                   "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "4",
+                  "label": "Jumping 1",
+                  "variant": 0
+                },
+                {
+                  "id": "5",
+                  "label": "Jumping 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "6",
+                  "label": "Blinking 1",
+                  "variant": 0
+                },
+                {
+                  "id": "7",
+                  "label": "Blinking 2",
+                  "variant": 1
+                },
+                {
+                  "id": "8",
+                  "label": "Blinking 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Marquee 1",
+                  "variant": 3
+                },
+                {
+                  "id": "10",
+                  "label": "Marquee 2",
+                  "variant": 4
+                },
+                {
+                  "id": "11",
+                  "label": "Marquee 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "12",
+                  "label": "Stream 1",
+                  "variant": 9
+                },
+                {
+                  "id": "13",
+                  "label": "Stream 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "14",
+                  "label": "Flow 1",
+                  "variant": 9
+                },
+                {
+                  "id": "15",
+                  "label": "Flow 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 10,
+              "id": "chase",
+              "label": "Chase",
+              "palette_max": 3,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": false,
+              "variations": [
+                {
+                  "id": "16",
+                  "label": "Chase",
+                  "variant": 0
                 }
               ]
             }
@@ -26550,6 +29896,136 @@
                   "variant": 2
                 }
               ]
+            },
+            {
+              "category": "single_layer",
+              "family": 1,
+              "id": "jumping",
+              "label": "Jumping",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "4",
+                  "label": "Jumping 1",
+                  "variant": 0
+                },
+                {
+                  "id": "5",
+                  "label": "Jumping 2",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 2,
+              "id": "blinking",
+              "label": "Blinking",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "6",
+                  "label": "Blinking 1",
+                  "variant": 0
+                },
+                {
+                  "id": "7",
+                  "label": "Blinking 2",
+                  "variant": 1
+                },
+                {
+                  "id": "8",
+                  "label": "Blinking 3",
+                  "variant": 2
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 3,
+              "id": "marquee",
+              "label": "Marquee",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "9",
+                  "label": "Marquee 1",
+                  "variant": 3
+                },
+                {
+                  "id": "10",
+                  "label": "Marquee 2",
+                  "variant": 4
+                },
+                {
+                  "id": "11",
+                  "label": "Marquee 3",
+                  "variant": 5
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 8,
+              "id": "stream",
+              "label": "Stream",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "12",
+                  "label": "Stream 1",
+                  "variant": 9
+                },
+                {
+                  "id": "13",
+                  "label": "Stream 2",
+                  "variant": 10
+                }
+              ]
+            },
+            {
+              "category": "single_layer",
+              "family": 9,
+              "id": "flow",
+              "label": "Flow",
+              "multi_rate_min": 0,
+              "palette_max": 8,
+              "rate": "speed",
+              "rate_max": 100,
+              "rate_min": 1,
+              "supports_multi": true,
+              "variations": [
+                {
+                  "id": "14",
+                  "label": "Flow 1",
+                  "variant": 9
+                },
+                {
+                  "id": "15",
+                  "label": "Flow 2",
+                  "variant": 10
+                }
+              ]
             }
           ],
           "limits": {
@@ -26567,6 +30043,42 @@
             {
               "id": "rhythm",
               "label": "Rhythm"
+            },
+            {
+              "id": "sway",
+              "label": "Sway"
+            },
+            {
+              "id": "flow",
+              "label": "Flow"
+            },
+            {
+              "id": "star",
+              "label": "Star"
+            },
+            {
+              "id": "twinkle",
+              "label": "Twinkle"
+            },
+            {
+              "id": "hopping",
+              "label": "Hopping"
+            },
+            {
+              "id": "rolling",
+              "label": "Rolling"
+            },
+            {
+              "id": "day_and_night",
+              "label": "Day And Night"
+            },
+            {
+              "id": "piano_keys",
+              "label": "Piano Keys"
+            },
+            {
+              "id": "separation",
+              "label": "Separation"
             }
           ],
           "music_settings": {
@@ -27582,6 +31094,46 @@
         {
           "id": "energetic",
           "label": "Energetic"
+        },
+        {
+          "id": "rhythm",
+          "label": "Rhythm"
+        },
+        {
+          "id": "spectrum",
+          "label": "Spectrum"
+        },
+        {
+          "id": "rolling",
+          "label": "Rolling"
+        },
+        {
+          "id": "separation",
+          "label": "Separation"
+        },
+        {
+          "id": "hopping",
+          "label": "Hopping"
+        },
+        {
+          "id": "piano_keys",
+          "label": "Piano Keys"
+        },
+        {
+          "id": "fountain",
+          "label": "Fountain"
+        },
+        {
+          "id": "day_and_night",
+          "label": "Day And Night"
+        },
+        {
+          "id": "bloom",
+          "label": "Bloom"
+        },
+        {
+          "id": "shiny",
+          "label": "Shiny"
         }
       ],
       "music_settings": {
@@ -28002,6 +31554,26 @@
         {
           "id": "cycle",
           "label": "Cycle"
+        },
+        {
+          "id": "clockwise",
+          "label": "Clockwise"
+        },
+        {
+          "id": "counter_clockwise",
+          "label": "Counterclockwise"
+        },
+        {
+          "id": "twinkle",
+          "label": "Twinkle"
+        },
+        {
+          "id": "gradient",
+          "label": "Gradient"
+        },
+        {
+          "id": "breathe",
+          "label": "Breathe"
         }
       ],
       "schema_version": 11,

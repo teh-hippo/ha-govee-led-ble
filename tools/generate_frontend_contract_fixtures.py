@@ -112,28 +112,6 @@ def _painted_segments() -> tuple[tuple[int, int, int] | None, ...]:
     return ((255, 0, 0),) * 3 + (None,) * 12
 
 
-def _compact_custom_catalogue(catalogue: dict[str, Any]) -> dict[str, Any]:
-    models = cast(dict[str, dict[str, Any]], catalogue["models"])
-    compact_models: dict[str, dict[str, Any]] = {}
-    for model in MODELS:
-        compact = dict(models[model])
-        for field in (
-            "painted_effects",
-            "effects",
-            "music_modes",
-            "video_modes",
-            "workshop_templates",
-        ):
-            values = cast(list[Any], compact[field])
-            compact[field] = values if model == "H7020" and field == "music_modes" else values[:1]
-        compact_models[model] = compact
-    return {
-        "schema_version": catalogue["schema_version"],
-        **compact_models["H617A"],
-        "models": compact_models,
-    }
-
-
 def _compact_scene_catalogue(model: str) -> dict[str, Any]:
     catalogue = cast(dict[str, Any], scene_catalogue_payload(model))
     scenes = cast(list[dict[str, Any]], catalogue["scenes"])
@@ -242,7 +220,7 @@ def _content_samples(
 
 
 def rendered_data() -> str:
-    catalogue = _compact_custom_catalogue(cast(dict[str, Any], custom_effect_catalogue_payload()))
+    catalogue = cast(dict[str, Any], custom_effect_catalogue_payload())
     scene_details = _representative_scene_details()
     item = LibraryItem(
         id=ITEM_ID,
