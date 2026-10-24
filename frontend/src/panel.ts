@@ -1355,16 +1355,20 @@ export class GoveeLedEffectStudio extends LitElement {
             Details
             <textarea readonly rows="8" spellcheck="false" .value=${dialog.report}></textarea>
           </label>
-          <p>Copy these details and paste them into the model issue on GitHub.</p>
+          <button class="secondary feedback-copy" type="button" @click=${() => void this.copyFeedbackReport()}>Copy details</button>
           ${dialog.copyMessage ? html`<p role="status">${dialog.copyMessage}</p>` : nothing}
+          <p>Copy these details and paste them into the model issue on GitHub.</p>
           <div class="dialog-actions">
-            <button class="secondary" type="button" @click=${() => void this.copyFeedbackReport()}>Copy details</button>
-            <a
-              href=${`https://github.com/teh-hippo/ha-govee-led-ble/issues/${device.confirmation_issue}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              class="secondary"
+              type="button"
+              @click=${() => window.open(
+                `https://github.com/teh-hippo/ha-govee-led-ble/issues/${device.confirmation_issue}`,
+                "_blank",
+                "noopener,noreferrer",
+              )}
               aria-label="Open GitHub (new tab)"
-            >Open GitHub</a>
+            >Open GitHub</button>
             <button class="secondary" type="button" @click=${() => this.modal.closeFeedback()}>Close</button>
           </div>
         </section>

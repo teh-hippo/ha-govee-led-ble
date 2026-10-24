@@ -299,13 +299,13 @@ export const effectStudioPanelStyles = [
       font: inherit;
     }
 
+    .feedback-dialog .feedback-copy {
+      margin-top: var(--studio-tight-gap);
+    }
+
     .feedback-dialog .dialog-actions {
       flex-wrap: wrap;
       align-items: center;
-    }
-
-    .feedback-dialog a {
-      overflow-wrap: anywhere;
     }
 
     .light-control-button {

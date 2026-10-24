@@ -93,12 +93,17 @@ for (const viewport of [{ width: 320, height: 844 }, { width: 1280, height: 900 
     await dialog.getByRole("button", { name: "Copy details", exact: true }).click();
     await expect(dialog.getByRole("status")).toContainText("Copied.");
     expect(await page.locator("body").getAttribute("data-copied-report")).toBe(await report.inputValue());
-    const link = dialog.getByRole("link", { name: "Open GitHub (new tab)", exact: true });
-    await expect(link).toHaveAttribute("href", "https://github.com/teh-hippo/ha-govee-led-ble/issues/447");
+    const openGitHub = dialog.getByRole("button", { name: "Open GitHub (new tab)", exact: true });
+    const reportBox = await report.boundingBox();
+    const copyBox = await dialog.getByRole("button", { name: "Copy details", exact: true }).boundingBox();
+    const openBox = await openGitHub.boundingBox();
+    if (!reportBox || !copyBox || !openBox) throw new Error("Feedback actions must be visible");
+    expect(copyBox.y).toBeGreaterThanOrEqual(reportBox.y + reportBox.height);
+    expect(copyBox.y + copyBox.height).toBeLessThan(openBox.y);
     await page.context().route("https://github.com/teh-hippo/ha-govee-led-ble/issues/447", route =>
       route.fulfill({ contentType: "text/html", body: "<h1>Model confirmation issue</h1>" }));
     const opened = page.waitForEvent("popup");
-    await link.click();
+    await openGitHub.click();
     const issuePage = await opened;
     await expect(issuePage).toHaveURL("https://github.com/teh-hippo/ha-govee-led-ble/issues/447");
     await issuePage.close();
