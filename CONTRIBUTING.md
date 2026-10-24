@@ -213,6 +213,9 @@ runtime imports. Unknown layouts remain documented gaps, not invented schemas.
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
+Frontend contract fixtures use a synthetic integration version.
+Do not derive their contents from the source manifest: prerelease packaging stamps that manifest before `make package`, which must still verify the same committed fixtures.
+
 Browser tests run independently against source fixtures in the official Playwright image, whose version must match `@playwright/test`.
 The CI-only `make check-code` target requires verified build outputs and is not a replacement for the complete local `make check` gate.
 
