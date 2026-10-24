@@ -340,7 +340,7 @@ class GoveeBLECoordinator(
             name=f"Govee {self.model}",
             manufacturer="Govee",
             model=f"{self.model} (Experimental)"
-            if self.profile.support_quality is SupportQuality.EXPERIMENTAL
+            if self.profile.support_quality is SupportQuality.EXPERIMENTAL or self.model == "H617A"
             else self.model,
             model_id=self.model,
             configuration_url=self.configuration_url,
