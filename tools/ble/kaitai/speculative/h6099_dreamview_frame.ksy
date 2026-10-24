@@ -23,6 +23,9 @@ doc: |
   No official-app capture or owner qualification exists
   for H6099.
   This root does not model command ACKs.
+  H6097 issue #431 independently selects the same module and group-switch
+  format, with a seven-member product ceiling.  Operation admission remains
+  explicit in its own profile; no membership readback is implied.
 params:
   - id: is_query
     type: bool

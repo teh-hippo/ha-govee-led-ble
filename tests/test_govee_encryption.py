@@ -211,6 +211,30 @@ def test_advertisement_and_omissions(hass):
         assert coordinator._advertised_encryption
 
 
+def test_h6097_owner_advertisement_requires_encrypted_negotiation(hass):
+    # Non-identifying manufacturer record supplied in issue #431.
+    data = {0x8843: bytes.fromhex("ec00020100")}
+    parsed = parse_govee_advertisement(data)
+    assert parsed is not None and parsed.supports_encryption
+    assert (parsed.pact_type, parsed.pact_code) == (2, 1)
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6097", configuration_url=None)
+    coordinator._note_advertisement(SimpleNamespace(manufacturer_data=data))
+    assert coordinator._advertised_encryption and not coordinator._advertised_plaintext
+    assert coordinator.profile.supports_rgb and coordinator.profile.music_modes
+
+
+def test_h6097_runtime_profile_tracks_pact_without_version_queries(hass):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6097", configuration_url=None)
+    assert not coordinator.profile.supports_rgb and not coordinator.profile.supports_power_on_behaviour
+    generation = coordinator._profile_generation
+    for payload, supported in (("ec00020100", True), ("ec000a0300", False), ("ec00010100", True)):
+        coordinator._note_advertisement(SimpleNamespace(manufacturer_data={0x8843: bytes.fromhex(payload)}))
+        assert coordinator.profile.supports_rgb is supported
+        assert coordinator.profile.supports_power_on_behaviour is supported
+        assert coordinator._profile_generation > generation
+        generation = coordinator._profile_generation
+
+
 async def test_coordinator_uses_plaintext_advertisement_for_unreadable_marker(hass):
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6076", configuration_url=None)
     coordinator.profile = replace(

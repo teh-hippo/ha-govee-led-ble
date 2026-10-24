@@ -69,9 +69,11 @@ def member(**overrides) -> DreamviewMember:
     )
 
 
-def test_exact_group_both_identities_and_capacity() -> None:
+@pytest.mark.parametrize("model", ["H6097", "H6099"])
+def test_exact_group_both_identities_and_capacity(model) -> None:
+    profile = get_profile(model)
     members = (member(), member(address=None, name="lamp", cmd_ver=12, is_rgbic=False, zones=(2,)))
-    packets = build_dreamview_group(members, PROFILE)
+    packets = build_dreamview_group(members, profile)
     envelope = reassemble_a3(packets)
     expected = bytes.fromhex("020100096655443322110400010aff00010c046c616d700102")
     assert envelope[2] == 0x50
@@ -82,18 +84,18 @@ def test_exact_group_both_identities_and_capacity() -> None:
     assert parsed.members[0].reversed_mac == bytes.fromhex("665544332211")
     assert parsed.members[1].name_bytes == b"lamp"
     assert parsed.members[0].area_values == [0, 1, 10, 255]
-    assert PROFILE.dreamview_max_sub_devices == 7
+    assert profile.dreamview_max_sub_devices == 7
     seven = tuple(member(address=f"00:00:00:00:00:{i:02x}") for i in range(7))
-    assert build_dreamview_group(seven, PROFILE)
+    assert build_dreamview_group(seven, profile)
     for invalid in ((), (*seven, member()), (member(), member(address="11:22:33:44:55:66"))):
         with pytest.raises(ValueError):
-            build_dreamview_group(invalid, PROFILE)
-    for profile in (get_profile("H6199"), replace(PROFILE, dreamview_grammar="unknown")):
+            build_dreamview_group(invalid, profile)
+    for unsupported in (get_profile("H6199"), replace(profile, dreamview_grammar="unknown")):
         with pytest.raises(ValueError):
-            build_dreamview_group((member(),), profile)
+            build_dreamview_group((member(),), unsupported)
     assert "11:22" not in repr(member())
     named = member(address=None, name="\u00e9", zones=(1,))
-    envelope = reassemble_a3(build_dreamview_group((named,), PROFILE))
+    envelope = reassemble_a3(build_dreamview_group((named,), profile))
     assert envelope[3:13] == bytes.fromhex("0101010902c3a9010100")
 
 
@@ -136,8 +138,9 @@ def test_member_validation(overrides) -> None:
         ("delete_group", {}, "33600d"),
     ],
 )
-def test_apk_command_bytes(setting, values, prefix) -> None:
-    assert build_dreamview_command(setting, values, PROFILE) == frame(prefix)
+@pytest.mark.parametrize("model", ["H6097", "H6099"])
+def test_apk_command_bytes(setting, values, prefix, model) -> None:
+    assert build_dreamview_command(setting, values, get_profile(model)) == frame(prefix)
 
 
 def test_individual_queries_and_truthful_raw_status() -> None:

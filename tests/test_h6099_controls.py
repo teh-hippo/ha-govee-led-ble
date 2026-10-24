@@ -1,9 +1,10 @@
 """APK-derived standalone controls; no hardware or calibration-display qualification."""
 
 import asyncio
+import time
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
@@ -19,7 +20,10 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_camera_health_query,
     build_installation_direction,
     build_installation_direction_query,
+    build_power_on_behaviour,
+    build_power_on_behaviour_query,
     parse_command,
+    require_profile_packet,
 )
 from custom_components.ha_govee_led_ble.h6099_controls import (
     async_read_h6099_controls,
@@ -36,6 +40,47 @@ from custom_components.ha_govee_led_ble.transport import xor_checksum
 def frame(prefix: str) -> bytes:
     body = bytes.fromhex(prefix).ljust(19, b"\0")
     return body + bytes((xor_checksum(body),))
+
+
+@pytest.mark.parametrize("value,code", [("previous", 0), ("on", 1), ("off", 2)])
+@pytest.mark.parametrize("reply", ["match", "mismatch", "unavailable", "unknown", "missing"])
+async def test_h6097_power_on_setting_requires_fresh_ordinary_readback(hass, monkeypatch, value, code, reply):
+    c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6097", configuration_url=None)
+    c.pact_type, c.pact_code = 2, 1
+    c._resolve_device_profile()
+    c._notify_started_monotonic = time.monotonic()
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    c._client = client
+    monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(c, "_renew_foreground_lease", lambda: None)
+    c.power_on_behaviour = value
+    write = build_power_on_behaviour(value, c.profile)
+    query = build_power_on_behaviour_query(c.profile)
+    assert write == frame(f"334102{code:02x}") and query == frame("aa4102")
+    for packet in (write, query):
+        require_profile_packet(packet, c.profile)
+        with pytest.raises(ValueError):
+            require_profile_packet(packet, replace(c.profile, supports_power_on_behaviour=False))
+    actual = (code + 1) % 3 if reply == "mismatch" else 255 if reply == "unknown" else code
+
+    async def respond(_uuid, packet, **kwargs):
+        if packet == query and reply != "missing":
+            c._notify_callback(None, bytearray(frame(f"aa41{0 if reply == 'unavailable' else 2:02x}{actual:02x}")))
+
+    client.write_gatt_char.side_effect = respond
+    if reply in {"missing", "unknown", "unavailable"}:
+        monkeypatch.setattr(c, "_wait_for_revisions", AsyncMock(return_value=False))
+    if reply == "match":
+        await c.async_set_power_on_behaviour(value)
+        assert c.power_on_behaviour == value and c._field_revisions["power_on_behaviour"] > 0
+    else:
+        with pytest.raises(ValueError, match="did not (confirm|provide)"):
+            await c.async_set_power_on_behaviour(value)
+        if reply != "mismatch":
+            assert c.power_on_behaviour == value and c._field_revisions.get("power_on_behaviour", 0) == 0
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == [write, query]
+    c._clear_client_state(client)
+    assert c.power_on_behaviour is None
 
 
 def test_exact_builders_and_generic_status_root() -> None:

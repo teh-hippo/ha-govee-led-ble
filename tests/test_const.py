@@ -126,7 +126,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
     } == {"H601C", "H6076", "H60A1", "H60A6", "H6102", "H617A", "H617C", "H617E", "H617F", "H6199", "H7020"}
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H1A42", "H6099", "H6125", "H6179", "H61F5", "H66A0", "H7025"}
+    } == {"H1A42", "H6097", "H6099", "H6125", "H6179", "H61F5", "H66A0", "H7025"}
 
 
 def test_h6125_is_an_exact_experimental_profile_on_the_shared_dreamcolor_route():
@@ -141,6 +141,25 @@ def test_h6125_is_an_exact_experimental_profile_on_the_shared_dreamcolor_route()
     assert profile.supports_advanced_effects and not profile.supports_video_mode
     assert profile.brightness_wire_range is None and profile.outbound_transform is None
     assert supported_effect_categories("H6125") == ("scenes", "effects", "multi_layered", "reactive", "advanced")
+
+
+@pytest.mark.parametrize("pact", [(1, 1), (2, 1), (None, None), (10, 3)])
+def test_h6097_pact_admission_does_not_depend_on_version_query_success(pact):
+    profile = device_profile("H6097", *pact)
+    known = pact in {(1, 1), (2, 1)}
+    assert profile.supports_rgb is known
+    assert profile.supports_power_on_behaviour is known
+    assert profile.supports_video_mode is known
+    assert bool(profile.music_modes) is known
+    assert profile.can_read(ReadDomain.POWER) and profile.can_read(ReadDomain.BRIGHTNESS)
+    if known:
+        assert profile == MODEL_PROFILES["H6097"]
+        assert profile.physical_ic_count == 24 and profile.segment_count == 14
+        assert not profile.video_firmware_conditions
+    else:
+        assert profile.command_operations == {"power", "brightness"}
+        assert not profile.supports_custom_effects and not profile.supports_scenes
+        assert not profile.dreamview_operations and not profile.supports_white_balance
 
 
 @pytest.mark.parametrize(

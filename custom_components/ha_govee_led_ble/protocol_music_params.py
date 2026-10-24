@@ -31,6 +31,7 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
     if not isinstance(body, bytes) or not body or len(body) > 255 * 17 - 3:
         raise ValueError("invalid music body length")
     if variant.layout in {
+        "h6097_music_parameters",
         "h6099_music_parameters",
         "h66a0_music_parameters",
         "h1a42_music_parameters",
@@ -38,6 +39,10 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
     }:
         root_type = (
             import_module(
+                "custom_components.ha_govee_led_ble.generated_protocol.h6097_music_parameters"
+            ).H6097MusicParameters
+            if variant.layout == "h6097_music_parameters"
+            else import_module(
                 "custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_parameters"
             ).H61f5MusicParameters
             if variant.layout == "h61f5_music_parameters"
@@ -80,6 +85,7 @@ def encode_music_parameters(
 ) -> bytes:
     """Edit named Kaitai fields; palette length never becomes an absolute tail offset."""
     if variant.layout in {
+        "h6097_music_parameters",
         "h6099_music_parameters",
         "h66a0_music_parameters",
         "h1a42_music_parameters",
@@ -179,26 +185,8 @@ def _encode_h6099_music_parameters(
 ) -> bytes:
     from math import ceil
 
-    root_type = (
-        import_module(
-            "custom_components.ha_govee_led_ble.generated_protocol.h61f5_music_parameters"
-        ).H61f5MusicParameters
-        if variant.layout == "h61f5_music_parameters"
-        else import_module(
-            "custom_components.ha_govee_led_ble.generated_protocol.h1a42_music_parameters"
-        ).H1a42MusicParameters
-        if variant.layout == "h1a42_music_parameters"
-        else import_module(
-            "custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_parameters"
-        ).H66a0MusicParameters
-        if variant.layout == "h66a0_music_parameters"
-        else import_module(
-            "custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters"
-        ).H6099MusicParameters
-    )
-    root = root_type.from_bytes(variant.template)
-    root._read()
-    if root.mode != variant.mode_code or not variant.evidence:
+    root = parse_music_parameters(variant, variant.template)
+    if not variant.evidence:
         raise ValueError("music template does not match qualified variant")
     length = len(variant.template)
     if palette is not None:

@@ -239,6 +239,8 @@ class _ActiveModeMixin(_CoordinatorBase):
             and self.profile.supports_color_mode_readback
             and not await self.refresh_state(expected_scene_code=selector)
         ):
+            if upload_count and not self.profile.effect_retry_after_upload:
+                raise RuntimeError(f"Failed to confirm scene {scene_name!r}")
             await apply()
             if not await self.refresh_state(expected_scene_code=selector):
                 raise RuntimeError(f"Failed to confirm scene {scene_name!r}")

@@ -17,6 +17,9 @@ doc: |
   ICs, not the 14 logical segments.  This does not authorise arbitrary Advanced
   or Workshop carriers.  Exact physical topology and visible behaviour still
   require owner qualification.
+  H6097 issue #431 independently shares type-1/type-2 scenes and type-03/type-04
+  DIY bodies with default selector 254, its own family bounds and 24 physical
+  ICs.  Its selector-only native scenes do not upload a type-0 body.
 seq:
   - id: header
     contents: [0x01]

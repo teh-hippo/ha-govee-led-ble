@@ -814,6 +814,15 @@ class EffectDeploymentEngine:
         for attempt in range(VERIFICATION_ATTEMPTS):
             if await coordinator.async_observe_effect(expectations, timeout=4.0) is True:
                 return True, confidence, current
+            if (
+                isinstance(compiled, CompiledMusicProfile)
+                and len(compiled.packets) > 2
+                and (
+                    not coordinator.profile.effect_retry_after_upload
+                    or not coordinator.profile.music_retry_after_upload
+                )
+            ):
+                continue
             if attempt + 1 < VERIFICATION_ATTEMPTS:
                 current = replace(
                     current,
@@ -1529,7 +1538,9 @@ def compiled_observation(
     if isinstance(compiled, CompiledMusicProfile):
         expectations["music_mode"] = compiled.mode
         # H617A settings are not confirmed by the shipped readback evidence.
-        if profile.status_grammar in {"H6099", "H6199", "H66A0"}:
+        if profile.status_grammar == "H6097":
+            expectations["music_sensitivity"] = compiled.sensitivity
+        elif profile.status_grammar in {"H6099", "H6199", "H66A0"}:
             expectations["music_sensitivity"] = compiled.sensitivity
             variant = music_variant(
                 profile,

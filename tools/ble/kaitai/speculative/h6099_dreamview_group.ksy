@@ -16,6 +16,9 @@ doc: |
   Attributable raw captures are not attached; name-addressed records remain
   structurally evidenced candidates.  No
   membership readback exists, and a successful upload is not confirmation.
+  H6097 issue #431 independently selects this membership format with at most
+  seven members.  Its actual member compatibility and restoration remain
+  unqualified.
 seq:
   - id: num_members
     type: u1

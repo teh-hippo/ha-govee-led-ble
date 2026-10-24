@@ -250,7 +250,9 @@ def parse_static_write(
         if detail.operation.name == "colour":
             rgb = (int(detail.red), int(detail.green), int(detail.blue))
             kelvin = int(detail.kelvin)
-            if rgb == (0, 0, 0) and kelvin:
+            if kelvin and profile.kelvin_direct_rgb == (255, 255, 255) and rgb != profile.kelvin_direct_rgb:
+                raise ValueError("Kelvin direct RGB does not match the profile")
+            if rgb == profile.kelvin_direct_rgb and kelvin:
                 preview = detail.preview
                 return ParsedStaticWrite(
                     operation=operation,

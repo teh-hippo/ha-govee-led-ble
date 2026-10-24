@@ -30,7 +30,7 @@ APP_VERSION = "9999999"
 SNAPSHOT_DIR = Path(__file__).parents[2] / "custom_components" / "ha_govee_led_ble" / "scene_catalogues"
 DEFAULT_SKUS = tuple(sorted(path.stem for path in SNAPSHOT_DIR.glob("*.json")))
 
-_SPEED_METADATA_SKUS = frozenset({"H60A1", "H60A6", "H617A", "H7020", "H7025"})
+_SPEED_METADATA_SKUS = frozenset({"H6097", "H60A1", "H60A6", "H617A", "H7020", "H7025"})
 
 # These models derive the initial speed selection from metadata and rewrite every
 # configured field before upload, so embedded field values are not the default-speed invariant.

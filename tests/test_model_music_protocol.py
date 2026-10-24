@@ -17,6 +17,8 @@ from custom_components.ha_govee_led_ble.music_protocol import (
     H66a0MusicWrite,
     H6076MusicBody,
     H6076MusicWrite,
+    H6097MusicParameters,
+    H6097MusicWrite,
     H6099CommandWrite,
     H6099MusicParameters,
     H6179CommandWrite,
@@ -149,6 +151,7 @@ def test_h6076_codebook_is_its_own_numbering_not_the_h617a_one() -> None:
 
 def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() -> None:
     expected_enums = {
+        "H6097": H6097MusicWrite.MusicMode,
         "H617A": GoveeCommon.MusicMode,
         "H6099": H6099CommandWrite.MusicMode,
         "H66A0": H66a0MusicWrite.MusicMode,
@@ -165,6 +168,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         assert MUSIC_MODE_CODES_BY_MODEL[grammar] == {mode.name: int(mode) for mode in enum_type}
 
     expected_parameter_enums = {
+        "H6097": H6097MusicParameters.CompanionMode,
         "H617A": MusicBody.MusicMode,
         "H6099": H6099MusicParameters.MusicMode,
         "H66A0": H66a0MusicParameters.MusicMode,

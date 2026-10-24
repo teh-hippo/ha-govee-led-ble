@@ -16,6 +16,7 @@ Each device protocol is captured in [Kaitai Struct](https://kaitai.io/) (`.ksy`)
 | **H1A42** | 🚧 Experimental |
 | **H601C** | ✅ Supported |
 | **H6076** | ✅ Supported |
+| **H6097** | 🚧 Experimental |
 | **H6099** | 🚧 Experimental |
 | **H60A1** | ✅ Supported |
 | **H60A6** | ✅ Supported |

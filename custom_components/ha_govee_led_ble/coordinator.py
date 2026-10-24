@@ -580,6 +580,7 @@ class GoveeBLECoordinator(
         declared = get_profile(self.model)
         if (
             not declared.profile_identity_fields
+            and not declared.profile_pact_dependent
             and declared.video_revision_policy is None
             and not declared.configured_string_counts
         ):
@@ -1438,6 +1439,10 @@ class GoveeBLECoordinator(
                     )
                     for control in sorted(profile.boolean_controls)
                 )
+            if full_query and profile.supports_power_on_behaviour and profile.bulk_status_grammar is None:
+                from .generated_protocol_adapter import build_power_on_behaviour_query
+
+                queries.append((build_power_on_behaviour_query(profile), ReadDomain.OTHER, ("power_on_behaviour",)))
             required = (
                 required_domains
                 if required_domains is not None
@@ -1756,7 +1761,11 @@ class GoveeBLECoordinator(
         await self._async_set_verified_setting("power_on_behaviour", value)
 
     async def _async_set_verified_setting(self, control: str, value: bool | str) -> None:
-        from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query
+        from .generated_protocol_adapter import (
+            build_boolean_control,
+            build_boolean_control_query,
+            build_power_on_behaviour_query,
+        )
 
         def qualified() -> None:
             if not (
@@ -1805,7 +1814,10 @@ class GoveeBLECoordinator(
                             raise ValueError("Device did not provide complete setting readback")
                 else:
                     await self._async_write_packet(
-                        client, build_boolean_control_query(control, self.model, profile=self.profile)
+                        client,
+                        build_power_on_behaviour_query(self.profile)
+                        if control == "power_on_behaviour"
+                        else build_boolean_control_query(control, self.model, profile=self.profile),
                     )
                 if not await self._wait_for_revisions(baseline, {}, deadline) or generation != self._profile_generation:
                     raise ValueError("Device did not provide fresh setting readback")
@@ -2425,6 +2437,7 @@ class GoveeBLECoordinator(
             async with self._lock if writer is None else nullcontext():
                 self._require_not_dreamview_claimed()
                 attempts = EFFECT_SEQUENCE_ATTEMPTS if writer is None else 1
+                upload_attempted = False
                 for attempt in range(1, attempts + 1):
                     future: asyncio.Future[bool] | None = None
                     try:
@@ -2472,7 +2485,7 @@ class GoveeBLECoordinator(
                                 token: object | None = token,
                                 generation: int = generation,
                             ) -> None:
-                                nonlocal future
+                                nonlocal future, upload_attempted
                                 self._require_not_dreamview_claimed()
                                 if self._profile_generation != generation:
                                     raise ValueError("Device profile changed during effect upload")
@@ -2482,6 +2495,8 @@ class GoveeBLECoordinator(
                                     write_guard()
                                 if packet_write_guard is not None:
                                     packet_write_guard(index - 1)
+                                if require_upload_ack and packets[index - 1][0] == protocol:
+                                    upload_attempted = True
                                 if subtype is not None and index - 1 == upload_ack_index:
                                     # After transforms and guards, immediately before the
                                     # final physical attempt: synchronous replies are valid.
@@ -2531,7 +2546,11 @@ class GoveeBLECoordinator(
                             raise
                         if self.hass.is_stopping:
                             raise RuntimeError("Home Assistant is stopping") from err
-                        if attempt == attempts or (retry_allowed is not None and not retry_allowed()):
+                        if (
+                            attempt == attempts
+                            or (upload_attempted and not self.profile.effect_retry_after_upload)
+                            or (retry_allowed is not None and not retry_allowed())
+                        ):
                             raise
                         error = str(err).lower()
                         if isinstance(err, TimeoutError) or "already shutdown" in error or "not found" in error:

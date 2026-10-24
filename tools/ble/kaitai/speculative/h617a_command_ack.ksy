@@ -24,6 +24,9 @@ doc: |
   positive upload result before activation; schema reuse is not donor
   qualification, and no H7025 mode echo, transaction token, or LAN receipt
   guarantee is inferred from the H607C observation in #148.
+  H6097 #431 independently shares A3/02 and A3/04 result-byte-2 and A3/41
+  result-byte-3 handling.  No mode echo or transaction token is established.
+  An attempted upload is not automatically replayed after an uncertain result.
   H7020 #363 reuses ordinary zero-success ACKs, including configured strings,
   and the A3/02 and A3/04 result-byte-2 forms.  This is candidate structural
   compatibility, not exact-model capture qualification or state confirmation.

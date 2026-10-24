@@ -14,7 +14,7 @@ from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_catalogue import WORKSHOP_PROTOCOL_FIXTURES, resolve_catalogue_template
 from custom_components.ha_govee_led_ble.effect_compiler import compile_application, compile_effect
 from custom_components.ha_govee_led_ble.effect_deployments import DeploymentPhase, EffectDeploymentRepository
-from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile, SingleEffect
+from custom_components.ha_govee_led_ble.effect_domain import BuiltinScene, LibraryItem, MusicProfile, SingleEffect
 from custom_components.ha_govee_led_ble.effect_preview import PreviewPhase
 from custom_components.ha_govee_led_ble.effect_runtime import EffectDeploymentEngine
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
@@ -26,7 +26,9 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     upload_ack_subtype,
     upload_ack_success,
 )
+from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
+from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import fragment_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 from tests.test_effect_preview import _manager, _open
@@ -46,13 +48,16 @@ DIY_NO = frame("a30201")
 @pytest.fixture
 async def connected(hass, monkeypatch, request):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H617A"), configuration_url=None)
+    if c.model == "H6097":
+        c.pact_type, c.pact_code = 2, 1
+        c._resolve_device_profile()
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
     c._client = client
     await c._start_notify()
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
-    if c.model != "H7025":
+    if c.model not in {"H6097", "H7025"}:
         monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 1)
     monkeypatch.setattr(coordinator_module, "RETRY_BACKOFF_SECONDS", 0)
 
@@ -69,12 +74,55 @@ def receive(client, data):
     client.start_notify.call_args.args[1](None, bytearray(data))
 
 
-@pytest.mark.parametrize("connected", ["H7025"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6097"], indirect=True)
+@pytest.mark.parametrize("fault", ["missing", "rejected", "write_timeout"])
+async def test_h6097_diy_upload_requires_result_without_uncertain_replay(connected, fault):
+    c, client = connected
+    compiled = compile_application(LibraryItem.new("Basic", SingleEffect(0, 0, 50, ((1, 2, 3),))), c.model)
+    final_upload = len(compiled.upload_packets) - 1
+
+    async def write(_uuid, packet, **kwargs):
+        if packet == compiled.upload_packets[0] and fault == "write_timeout":
+            raise TimeoutError("upload write timed out")
+        if packet == compiled.upload_packets[-1] and fault == "rejected":
+            receive(client, frame("a30401"))
+
+    client.write_gatt_char.side_effect = write
+    with pytest.raises((RuntimeError, TimeoutError)):
+        await c.async_write_effect_sequence(
+            compiled.packets, intent=ControlIntent.APPLY, require_upload_ack=True, upload_ack_index=final_upload
+        )
+    sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
+    assert sent == list(compiled.upload_packets[:1] if fault == "write_timeout" else compiled.upload_packets)
+    assert c._ensure_connected.await_count == 1
+
+
+@pytest.mark.parametrize("connected", ["H6097"], indirect=True)
+async def test_h6097_missing_scene_readback_does_not_repeat_accepted_upload(connected, monkeypatch):
+    c, client = connected
+    c.is_on = True
+    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 2)
+    compiled = compile_effect(
+        LibraryItem.new("Scene", BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))), c.model
+    )
+    monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
+
+    async def write(_uuid, packet, **kwargs):
+        if packet == compiled.upload_packets[-1]:
+            receive(client, frame("a30200"))
+
+    client.write_gatt_char.side_effect = write
+    with pytest.raises(RuntimeError, match="Failed to confirm scene"):
+        await c.async_apply_native_scene(scene.display_name, scene_entry=scene)
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
+
+
+@pytest.mark.parametrize("connected", ["H6097", "H7025"], indirect=True)
 @pytest.mark.parametrize("accepted", [False, True])
 async def test_h7025_music_waits_for_positive_upload_result(connected, accepted):
     c, client = connected
     c.music_sensitivity = 42
-    expected = prepare_music_request("H7025", "hopping", 42, None, False, {})
+    expected = prepare_music_request(c.model, "hopping", 42, None, False, {})
 
     async def write(_uuid, packet, **_kwargs):
         if packet == expected[-2]:
@@ -92,11 +140,11 @@ async def test_h7025_music_waits_for_positive_upload_result(connected, accepted)
     assert (expected[-1] in sent) is accepted
 
 
-@pytest.mark.parametrize("connected", ["H7025"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6097", "H7025"], indirect=True)
 @pytest.mark.parametrize("fault", ["missing_ack", "write_timeout", "disconnect"])
 async def test_h7025_uncertain_upload_is_not_automatically_replayed(connected, fault):
     c, client = connected
-    expected = prepare_music_request("H7025", "hopping", 99, None, False, {})
+    expected = prepare_music_request(c.model, "hopping", 99, None, False, {})
 
     async def reconnect():
         c._client = client
@@ -121,10 +169,10 @@ async def test_h7025_uncertain_upload_is_not_automatically_replayed(connected, f
     assert c.music_body is None and c._upload_ack is None
 
 
-@pytest.mark.parametrize("connected", ["H7025"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6097", "H7025"], indirect=True)
 async def test_h7025_connection_failure_before_upload_can_retry(connected):
     c, client = connected
-    expected = prepare_music_request("H7025", "hopping", 99, None, False, {})
+    expected = prepare_music_request(c.model, "hopping", 99, None, False, {})
 
     async def reconnect():
         if c._ensure_connected.await_count == 1:

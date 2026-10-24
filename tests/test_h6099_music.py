@@ -8,6 +8,7 @@ from bleak import BleakError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_compiler import compile_music_profile
 from custom_components.ha_govee_led_ble.effect_domain import LibraryItem, MusicProfile
 from custom_components.ha_govee_led_ble.effect_runtime import async_apply_compiled_profile
@@ -26,7 +27,7 @@ from custom_components.ha_govee_led_ble.music_commands import (
     prepare_music_request,
 )
 from custom_components.ha_govee_led_ble.music_semantics import music_params_for_mode, music_variant
-from custom_components.ha_govee_led_ble.protocol_music_params import music_default_palette
+from custom_components.ha_govee_led_ble.protocol_music_params import music_default_palette, parse_music_parameters
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 from tests.test_music_commands import _music_transport
 
@@ -42,6 +43,41 @@ def body(mode, parameters=None, *, ic=None, palette=None, calm=False):
     parsed = H6099MusicParameters.from_bytes(reassemble_a3(packets)[3:])
     parsed._read()
     return parsed
+
+
+def test_h6097_energetic_upload_and_physical_geometry_are_independently_declared():
+    profile = get_profile("H6097")
+    packets = prepare_music_request("H6097", "energetic", 42, None, False, {})
+    assert packets[-1] == frame("330513052a") and all(packet[0] == 0xA3 for packet in packets[1:-1])
+    variant = music_variant(profile, 5)
+    assert variant is not None
+    assert reassemble_a3(packets[1:-1])[3:].startswith(variant.template)
+    parsed = parse_music_parameters(variant, variant.template)
+    assert parsed.num_palette == 7 and parsed.tail.unknown_parameters == b"\x01\x00"
+    with pytest.raises(ValueError, match="authored palette"):
+        prepare_music_request("H6097", "energetic", 42, None, False, {}, palette=[(1, 2, 3)])
+    with pytest.raises(ValueError):
+        build_music_mode(5, 42, (1, 2, 3), False, "H6097")
+    piano = music_variant(profile, 0x34)
+    assert piano is not None
+    assert [(spec.default, spec.min_value, spec.max_value) for spec in piano.parameters[:1]] == [(18, 12, 24)]
+    writes = prepare_music_profile_writes("H6097", "piano_keys", 42, None, False, {})
+    tail = parse_music_parameters(piano, writes[-2][1]["_music_body"][1]).tail
+    assert (tail.key_count, tail.speed, tail.off_minimum, tail.off_maximum) == (18, 10, 6, 9)
+    assert music_params_for_mode(0x37, profile) == ()
+
+
+@pytest.mark.parametrize("mode", [3, 4, 5, 6, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x37])
+def test_h6097_ambiguous_music_suffix_never_becomes_observed_settings(mode):
+    profile = get_profile("H6097")
+    observations = []
+    for suffix in ("0000000000", "0101ff0000"):
+        generated = parse_status_result(frame(f"aa0513{mode:02x}2a{suffix}"), "H6097").parsed
+        parsed = parse_color_mode(generated, "H6097", profile=profile)
+        assert parsed.mode is ParsedMode.MUSIC and parsed.music_sensitivity == 42
+        assert parsed.music_calm is None and not parsed.music_color_present
+        observations.append(parsed)
+    assert observations[0] == observations[1]
 
 
 @pytest.mark.parametrize("count", [0, 1, 14, 29, 30, 60, 32767, -1])

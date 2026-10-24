@@ -518,7 +518,13 @@ class _NotificationMixin(_CoordinatorBase):
                 for field, value in values.items():
                     setattr(self, field, value)
                 observed = tuple(values)
-            if domain is StatusDomain.CONFIGURED_STRINGS:
+            if getattr(generated.domain, "name", None) == "power_on_behaviour":
+                value = getattr(generated.body.state, "name", None)
+                if not generated.body.availability or value is None:
+                    raise ValueError("Power-on behaviour is unavailable or unknown")
+                self.power_on_behaviour = value
+                observed = ("power_on_behaviour",)
+            elif domain is StatusDomain.CONFIGURED_STRINGS:
                 self._apply_configured_strings(int(generated.body.count))
                 observed = ("configured_strings",)
             elif domain is StatusDomain.POWER:

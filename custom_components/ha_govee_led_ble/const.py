@@ -16,6 +16,7 @@ from .music_semantics import (
     H617E_MUSIC_VARIANTS,
     H6076_LEGACY_MUSIC_VARIANTS,
     H6076_MUSIC_VARIANTS,
+    H6097_MUSIC_VARIANTS,
     H6099_MUSIC_VARIANTS,
     H6102_MUSIC_VARIANTS,
     H6125_MUSIC_VARIANTS,
@@ -152,6 +153,7 @@ class ModelProfile:
     dreamview_max_sub_devices: int = 0
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     profile_identity_fields: frozenset[str] = frozenset()
+    profile_pact_dependent: bool = False
     # Exact-product revision policy, independent of compatible wire grammars.
     video_revision_policy: str | None = None
     read_domains: frozenset[ReadDomain] = frozenset()
@@ -228,6 +230,7 @@ class ModelProfile:
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
     diy_requires_upload_ack: bool = False
+    effect_retry_after_upload: bool = True
     packet_write_delay: float = 0.0
     boolean_controls: frozenset[str] = frozenset()
     supports_power_on_behaviour: bool = False
@@ -633,6 +636,109 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         whole_device_mask=1,
         connection_idle_timeout=1.5,
         scene_catalogue_sku="H601C",
+    ),
+    "H6097": ModelProfile(
+        "H6097 TV Backlight 3 Lite (40-50 inch)",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        command_grammar="H6099",
+        command_ack_grammar="H617A",
+        status_grammar="H6097",
+        setting_grammar="H6097",
+        music_grammar="H6097",
+        profile_pact_dependent=True,
+        effect_grammar="H6099",
+        video_grammar="H6099",
+        dreamview_grammar="H6099",
+        dreamview_operations=frozenset(
+            {
+                "replace_group",
+                "delete_group",
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "sample",
+                "sound",
+            }
+        ),
+        dreamview_reads=frozenset(
+            {"switch_group", "member_brightness", "same_brightness", "member_connect", "saturation", "sample", "sound"}
+        ),
+        dreamview_max_sub_devices=7,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.DISPLAY_SETTING,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.RELATIVE_BRIGHTNESS,
+                ReadDomain.SEGMENTS,
+                ReadDomain.PHYSICAL_IC_COUNT,
+                ReadDomain.INSTALLATION_DIRECTION,
+                ReadDomain.CAMERA_HEALTH,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_installation_direction=True,
+        supports_power_on_behaviour=True,
+        supports_rgb=True,
+        supports_color_temperature=True,
+        kelvin_direct_rgb=(255, 255, 255),
+        static_readback_kelvin=True,
+        supports_scenes=True,
+        supports_video_mode=True,
+        video_modes=("movie", "game"),
+        supports_video_capture_region=True,
+        supports_video_saturation=True,
+        video_saturation_min=1,
+        supports_video_sound_effects=True,
+        supports_white_balance=True,
+        supports_white_balance_readback=True,
+        video_white_balance_representation="scalar",
+        video_white_balance_default=50,
+        video_white_balance_max=100,
+        video_white_balance_calibration=tuple((value,) for value in range(1, 101)),
+        video_brightness_zones=("left", "top", "right", "bottom"),
+        supports_relative_brightness=True,
+        supports_blank_screen=True,
+        supports_black_border=True,
+        physical_ic_count=24,
+        music_variants=H6097_MUSIC_VARIANTS,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        supports_music_color=True,
+        music_modes=(
+            "energetic",
+            "rhythm",
+            "spectrum",
+            "rolling",
+            "separation",
+            "hopping",
+            "piano_keys",
+            "fountain",
+            "day_and_night",
+            "bloom",
+            "shiny",
+        ),
+        whole_device_mask=0x3FFF,
+        segment_count=14,
+        segment_group_size=4,
+        segment_colour_mode_ambiguous=True,
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        scene_catalogue_sku="H6097",
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
+        effect_readback="diy_code_only",
     ),
     "H6099": ModelProfile(
         "H6099 TV Backlight 3 Lite",
@@ -1426,7 +1532,7 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 # Grammar families shared by several SKUs; shared code tests membership here, not literal sets.
 VIDEO_GRAMMARS = frozenset({"H6099", "H6199"})
 MODE_COMMAND_GRAMMARS = frozenset({"H601C", "H6099", "H6199"})
-PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H6099", "H6199", "H66A0"})
+PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H6097", "H6099", "H6199", "H66A0"})
 
 
 def _h6199_pact1_wire(packet: bytes) -> bytes:
@@ -1570,7 +1676,7 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
-    if model == "H7020":
+    if model in {"H6097", "H7020"}:
         profile = get_profile(model)
         if (pact_type, pact_code) in {(1, 1), (2, 1)}:
             return profile
@@ -1578,6 +1684,8 @@ def device_profile(
             profile,
             command_operations=frozenset({"power", "brightness"}),
             read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}),
+            setup_required_read_domains=profile.setup_required_read_domains
+            & {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.FIRMWARE, ReadDomain.HARDWARE},
             supports_rgb=False,
             supports_color_temperature=False,
             supports_segment_writes=False,
@@ -1590,6 +1698,20 @@ def device_profile(
             music_variants=(),
             boolean_controls=frozenset(),
             configured_string_counts=(),
+            supports_video_mode=False,
+            video_modes=(),
+            supports_video_capture_region=False,
+            supports_video_saturation=False,
+            supports_video_sound_effects=False,
+            supports_white_balance=False,
+            supports_white_balance_readback=False,
+            supports_relative_brightness=False,
+            supports_blank_screen=False,
+            supports_black_border=False,
+            supports_installation_direction=False,
+            supports_power_on_behaviour=False,
+            dreamview_operations=frozenset(),
+            dreamview_reads=frozenset(),
         )
     if model in {"H60A1", "H60A6"}:
         from .firmware_version import FirmwareVersion

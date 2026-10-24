@@ -13,6 +13,8 @@ doc: |
   position (31) is separate and not queried here.  Encryption is outside this
   logical frame; owner acceptance, firmware differences, and unused bytes
   remain unresolved.
+  H6097 issue #431 independently shares these query selectors and fourteen-zone
+  paging.  Its ordinary three-state power-on query has a separate exact root.
 seq:
   - id: header
     contents: [0xaa]

@@ -149,6 +149,18 @@ def test_legacy_painted_document_hash_and_explicit_diy_code() -> None:
     assert compile_effect(basic, "H6099", diy_code=1234).activation_packet == build_h6099_diy_activation(1234)
 
 
+def test_h6097_uses_its_fixed_default_without_allocating_other_slots() -> None:
+    item = LibraryItem.new("Basic", SingleEffect(0, 0, 50, ((1, 2, 3),)))
+    compiled = compile_application(item, "H6097")
+    assert isinstance(compiled, CompiledEffect)
+    assert compiled.activation_packet == build_h6099_diy_activation(254)
+    with pytest.raises(ValueError, match="temporary selector"):
+        compile_application(item, "H6097", diy_code=1234)
+    painted = resolve_catalogue_template("H6097", "template:paint")
+    assert isinstance(painted.content, PaintedEffect)
+    assert len(painted.content.segments) == 24
+
+
 def test_h6099_root_validates_shared_diy_fields() -> None:
     for kind, body in ((4, "0000320100"), (3, "093264ffffff0102ff00003b")):
         with pytest.raises(ValueError, match="invalid H6099"):

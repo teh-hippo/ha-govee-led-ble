@@ -38,6 +38,18 @@ H6099StatusReply = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_status_reply").H6099StatusReply,
 )
+H6097StatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_status_reply").H6097StatusReply,
+)
+H6097Control = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_control").H6097Control,
+)
+H6097MusicWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_music_write").H6097MusicWrite,
+)
 
 
 H6099EffectUpload = cast(
@@ -528,6 +540,7 @@ _STATUS_ROOTS = {
     "H6125-legacy": ("h6125_legacy_status_reply", H6125LegacyStatusReply),
     "H6125-intermediate": ("h6125_intermediate_status_reply", H6125IntermediateStatusReply),
     "H6099": ("h6099_status_reply", H6099StatusReply),
+    "H6097": ("h6097_status_reply", H6097StatusReply),
     "H66A0": ("h66a0_status_reply", H66a0StatusReply),
     "H1A42": ("h1a42_status_reply", H1a42StatusReply),
     "H61F5": ("h61f5_status_reply", H61f5StatusReply),
@@ -564,6 +577,7 @@ _H6076_ACK_ROOTS = {"H6076": ("h6076_music_ack", H6076MusicAck)}
 
 
 _MUSIC_WRITE_ROOTS = {
+    "H6097": ("h6097_music_write", H6097MusicWrite),
     "H6076": ("h6076_music_write", H6076MusicWrite),
     "H66A0": ("h66a0_music_write", H66a0MusicWrite),
     "H1A42": ("h1a42_music_write", H1a42MusicWrite),

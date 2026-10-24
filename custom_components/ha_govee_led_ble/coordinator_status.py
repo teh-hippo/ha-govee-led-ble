@@ -83,6 +83,8 @@ def decode_status_frame(
 
 def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -> bool:
     """Boolean registers have independent authorization, not the catch-all OTHER domain."""
+    if getattr(decoded.generated.domain, "name", "") == "power_on_behaviour":
+        return profile.supports_power_on_behaviour
     control = boolean_control_name(getattr(decoded.generated.domain, "name", ""))
     if control is not None:
         return boolean_control_is_authorized(control, profile)

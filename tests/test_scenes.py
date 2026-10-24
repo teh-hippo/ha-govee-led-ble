@@ -158,6 +158,15 @@ def test_speed_default_position_reproduces_every_other_stored_param():
     assert differing == {"glacier"}
 
 
+def test_h6097_speed_metadata_defaults_preserve_stored_bodies():
+    scenes = [scene for scene in SCENE_ENTRIES["H6097"] if scene.speed is not None]
+    assert {scene.code for scene in scenes} == {11217, 12863}
+    for scene in scenes:
+        stored = base64.b64decode(scene.param)
+        assert apply_scene_speed(stored, scene.speed, scene.speed.default_index) == stored
+        assert apply_scene_speed(stored, scene.speed, 0) != stored
+
+
 @pytest.mark.parametrize("index,expected", [(-1, 237), (0, 237), (1, 244), (2, 250), (7, 250)])
 def test_speed_position_selects_the_option_list_value(index, expected):
     scene = SCENES["glacier"]

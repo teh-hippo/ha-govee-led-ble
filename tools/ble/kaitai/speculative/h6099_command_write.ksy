@@ -15,6 +15,10 @@ doc: |
   direction writes 33 30 value with candidate values 2, 3, 4, and 5; image
   orientations remain unqualified and no corner names or calibration-display
   commands are implied.
+  H6097 issue #431 independently shares these non-music command layouts,
+  including fourteen-zone masks and six-byte video.  Its Kelvin producer uses
+  direct white RGB and a device-table companion, and its distinct music root
+  overrides this envelope's legacy Energetic selector.
 seq:
   - id: header
     contents: [0x33]

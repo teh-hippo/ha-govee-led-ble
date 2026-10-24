@@ -2473,18 +2473,17 @@ async def test_unsaved_music_profile_persists_the_applied_snapshot(
     assert published_workspaces == [workspace]
 
 
-async def test_music_profile_retries_the_complete_writer_before_confirmation(
+@pytest.mark.parametrize("allow_replay", [False, True])
+@pytest.mark.parametrize("first_observation", [False, None])
+async def test_music_verification_reapplies_only_when_upload_replay_is_admitted(
     hass: HomeAssistant,
+    allow_replay: bool,
+    first_observation: bool | None,
 ) -> None:
     repository, cache = await _repositories(hass)
     coordinator = _profile_coordinator("H617A")
-    refresh = coordinator.refresh_state.side_effect
-
-    async def refresh_then_verify(**kwargs):
-        await refresh(**kwargs)
-        return coordinator.refresh_state.await_count != 2
-
-    coordinator.refresh_state.side_effect = refresh_then_verify
+    coordinator.profile = replace(coordinator.profile, effect_retry_after_upload=allow_replay)
+    coordinator.async_observe_effect.side_effect = [first_observation, True]
 
     result = await EffectDeploymentEngine(repository, cache).async_apply_saved(
         coordinator,
@@ -2495,7 +2494,9 @@ async def test_music_profile_retries_the_complete_writer_before_confirmation(
 
     assert result.phase is DeploymentPhase.CONFIRMED
     packets = [call.args[0] for call in coordinator.send_command.await_args_list]
-    assert len(packets) == 8 and packets[:4] == packets[4:]
+    assert len(packets) == (8 if allow_replay else 4)
+    if allow_replay:
+        assert packets[:4] == packets[4:]
 
 
 async def test_h6199_video_profile_uses_native_writers_in_profile_order(

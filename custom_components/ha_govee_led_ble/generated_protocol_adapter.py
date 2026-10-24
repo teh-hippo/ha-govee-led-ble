@@ -36,6 +36,8 @@ from .protocol_core import (
     H6076MusicAck,
     H6076MusicBody,
     H6076MusicWrite,
+    H6097Control,
+    H6097MusicWrite,
     H6099CommandWrite,
     H6099EffectUpload,
     H6179CommandWrite,
@@ -160,7 +162,8 @@ def parse_command_ack_result(frame: bytes, model: str, *, profile: ModelProfile 
 def _complete_a3_upload(
     packets: Sequence[bytes], index: int, model: str, profile: ModelProfile | None
 ) -> tuple[int, bytes]:
-    if (profile or get_profile(model)).command_grammar not in {"H617A", "H7020"}:
+    active_profile = profile or get_profile(model)
+    if active_profile.command_grammar not in {"H617A", "H7020"} and active_profile.command_ack_grammar != "H617A":
         raise ValueError("Upload ACK semantics are not qualified for this command grammar")
     roots = {"H617A": ("command_write.upload_frame", CommandWrite.UploadFrame)}
     for start in range(index, -1, -1):
@@ -243,6 +246,16 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     """Revalidate operation capabilities and geometry at each physical attempt."""
     from .light_commands import parse_static_write
 
+    if profile.setting_grammar == "H6097":
+        roots = {"write": ("h6097_control", H6097Control), "query": ("h6097_control.query", H6097Control.Query)}
+        for grammar in roots:
+            setting = _parse_xor_frame(frame, grammar, roots).parsed
+            if setting is not None:
+                if not profile.supports_power_on_behaviour or (
+                    grammar == "write" and getattr(setting.body.state, "name", None) is None
+                ):
+                    raise ValueError("Power-on setting is outside profile capabilities")
+                return
     if profile.bulk_status_grammar == "H60A":
         query = _parse_xor_frame(frame, "bulk", {"bulk": ("h60a_bulk.query", H60aBulk.Query)}).parsed
         if query is not None:
@@ -673,18 +686,32 @@ def build_bulk_status_query(profile: ModelProfile, *, domains: tuple[str, ...] |
 
 def build_power_on_behaviour(value: str, profile: ModelProfile) -> bytes:
     if (
-        profile.setting_grammar != "H60A6"
+        profile.setting_grammar not in {"H60A6", "H6097"}
         or not profile.supports_power_on_behaviour
         or value not in H60aBulk.PowerOnState.__members__
     ):
         raise ValueError("Unsupported power-on behaviour")
-    root = H60a6Control()
+    root_type = H60a6Control if profile.setting_grammar == "H60A6" else H6097Control
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H60a6Control.Command.power_on_behaviour
-    root.body = _child(H60a6Control.PowerOnCommand, root)
+    root.opcode = root_type.Command.power_on_behaviour
+    root.body = _child(root_type.PowerOnCommand, root)
     root.body.selector = b"\x02"
     root.body.state = H60aBulk.PowerOnState[value]
     root.body.unknown_tail = bytes(15)
+    return _serialize_xor(root)
+
+
+def build_power_on_behaviour_query(profile: ModelProfile) -> bytes:
+    if not profile.supports_power_on_behaviour:
+        raise ValueError("Unsupported power-on behaviour")
+    if profile.setting_grammar == "H60A6":
+        return build_bulk_status_query(profile, domains=("power_on_behaviour",))
+    if profile.setting_grammar != "H6097":
+        raise ValueError("Unsupported power-on setting grammar")
+    root = H6097Control.Query()
+    root.header = b"\xaa\x41\x02"
+    root.unknown_tail = bytes(16)
     return _serialize_xor(root)
 
 
@@ -1251,9 +1278,7 @@ def build_colour_temperature(
         mode.sub_mode = root_type.ModeSel.static_colour
         detail = _child(root_type.StaticColourBody, mode)
         detail.operation = root_type.StaticOperation.colour
-        detail.red = 0
-        detail.green = 0
-        detail.blue = 0
+        detail.red, detail.green, detail.blue = profile.kelvin_direct_rgb
         detail.kelvin = value
         detail.preview = _rgb(detail, *preview)
         detail.segment_mask = mask
@@ -1704,9 +1729,11 @@ def build_music_mode(
         multi.sub_body = selector
         root.body = multi
         return _serialize_xor(root)
-    if resolved in {"H1A42", "H61F5", "H66A0", "H7025"}:
+    if resolved in {"H6097", "H1A42", "H61F5", "H66A0", "H7025"}:
         root_cls = (
-            H1a42MusicWrite
+            H6097MusicWrite
+            if resolved == "H6097"
+            else H1a42MusicWrite
             if resolved == "H1A42"
             else H61f5MusicWrite
             if resolved == "H61F5"
@@ -1724,7 +1751,7 @@ def build_music_mode(
             selector.has_fixed_colour = int(colour is not None)
             if colour is not None:
                 selector.rgb = _rgb(selector, *colour)
-        elif resolved in {"H1A42", "H61F5", "H66A0"} and colour is not None:
+        elif resolved in {"H6097", "H1A42", "H61F5", "H66A0"} and colour is not None:
             raise ValueError(f"new {resolved} music selectors omit fixed colour")
         selector.unknown_tail = bytes(14 - (2 + (3 if colour is not None else 0) if selector.is_legacy else 0))
         root.selector = selector

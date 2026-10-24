@@ -50,6 +50,25 @@ def _generated(module: str, class_name: str) -> type[Any]:
     return getattr(import_module(f"{_MODULE_PREFIX}{module}"), class_name)
 
 
+def test_h6097_synthetic_frames_keep_unknown_music_and_ordinary_setting_fields():
+    # Structural hypotheses for issue #431, not hardware captures.
+    status_root = _generated("h6097_status_reply", "H6097StatusReply")
+    setting = status_root.from_bytes(bytes.fromhex("aa410201000000000000000000000000000000e8"))
+    setting._read()
+    assert setting.domain.name == "power_on_behaviour"
+    assert setting.body.availability == 2 and setting.body.state.name == "on"
+    music = status_root.from_bytes(bytes.fromhex("aa0513052a0101ff00000000000000000000006c"))
+    music._read()
+    assert music.body.detail.mode.name == "energetic" and music.body.detail.sensitivity == 42
+    assert not music.body.detail.is_legacy
+    assert music.body.detail.unknown_tail.startswith(bytes.fromhex("0101ff0000"))
+    write_root = _generated("h6097_music_write", "H6097MusicWrite")
+    selector = write_root.from_bytes(bytes.fromhex("330513052a00000000000000000000000000000a"))
+    selector._read()
+    assert not selector.selector.is_legacy
+    assert not hasattr(selector.selector, "rgb")
+
+
 CommandWrite = _generated("command_write", "CommandWrite")
 StatusReply = _generated("status_reply", "StatusReply")
 StatusQuery = _generated("status_query", "StatusQuery")

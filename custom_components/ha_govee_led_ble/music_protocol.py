@@ -49,6 +49,14 @@ H6099MusicParameters = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h6099_music_parameters").H6099MusicParameters,
 )
+H6097MusicParameters = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_music_parameters").H6097MusicParameters,
+)
+H6097MusicWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h6097_music_write").H6097MusicWrite,
+)
 H66a0MusicParameters = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h66a0_music_parameters").H66a0MusicParameters,
@@ -109,6 +117,7 @@ MUSIC_MODE_CODES_BY_MODEL: Final[Mapping[str, Mapping[str, int]]] = MappingProxy
     {
         "H617A": _H617A_MODE_CODES,
         "H6099": _H6099_MODE_CODES,
+        "H6097": MappingProxyType({mode.name: int(mode) for mode in H6097MusicWrite.MusicMode}),
         "H66A0": MappingProxyType({mode.name: int(mode) for mode in H66a0MusicWrite.MusicMode}),
         "H1A42": MappingProxyType({mode.name: int(mode) for mode in H1a42MusicWrite.MusicMode}),
         "H61F5": MappingProxyType({mode.name: int(mode) for mode in H61f5MusicWrite.MusicMode}),
@@ -130,6 +139,7 @@ _MUSIC_STYLE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = MappingProxyT
     {
         "H617A": _H617A_STYLE_CODES,
         "H6099": _H617A_STYLE_CODES,
+        "H6097": _H617A_STYLE_CODES,
         "H66A0": frozenset({int(H66a0MusicWrite.MusicMode.rhythm), int(H66a0MusicWrite.MusicMode.bloom)}),
         "H1A42": frozenset({int(H1a42MusicWrite.MusicMode.rhythm)}),
         "H61F5": _H617A_STYLE_CODES,
@@ -144,6 +154,7 @@ _MUSIC_PARAMETER_WRITE_CODES_BY_MODEL: Final[Mapping[str, frozenset[int]]] = Map
     {
         "H617A": _H617A_PARAMETER_WRITE_CODES,
         "H6099": _H6099_PARAMETER_WRITE_CODES,
+        "H6097": frozenset(int(mode) for mode in H6097MusicParameters.CompanionMode),
         "H66A0": frozenset(int(mode) for mode in H66a0MusicParameters.MusicMode),
         "H1A42": frozenset(int(mode) for mode in H1a42MusicParameters.MusicMode),
         "H61F5": frozenset(int(mode) for mode in H61f5MusicParameters.MusicMode),

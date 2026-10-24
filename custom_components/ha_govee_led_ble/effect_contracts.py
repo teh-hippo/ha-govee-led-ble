@@ -473,6 +473,35 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
     ),
     *(
         _capability(
+            "H6097",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.UNVERIFIED,
+            _P.NOT_VALIDATED,
+            _E.STRUCTURAL,
+        )
+        for workflow, label, kind, route, strategy in (
+            (_W.PAINTED, "Graffiti", "h617a_painted", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.SINGLE, "Basic", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.MULTI, "Mixed", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.A3_EFFECT_UPLOAD),
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (
+                _W.EDITED_PALETTE_SCENES,
+                "Edited palette scenes",
+                "scene_palette",
+                _R.HOME_ASSISTANT_CONTROL,
+                _S.MODEL_SCENE_ENGINE,
+            ),
+            (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+            (_W.VIDEO, "Video", "video_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+        )
+    ),
+    *(
+        _capability(
             "H6099",
             workflow,
             label,

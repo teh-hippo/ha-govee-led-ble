@@ -52,6 +52,7 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "music_body",
         "h6076_music_body",
         "h6099_music_parameters",
+        "h6097_music_parameters",
         "h66a0_music_parameters",
         "h1a42_music_parameters",
         "h61f5_music_parameters",
@@ -343,6 +344,105 @@ H6099_MUSIC_VARIANTS = (
         "h6099_music_parameters",
         bytes.fromhex("37" + _H6099_PALETTE + "000000"),
         # The APK never calls setPiece and ignores UI index 2. Do not advertise those controls.
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+)
+
+_H6097_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+H6097_MUSIC_VARIANTS = (
+    MusicVariant(3, "H6097 candidate classic Rhythm selector", supports_style=True),
+    MusicVariant(4, "H6097 candidate classic Spectrum selector"),
+    MusicVariant(
+        5,
+        "H6097 candidate Energetic companion; parameter meaning unqualified",
+        "h6097_music_parameters",
+        bytes.fromhex("05" + _H6097_PALETTE + "0100"),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(6, "H6097 candidate classic Rolling selector"),
+    MusicVariant(
+        0x30,
+        "H6097 candidate Bloom companion",
+        "h6097_music_parameters",
+        bytes.fromhex("30" + _H6097_PALETTE + "0a50"),
+        supports_style=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x31,
+        "H6097 candidate Shiny companion",
+        "h6097_music_parameters",
+        bytes.fromhex("31" + _H6097_PALETTE + "05640a"),
+        supports_style=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x32,
+        "H6097 candidate Separation companion",
+        "h6097_music_parameters",
+        bytes.fromhex("32" + _H6097_PALETTE + "030061"),
+        (
+            MusicParamSpec("music_separation_point", "point", "point", "number", 3, 1, 5),
+            MusicParamSpec("music_separation_gradient", "gradient", "gradient", "switch", False),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x33,
+        "H6097 candidate Hopping companion",
+        "h6097_music_parameters",
+        bytes.fromhex("33" + _H6097_PALETTE + "010101196201030000"),
+        (
+            MusicParamSpec("music_hopping_background", "background", "background", "number", 0x010101, 0, 0xFFFFFF),
+            MusicParamSpec("music_hopping_brightness", "relative_brightness", "rel_brightness", "number", 25, 0, 50),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x34,
+        "H6097 candidate Piano Keys companion",
+        "h6097_music_parameters",
+        bytes.fromhex("34" + _H6097_PALETTE + "0000000000"),
+        (
+            MusicParamSpec("music_piano_key_count", "key_count", "key_count", "number", 0),
+            MusicParamSpec("music_piano_gradient", "gradient", "gradient", "switch", False),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x35,
+        "H6097 candidate Fountain companion",
+        "h6097_music_parameters",
+        bytes.fromhex("35" + _H6097_PALETTE + "01000000"),
+        (
+            MusicParamSpec(
+                "music_fountain_direction",
+                "direction",
+                "start_point",
+                "select",
+                "two_way",
+                options=("clockwise", "counterclockwise", "two_way"),
+            ),
+        ),
+        requires_physical_ic_count=True,
+        palette_bounds=(1, 8),
+        supports_fixed_colour=False,
+    ),
+    MusicVariant(
+        0x37,
+        "H6097 candidate Day and Night companion; conflicting editor indices are not exposed",
+        "h6097_music_parameters",
+        bytes.fromhex("37" + _H6097_PALETTE + "000000"),
         requires_physical_ic_count=True,
         palette_bounds=(1, 8),
         supports_fixed_colour=False,
@@ -858,7 +958,8 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
         and mode_code == 0x34
         and ic is not None
         and (
-            variant.layout in {"h6099_music_parameters", "h66a0_music_parameters", "h61f5_music_parameters"}
+            variant.layout
+            in {"h6097_music_parameters", "h6099_music_parameters", "h66a0_music_parameters", "h61f5_music_parameters"}
             or any(spec.requires_physical_ic_count for spec in variant.parameters)
         )
     ):
@@ -880,7 +981,8 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
     if (
         variant
         and mode_code == 0x37
-        and variant.layout in {"h6099_music_parameters", "h66a0_music_parameters", "h61f5_music_parameters"}
+        and variant.layout
+        in {"h6097_music_parameters", "h6099_music_parameters", "h66a0_music_parameters", "h61f5_music_parameters"}
         and variant.parameters
         and ic is not None
     ):

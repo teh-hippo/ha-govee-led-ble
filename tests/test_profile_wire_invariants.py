@@ -114,6 +114,7 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6076-pact1-legacy-music", "H6076", 1, 1, "1.01.00", "3.01.01"),
     ("H6076-pact2-legacy-music", "H6076", 2, 1, "1.01.00", "3.01.01"),
     ("H6076-pact2-music", "H6076", 2, 1, "1.04.05", "3.05.00"),
+    ("H6097-bootstrap", "H6097", None, None, None, None),
     ("H6102-bootstrap", "H6102", None, None, None, None),
     ("H6102-pact1-basic", "H6102", 1, 1, None, None),
     ("H6102-pact1-intermediate-selector-scenes", "H6102", 1, 1, "1.03.01", "1.00.03"),
@@ -237,6 +238,8 @@ def _status_root_type(profile: ModelProfile):
 def _status_color_mode_enum(profile: ModelProfile):
     if profile.bulk_status_grammar:
         return protocol_core.H60aBulk.Mode
+    if profile.status_grammar == "H6097":
+        return protocol_core.H6099StatusReply.ModeSel
     root_type = _status_root_type(profile)
     return getattr(
         root_type,
@@ -246,6 +249,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H6097":
+        return protocol_core.H6097MusicWrite.MusicMode
     if profile.status_grammar == "H6076":
         return protocol_core.H6076MusicWrite.MusicMode
     if profile.status_grammar == "H6125-intermediate":
@@ -605,7 +610,6 @@ def test_every_declared_video_mode_can_be_built(hass, model: str, profile: Model
             assert parsed.rejection is None and parsed.parsed is not None
         assert expectations_from_packet(frame, model, profile=profile)["video_mode"] == mode
         if profile.supports_color_mode_readback:
-            root_type = _status_root_type(profile)
             color_mode_enum = _status_color_mode_enum(profile)
             video_byte = int(color_mode_enum.video)
             if profile.video_grammar == "H66A0-video":
@@ -613,11 +617,13 @@ def test_every_declared_video_mode_can_be_built(hass, model: str, profile: Model
                 preset_code = int(protocol_core.H66a0VideoCommand.PicturePreset[values["picture_preset"]])
                 body = bytes([video_byte, source_code, preset_code, saturation, 1, int(values["opaque"]), 50])
             else:
-                source_code = int(root_type.VideoSource[mode])
-                region_code = int(root_type.VideoRegion.all)
+                assert profile.command_grammar is not None
+                video_root = protocol_core._COMMAND_ROOTS[profile.command_grammar][1]
+                source_code = int(video_root.VideoSource[mode])
+                region_code = int(video_root.VideoRegion.all)
                 body = (
                     bytes([video_byte, source_code, region_code, saturation, 1, 2, 50])
-                    if profile.status_grammar == "H6099"
+                    if profile.video_grammar == "H6099"
                     else bytes([video_byte, region_code, source_code, saturation, 1, 50])
                 )
             reply = _status(0x05, body)

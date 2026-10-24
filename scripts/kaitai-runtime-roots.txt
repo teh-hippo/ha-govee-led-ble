@@ -38,6 +38,10 @@ speculative/h6099_effect_upload
 speculative/h6099_music_parameters
 speculative/h6099_status_query
 speculative/h6099_status_reply
+speculative/h6097_control
+speculative/h6097_music_write
+speculative/h6097_music_parameters
+speculative/h6097_status_reply
 speculative/h617a_command_ack
 speculative/h617a_control_payload
 speculative/h617c_status_reply
