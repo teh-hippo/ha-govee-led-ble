@@ -36,6 +36,7 @@ from .const import (
     DOMAIN,
     ModelProfile,
     ReadDomain,
+    SupportQuality,
     default_effect_categories,
     default_effect_families,
     device_profile,
@@ -338,7 +339,10 @@ class GoveeBLECoordinator(
             identifiers={(DOMAIN, self.address)},
             name=f"Govee {self.model}",
             manufacturer="Govee",
-            model=self.model,
+            model=f"{self.model} (Experimental)"
+            if self.profile.support_quality is SupportQuality.EXPERIMENTAL
+            else self.model,
+            model_id=self.model,
             configuration_url=self.configuration_url,
             sw_version=self.fw_version,
             hw_version=self.hw_version,
@@ -481,13 +485,18 @@ class GoveeBLECoordinator(
         return required <= self._confirmed_identity_fields
 
     def _sync_device_configuration_url(self) -> None:
-        """Entities snapshot device_info at construction, so profile changes to Effect Studio access are pushed."""
+        """Push support presentation and Studio access after profile resolution."""
         if self.config_entry is None:
             return
         registry = dr.async_get(self.hass)
         device = registry.async_get_device_by_identifier((DOMAIN, self.address), self.config_entry.entry_id)
         if device is not None:
-            registry.async_update_device(device.id, configuration_url=self.configuration_url)
+            registry.async_update_device(
+                device.id,
+                model=self.device_info["model"],
+                model_id=self.model,
+                configuration_url=self.configuration_url,
+            )
 
     @property
     def white_balance(self) -> tuple[int, int] | None:
