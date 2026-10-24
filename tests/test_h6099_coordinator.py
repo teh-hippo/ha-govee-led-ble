@@ -364,7 +364,7 @@ async def test_diy_recovery_activation_preserves_notification_and_zero_attempt_s
     device._client.write_gatt_char.side_effect = respond
     monkeypatch.setattr(device, "async_observe_effect", AsyncMock(return_value=True))
     # Expire write expectations so the notification represents a later authoritative change.
-    monkeypatch.setattr(f"{M}.EXPECTED_STATE_TTL", 0)
+    monkeypatch.setattr(f"{M}_notifications.EXPECTED_STATE_TTL", 0)
     assert await device.async_restore_effect_control_state(state, overwritten_diy_code=None)
     assert device.diy_code == 0x5678
     device._client.write_gatt_char.reset_mock()

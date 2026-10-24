@@ -30,6 +30,10 @@ async def virtual_clock():
     with (
         clock.patch_loop(),
         patch("custom_components.ha_govee_led_ble.coordinator.time", SimpleNamespace(monotonic=clock.virtual_time)),
+        patch(
+            "custom_components.ha_govee_led_ble.coordinator_notifications.time",
+            SimpleNamespace(monotonic=clock.virtual_time),
+        ),
     ):
         yield clock
 

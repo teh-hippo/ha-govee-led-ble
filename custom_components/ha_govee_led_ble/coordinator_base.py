@@ -1,17 +1,21 @@
 """Shared typed base for the coordinator and its write mixins."""
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING, Any
 
+from bleak import BleakClient
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import ModelProfile
 from .control_arbiter import BLEControlArbiter, ControlIntent
-from .coordinator_status import ParsedMode
+from .coordinator_status import ParsedMode, StatusDomain
 
 if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
+    from .generated_protocol_adapter import BulkStatusCollector
+    from .govee_encryption.session import GoveeEncryptionSession
     from .native_profile_controls import ProfileWriter
 
 
@@ -50,6 +54,31 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _profile_generation: int
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]
+    boolean_control_state: dict[str, bool]
+    _music_palette: tuple[str, tuple[tuple[int, int, int], ...]] | None
+    _music_body: tuple[str, bytes] | None
+    static_gradual: bool | None
+    white_balance_scalar: int | None
+    black_border: bool | None
+    segment_state_observed_at: str | None
+    _client: BleakClient | None
+    _encryption: GoveeEncryptionSession | None
+    _notification_token: object | None
+    _last_rx_monotonic: float | None
+    _expected_state: dict[str, tuple[Any, float]]
+    _field_revisions: dict[str, int]
+    _observed_physical_ic_count: int | None
+    _bulk_collector: BulkStatusCollector | None
+    _bulk_query_deadline: float | None
+    _segment_query_generation: int | None
+    _segment_query_colors: list[tuple[int, int, int]] | None
+    _segment_query_brightness: list[int] | None
+    _segment_groups_observed: set[int]
+    _initialized_music_parameters: set[str]
+    _blank_screen_notification_revision: int
+    _dreamview_private_write: bool
+    _upload_ack: tuple[BleakClient, object | None, int, int, int | None, int, asyncio.Future[bool]] | None
+    _setting_ack: tuple[BleakClient, object | None, int, asyncio.Future[bool]] | None
 
     def install_static_color(
         self, *, rgb: tuple[int, int, int] | None = None, kelvin: int | None = None, source: str = "optimistic"
@@ -66,6 +95,49 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     if TYPE_CHECKING:
 
         def _authorization_profile(self) -> ModelProfile: ...
+
+        def _record_packet(
+            self,
+            direction: str,
+            data: bytes,
+            *,
+            outcome: str,
+            reason: str,
+            parser: str | None = None,
+            domain: int | None = None,
+        ) -> dict[str, Any]: ...
+
+        def _mark_received(self, domain: StatusDomain, *fields: str) -> None: ...
+
+        def _observe_identity_field(self, field: str, value: str | None) -> bool: ...
+
+        def _handle_dreamview_notification(self, frame: bytes) -> bool: ...
+
+        def _apply_segment_group(self, generated: Any) -> tuple[str, ...]: ...
+
+        def _apply_configured_strings(self, count: int) -> None: ...
+
+        async def _wait_for_revisions(
+            self,
+            field_baselines: Mapping[str, int],
+            domain_baselines: Mapping[StatusDomain, int],
+            deadline: float,
+            *,
+            expectations: Mapping[str, Any] | None = None,
+        ) -> bool: ...
+
+        async def _async_write_packet(
+            self,
+            client: BleakClient,
+            packet: bytes,
+            *,
+            arm_expected: bool = False,
+            before_write: Callable[[], None] | None = None,
+            state_values: Mapping[str, Any] | None = None,
+            expected_values: Mapping[str, Any] | None = None,
+            cleanup_deadline: float | None = None,
+            packet_validator: Callable[[bytes, ModelProfile], None] = ...,
+        ) -> None: ...
 
         def async_mask_transaction(self) -> AbstractAsyncContextManager[None]: ...
 
