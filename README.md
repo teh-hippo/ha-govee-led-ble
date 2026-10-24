@@ -71,6 +71,48 @@ H6199 uses its own legacy group protocol and a candidate limit of five members. 
 
 H6199 group replacement and deletion require a matching device acceptance reply before Home Assistant releases member ownership.  An attempted upload is not retried automatically.  A failed or unanswered change retains private recovery intent and member claims; do not assume that the old hardware group is unchanged.  `read_dreamview_group` separates locally authored metadata from anonymous device observations, and reports identity-gated reads in `unavailable_reads`.  Acceptance does not confirm membership or visible synchronisation.  These new H6199 group paths still need owner qualification.
 
+### Govee-managed setup and API control
+
+Configure group membership and area assignments in Govee, then use the existing Home Assistant actions for control.  No Studio grouping interface is required.
+
+1. Disable any member lights' integration entries in Home Assistant before grouping them, not just their light entities.  A member accepts only one BLE connection.
+   If Home Assistant holds the centre's connection, temporarily disable its entry while configuring it in Govee too.
+2. Set up the group in Govee, then disconnect the app's BLE session and re-enable the centre's Home Assistant entry.  Leave member entries disabled while the centre controls them.
+3. Use DreamView actions for synchronisation and settings.  You do not need to call `replace_dreamview_group` or select a standalone Video effect first.
+
+Switching synchronisation off does not restore disabled member entries.  Before returning members to independent Home Assistant control, release them from the group in Govee.
+The integration only automatically restores entries it tracked and disabled itself; an app-created group does not populate that ownership journal.
+`replace_dreamview_group` and `delete_dreamview_group` remain advanced, explicit membership changes, not setup steps for ordinary group control.
+
+These actions also work through Home Assistant's [authenticated REST API](https://contributors.home-assistant.io/core/internals/rest-api/#post-apiservicesdomainservice).
+For example, enable synchronisation:
+
+```bash
+curl --request POST \
+  --header "Authorization: Bearer <ACCESS_TOKEN>" \
+  --header "Content-Type: application/json" \
+  --data '{"entity_id": "light.tv_backlight", "enabled": true}' \
+  "<HA_URL>/api/services/ha_govee_led_ble/set_dreamview_switch"
+```
+
+To select Part/Movie, send the same headers to
+`POST <HA_URL>/api/services/ha_govee_led_ble/set_dreamview_video_settings` with:
+
+```json
+{"entity_id": "light.tv_backlight", "apply_area": "part", "content_mode": "movie"}
+```
+
+For fresh group observations, use
+`POST <HA_URL>/api/services/ha_govee_led_ble/read_dreamview_group?return_response` with:
+
+```json
+{"entity_id": "light.tv_backlight"}
+```
+
+Read results are under `service_response`.  The read action requires `?return_response`; adding it to a write action, or omitting it from this read, returns HTTP 400.
+Locally authored metadata may be absent for an app-created group.  Anonymous connection/brightness slots do not identify members, and missing replies are not proof of an empty group.
+Per-member actions need a known slot index.  Do not share unredacted response data, which can contain privately supplied member identities.
+
 ### Migrating existing actions and templates
 
 Replace calls to `ha_govee_led_ble.set_dreamview_sample`:
