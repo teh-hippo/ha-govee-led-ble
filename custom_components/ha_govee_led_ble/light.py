@@ -925,7 +925,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
     async def _async_prepare_turn_on(self, **kwargs: Any) -> None:
         active_workspace = self._matching_active_workspace()
-        if self.coordinator.model == "H6102" and kwargs.get(ATTR_BRIGHTNESS) == 0:
+        if self.coordinator.profile.brightness_zero_turns_off and kwargs.get(ATTR_BRIGHTNESS) == 0:
             await self._async_supersede_preview()
             async with async_control_intent(self.coordinator, ControlIntent.USER):
                 await self._async_turn_off(clear_workspace_on_success=active_workspace is not None)

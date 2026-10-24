@@ -183,6 +183,8 @@ class ModelProfile:
     video_white_balance_calibration: tuple[tuple[int, ...], ...] = ()
     video_brightness_zones: tuple[str, ...] = ()
     supports_relative_brightness: bool = False
+    # HA brightness 0 means off on devices whose brightness register has no zero.
+    brightness_zero_turns_off: bool = False
     supports_blank_screen: bool = False
     supports_black_border: bool = False
     # Selects the music codebook and selector writer when they differ from command_grammar.
@@ -1074,6 +1076,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6102": ModelProfile(
         "H6102 LED Strip",
         support_quality=SupportQuality.SUPPORTED,
+        brightness_zero_turns_off=True,
         command_grammar="H617A",
         status_grammar="H6102",
         profile_identity_fields=frozenset({"fw_version", "hw_version"}),
