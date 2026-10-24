@@ -282,7 +282,7 @@ async def test_issue_429_six_operations_settle_without_replaying_kelvin(
             reply(5, [0x15, 0, *kelvin.to_bytes(2, "big")])
         elif packet[1] == 0xA5:
             page = packet[2]
-            transient = written_at is not None and asyncio.get_running_loop().time() - written_at < settling
+            transient = written_at is not None and asyncio.get_running_loop().time() < written_at + settling
             if written_at is not None:
                 for index in selected:
                     colors[index] = (0, 0, 0) if transient else rendered

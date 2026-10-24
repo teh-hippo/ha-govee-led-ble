@@ -277,6 +277,7 @@ It advances asyncio timers and coordinator monotonic timestamps together, preser
 Do not patch a monotonic clock independently of absolute asyncio deadlines, or mock successful verification to avoid a timeout.
 Keep filesystem/executor-backed operations and real-time lifecycle smoke tests outside virtual time.
 Callbacks with the same deadline have no guaranteed order; fake radios that require ordered delivery must schedule replies in that order.
+Fake radios compare absolute transition deadlines, not subtracted monotonic floats, so replies at the boundary remain stable across host uptimes.
 
 Python upgrades must keep `project.requires-python`, `.python-version`, `uv.lock`, and the Ruff and mypy Python targets aligned.  CI reads its interpreter version from `.python-version`; regenerate the lockfile with `uv lock` and validate with `make check`.
 
