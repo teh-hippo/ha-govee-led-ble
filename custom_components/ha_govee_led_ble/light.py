@@ -745,6 +745,10 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
         if active_workspaces is not None and self._config_entry_id is not None:
             active_workspaces.clear(self._config_entry_id)
 
+    def _clear_active_effect_origin(self) -> None:
+        if self._effect_backend is not None and self._config_entry_id is not None:
+            self._effect_backend.engine.clear_active_origin(self._config_entry_id)
+
     def _require_support(self, service: str, *, supported: bool) -> None:
         if supported:
             return
@@ -842,14 +846,24 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
 
                     if video_guards is not None:
                         video_guards.append(check_default)
-                return partial(async_apply_compiled_profile, coordinator, compiled)
+                return partial(
+                    async_apply_compiled_profile,
+                    coordinator,
+                    compiled,
+                    on_write=self._clear_active_effect_origin,
+                )
             _, _, _, check_retained = prepare_video_mode(coordinator, mode=selected.value, requested_values={})
             if video_guards is not None:
                 video_guards.append(check_retained)
 
             async def apply_video() -> None:
                 check_retained()
-                await apply_active_video_mode(coordinator, mode=selected.value, requested_values={})
+                await apply_active_video_mode(
+                    coordinator,
+                    mode=selected.value,
+                    requested_values={},
+                    on_write=self._clear_active_effect_origin,
+                )
 
             return apply_video
         if selected is not None and selected.source == "music":
@@ -857,7 +871,12 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
             if compiled is not None:
                 if video_guards is not None:
                     video_guards.append(lambda: validate_compiled_geometry(compiled, coordinator.profile))
-                return partial(async_apply_compiled_profile, coordinator, compiled)
+                return partial(
+                    async_apply_compiled_profile,
+                    coordinator,
+                    compiled,
+                    on_write=self._clear_active_effect_origin,
+                )
             variant = music_variant(
                 coordinator.profile,
                 music_code_for(coordinator.model, selected.value, profile=coordinator.profile),
@@ -875,7 +894,9 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                 or bool(variant and variant.supports_style),
                 profile=coordinator.profile,
             )
-            return partial(coordinator.async_select_music_slug, selected.value)
+            return partial(
+                coordinator.async_select_music_slug, selected.value, on_write=self._clear_active_effect_origin
+            )
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="unknown_effect",

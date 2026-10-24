@@ -333,34 +333,161 @@ async def test_truthy_mock_is_not_successful_preflight():
     coordinator.send_command.assert_not_awaited()
 
 
-async def test_profile_reconciliation_never_revives_settings_from_mode_only() -> None:
+@pytest.mark.parametrize("kind,mode", [("music", "rolling"), ("video", "movie")])
+async def test_profile_reconciliation_never_revives_settings_from_mode_only(kind, mode) -> None:
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     await repository.async_load()
     record = replace(
         _confirmed_saved_record(_music_item("H6199")),
-        target_mode="music",
-        content_kind="music_profile",
+        target_mode=kind,
+        content_kind=f"{kind}_profile",
         diy_code=None,
         target_model="H6199",
-        observable_signature="music:rolling",
+        observable_signature=f"{kind}:{mode}",
         verification_confidence=ObservationConfidence.SETTINGS_MATCH,
     )
     await repository.async_put(record, expected_version=None)
     coordinator = _profile_coordinator("H6199")
     engine = EffectDeploymentEngine(repository)
-    for mode, expected in [("rhythm", None), ("rolling", record.operation_id)]:
-        coordinator.music_mode = mode
+    for observed_mode in ("rhythm" if kind == "music" else "game", mode):
+        setattr(coordinator, f"{kind}_mode", observed_mode)
         observed = engine.reconcile_current(
             coordinator, config_entry_id="entry-a", observed_at="2026-08-26T00:02:00Z", refreshed=True
         )
-        assert observed.matched_operation_id == expected
-        assert observed.confidence is (ObservationConfidence.MODE_MATCH if expected else ObservationConfidence.UNKNOWN)
+        assert observed.matched_operation_id is None
+        assert observed.active_effect is None
+        assert observed.confidence is ObservationConfidence.UNKNOWN
     legacy = replace(record, target_model=None, observable_signature=None)
     await repository.async_put(legacy, expected_version=None)
     observed = engine.reconcile_current(
         coordinator, config_entry_id="entry-a", observed_at="2026-08-26T00:03:00Z", refreshed=True
     )
     assert observed.matched_operation_id is None
+
+
+@pytest.mark.parametrize("kind,mode", [("music", "rolling"), ("video", "movie")])
+async def test_current_saved_profile_survives_power_and_cache_reload_but_not_native_selection(kind, mode) -> None:
+    repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
+    store = InMemoryVersionedDocumentStore()
+    cache = EffectDeviceCache(store)
+    await repository.async_load()
+    await cache.async_load()
+    record = replace(
+        _confirmed_saved_record(_music_item("H6199") if kind == "music" else _video_item()),
+        target_mode=kind,
+        content_kind=f"{kind}_profile",
+        diy_code=None,
+        target_model="H6199",
+        observable_signature=f"{kind}:{mode}",
+        verification_confidence=ObservationConfidence.SETTINGS_MATCH,
+    )
+    await repository.async_put(record, expected_version=None)
+    coordinator = _profile_coordinator("H6199")
+    setattr(coordinator, f"{kind}_mode", mode)
+    engine = EffectDeploymentEngine(repository, cache)
+    engine.reconcile_current(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at=record.updated_at,
+        refreshed=True,
+        matched_record=record,
+    )
+    coordinator.is_on = False
+    off = engine.reconcile_current(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at=record.updated_at,
+        refreshed=True,
+    )
+    assert off.active_effect is not None
+    assert off.confidence is ObservationConfidence.UNKNOWN
+    assert off.to_public_dict()["active_effect"] is None
+    await cache.async_flush()
+    cache = EffectDeviceCache(store)
+    await cache.async_load()
+    engine = EffectDeploymentEngine(repository, cache)
+    coordinator.is_on = True
+    current = engine.reconcile_current(
+        coordinator,
+        config_entry_id="entry-a",
+        observed_at=record.updated_at,
+        refreshed=True,
+    )
+    assert current.active_effect is not None and current.active_effect.item_id == record.item_id
+    assert current.confidence is ObservationConfidence.UNKNOWN
+
+    coordinator.is_on = False
+    engine.clear_active_origin("entry-a")
+    await cache.async_flush()
+    cache = EffectDeviceCache(store)
+    await cache.async_load()
+    coordinator.is_on = True
+    for _ in range(2):
+        native = EffectDeploymentEngine(repository, cache).reconcile_current(
+            coordinator,
+            config_entry_id="entry-a",
+            observed_at=record.updated_at,
+            refreshed=True,
+        )
+        assert native.active_effect is None and native.native_mode == mode
+
+
+@pytest.mark.parametrize("recovered", [False, True])
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_profile_failure_restores_origin_only_after_successful_physical_recovery(hass, recovered, cancelled):
+    repository, cache = await _repositories(hass)
+    coordinator = _profile_coordinator("H6097")
+    engine = EffectDeploymentEngine(repository, cache)
+    original = LibraryItem.new("Saved movie", VideoProfile("H6097", "movie", True, 63, False, 27, None, None, None))
+    saved = await engine.async_apply_saved(
+        coordinator,
+        original,
+        config_entry_id="entry-a",
+        updated_at="2026-08-26T00:00:00Z",
+    )
+    assert saved.phase is DeploymentPhase.CONFIRMED
+    original_send = coordinator.send_command.side_effect
+    error = asyncio.CancelledError if cancelled else RuntimeError
+
+    async def interrupt(packet, **kwargs):
+        await original_send(packet, **kwargs)
+        if (kwargs.get("state_values") or {}).get("video_mode") == "game":
+            intermediate = engine.reconcile_current(
+                coordinator,
+                config_entry_id="entry-a",
+                observed_at=saved.updated_at,
+                refreshed=False,
+            )
+            assert intermediate.active_effect is None
+            raise error()
+
+    async def restore(_prior, **kwargs):
+        if recovered:
+            coordinator.video_mode = "movie"
+        return recovered
+
+    coordinator.send_command.side_effect = interrupt
+    coordinator.async_restore_effect_control_state = AsyncMock(side_effect=restore)
+    candidate = LibraryItem.new("Saved game", VideoProfile("H6097", "game", True, 80, False, 27, None, None, None))
+    with pytest.raises(error):
+        await engine.async_apply_saved(
+            coordinator,
+            candidate,
+            config_entry_id="entry-a",
+            updated_at="2026-08-26T00:01:00Z",
+        )
+    coordinator.async_restore_effect_control_state.assert_awaited_once()
+    for _ in range(2):
+        observed = engine.reconcile_current(
+            coordinator,
+            config_entry_id="entry-a",
+            observed_at=saved.updated_at,
+            refreshed=True,
+        )
+        assert (observed.active_effect is not None) is recovered
+        if recovered:
+            assert observed.active_effect.item_id == original.id
+            assert observed.confidence is ObservationConfidence.UNKNOWN
 
 
 async def test_partial_observation_does_not_confirm_or_repeat_activation(hass: HomeAssistant) -> None:
@@ -426,7 +553,10 @@ def _coordinator(*, readable: bool = True):
         progress=None,
         write_guard=None,
         packet_state_values=None,
+        state_values=None,
+        expected_values=None,
         packet_write_guard=None,
+        packet_on_write=None,
         require_upload_ack=False,
         upload_ack_index=None,
         writer=None,
@@ -440,8 +570,13 @@ def _coordinator(*, readable: bool = True):
                 write_guard()
             if packet_write_guard is not None:
                 packet_write_guard(index - 1)
+            if packet_on_write is not None:
+                packet_on_write(index - 1)
             if packet_state_values is None:
-                await coordinator.send_command(packet)
+                if state_values is None:
+                    await coordinator.send_command(packet)
+                else:
+                    await coordinator.send_command(packet, state_values=state_values)
             else:
                 await coordinator.send_command(packet, state_values=packet_state_values[index - 1])
             if progress is not None:
@@ -2536,6 +2671,7 @@ async def test_h6199_video_profile_uses_native_writers_in_profile_order(
             },
             writer=ANY,
             verify=True,
+            on_write=ANY,
         ),
         call.white_balance(coordinator, (13, 3), writer=ANY, verify=True),
         call.relative_brightness(coordinator, (20, 30, 40, 50), writer=ANY, verify=True),

@@ -271,6 +271,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         include_parameters: bool = True,
         writer: ProfileWriter | None = None,
         palette: tuple[tuple[int, int, int], ...] | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         if slug == "off":
             await self.async_restore_pre_mode()
@@ -313,6 +314,7 @@ class _ActiveModeMixin(_CoordinatorBase):
             physical_ic_count=self.profile.physical_ic_count,
             intent=ControlIntent.USER,
             writer=writer,
+            on_write=on_write,
         )
 
     async def async_write_music_sequence(
@@ -324,6 +326,7 @@ class _ActiveModeMixin(_CoordinatorBase):
         intent: ControlIntent,
         writer: ProfileWriter | None = None,
         retained_body_revision: int | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         variant = music_variant(self.profile, mode_code)
         parameters = {
@@ -379,6 +382,11 @@ class _ActiveModeMixin(_CoordinatorBase):
 
         async with async_control_intent(self, intent):
             try:
+
+                def commit(index: int) -> None:
+                    if on_write is not None and ("music_mode" in writes[index][1] or "_music_body" in writes[index][1]):
+                        on_write()
+
                 sequence_options: dict[str, Any] = {}
                 if last_upload is not None and self.profile.music_requires_upload_ack:
                     sequence_options = {"require_upload_ack": True, "upload_ack_index": last_upload}
@@ -391,6 +399,7 @@ class _ActiveModeMixin(_CoordinatorBase):
                     packet_write_guard=guard,
                     writer=writer,
                     **sequence_options,
+                    packet_on_write=commit if on_write is not None else None,
                 )
                 if retained_body_revision is not None and self._music_body_revision != revision:
                     raise ValueError("Retained music body changed during edit; refresh and retry")

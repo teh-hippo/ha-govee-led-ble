@@ -230,7 +230,11 @@ class ObservedDeviceState:
         )
 
     def to_public_dict(self) -> dict[str, Any]:
-        return self.to_dict()
+        data = self.to_dict()
+        if self.mode == "off":
+            data["active_effect"] = None
+            data["matched_operation_id"] = None
+        return data
 
 
 class EffectDeviceCache:
@@ -283,6 +287,13 @@ class EffectDeviceCache:
         _validate_device_cache(candidate)
         self._data = candidate
         self._store.async_delay_save(lambda: copy.deepcopy(self._require_loaded()), delay=5)
+
+    def clear_active_effect(self, config_entry_id: str) -> None:
+        state = self.get(config_entry_id)
+        if state is not None and (state.active_effect is not None or state.matched_operation_id is not None):
+            self.set(
+                replace(state, active_effect=None, matched_operation_id=None, confidence=ObservationConfidence.UNKNOWN)
+            )
 
     async def async_delete_device(self, config_entry_id: str) -> None:
         candidate = copy.deepcopy(self._require_loaded())

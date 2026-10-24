@@ -643,7 +643,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "H6097": ModelProfile(
         "H6097 TV Backlight 3 Lite (40-50 inch)",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=445,
         command_grammar="H6099",
         command_ack_grammar="H617A",

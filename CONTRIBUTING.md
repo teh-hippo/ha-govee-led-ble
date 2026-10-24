@@ -42,6 +42,8 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Identity observations invalidate authorisation only when a capability depends on that field.  Background setup and polling retry a changed identity or profile once with fresh queries; command verification remains strict.
   State-readable devices default to Release mode and use Hold mode only when configured for periodic polling.
   Readable power does not imply observable effect activation.  A mode or selector reply confirms selection, not uploaded content, speed, or rendering.
+  Music/video mode readback must not infer a saved profile from deployment history.  Preserve current saved-profile origin through power-only transitions;
+  explicit native selection supersedes it only at an admitted effect-changing write.  Deployment recovery restores origin only after physical restoration succeeds.
   Upload acknowledgements and retry admission are independent of status readback.  A profile that forbids replay after an upload attempt must not reupload merely because selection readback is missing.
   DreamView member claim, disable and restoration rules: see the `coordinator_dreamview.py` module docstring.
 - **Shared routing and wire invariants:**

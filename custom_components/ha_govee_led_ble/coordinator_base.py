@@ -149,6 +149,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             expected_values: Mapping[str, Any] | None = None,
             cleanup_deadline: float | None = None,
             packet_validator: Callable[[bytes, ModelProfile], None] = ...,
+            on_write: Callable[[], None] | None = None,
         ) -> None: ...
 
         def async_mask_transaction(self) -> AbstractAsyncContextManager[None]: ...
@@ -174,6 +175,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             intent: ControlIntent,
             writer: ProfileWriter | None = None,
             retained_body_revision: int | None = None,
+            on_write: Callable[[], None] | None = None,
         ) -> None: ...
 
         async def async_set_boolean_control(self, control: str, enabled: bool) -> None: ...
@@ -200,6 +202,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
             progress: Callable[[int], Awaitable[None]] | None = None,
             packet_state_values: Sequence[Mapping[str, Any]] | None = None,
             packet_write_guard: Callable[[int], None] | None = None,
+            packet_on_write: Callable[[int], None] | None = None,
             require_upload_ack: bool = False,
             upload_ack_index: int | None = None,
             writer: ProfileWriter | None = None,
