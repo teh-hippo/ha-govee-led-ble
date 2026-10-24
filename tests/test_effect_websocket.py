@@ -169,6 +169,7 @@ async def test_device_subscription_reports_observed_identity_without_querying(
     assert (await client.receive_json())["success"] is True
     device = (await client.receive_json())["event"]["device"]
     assert device["confirmation_issue"] == get_profile("H617A").confirmation_issue
+    assert device["support_quality"] == "experimental"
     assert device["hw_version"] is None and device["fw_version"] is None
 
     mock_coordinator.hw_version = "1.00.01"
