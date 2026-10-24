@@ -16,6 +16,9 @@ doc: |
   flag and big-endian Kelvin; scene (0x04) and DIY (0x0a) replies carry
   little-endian selectors; music replies (0x13) carry the mode ID, sensitivity,
   and selector settings for legacy modes.
+  Issue #429 reports zero aggregate Kelvin after partial native-Kelvin writes.
+  Segment pages expose rendered RGB, not native per-zone Kelvin, and may be
+  temporarily black before settling with unchanged brightness.
   Unresolved assumptions: exact firmware-specific reply presence and all trailing
   bytes in status and segment replies.  Trailing bytes remain opaque rather than
   validated as zeroes.

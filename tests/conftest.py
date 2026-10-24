@@ -38,6 +38,10 @@ async def virtual_clock():
             "custom_components.ha_govee_led_ble.coordinator_recovery.time",
             SimpleNamespace(monotonic=clock.virtual_time),
         ),
+        patch(
+            "custom_components.ha_govee_led_ble.coordinator_segments.time",
+            SimpleNamespace(monotonic=clock.virtual_time),
+        ),
     ):
         yield clock
 
@@ -140,6 +144,9 @@ def _make_coord(**ov) -> MagicMock:
         color_temp_kelvin=None,
         rgb_color_source="initial",
         color_temp_kelvin_source="initial",
+        _static_rgb_known=False,
+        _pending_kelvin=None,
+        _notification_token=None,
         _field_revisions={},
         _domain_revisions={},
         _profile_generation=0,

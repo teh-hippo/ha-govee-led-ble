@@ -1154,9 +1154,10 @@ def _build_h617a_static_colour(
 
 # Ordered first-match companion lookup; non-table values do not interpolate.
 _TABLE_KELVIN_RGB = {
-    2000 + index * 100: bytes.fromhex(rgb)
+    1000 + index * 100: bytes.fromhex(rgb)
     for index, rgb in enumerate(
         (
+            "ff3300 ff4500 ff5200 ff5d00 ff6600 ff6f00 ff7600 ff7c00 ff8200 ff8700 "
             "ff8d0b ff921d ff9829 ff9d33 ffa23c ffa645 ffaa4d "
             "ffae54 ffb25b ffb662 ffb969 ffbd6f ffc076 ffc37c ffc682 ffc987 ffcb8d "
             "ffce92 ffd097 ffd39c ffd5a1 ffd7a6 ffd9ab ffdbaf ffddb4 ffdfb8 ffe1bc "
@@ -1164,7 +1165,8 @@ _TABLE_KELVIN_RGB = {
             "fff0e4 fff1e7 fff3ea fff4ed fff5f0 fff6f3 fff7f7 fff8f8 fff9fb "
             "fff9fd fefaff fcf8ff faf7ff f7f5ff f5f4ff f3f3ff f1f1ff eff0ff "
             "eeefff eceeff eaedff e9ecff e7eaff e5e9ff e4e9ff e3e8ff e1e7ff e0e6ff "
-            "dfe5ff dde4ff dce3ff dbe2ff dae2ff d9e1ff"
+            "dfe5ff dde4ff dce3ff dbe2ff dae2ff d9e1ff "
+            "d8e0ff d7dfff d6dfff d5deff d4ddff d3ddff d2dcff d1dcff d0dbff cfdaff"
         ).split()
     )
 }

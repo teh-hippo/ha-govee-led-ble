@@ -78,7 +78,7 @@ from .effect_storage import (
 )
 from .entity import GoveeBLEEntity
 from .generated_protocol_adapter import build_brightness, build_power, require_profile_packet
-from .light_commands import build_color_rgb, build_color_temp, kelvin_to_rgb
+from .light_commands import build_color_rgb, build_color_temp, kelvin_companion_rgb, normalize_kelvin
 from .light_services import (
     _GoveeLightServicesMixin,
 )
@@ -634,7 +634,7 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                         and coordinator.segment_colors[0][0] >= 200
                         and coordinator.segment_colors[0][1] >= 100
                     )
-                    or coordinator.segment_colors[0] == kelvin_to_rgb(restored_kelvin)
+                    or coordinator.segment_colors[0] == kelvin_companion_rgb(restored_kelvin, coordinator.profile)
                 )
             ):
                 coordinator.color_temp_kelvin = restored_kelvin
@@ -1240,14 +1240,26 @@ class GoveeBLELight(_GoveeLightServicesMixin, GoveeBLEEntity, RestoreEntity, Lig
                     "colour temperature",
                     supported=self.coordinator.profile.supports_color_temperature,
                 )
-                kelvin = max(
-                    self.coordinator.profile.min_color_temp_kelvin,
-                    min(self.coordinator.profile.max_color_temp_kelvin, kwargs[ATTR_COLOR_TEMP_KELVIN]),
+                kelvin = normalize_kelvin(kwargs[ATTR_COLOR_TEMP_KELVIN], self.coordinator.profile)
+                _LOGGER.debug(
+                    "Kelvin request model=%s requested=%s sent=%s",
+                    self.coordinator.model,
+                    kwargs[ATTR_COLOR_TEMP_KELVIN],
+                    kelvin,
                 )
                 packet = build_color_temp(kelvin, self.coordinator.model, profile=self.coordinator.profile)
                 with self._rollback():
                     self._attr_color_mode = ColorMode.COLOR_TEMP
-                    await send(packet)
+                    if (
+                        self.coordinator.profile.kelvin_companion_uses_table
+                        and not self.coordinator.profile.static_readback_kelvin
+                        and self.coordinator.profile.supports_segments
+                    ):
+                        await self.coordinator.async_set_segment_kelvin(
+                            packet, requested_kelvin=kwargs[ATTR_COLOR_TEMP_KELVIN]
+                        )
+                    else:
+                        await send(packet)
                     if self.coordinator.profile.static_readback_kelvin:
                         await self._refresh_with_retry(
                             expected_color_temp_kelvin=kelvin,

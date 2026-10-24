@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from bleak import BleakClient
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import ModelProfile
+from .const import ModelProfile, ReadDomain
 from .control_arbiter import BLEControlArbiter, ControlIntent
 from .coordinator_status import ParsedMode, StatusDomain
 
@@ -42,6 +42,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     color_temp_kelvin: int | None
     rgb_color_source: str
     color_temp_kelvin_source: str
+    _pending_kelvin: int | None
+    _static_rgb_known: bool
     white_brightness: int
     music_mode: str
     video_mode: str
@@ -59,6 +61,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     control_write_attempts: int
     _static_write_attempts: int
     _profile_generation: int
+    _authorization_generation: int
     _pre_mode_snapshot: PreModeSnapshot
     segment_colors: list[tuple[int, int, int]]
     segment_brightness: list[int]
@@ -187,6 +190,17 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         ) -> bool: ...
 
         async def async_refresh_segments(self, *, timeout: float = 2.0) -> bool: ...
+
+        async def _send_state_queries(
+            self,
+            *,
+            query_power: bool = True,
+            query_brightness: bool = True,
+            query_color_mode: bool = True,
+            query_segments: bool | None = None,
+            required_domains: frozenset[ReadDomain] | None = None,
+            deadline: float | None = None,
+        ) -> bool: ...
 
         async def async_write_effect_sequence(
             self,

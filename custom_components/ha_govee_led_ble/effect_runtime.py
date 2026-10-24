@@ -1497,7 +1497,9 @@ async def async_prepare_effect_control_state(
             raise RuntimeError("The current music mode cannot be safely restored after preview")
         if prior_mode not in {"colour", "unknown"}:
             return True
-        if profile.segment_colour_mode_ambiguous:
+        if profile.segment_colour_mode_ambiguous and not (
+            isinstance(prior, PriorControlState) and prior.static_rgb_known
+        ):
             raise RuntimeError("The current per-bulb RGB or white intent cannot be safely restored after preview")
         if not profile.configured_string_counts:
             return True

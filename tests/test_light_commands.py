@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_color_temp,
     build_segment_brightness,
     build_segment_color,
+    build_segment_color_temp,
     build_segment_paint,
     build_white_brightness,
     kelvin_to_rgb,
@@ -23,6 +24,30 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 
 H = bytes.fromhex
+
+
+@pytest.mark.parametrize("model", ["H66A0", "H1A42", "H61F5"])
+@pytest.mark.parametrize("requested,expected,rgb", [(3049, 3000, "ffb969"), (3050, 3100, "ffbd6f")])
+def test_native_kelvin_rounds_companion_and_mask_consistently(model, requested, expected, rgb):
+    whole = parse_static_write(build_color_temp(requested, model), model)
+    segment = parse_static_write(build_segment_color_temp([1], requested, model), model)
+    assert whole is not None and segment is not None
+    assert whole.kelvin == segment.kelvin == expected
+    assert whole.kelvin_companion_rgb == segment.kelvin_companion_rgb == tuple(H(rgb))
+    assert whole.whole_strip and segment.segment_mask == 1
+    assert build_color_temp(requested, model)[4:7] == bytes(3)
+
+
+@pytest.mark.parametrize("kelvin,rgb", [(1000, "ff3300"), (10000, "cfdaff")])
+def test_h1a42_full_kelvin_palette(kelvin, rgb):
+    static = parse_static_write(build_segment_color_temp([4], kelvin, "H1A42"), "H1A42")
+    assert static is not None and static.kelvin_companion_rgb == tuple(H(rgb))
+
+
+def test_h66a0_rejects_original_out_of_range_segment_request_before_rounding():
+    for kelvin in (2000, 2699, 6501, 8000):
+        with pytest.raises(ValueError, match="outside profile range"):
+            build_segment_color_temp([1], kelvin, "H66A0")
 
 
 def test_rgb_scale_uses_supplied_palette_and_zero_is_black_not_power():

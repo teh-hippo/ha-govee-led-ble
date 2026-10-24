@@ -222,6 +222,8 @@ class GoveeBLECoordinator(
         self.brightness_pct = 100
         self.rgb_color: tuple[int, int, int] = (255, 255, 255)
         self.color_temp_kelvin: int | None = None
+        self._pending_kelvin: int | None = None
+        self._static_rgb_known = False
         self.static_gradual: bool | None = None
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.effect: str | None = None
@@ -376,6 +378,7 @@ class GoveeBLECoordinator(
             brightness_pct=self.brightness_pct,
             rgb_color=self.rgb_color,
             color_temp_kelvin=self.color_temp_kelvin,
+            static_rgb_known=self._static_rgb_known and self.segment_state_source == "observed",
             static_gradual=self.static_gradual if self.color_mode is ParsedMode.COLOUR else None,
             panel_enabled=zone_flags.get("panel_enabled"),
             ring_enabled=zone_flags.get("ring_enabled"),
@@ -647,6 +650,7 @@ class GoveeBLECoordinator(
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.color_temp_kelvin = None
         self.static_gradual = None
+        self._static_rgb_known = False
         self.segment_colors = [(255, 255, 255)] * profile.segment_count
         self.segment_brightness = [100] * profile.segment_count
         self.segment_brightness_readable = False
@@ -932,6 +936,7 @@ class GoveeBLECoordinator(
         if self._client is not client:
             return
         self._client = None
+        self._static_rgb_known = False
         self._music_palette = self._music_body = None
         self._notification_token = None
         self.video_parameters = None
@@ -1047,6 +1052,7 @@ class GoveeBLECoordinator(
         colours: list[tuple[int, int, int]],
         brightness: list[int],
     ) -> None:
+        self._static_rgb_known = False
         self.segment_colors = colours
         self.segment_brightness = brightness
         self.segment_state_source = "restored"
@@ -1105,6 +1111,8 @@ class GoveeBLECoordinator(
         self._segment_groups_observed.add(group)
         if len(self._segment_groups_observed) != self._segment_group_count:
             return ()
+        if self._static_rgb_known and self.segment_colors != colours:
+            self._static_rgb_known = False
         self.segment_colors = colours
         if page_brightness is not None:
             self.segment_brightness = brightness
@@ -1136,6 +1144,7 @@ class GoveeBLECoordinator(
             kelvin = self.color_temp_kelvin
             if (
                 kelvin is not None
+                and self._pending_kelvin != kelvin
                 and not (self.profile.segment_kelvin_renders_device_rgb and rendered[0] >= 200 and rendered[1] >= 100)
                 and rendered != kelvin_companion_rgb(kelvin, self.profile)
             ):
@@ -1224,11 +1233,17 @@ class GoveeBLECoordinator(
             self._arm_expected(packet)
         if expected_values is not None:
             self._arm_expected_values(dict(expected_values))
+        rgb_intent: tuple[int, int, int] | None = None
         if arm_expected:
             self.control_write_attempts += 1
             static = parse_static_write(packet, self.model, profile=self.profile)
             if static is not None:
                 self._static_write_attempts += 1
+                if static.kelvin is not None:
+                    self._static_rgb_known = False
+                elif static.rgb is not None and static.whole_strip:
+                    self._static_rgb_known = False
+                    rgb_intent = static.rgb
                 rgb = static.rgb or static.kelvin_companion_rgb
                 if static.whole_strip and rgb is not None:
                     self.install_static_color(rgb=static.rgb, kelvin=static.kelvin)
@@ -1248,6 +1263,7 @@ class GoveeBLECoordinator(
                 self._enter_static_mode()
         if on_write is not None:
             on_write()
+        token = self._notification_token
         try:
             await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
         except asyncio.CancelledError:
@@ -1280,6 +1296,13 @@ class GoveeBLECoordinator(
             raise ValueError("Device profile changed during control write; refresh and retry")
         if arm_expected and authorization_generation != self._authorization_generation:
             raise ValueError("Device identity changed during control write; refresh and retry")
+        if (
+            rgb_intent is not None
+            and self._client is client
+            and client.is_connected
+            and self._notification_token is token
+        ):
+            self._static_rgb_known = self.segment_colors == [rgb_intent] * self.profile.segment_count
 
     async def _send_state_queries(
         self,
@@ -1677,6 +1700,7 @@ class GoveeBLECoordinator(
         self.segment_colors = [(255, 255, 255)] * bulbs
         self.segment_brightness = [100] * bulbs
         self.segment_brightness_readable = False
+        self._static_rgb_known = False
         self.segment_state_source = "initial"
         self.segment_state_observed_at = None
         self.color_temp_kelvin = None
@@ -2912,6 +2936,7 @@ class GoveeBLECoordinator(
 
     async def _disconnect_locked(self, *, clear_cache: bool = False) -> None:
         client = self._client
+        self._static_rgb_known = False
         # Invalidate callbacks and keys before disconnect can yield or be cancelled.
         self._music_palette = self._music_body = None
         self.video_parameters = None

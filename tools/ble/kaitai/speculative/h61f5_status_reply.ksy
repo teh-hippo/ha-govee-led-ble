@@ -17,6 +17,9 @@ doc: |
   scene (0x04) and DIY (0x0a) replies carry little-endian selectors; music
   replies (0x13) carry the mode ID, sensitivity, and selector settings for
   legacy modes.
+  Issue #429 reports zero in the Kelvin field after both whole-device and partial
+  native-Kelvin writes.  It is not a Kelvin measurement or proof of RGB intent.
+  Segment pages may temporarily be black before settling with unchanged brightness.
   Unresolved assumptions: exact firmware-specific reply presence and all trailing
   bytes in status and segment replies.  Trailing bytes remain opaque rather than
   validated as zeroes.
