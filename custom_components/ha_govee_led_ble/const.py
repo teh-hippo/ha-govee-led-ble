@@ -658,12 +658,20 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 "same_brightness",
                 "member_connect",
                 "saturation",
-                "sample",
+                "video_settings",
                 "sound",
             }
         ),
         dreamview_reads=frozenset(
-            {"switch_group", "member_brightness", "same_brightness", "member_connect", "saturation", "sample", "sound"}
+            {
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "video_settings",
+                "sound",
+            }
         ),
         dreamview_max_sub_devices=7,
         read_domains=frozenset(

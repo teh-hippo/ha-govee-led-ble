@@ -34,6 +34,7 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Every SKU explicitly declares its own `ModelProfile` in `const.py` and, when it exposes Effect Studio or DIY/music effect parameters, its own `ModelEffectCatalogue` in `effect_catalogue.py`.
   Grammar keys (`command_grammar`, `command_ack_grammar`, `status_grammar`, `bulk_status_grammar`, `setting_grammar`, `effect_grammar`, `music_grammar`, `video_grammar`, `dreamview_grammar`) independently select codecs and fail closed on unknown keys without granting product capabilities or inheriting another SKU's catalogue.
   `device_profile()` narrows capabilities from confirmed Pact, hardware, and firmware identity (`profile_identity_fields`).
+  Set `profile_pact_dependent` when Pact alone changes capabilities, so runtime resolution also runs before hardware or firmware replies arrive.
   Declared `physical_ic_count` represents product geometry; `ReadDomain.PHYSICAL_IC_COUNT` (`aa 40`) measures installed geometry on the active strip and overrides declared product geometry when observed.
   Cached identity stabilises UI presentation across polls and Release-mode disconnects, while operation admission and physical writes require current-connection confirmation.
   Identity observations invalidate authorisation only when a capability depends on that field.  Background setup and polling retry a changed identity or profile once with fresh queries; command verification remains strict.
