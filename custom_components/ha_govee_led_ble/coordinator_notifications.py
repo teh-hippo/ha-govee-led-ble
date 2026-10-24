@@ -237,7 +237,7 @@ class _NotificationMixin(_CoordinatorBase):
                 # AA05 describes the colour mode; only AAA3 confirms a setting write.
                 self.static_gradual = bool(parsed.multi_effect_flag)
                 observed.append("static_gradual")
-            if self.model == "H6199" and self.profile.status_grammar == "H6199":
+            if self.profile.status_grammar == "H6199":
                 values = parse_h6199_control(generated)
                 for field, value in values.items():
                     setattr(self, field, value)
@@ -510,11 +510,7 @@ class _NotificationMixin(_CoordinatorBase):
                 boolean_values = parse_boolean_control(generated, self.model, profile=self.profile)
                 self.boolean_control_state.update(boolean_values)
                 observed = tuple(f"boolean_{key}" for key in boolean_values)
-            if (
-                self.model == "H6199"
-                and self.profile.status_grammar == "H6199"
-                and domain is not StatusDomain.COLOUR_MODE
-            ):
+            if self.profile.status_grammar == "H6199" and domain is not StatusDomain.COLOUR_MODE:
                 values = parse_h6199_control(generated)
                 if "gradient" in values:
                     # AA05 is a display observation, not confirmation of an A3 register write.

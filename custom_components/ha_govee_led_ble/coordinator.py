@@ -1968,7 +1968,7 @@ class GoveeBLECoordinator(_DreamviewMixin, _ActiveModeMixin, _NotificationMixin)
                         strict=True,
                     )
                 )
-            if full_query and self.model == "H6199" and video_identity_ready:
+            if full_query and video_identity_ready:
                 if h6199_camera_controls_state(self.model, self) is CapabilityState.SUPPORTED:
                     queries.extend(
                         (build_h6199_control_query(control), ReadDomain.OTHER, (control,))
