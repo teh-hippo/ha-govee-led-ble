@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .const import ModelProfile, get_profile
+from .const import MODE_COMMAND_GRAMMARS, VIDEO_GRAMMARS, ModelProfile, get_profile
 from .coordinator_status import ParsedMode
 from .generated_protocol_adapter import (
     parse_command,
@@ -74,7 +74,7 @@ def expectations_from_packet(
         profile=profile,
     ):
         expectations["color_mode"] = color_mode
-    if profile.command_grammar in {"H601C", "H6099", "H6199"}:
+    if profile.command_grammar in MODE_COMMAND_GRAMMARS:
         if operation != "mode":
             return expectations
         mode = getattr(generated.body.sub_mode, "name", None)
@@ -94,7 +94,7 @@ def expectations_from_packet(
             )
             return expectations
         if mode == "video":
-            if profile.video_grammar not in {"H6099", "H6199"}:
+            if profile.video_grammar not in VIDEO_GRAMMARS:
                 return expectations
             expectations["video_mode"] = detail.source.name
             if profile.supports_video_capture_region:
@@ -204,7 +204,7 @@ def _expected_color_mode(
     profile: ModelProfile | None = None,
 ) -> tuple[ParsedMode, int | None] | None:
     profile = profile or get_profile(model)
-    if profile.command_grammar in {"H601C", "H6099", "H6199"}:
+    if profile.command_grammar in MODE_COMMAND_GRAMMARS:
         if generated.opcode.name != "mode":
             return None
         mode = getattr(generated.body.sub_mode, "name", None)
@@ -214,7 +214,7 @@ def _expected_color_mode(
         if mode == "diy":
             return ParsedMode.DIY, int(detail.code)
         if mode == "video":
-            return (ParsedMode.VIDEO, None) if profile.video_grammar in {"H6099", "H6199"} else None
+            return (ParsedMode.VIDEO, None) if profile.video_grammar in VIDEO_GRAMMARS else None
         if mode == "scene":
             return ParsedMode.SCENE, None
         if mode == "static_colour":

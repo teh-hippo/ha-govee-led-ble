@@ -9,6 +9,7 @@ from typing import Any
 from bleak import BleakClient
 
 from .const import (
+    PERCENT_BRIGHTNESS_STATUS_GRAMMARS,
     ReadDomain,
     get_profile,
 )
@@ -540,7 +541,7 @@ class _NotificationMixin(_CoordinatorBase):
                     int(generated.values["brightness_pct"])
                     if isinstance(generated, ParsedH6179Status)
                     else int(generated.body.percent)
-                    if self.profile.status_grammar in {"H6099", "H6199", "H66A0"}
+                    if self.profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS
                     else int(generated.body.register)
                     if hasattr(generated.body, "register")
                     else int(generated.body.brightness_pct)

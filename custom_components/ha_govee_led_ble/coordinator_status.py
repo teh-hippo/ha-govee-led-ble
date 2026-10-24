@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, cast
 
-from .const import ModelProfile, ReadDomain, get_profile
+from .const import PERCENT_BRIGHTNESS_STATUS_GRAMMARS, VIDEO_GRAMMARS, ModelProfile, ReadDomain, get_profile
 from .generated_protocol_adapter import (
     ParsedH6179Status,
     ProtocolParseResult,
@@ -218,11 +218,11 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
             color_temp_kelvin=int(raw_kelvin) if raw_kelvin is not None else None,
             multi_effect_flag=getattr(detail, "sub", None),
         )
-    if profile.status_grammar in {"H6099", "H6199", "H66A0"} or (
-        mode_name == "video" and profile.video_grammar in {"H6099", "H6199"}
+    if profile.status_grammar in PERCENT_BRIGHTNESS_STATUS_GRAMMARS or (
+        mode_name == "video" and profile.video_grammar in VIDEO_GRAMMARS
     ):
         if mode_name == "video":
-            if profile.video_grammar not in {"H6099", "H6199"}:
+            if profile.video_grammar not in VIDEO_GRAMMARS:
                 return ParsedColorModeResponse()
             detail = body.detail
             source_name = getattr(detail.source, "name", None)

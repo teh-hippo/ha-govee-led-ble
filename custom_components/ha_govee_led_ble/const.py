@@ -1420,6 +1420,11 @@ BLE_DISCOVERABLE_MODELS = frozenset(MODEL_PROFILES)
 
 UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
+# Grammar families shared by several SKUs; shared code tests membership here, not literal sets.
+VIDEO_GRAMMARS = frozenset({"H6099", "H6199"})
+MODE_COMMAND_GRAMMARS = frozenset({"H601C", "H6099", "H6199"})
+PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H6099", "H6199", "H66A0"})
+
 
 def _h6199_pact1_wire(packet: bytes) -> bytes:
     from .generated_protocol_adapter import h6199_pact1_outbound_transform
