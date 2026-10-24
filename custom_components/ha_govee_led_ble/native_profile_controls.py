@@ -36,6 +36,7 @@ class ProfileWriter(Protocol):
         write_guard: Callable[[], None] | None = None,
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> Awaitable[None]: ...
 
 
@@ -164,6 +165,7 @@ async def apply_active_video_mode(
     parameters: Mapping[str, Any] | None = None,
     writer: ProfileWriter | None = None,
     verify: bool = True,
+    on_write: Callable[[], None] | None = None,
 ) -> bool:
     if mode not in ("movie", "game"):
         return False
@@ -204,6 +206,7 @@ async def apply_active_video_mode(
             writer=writer,
             write_guard=check_retained,
             state_values=state_values,
+            on_write=on_write,
         )
         if not verify:
             return True
@@ -225,6 +228,7 @@ async def _send_video_setting(
     write_guard: Callable[[], None] | None = None,
     state_values: Mapping[str, Any] | None = None,
     expected_values: Mapping[str, Any] | None = None,
+    on_write: Callable[[], None] | None = None,
 ) -> None:
     def check() -> None:
         require_video_controls(coordinator.profile, coordinator, controls)
@@ -236,6 +240,11 @@ async def _send_video_setting(
         write_guard()
 
     if writer is None:
+
+        def commit(_index: int) -> None:
+            if on_write is not None:
+                on_write()
+
         # The sequence callback runs under the transport lock after every reconnect.
         await coordinator.async_write_effect_sequence(
             (packet,),
@@ -243,9 +252,16 @@ async def _send_video_setting(
             write_guard=check,
             state_values=state_values,
             expected_values=expected_values,
+            packet_on_write=commit if on_write is not None else None,
         )
     else:
-        await writer(packet, write_guard=check, state_values=state_values, expected_values=expected_values)
+        await writer(
+            packet,
+            write_guard=check,
+            state_values=state_values,
+            expected_values=expected_values,
+            **({"on_write": on_write} if on_write is not None else {}),
+        )
 
 
 async def apply_white_balance(

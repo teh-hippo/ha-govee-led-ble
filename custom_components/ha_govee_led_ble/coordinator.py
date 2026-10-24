@@ -1160,6 +1160,7 @@ class GoveeBLECoordinator(
         expected_values: Mapping[str, Any] | None = None,
         cleanup_deadline: float | None = None,
         packet_validator: Callable[[bytes, ModelProfile], None] = require_profile_packet,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         """Write on the caller's connection without changing its transaction policy."""
         try:
@@ -1245,6 +1246,8 @@ class GoveeBLECoordinator(
                         ],
                     )
                 self._enter_static_mode()
+        if on_write is not None:
+            on_write()
         try:
             await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
         except asyncio.CancelledError:
@@ -2380,6 +2383,7 @@ class GoveeBLECoordinator(
         before_write: Callable[[], None] | None = None,
         state_values: Mapping[str, Any] | None = None,
         expected_values: Mapping[str, Any] | None = None,
+        on_write: Callable[[], None] | None = None,
     ) -> None:
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
@@ -2396,6 +2400,7 @@ class GoveeBLECoordinator(
                     before_write=before_write,
                     state_values=state_values,
                     expected_values=expected_values,
+                    on_write=on_write,
                 )
                 self._renew_foreground_lease()
 
@@ -2413,6 +2418,7 @@ class GoveeBLECoordinator(
         progress: Callable[[int], Awaitable[None]] | None = None,
         packet_state_values: Sequence[Mapping[str, Any]] | None = None,
         packet_write_guard: Callable[[int], None] | None = None,
+        packet_on_write: Callable[[int], None] | None = None,
         require_upload_ack: bool = False,
         upload_ack_index: int | None = None,
         writer: ProfileWriter | None = None,
@@ -2515,6 +2521,11 @@ class GoveeBLECoordinator(
                                     self._upload_ack = (client, token, generation, subtype, ack_mode, protocol, future)
 
                             values = state_values if packet_state_values is None else packet_state_values[index - 1]
+
+                            def commit(index: int = index) -> None:
+                                if packet_on_write is not None:
+                                    packet_on_write(index - 1)
+
                             if writer is None:
                                 await self._async_write_packet(
                                     client,
@@ -2524,10 +2535,15 @@ class GoveeBLECoordinator(
                                     state_values=values,
                                     expected_values=expected_values,
                                     packet_validator=packet_validator,
+                                    on_write=commit if packet_on_write is not None else None,
                                 )
                             else:
                                 await writer(
-                                    packet, write_guard=guard, state_values=values, expected_values=expected_values
+                                    packet,
+                                    write_guard=guard,
+                                    state_values=values,
+                                    expected_values=expected_values,
+                                    **({"on_write": commit} if packet_on_write is not None else {}),
                                 )
                             self._renew_foreground_lease()
                             if require_upload_ack and index - 1 == upload_ack_index:
