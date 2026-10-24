@@ -115,6 +115,10 @@
     }
   },
   "issues": {
+    "dreamview_sample_deprecated": {
+      "title": "Update DreamView actions and templates",
+      "description": "Replace ha_govee_led_ble.set_dreamview_sample with ha_govee_led_ble.set_dreamview_video_settings.  Replace sample_first with apply_area (0=all, 1=part) and sample_second with content_mode (0=game, 1=movie).  Update readback templates from observed.sample to observed.video_settings, whose known values are names rather than numbers.  Both settings are required.  The old action and response aliases are temporary; see the migration guide before they are removed."
+    },
     "music_mode_replaced": {
       "title": "Music mode select replaced",
       "description": "The select {old} has been removed. Choose a music mode from the light's effect list instead, and update any automations or scripts that used the old select."
@@ -125,6 +129,34 @@
     }
   },
   "services": {
+    "set_dreamview_video_settings": {
+      "name": "Set DreamView video settings",
+      "description": "Set DreamView All/Part and Game/Movie together.  This does not select the standalone Video effects, which can switch off a running DreamView group.",
+      "fields": {
+        "apply_area": {
+          "name": "Apply area",
+          "description": "All or Part.  This does not replace group membership."
+        },
+        "content_mode": {
+          "name": "Content mode",
+          "description": "Game or Movie within DreamView, not the standalone Video effect."
+        }
+      }
+    },
+    "set_dreamview_sample": {
+      "name": "Set DreamView sample bytes (deprecated)",
+      "description": "Migrate to set_dreamview_video_settings.  Both raw bytes remain required until this compatibility action is removed.",
+      "fields": {
+        "sample_first": {
+          "name": "Apply area byte",
+          "description": "0=All, 1=Part.  Migrate to apply_area: all or part."
+        },
+        "sample_second": {
+          "name": "Content mode byte",
+          "description": "0=Game, 1=Movie.  Migrate to content_mode: game or movie."
+        }
+      }
+    },
     "paint_segments": {
       "name": "Paint segments",
       "description": "Paint one or more color groups onto supported addressable segments.",

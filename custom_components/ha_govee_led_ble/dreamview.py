@@ -22,6 +22,7 @@ from .transport import A3_CHUNK_SIZE, fragment_a3, xor_checksum
 Frame = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_frame").H6099DreamviewFrame)
 Group = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_group").H6099DreamviewGroup)
 DREAMVIEW_READ_SETTINGS = tuple(command.name for command in Frame.Command if command != Frame.Command.delete_group)
+DREAMVIEW_VIDEO_FIELDS = {"apply_area": Frame.ApplyArea, "content_mode": Frame.ContentMode}
 
 
 def require_dreamview(
@@ -126,7 +127,7 @@ def build_dreamview_command(setting: str, values: Mapping[str, Any], profile: Mo
         "same_brightness": {"enabled": bool},
         "member_connect": {"index": profile.dreamview_max_sub_devices - 1, "connected": bool},
         "saturation": {"saturation": 100},
-        "sample": {"sample_first": 255, "sample_second": 255},
+        "video_settings": {"apply_area": 255, "content_mode": 255},
         "sound": {"enabled": bool, "softness": 100},
         "delete_group": {},
     }
@@ -182,7 +183,7 @@ def parse_dreamview_status(frame: bytes) -> tuple[str, dict[str, Any]] | None:
         "same_brightness": ("enabled",),
         "member_connect": ("connection_bytes",),
         "saturation": ("saturation",),
-        "sample": ("sample_first", "sample_second"),
+        "video_settings": ("apply_area", "content_mode"),
         "sound": ("enabled", "softness"),
     }
     observed = {name: getattr(body, name) for name in fields[setting]}

@@ -38,7 +38,7 @@ def profiles(monkeypatch):
                 read_domains=frozenset({ReadDomain.POWER}),
                 dreamview_grammar="H6099",
                 dreamview_operations=frozenset({"replace_group", "member_brightness", "member_connect"}),
-                dreamview_reads=frozenset({"member_brightness", "member_connect", "sample"}),
+                dreamview_reads=frozenset({"member_brightness", "member_connect", "video_settings"}),
                 dreamview_max_sub_devices=capacity,
             ),
         )
@@ -123,7 +123,7 @@ async def test_partial_reads_connect_and_route_independently(hass, profiles, mon
     assert len(result["observed"]["member_brightness"]["brightness_bytes"]) == 16
     assert len(result["observed"]["member_connect"]["connection_bytes"]) == 10
     assert set(result["observed"]) == {"member_brightness", "member_connect"}
-    assert result["missing_reads"] == ["sample"]
+    assert result["missing_reads"] == ["sample", "video_settings"]
     assert result["unsupported_reads"] == sorted(set(DREAMVIEW_READ_SETTINGS) - profile.dreamview_reads)
     assert result["authored"] is None and not result["membership_confirmed"]
     assert result["slot_identities"] == "unknown"
@@ -185,7 +185,7 @@ async def test_empty_declarations_and_capacity_independent_settings(hass, profil
         ("switch_group", {"enabled": True}),
         ("same_brightness", {"enabled": True}),
         ("saturation", {"saturation": 50}),
-        ("sample", {"sample_first": 1, "sample_second": 2}),
+        ("video_settings", {"apply_area": 1, "content_mode": 2}),
         ("sound", {"enabled": True, "softness": 50}),
         ("delete_group", {}),
     ):

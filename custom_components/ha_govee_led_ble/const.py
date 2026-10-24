@@ -651,7 +651,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 "same_brightness",
                 "member_connect",
                 "saturation",
-                "sample",
+                "video_settings",
                 "sound",
             }
         ),
@@ -662,7 +662,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 "same_brightness",
                 "member_connect",
                 "saturation",
-                "sample",
+                "video_settings",
                 "sound",
             }
         ),
@@ -753,7 +753,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 "same_brightness",
                 "member_connect",
                 "saturation",
-                "sample",
+                "video_settings",
                 "sound",
             }
         ),
@@ -764,7 +764,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
                 "same_brightness",
                 "member_connect",
                 "saturation",
-                "sample",
+                "video_settings",
                 "sound",
             }
         ),

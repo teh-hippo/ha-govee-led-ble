@@ -16,6 +16,7 @@ from bleak.exc import BleakError
 from homeassistant.config_entries import current_entry
 from homeassistant.core import CoreState, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import Store
 from homeassistant.util.file import WriteError
 from kaitaistruct import KaitaiStream
@@ -130,7 +131,7 @@ def test_member_validation(overrides) -> None:
         ("same_brightness", {"enabled": False}, "33600400"),
         ("member_connect", {"index": 6, "connected": True}, "3360050601"),
         ("saturation", {"saturation": 50}, "33600932"),
-        ("sample", {"sample_first": 0xAB, "sample_second": 0xCD}, "33600aabcd"),
+        ("video_settings", {"apply_area": 0xAB, "content_mode": 0xCD}, "33600aabcd"),
         ("sound", {"enabled": True, "softness": 79}, "33600b014f"),
         ("delete_group", {}, "33600d"),
     ],
@@ -146,17 +147,17 @@ def test_individual_queries_and_truthful_raw_status() -> None:
         ("same_brightness", "aa6004"),
         ("member_connect", "aa6005"),
         ("saturation", "aa6009"),
-        ("sample", "aa600a"),
+        ("video_settings", "aa600a"),
         ("sound", "aa600b"),
     ):
         assert build_dreamview_query(setting, PROFILE) == frame(prefix)
-    sample = parse_dreamview_status(frame("aa600aabcd"))
+    video = parse_dreamview_status(frame("aa600aabcd"))
     switch = parse_dreamview_status(frame("aa600101"))
     sound = parse_dreamview_status(frame("aa600b014f"))
     connections = parse_dreamview_status(frame("aa600501000000000000007f00"))
     brightness = parse_dreamview_status(frame("aa6003"))
-    assert sample and switch and sound and connections and brightness
-    assert sample[1]["sample_second"] == 0xCD
+    assert video and switch and sound and connections and brightness
+    assert video[1]["content_mode"] == 0xCD
     assert switch[1]["enabled"] == 1
     assert sound[1]["softness"] == 79
     slots = connections[1]
@@ -176,7 +177,7 @@ def test_individual_queries_and_truthful_raw_status() -> None:
         with pytest.raises(ValueError):
             build_dreamview_query(setting, PROFILE)
     with pytest.raises(ValueError):
-        build_dreamview_query("sample", replace(PROFILE, dreamview_grammar="unknown"))
+        build_dreamview_query("video_settings", replace(PROFILE, dreamview_grammar="unknown"))
 
 
 def coordinator(hass, model="H6099", *, entry_id="dreamview-entry") -> Any:
@@ -231,7 +232,7 @@ async def test_observations_never_identify_authored_members_and_delete_retains_r
     status = await c.async_read_dreamview_state(timeout=0)
     assert status["authored"]["members"] == [member().as_dict()]
     assert status["observed"] == {}
-    assert status["missing_reads"] == sorted(DREAMVIEW_READ_SETTINGS)
+    assert status["missing_reads"] == sorted((*DREAMVIEW_READ_SETTINGS, "sample"))
     assert not status["membership_confirmed"] and status["slot_identities"] == "unknown"
 
     async def observe(packets, **kwargs):
@@ -328,6 +329,10 @@ async def test_shutdown_cannot_defer_membership_persistence(hass) -> None:
         ("set_dreamview_member_connect", {"index": True, "connected": True}),
         ("set_dreamview_sound_effects", {"enabled": True}),
         ("set_dreamview_sample", {"sample_first": 1}),
+        ("set_dreamview_video_settings", {"apply_area": "part"}),
+        ("set_dreamview_video_settings", {"apply_area": 1, "content_mode": "movie"}),
+        ("set_dreamview_video_settings", {"apply_area": "part", "content_mode": "unknown"}),
+        ("set_dreamview_video_settings", {"apply_area": "part", "sample_second": 1}),
         ("set_dreamview_switch", {"enabled": "false"}),
         ("delete_dreamview_group", {"extra": "private"}),
     ],
@@ -347,6 +352,58 @@ async def test_schema_preflight_has_no_control_side_effects(hass, name, data) ->
     entity._async_supersede_preview.assert_not_awaited()
     c.async_write_effect_sequence.assert_not_awaited()
     assert c._control_arbiter.preview_generation == before
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "dreamview_sample_deprecated") is None
+
+
+@pytest.mark.parametrize("model", ["H6099", "H66A0"])
+@pytest.mark.parametrize(
+    ("apply_area", "content_mode", "wire"),
+    [("all", "game", "0000"), ("all", "movie", "0001"), ("part", "game", "0100"), ("part", "movie", "0101")],
+)
+async def test_named_video_settings_and_readback(hass, model, apply_area, content_mode, wire) -> None:
+    c = coordinator(hass, model)
+    c.async_write_effect_sequence = AsyncMock()
+    entity = SimpleNamespace(coordinator=c, _async_supersede_preview=AsyncMock())
+    await _async_dreamview_service(
+        entity,
+        ServiceCall(
+            hass,
+            DOMAIN,
+            "set_dreamview_video_settings",
+            {"apply_area": apply_area, "content_mode": content_mode},
+        ),
+        name="set_dreamview_video_settings",
+    )
+    assert c.async_write_effect_sequence.call_args.args[0] == (frame(f"33600a{wire}"),)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "dreamview_sample_deprecated") is None
+    assert c.video_mode == "off" and c._dreamview_authored is None
+
+    c.profile = replace(c.profile, dreamview_reads=frozenset({"video_settings"}))
+
+    async def observe(packets, **kwargs):
+        assert packets == (frame("aa600a"),)
+        c._handle_dreamview_notification(frame(f"aa600a{wire}"))
+
+    c.async_write_effect_sequence = AsyncMock(side_effect=observe)
+    result = await c.async_read_dreamview_state(timeout=0)
+    assert result["missing_reads"] == []
+    assert result["observed"]["video_settings"] == {
+        "apply_area": apply_area,
+        "content_mode": content_mode,
+        "unknown": [0] * 14,
+    }
+    assert result["observed"]["sample"] == {
+        "sample_first": int(wire[:2], 16),
+        "sample_second": int(wire[2:], 16),
+        "unknown": [0] * 14,
+    }
+    assert set(c._dreamview_observed) == {"video_settings"}
+
+    c.profile = replace(c.profile, dreamview_reads=frozenset({"saturation"}))
+    c.async_write_effect_sequence = AsyncMock()
+    result = await c.async_read_dreamview_state(timeout=0)
+    assert {"sample", "video_settings"} <= set(result["unsupported_reads"])
+    assert result["observed"] == {}
 
 
 async def test_registration_and_valid_service_dispatch(hass) -> None:
@@ -365,6 +422,32 @@ async def test_registration_and_valid_service_dispatch(hass) -> None:
     )
     entity._async_supersede_preview.assert_awaited_once()
     assert c.async_write_effect_sequence.call_args.args[0] == (frame("33600a07fe"),)
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, "dreamview_sample_deprecated")
+    assert issue is not None and issue.severity is ir.IssueSeverity.WARNING
+    await _async_dreamview_service(
+        entity,
+        ServiceCall(hass, DOMAIN, "set_dreamview_sample", {"sample_first": 7, "sample_second": 254}),
+        name="set_dreamview_sample",
+    )
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "dreamview_sample_deprecated") is issue
+
+    c.profile = replace(PROFILE, dreamview_reads=frozenset({"video_settings"}))
+
+    async def observe(packets, **kwargs):
+        c._handle_dreamview_notification(frame("aa600a07fe1234"))
+
+    c.async_write_effect_sequence = AsyncMock(side_effect=observe)
+    result = await c.async_read_dreamview_state(timeout=0)
+    assert result["observed"]["video_settings"] == {
+        "apply_area": 7,
+        "content_mode": 254,
+        "unknown": [18, 52, *([0] * 12)],
+    }
+    assert result["observed"]["sample"] == {
+        "sample_first": 7,
+        "sample_second": 254,
+        "unknown": [18, 52, *([0] * 12)],
+    }
     c.profile = get_profile("H6199")
     entity._async_supersede_preview.reset_mock()
     with pytest.raises(ServiceValidationError):
@@ -410,9 +493,9 @@ async def test_concrete_encrypted_notifications_and_private_logs(hass, caplog):
 
     client.write_gatt_char.side_effect = transmit
     await c.async_replace_dreamview_group((member(address=None, name="private-lamp", zones=(1,)),))
-    assert set(c._dreamview_observed) == {"sample"}
-    assert c._dreamview_observed["sample"]["sample_first"] == 171
-    assert c._dreamview_observed["sample"]["sample_second"] == 205
+    assert set(c._dreamview_observed) == {"video_settings"}
+    assert c._dreamview_observed["video_settings"]["apply_area"] == 171
+    assert c._dreamview_observed["video_settings"]["content_mode"] == 205
     assert not c.is_on and c.video_mode == "off" and c.color_mode is None
     assert c.installation_direction == 4
     assert c.packet_log and all(entry["redacted"] and entry["raw"] == "" for entry in c.packet_log)
@@ -430,7 +513,7 @@ async def test_concrete_encrypted_notifications_and_private_logs(hass, caplog):
     assert diagnostics["coordinator"]["dreamview_last_write"] == "sent_unconfirmed"
     c._notification_token = object()
     receive(None, bytearray(v1_transform(frame("aa600a0102"), KEY, encrypt=True)))
-    assert c._dreamview_observed["sample"]["sample_first"] == 171
+    assert c._dreamview_observed["video_settings"]["apply_area"] == 171
     c._encryption = None
     c._notify_callback(None, bytearray(frame("aa600901")))
     assert c._dreamview_observed["saturation"]["saturation"] == 1

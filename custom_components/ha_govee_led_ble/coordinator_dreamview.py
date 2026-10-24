@@ -23,6 +23,7 @@ import asyncio
 import copy
 import logging
 from collections.abc import Callable, Mapping, Sequence
+from enum import IntEnum
 from typing import Any
 
 from bleak.exc import BleakError
@@ -38,6 +39,7 @@ from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator_base import _CoordinatorBase
 from .dreamview import (
     DREAMVIEW_READ_SETTINGS,
+    DREAMVIEW_VIDEO_FIELDS,
     DreamviewMember,
     build_dreamview_command,
     build_dreamview_group,
@@ -552,14 +554,29 @@ class _DreamviewMixin(_CoordinatorBase):
                 if remaining <= 0:
                     break
                 await asyncio.sleep(min(0.05, remaining))
+            observed = copy.deepcopy(self._dreamview_observed)
+            if video := observed.get("video_settings"):
+                observed["sample"] = {
+                    "sample_first": int(video["apply_area"]),
+                    "sample_second": int(video["content_mode"]),
+                    "unknown": list(video["unknown"]),
+                }
+                for field in DREAMVIEW_VIDEO_FIELDS:
+                    value = video[field]
+                    video[field] = value.name if isinstance(value, IntEnum) else value
+            missing = set(settings) - self._dreamview_observed.keys()
+            unsupported = set(DREAMVIEW_READ_SETTINGS) - set(settings)
+            for names in (missing, unsupported):
+                if "video_settings" in names:
+                    names.add("sample")
             return {
                 "authored": copy.deepcopy(self._dreamview_authored),
                 "authored_source": "local_request",
                 "membership_confirmed": False,
                 "membership_readback": "unavailable",
                 "last_write": self._dreamview_last_write,
-                "observed": copy.deepcopy(self._dreamview_observed),
-                "missing_reads": sorted(set(settings) - self._dreamview_observed.keys()),
-                "unsupported_reads": sorted(set(DREAMVIEW_READ_SETTINGS) - set(settings)),
+                "observed": observed,
+                "missing_reads": sorted(missing),
+                "unsupported_reads": sorted(unsupported),
                 "slot_identities": "unknown",
             }

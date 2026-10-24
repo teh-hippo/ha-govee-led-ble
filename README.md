@@ -48,6 +48,52 @@ The `ha_govee_led_ble.paint_segments` action accepts `rgb_scale` from 0 to 100, 
 
 ![Effect Studio scene browser](docs/images/effect-studio-scenes.png)
 
+## DreamView
+
+H6099 and H66A0 expose DreamView group actions separately from the backlight's standalone video effects.  Set both DreamView choices explicitly:
+
+```yaml
+action: ha_govee_led_ble.set_dreamview_video_settings
+target:
+  entity_id: light.tv_backlight
+data:
+  apply_area: part
+  content_mode: movie
+```
+
+`apply_area` accepts `all` or `part`; `content_mode` accepts `game` or `movie`.  Neither field has a default, and this action does not change group membership.
+
+**DreamView Game/Movie is not the light's `Video: Game` / `Video: Movie` effect.**  Selecting a standalone video effect can switch off a running DreamView group.  You do not need to select that effect before enabling DreamView.
+
+### Migrating existing actions and templates
+
+Replace calls to `ha_govee_led_ble.set_dreamview_sample`:
+
+```yaml
+# Old
+action: ha_govee_led_ble.set_dreamview_sample
+target:
+  entity_id: light.tv_backlight
+data:
+  sample_first: 1
+  sample_second: 1
+```
+
+Use `set_dreamview_video_settings` as shown above, translating both fields:
+
+| Old field | Old value | New field | New value |
+| --- | --- | --- | --- |
+| `sample_first` | `0` | `apply_area` | `all` |
+| `sample_first` | `1` | `apply_area` | `part` |
+| `sample_second` | `0` | `content_mode` | `game` |
+| `sample_second` | `1` | `content_mode` | `movie` |
+
+For responses from `read_dreamview_group`, replace `observed.sample.sample_first` with `observed.video_settings.apply_area` and `observed.sample.sample_second` with `observed.video_settings.content_mode`.  Update comparisons too: known values are now names, for example `== "part"` rather than `== 1`.  Unrecognised reply values remain their original integers, and `unknown` retains trailing bytes.  An absent reply still produces no observation.
+
+The old action, numeric `observed.sample` response and `sample` entries in `missing_reads` / `unsupported_reads` remain temporarily available.  Those lists include both `sample` and `video_settings` when applicable, so update templates that compare whole lists.  There are no duplicate device queries.
+
+Calling the old action raises a Repairs warning with this migration guide.  Update automations, scripts, dashboards and response templates before the compatibility paths are removed in a separate breaking release, planned for roughly two weeks after the migration release becomes available.  Templates using old response fields cannot be detected automatically.  The old action still accepts raw byte values, but values outside `0`/`1` have no supported named equivalent; do not guess a replacement.
+
 ## Installation
 
 ### HACS (recommended)

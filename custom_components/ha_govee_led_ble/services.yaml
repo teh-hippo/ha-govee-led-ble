@@ -92,9 +92,30 @@ set_dreamview_saturation:
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
   fields:
     saturation: {required: true, selector: {number: {min: 0, max: 100, step: 1}}}
+set_dreamview_video_settings:
+  name: Set DreamView Video Settings
+  description: Set DreamView All/Part and Game/Movie together. This does not select the standalone Video effects, which can switch off a running DreamView group.
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
+  fields:
+    apply_area:
+      name: Apply area
+      required: true
+      selector:
+        select:
+          options:
+            - {value: all, label: All}
+            - {value: part, label: Part}
+    content_mode:
+      name: Content mode
+      required: true
+      selector:
+        select:
+          options:
+            - {value: game, label: Game}
+            - {value: movie, label: Movie}
 set_dreamview_sample:
-  name: Set DreamView Sample Bytes
-  description: Supply both raw sample bytes explicitly. Their UI labels are unqualified; neither byte is inferred or reset from a default.
+  name: Set DreamView Sample Bytes (Deprecated)
+  description: Migrate to set_dreamview_video_settings. sample_first is apply_area (0 All, 1 Part); sample_second is content_mode (0 Game, 1 Movie). Both raw bytes remain required until this compatibility action is removed.
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
   fields:
     sample_first: {required: true, selector: {number: {min: 0, max: 255, step: 1}}}

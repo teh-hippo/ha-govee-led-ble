@@ -9,10 +9,17 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers import service
 
 from .const import DOMAIN
-from .dreamview import DreamviewMember, build_dreamview_command, build_dreamview_group, integer
+from .dreamview import (
+    DREAMVIEW_VIDEO_FIELDS,
+    DreamviewMember,
+    build_dreamview_command,
+    build_dreamview_group,
+    integer,
+)
 from .schema_compat import vol
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,8 +81,12 @@ DREAMVIEW_SERVICES: dict[str, tuple[str, dict[Any, Any]]] = {
         {vol.Required("index"): _integer(255), vol.Required("connected"): _boolean},
     ),
     "set_dreamview_saturation": ("saturation", {vol.Required("saturation"): _integer(100)}),
+    "set_dreamview_video_settings": (
+        "video_settings",
+        {vol.Required(name): vol.In(choices.__members__) for name, choices in DREAMVIEW_VIDEO_FIELDS.items()},
+    ),
     "set_dreamview_sample": (
-        "sample",
+        "video_settings",
         {vol.Required("sample_first"): _integer(255), vol.Required("sample_second"): _integer(255)},
     ),
     "set_dreamview_sound_effects": (
@@ -91,6 +102,10 @@ async def _async_dreamview_service(entity: Any, call: ServiceCall, *, name: str)
     setting, schema = DREAMVIEW_SERVICES[name]
     try:
         values = vol.Schema(schema)(service.remove_entity_service_fields(call))
+        if name == "set_dreamview_sample":
+            values = {"apply_area": values["sample_first"], "content_mode": values["sample_second"]}
+        elif setting == "video_settings":
+            values = {field: choices[values[field]].value for field, choices in DREAMVIEW_VIDEO_FIELDS.items()}
         members: tuple[DreamviewMember, ...] = ()
         if setting == "replace":
             members = tuple(DreamviewMember(**{**item, "zones": tuple(item["zones"])}) for item in values["members"])
@@ -100,6 +115,16 @@ async def _async_dreamview_service(entity: Any, call: ServiceCall, *, name: str)
             build_dreamview_command("delete_group" if setting == "delete" else setting, values, c.profile)
         if setting == "read":
             return await c.async_read_dreamview_state()  # type: ignore[no-any-return]
+        if name == "set_dreamview_sample":
+            ir.async_create_issue(
+                c.hass,
+                DOMAIN,
+                "dreamview_sample_deprecated",
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="dreamview_sample_deprecated",
+                learn_more_url="https://github.com/teh-hippo/ha-govee-led-ble#dreamview",
+            )
         await entity._async_supersede_preview()
         if setting == "replace":
             await c.async_replace_dreamview_group(members)

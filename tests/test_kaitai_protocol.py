@@ -56,6 +56,7 @@ StatusQuery = _generated("status_query", "StatusQuery")
 H6199StatusQuery = _generated("h6199_status_query", "H6199StatusQuery")
 H6199StatusReply = _generated("h6199_status_reply", "H6199StatusReply")
 H6199CommandAck = _generated("h6199_command_ack", "H6199CommandAck")
+H6099DreamviewFrame = _generated("h6099_dreamview_frame", "H6099DreamviewFrame")
 H6199Pact1WireWrite = _generated("h6199_pact1_wire_write", "H6199Pact1WireWrite")
 H6179CommandWrite = _generated("h6179_command_write", "H6179CommandWrite")
 H6179DiyBody = _generated("h6179_diy_body", "H6179DiyBody")
@@ -154,6 +155,20 @@ def _parse(root_type: type[Any], data: bytes) -> Any:
     parsed._read()
     assert stream.pos() == len(data)
     return parsed
+
+
+@pytest.mark.parametrize("header", ["33", "aa"])
+@pytest.mark.parametrize(("values", "apply_area", "content_mode"), [("0100", 1, 0), ("07fe", 7, 254)])
+def test_dreamview_video_settings_fields_preserve_unknown_codes(header, values, apply_area, content_mode):
+    payload = bytes.fromhex(f"{header}600a{values}1234").ljust(19, b"\x00")
+    packet = payload + bytes((xor_checksum(payload),))
+    parsed = H6099DreamviewFrame(False, KaitaiStream(io.BytesIO(packet)))
+    parsed._read()
+    assert parsed.command is H6099DreamviewFrame.Command.video_settings
+    assert parsed.body.apply_area == apply_area
+    assert parsed.body.content_mode == content_mode
+    assert parsed.body.unknown == bytes.fromhex("1234") + b"\x00" * 12
+    parsed._check()
 
 
 def test_h6102_owner_register_reply_and_candidate_write():
