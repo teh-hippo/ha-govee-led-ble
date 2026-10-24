@@ -168,6 +168,8 @@ class ModelProfile:
     max_color_temp_kelvin: int = 9000
     readback_min_color_temp_kelvin: int | None = None
     kelvin_direct_rgb: tuple[int, int, int] = (0, 0, 0)
+    kelvin_companion_uses_table: bool = False
+    color_temp_step_kelvin: int = 1
     supports_custom_effects: bool = False
     supports_scenes: bool = False
     supports_video_mode: bool = False
@@ -241,6 +243,8 @@ class ModelProfile:
     effect_readback: str = "none"
 
     def __post_init__(self) -> None:
+        if type(self.color_temp_step_kelvin) is not int or self.color_temp_step_kelvin < 1:
+            raise ValueError("Kelvin step must be a positive integer")
         if len(self.kelvin_direct_rgb) != 3 or any(
             type(channel) is not int or not 0 <= channel <= 255 for channel in self.kelvin_direct_rgb
         ):
@@ -959,6 +963,11 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_segment_brightness=True,
         supports_segment_color_temperature=True,
         segment_kelvin_renders_device_rgb=True,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        kelvin_companion_uses_table=True,
+        color_temp_step_kelvin=100,
+        segment_colour_mode_ambiguous=True,
         scene_catalogue_sku="H66A0",
         supports_custom_effects=True,
         default_effect_families_override=frozenset({EFFECT_FAMILY_VIDEO}),
@@ -972,6 +981,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H1A42",
         effect_grammar="H617A",
         music_grammar="H1A42",
+        kelvin_companion_uses_table=True,
+        color_temp_step_kelvin=100,
+        segment_colour_mode_ambiguous=True,
         static_readback_kelvin=True,
         static_readback_zero_kelvin_is_rgb=True,
         static_readback_gradual=True,
@@ -1033,8 +1045,9 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         status_grammar="H61F5",
         effect_grammar="H617A",
         music_grammar="H61F5",
-        static_readback_kelvin=True,
-        static_readback_zero_kelvin_is_rgb=True,
+        kelvin_companion_uses_table=True,
+        color_temp_step_kelvin=100,
+        segment_colour_mode_ambiguous=True,
         static_readback_gradual=True,
         read_domains=frozenset(
             {

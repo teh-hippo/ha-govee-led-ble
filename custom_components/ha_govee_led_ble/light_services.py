@@ -12,7 +12,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import service
 from homeassistant.helpers.typing import VolDictType
 
-from .const import DOMAIN, ReadDomain
+from .const import DOMAIN
 from .control_arbiter import ControlIntent, async_control_intent
 from .coordinator import GoveeBLECoordinator
 from .dreamview_services import async_register_dreamview_services
@@ -25,7 +25,6 @@ from .light_commands import (
     build_segment_brightness,
     build_segment_color_temp,
     build_segment_paint,
-    kelvin_companion_rgb,
     scale_segment_groups,
 )
 from .native_profile_controls import apply_active_video_mode
@@ -229,7 +228,7 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
             await self._async_set_segment_color_temp(segments, color_temp_kelvin)
 
     async def _async_set_segment_color_temp(self, segments: list[int], color_temp_kelvin: int) -> None:
-        """Verify companion RGB without claiming per-bulb Kelvin readback."""
+        """Verify settled rendering without claiming per-segment Kelvin readback."""
         c = self.coordinator
         self._require_support(
             "set_segment_color_temp",
@@ -242,52 +241,10 @@ class _GoveeLightServicesMixin(_GoveeLightOwner):
         try:
             segments = list(segments)
             packet = build_segment_color_temp(segments, color_temp_kelvin, c.model, profile=c.profile)
-            expected = kelvin_companion_rgb(color_temp_kelvin, c.profile)
             await self._async_supersede_preview()
             async with async_control_intent(c, ControlIntent.USER):
                 try:
-                    if not await c.async_refresh_segments():
-                        raise RuntimeError("Failed to read segments before colour temperature write")
-                    before_colors = list(c.segment_colors)
-                    expected_colors = list(before_colors)
-                    expected_brightness = list(c.segment_brightness)
-                    prior_kelvin = c.color_temp_kelvin
-                    prior_kelvin_source = c.color_temp_kelvin_source
-                    for segment in segments:
-                        expected_colors[segment - 1] = expected
-                    # The shared writer installs masked RGB only at the physical-write boundary
-                    # and reconciles attempted failures. Readback proves RGB, not per-segment Kelvin.
-                    await c.send_command(packet)
-                    if not await c.async_refresh_segments() or c.segment_brightness != expected_brightness:
-                        raise RuntimeError("Failed to confirm segment colour temperature")
-                    if c.profile.segment_kelvin_renders_device_rgb:
-                        selected = {segment - 1 for segment in segments}
-                        rendered_set = {c.segment_colors[index] for index in selected}
-                        if len(rendered_set) != 1:
-                            raise RuntimeError("Failed to confirm segment colour temperature")
-                        rendered = next(iter(rendered_set))
-                        if (
-                            rendered[0] < 200
-                            or rendered[1] < 100
-                            or any(
-                                c.segment_colors[index] != before_colors[index]
-                                for index in range(len(before_colors))
-                                if index not in selected
-                            )
-                        ):
-                            raise RuntimeError("Failed to confirm segment colour temperature")
-                        if c.profile.static_readback_kelvin and not await c.refresh_state(
-                            expected_color_temp_kelvin=color_temp_kelvin,
-                            required_domains=frozenset({ReadDomain.COLOUR_MODE}),
-                        ):
-                            raise RuntimeError("Failed to confirm segment colour temperature")
-                        if selected != set(range(c.profile.segment_count)) and len(set(c.segment_colors)) != 1:
-                            c.color_temp_kelvin = prior_kelvin if prior_kelvin_source == "observed" else None
-                            c.color_temp_kelvin_source = (
-                                prior_kelvin_source if c.color_temp_kelvin is not None else "initial"
-                            )
-                    elif c.segment_colors != expected_colors:
-                        raise RuntimeError("Failed to confirm segment colour temperature")
+                    await c.async_set_segment_kelvin(packet, requested_kelvin=color_temp_kelvin)
                 finally:
                     self._notify_state_changed()
         except (TypeError, ValueError) as err:

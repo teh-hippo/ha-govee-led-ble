@@ -17,8 +17,11 @@ doc: |
   Unused final-page slots have no zero constraint and preserve their raw octets.
   AA 05 00 video replies carry the six-byte H66A0 video body (source,
   picture_preset 0x08..0x0b, saturation, sound_effects, opaque, softness).
-  AA 05 15 carries a sub byte followed by big-endian Kelvin (zero for RGB),
+  AA 05 15 carries a sub byte followed by big-endian aggregate Kelvin,
   confirmed on hardware at 3000 K (15 00 0b b8) and RGB (15 00 00 00).
+  Issue #429 confirms zero after partial native-Kelvin writes as well;
+  whole-device and all-14 writes both echo the requested Kelvin.
+  Segment RGB can temporarily be black before settling, without changing brightness.
   AA 06, AA 07, AA 20, AA 21, and AA 40 (90 ICs) are confirmed on hardware.
   Display settings (A9 06, A9 0A, A9 0B), relative brightness (AE 01),
   installation direction (AA 30), and camera health (AA 32) follow the shared

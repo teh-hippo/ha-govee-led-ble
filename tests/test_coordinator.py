@@ -4722,4 +4722,8 @@ async def test_static_readback_confirms_measured_kelvin_and_rgb(
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(side_effect=transmit), disconnect=AsyncMock())
     coordinator._client = client
     monkeypatch.setattr(coordinator, "_ensure_connected", AsyncMock(return_value=client))
-    assert await coordinator.refresh_state(**expected)
+    if model == "H61F5":
+        assert not await coordinator.refresh_state(**expected)
+        client.write_gatt_char.assert_not_awaited()
+    else:
+        assert await coordinator.refresh_state(**expected)

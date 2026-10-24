@@ -132,16 +132,24 @@ def kelvin_to_rgb(kelvin: int) -> tuple[int, int, int]:
 def kelvin_companion_rgb(kelvin: int, profile: ModelProfile) -> tuple[int, int, int]:
     return (
         table_kelvin_rgb(kelvin)
-        if profile.command_grammar == "H601C" or profile.kelvin_direct_rgb == (255, 255, 255)
+        if profile.kelvin_companion_uses_table
+        or profile.command_grammar == "H601C"
+        or profile.kelvin_direct_rgb == (255, 255, 255)
         else kelvin_to_rgb(kelvin)
     )
+
+
+def normalize_kelvin(kelvin: int, profile: ModelProfile) -> int:
+    value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
+    step = profile.color_temp_step_kelvin
+    return _clamp(((value + step // 2) // step) * step, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
 
 
 def build_color_temp(kelvin: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
     profile = profile or get_profile(model)
     if not profile.supports_color_temperature:
         raise ValueError(f"{profile.name} does not support colour temperature")
-    value = _clamp(kelvin, profile.min_color_temp_kelvin, profile.max_color_temp_kelvin)
+    value = normalize_kelvin(kelvin, profile)
     return build_colour_temperature(
         value, kelvin_companion_rgb(value, profile), profile.whole_device_mask, model, profile=profile
     )
@@ -165,7 +173,8 @@ def build_segment_color_temp(
         raise ValueError("Kelvin must be an integer")
     if not profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin:
         raise ValueError("Kelvin outside profile range")
-    return build_colour_temperature(kelvin, kelvin_companion_rgb(kelvin, profile), mask, model, profile=profile)
+    value = normalize_kelvin(kelvin, profile)
+    return build_colour_temperature(value, kelvin_companion_rgb(value, profile), mask, model, profile=profile)
 
 
 def build_white_brightness(percent: int, model: str = "H617A", *, profile: ModelProfile | None = None) -> bytes:
