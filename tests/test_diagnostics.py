@@ -269,9 +269,13 @@ async def test_redacts_unique_id(mock_h6199_coordinator):
     assert diag["coordinator"]["address"] == "**REDACTED**"
 
 
-async def test_non_h6102_diagnostics_shape_has_no_capability_resolution(mock_h6199_coordinator):
+async def test_h6199_identity_resolution_has_no_h6102_app_firmware(mock_h6199_coordinator):
+    mock_h6199_coordinator.identity_fields_confirmed.return_value = False
     diag = await _run(_prep(mock_h6199_coordinator))
-    assert "capability_resolution" not in diag["coordinator"]
+    resolution = diag["coordinator"]["capability_resolution"]
+    assert "configured_app_firmware" not in resolution
+    assert resolution["identity_confirmed"] is False
+    assert resolution["command_grammar"] == "H6199"
 
 
 @pytest.mark.parametrize(

@@ -22,7 +22,7 @@ from homeassistant.util.file import WriteError
 from kaitaistruct import KaitaiStream
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ha_govee_led_ble.const import DOMAIN, get_profile
+from custom_components.ha_govee_led_ble.const import DOMAIN, device_profile, get_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.diagnostics import async_get_config_entry_diagnostics
 from custom_components.ha_govee_led_ble.dreamview import (
@@ -90,7 +90,7 @@ def test_exact_group_both_identities_and_capacity(model) -> None:
     for invalid in ((), (*seven, member()), (member(), member(address="11:22:33:44:55:66"))):
         with pytest.raises(ValueError):
             build_dreamview_group(invalid, profile)
-    for unsupported in (get_profile("H6199"), replace(profile, dreamview_grammar="unknown")):
+    for unsupported in (device_profile("H6199", None, None), replace(profile, dreamview_grammar="unknown")):
         with pytest.raises(ValueError):
             build_dreamview_group((member(),), unsupported)
     assert "11:22" not in repr(member())
@@ -213,7 +213,7 @@ async def test_physical_writer_retry_guards_and_private_authorship(hass) -> None
     assert stored == {"operation": "replace", "members": [member().as_dict()]}
 
     async def change_profile():
-        c.profile = get_profile("H6199")
+        c.profile = device_profile("H6199", None, None)
         return client
 
     c._ensure_connected = AsyncMock(side_effect=change_profile)
@@ -451,7 +451,7 @@ async def test_registration_and_valid_service_dispatch(hass) -> None:
         "sample_second": 254,
         "unknown": [18, 52, *([0] * 12)],
     }
-    c.profile = get_profile("H6199")
+    c.profile = device_profile("H6199", None, None)
     entity._async_supersede_preview.reset_mock()
     with pytest.raises(ServiceValidationError):
         await _async_dreamview_service(

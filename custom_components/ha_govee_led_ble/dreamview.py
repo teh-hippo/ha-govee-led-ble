@@ -1,4 +1,4 @@
-"""MovieFeastV2 semantics over explicitly compatible generated wire structures.
+"""DreamView semantics over explicitly compatible generated wire structures.
 
 Selectively reuses issue #257's immutable member model and group framing, not
 its default cmd_ver, digest, camera assumptions or active member identification.
@@ -20,7 +20,9 @@ from .protocol_core import _check_tree, _serialize_xor, _serialized_length, _wri
 from .transport import A3_CHUNK_SIZE, fragment_a3, xor_checksum
 
 Frame = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_frame").H6099DreamviewFrame)
+LegacyFrame = cast(Any, import_module(f"{__package__}.generated_protocol.h6199_dreamview_frame").H6199DreamviewFrame)
 Group = cast(Any, import_module(f"{__package__}.generated_protocol.h6099_dreamview_group").H6099DreamviewGroup)
+_FRAMES = {"H6099": Frame, "H6199": LegacyFrame}
 DREAMVIEW_READ_SETTINGS = tuple(command.name for command in Frame.Command if command != Frame.Command.delete_group)
 DREAMVIEW_VIDEO_FIELDS = {"apply_area": Frame.ApplyArea, "content_mode": Frame.ContentMode}
 
@@ -30,7 +32,7 @@ def require_dreamview(
 ) -> None:
     """No related-model or camera-based capability inference."""
     operations = profile.dreamview_reads if read else profile.dreamview_operations
-    if profile.dreamview_grammar != "H6099" or operation not in operations:
+    if profile.dreamview_grammar not in _FRAMES or operation not in operations:
         raise ValueError("DreamView operation is not supported by this profile")
     if member_count is not None and not 1 <= member_count <= profile.dreamview_max_sub_devices:
         raise ValueError("DreamView member count exceeds this profile's capacity; use explicit delete for removal")
@@ -133,9 +135,12 @@ def build_dreamview_command(setting: str, values: Mapping[str, Any], profile: Mo
     }
     if setting not in fields or values.keys() != fields[setting].keys():
         raise ValueError("Supply exactly the fields required by this DreamView setting")
-    root = Frame(False)
-    root.header, root.module, root.command = Frame.Header.write, b"\x60", Frame.Command[setting]
-    root.body = Frame.WriteBody(_parent=root, _root=root)
+    frame_type = _FRAMES[cast(str, profile.dreamview_grammar)]
+    root = frame_type(False)
+    root.header, root.command = frame_type.Header.write, frame_type.Command[setting]
+    if frame_type is Frame:
+        root.module = bytes((root.module_value,))
+    root.body = frame_type.WriteBody(_parent=root, _root=root)
     for name, bound in fields[setting].items():
         value = values[name]
         if bound is bool:
@@ -145,8 +150,8 @@ def build_dreamview_command(setting: str, values: Mapping[str, Any], profile: Mo
         else:
             value = integer(value, cast(int, bound))
         setattr(root.body, name, value)
-    root.body.discriminator = b"\x01"
-    root.body.unknown = bytes(16 - len(values) - (setting == "switch_group"))
+    root.body.discriminator = bytes((root.discriminator_value,))
+    root.body.unknown = bytes(root.body_size - len(values) - root.discriminator_size)
     return _serialize_xor(root)
 
 
@@ -154,24 +159,35 @@ def build_dreamview_query(setting: str, profile: ModelProfile) -> bytes:
     require_dreamview(profile, setting, read=True)
     if setting not in DREAMVIEW_READ_SETTINGS:
         raise ValueError("Unsupported DreamView read")
-    root = Frame(True)
-    root.header, root.module, root.command = Frame.Header.read, b"\x60", Frame.Command[setting]
-    root.body = Frame.QueryBody(_parent=root, _root=root)
-    root.body.discriminator = b"\x01"
-    root.body.unknown = bytes(15 if setting == "switch_group" else 16)
+    frame_type = _FRAMES[cast(str, profile.dreamview_grammar)]
+    root = frame_type(True)
+    root.header, root.command = frame_type.Header.read, frame_type.Command[setting]
+    if frame_type is Frame:
+        root.module = bytes((root.module_value,))
+    root.body = frame_type.QueryBody(_parent=root, _root=root)
+    root.body.discriminator = bytes((root.discriminator_value,))
+    root.body.unknown = bytes(root.body_size - root.discriminator_size)
     return _serialize_xor(root)
 
 
-def parse_dreamview_status(frame: bytes) -> tuple[str, dict[str, Any]] | None:
+def dreamview_parser(profile: ModelProfile) -> str | None:
+    frame_type = _FRAMES.get(cast(str, profile.dreamview_grammar))
+    return frame_type.__module__.rsplit(".", 1)[-1] if frame_type is not None else None
+
+
+def parse_dreamview_status(frame: bytes, profile: ModelProfile | None = None) -> tuple[str, dict[str, Any]] | None:
     """Return individual observations, never a group count, identity or ACK state."""
     if len(frame) != 20 or xor_checksum(frame[:-1]) != frame[-1]:
         return None
-    root = Frame(False, KaitaiStream(io.BytesIO(frame)))
+    frame_type = Frame if profile is None else _FRAMES.get(cast(str, profile.dreamview_grammar))
+    if frame_type is None:
+        return None
+    root = frame_type(False, KaitaiStream(io.BytesIO(frame)))
     try:
         root._read()
     except KaitaiStructError:
         return None
-    if root.header != Frame.Header.read or root.command not in Frame.Command:
+    if root.header != frame_type.Header.read or root.command not in frame_type.Command:
         return None
     setting = root.command.name
     if setting not in DREAMVIEW_READ_SETTINGS:
@@ -190,3 +206,38 @@ def parse_dreamview_status(frame: bytes) -> tuple[str, dict[str, Any]] | None:
     # Keep raw slot bytes and uncertain tails. Zero is not proof that a slot is empty.
     observed["unknown"] = list(body.unknown)
     return setting, {name: list(value) if isinstance(value, bytes) else value for name, value in observed.items()}
+
+
+def parse_dreamview_ack(frame: bytes, profile: ModelProfile) -> tuple[str, bool] | None:
+    if profile.dreamview_grammar != "H6199" or len(frame) != 20 or xor_checksum(frame):
+        return None
+    root = LegacyFrame.Acknowledgement(KaitaiStream(io.BytesIO(frame)))
+    try:
+        root._read()
+    except KaitaiStructError:
+        return None
+    return root.operation.name, bool(root.is_success)
+
+
+def is_legacy_dreamview_packet(frame: bytes) -> bool:
+    """Recognise typed packets after the transaction's complete request validation."""
+    if len(frame) != 20 or xor_checksum(frame):
+        return False
+    try:
+        upload = LegacyFrame.UploadFrame(KaitaiStream(io.BytesIO(frame)))
+        upload._read()
+    except KaitaiStructError:
+        pass
+    else:
+        return True
+    for query in (False, True):
+        root = LegacyFrame(query, KaitaiStream(io.BytesIO(frame)))
+        try:
+            root._read()
+        except KaitaiStructError:
+            continue
+        if root.header == LegacyFrame.Header.read and query:
+            return True
+        if root.header == LegacyFrame.Header.write and not query:
+            return True
+    return False

@@ -48,6 +48,15 @@ seq:
         0xaa: status_body
   - id: checksum
     type: u1
+instances:
+  body_size:
+    value: 16
+  module_value:
+    value: 0x60
+  discriminator_size:
+    value: 'command == command::switch_group ? 1 : 0'
+  discriminator_value:
+    value: 1
 types:
   query_body:
     seq:

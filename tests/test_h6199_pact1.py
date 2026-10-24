@@ -58,8 +58,10 @@ def advertise(c, pact):
 
 @pytest.mark.parametrize("model", ["H6199", "H6099", "H617A"])
 def test_only_exact_model_and_positive_pact_select_restriction(model):
-    assert device_profile(model, None, None) is MODEL_PROFILES[model]
-    assert device_profile(model, 2, 1) is MODEL_PROFILES[model]
+    for pact in ((None, None), (2, 1)):
+        profile = device_profile(model, *pact)
+        assert profile.command_operations == MODEL_PROFILES[model].command_operations
+        assert profile.supports_video_mode == MODEL_PROFILES[model].supports_video_mode
     assert device_profile(model, 1, 1) is (H6199_PACT1_PROFILE if model == "H6199" else MODEL_PROFILES[model])
 
 
@@ -176,7 +178,7 @@ async def test_known_pact1_real_setup_and_basic_controls(pact_lifecycle, monkeyp
 async def test_late_pact_changes_capabilities_without_destroying_library(hass, monkeypatch):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6199", configuration_url=None)
     c.hw_version, c.fw_version = "1.00.01", "1.07.02"
-    assert c.profile is MODEL_PROFILES[c.model]
+    assert c.profile == device_profile(c.model, None, None)
     light = GoveeBLELight(c)
     items = tuple(LibraryItem.new(t.label, t.content) for t in MODEL_EFFECT_CATALOGUES[c.model].templates)
     light._library_snapshot = LibrarySnapshot(items)
@@ -207,7 +209,7 @@ async def test_late_pact_changes_capabilities_without_destroying_library(hass, m
         await light._async_turn_on(color_temp_kelvin=4000)
     client.write_gatt_char.assert_not_awaited()
     advertise(c, 2)
-    assert c.profile is MODEL_PROFILES[c.model]
+    assert c.profile == device_profile(c.model, 2, 1, firmware=c.fw_version, hardware=c.hw_version)
     assert ColorMode.RGB in light.supported_color_modes and light.color_mode is ColorMode.RGB
     assert len(c.segment_colors) == 15 and c.segment_state_source == "initial"
     assert light.effect_list

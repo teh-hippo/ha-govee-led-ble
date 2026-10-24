@@ -1163,7 +1163,7 @@ class GoveeBLECoordinator(
             query_kind = "segment" if self._segment_query_incomplete else "bulk"
             raise BleakError(f"Incomplete {query_kind} query requires a new connection")
         packet_validator(packet, self.profile)
-        self._validate_authorized_packet(packet)
+        self._validate_authorized_packet(packet, packet_validator)
         if (
             arm_expected
             and self.profile.configured_string_counts
@@ -1189,7 +1189,7 @@ class GoveeBLECoordinator(
             await self._disconnect_locked()
             raise
         packet_validator(packet, self.profile)
-        self._validate_authorized_packet(packet)
+        self._validate_authorized_packet(packet, packet_validator)
         if (
             arm_expected
             and self.profile.configured_string_counts
@@ -1641,10 +1641,12 @@ class GoveeBLECoordinator(
             return self._h6102_authorization_profile()
         return device_profile(self.model, self.pact_type, self.pact_code, firmware=None, hardware=None)
 
-    def _validate_authorized_packet(self, packet: bytes) -> None:
+    def _validate_authorized_packet(
+        self, packet: bytes, validator: Callable[[bytes, ModelProfile], None] = require_profile_packet
+    ) -> None:
         profile = self._authorization_profile()
         if profile != self.profile:
-            require_profile_packet(packet, profile)
+            validator(packet, profile)
 
     def _apply_configured_strings(self, count: int) -> None:
         if count not in self.profile.configured_string_counts:

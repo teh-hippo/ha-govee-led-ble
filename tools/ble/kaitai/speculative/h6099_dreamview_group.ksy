@@ -19,6 +19,9 @@ doc: |
   H6097 issue #431 independently selects this membership format with at most
   seven members.  Its actual member compatibility and restoration remain
   unqualified.
+  H6199 issue #438 independently uses these member records and A3 type 0x50,
+  with a five-member product fallback.  Its group completion and actual
+  synchronisation still require owner qualification.
 seq:
   - id: num_members
     type: u1

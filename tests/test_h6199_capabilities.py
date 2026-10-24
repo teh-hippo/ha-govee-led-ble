@@ -125,7 +125,7 @@ def test_unknown_and_exact_camera_qualification():
         is CapabilityState.EVIDENCE_GAP
     )
     assert set(QUALIFIED) - {"pact_type", "pact_code"} == video_identity_fields(profile)
-    assert profile.dreamview_max_sub_devices == 0
+    assert profile.dreamview_max_sub_devices == 5
 
 
 @pytest.mark.parametrize("revision", ["old", "qualified", "unknown"])

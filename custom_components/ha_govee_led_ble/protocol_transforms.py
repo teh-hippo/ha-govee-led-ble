@@ -25,9 +25,12 @@ from .protocol_core import (
 def h6199_pact1_outbound_transform(packet: bytes) -> bytes:
     """Re-encode authorised logical H6199 brightness and RGB through the legacy wire root."""
 
+    from .dreamview import is_legacy_dreamview_packet
     from .generated_protocol_adapter import parse_command, require_profile_packet
 
     profile = H6199_PACT1_PROFILE
+    if is_legacy_dreamview_packet(packet):
+        return packet
     require_profile_packet(packet, profile)
     parsed = parse_command(packet, profile=profile)
     if parsed is None or parsed.opcode.name == "power":

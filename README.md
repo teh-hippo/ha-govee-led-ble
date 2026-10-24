@@ -51,8 +51,8 @@ The `ha_govee_led_ble.paint_segments` action accepts `rgb_scale` from 0 to 100, 
 
 ## DreamView
 
-On compatible revisions, H6097, H6099 and H66A0 expose DreamView group actions separately from the backlight's standalone video effects.  H6097 and H6099 support up to
-seven members; H66A0 supports up to ten.  Set both DreamView choices explicitly:
+On compatible revisions, H6097, H6099, H6199 and H66A0 expose DreamView group actions separately from the backlight's standalone video effects.
+H6097 and H6099 support up to seven members; H66A0 supports up to ten.  Set both DreamView choices explicitly:
 
 ```yaml
 action: ha_govee_led_ble.set_dreamview_video_settings
@@ -66,6 +66,10 @@ data:
 `apply_area` accepts `all` or `part`; `content_mode` accepts `game` or `movie`.  Neither field has a default, and this action does not change group membership.
 
 **DreamView Game/Movie is not the light's `Video: Game` / `Video: Movie` effect.**  Selecting a standalone video effect can switch off a running DreamView group.  You do not need to select that effect before enabling DreamView.
+
+H6199 uses its own legacy group protocol and a candidate limit of five members.  Same brightness additionally requires main hardware 3.02.01 or newer and firmware 1.09.00 or newer, confirmed on the current connection.  Other group controls remain available if version queries time out, provided the advertised Pact is supported.
+
+H6199 group replacement and deletion require a matching device acceptance reply before Home Assistant releases member ownership.  An attempted upload is not retried automatically.  A failed or unanswered change retains private recovery intent and member claims; do not assume that the old hardware group is unchanged.  `read_dreamview_group` separates locally authored metadata from anonymous device observations, and reports identity-gated reads in `unavailable_reads`.  Acceptance does not confirm membership or visible synchronisation.  These new H6199 group paths still need owner qualification.
 
 ### Migrating existing actions and templates
 

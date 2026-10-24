@@ -11,6 +11,7 @@ speculative/h6125_legacy_segment_query
 speculative/h6125_command_ack
 speculative/h6125_wire_write
 speculative/h6199_pact1_wire_write
+speculative/h6199_dreamview_frame
 speculative/h6076_music_ack
 speculative/h6076_music_body
 speculative/h6076_music_write

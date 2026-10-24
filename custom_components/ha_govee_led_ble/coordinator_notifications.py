@@ -22,6 +22,7 @@ from .coordinator_status import (
     parse_color_mode,
     status_is_authorized,
 )
+from .dreamview import dreamview_parser
 from .generated_protocol_adapter import (
     BulkStatusCollector,
     build_bulk_status_query,
@@ -432,7 +433,7 @@ class _NotificationMixin(_CoordinatorBase):
             return
         if self._handle_dreamview_notification(frame):
             self._record_packet(
-                "rx", frame, outcome="parsed", reason="dreamview_status_parsed", parser="h6099_dreamview_frame"
+                "rx", frame, outcome="parsed", reason="dreamview_status_parsed", parser=dreamview_parser(self.profile)
             )
             return
         if frame[:1] == b"\x33":

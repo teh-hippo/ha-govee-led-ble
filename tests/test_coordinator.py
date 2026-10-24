@@ -19,7 +19,14 @@ from custom_components.ha_govee_led_ble.ble_device_resolver import (
     BLEDeviceResolution,
     BLEDeviceResolver,
 )
-from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, MUSIC_MODE_SLUGS, ModelProfile, ReadDomain
+from custom_components.ha_govee_led_ble.const import (
+    DOMAIN,
+    MODEL_PROFILES,
+    MUSIC_MODE_SLUGS,
+    ModelProfile,
+    ReadDomain,
+    device_profile,
+)
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter, ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import (
     IDENTITY_RETRY_TICKS,
@@ -529,7 +536,7 @@ async def test_initial_state_and_update(coord, h6199):
     assert coord.color_mode is None
     assert coord.profile == MODEL_PROFILES["H617A"] and coord.profile.state_readable
     assert coord.profile.supports_music_mode and not coord.profile.supports_video_mode
-    assert h6199.profile == MODEL_PROFILES["H6199"] and h6199.profile.state_readable
+    assert h6199.profile == device_profile("H6199", None, None) and h6199.profile.state_readable
     assert h6199.profile.supports_video_mode and not h6199.profile.supports_white_brightness
     coord.is_on, coord.brightness_pct, coord.rgb_color = True, 75, (255, 0, 128)
     exp = {

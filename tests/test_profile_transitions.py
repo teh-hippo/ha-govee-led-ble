@@ -8,7 +8,7 @@ from bleak.exc import BleakError
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from custom_components.ha_govee_led_ble.const import H6199_PACT1_PROFILE
+from custom_components.ha_govee_led_ble.const import device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_brightness_query,
@@ -48,7 +48,8 @@ async def test_setup_rebuilds_after_narrowing_during_power_query(device):
 
     client.write_gatt_char.side_effect = write
     await c._async_update_data()
-    assert c.profile is H6199_PACT1_PROFILE and c.is_on and c.available
+    assert c.profile == device_profile(c.model, 1, 1, firmware=c.fw_version, hardware=c.hw_version)
+    assert c.is_on and c.available
     assert client.write_gatt_char.await_count == 2
     assert c._client is client and not c._lock.locked() and not c._control_arbiter.locked()
 
@@ -58,7 +59,7 @@ async def test_setup_transition_retry_is_bounded(device):
 
     async def write(_uuid, packet, **kwargs):
         assert packet == build_power_query(c.model)
-        advertise(c, 2 if c.profile is H6199_PACT1_PROFILE else 1)
+        advertise(c, 2 if c.pact_type == 1 else 1)
         c._notify_callback(None, bytearray(frame("aa0101")))
 
     client.write_gatt_char.side_effect = write
@@ -82,7 +83,8 @@ async def test_identity_batch_rebuilds_with_real_setup(transition_lifecycle):  #
 
     c._async_write_packet = write
     await c._async_update_data()
-    assert c.is_on and c.available and c.profile is H6199_PACT1_PROFILE
+    assert c.is_on and c.available
+    assert c.profile == device_profile(c.model, 1, 1, firmware=c.fw_version, hardware=c.hw_version)
     assert set(packets) == {build_power_query(c.model), build_hardware_query(c.model), build_firmware_query(c.model)}
     assert len(clients) == 1 and c._client is None
 

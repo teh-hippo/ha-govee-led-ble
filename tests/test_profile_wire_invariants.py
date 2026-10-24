@@ -134,6 +134,9 @@ _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, s
     ("H6125-modern-basic-music", "H6125", 10, 1, "2.03.99", "2.01.01"),
     ("H6125-modern-full", "H6125", 10, 2, "3.04.37", "3.01.10"),
     ("H6199-pact1", "H6199", 1, 1, None, None),
+    ("H6199-pact1-new-group", "H6199", 1, 1, "1.09.00", "3.02.01"),
+    ("H6199-pact2-baseline-group", "H6199", 2, 1, None, None),
+    ("H6199-unqualified-group", "H6199", None, None, None, None),
     ("H7020-unqualified", "H7020", None, None, None, None),
 )
 

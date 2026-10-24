@@ -151,6 +151,7 @@ class ModelProfile:
     dreamview_operations: frozenset[str] = frozenset()
     dreamview_reads: frozenset[str] = frozenset()
     dreamview_max_sub_devices: int = 0
+    dreamview_requires_group_ack: bool = False
     video_firmware_conditions: tuple[VideoFirmwareCondition, ...] = ()
     profile_identity_fields: frozenset[str] = frozenset()
     profile_pact_dependent: bool = False
@@ -1409,6 +1410,35 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         effect_grammar="H6199",
         video_grammar="H6199",
         video_revision_policy="H6199",
+        profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+        profile_pact_dependent=True,
+        dreamview_grammar="H6199",
+        dreamview_operations=frozenset(
+            {
+                "replace_group",
+                "delete_group",
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "video_settings",
+                "sound",
+            }
+        ),
+        dreamview_reads=frozenset(
+            {
+                "switch_group",
+                "member_brightness",
+                "same_brightness",
+                "member_connect",
+                "saturation",
+                "video_settings",
+                "sound",
+            }
+        ),
+        dreamview_max_sub_devices=5,
+        dreamview_requires_group_ack=True,
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -1561,6 +1591,33 @@ H6199_PACT1_PROFILE = ModelProfile(
     whole_device_mask=0x7FFF,
     brightness_wire_range=(20, 254),
     outbound_transform=_h6199_pact1_wire,
+    profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+    profile_pact_dependent=True,
+    dreamview_grammar="H6199",
+    dreamview_operations=frozenset(
+        {
+            "replace_group",
+            "delete_group",
+            "switch_group",
+            "member_brightness",
+            "member_connect",
+            "saturation",
+            "video_settings",
+            "sound",
+        }
+    ),
+    dreamview_reads=frozenset(
+        {
+            "switch_group",
+            "member_brightness",
+            "member_connect",
+            "saturation",
+            "video_settings",
+            "sound",
+        }
+    ),
+    dreamview_max_sub_devices=5,
+    dreamview_requires_group_ack=True,
 )
 
 
@@ -1770,8 +1827,28 @@ def device_profile(
                 read_domains=profile.read_domains | {ReadDomain.SEGMENTS},
             )
         return profile
-    if model == "H6199" and (pact_type, pact_code) == (1, 1):
-        return H6199_PACT1_PROFILE
+    if model == "H6199":
+        from .firmware_version import FirmwareVersion
+
+        profile = H6199_PACT1_PROFILE if (pact_type, pact_code) == (1, 1) else get_profile(model)
+        if (pact_type, pact_code) not in {(1, 1), (2, 1), (3, 1), (4, 1)}:
+            return replace(profile, dreamview_operations=frozenset(), dreamview_reads=frozenset())
+        fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+        if fw is None or hw is None or fw < FirmwareVersion((1, 9)) or hw < FirmwareVersion((3, 2, 1)):
+            if "same_brightness" not in profile.dreamview_operations:
+                return profile
+            return replace(
+                profile,
+                dreamview_operations=profile.dreamview_operations - {"same_brightness"},
+                dreamview_reads=profile.dreamview_reads - {"same_brightness"},
+            )
+        if "same_brightness" not in profile.dreamview_operations:
+            return replace(
+                profile,
+                dreamview_operations=profile.dreamview_operations | {"same_brightness"},
+                dreamview_reads=profile.dreamview_reads | {"same_brightness"},
+            )
+        return profile
     if model == "H6076":
         return _h6076_profile(pact_type, pact_code, firmware)
     if model == "H6125":

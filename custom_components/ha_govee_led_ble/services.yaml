@@ -50,7 +50,7 @@ apply_custom_effect:
       selector: {number: {min: 0, max: 65535, mode: box}}
 replace_dreamview_group:
   name: Replace DreamView Group
-  description: Replace DreamView membership and Area Config on a supported profile. Matching Home Assistant member config entries are automatically disabled and disconnected before uploading 0x50 so the sync centre can claim their single-client BLE peripheral slots; external member devices not configured in Home Assistant are uploaded directly. Successful replacement restores dropped members that DreamView disabled. Previous device membership cannot be read or recovered. Local authored metadata is not confirmed membership. Supply known cmd_ver and is_rgbic, exactly one address or name, and zones (wire 1..10, 0 unassigned, 255 disabled). Member capacity is target-specific (seven for H6097 and H6099, ten for H66A0). No command-version defaults.
+  description: Replace DreamView membership and Area Config on a supported profile. Matching Home Assistant member config entries are automatically disabled and disconnected before uploading 0x50 so the sync centre can claim their single-client BLE peripheral slots; external member devices not configured in Home Assistant are uploaded directly. Successful replacement restores dropped members that DreamView disabled. Previous device membership cannot be read or recovered. Local authored metadata is not confirmed membership. Supply known cmd_ver and is_rgbic, exactly one address or name, and zones (wire 1..10, 0 unassigned, 255 disabled). Member capacity is target-specific (five for H6199, seven for H6097 and H6099, ten for H66A0). H6199 requires a device acceptance reply; ambiguous changes retain claims and are not automatically replayed. No command-version defaults.
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
   fields:
     members: {required: true, selector: {object:}}
@@ -60,7 +60,7 @@ delete_dreamview_group:
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
 read_dreamview_group:
   name: Read DreamView Group
-  description: Query only the target's declared DreamView reads. Return local authored metadata separately from anonymous observations, missing supported replies, and unsupported reads. Missing replies and zero slots do not prove absent membership. Response contains private locally supplied identities; do not share unredacted.
+  description: Query only the target's authorised DreamView reads. Return local authored metadata separately from anonymous observations, missing supported replies, unsupported reads and reads unavailable until current-connection identity is confirmed. Missing replies and zero slots do not prove absent membership. Response contains private locally supplied identities; do not share unredacted.
   target: {entity: {integration: ha_govee_led_ble, domain: light}}
 set_dreamview_switch:
   name: Set DreamView Switch

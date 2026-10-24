@@ -76,6 +76,7 @@ H6199StatusQuery = _generated("h6199_status_query", "H6199StatusQuery")
 H6199StatusReply = _generated("h6199_status_reply", "H6199StatusReply")
 H6199CommandAck = _generated("h6199_command_ack", "H6199CommandAck")
 H6099DreamviewFrame = _generated("h6099_dreamview_frame", "H6099DreamviewFrame")
+H6199DreamviewFrame = _generated("h6199_dreamview_frame", "H6199DreamviewFrame")
 H6199Pact1WireWrite = _generated("h6199_pact1_wire_write", "H6199Pact1WireWrite")
 H6179CommandWrite = _generated("h6179_command_write", "H6179CommandWrite")
 H6179DiyBody = _generated("h6179_diy_body", "H6179DiyBody")
@@ -188,6 +189,17 @@ def test_dreamview_video_settings_fields_preserve_unknown_codes(header, values, 
     assert parsed.body.content_mode == content_mode
     assert parsed.body.unknown == bytes.fromhex("1234") + b"\x00" * 12
     parsed._check()
+
+
+def test_h6199_legacy_dreamview_reply_and_negative_completion():
+    reply = bytes.fromhex("aa5207fe12340000000000000000000000000027")
+    parsed = H6199DreamviewFrame(False, KaitaiStream(io.BytesIO(reply)))
+    parsed._read()
+    assert parsed.command.name == "video_settings"
+    assert (parsed.body.apply_area, parsed.body.content_mode) == (7, 254)
+    assert parsed.body.unknown == bytes.fromhex("1234") + bytes(13)
+    rejected = _parse(H6199DreamviewFrame.Acknowledgement, bytes.fromhex("a3500100000000000000000000000000000000f2"))
+    assert rejected.operation.name == "replace_group" and not rejected.is_success
 
 
 def test_h6102_owner_register_reply_and_candidate_write():
