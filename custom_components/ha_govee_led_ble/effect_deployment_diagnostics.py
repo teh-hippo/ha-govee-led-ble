@@ -37,10 +37,7 @@ class EffectDeploymentDiagnosticBridge:
         for record in initial_snapshot.records:
             if record.error_code in {"home_assistant_restarted", "home_assistant_restarted_before_write"}:
                 self._record(record, None)
-        self._unsubscribe = repository.subscribe(self._snapshot_updated)
-
-    def close(self) -> None:
-        self._unsubscribe()
+        repository.subscribe(self._snapshot_updated)
 
     def _snapshot_updated(self, snapshot: DeploymentSnapshot) -> None:
         current_operation_ids = {str(record.operation_id) for record in snapshot.records}

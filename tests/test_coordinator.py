@@ -500,7 +500,7 @@ async def test_control_arbiter_prioritises_waiters_reenters_and_skips_background
 
     async with arbiter.hold(ControlIntent.BACKGROUND):
         async with arbiter.hold(ControlIntent.PREVIEW):
-            assert arbiter.active_intent is ControlIntent.PREVIEW
+            assert arbiter.current_task_intent is ControlIntent.PREVIEW
         tasks = [
             asyncio.create_task(contender(ControlIntent.PREVIEW)),
             asyncio.create_task(contender(ControlIntent.APPLY)),

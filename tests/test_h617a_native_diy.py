@@ -65,8 +65,8 @@ def test_packed_fields_and_extensions_round_trip_without_sibling_loss() -> None:
     parsed, _ = parse_workshop_body(raw)
     body = parsed.layers[0].body
     assert body.selection_quantity == layer.selection.quantity == 0x1234
-    assert body.brightness_algorithm == layer.brightness_algorithm == 2
-    assert body.brightness_type == layer.brightness_type == 3
+    assert body.brightness_algorithm == 2
+    assert body.brightness_type == 3
     assert body.distribution_method == 2
     assert body.distribution_extensions == 0x70
     decoded, padding = decode_workshop_effect("H617A", raw)
@@ -75,8 +75,6 @@ def test_packed_fields_and_extensions_round_trip_without_sibling_loss() -> None:
     assert decoded.layers[0].excess == b"\xa5"
     assert Selection(2, 9, 3).random_ic_min == 3
     assert Selection(2, 9, 3).random_ic_max == 9
-    assert Selection(3, 4, 2).piece_ic_count == 4
-    assert Selection(3, 4, 2).gap_ic_count == 2
 
 
 @pytest.mark.parametrize("code,index", [(502, 0), (504, 0), (506, 2)])

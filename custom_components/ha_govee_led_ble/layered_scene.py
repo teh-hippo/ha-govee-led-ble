@@ -117,14 +117,6 @@ class Selection:
     def random_ic_max(self) -> int:
         return self.param_1
 
-    @property
-    def piece_ic_count(self) -> int:
-        return self.param_1
-
-    @property
-    def gap_ic_count(self) -> int:
-        return self.param_2
-
     def __post_init__(self) -> None:
         _validate_byte(self.type, "selection type")
         _validate_byte(self.param_1, "selection parameter 1")
@@ -199,15 +191,6 @@ class EffectLayer:
     priority: int
     unknown_flags: int = 0
     excess: bytes = b""
-
-    @property
-    def brightness_algorithm(self) -> int:
-        """APK algorithm nibble; legacy flag storage remains lossless."""
-        return self.unknown_flags >> 4
-
-    @property
-    def brightness_type(self) -> int:
-        return (self.unknown_flags & 0x0F) | (2 if self.brightness_gradient else 0)
 
     def __post_init__(self) -> None:
         _validate_instance(self.area, AppliedArea, "layer area")

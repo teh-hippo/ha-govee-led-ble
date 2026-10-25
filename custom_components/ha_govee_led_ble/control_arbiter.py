@@ -52,10 +52,6 @@ class BLEControlArbiter:
         self._preview_generation = 0
 
     @property
-    def active_intent(self) -> ControlIntent | None:
-        return self._active_intent
-
-    @property
     def current_task_intent(self) -> ControlIntent | None:
         try:
             task = asyncio.current_task()
