@@ -52,20 +52,13 @@ VERSION  # config_flow.py
 
 BRIGHTEST_DARKEST  # layered_scene.py
 BRIGHTEST_DARKEST_BRIGHTEST  # layered_scene.py
-CANONICAL_ENCODER_ONLY  # effect_contracts.py
 CAPTURED_FIXTURE  # effect_domain.py
 CONTINUOUS  # layered_scene.py
 DARKEST_BRIGHTEST  # layered_scene.py
 DARKEST_BRIGHTEST_DARKEST  # layered_scene.py
-FRONTEND_APPLY  # effect_diagnostics.py
-HIDDEN  # effect_contracts.py
 IMPORTED  # effect_domain.py
-OPAQUE  # effect_contracts.py
 RANDOM  # layered_scene.py
-RAW_PRESERVATION  # effect_contracts.py
 SEGMENT  # layered_scene.py
-STRUCTURAL_DEFINITION_ONLY  # effect_contracts.py
-STRUCTURAL_PARSER_ONLY  # effect_contracts.py
 
 # --- Decoded wire-format fields ---
 # Fields decoded from device frames. They are populated by the parser and kept so a captured frame round-trips
@@ -102,12 +95,11 @@ _.piece_len  # protocol_music_params.py
 _.piece_length  # protocol_music_params.py
 _.piece_num  # protocol_music_params.py
 _.point_count  # h60a6_effects.py
-_.reserved  # protocol_h6199.py
 _.reversed_mac  # dreamview.py
-_.unknown_tail  # protocol_h6199.py, protocol_transforms.py
 
-# --- Protocol adapter field writes ---
-# Kaitai field writes in generated_protocol_adapter.py. Assigning the field fills the wire frame; nothing reads it back.
+# --- Encoder field writes ---
+# Kaitai field writes made while encoding (generated_protocol_adapter.py, protocol_h6199.py, protocol_transforms.py).
+# Assigning the field fills the wire frame; nothing reads it back.
 
 _.a3_type  # generated_protocol_adapter.py
 _.bottom_percent  # generated_protocol_adapter.py
@@ -115,17 +107,18 @@ _.dynamic  # generated_protocol_adapter.py
 _.left_percent  # generated_protocol_adapter.py
 _.manual  # generated_protocol_adapter.py
 _.relative_brightness_percent  # generated_protocol_adapter.py
+_.reserved  # protocol_h6199.py
 _.rhythm_response  # generated_protocol_adapter.py
 _.right_percent  # generated_protocol_adapter.py
 _.sound_type  # generated_protocol_adapter.py
 _.strip_left_percent  # generated_protocol_adapter.py
 _.strip_right_percent  # generated_protocol_adapter.py
 _.top_percent  # generated_protocol_adapter.py
-_.unknown_tail  # generated_protocol_adapter.py
+_.unknown_tail  # generated_protocol_adapter.py, protocol_h6199.py, protocol_transforms.py
 _.zeros  # generated_protocol_adapter.py
 
-# --- Keyword-only dataclass fields ---
-# Dataclass fields that are only passed by keyword and serialised.
+# --- Provenance metadata ---
+# Provenance metadata on catalogue dataclasses: passed by keyword, never read.
 
 source_reference  # effect_catalogue.py
 
@@ -138,13 +131,20 @@ _.async_apply_saved_effect  # effect_application.py
 _.async_flush  # effect_active_workspace.py, effect_identity.py, effect_user_state.py
 _.async_reconcile  # effect_runtime.py
 _.async_wait_idle  # effect_preview.py
+CANONICAL_ENCODER_ONLY  # effect_contracts.py
 _._control_lock  # coordinator.py
+FRONTEND_APPLY  # effect_diagnostics.py
 h6102_outbound_transform  # generated_protocol_adapter.py
+HIDDEN  # effect_contracts.py
 MUSIC_MODE_SLUGS  # const.py
+OPAQUE  # effect_contracts.py
 _.open_session  # effect_preview.py
 parse_scene_body_param  # generated_protocol_adapter.py
 parse_scene_type1_body_param  # generated_protocol_adapter.py
 parse_status  # generated_protocol_adapter.py
+RAW_PRESERVATION  # effect_contracts.py
 SCENES  # scenes.py
+STRUCTURAL_DEFINITION_ONLY  # effect_contracts.py
+STRUCTURAL_PARSER_ONLY  # effect_contracts.py
 WHITE_BALANCE_RESET  # h6199_calibration.py
 WORKSHOP_PROTOCOL_FIXTURES  # effect_catalogue.py
