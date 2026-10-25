@@ -1,9 +1,11 @@
+import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from bleak import BleakClient, BleakError
 from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import dt as dt_util
@@ -51,6 +53,20 @@ def _entry(**kw):
         disabled_by=None,
     )
     return MagicMock(**({**d, "domain": DOMAIN, "state": ConfigEntryState.LOADED, "runtime_data": None} | kw))
+
+
+def _reply_to_state_query(client, packet):
+    values = {
+        0x01: [1],
+        0x04: [42],
+        0x05: [0x04, 0x9D, 0x08],
+        0xA5: [packet[2], *([100, 10, 20, 30] * 3)],
+    }
+    if packet[1] in values:
+        payload = bytearray([0xAA, packet[1], *values[packet[1]]])
+        payload.extend(b"\x00" * (19 - len(payload)))
+        payload.append(xor_checksum(payload))
+        client.start_notify.await_args.args[1](None, payload)
 
 
 async def test_setup_entry(hass: HomeAssistant):
@@ -298,17 +314,7 @@ async def test_scheduled_setup_retry_replaces_coordinator_and_retains_recovery(h
     recovered = client("recovered")
 
     async def reply(_uuid, packet, **_kwargs):
-        values = {
-            0x01: [1],
-            0x04: [42],
-            0x05: [0x04, 0x9D, 0x08],
-            0xA5: [packet[2], *([100, 10, 20, 30] * 3)],
-        }
-        if packet[1] in values:
-            payload = bytearray([0xAA, packet[1], *values[packet[1]]])
-            payload.extend(b"\x00" * (19 - len(payload)))
-            payload.append(xor_checksum(payload))
-            recovered.start_notify.await_args.args[1](None, payload)
+        _reply_to_state_query(recovered, packet)
 
     recovered.write_gatt_char.side_effect = reply
     with (
@@ -376,6 +382,59 @@ async def test_scheduled_setup_retry_replaces_coordinator_and_retains_recovery(h
             ("retry-bootstrap", "disconnect"),
             ("recovered", "disconnect"),
         ]
+
+
+@pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
+async def test_hold_setup_failure_after_real_refresh_cleans_up_ble(hass, failure):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="AA:BB:CC:DD:EE:FF",
+        data={CONF_MODEL: "H617A"},
+        options={"connection_mode": "hold"},
+    )
+    entry.add_to_hass(hass)
+    coordinators = []
+    keep_alive_tasks = []
+    listeners = hass.bus.async_listeners().get(EVENT_HOMEASSISTANT_STOP, 0)
+    client = MagicMock(
+        is_connected=True,
+        services=[],
+        start_notify=AsyncMock(),
+        write_gatt_char=AsyncMock(),
+        disconnect=AsyncMock(),
+    )
+
+    def create_coordinator(*args, **kwargs):
+        coordinator = GoveeBLECoordinator(*args, **kwargs)
+        coordinators.append(coordinator)
+        return coordinator
+
+    async def reply(_uuid, packet, **_kwargs):
+        _reply_to_state_query(client, packet)
+
+    async def fail_after_refresh(*_args):
+        coordinator = coordinators[-1]
+        assert coordinator._client is client and coordinator._state_read_available
+        assert coordinator.is_on and coordinator.brightness_pct == 42
+        keep_alive_tasks.append(coordinator._keep_alive_task)
+        raise failure("post-refresh failure")
+
+    client.write_gatt_char.side_effect = reply
+    with (
+        patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", side_effect=create_coordinator),
+        patch("custom_components.ha_govee_led_ble.coordinator.bluetooth"),
+        patch("custom_components.ha_govee_led_ble.coordinator.async_establish_ble_connection", return_value=client),
+        patch.object(hass.config_entries, "async_forward_entry_setups", side_effect=fail_after_refresh),
+    ):
+        await entry.async_setup_locked(hass)
+
+    coordinator = coordinators[-1]
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert keep_alive_tasks and all(task.done() for task in keep_alive_tasks)
+    assert coordinator._client is None and coordinator._keep_alive_task is None
+    assert coordinator._cancel_disconnect is None
+    assert hass.bus.async_listeners().get(EVENT_HOMEASSISTANT_STOP, 0) == listeners
+    client.disconnect.assert_awaited_once_with()
 
 
 @pytest.mark.parametrize("unload_ok", [True, False])

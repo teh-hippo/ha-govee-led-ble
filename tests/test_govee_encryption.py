@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from bleak import BleakError
@@ -13,8 +13,10 @@ from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from dbus_fast.constants import MessageType
 from habluetooth.wrappers import HaBleakClientWrapper
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.ha_govee_led_ble.advertisement import parse_govee_advertisement
+from custom_components.ha_govee_led_ble.const import DOMAIN
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power, build_power_query
@@ -441,6 +443,43 @@ async def test_no_half_ready_fast_path(hass):
         await coordinator._ensure_connected()
 
 
+@pytest.mark.parametrize("workflow", ["effect", "preview"])
+async def test_slow_connection_and_encrypted_setup_fit_operation_budget(hass, virtual_clock, workflow):
+    coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H617A", configuration_url=None)
+    coordinator.profile = replace(
+        coordinator.profile, read_domains=frozenset(), setup_required_read_domains=frozenset()
+    )
+    device = client(b"\x01\x01")
+    phase = 0
+
+    async def connect(*_args, **_kwargs):
+        await asyncio.sleep(19)
+        return device
+
+    async def write(_uuid, frame, **_kwargs):
+        nonlocal phase
+        phase += 1
+        if phase <= 2:
+            await asyncio.sleep(5)
+            device.start_notify.await_args.args[1](None, bytearray(v1_reply(phase)))
+        else:
+            assert v1_transform(frame, KEY, encrypt=False) == build_power(True)
+
+    device.write_gatt_char.side_effect = write
+    try:
+        with patch(f"{M}.async_establish_ble_connection", side_effect=connect) as establish:
+            if workflow == "effect":
+                await coordinator.async_write_effect_sequence((build_power(True),), intent=ControlIntent.USER)
+            else:
+                await coordinator.async_preview_preflight()
+                await coordinator.async_preview_write(build_power(True))
+        establish.assert_awaited_once()
+        assert coordinator._encryption.ready and coordinator.is_on
+        assert phase == 3
+    finally:
+        await coordinator.async_shutdown()
+
+
 @pytest.mark.parametrize("version", [1, 2])
 async def test_disconnect_after_response_cannot_install_keys(version):
     session, device = GoveeEncryptionSession(), client(bytes((1, version)))
@@ -681,7 +720,8 @@ async def test_encrypted_write_retries_reconnect_with_fresh_session(hass, versio
 async def test_h6076_identity_and_music_travel_over_v1_and_the_companion_is_acknowledged(hass):
     # Issue #343: the reporter's lamp negotiated V1 and acknowledged each companion with an A3 reply.
     coordinator = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H6076", configuration_url=None)
-    coordinator.config_entry = MagicMock(entry_id="test-entry")
+    coordinator.config_entry = MockConfigEntry(domain=DOMAIN, entry_id="test-entry")
+    coordinator.config_entry.add_to_hass(hass)
     coordinator.pact_type, coordinator.pact_code = 1, 1
     coordinator._resolve_device_profile()
     assert coordinator.profile.music_modes == ("energetic", "rhythm", "bounce", "hopping", "beat", "spray")

@@ -41,6 +41,10 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Cached identity stabilises UI presentation across polls and Release-mode disconnects, while operation admission and physical writes require current-connection confirmation.
   Identity observations invalidate authorisation only when a capability depends on that field.  Background setup and polling retry a changed identity or profile once with fresh queries; command verification remains strict.
   State-readable devices default to Release mode and use Hold mode only when configured for periodic polling.
+  Entry shutdown also cleans up BLE after failed setup: unsubscribe stop listeners, cancel entry-owned keep-alive work and run bounded connection cleanup.
+  Recheck entry lifetime after awaited setup stages and before physical writes so late connections cannot restart BLE work after shutdown.
+  Connected operations allow 60 seconds per setup attempt for discovery, connection, notifications, encryption and identity; preview preflight allows two such attempts.
+  Keep those setup budgets separate from shorter query, upload-acknowledgement and verification deadlines.
   Readable power does not imply observable effect activation.  A mode or selector reply confirms selection, not uploaded content, speed, or rendering.
   Music/video mode readback must not infer a saved profile from deployment history.  Preserve current saved-profile origin through power-only transitions;
   explicit native selection supersedes it only at an admitted effect-changing write.  Deployment recovery restores origin only after physical restoration succeeds.
