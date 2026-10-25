@@ -19,6 +19,8 @@ ignore = [
 
 [lint.per-file-ignores]
 "custom_components/ha_govee_led_ble/scenes.py" = ["E501"]
+# Vulture whitelist entries are bare names and attribute accesses by design.
+"vulture_whitelist.py" = ["F821", "B018"]
 
 [lint.isort]
 known-first-party = ["custom_components.ha_govee_led_ble"]

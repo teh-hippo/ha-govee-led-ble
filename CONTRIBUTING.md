@@ -260,6 +260,8 @@ Generation canonicalises peer-schema import order in staging.  Preserve that ste
 
 Before considering a contribution complete, run `make check` on the final tree and resolve any failures.  Run `make package` only when producing a distributable package.  Hassfest and HACS remain CI-enforced checks.
 
+Unused code fails `make check` (vulture).  Delete it rather than keeping it "in case", and test behaviour through the real entry point rather than adding a hook only tests call.  A name that must stay although nothing references it goes in `vulture_whitelist.py`, in the group that explains why.
+
 Frontend contract fixtures use a synthetic integration version.
 Do not derive their contents from the source manifest: prerelease packaging stamps that manifest before `make package`, which must still verify the same committed fixtures.
 Keep the custom-effect catalogue response complete in frontend contract fixtures so production decoding checks the aggregate model inventory against its byte budget.

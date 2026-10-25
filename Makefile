@@ -111,6 +111,7 @@ check-code:
 	$(NPM) --prefix frontend run test:unit
 	uv run --no-sync ruff check .
 	uv run --no-sync ruff format --check .
+	uv run --no-sync vulture $(INTEGRATION_DIR) vulture_whitelist.py --min-confidence 60 --exclude "*/generated_protocol/*"
 	uv run --no-sync mypy custom_components/ha_govee_led_ble tests
 	uv run --no-sync pytest tests/ -n $(PYTEST_WORKERS) --dist worksteal --cov=$(INTEGRATION_DIR) --cov-branch --cov-report= -v --tb=short
 	uv run --no-sync coverage report --precision=2 --include='custom_components/ha_govee_led_ble/*'
