@@ -17,6 +17,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 
+from .ble_connection import CONNECTION_SETUP_TIMEOUT
 from .const import DOMAIN, ModelProfile, ReadDomain
 from .control_arbiter import ControlIntent, PreviewAdmission, async_control_intent
 from .coordinator_status import ParsedMode
@@ -74,7 +75,7 @@ from .video_applicability import requested_video_controls, require_video_mode, v
 
 PREVIEW_VERIFY_DELAY = 0.75
 PREVIEW_VERIFY_TIMEOUT = 4.0
-PREVIEW_CONNECT_TIMEOUT = 8.0
+PREVIEW_CONNECT_TIMEOUT = 2 * CONNECTION_SETUP_TIMEOUT
 PREVIEW_CHANNEL_IDLE_TIMEOUT = 300.0
 
 _LOGGER = logging.getLogger(__name__)

@@ -9,6 +9,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 import pytest
 from bleak import BleakClient, BleakError
 from homeassistant.config_entries import ConfigEntryState, current_entry
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -4345,15 +4346,78 @@ def test_keep_alive_started_as_background_task(coord):
     setup task), or HA bootstrap waits on it and logs a "blocking start up" warning."""
     created = {}
 
-    def _capture(coro, name):
+    def _capture(hass, coro, name):
         coro.close()
+        assert hass is coord.hass
         created["name"] = name
         return MagicMock()
 
-    with patch.object(coord.hass, "async_create_background_task", side_effect=_capture) as spy:
+    with patch.object(coord.config_entry, "async_create_background_task", side_effect=_capture) as spy:
         coord._start_keep_alive()
     spy.assert_called_once()
     assert "keep-alive" in created["name"]
+
+
+async def test_entry_shutdown_releases_ble_resources_and_cannot_reconnect(coord):
+    client = _c()
+    coord._client = client
+    coord._start_keep_alive()
+    keep_alive = coord._keep_alive_task
+    coord._reset_disconnect_timer()
+    listeners = coord.hass.bus.async_listeners()[EVENT_HOMEASSISTANT_STOP]
+
+    await coord.config_entry._async_process_on_unload(coord.hass)
+    await coord.async_shutdown()
+
+    assert keep_alive.done()
+    assert coord._client is None
+    assert coord._keep_alive_task is None
+    assert coord._cancel_disconnect is None
+    assert coord.hass.bus.async_listeners().get(EVENT_HOMEASSISTANT_STOP, 0) == listeners - 1
+    client.disconnect.assert_awaited_once_with()
+    with (
+        patch(f"{M}.async_establish_ble_connection", new_callable=AsyncMock) as connect,
+        pytest.raises(BleakError, match="shut down"),
+    ):
+        await coord._ensure_connected()
+    connect.assert_not_awaited()
+
+
+async def test_entry_shutdown_rejects_inflight_connection_completion(coord, virtual_clock):
+    client = _c(services=[], start_notify=AsyncMock(), write_gatt_char=AsyncMock())
+    connecting = asyncio.Event()
+
+    async def establish(*_args, **_kwargs):
+        connecting.set()
+        await asyncio.sleep(19)
+        return client
+
+    with patch(f"{M}.async_establish_ble_connection", side_effect=establish) as connect:
+        command = coord.hass.async_create_task(coord.send_command(build_power(True)))
+        await connecting.wait()
+        await coord.config_entry._async_process_on_unload(coord.hass)
+        with pytest.raises(BleakError, match="shut down"):
+            await command
+
+    connect.assert_awaited_once()
+    client.disconnect.assert_awaited_once_with()
+    client.start_notify.assert_not_awaited()
+    client.write_gatt_char.assert_not_awaited()
+    assert coord._client is None and coord._keep_alive_task is None
+    assert not coord.config_entry._background_tasks
+
+
+async def test_packet_write_cannot_use_a_client_after_shutdown(coord):
+    client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock(side_effect=BleakError("disconnect failed")))
+    coord._client = client
+    await coord.async_shutdown()
+
+    async with coord._lock:
+        with pytest.raises(BleakError, match="shut down"):
+            await coord._async_write_packet(client, build_power(True), arm_expected=True)
+
+    client.write_gatt_char.assert_not_awaited()
+    assert not coord._expected_state and not coord.control_write_attempts
 
 
 async def test_keep_alive_retries_identity_until_bounded(coord):

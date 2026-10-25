@@ -20,6 +20,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .advertisement import parse_govee_advertisement
 from .ble_connection import (
+    CONNECTION_SETUP_TIMEOUT,
     RETRY_BACKOFF_SECONDS,
     VALIDATION_DISCONNECT_TIMEOUT,
     async_clear_gatt_cache,
@@ -112,7 +113,6 @@ from .video_applicability import (
 )
 
 EFFECT_SEQUENCE_ATTEMPTS = 3
-EFFECT_SEQUENCE_CONNECT_TIMEOUT = 8.0
 UPLOAD_ACK_TIMEOUT = 2.0
 
 _LOGGER = logging.getLogger(__name__)
@@ -325,7 +325,9 @@ class GoveeBLECoordinator(
         self._state_read_available = False
         self._first_refresh_done = False
         self._model_reload_scheduled = False
-        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop)
+        self._cancel_hass_stop: CALLBACK_TYPE | None = hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP, self._handle_hass_stop
+        )
         self._init_dreamview()
         self._apply_h6102_context(firmware=h6102_firmware, firmware_source=h6102_firmware_source, pact=h6102_pact)
         self._resolve_device_profile()
@@ -690,10 +692,27 @@ class GoveeBLECoordinator(
 
     @callback
     def _handle_hass_stop(self, _event: Event) -> None:
+        self._cancel_hass_stop = None
         self._stop_keep_alive()
         if self._cancel_disconnect:
             self._cancel_disconnect()
             self._cancel_disconnect = None
+
+    async def async_shutdown(self) -> None:
+        """Release entry-owned BLE work after unload or failed setup."""
+        await super().async_shutdown()
+        if self._cancel_hass_stop is not None:
+            self._cancel_hass_stop()
+            self._cancel_hass_stop = None
+        self._stop_keep_alive()
+        if self._cancel_disconnect is not None:
+            self._cancel_disconnect()
+            self._cancel_disconnect = None
+        try:
+            async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
+                await self.disconnect()
+        except TimeoutError:
+            _LOGGER.warning("Timed out cleaning up the Govee %s connection", self.model)
 
     async def _async_update_data(self) -> dict[str, Any]:
         first_refresh = not self._first_refresh_done
@@ -762,7 +781,12 @@ class GoveeBLECoordinator(
     def _state_snapshot(self) -> dict[str, Any]:
         return {field: getattr(self, field) for field in _CORE_STATE_FIELDS}
 
+    def _require_not_shutdown(self) -> None:
+        if self._shutdown_requested:
+            raise BleakError("Govee coordinator has been shut down")
+
     async def _ensure_connected(self) -> BleakClient:
+        self._require_not_shutdown()
         try:
             self._require_not_dreamview_claimed()
         except BleakError:
@@ -811,6 +835,7 @@ class GoveeBLECoordinator(
                 disconnected_callback=self._disconnected_callback,
                 use_services_cache=not force_fresh_services,
             )
+            self._require_not_shutdown()
             self._require_not_dreamview_claimed()
             self._reset_disconnect_timer()
             await self._encryption.async_select(
@@ -818,13 +843,16 @@ class GoveeBLECoordinator(
                 advertised=self._advertised_encryption,
                 plaintext_evidence=self._advertised_plaintext and not self._advertised_encryption,
             )
+            self._require_not_shutdown()
             self._require_not_dreamview_claimed()
             if self._client is not client or not client.is_connected:
                 raise GoveeCryptoError("disconnected_during_selection")
             if self.profile.requires_notifications or self._encryption.version:
                 await self._start_notify()
+                self._require_not_shutdown()
                 self._require_not_dreamview_claimed()
             await self._encryption.async_negotiate(client)
+            self._require_not_shutdown()
             self._require_not_dreamview_claimed()
             if self._client is not client or not client.is_connected:
                 raise GoveeCryptoError("disconnected_during_setup")
@@ -840,13 +868,16 @@ class GoveeBLECoordinator(
                     if field in self._authorization_identity_fields() and self.profile.can_read(domain)
                 }
                 await self._send_identity_queries()
+                self._require_not_shutdown()
                 self._require_not_dreamview_claimed()
                 # Reconnect invalidates authorization. Let real notifications requalify
                 # guards before returning, but missing identity must not fail basic setup.
                 await self._wait_for_revisions({}, identity_baselines, time.monotonic() + IDENTITY_QUERY_TIMEOUT)
+                self._require_not_shutdown()
                 self._require_not_dreamview_claimed()
                 if self.profile.configured_string_counts:
                     await self._read_configured_strings(client, deadline=time.monotonic() + IDENTITY_QUERY_TIMEOUT)
+                    self._require_not_shutdown()
                     self._require_not_dreamview_claimed()
             if self._client is not client or not client.is_connected or not self._encryption.ready:
                 raise GoveeCryptoError("disconnected_during_setup")
@@ -1173,6 +1204,7 @@ class GoveeBLECoordinator(
     ) -> None:
         """Write on the caller's connection without changing its transaction policy."""
         try:
+            self._require_not_shutdown()
             self._require_not_dreamview_claimed()
         except BleakError:
             await self._disconnect_locked()
@@ -1203,8 +1235,9 @@ class GoveeBLECoordinator(
         if before_write is not None:
             before_write()
         try:
+            self._require_not_shutdown()
             self._require_not_dreamview_claimed()
-        except DreamviewClaimedError:
+        except BleakError:
             await self._disconnect_locked()
             raise
         packet_validator(packet, self.profile)
@@ -1590,7 +1623,7 @@ class GoveeBLECoordinator(
 
         async with async_control_intent(self, ControlIntent.USER):
             try:
-                async with asyncio.timeout(EFFECT_SEQUENCE_CONNECT_TIMEOUT + timeout):
+                async with asyncio.timeout(CONNECTION_SETUP_TIMEOUT + timeout):
                     async with self._lock:
                         await self._ensure_connected()
                     qualified()
@@ -2334,7 +2367,7 @@ class GoveeBLECoordinator(
                 await self._disconnect_if_current_locked(client)
             return False
 
-    async def async_preview_preflight(self, *, timeout: float = 8.0) -> None:
+    async def async_preview_preflight(self, *, timeout: float = 2 * CONNECTION_SETUP_TIMEOUT) -> None:
         if self.hass.is_stopping:
             raise RuntimeError("Home Assistant is stopping")
         deadline = asyncio.get_running_loop().time() + timeout
@@ -2483,7 +2516,7 @@ class GoveeBLECoordinator(
                     future: asyncio.Future[bool] | None = None
                     try:
                         if writer is None:
-                            async with asyncio.timeout(EFFECT_SEQUENCE_CONNECT_TIMEOUT):
+                            async with asyncio.timeout(CONNECTION_SETUP_TIMEOUT):
                                 client = await self._ensure_connected()
                         else:
                             if self._client is None or not self._client.is_connected:
@@ -2756,11 +2789,16 @@ class GoveeBLECoordinator(
         return all(getattr(self, field) == expected for field, expected in expectations.items())
 
     def _start_keep_alive(self) -> None:
+        self._require_not_shutdown()
         self._stop_keep_alive()
         self._identity_retries = 0
-        self._keep_alive_task = self.hass.async_create_background_task(
-            self._keep_alive_loop(), name=f"{DOMAIN} keep-alive {self.address}"
-        )
+        name = f"{DOMAIN} keep-alive {self.address}"
+        if self.config_entry is not None:
+            self._keep_alive_task = self.config_entry.async_create_background_task(
+                self.hass, self._keep_alive_loop(), name
+            )
+        else:
+            self._keep_alive_task = self.hass.async_create_background_task(self._keep_alive_loop(), name)
 
     def _stop_keep_alive(self) -> None:
         if self._keep_alive_task and not self._keep_alive_task.done():
