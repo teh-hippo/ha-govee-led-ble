@@ -11,8 +11,8 @@ from custom_components.ha_govee_led_ble import effect_contracts
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, get_profile
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
-    H6199_DIY_EFFECTS,
     H6199_PALETTE_DIY_APPLY_CODE,
+    H6199_PALETTE_DIY_FAMILIES,
     MODEL_EFFECT_CATALOGUES,
     WORKSHOP_PROTOCOL_FIXTURES,
     resolve_catalogue_template,
@@ -236,26 +236,24 @@ def test_multi_encoder_round_trips_generated_fields() -> None:
     assert [(pair.family, pair.variant) for pair in parsed.body.pairs] == [(0, 1), (2, 3)]
 
 
-@pytest.mark.parametrize("effect", H6199_DIY_EFFECTS, ids=lambda effect: effect.id)
-def test_h6199_compiler_matches_every_visible_family_and_variation(effect) -> None:
+@pytest.mark.parametrize(
+    ("label", "family", "variant"),
+    [
+        pytest.param(family.label, family.family, variation.variant, id=f"{family.id}-{variation.id}")
+        for family in H6199_PALETTE_DIY_FAMILIES
+        for variation in family.variations
+    ],
+)
+def test_h6199_compiler_matches_every_visible_family_and_variation(label, family, variant) -> None:
     palette = ((255, 0, 0), (0, 0, 255))
-    item = LibraryItem.new(
-        effect.label,
-        PaletteDiyEffect(
-            "H6199",
-            effect.family,
-            effect.variant,
-            50,
-            palette,
-        ),
-    )
+    item = LibraryItem.new(label, PaletteDiyEffect("H6199", family, variant, 50, palette))
 
     compiled = compile_h6199(item)
     parsed = H6199EffectUpload(KaitaiStream(io.BytesIO(reassemble_a3(compiled.upload_packets))))
     parsed._read()
 
-    assert int(parsed.content.family) == effect.family
-    assert parsed.content.variant == effect.variant
+    assert int(parsed.content.family) == family
+    assert parsed.content.variant == variant
     assert parsed.content.speed == 50
     assert [(colour.red, colour.green, colour.blue) for colour in parsed.content.palette] == list(palette)
     assert compiled.activation_packet == bytes.fromhex("33050491010200000000000000000000000000a0")
