@@ -131,20 +131,14 @@ _.async_apply_saved_effect  # effect_application.py
 _.async_flush  # effect_active_workspace.py, effect_identity.py, effect_user_state.py
 _.async_reconcile  # effect_runtime.py
 _.async_wait_idle  # effect_preview.py
-CANONICAL_ENCODER_ONLY  # effect_contracts.py
 _._control_lock  # coordinator.py
 FRONTEND_APPLY  # effect_diagnostics.py
-h6102_outbound_transform  # generated_protocol_adapter.py
 HIDDEN  # effect_contracts.py
 MUSIC_MODE_SLUGS  # const.py
-OPAQUE  # effect_contracts.py
 _.open_session  # effect_preview.py
 parse_scene_body_param  # generated_protocol_adapter.py
 parse_scene_type1_body_param  # generated_protocol_adapter.py
 parse_status  # generated_protocol_adapter.py
-RAW_PRESERVATION  # effect_contracts.py
 SCENES  # scenes.py
-STRUCTURAL_DEFINITION_ONLY  # effect_contracts.py
-STRUCTURAL_PARSER_ONLY  # effect_contracts.py
 WHITE_BALANCE_RESET  # h6199_calibration.py
 WORKSHOP_PROTOCOL_FIXTURES  # effect_catalogue.py

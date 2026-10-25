@@ -71,9 +71,6 @@ from .protocol_h6199 import (
     INSTALLATION_DIRECTIONS,
     build_h6199_scene,
 )
-from .protocol_transforms import (
-    h6102_outbound_transform_for,
-)
 from .transport import (
     A1_02_COMMAND,
     A1_02_PREFIX,
@@ -1842,6 +1839,3 @@ def _build_h6076_music_selector(
     selector.settings = settings
     root.selector = selector
     return _serialize_xor(root)
-
-
-h6102_outbound_transform = h6102_outbound_transform_for()

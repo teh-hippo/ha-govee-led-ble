@@ -62,10 +62,6 @@ class CompilerDeployerStrategy(StrEnum):
     H6199_CUSTOM_ENGINE = "h6199_custom_engine"
     MODEL_SCENE_ENGINE = "model_scene_engine"
     COORDINATOR_WRITER = "coordinator_writer"
-    CANONICAL_ENCODER_ONLY = "canonical_encoder_only"
-    STRUCTURAL_DEFINITION_ONLY = "structural_definition_only"
-    STRUCTURAL_PARSER_ONLY = "structural_parser_only"
-    RAW_PRESERVATION = "raw_preservation"
     A3_EFFECT_UPLOAD = "a3_effect_upload"
     H6179_A1_EFFECT_UPLOAD = "h6179_a1_effect_upload"
 
@@ -85,7 +81,6 @@ class PhysicalValidationState(StrEnum):
 class EvidenceClassification(StrEnum):
     DETERMINISTIC = "deterministic"
     STRUCTURAL = "structural"
-    OPAQUE = "opaque"
     LIVE = "live"
 
 
