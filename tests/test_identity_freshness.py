@@ -10,8 +10,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.ha_govee_led_ble.const import DOMAIN, MODEL_PROFILES, ReadDomain, VideoFirmwareCondition
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.effect_contracts import CapabilityState
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_firmware_query, build_hardware_query
-from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_subordinate_query
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_firmware_query,
+    build_hardware_query,
+    build_subordinate_query,
+)
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_control_states
 from tests.test_video_semantics import alternate
@@ -55,7 +58,7 @@ def identity(hass, monkeypatch, request):
         if opcode == 0x06
         else build_hardware_query("H7000")
         if opcode == 0x07
-        else build_h6199_subordinate_query(opcode)
+        else build_subordinate_query(opcode, "H6199")
     )
     monkeypatch.setattr(coordinator, "_start_keep_alive", MagicMock())
     return coordinator, field, opcode, query

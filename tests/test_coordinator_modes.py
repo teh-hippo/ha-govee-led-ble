@@ -13,6 +13,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_music_mode,
     build_power,
     build_scene_activation,
+    build_video_mode,
 )
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
@@ -22,7 +23,6 @@ from custom_components.ha_govee_led_ble.light_commands import (
 from custom_components.ha_govee_led_ble.light_services import apply_active_video_mode
 from custom_components.ha_govee_led_ble.music_commands import build_music_params
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
-from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENE_ENTRIES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from tests.test_music_commands import _music_transport
@@ -302,7 +302,7 @@ async def test_apply_active_video_mode_requires_readback(h6199):
     ):
         assert await apply_active_video_mode(h6199, mode="game", requested_values=values) is True
     client.write_gatt_char.assert_awaited_once_with(
-        WRITE_UUID, build_h6199_video(False, True, 63, True, 27), response=False
+        WRITE_UUID, build_video_mode("game", False, 63, True, 27, "H6199"), response=False
     )
     assert h6199.video_mode == "game"
     assert {field: getattr(h6199, f"video_{field}") for field in values} == values
@@ -331,8 +331,8 @@ async def test_apply_active_video_mode_powers_on_and_raises_after_retry(h6199):
 
     assert [entry.args[1] for entry in client.write_gatt_char.await_args_list] == [
         build_power(True, "H6199"),
-        build_h6199_video(True, False, 100, False, 100),
-        build_h6199_video(True, False, 100, False, 100),
+        build_video_mode("movie", True, 100, False, 100, "H6199"),
+        build_video_mode("movie", True, 100, False, 100, "H6199"),
     ]
     assert h6199.is_on is True
     assert (

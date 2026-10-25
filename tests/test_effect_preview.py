@@ -67,12 +67,12 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen,
     build_power,
     build_relative_brightness,
+    build_video_mode,
     build_white_balance,
 )
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
 from custom_components.ha_govee_led_ble.native_scenes import encode_authored_scene_body
 from custom_components.ha_govee_led_ble.protocol_core import MusicBody
-from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES, SceneEntry
 from custom_components.ha_govee_led_ble.transport import reassemble_a3, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -1333,7 +1333,7 @@ async def test_snapshot_profile_previews_use_preview_transport(
         calls = coordinator.async_preview_write.await_args_list
         assert [entry.args[0] for entry in calls] == [
             build_power(True, model),
-            build_h6199_video(True, False, 70, True, 40),
+            build_video_mode("movie", True, 70, True, 40, "H6199"),
             build_white_balance(compiled.white_balance_wire[0], compiled.white_balance_wire[1], model),
             build_relative_brightness(80, 60, 55, 45, model),
             build_blank_screen(False, model, 2, 10, 120),

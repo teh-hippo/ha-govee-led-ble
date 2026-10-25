@@ -60,7 +60,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_command,
 )
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect, encode_workshop_effect
-from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_palette_diy_envelope
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_palette_diy_envelope, build_h6199_scene
 from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 
 H = bytes.fromhex
@@ -265,7 +265,7 @@ def test_h6199_compiler_matches_every_visible_family_and_variation(effect) -> No
 def test_h6199_activation_encoder_uses_workshop_slot() -> None:
     expected = bytes.fromhex("33050491010200000000000000000000000000a0")
 
-    assert proto.build_h6199_palette_diy_activation(401, 2) == expected
+    assert build_h6199_scene(401, 2) == expected
 
 
 def test_h6179_compiler_uses_a1_transport_and_approved_activation_code() -> None:

@@ -86,7 +86,6 @@ from custom_components.ha_govee_led_ble.light_services import (
 from custom_components.ha_govee_led_ble.music_commands import prepare_music_request
 from custom_components.ha_govee_led_ble.music_semantics import music_variant
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
-from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENE_LABELS, MODEL_SCENES, SCENE_ENTRIES, SCENES
 from custom_components.ha_govee_led_ble.transport import xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -1709,7 +1708,7 @@ async def test_turn_on_video_effect_is_first_class(h6199_light, mock_h6199_coord
     co.video_sound_effects_softness = 27
     co.refresh_state = AsyncMock(side_effect=[False, True])
     await h6199_light.async_turn_on(effect=effect)
-    packet = build_h6199_video(False, mode == "game", 63, True, 27)
+    packet = build_video_mode(mode, False, 63, True, 27, "H6199")
     assert [call.args[0] for call in co.send_command.call_args_list] == [
         packet,
         packet,

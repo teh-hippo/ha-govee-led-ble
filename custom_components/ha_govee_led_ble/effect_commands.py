@@ -16,7 +16,7 @@ from .h6179_effect_codec import encode_h6179_effect
 from .light_commands import SEGMENT_COUNT
 from .protocol_core import DIY_PAINTED_EFFECTS
 from .protocol_h6179 import build_h6179_diy_activation as build_h6179_activation
-from .protocol_h6199 import build_h6199_palette_diy_envelope, build_h6199_scene
+from .protocol_h6199 import build_h6199_palette_diy_envelope
 from .transport import fragment_a1_02, fragment_a3, fragment_a3_envelope
 
 type RGB = tuple[int, int, int]
@@ -116,14 +116,6 @@ def build_h6199_palette_diy(
     _validate_palette(palette)
     envelope = build_h6199_palette_diy_envelope(family, variant, speed, tuple(palette))
     return fragment_a3_envelope(envelope)
-
-
-def build_h6199_palette_diy_activation(scene_code: int, music_code: int) -> bytes:
-    if not isinstance(scene_code, int) or not 0 <= scene_code <= 0xFFFF:
-        raise ValueError("scene code must be an integer from 0 to 65535")
-    if not isinstance(music_code, int) or not 0 <= music_code <= 0xFFFF:
-        raise ValueError("music code must be an integer from 0 to 65535")
-    return build_h6199_scene(scene_code, music_code)
 
 
 def _frame_type04(body: bytes, a1_selector: int | None) -> list[bytes]:

@@ -68,12 +68,6 @@ def parse_h6199_control(generated: Any) -> dict[str, int | str | None]:
     return {}
 
 
-def build_h6199_subordinate_query(domain: int) -> bytes:
-    from .generated_protocol_adapter import build_subordinate_query
-
-    return build_subordinate_query(domain, "H6199")
-
-
 def h6199_diy_padding_len(palette_size: int) -> int:
     """Return the zero padding required by the captured two-chunk DIY envelope."""
     if not isinstance(palette_size, int) or isinstance(palette_size, bool) or palette_size < 0:
@@ -144,15 +138,3 @@ def build_h6199_scene(scene_code: int, music_code: int = 0) -> bytes:
     mode.detail = detail
     root.body = mode
     return _serialize_xor(root)
-
-
-def build_h6199_video(
-    full_screen: bool,
-    game_mode: bool,
-    saturation: int,
-    sound_effects: bool,
-    softness: int,
-) -> bytes:
-    from .generated_protocol_adapter import build_video_mode
-
-    return build_video_mode("game" if game_mode else "movie", full_screen, saturation, sound_effects, softness, "H6199")

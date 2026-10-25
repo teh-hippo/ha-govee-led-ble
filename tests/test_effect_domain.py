@@ -78,6 +78,7 @@ from custom_components.ha_govee_led_ble.effect_limits import (
 )
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_h617a_scene
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_workshop_effect
+from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 
 
 def _layered_effect() -> LayeredEffect:
@@ -677,7 +678,7 @@ def test_workshop_compiler_reproduces_fixture_body_with_evidenced_model_activati
     assert compiled.selector_kind == "scene"
     assert compiled.activation_mode.value == "custom"
     if model == "H6199":
-        assert compiled.activation_packet == effect_commands.build_h6199_palette_diy_activation(
+        assert compiled.activation_packet == build_h6199_scene(
             H6199_WORKSHOP_APPLY_CODE,
             0,
         )

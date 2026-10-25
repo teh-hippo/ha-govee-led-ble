@@ -61,9 +61,8 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     observable_signature_for_compiled,
     resolve_diy_code,
 )
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_power, build_video_mode
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_catalogue_layered_scene
-from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import SCENE_ENTRIES
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from tests.storage_test_double import InMemoryVersionedDocumentStore
@@ -1329,7 +1328,7 @@ async def test_video_deployment_cancellation_recovers_only_after_physical_attemp
         assert interrupted.error_code == "operation_cancelled"
         assert interrupted.prior_state == record.prior_state
         assert coordinator.control_write_attempts == len(controls) == int(attempted)
-        assert controls == ([build_h6199_video(True, False, 100, False, 100)] if attempted else [])
+        assert controls == ([build_video_mode("movie", True, 100, False, 100, "H6199")] if attempted else [])
         assert restore.await_count == int(attempted)
         if attempted:
             restore.assert_awaited_once_with(record.prior_state, overwritten_diy_code=None)
@@ -2749,7 +2748,7 @@ async def test_reduced_video_profile_skips_unsupported_companion_workflows(
     )
 
     client.write_gatt_char.assert_awaited_once_with(
-        WRITE_UUID, build_h6199_video(True, False, 88, False, 50), response=False
+        WRITE_UUID, build_video_mode("movie", True, 88, False, 50, "H6199"), response=False
     )
     assert coordinator.video_mode == "movie"
     assert call(expected_on=True, expected_video_mode="movie") in coordinator.refresh_state.await_args_list

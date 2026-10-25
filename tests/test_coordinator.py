@@ -60,6 +60,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_relative_brightness_query,
     build_scene_activation,
     build_segment_query,
+    build_subordinate_query,
     build_video_mode,
     build_white_balance,
     build_white_balance_query,
@@ -79,7 +80,6 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.native_scenes import build_native_scene_packets
 from custom_components.ha_govee_led_ble.protocol_core import H6199StatusReply, StatusReply
-from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_subordinate_query, build_h6199_video
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID, xor_checksum
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
@@ -1060,8 +1060,8 @@ async def test_outbound_workflows_share_profile_transform(coord, h6199, model, w
             [
                 build_hardware_query(model),
                 build_firmware_query(model),
-                build_h6199_subordinate_query(0x20),
-                build_h6199_subordinate_query(0x21),
+                build_subordinate_query(0x20, "H6199"),
+                build_subordinate_query(0x21, "H6199"),
             ]
             if model == "H6199"
             else [build_hardware_query(model)]
@@ -2342,7 +2342,9 @@ def test_video_grammar_owns_writers_and_ack_independently_of_basic_grammars(
         ),
     )
 
-    assert build_video_mode("game", False, 42, True, 55, model) == build_h6199_video(False, True, 42, True, 55)
+    assert build_video_mode("game", False, 42, True, 55, model) == bytes.fromhex(
+        "33050000012a013700000000000000000000002b"
+    )
     # White-balance reads require their own capability and use the command query grammar.
     with pytest.raises(ValueError, match="readback"):
         build_white_balance_query(model)
@@ -2608,7 +2610,7 @@ async def test_send_command_arms_expected_state(coord, h6199):
         assert "rgb_color" not in coord._expected_state
 
     with patch.object(h6199, "_ensure_connected", return_value=c):
-        await h6199.send_command(build_h6199_video(False, True, 60, False, 100))
+        await h6199.send_command(build_video_mode("game", False, 60, False, 100, "H6199"))
         assert h6199._expected_state["video_mode"][0] == "game"
         assert h6199._expected_state["video_full_screen"][0] is False
         assert h6199._expected_state["video_saturation"][0] == 60
@@ -4317,8 +4319,8 @@ async def test_h6199_identity_queries_reconfirm_all_revision_fields_on_a_new_con
     assert [item.args[1] for item in c.write_gatt_char.await_args_list] == [
         build_hardware_query("H6199"),
         build_firmware_query("H6199"),
-        build_h6199_subordinate_query(0x20),
-        build_h6199_subordinate_query(0x21),
+        build_subordinate_query(0x20, "H6199"),
+        build_subordinate_query(0x21, "H6199"),
     ]
     assert all(packet[1] != 0x14 for packet in (item.args[1] for item in c.write_gatt_char.await_args_list))
 
@@ -4333,7 +4335,7 @@ async def test_h6199_identity_queries_reconfirm_all_revision_fields_on_a_new_con
 
     c.write_gatt_char.assert_awaited_once_with(
         WRITE_UUID,
-        build_h6199_subordinate_query(0x21),
+        build_subordinate_query(0x21, "H6199"),
         response=False,
     )
 
@@ -4550,7 +4552,7 @@ def test_expectations_from_packet_covers_every_command_family():
     assert "music_calm" not in auto
 
     video = expectations_from_packet(
-        build_h6199_video(False, True, 42, True, 55),
+        build_video_mode("game", False, 42, True, 55, "H6199"),
         "H6199",
     )
     assert video["video_mode"] == "game"
@@ -4665,7 +4667,7 @@ def test_unknown_model_encoders_fail_closed() -> None:
 
 def test_h6199_subordinate_queries_exclude_identity_domain() -> None:
     with pytest.raises(ValueError, match="0x20 or 0x21"):
-        build_h6199_subordinate_query(0x14)
+        build_subordinate_query(0x14, "H6199")
 
 
 async def test_h66a0_setup_survives_identity_replies_inside_the_refresh(hass, monkeypatch, virtual_clock):
