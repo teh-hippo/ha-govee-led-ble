@@ -250,7 +250,7 @@ async def test_camera_absent_hides_video_effects(camera_device, state):
     c = camera_device
     observe_camera(c, state)
     light = GoveeBLELight(c)
-    assert "Video: Movie" not in light.effect_list
+    assert not {"Movie", "Game"} & set(light.effect_list)
     with pytest.raises(HomeAssistantError) as error:
         await light.async_turn_on(effect="Video: Movie")
     assert error.value.translation_key == "unknown_effect"
@@ -275,3 +275,24 @@ async def test_video_rechecks_camera_after_connect(camera_device, monkeypatch, s
         with pytest.raises(ValueError, match="Camera"):
             await apply_active_video_mode(c, mode="movie", requested_values={}, verify=False)
         assert client.write_gatt_char.await_count == 0
+
+
+@pytest.mark.parametrize("state", ["absent", "incompatible"])
+async def test_video_effect_reports_camera_reason_when_camera_drops_after_listing(camera_device, monkeypatch, state):
+    c = camera_device
+    observe_camera(c, "healthy")
+    client = c._client
+
+    async def connect():
+        observe_camera(c, state)
+        return client
+
+    monkeypatch.setattr(c, "_ensure_connected", connect)
+    monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
+    light = GoveeBLELight(c)
+    assert {"Movie", "Game"} <= set(light.effect_list)
+    with pytest.raises(HomeAssistantError) as error:
+        await light.async_turn_on(effect="Video: Movie")
+    key = error.value.translation_key
+    assert key == f"camera_{state}", f"camera={state}, error={key}, cause={error.value.__cause__}"
+    assert client.write_gatt_char.await_count == 0

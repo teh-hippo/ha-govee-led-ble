@@ -256,7 +256,7 @@ async def test_deployment_bridge_records_bounded_transition_summary() -> None:
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     initial = await repository.async_load()
     history = _history()
-    bridge = EffectDeploymentDiagnosticBridge(repository, history, initial)
+    EffectDeploymentDiagnosticBridge(repository, history, initial)
     pending = _deployment()
 
     await repository.async_put(
@@ -314,7 +314,6 @@ async def test_deployment_bridge_records_bounded_transition_summary() -> None:
     )
 
     events = history.snapshot(config_entry_id="entry-a")["events"]
-    bridge.close()
 
     assert [event["stage"] for event in events] == [
         "compilation",
@@ -333,7 +332,7 @@ async def test_scene_compiler_evidence_is_diagnostic_only() -> None:
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     initial = await repository.async_load()
     history = _history()
-    bridge = EffectDeploymentDiagnosticBridge(repository, history, initial)
+    EffectDeploymentDiagnosticBridge(repository, history, initial)
     scene = replace(
         _deployment(DeploymentPhase.COMPILING),
         target_mode="scene",
@@ -346,7 +345,6 @@ async def test_scene_compiler_evidence_is_diagnostic_only() -> None:
 
     await repository.async_put(scene, expected_version=None)
     events = history.snapshot(config_entry_id="entry-a")["events"]
-    bridge.close()
 
     assert [event["code"] for event in events] == [
         "artifact_compiled",
@@ -360,7 +358,7 @@ async def test_upload_only_application_emits_bounded_evidence_gap() -> None:
     repository = EffectDeploymentRepository(InMemoryVersionedDocumentStore())
     initial = await repository.async_load()
     history = _history()
-    bridge = EffectDeploymentDiagnosticBridge(repository, history, initial)
+    EffectDeploymentDiagnosticBridge(repository, history, initial)
 
     await repository.async_put(
         replace(
@@ -375,7 +373,6 @@ async def test_upload_only_application_emits_bounded_evidence_gap() -> None:
     )
 
     event = history.snapshot(config_entry_id="entry-a")["events"][0]
-    bridge.close()
 
     assert event["stage"] == "evidence_gap"
     assert event["code"] == "application_write_completed"
