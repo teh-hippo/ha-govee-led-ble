@@ -903,20 +903,6 @@ class EffectDeploymentRepository:
         )
         return max(matching, key=lambda record: record.updated_at, default=None)
 
-    def latest_for_scene_code(
-        self,
-        config_entry_id: str,
-        scene_code: int,
-    ) -> DeploymentRecord | None:
-        matching = tuple(
-            record
-            for record in self.snapshot().records
-            if record.config_entry_id == config_entry_id
-            and record.target_mode == "scene"
-            and record.diy_code == scene_code
-        )
-        return max(matching, key=lambda record: record.updated_at, default=None)
-
     def latest_for_profile(
         self,
         config_entry_id: str,

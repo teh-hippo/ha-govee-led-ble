@@ -65,7 +65,6 @@ MAX_MULTI_EFFECTS = 4
 H617A_SEGMENT_COUNT = 15
 
 PALETTE_CONFIG_RESERVED_MASK = 0x08
-VIDEO_PROFILE_MODES = frozenset({"movie", "game"})
 H6179_DIY_EFFECT_PAIRS = frozenset({(0, 0), (1, 0), (2, 0)})
 
 type RGB = tuple[int, int, int]
