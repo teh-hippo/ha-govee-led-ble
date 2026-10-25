@@ -1111,7 +1111,7 @@ wheels = [
 
 [[package]]
 name = "homeassistant"
-version = "2026.10.3"
+version = "2026.10.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiodns" },
@@ -1163,9 +1163,9 @@ dependencies = [
     { name = "yarl" },
     { name = "zeroconf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/d9/a7a72e1244f7271283a6c2c35681fbc402370b21f2a4b6068326eceabb17/homeassistant-2026.10.3.tar.gz", hash = "sha256:38ff6ebaa22ea012c427d3a1349a944cb3b2e7d5733c0b2c67b0e6ee3a62250d", size = 38545254, upload-time = "2026-10-23T19:05:27.224Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/b1/d77d6ecc16eaf90f7913516293cdb00f354e305a126ab185da0f0dbf916a/homeassistant-2026.10.4.tar.gz", hash = "sha256:8410fecb434ab94b3f7724cd80584050f0ceeb856c16ee70202c24037d62238a", size = 38675928, upload-time = "2026-10-24T20:32:27.334Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/9b/bb49221ae780365fbae8f9011c8705b8f5cac0f0af43917e5df0007a9ebb/homeassistant-2026.10.3-py3-none-any.whl", hash = "sha256:713de3115dfeea3d058c7c5c77aeb1b1013a6cc93c71486ef82e64519cc67fb9", size = 62554524, upload-time = "2026-10-23T19:05:22.129Z" },
+    { url = "https://files.pythonhosted.org/packages/58/5c/5eab85bd8b1bcf059f9fd530ef3244af364b571026cb89919de3a0cccb1b/homeassistant-2026.10.4-py3-none-any.whl", hash = "sha256:71843060980a763187d856a8ff170640f1e287a7b741334cd838c81404f1f452", size = 62697538, upload-time = "2026-10-24T20:32:19.662Z" },
 ]
 
 [[package]]
@@ -2146,7 +2146,7 @@ wheels = [
 
 [[package]]
 name = "pytest-homeassistant-custom-component"
-version = "0.13.374"
+version = "0.13.375"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohasupervisor" },
@@ -2180,9 +2180,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "unidiff" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/22/ef/29aef380b790ba464bb3b2e904003ce0a17335b9c0578e4e9f8341dc940f/pytest_homeassistant_custom_component-0.13.374.tar.gz", hash = "sha256:e4fc3abafe500788484c952390ec5a66a6c3d1e1cce1eb9e87dcc69b2ef817ef", size = 82247, upload-time = "2026-10-24T09:16:15.66Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/5e/beb123e27164003d4eab0df02a6d45436eb981594ec5f36ab9dbdebc9995/pytest_homeassistant_custom_component-0.13.375.tar.gz", hash = "sha256:01e30574d448d8a0126f89d42e12ef0866bdc181fd136c706bc23458446df26c", size = 82227, upload-time = "2026-10-25T09:33:11.035Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/1c/a8aa8506ff29c628d011c9ebea015f7f249983112f2532261e9a18d1c0d6/pytest_homeassistant_custom_component-0.13.374-py3-none-any.whl", hash = "sha256:23d226decaed1d67ba23b3f7a95cc5f580837ae0fc7f81f14669a7140086ea98", size = 88186, upload-time = "2026-10-24T09:16:14.355Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/e2/96a89f551748413f3047fa712829cd423d375424a9155fa7ac598607df8e/pytest_homeassistant_custom_component-0.13.375-py3-none-any.whl", hash = "sha256:ceed1b1928fcd5535490180866aeb92385b11e49ab28251c5cedbe6abd20aa35", size = 88185, upload-time = "2026-10-25T09:33:09.561Z" },
 ]
 
 [[package]]
@@ -2754,19 +2754,19 @@ wheels = [
 
 [[package]]
 name = "winrt-runtime"
-version = "4.0.2"
+version = "4.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/66/c7/61b1149b412c5b38879be3216390db2d5f59a5a967929b430d3d7d6f0d7d/winrt_runtime-4.0.2.tar.gz", hash = "sha256:a7788a9368d3fc11c320d2fc2ba28acb096a4fe21764f0dde25cdd275113decf", size = 440902, upload-time = "2026-10-24T17:00:24.611Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/4b/69b1aa90c4b601d4699b1463c5de4887e1f886567df502b67e9474f7ead2/winrt_runtime-4.0.3.tar.gz", hash = "sha256:b04877a5b1f2ca67084d62731546f7b512c8291e2b70b95def82a1c4d0bfe993", size = 443382, upload-time = "2026-10-24T23:57:14.112Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/eb/d99b4d55ab9c9c208f273bd6a8367a8e7a48d27cc46bab2de92b28115042/winrt_runtime-4.0.2-cp315-cp315-win32.whl", hash = "sha256:6d8d4b5f49441a22cbec5afc296fd35feb8c2450b470d152103a3b3caf51f1d6", size = 208417, upload-time = "2026-10-24T17:00:17.964Z" },
-    { url = "https://files.pythonhosted.org/packages/03/f2/b56428cc3546d9f4ed376964e1c44ba71cb0e5afd992cccef83b17b59511/winrt_runtime-4.0.2-cp315-cp315-win_amd64.whl", hash = "sha256:4f187e37cfd9accd8fb0405c4b83eaedfb7f4ff06c75b31c50c03b747cd0d7d5", size = 257544, upload-time = "2026-10-24T17:00:18.982Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/95/11c4d33c11c0e9da6db4a9ac773d3d6126c287871038c6d8fe2ba1eb40c6/winrt_runtime-4.0.2-cp315-cp315-win_arm64.whl", hash = "sha256:e7620448ef53097b9fff57c9df55ffef6c6809571e6b71f54d30d34d74fe7784", size = 239713, upload-time = "2026-10-24T17:00:19.973Z" },
-    { url = "https://files.pythonhosted.org/packages/4a/e9/a47f1e5f8860ff54e6c6de73495fccb91d5d1242c6a1fb505505c2777d3b/winrt_runtime-4.0.2-cp315-cp315t-win32.whl", hash = "sha256:47c14a1638e526112bcf1b85a15fd4dcea5c5f52b022e22a9270d76fd6d55df4", size = 213672, upload-time = "2026-10-24T17:00:20.947Z" },
-    { url = "https://files.pythonhosted.org/packages/d0/44/ea53a82fe9a57c598f309f7024252a91258d1f14aa88d9d9960cb7c8a5fa/winrt_runtime-4.0.2-cp315-cp315t-win_amd64.whl", hash = "sha256:232b1d658c41d2bfc0cf79d4694de967699f1c8238e8a8bcb428268119e5de62", size = 265223, upload-time = "2026-10-24T17:00:22.041Z" },
-    { url = "https://files.pythonhosted.org/packages/6f/b6/15640a76ab55f6900e94f51b1519f1de7e1a3db8b98cfca03175fc40d474/winrt_runtime-4.0.2-cp315-cp315t-win_arm64.whl", hash = "sha256:1bdf018a43bd693fea3d26a7d937022fcb15fbcf27f00f2cf071821ea49063e2", size = 248765, upload-time = "2026-10-24T17:00:23.351Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/0d/33fdf016ea1c5d08f3690e7009e189b8443b734ea340f9d2434279caf399/winrt_runtime-4.0.3-cp315-cp315-win32.whl", hash = "sha256:ff7920a2d42734c545984ef671376713ce09f8e59fc9a5b420395406e2c1eea7", size = 209064, upload-time = "2026-10-24T23:57:08.072Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/2e/8a449fd7265a143ae2c6c82f7db7bfdc685725c948abb015eb9e66d8ed77/winrt_runtime-4.0.3-cp315-cp315-win_amd64.whl", hash = "sha256:403a80372f33635851814760d1acd6d8bbdb0dedff7812203d0dd4cfba809e8b", size = 257419, upload-time = "2026-10-24T23:57:09.153Z" },
+    { url = "https://files.pythonhosted.org/packages/43/ff/1c087d14468e8b301e38ffab17a7f06299f6420838b65d1a624dd210fe4e/winrt_runtime-4.0.3-cp315-cp315-win_arm64.whl", hash = "sha256:52eb937ab71e39ddf798f16dfe47d572a8c097ac6d1eb2ddb700fc7977591241", size = 239748, upload-time = "2026-10-24T23:57:10.337Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/7a/840076f685c7e8ad46519290a3fce0c8a47dc080f7f7c2d1a6f1d3eb82e9/winrt_runtime-4.0.3-cp315-cp315t-win32.whl", hash = "sha256:325a701c70e32b31139bf650c31fa352f4eae108fb0488aad074fb7026b1e650", size = 214473, upload-time = "2026-10-24T23:57:11.432Z" },
+    { url = "https://files.pythonhosted.org/packages/54/6a/51448706d27db9bd25cdf868b6542e9a6aec652310bfec63cfcc17e02b35/winrt_runtime-4.0.3-cp315-cp315t-win_amd64.whl", hash = "sha256:f0e5ce8fc5e6453fbad7ed3197010586337a9a4d42fce29847d8a5573f29d8e9", size = 265485, upload-time = "2026-10-24T23:57:12.255Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/ff/eabe930b59c121e198ff53c1336d19d840d6cee7c9e29cec54a42758890b/winrt_runtime-4.0.3-cp315-cp315t-win_arm64.whl", hash = "sha256:9580aaf167a9e1d9d790b57e9dfaa5499c8a625bd85f3872a5097915d25f1c24", size = 248812, upload-time = "2026-10-24T23:57:13.175Z" },
 ]
 
 [[package]]
