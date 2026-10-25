@@ -4420,6 +4420,55 @@ async def test_packet_write_cannot_use_a_client_after_shutdown(coord):
     assert not coord._expected_state and not coord.control_write_attempts
 
 
+async def test_entry_shutdown_closes_an_admitted_write_that_finishes_late(coord, virtual_clock):
+    writing = asyncio.Event()
+    coord.connection_mode = "hold"
+
+    async def write(*_args, **_kwargs):
+        writing.set()
+        await asyncio.sleep(19)
+
+    client = _c(write_gatt_char=AsyncMock(side_effect=write))
+    coord._client = client
+    coord._start_keep_alive()
+    command = coord.hass.async_create_task(coord.send_command(build_power(True)))
+    await writing.wait()
+
+    await coord.config_entry._async_process_on_unload(coord.hass)
+    with pytest.raises(BleakError, match="shut down"):
+        await command
+
+    client.disconnect.assert_awaited_once_with()
+    assert coord._client is None and coord._keep_alive_task is None
+    assert coord._cancel_disconnect is None
+    assert not coord.config_entry._background_tasks
+
+
+async def test_entry_shutdown_during_stale_disconnect_does_not_start_a_connection(coord, virtual_clock):
+    disconnecting = asyncio.Event()
+
+    async def disconnect():
+        disconnecting.set()
+        await asyncio.sleep(5)
+
+    client = _c(disconnect=AsyncMock(side_effect=disconnect))
+    coord._client = client
+    with (
+        patch.object(coord, "_receive_is_stale", return_value=True),
+        patch(f"{M}.async_establish_ble_connection", new_callable=AsyncMock) as establish,
+    ):
+        command = coord.hass.async_create_task(coord.send_command(build_power(True)))
+        await disconnecting.wait()
+        await coord.config_entry._async_process_on_unload(coord.hass)
+        with pytest.raises(BleakError, match="shut down"):
+            await command
+
+    establish.assert_not_awaited()
+    client.disconnect.assert_awaited_once_with()
+    assert coord._client is None and coord._keep_alive_task is None
+    assert coord._cancel_disconnect is None
+
+
 async def test_keep_alive_retries_identity_until_bounded(coord):
     """Connect-time identity replies can be missed, so retries remain bounded."""
     coord._client = client = _c(write_gatt_char=AsyncMock(), disconnect=AsyncMock())

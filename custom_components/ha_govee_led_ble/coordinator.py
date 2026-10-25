@@ -819,6 +819,7 @@ class GoveeBLECoordinator(
             await self._disconnect_locked()
         elif self._client is not None:
             self._clear_client_state(self._client)
+        self._require_not_shutdown()
         self._require_not_dreamview_claimed()
         force_fresh_services = self.fresh_services_required
         self._connection_initializing = True
@@ -1299,6 +1300,7 @@ class GoveeBLECoordinator(
         token = self._notification_token
         try:
             await client.write_gatt_char(WRITE_UUID, wire_packet, response=False)
+            self._require_not_shutdown()
         except asyncio.CancelledError:
             if self._encryption is not None:
                 try:
@@ -1316,7 +1318,7 @@ class GoveeBLECoordinator(
         except Exception as err:
             stale_gatt = self._record_ble_failure(err)
             encrypted = self._encryption is not None and self._encryption.version
-            if stale_gatt or encrypted:
+            if stale_gatt or encrypted or self._shutdown_requested:
                 await self._disconnect_locked(clear_cache=stale_gatt)
             if encrypted:
                 if isinstance(err, BleakError):
