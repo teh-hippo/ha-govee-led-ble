@@ -294,6 +294,20 @@ def build_snapshot(raw: dict[str, Any], sku: str) -> dict[str, Any]:
     }
 
 
+def render_snapshot(snapshot: dict[str, Any]) -> str:
+    fields = []
+    for key, value in snapshot.items():
+        if key in {"categories", "effects"} and value:
+            records = ",\n".join(
+                "    " + json.dumps(record, ensure_ascii=False, separators=(",", ":")) for record in value
+            )
+            rendered = f"[\n{records}\n  ]"
+        else:
+            rendered = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        fields.append(f"  {json.dumps(key)}: {rendered}")
+    return "{\n" + ",\n".join(fields) + "\n}\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("skus", nargs="*", default=DEFAULT_SKUS)
@@ -309,7 +323,7 @@ def main() -> None:
     stale = False
     for sku in args.skus:
         snapshot = build_snapshot(fetch_library(sku), sku)
-        rendered = json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n"
+        rendered = render_snapshot(snapshot)
         path = args.out_dir / f"{sku}.json"
         if args.check:
             if not path.exists() or path.read_text(encoding="utf-8") != rendered:

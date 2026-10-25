@@ -211,7 +211,9 @@ uv run python tools/ble/refresh_scene_catalogues.py H6179
 ```
 
 Commit the full generated snapshot.  Do not copy another model's catalogue or
-hand-select a subset.  Catalogue availability proves scene identity and vendor
+hand-select a subset.  The refresh tool writes each category and effect on one
+line within the existing JSON schema to keep exact-SKU snapshots compact and
+diffable.  Catalogue availability proves scene identity and vendor
 payload data only; it does not prove transport, activation, upload, or readback
 compatibility.
 
