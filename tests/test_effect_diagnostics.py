@@ -70,7 +70,7 @@ def _deployment(phase: DeploymentPhase = DeploymentPhase.PENDING) -> DeploymentR
 def test_diagnostic_contract_redacts_credentials_addresses_documents_and_packets() -> None:
     history = _history()
     history.record(
-        DiagnosticStage.FRONTEND_APPLY,
+        DiagnosticStage.API_SERVICE,
         DiagnosticOutcome.STARTED,
         "apply_requested",
         correlation_id=CORRELATION_ID,

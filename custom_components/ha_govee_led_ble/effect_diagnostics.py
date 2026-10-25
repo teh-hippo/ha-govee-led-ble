@@ -60,7 +60,6 @@ type DiagnosticValue = str | int | float | bool | None | list["DiagnosticValue"]
 
 
 class DiagnosticStage(StrEnum):
-    FRONTEND_APPLY = "frontend_apply"
     API_SERVICE = "api_service"
     COMPILATION = "compilation"
     PACKET_PROGRESS = "packet_progress"

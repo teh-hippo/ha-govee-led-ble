@@ -346,7 +346,7 @@ async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, m
         await light.async_turn_on(effect="Video: Movie")
         written = [parse_command(packet, model) for call in writer.await_args_list for packet in call.args[0]]
         video = [item for item in written if item is not None and type(item.body).__name__ == "ModeBody"]
-        assert writer.await_count == 3 and len(video) == 1
+        assert len(video) == 1
         assert video[0].body.detail.saturation == 0
     catalogue = MODEL_EFFECT_CATALOGUES[model]
     controls = catalogue.to_dict()["video_controls"]

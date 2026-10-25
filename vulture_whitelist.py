@@ -132,7 +132,6 @@ _.async_flush  # effect_active_workspace.py, effect_identity.py, effect_user_sta
 _.async_reconcile  # effect_runtime.py
 _.async_wait_idle  # effect_preview.py
 _._control_lock  # coordinator.py
-FRONTEND_APPLY  # effect_diagnostics.py
 HIDDEN  # effect_contracts.py
 MUSIC_MODE_SLUGS  # const.py
 _.open_session  # effect_preview.py
