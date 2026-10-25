@@ -1952,9 +1952,6 @@ async def test_matching_flow_workspace_suppresses_saved_sena_selector_history(
     active_workspaces.set(workspace)
     coordinator = _coordinator()
     coordinator.diy_code = 24
-    repository.latest_for_diy_code = MagicMock(wraps=repository.latest_for_diy_code)
-    repository.latest_for_effect = MagicMock(wraps=repository.latest_for_effect)
-    repository.latest_for_profile = MagicMock(wraps=repository.latest_for_profile)
 
     observed = EffectDeploymentEngine(repository, cache, active_workspaces).reconcile_current(
         coordinator,
@@ -1970,9 +1967,6 @@ async def test_matching_flow_workspace_suppresses_saved_sena_selector_history(
     assert observed.active_effect is None
     assert cache.get("entry-a") == observed
     assert active_workspaces.get("entry-a") == workspace
-    repository.latest_for_diy_code.assert_not_called()
-    repository.latest_for_effect.assert_not_called()
-    repository.latest_for_profile.assert_not_called()
 
 
 async def test_matching_flow_workspace_replaces_persisted_sena_hint_after_restart() -> None:

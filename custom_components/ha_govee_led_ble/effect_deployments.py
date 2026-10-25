@@ -875,46 +875,6 @@ class EffectDeploymentRepository:
         except EffectNotFoundError:
             return None
 
-    def latest_for_diy_code(
-        self,
-        config_entry_id: str,
-        diy_code: int,
-    ) -> DeploymentRecord | None:
-        matching = tuple(
-            record
-            for record in self.snapshot().records
-            if record.config_entry_id == config_entry_id
-            and record.target_mode == "custom"
-            and record.diy_code == diy_code
-        )
-        return max(matching, key=lambda record: record.updated_at, default=None)
-
-    def latest_for_effect(
-        self,
-        config_entry_id: str,
-        effect: str,
-    ) -> DeploymentRecord | None:
-        matching = tuple(
-            record
-            for record in self.snapshot().records
-            if record.config_entry_id == config_entry_id
-            and record.target_mode == "scene"
-            and record.target_effect == effect
-        )
-        return max(matching, key=lambda record: record.updated_at, default=None)
-
-    def latest_for_profile(
-        self,
-        config_entry_id: str,
-        mode: str,
-    ) -> DeploymentRecord | None:
-        matching = tuple(
-            record
-            for record in self.snapshot().records
-            if record.config_entry_id == config_entry_id and record.target_mode == mode
-        )
-        return max(matching, key=lambda record: record.updated_at, default=None)
-
     async def async_detach_item(self, item_id: UUID) -> DeploymentDetachment:
         async with self._lock:
             current = self._require_loaded()
