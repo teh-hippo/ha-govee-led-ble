@@ -1,6 +1,6 @@
 """Control helpers for the Govee BLE light."""
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any
 
@@ -159,47 +159,13 @@ class _GoveeLightOwner:
 class _GoveeLightServicesMixin(_GoveeLightOwner):
     """Entity-service methods for the Govee BLE light."""
 
-    # fmt: off
-    async def _async_set_video_mode(self, mode: str, saturation: int = 100,
-            capture_region: str | None = None, full_screen: bool = True,
-            sound_effects: bool = False, sound_effects_softness: int | None = None,
-            *, values: Mapping[str, Any] | None = None) -> None:
-        # fmt: on
-        self._require_support("set_video_mode", supported=self.coordinator.profile.supports_video_mode)
-        if sound_effects:
-            self._require_support(
-                "video sound effects",
-                supported=self.coordinator.profile.supports_video_sound_effects,
-            )
-        with self._rollback():
-            c = self.coordinator
-            requested_fs = full_screen if capture_region is None else capture_region == "full"
-            resolved_fs = requested_fs if c.profile.supports_video_capture_region else c.video_full_screen
-            resolved_saturation = saturation if c.profile.supports_video_saturation else c.video_saturation
-            c.profile.validate_video_saturation(resolved_saturation)
-            supports_sound = c.profile.supports_video_sound_effects
-            resolved_sound = sound_effects and supports_sound
-            resolved_softness = (
-                c.video_sound_effects_softness if sound_effects_softness is None else sound_effects_softness
-            )
-            requested = {
-                field: value for field, value in (
-                    ("full_screen", resolved_fs), ("saturation", resolved_saturation),
-                    ("sound_effects", resolved_sound), ("sound_effects_softness", resolved_softness),
-                ) if value != getattr(c, f"video_{field}")
-            }
-            await apply_active_video_mode(c, mode=mode, requested_values=requested, parameters=values)
-        self._notify_state_changed()
-
     async def async_paint_segments(self, groups: list[dict[str, Any]], rgb_scale: int = 100) -> None:
         self._require_support(
             "paint_segments",
             supported=self.coordinator.profile.supports_segments and self.coordinator.profile.supports_rgb,
         )
         try:
-            resolved = scale_segment_groups(
-                ((group["segments"], group["rgb_color"]) for group in groups), rgb_scale
-            )
+            resolved = scale_segment_groups(((group["segments"], group["rgb_color"]) for group in groups), rgb_scale)
             # Preflight serialization before disturbing an active preview or claiming user control.
             build_segment_paint(resolved, self.coordinator.model, profile=self.coordinator.profile)
             async with self.coordinator.async_mask_transaction():

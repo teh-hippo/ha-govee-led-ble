@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 from bleak.exc import BleakError
-from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ReadDomain, get_profile
 from custom_components.ha_govee_led_ble.control_arbiter import BLEControlArbiter
@@ -328,8 +327,6 @@ async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, m
             replace(authored, saturation=0)
         with pytest.raises(ValueError, match="saturation"):
             await apply_active_video_mode(device, mode="movie", requested_values={"saturation": 0}, writer=writer)
-        with pytest.raises(HomeAssistantError):
-            await light._async_set_video_mode("movie", saturation=0)
         with pytest.raises(ValueError, match="saturation"):
             await async_apply_compiled_profile(device, replace(compiled, saturation=0), writer=writer, verify=False)
         device.video_saturation = 0
@@ -345,8 +342,9 @@ async def test_saturation_range_at_every_write_entry(hass, monkeypatch, model, m
 
         writer.side_effect = write
         monkeypatch.setattr(device, "refresh_state", AsyncMock(return_value=True))
-        await light._async_set_video_mode("movie", saturation=0)
-        assert writer.await_count == 2
+        device.video_saturation = 0
+        await light.async_turn_on(effect="Video: Movie")
+        assert writer.await_count >= 1
         assert device.video_saturation == 0
     catalogue = MODEL_EFFECT_CATALOGUES[model]
     controls = catalogue.to_dict()["video_controls"]

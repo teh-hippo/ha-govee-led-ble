@@ -246,15 +246,14 @@ async def test_camera_evidence_blocks_physical_video_write(camera_device, state)
 
 
 @pytest.mark.parametrize("state", ["absent", "incompatible"])
-async def test_video_service_reports_camera_reason(camera_device, monkeypatch, state):
+async def test_camera_absent_hides_video_effects(camera_device, state):
     c = camera_device
     observe_camera(c, state)
-    # Reproduce an unconfirmed command without waiting for BLE timeouts.
-    monkeypatch.setattr(c, "refresh_state", AsyncMock(return_value=False))
+    light = GoveeBLELight(c)
+    assert "Video: Movie" not in light.effect_list
     with pytest.raises(HomeAssistantError) as error:
-        await GoveeBLELight(c)._async_set_video_mode("movie")
-    key = error.value.translation_key
-    assert key == f"camera_{state}", f"camera={state}, error={key}, cause={error.value.__cause__}"
+        await light.async_turn_on(effect="Video: Movie")
+    assert error.value.translation_key == "unknown_effect"
     assert c._client.write_gatt_char.await_count == 0
 
 
