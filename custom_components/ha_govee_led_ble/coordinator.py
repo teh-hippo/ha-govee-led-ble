@@ -1309,13 +1309,18 @@ class GoveeBLECoordinator(
             ) & profile.read_domains
             if query_segments is True and profile.supports_segments:
                 required |= {ReadDomain.SEGMENTS}
+            remaining_segment_queries = sum(domain is ReadDomain.SEGMENTS for _, domain, _ in queries)
             for index, (query, domain, fields) in enumerate(queries):
                 if (
                     generation != self._profile_generation
-                    or authorization_generation != self._authorization_generation
                     or self._client is not client
                     or not client.is_connected
+                    or self._notification_token is not token
                 ):
+                    return False
+                if authorization_generation != self._authorization_generation:
+                    if segment_baseline and not remaining_segment_queries:
+                        break
                     return False
                 if time.monotonic() >= deadline:
                     return all(d not in required for _, d, _ in queries[index:])
@@ -1355,6 +1360,8 @@ class GoveeBLECoordinator(
                         return False
                     _LOGGER.debug("Optional %s query failed for %s", domain.value, self.address, exc_info=True)
                     continue
+                if domain is ReadDomain.SEGMENTS:
+                    remaining_segment_queries -= 1
                 if optional_baselines is not None and (
                     domain not in required or domain in _OPTIONAL_CONTROL_DOMAINS | {ReadDomain.OTHER}
                 ):
@@ -1366,9 +1373,9 @@ class GoveeBLECoordinator(
                     )
             if (
                 generation != self._profile_generation
-                or authorization_generation != self._authorization_generation
                 or self._client is not client
                 or not client.is_connected
+                or self._notification_token is not token
             ):
                 return False
             if segment_baseline:
@@ -1377,10 +1384,9 @@ class GoveeBLECoordinator(
                 # ponytail: no wire query IDs; collection prevents local overlap, not
                 # indistinguishable unsolicited/duplicate batches from the same subscription.
                 complete = await self._wait_for_revisions(segment_baseline, {}, deadline)
-                complete = complete and time.monotonic() < deadline
+                complete = complete and not remaining_segment_queries and time.monotonic() < deadline
                 if (
                     generation != self._profile_generation
-                    or authorization_generation != self._authorization_generation
                     or self._client is not client
                     or not client.is_connected
                     or self._notification_token is not token
@@ -1389,7 +1395,7 @@ class GoveeBLECoordinator(
                 self._segment_query_incomplete = not complete
                 if not complete and ReadDomain.SEGMENTS in required:
                     return False
-            return True
+            return authorization_generation == self._authorization_generation
         except BleakError:
             return False
 
