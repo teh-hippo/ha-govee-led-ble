@@ -16,6 +16,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_hardware_query,
     build_power,
     build_power_query,
+    build_segment_query,
     build_subordinate_query,
     build_white_balance_query,
 )
@@ -115,6 +116,60 @@ async def test_setup_retries_late_identity(transition_lifecycle, domain, virtual
     assert c.is_on and c.available and c.brightness_pct == 50
     assert packets.count(build_power_query(c.model)) == 2
     assert len(clients) == 1 and c._client is None
+
+
+@pytest.mark.parametrize("domain", [0x20, 0x21])
+@pytest.mark.parametrize("during_collection", [False, True])
+async def test_setup_retains_completed_segments_after_late_identity(
+    transition_lifecycle,  # noqa: F811
+    domain,
+    during_collection,
+    virtual_clock,
+):
+    c, replies, clients, packets = transition_lifecycle
+    delayed = replies.pop(build_subordinate_query(domain, c.model))
+    original = c._async_write_packet
+    timers = []
+
+    async def write(client, packet, **kwargs):
+        await original(client, packet, **kwargs)
+        if packet == build_segment_query(c.profile.segment_group_count, c.model):
+            if during_collection:
+                timers.append(
+                    asyncio.get_running_loop().call_later(0.025, c._notify_callback, None, bytearray(delayed))
+                )
+            else:
+                c._notify_callback(None, bytearray(delayed))
+
+    c._async_write_packet = write
+    try:
+        await c._async_update_data()
+        assert c.is_on and c.available and c.brightness_pct == 50
+        assert packets.count(build_power_query(c.model)) == 2
+        assert len(clients) == 1 and c._client is None
+    finally:
+        for timer in timers:
+            timer.cancel()
+
+
+async def test_setup_collects_dispatched_segments_before_abandoning_native_queries(transition_lifecycle, virtual_clock):  # noqa: F811
+    c, _, clients, packets = transition_lifecycle
+    original = c._async_write_packet
+    changed = False
+
+    async def write(client, packet, **kwargs):
+        nonlocal changed
+        await original(client, packet, **kwargs)
+        if not changed and packet == build_segment_query(c.profile.segment_group_count, c.model):
+            c._notify_callback(None, bytearray(frame("aa21" + b"1.00.34".hex())))
+            changed = True
+
+    c._async_write_packet = write
+    await c._async_update_data()
+    assert c.is_on and c.available
+    assert packets.count(build_power_query(c.model)) == 2
+    assert len(clients) == 1 and c._client is None
+    assert not any(packet[:2] in {b"\xaa\x30", b"\xaa\x31", b"\xaa\xa3", b"\xaa\x32"} for packet in packets)
 
 
 async def test_setup_identity_retry_is_bounded(transition_lifecycle, virtual_clock):  # noqa: F811
