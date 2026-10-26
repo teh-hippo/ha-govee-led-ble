@@ -70,7 +70,6 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     parse_status,
 )
 from custom_components.ha_govee_led_ble.govee_encryption import GoveeCryptoError
-from custom_components.ha_govee_led_ble.h6199_calibration import WHITE_BALANCE_RESET
 from custom_components.ha_govee_led_ble.light_commands import (
     build_color_rgb,
     build_color_temp,
@@ -151,30 +150,6 @@ async def test_power_required_profile_collects_optional_brightness_before_releas
     finally:
         await asyncio.gather(*pending)
         await c.disconnect()
-
-
-proto = SimpleNamespace(
-    COLOR_MODE_DIY=int(StatusReply.ColorMode.diy),
-    COLOR_MODE_SCENE=int(StatusReply.ColorMode.scene),
-    COLOR_MODE_STATIC=int(StatusReply.ColorMode.static),
-    COLOR_MODE_VIDEO=int(H6199StatusReply.ModeSel.video),
-    FIRMWARE_PACKET_TYPE=int(StatusReply.AaDomain.fw_version),
-    HARDWARE_PACKET_TYPE=int(StatusReply.AaDomain.hw_version),
-    MUSIC_SLUG_BY_ID=_MUSIC_SLUG_BY_ID,
-    ParsedMode=ParsedMode,
-    SCENE_EFFECT_BY_ID=_SCENE_EFFECT_BY_ID,
-    STATUS_HEADER=0xAA,
-    WHITE_BALANCE_RESET=WHITE_BALANCE_RESET,
-    build_brightness=build_brightness,
-    build_color_rgb=build_color_rgb,
-    build_color_temp=build_color_temp,
-    build_h617a_diy_activation=build_h617a_diy_activation,
-    build_packet=_packet,
-    build_power=build_power,
-    build_scene=build_h617a_scene,
-    build_segment_paint=build_segment_paint,
-    build_white_brightness=build_white_brightness,
-)
 
 
 @pytest.fixture
@@ -663,7 +638,7 @@ async def test_restore_effect_control_state_reapplies_powered_off_state(coord):
         )
 
     assert recovered is False  # power alone cannot recover the missing hidden layout
-    send.assert_awaited_once_with(proto.build_power(False), state_values={"is_on": False})
+    send.assert_awaited_once_with(build_power(False), state_values={"is_on": False})
     refresh.assert_awaited_once_with(expected_on=False)
 
 
@@ -694,7 +669,7 @@ async def test_restore_effect_control_state_reactivates_unmodified_diy_slot(coor
     assert send.await_args_list == [
         call(build_power(True, model)),
         call(build_brightness(72, model)),
-        call(proto.build_h617a_diy_activation(700), state_values={"diy_code": 700}),
+        call(build_h617a_diy_activation(700), state_values={"diy_code": 700}),
     ]
     refresh.assert_awaited_once_with({"is_on": True, "diy_code": 700})
     assert coord.diy_code == 700
@@ -1126,7 +1101,7 @@ async def test_outbound_transform_rejection_does_not_write_or_arm_state(coord, r
 async def test_send_command(coord, transform):
     transform_mock = MagicMock(side_effect=transform) if transform is not None else None
     coord.profile = replace(coord.profile, outbound_transform=transform_mock)
-    packet = proto.build_power(True)
+    packet = build_power(True)
     wire_packet = packet if transform is None else transform(packet)
     c = _c(write_gatt_char=AsyncMock(side_effect=[BleakError("f"), BleakError("f"), None]))
     with patch.object(coord, "_ensure_connected", return_value=c):
@@ -1264,7 +1239,7 @@ async def test_foreground_command_waits_for_atomic_preview_packets(coord):
     writes: list[bytes] = []
     client = _c(write_gatt_char=AsyncMock(side_effect=lambda _uuid, packet, **_kwargs: writes.append(packet)))
     coord._client = client
-    first, second, user = b"first", b"second", proto.build_power(True)
+    first, second, user = b"first", b"second", build_power(True)
 
     async with coord._control_arbiter.hold(ControlIntent.PREVIEW):
         await coord.async_preview_write(first)
@@ -1278,7 +1253,7 @@ async def test_foreground_command_waits_for_atomic_preview_packets(coord):
 
 
 async def test_preview_write_arms_expected_state(coord):
-    packet = proto.build_power(True)
+    packet = build_power(True)
     coord._client = _c(write_gatt_char=AsyncMock())
 
     await coord.async_preview_write(packet)
@@ -1295,7 +1270,7 @@ async def test_preview_stale_gatt_failure_discards_client_and_requires_fresh_ser
     coord._client = client
 
     with pytest.raises(BleakError, match="GATT characteristic not found"):
-        await coord.async_preview_write(proto.build_power(True))
+        await coord.async_preview_write(build_power(True))
 
     assert coord.fresh_services_required is True
     assert coord._client is None
@@ -1457,7 +1432,7 @@ async def test_successful_command_renews_foreground_lease(coord):
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(coord, "_reset_disconnect_timer") as reset,
     ):
-        await coord.send_command(proto.build_power(True))
+        await coord.send_command(build_power(True))
 
     reset.assert_called_once_with()
 
@@ -1483,16 +1458,16 @@ async def test_background_refresh_keeps_background_intent_and_preview_admission(
         assert coord.admit_preview().is_current
         coord._notify_callback(
             None,
-            bytearray(proto.build_packet(0xAA, 0x01, [1])),
+            bytearray(_packet(0xAA, 0x01, [1])),
         )
         coord._notify_callback(
             None,
-            bytearray(proto.build_packet(0xAA, 0x04, [42])),
+            bytearray(_packet(0xAA, 0x04, [42])),
         )
         coord._notify_callback(
             None,
             bytearray(
-                proto.build_packet(
+                _packet(
                     0xAA,
                     0x05,
                     [0x04, 0x9D, 0x08],
@@ -1517,7 +1492,7 @@ async def test_background_refresh_keeps_background_intent_and_preview_admission(
 @pytest.mark.parametrize("advertised", [False, True])
 async def test_background_refresh_disconnects_poll_only_connection_after_query(coord, advertised):
     coord._present = advertised
-    client = _c(disconnect=AsyncMock())
+    client = _c()
 
     async def refresh(**_kwargs) -> bool:
         coord._client = client
@@ -1540,7 +1515,7 @@ async def test_background_refresh_disconnects_poll_only_connection_after_query(c
 @pytest.mark.parametrize("failure", [BleakError("No state reply"), ValueError("Unexpected read failure")])
 async def test_failed_poll_revokes_read_availability_without_erasing_advertisement_presence(coord, advertised, failure):
     coord._present = advertised
-    client = _c(disconnect=AsyncMock())
+    client = _c()
 
     async def refresh(**_kwargs) -> bool:
         coord._client = client
@@ -1582,7 +1557,7 @@ def test_disconnect_callback_clears_only_current_unintentional_client(coord):
 
 
 async def test_disconnect(coord, h6199):
-    c = _c(disconnect=AsyncMock())
+    c = _c()
     coord._client, coord._cancel_disconnect = c, (cancel := MagicMock())
     await coord.disconnect()
     c.disconnect.assert_called_once()
@@ -1597,13 +1572,13 @@ async def test_disconnect(coord, h6199):
     coord._client = None
     await coord.disconnect()
     task = MagicMock(done=MagicMock(return_value=False), cancel=MagicMock())
-    h6199._keep_alive_task, h6199._client = task, _c(disconnect=AsyncMock())
+    h6199._keep_alive_task, h6199._client = task, _c()
     await h6199.disconnect()
     task.cancel.assert_called_once()
 
 
 async def test_disconnect_does_not_clear_replacement_client(coord):
-    replacement = _c(disconnect=AsyncMock())
+    replacement = _c()
 
     async def _replace() -> None:
         coord._client = replacement
@@ -1625,15 +1600,15 @@ async def test_disconnect_does_not_clear_replacement_client(coord):
 def test_notify_callback(h6199):
     h6199.effect_families = frozenset({"scenes", "music", "video"})
     cb = h6199._notify_callback
-    cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x01])))
+    cb(None, bytearray(_packet(0xAA, 0x01, [0x01])))
     assert h6199.is_on is True
-    cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x00])))
+    cb(None, bytearray(_packet(0xAA, 0x01, [0x00])))
     assert h6199.is_on is False
-    cb(None, bytearray(proto.build_packet(0xAA, 0x04, [0x4B])))
+    cb(None, bytearray(_packet(0xAA, 0x04, [0x4B])))
     assert h6199.brightness_pct == 75
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 42])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 42])))
     assert (h6199.video_mode, h6199.video_full_screen, h6199.video_saturation) == ("game", False, 42)
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])))
     assert (h6199.music_mode, h6199.music_sensitivity, h6199.music_calm, h6199.music_color) == (
         "spectrum",
         66,
@@ -1641,14 +1616,14 @@ def test_notify_callback(h6199):
         (1, 2, 3),
     )
     assert h6199.effect is None
-    cb(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 21, 5])))
+    cb(None, bytearray(_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 21, 5])))
     assert (h6199.white_balance_red, h6199.white_balance_blue) == (21, 5)
-    cb(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0])))
+    cb(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0])))
     assert h6199.blank_screen is False
     assert h6199.blank_screen_detection == 2
     assert h6199.blank_screen_low_brightness_duration_seconds == 10
     assert h6199.blank_screen_same_tone_duration_seconds == 120
-    cb(None, bytearray(proto.build_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41])))
+    cb(None, bytearray(_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41])))
     assert (
         h6199.relative_brightness,
         h6199.relative_brightness_left,
@@ -1656,7 +1631,7 @@ def test_notify_callback(h6199):
         h6199.relative_brightness_right,
         h6199.relative_brightness_bottom,
     ) == (None, 51, 20, 31, 41)
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09, 0x00])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x04, 0x09, 0x00])))
     assert h6199.effect == "candlelight"
     h6199.is_on = False
     cb(None, bytearray([0xAA]))
@@ -1667,12 +1642,12 @@ def test_notify_callback(h6199):
 def test_display_replies_reject_stale_composite_values_atomically(h6199):
     h6199.white_balance_red, h6199.white_balance_blue = 16, 3
     h6199._arm_expected_values({"white_balance_red": 21, "white_balance_blue": 5})
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 13, 3])))
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 13, 3])))
     assert (h6199.white_balance_red, h6199.white_balance_blue) == (16, 3)
 
     h6199.blank_screen = True
     h6199._arm_expected_values({"blank_screen": True})
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0])))
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 0, 2, 10, 0, 120, 0])))
     assert h6199.blank_screen is True
 
     expected = (51, 20, 31, 41)
@@ -1692,7 +1667,7 @@ def test_display_replies_reject_stale_composite_values_atomically(h6199):
             "relative_brightness_bottom": 41,
         }
     )
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xAE, [1, 4, 91, 91, 91, 91])))
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0xAE, [1, 4, 91, 91, 91, 91])))
     assert (
         h6199.relative_brightness_left,
         h6199.relative_brightness_top,
@@ -1705,13 +1680,13 @@ def test_notify_callback_parses_full_frame_with_checksum(h6199):
     """Scene readback remains available when scenes are hidden from the HA effect list."""
     h6199.effect_families = frozenset()
     cb = h6199._notify_callback
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x01, 0x00])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x04, 0x01, 0x00])))
     assert h6199.effect == "sunset"
     assert h6199.packet_log[-1]["outcome"] == "parsed"
     assert h6199.packet_log[-1]["reason"] == "status_parsed"
     assert h6199.packet_log[-1]["parser"] == "h6199_status_reply"
     assert h6199.packet_log[-1]["domain"] == "0x05"
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x04, 0x09])))
     assert h6199.effect == "candlelight"
 
 
@@ -1753,8 +1728,8 @@ def test_notify_callback_records_h6199_generic_acknowledgements(h6199, frame: by
 
 
 def test_h6199_subordinate_versions_are_retained_without_querying_identity(h6199):
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x20, list(b"1.03.00"))))
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x21, list(b"1.00.33"))))
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x20, list(b"1.03.00"))))
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x21, list(b"1.00.33"))))
 
     assert h6199.subordinate_20_version == "1.03.00"
     assert h6199.subordinate_21_version == "1.00.33"
@@ -1807,8 +1782,8 @@ async def test_resolution_reuses_selected_client_after_disconnect(coord):
     resolver = MagicMock(spec=BLEDeviceResolver)
     resolver.async_resolve = AsyncMock(return_value=resolution)
     coord._device_resolver = resolver
-    first = _c(disconnect=AsyncMock())
-    second = _c(disconnect=AsyncMock())
+    first = _c()
+    second = _c()
 
     with (
         patch(f"{M}.establish_connection", side_effect=[first, second]) as connect,
@@ -1861,7 +1836,7 @@ async def test_gatt_failure_reconnects_new_client_with_fresh_services(coord):
         patch.object(coord, "_start_notify", new_callable=AsyncMock),
         patch.object(coord, "_send_identity_queries", new_callable=AsyncMock),
     ):
-        await coord.send_command(proto.build_power(True))
+        await coord.send_command(build_power(True))
         assert coord.fresh_services_required is False
         assert coord.fresh_service_discovery_forced is True
         assert coord.last_failure_type == "BleakError"
@@ -1886,7 +1861,7 @@ async def test_stale_gatt_connection_failure_forces_next_connection_fresh(coord)
     resolver = MagicMock(spec=BLEDeviceResolver)
     resolver.async_resolve = AsyncMock(return_value=_resolution(device))
     coord._device_resolver = resolver
-    client = _c(disconnect=AsyncMock())
+    client = _c()
     bootstrap = _c(clear_cache=AsyncMock(return_value=True))
 
     with (
@@ -2227,7 +2202,7 @@ async def test_ensure_connected_cleans_up_setup_failure(coord, failure):
 
 async def test_background_refresh_disconnects_replacement_connection(coord):
     original = _c()
-    replacement = _c(disconnect=AsyncMock())
+    replacement = _c()
     coord._client = original
 
     async def refresh(**_kwargs) -> bool:
@@ -2246,7 +2221,7 @@ async def test_background_refresh_disconnects_replacement_connection(coord):
 
 
 async def test_ensure_connected_replaces_receive_stale_client(coord):
-    old = _c(disconnect=AsyncMock())
+    old = _c()
     new = _c(start_notify=AsyncMock(), write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     coord._client = old
     coord._notify_started_monotonic = 1.0
@@ -2280,8 +2255,8 @@ async def test_keep_alive_retires_receive_stale_client(coord):
 
 
 async def test_disconnect_if_current_ignores_replaced_client(coord):
-    old = _c(disconnect=AsyncMock())
-    new = _c(disconnect=AsyncMock())
+    old = _c()
+    new = _c()
     coord._client = new
 
     await coord._disconnect_if_current(old)
@@ -2449,7 +2424,7 @@ async def test_send_command_sets_expected_brightness(coord):
     c = _c(write_gatt_char=AsyncMock())
     with patch.object(coord, "_ensure_connected", return_value=c):
         assert "brightness_pct" not in coord._expected_state
-        await coord.send_command(proto.build_brightness(42))
+        await coord.send_command(build_brightness(42))
         assert coord._expected_state["brightness_pct"][0] == 42
 
 
@@ -2457,16 +2432,16 @@ def test_notify_callback_brightness_expectation(h6199):
     cb = h6199._notify_callback
     h6199.brightness_pct = 99
     h6199._expected_state["brightness_pct"] = (10, time.monotonic() + 60)
-    cb(None, bytearray(proto.build_packet(0xAA, 0x04, [0x4B])))
+    cb(None, bytearray(_packet(0xAA, 0x04, [0x4B])))
     assert h6199.brightness_pct == 99  # ignored
 
     h6199._expected_state["brightness_pct"] = (75, time.monotonic() + 60)
-    cb(None, bytearray(proto.build_packet(0xAA, 0x04, [0x4B])))
+    cb(None, bytearray(_packet(0xAA, 0x04, [0x4B])))
     assert h6199.brightness_pct == 75 and "brightness_pct" in h6199._expected_state
 
     with patch(f"{M}.time.monotonic", return_value=1000):
         h6199._expected_state["brightness_pct"] = (10, 0)
-        cb(None, bytearray(proto.build_packet(0xAA, 0x04, [0x01])))
+        cb(None, bytearray(_packet(0xAA, 0x04, [0x01])))
         assert h6199.brightness_pct == 1 and "brightness_pct" not in h6199._expected_state
 
 
@@ -2476,12 +2451,12 @@ def test_notify_callback_power_expectation(h6199):
     h6199._expected_state["is_on"] = (True, time.monotonic() + 60)
     field_revision = h6199._field_revisions.get("is_on", 0)
 
-    cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x00])))
+    cb(None, bytearray(_packet(0xAA, 0x01, [0x00])))
     assert h6199.is_on is True
     assert h6199._field_revisions.get("is_on", 0) == field_revision
     assert "is_on" in h6199._expected_state
 
-    cb(None, bytearray(proto.build_packet(0xAA, 0x01, [0x01])))
+    cb(None, bytearray(_packet(0xAA, 0x01, [0x01])))
     assert h6199.is_on is True
     assert h6199._field_revisions["is_on"] == field_revision + 1
     assert "is_on" in h6199._expected_state
@@ -2490,7 +2465,7 @@ def test_notify_callback_power_expectation(h6199):
 def test_notify_callback_static_readback_keeps_color_temp(h6199):
     """A static reply carries no colour, so it cannot replace an optimistic colour temperature."""
     cb = h6199._notify_callback
-    reply = bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30]))
+    reply = bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30]))
 
     h6199.color_temp_kelvin = 4000
     h6199.rgb_color = (1, 2, 3)
@@ -2504,7 +2479,7 @@ def test_notify_callback_effect_window(h6199):
     cb = h6199._notify_callback
     h6199.effect = "candy"
     h6199._expected_state["effect"] = ("candy", time.monotonic() + 60)
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
     assert h6199.effect == "candy"
     assert "effect" in h6199._expected_state
 
@@ -2515,7 +2490,7 @@ def test_notify_callback_music_auto_color_clears_manual_color(h6199):
 
     h6199._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x00])),
+        bytearray(_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x00])),
     )
 
     assert h6199.music_color is None
@@ -2526,9 +2501,9 @@ def test_readback_mode_mutual_exclusion(h6199):
     """Each parsed readback mode leaves exactly one mode truthful, clearing any stale others."""
     h6199.effect_families = frozenset({"scenes", "music", "video"})
     cb = h6199._notify_callback
-    music = bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3]))
-    video = bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 42]))
-    scene = bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x09, 0x00]))
+    music = bytearray(_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3]))
+    video = bytearray(_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 42]))
+    scene = bytearray(_packet(0xAA, 0x05, [0x04, 0x09, 0x00]))
 
     h6199.video_mode, h6199.effect = "game", "candlelight"
     cb(None, music)
@@ -2560,48 +2535,48 @@ def test_diy_readback_retains_complete_code(coord):
     baselines = {field: coord._field_revisions.get(field, 0) for field in ("color_mode", "diy_code")}
     coord._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_DIY, 0x84, 0x03])),
+        bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.diy), 0x84, 0x03])),
     )
 
-    assert coord.color_mode is proto.ParsedMode.DIY
+    assert coord.color_mode is ParsedMode.DIY
     assert coord.active_mode == "custom"
     assert coord.diy_code == 900
     assert all(coord._field_revisions[field] > baseline for field, baseline in baselines.items())
 
 
 async def test_diy_command_expectation_rejects_truncated_readback(coord):
-    command = proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x03])
+    command = _packet(0x33, 0x05, [int(StatusReply.ColorMode.diy), 0x20, 0x03])
     client = _c(write_gatt_char=AsyncMock())
     with patch.object(coord, "_ensure_connected", return_value=client):
         await coord.send_command(command)
 
-    assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.DIY, 800)
+    assert coord._expected_state["color_mode"][0] == (ParsedMode.DIY, 800)
 
     coord._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x00])),
+        bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.diy), 0x20, 0x00])),
     )
     assert coord.color_mode is None
     assert coord.diy_code is None
 
     coord._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x03])),
+        bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.diy), 0x20, 0x03])),
     )
-    assert coord.color_mode is proto.ParsedMode.DIY
+    assert coord.color_mode is ParsedMode.DIY
     assert coord.diy_code == 800
 
 
 async def test_send_command_arms_expected_state(coord, h6199):
     c = _c(write_gatt_char=AsyncMock())
     with patch.object(coord, "_ensure_connected", return_value=c):
-        await coord.send_command(proto.build_power(True))
+        await coord.send_command(build_power(True))
         assert coord._expected_state["is_on"][0] is True
 
-        await coord.send_command(proto.build_color_temp(4000))
+        await coord.send_command(build_color_temp(4000))
         assert coord._expected_state["color_temp_kelvin"][0] == 4000
 
-        await coord.send_command(proto.build_color_rgb(10, 20, 30))
+        await coord.send_command(build_color_rgb(10, 20, 30))
         assert coord._expected_state["rgb_color"][0] == (10, 20, 30)
         assert "color_temp_kelvin" not in coord._expected_state
 
@@ -2620,40 +2595,40 @@ async def test_send_command_arms_expected_state(coord, h6199):
         assert h6199._expected_state["video_sound_effects_softness"][0] == 100
 
     with patch.object(coord, "_ensure_connected", return_value=c):
-        await coord.send_command(proto.build_color_rgb(10, 20, 30))
-        assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.COLOUR, None)
+        await coord.send_command(build_color_rgb(10, 20, 30))
+        assert coord._expected_state["color_mode"][0] == (ParsedMode.COLOUR, None)
         assert coord._expected_state["rgb_color"][0] == (10, 20, 30)
 
-        await coord.send_command(proto.build_scene(9))
-        assert coord._expected_state["color_mode"][0] == (proto.ParsedMode.SCENE, None)
-        assert coord._expected_state["effect"][0] == proto.SCENE_EFFECT_BY_ID[9]
+        await coord.send_command(build_h617a_scene(9))
+        assert coord._expected_state["color_mode"][0] == (ParsedMode.SCENE, None)
+        assert coord._expected_state["effect"][0] == _SCENE_EFFECT_BY_ID[9]
 
 
 def test_music_expectation_rejects_delayed_same_mode_reply(h6199):
-    h6199._expected_state["color_mode"] = ((proto.ParsedMode.MUSIC, None), time.monotonic() + 60)
+    h6199._expected_state["color_mode"] = ((ParsedMode.MUSIC, None), time.monotonic() + 60)
     h6199._expected_state["music_mode"] = ("rhythm", time.monotonic() + 60)
     cb = h6199._notify_callback
 
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x03, 66, 0x00, 0x01, 1, 2, 3])))
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x13, 0x03, 66, 0x00, 0x01, 1, 2, 3])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])))
 
     assert h6199.music_mode == "rhythm"
-    assert h6199.color_mode is proto.ParsedMode.MUSIC
+    assert h6199.color_mode is ParsedMode.MUSIC
 
 
 def test_scene_expectation_rejects_delayed_same_mode_reply(h6199):
     h6199.effect_families = frozenset({"scenes"})
-    sunrise_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "sunrise")
-    candlelight_code = next(code for code, effect in proto.SCENE_EFFECT_BY_ID.items() if effect == "candlelight")
-    h6199._expected_state["color_mode"] = ((proto.ParsedMode.SCENE, None), time.monotonic() + 60)
+    sunrise_code = next(code for code, effect in _SCENE_EFFECT_BY_ID.items() if effect == "sunrise")
+    candlelight_code = next(code for code, effect in _SCENE_EFFECT_BY_ID.items() if effect == "candlelight")
+    h6199._expected_state["color_mode"] = ((ParsedMode.SCENE, None), time.monotonic() + 60)
     h6199._expected_state["effect"] = ("sunrise", time.monotonic() + 60)
     cb = h6199._notify_callback
 
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, *sunrise_code.to_bytes(2, "little")])))
-    cb(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, *candlelight_code.to_bytes(2, "little")])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x04, *sunrise_code.to_bytes(2, "little")])))
+    cb(None, bytearray(_packet(0xAA, 0x05, [0x04, *candlelight_code.to_bytes(2, "little")])))
 
     assert h6199.effect == "sunrise"
-    assert h6199.color_mode is proto.ParsedMode.SCENE
+    assert h6199.color_mode is ParsedMode.SCENE
 
 
 def test_unknown_mode_clears_restored_metadata(h6199):
@@ -2661,9 +2636,9 @@ def test_unknown_mode_clears_restored_metadata(h6199):
     h6199.diy_code = 0xF0
     h6199.music_mode, h6199.video_mode = "rhythm", "movie"
 
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x99, 0x01])))
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x99, 0x01])))
 
-    assert h6199.color_mode is proto.ParsedMode.UNKNOWN
+    assert h6199.color_mode is ParsedMode.UNKNOWN
     assert h6199.effect is None
     assert h6199.diy_code is None
     assert (h6199.music_mode, h6199.video_mode) == ("off", "off")
@@ -2682,11 +2657,11 @@ async def test_refresh_state_query_selection(coord):
         deadline: float,
     ) -> bool:
         if query_power:
-            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
         if query_brightness:
-            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [42])))
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0x04, [42])))
         if query_color_mode:
-            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x04, 0x9D, 0x08])))
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x04, 0x9D, 0x08])))
         return True
 
     with (
@@ -2723,7 +2698,7 @@ async def test_h617e_legacy_scene_verifies_by_raw_selector_code(hass, virtual_cl
     async def _reply(**_kwargs) -> bool:
         coordinator._notify_callback(
             None,
-            bytearray(proto.build_packet(0xAA, 0x05, [0x04, legacy.code & 0xFF, legacy.code >> 8])),
+            bytearray(_packet(0xAA, 0x05, [0x04, legacy.code & 0xFF, legacy.code >> 8])),
         )
         return True
 
@@ -2741,7 +2716,7 @@ async def test_refresh_all_can_require_only_the_setup_domains(coord, virtual_clo
     coord._client = client = _c()
 
     async def _reply(**_kwargs) -> bool:
-        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
         return True
 
     with (
@@ -2770,13 +2745,13 @@ async def test_refresh_without_colour_readback_requires_power_and_brightness_onl
             "optional_baselines": {},
             "deadline": ANY,
         }
-        limited_readback_coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [0])))
-        limited_readback_coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [40])))
-        limited_readback_coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01])))
+        limited_readback_coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [0])))
+        limited_readback_coord._notify_callback(None, bytearray(_packet(0xAA, 0x04, [40])))
+        limited_readback_coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01])))
         limited_readback_coord._notify_callback(
             None,
             bytearray(
-                proto.build_packet(
+                _packet(
                     0xAA,
                     0xA5,
                     [2, 100, 255, 146, 39, 100, 255, 146, 39, 100, 255, 146, 39],
@@ -2815,10 +2790,10 @@ async def test_h6076_refresh_all_uses_colour_mode_and_segment_readback(hass, vir
 
     async def _reply(**kwargs) -> bool:
         assert kwargs["query_color_mode"] is True
-        coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [0])))
-        coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [40])))
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x01, [0])))
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x04, [40])))
         # Firmware 1.04.05's static reply: gradual on, Kelvin never echoed.
-        coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 0x00, 0x00])))
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 0x00, 0x00])))
         return True
 
     with (
@@ -2834,7 +2809,7 @@ async def test_h6076_refresh_all_uses_colour_mode_and_segment_readback(hass, vir
 
 
 async def test_refresh_reply_timeout_starts_after_connection(coord, virtual_clock):
-    client = _c(disconnect=AsyncMock())
+    client = _c()
 
     async def connect():
         await asyncio.sleep(0.03)
@@ -2844,7 +2819,7 @@ async def test_refresh_reply_timeout_starts_after_connection(coord, virtual_cloc
     async def reply(**_kwargs) -> bool:
         coord._notify_callback(
             None,
-            bytearray(proto.build_packet(0xAA, 0x01, [1])),
+            bytearray(_packet(0xAA, 0x01, [1])),
         )
         return True
 
@@ -2877,11 +2852,11 @@ async def test_refresh_state_queries_each_display_domain(h6199):
 
     async def _reply(**kwargs) -> bool:
         if kwargs.get("query_white_balance"):
-            h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 21, 5])))
+            h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x00, 0x06, 1, 16, 3, 1, 21, 5])))
         if kwargs.get("query_blank_screen"):
-            h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA9, [0x0A, 0x06, 1, 2, 10, 0, 120, 0])))
+            h6199._notify_callback(None, bytearray(_packet(0xAA, 0xA9, [0x0A, 0x06, 1, 2, 10, 0, 120, 0])))
         if kwargs.get("query_relative_brightness"):
-            h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41])))
+            h6199._notify_callback(None, bytearray(_packet(0xAA, 0xAE, [1, 4, 51, 20, 31, 41])))
         return True
 
     with (
@@ -2908,7 +2883,7 @@ async def test_refresh_state_queries_each_display_domain(h6199):
 
 async def test_refresh_state_rejects_optimistic_value_without_fresh_reply(coord, virtual_clock):
     coord.is_on = True
-    coord._client = client = _c(disconnect=AsyncMock())
+    coord._client = client = _c()
     with (
         patch.object(coord, "_ensure_connected", new=AsyncMock(return_value=client)),
         patch.object(coord, "_send_state_queries", new=AsyncMock(return_value=True)) as queries,
@@ -2927,7 +2902,7 @@ async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord, virtual
     async def _stale_reply(**kwargs) -> bool:
         coord._notify_callback(
             None,
-            bytearray(proto.build_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])),
+            bytearray(_packet(0xAA, 0x05, [0x13, 0x04, 66, 0x00, 0x01, 1, 2, 3])),
         )
         return True
 
@@ -2943,10 +2918,10 @@ async def test_refresh_state_ignored_stale_reply_does_not_confirm(coord, virtual
 async def test_refresh_state_requires_fresh_power_and_video_replies(coord, virtual_clock):
     coord.is_on = True
     coord.video_mode = "game"
-    coord._client = client = _c(disconnect=AsyncMock())
+    coord._client = client = _c()
 
     async def _video_only(**kwargs) -> bool:
-        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 60])))
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x00, 0x00, 0x01, 60])))
         return True
 
     with (
@@ -2962,10 +2937,10 @@ async def test_refresh_state_rejects_wrong_video_parameters(coord, virtual_clock
     coord._client = client = _c()
 
     async def _wrong_video(**kwargs) -> bool:
-        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
         coord._notify_callback(
             None,
-            bytearray(proto.build_packet(0xAA, 0x05, [0x00, 0x01, 0x01, 100, 0, 0])),
+            bytearray(_packet(0xAA, 0x05, [0x00, 0x01, 0x01, 100, 0, 0])),
         )
         return True
 
@@ -2990,8 +2965,8 @@ async def test_refresh_state_rejects_wrong_video_parameters(coord, virtual_clock
 
 
 async def test_refresh_state_does_not_disconnect_replacement_client(coord, virtual_clock):
-    original = _c(disconnect=AsyncMock())
-    replacement = _c(disconnect=AsyncMock())
+    original = _c()
+    replacement = _c()
     coord._client = original
 
     async def _replace(**kwargs) -> bool:
@@ -3014,7 +2989,7 @@ async def test_send_command_noop_during_shutdown(coord):
     c = _c(write_gatt_char=AsyncMock())
     coord.hass.is_stopping = True
     with patch.object(coord, "_ensure_connected", return_value=c):
-        await coord.send_command(proto.build_power(True))
+        await coord.send_command(build_power(True))
     c.write_gatt_char.assert_not_awaited()
 
 
@@ -3101,19 +3076,19 @@ def test_duplicate_segment_pages_require_fresh_complete_coverage(coord):
     observed_at = coord.segment_state_observed_at
     revision = coord._field_revisions["segment_colors"]
     for group in (1, 1, 2, 3, 4, 4):
-        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [group, *([50, 1, 2, 3] * 3)])))
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0xA5, [group, *([50, 1, 2, 3] * 3)])))
     assert coord._field_revisions["segment_colors"] == revision
     assert coord.segment_state_observed_at == observed_at
     assert coord.segment_colors == [(10, 20, 30)] * 15
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [5, *([50, 1, 2, 3] * 3)])))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0xA5, [5, *([50, 1, 2, 3] * 3)])))
     assert coord._field_revisions["segment_colors"] == revision + 1
     assert coord.segment_colors == [(1, 2, 3)] * 15
 
 
 def test_h6199_static_reply_reports_mode_only(h6199):
     h6199.segment_colors = [(1, 2, 3)] * 15
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
-    assert h6199.color_mode is proto.ParsedMode.COLOUR
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0x01, 10, 20, 30])))
+    assert h6199.color_mode is ParsedMode.COLOUR
     assert h6199.rgb_color == (255, 255, 255)
     assert h6199.segment_colors == [(1, 2, 3)] * 15
 
@@ -3124,7 +3099,7 @@ def _send_uniform_segment_replies(coordinator, rgb: tuple[int, int, int]) -> Non
     for group in range(1, group_count + 1):
         count = min(group_size, 15 - (group - 1) * group_size)
         payload = [group, *([100, *rgb] * count)]
-        coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, payload)))
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 0xA5, payload)))
 
 
 def test_h6199_static_segment_readback_updates_uniform_rgb(h6199):
@@ -3160,7 +3135,7 @@ def test_partial_segment_refresh_does_not_publish_mixed_snapshot(coord):
 
     coord._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0xA5, [1, *([90, 9, 8, 7] * 3)])),
+        bytearray(_packet(0xAA, 0xA5, [1, *([90, 9, 8, 7] * 3)])),
     )
 
     assert coord.segment_colors == original_colors
@@ -3186,7 +3161,7 @@ def test_segment_query_replies_replace_restored_state(
         for index in range(count):
             value = (group - 1) * group_size + index
             payload.extend((20 + value, value, value + 1, value + 2))
-        coordinator._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, payload)))
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 0xA5, payload)))
 
     assert coordinator.segment_state_source == "observed"
     assert coordinator.segment_state_observed_at is not None
@@ -3321,7 +3296,7 @@ async def test_segment_write_failure_reconciles_without_masking_error(coord, seg
     revision = coord._field_revisions["segment_colors"]
     coord.rgb_color_source = coord.color_temp_kelvin_source = "observed"
     # A pre-write page must not complete the post-write observation.
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [5, *([100, 10, 20, 30] * 3)])))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0xA5, [5, *([100, 10, 20, 30] * 3)])))
     error = BleakError("original write failure")
     segment_client.write_gatt_char.side_effect = [None, error, error, error] if operation == "paint" else error
 
@@ -3338,7 +3313,7 @@ async def test_segment_write_failure_reconciles_without_masking_error(coord, seg
         if recovery == "error":
             raise RuntimeError("recovery failed")
         for group in range(1, 6 if recovery == "complete" else 5):
-            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [group, *([40, 9, 8, 7] * 3)])))
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0xA5, [group, *([40, 9, 8, 7] * 3)])))
         return recovery == "complete"
 
     with patch.object(coord, "async_refresh_segments", AsyncMock(side_effect=refresh)) as refresh_mock:
@@ -3383,7 +3358,7 @@ async def test_segment_false_confirmation_surfaces_without_resending(coord, segm
 async def test_segment_no_write_preserves_observation_and_buffers(coord, segment_client, operation, failure):
     _send_uniform_segment_replies(coord, (10, 20, 30))
     coord.rgb_color_source = coord.color_temp_kelvin_source = "observed"
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, [1, *([40, 9, 8, 7] * 3)])))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0xA5, [1, *([40, 9, 8, 7] * 3)])))
     observed_at = coord.segment_state_observed_at
     revisions = dict(coord._field_revisions)
     colors, brightness = coord._segment_query_colors, coord._segment_query_brightness
@@ -3478,7 +3453,7 @@ async def test_segment_failure_reconciles_real_complete_query_pages(request, mod
     revision = coord._field_revisions["segment_colors"]
     group_size = coord.profile.segment_group_size
     replies = {
-        build_segment_query(group, coord.model): proto.build_packet(
+        build_segment_query(group, coord.model): _packet(
             0xAA, 0xA5, [group, *([40, 9, 8, 7] * min(group_size, 15 - (group - 1) * group_size))]
         )
         for group in range(1, coord._segment_group_count + 1)
@@ -3599,7 +3574,7 @@ async def test_segment_confirmation_compares_complete_pages(request, model_fixtu
         payload = [group]
         for index in range((group - 1) * size, min(group * size, len(colors))):
             payload.extend((brightness[index], *colors[index]))
-        replies[build_segment_query(group, coord.model)] = proto.build_packet(0xAA, 0xA5, payload)
+        replies[build_segment_query(group, coord.model)] = _packet(0xAA, 0xA5, payload)
 
     def write(_uuid, packet, **_kwargs):
         if packet in replies:
@@ -3688,7 +3663,7 @@ async def test_segment_preservation_baseline_is_first_write_boundary(coord, segm
             payload = [group]
             for index in range((group - 1) * 3, group * 3):
                 payload.extend((60 if operation == "brightness" and index == 0 else 100, *colors[index]))
-            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0xA5, payload)))
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0xA5, payload)))
         return True
 
     coord._ensure_connected.side_effect = connect
@@ -3736,7 +3711,7 @@ async def test_native_scene_primitive_acquires_control_lock_exactly_once(coord):
     )
 
     assert lock.acquisitions == 1
-    assert packets[0] == proto.build_power(True, "H617A")
+    assert packets[0] == build_power(True, "H617A")
     assert packets[1:] == build_native_scene_packets("H617A", SCENES["glacier"], speed_index=0)
 
 
@@ -3758,7 +3733,7 @@ async def test_native_scene_power_state_waits_for_atomic_sequence(coord):
             verify=False,
         )
 
-    assert write_sequence.await_args.args[0][0] == proto.build_power(True, "H617A")
+    assert write_sequence.await_args.args[0][0] == build_power(True, "H617A")
     assert coord.is_on is False
 
 
@@ -3793,7 +3768,7 @@ async def test_preview_observation_stays_read_only_when_device_is_silent(coord, 
 
 
 async def test_preview_preflight_retries_one_failed_connection_path(coord, virtual_clock):
-    partial = _c(disconnect=AsyncMock())
+    partial = _c()
     replacement = _c()
     attempts = 0
 
@@ -3910,10 +3885,10 @@ async def test_effect_observation_requires_fresh_selector_and_power(
     coord, virtual_clock, selector, replies, expected, intent
 ):
     coord._client = MagicMock(is_connected=True)
-    mode = proto.COLOR_MODE_DIY if selector == "diy_code" else proto.COLOR_MODE_SCENE
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [mode, 24, 0])))
-    wrong_mode = bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_STATIC, 0]))
+    mode = int(StatusReply.ColorMode.diy) if selector == "diy_code" else int(StatusReply.ColorMode.scene)
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [mode, 24, 0])))
+    wrong_mode = bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.static), 0]))
     if replies == "stale_mode":
         coord._notify_callback(None, wrong_mode)
     elif replies == "suppressed_mode":
@@ -3924,10 +3899,10 @@ async def test_effect_observation_requires_fresh_selector_and_power(
         loop = asyncio.get_running_loop()
         if replies in {"power", "both", "mismatch", "power_mismatch", "suppressed_mode", "stale_mode"}:
             power = 0 if replies == "power_mismatch" else 1
-            loop.call_soon(coord._notify_callback, None, bytearray(proto.build_packet(0xAA, 0x01, [power])))
+            loop.call_soon(coord._notify_callback, None, bytearray(_packet(0xAA, 0x01, [power])))
         if replies in {"selector", "both", "mismatch", "selector_mismatch"}:
             code = 25 if replies in {"mismatch", "selector_mismatch"} else 24
-            loop.call_soon(coord._notify_callback, None, bytearray(proto.build_packet(0xAA, 0x05, [mode, code, 0])))
+            loop.call_soon(coord._notify_callback, None, bytearray(_packet(0xAA, 0x05, [mode, code, 0])))
         if replies in {"wrong_mode", "suppressed_mode"}:
             loop.call_soon(coord._notify_callback, None, wrong_mode)
         return True
@@ -3950,7 +3925,7 @@ async def test_revision_wait_respects_receipt_deadline(coord, virtual_clock, arr
     loop = asyncio.get_running_loop()
     baseline = {"is_on": coord._field_revisions.get("is_on", 0)}
     deadline = loop.time() + 4
-    reply = bytearray(proto.build_packet(0xAA, 0x01, [1]))
+    reply = bytearray(_packet(0xAA, 0x01, [1]))
     await asyncio.sleep(arrival)
     coord._notify_callback(None, reply)
     # Even a callback processed before the waiter is resumed must respect its receipt deadline.
@@ -3967,7 +3942,7 @@ async def test_revision_wait_cancellation_does_not_consume_later_reply(coord, vi
     with pytest.raises(asyncio.CancelledError):
         await waiting
     assert coord._field_revisions.get("is_on", 0) == baseline["is_on"]
-    reply = bytearray(proto.build_packet(0xAA, 0x01, [1]))
+    reply = bytearray(_packet(0xAA, 0x01, [1]))
     loop.call_later(1, coord._notify_callback, None, reply)
     assert await coord._wait_for_revisions(baseline, {}, deadline)
 
@@ -3978,7 +3953,7 @@ async def test_expectation_expiry_uses_notification_clock(coord, virtual_clock, 
     coord._arm_expected_values({"brightness_pct": 42})
     baseline = coord._field_revisions.get("brightness_pct", 0)
     await asyncio.sleep(elapsed)
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x04, [75])))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x04, [75])))
     assert coord.brightness_pct == (42 if elapsed < 2 else 75)
     assert (coord._field_revisions.get("brightness_pct", 0) > baseline) is (elapsed >= 2)
 
@@ -3986,10 +3961,10 @@ async def test_expectation_expiry_uses_notification_clock(coord, virtual_clock, 
 @pytest.mark.parametrize(
     ("selector", "actual", "final_desired"),
     [
-        ("diy_code", [proto.COLOR_MODE_SCENE, 0x74, 0x08], True),
-        ("scene_code", [proto.COLOR_MODE_DIY, 24, 0], True),
-        ("scene_code", [proto.COLOR_MODE_STATIC, 0], True),
-        ("diy_code", [proto.COLOR_MODE_SCENE, 0x74, 0x08], False),
+        ("diy_code", [int(StatusReply.ColorMode.scene), 0x74, 0x08], True),
+        ("scene_code", [int(StatusReply.ColorMode.diy), 24, 0], True),
+        ("scene_code", [int(StatusReply.ColorMode.static), 0], True),
+        ("diy_code", [int(StatusReply.ColorMode.scene), 0x74, 0x08], False),
         ("diy_code", None, False),
     ],
     ids=["diy-to-scene", "scene-to-diy", "scene-to-static", "persistent-wrong", "silence"],
@@ -4025,7 +4000,7 @@ async def test_deployment_retries_activation_after_fresh_wrong_mode(
     await repository.async_put(record, expected_version=None)
     client = _c(write_gatt_char=AsyncMock())
     coord._client = client
-    desired_mode = proto.COLOR_MODE_DIY if selector == "diy_code" else proto.COLOR_MODE_SCENE
+    desired_mode = int(StatusReply.ColorMode.diy) if selector == "diy_code" else int(StatusReply.ColorMode.scene)
     desired = [desired_mode, compiled.diy_code & 0xFF, compiled.diy_code >> 8]
     accepted_revisions = []
 
@@ -4040,8 +4015,8 @@ async def test_deployment_retries_activation_after_fresh_wrong_mode(
             return True
         payload = desired if final_desired and sent.await_count > 2 else actual
         baseline = coord._field_revisions.get("color_mode", 0)
-        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [1])))
-        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, payload)))
         accepted_revisions.append(coord._field_revisions.get("color_mode", 0) > baseline)
         return True
 
@@ -4080,7 +4055,7 @@ async def test_effect_observation_cannot_disambiguate_h617e_scene_aliases(coord,
     scene_received = asyncio.Event()
 
     async def query(**_kwargs) -> bool:
-        coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, 0x74, 0x08])))
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.scene), 0x74, 0x08])))
         scene_received.set()
         return True
 
@@ -4093,7 +4068,7 @@ async def test_effect_observation_cannot_disambiguate_h617e_scene_aliases(coord,
             assert coord.scene_code == 2164
             assert coord.effect == "racing game-a"
             assert not observation.done()
-            coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x01, [int(power)])))
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0x01, [int(power)])))
             result = await observation
         finally:
             observation.cancel()
@@ -4164,7 +4139,7 @@ def test_availability_log_deduplicates_across_setup_retries(hass, coord, caplog)
 
 async def test_intentional_disconnect_does_not_log_unavailability(coord, caplog):
     coord._present = False
-    coord._client = _c(disconnect=AsyncMock())
+    coord._client = _c()
 
     with caplog.at_level(logging.INFO, logger="custom_components.ha_govee_led_ble.coordinator"):
         await coord.disconnect()
@@ -4250,8 +4225,8 @@ def test_notify_callback_pushes_identity_to_own_registry_device(hass, coord):
         identifiers={(DOMAIN, "11:22:33:44:55:66")},
     )
     device = registry.async_get_or_create(config_entry_id=coord.config_entry.entry_id, **coord.device_info)
-    fw = proto.build_packet(proto.STATUS_HEADER, proto.FIRMWARE_PACKET_TYPE, list(b"3.02.24"))
-    hw = proto.build_packet(proto.STATUS_HEADER, proto.HARDWARE_PACKET_TYPE, [0x03, *b"3.01.01"])
+    fw = _packet(0xAA, int(StatusReply.AaDomain.fw_version), list(b"3.02.24"))
+    hw = _packet(0xAA, int(StatusReply.AaDomain.hw_version), [0x03, *b"3.01.01"])
     with (
         patch.object(registry, "async_get_device", side_effect=AssertionError("Deprecated device lookup")),
         patch.object(registry, "async_update_device", wraps=registry.async_update_device) as update,
@@ -4281,8 +4256,8 @@ def test_note_identity_retains_versions_until_own_device_is_registered(hass, coo
         config_entry_id=other_entry.entry_id,
         identifiers={(DOMAIN, coord.address)},
     )
-    fw = proto.build_packet(proto.STATUS_HEADER, proto.FIRMWARE_PACKET_TYPE, list(b"3.02.24"))
-    hw = proto.build_packet(proto.STATUS_HEADER, proto.HARDWARE_PACKET_TYPE, [0x03, *b"3.01.01"])
+    fw = _packet(0xAA, int(StatusReply.AaDomain.fw_version), list(b"3.02.24"))
+    hw = _packet(0xAA, int(StatusReply.AaDomain.hw_version), [0x03, *b"3.01.01"])
     with (
         patch.object(registry, "async_get_device", side_effect=AssertionError("Deprecated device lookup")),
         patch.object(registry, "async_update_device", wraps=registry.async_update_device) as update,
@@ -4624,40 +4599,40 @@ async def test_hold_keeps_connection_and_refreshes_basic_state_without_segments(
 
 
 def test_expectations_from_packet_covers_every_command_family():
-    rhythm_id = next(mid for mid, slug in proto.MUSIC_SLUG_BY_ID.items() if slug == "rhythm")
-    spectrum_id = next(mid for mid, slug in proto.MUSIC_SLUG_BY_ID.items() if slug == "spectrum")
-    scene_code = next(iter(proto.SCENE_EFFECT_BY_ID))
+    rhythm_id = next(mid for mid, slug in _MUSIC_SLUG_BY_ID.items() if slug == "rhythm")
+    spectrum_id = next(mid for mid, slug in _MUSIC_SLUG_BY_ID.items() if slug == "spectrum")
+    scene_code = next(iter(_SCENE_EFFECT_BY_ID))
 
-    assert expectations_from_packet(proto.build_power(True)) == {"is_on": True}
-    assert expectations_from_packet(proto.build_power(False)) == {"is_on": False}
-    assert expectations_from_packet(proto.build_brightness(37)) == {"brightness_pct": 37}
+    assert expectations_from_packet(build_power(True)) == {"is_on": True}
+    assert expectations_from_packet(build_power(False)) == {"is_on": False}
+    assert expectations_from_packet(build_brightness(37)) == {"brightness_pct": 37}
 
-    rgb = expectations_from_packet(proto.build_color_rgb(255, 0, 0))
+    rgb = expectations_from_packet(build_color_rgb(255, 0, 0))
     assert rgb["rgb_color"] == (255, 0, 0)
     # The write-side sub is not echoed back, so expecting it would reject every reply. Models
     # that do echo it keep the discriminator.
-    assert rgb["color_mode"] == (proto.ParsedMode.COLOUR, None)
-    echoed = expectations_from_packet(proto.build_color_rgb(255, 0, 0), static_echoes_color=True)
-    assert echoed["color_mode"] == (proto.ParsedMode.COLOUR, 0x01)
+    assert rgb["color_mode"] == (ParsedMode.COLOUR, None)
+    echoed = expectations_from_packet(build_color_rgb(255, 0, 0), static_echoes_color=True)
+    assert echoed["color_mode"] == (ParsedMode.COLOUR, 0x01)
 
     # Colour-temperature writes zero the direct RGB field, so they map to a Kelvin
     # expectation rather than an rgb_color one.
-    ct = expectations_from_packet(proto.build_color_temp(4000))
+    ct = expectations_from_packet(build_color_temp(4000))
     assert ct["color_temp_kelvin"] == 4000
     assert "rgb_color" not in ct
 
     # A deliberate black paint is also all-zero, but it is a colour, not a 0 K temperature.
     # Splitting the two on "any RGB byte set" put this frame in the kelvin branch.
-    black = expectations_from_packet(proto.build_color_rgb(0, 0, 0))
+    black = expectations_from_packet(build_color_rgb(0, 0, 0))
     assert black["rgb_color"] == (0, 0, 0)
     assert "color_temp_kelvin" not in black
 
-    assert expectations_from_packet(proto.build_white_brightness(80))["white_brightness"] == 80
+    assert expectations_from_packet(build_white_brightness(80))["white_brightness"] == 80
 
-    assert expectations_from_packet(proto.build_scene(scene_code))["effect"] == proto.SCENE_EFFECT_BY_ID[scene_code]
+    assert expectations_from_packet(build_h617a_scene(scene_code))["effect"] == _SCENE_EFFECT_BY_ID[scene_code]
 
-    diy = expectations_from_packet(proto.build_packet(0x33, 0x05, [proto.COLOR_MODE_DIY, 0x20, 0x03]))
-    assert diy["color_mode"] == (proto.ParsedMode.DIY, 800)
+    diy = expectations_from_packet(_packet(0x33, 0x05, [int(StatusReply.ColorMode.diy), 0x20, 0x03]))
+    assert diy["color_mode"] == (ParsedMode.DIY, 800)
 
     rhythm = expectations_from_packet(build_music_mode(rhythm_id, 50, (10, 20, 30), True))
     assert rhythm["music_mode"] == "rhythm"
@@ -4681,7 +4656,7 @@ def test_expectations_from_packet_covers_every_command_family():
     assert video["video_sound_effects_softness"] == 55
 
     assert expectations_from_packet(b"\x00\x01") == {}
-    assert expectations_from_packet(proto.build_packet(0x33, 0x05, [0xEE])) == {}
+    assert expectations_from_packet(_packet(0x33, 0x05, [0xEE])) == {}
 
 
 def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
@@ -4691,30 +4666,30 @@ def test_an_unnameable_scene_is_reported_rather_than_hidden(coord):
     we could not re-activate the scene anyway, so the raw id is the only honest signal left.
     """
     unknown = 401
-    assert unknown not in proto.SCENE_EFFECT_BY_ID
+    assert unknown not in _SCENE_EFFECT_BY_ID
     coord._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *unknown.to_bytes(2, "little")])),
+        bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.scene), *unknown.to_bytes(2, "little")])),
     )
     assert coord.effect is None
     assert coord.unknown_scene_code == unknown
 
     # A scene we can name is reported by name, and leaves no stale code behind.
-    known = next(iter(proto.SCENE_EFFECT_BY_ID))
+    known = next(iter(_SCENE_EFFECT_BY_ID))
     coord._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *known.to_bytes(2, "little")])),
+        bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.scene), *known.to_bytes(2, "little")])),
     )
-    assert coord.effect == proto.SCENE_EFFECT_BY_ID[known]
+    assert coord.effect == _SCENE_EFFECT_BY_ID[known]
     assert coord.unknown_scene_code is None
 
     # Leaving scene mode drops it too, so it can never describe a light that is not in a scene.
     coord._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *unknown.to_bytes(2, "little")])),
+        bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.scene), *unknown.to_bytes(2, "little")])),
     )
     assert coord.unknown_scene_code == unknown
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_STATIC, 0x00])))
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.static), 0x00])))
     assert coord.unknown_scene_code is None
 
 
@@ -4722,7 +4697,7 @@ def test_h6199_scene_codes_are_named_when_hidden_from_the_ha_effect_list(h6199):
     scene = MODEL_SCENES["H6199"]["forest"]
     h6199._notify_callback(
         None,
-        bytearray(proto.build_packet(0xAA, 0x05, [proto.COLOR_MODE_SCENE, *scene.code.to_bytes(2, "little")])),
+        bytearray(_packet(0xAA, 0x05, [int(StatusReply.ColorMode.scene), *scene.code.to_bytes(2, "little")])),
     )
     assert h6199.effect == "forest"
     assert h6199.unknown_scene_code is None
@@ -4730,14 +4705,14 @@ def test_h6199_scene_codes_are_named_when_hidden_from_the_ha_effect_list(h6199):
 
 def test_video_readback_is_gated_on_the_model(coord, h6199):
     """The same mode byte is video only in the H6199 status grammar."""
-    payload = [proto.COLOR_MODE_VIDEO, 0x00, 0x01, 42, 0x01, 55]
+    payload = [int(H6199StatusReply.ModeSel.video), 0x00, 0x01, 42, 0x01, 55]
 
-    coord._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
-    assert coord.color_mode is proto.ParsedMode.UNKNOWN
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, payload)))
+    assert coord.color_mode is ParsedMode.UNKNOWN
     assert coord.video_mode == "off"
 
-    h6199._notify_callback(None, bytearray(proto.build_packet(0xAA, 0x05, payload)))
-    assert h6199.color_mode is proto.ParsedMode.VIDEO
+    h6199._notify_callback(None, bytearray(_packet(0xAA, 0x05, payload)))
+    assert h6199.color_mode is ParsedMode.VIDEO
     assert h6199.video_mode == "game"
     assert h6199.video_saturation == 42
 
