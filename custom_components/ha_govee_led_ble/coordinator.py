@@ -134,6 +134,19 @@ _CORE_STATE_FIELDS = (
     "effect",
     "diy_code",
 )
+_WHITE_BALANCE_GAIN_FIELDS = (
+    "white_balance_flag",
+    "white_balance_red",
+    "white_balance_blue",
+    "white_balance_default_flag",
+    "white_balance_default_red",
+    "white_balance_default_blue",
+)
+_BLANK_SCREEN_POLICY_FIELDS = (
+    "blank_screen_detection",
+    "blank_screen_low_brightness_duration_seconds",
+    "blank_screen_same_tone_duration_seconds",
+)
 
 
 class GoveeBLECoordinator(
@@ -1406,14 +1419,7 @@ class GoveeBLECoordinator(
                         ReadDomain.DISPLAY_SETTING,
                         ("white_balance_scalar",)
                         if self.profile.video_white_balance_representation == "scalar"
-                        else (
-                            "white_balance_flag",
-                            "white_balance_red",
-                            "white_balance_blue",
-                            "white_balance_default_flag",
-                            "white_balance_default_red",
-                            "white_balance_default_blue",
-                        ),
+                        else _WHITE_BALANCE_GAIN_FIELDS,
                     )
                 )
             if (
@@ -1426,12 +1432,7 @@ class GoveeBLECoordinator(
                     (
                         build_blank_screen_query(self.model, profile=profile),
                         ReadDomain.DISPLAY_SETTING,
-                        (
-                            "blank_screen",
-                            "blank_screen_detection",
-                            "blank_screen_low_brightness_duration_seconds",
-                            "blank_screen_same_tone_duration_seconds",
-                        ),
+                        ("blank_screen", *_BLANK_SCREEN_POLICY_FIELDS),
                     )
                 )
             if (
@@ -2098,17 +2099,7 @@ class GoveeBLECoordinator(
         if expected_blank_screen is not None:
             expectations["blank_screen"] = expected_blank_screen
         if expected_blank_screen_policy is not None:
-            expectations.update(
-                zip(
-                    (
-                        "blank_screen_detection",
-                        "blank_screen_low_brightness_duration_seconds",
-                        "blank_screen_same_tone_duration_seconds",
-                    ),
-                    expected_blank_screen_policy,
-                    strict=True,
-                )
-            )
+            expectations.update(zip(_BLANK_SCREEN_POLICY_FIELDS, expected_blank_screen_policy, strict=True))
         if expected_black_border is not None:
             expectations["black_border"] = expected_black_border
         if expected_relative_brightness is not None:
@@ -2287,24 +2278,10 @@ class GoveeBLECoordinator(
                         display_fields.extend(
                             ("white_balance_scalar",)
                             if self.profile.video_white_balance_representation == "scalar"
-                            else (
-                                "white_balance_flag",
-                                "white_balance_red",
-                                "white_balance_blue",
-                                "white_balance_default_flag",
-                                "white_balance_default_red",
-                                "white_balance_default_blue",
-                            )
+                            else _WHITE_BALANCE_GAIN_FIELDS
                         )
                     if self.profile.supports_blank_screen and "blank_screen" in display_settings:
-                        display_fields.extend(
-                            (
-                                "blank_screen",
-                                "blank_screen_detection",
-                                "blank_screen_low_brightness_duration_seconds",
-                                "blank_screen_same_tone_duration_seconds",
-                            )
-                        )
+                        display_fields.extend(("blank_screen", *_BLANK_SCREEN_POLICY_FIELDS))
                     field_baselines.update((field, self._field_revisions.get(field, 0)) for field in display_fields)
                 if refresh_relative_brightness:
                     field_baselines.update(
