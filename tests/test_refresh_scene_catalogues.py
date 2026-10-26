@@ -406,7 +406,7 @@ def test_h6102_candidate_uses_complete_exact_snapshot():
             "H60A6",
             5,
             86,
-            "51f30e370c6f8ff6596fb5e40046460fb46dac48c8e8fef43ac3e5d07130397d",
+            "be6a65d128cc68ee26e43df3dbfdcec4bcdee20638a9c287f1681ee0d29fa43c",
         ),
         (
             "H601C",

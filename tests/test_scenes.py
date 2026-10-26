@@ -302,11 +302,11 @@ def test_h60a1_catalogue_keeps_page_speed_defaults_and_applies_them():
     assert decoded.effect.layers[3].selected_movement.speed == 247
 
 
-def test_h60a6_catalogue_preserves_native_family_identity_and_bodyless_scene():
+def test_h60a6_catalogue_preserves_native_family_identity():
     scenes = _load_catalogue("H60A6")
     halloween = next(scene for scene in scenes if scene.effect_id == 28629)
     paint = next(scene for scene in scenes if scene.diy_effect_codes == (798,))
-    windy = next(scene for scene in scenes if scene.effect_id == 47845)
+    windy = next(scene for scene in scenes if scene.effect_id == 48027)
 
     assert halloween.name == "Halloween B"
     assert halloween.scene_type == paint.scene_type == 5
@@ -317,9 +317,9 @@ def test_h60a6_catalogue_preserves_native_family_identity_and_bodyless_scene():
     assert halloween.speed.default_index == 1
     assert halloween.speed.layer_speeds == ((65,), (86,), (100,))
     assert halloween.speed.pages == ()
-    assert (windy.scene_id, windy.effect_id, windy.code) == (35521, 47845, 25023)
+    assert (windy.scene_id, windy.effect_id, windy.code) == (35702, 48027, 25070)
     assert windy.name == "Windy Day"
-    assert windy.scene_type == 5 and windy.param == "" and windy.diy_effect_codes == ()
+    assert windy.scene_type == 5 and windy.param and windy.diy_effect_codes == (797,)
     assert len({(scene.scene_id, scene.effect_id) for scene in scenes}) == len(scenes)
 
 

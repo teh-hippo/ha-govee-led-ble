@@ -64,7 +64,7 @@ def test_all_h60a6_native_catalogue_bodies_round_trip_through_saved_semantics() 
                 edited = replace(content, layers=tuple(layers))
                 reparsed = decode_native_scene(content.template, encode_native_body(edited), family=content.family)
                 assert reparsed == edited
-    assert counts == {797: 14, 798: 60}
+    assert counts == {797: 15, 798: 60}
 
 
 @pytest.mark.parametrize("preset", range(1, 16))

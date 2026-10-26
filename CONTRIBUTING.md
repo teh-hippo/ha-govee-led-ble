@@ -221,6 +221,8 @@ diffable.  Catalogue availability proves scene identity and vendor
 payload data only; it does not prove transport, activation, upload, or readback
 compatibility.
 
+Review snapshot identity changes and update pinned digests and parser counts together.  Keep edge-case tests independent of whether the current vendor catalogue contains an example.
+
 Enable scene activation and upload whenever an exact-model transport hypothesis
 or verified grammar is represented in Kaitai, while keeping disproven or unsafe
 paths disabled.  Owner-confirmed visible behaviour and restoration are required

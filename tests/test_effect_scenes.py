@@ -35,6 +35,7 @@ from custom_components.ha_govee_led_ble.native_scenes import resolve_native_scen
 from custom_components.ha_govee_led_ble.scenes import (
     MODEL_SCENES,
     SCENE_ENTRIES,
+    SceneEntry,
 )
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
@@ -91,10 +92,15 @@ async def test_native_scene_details_and_defaults_preserve_manual_layer_speeds(ha
     )
 
 
-def test_bodyless_native_scene_keeps_selector_identity():
-    scene = next(item for item in SCENE_ENTRIES["H60A6"] if item.scene_type == 5 and not item.param)
+def test_bodyless_native_scene_keeps_selector_identity(monkeypatch):
+    scene = SceneEntry(code=1, scene_type=5, scene_id=1, effect_id=1, name="Bodyless scene")
+    monkeypatch.setitem(MODEL_SCENES["H60A6"], "bodyless scene", scene)
+
     detail = scene_detail_payload("H60A6", scene.scene_id, scene.effect_id)
-    assert cast(dict[str, Any], detail["content"])["kind"] == "scene_builtin"
+    content = cast(dict[str, Any], detail["content"])
+    assert content["kind"] == "scene_builtin"
+    assert content["template"]["scene_id"] == scene.scene_id
+    assert content["template"]["effect_id"] == scene.effect_id
     assert cast(dict[str, Any], detail["scene"])["parameter_kind"] == "none"
 
 
