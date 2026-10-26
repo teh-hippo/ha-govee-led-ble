@@ -88,6 +88,8 @@
     {"category_id":1159,"scene_id":14769,"effect_id":23585,"name":"Birthday","code":12680,"scene_type":2,"param":"Ai8AAg4IAgL/GQAAAAD/GQAAAAAC+jIG/zgA/38AAP8AAAAAAP//iwD/AACAAAAAACYAAgoIAAH//wAAAAAB+gAF8QAd/3UA/8AA/wef/0sAAAD/AAH6AA=="},
     {"category_id":1159,"scene_id":14770,"effect_id":23586,"name":"Fireworks","code":12681,"scene_type":2,"param":"Ay8AAgoHAgL/GQAADw//GQAADw8C+jIG/zgA/38AAP8AAAAAAP//iwD/AACAAAAAACZQAgUDAAH/AAPTBAQB+gAF8QAd/3UA/8AA/wef/0sAEgD5AAH6ACZVAgUDAAH/AAPTCAgB+gAF8QAd/3UA/8AA/wef/0sAEAD5AAH6AA=="},
     {"category_id":1159,"scene_id":14771,"effect_id":23587,"name":"Party","code":12682,"scene_type":2,"param":"AikAAAABAAH/AADJIo0C+QUG/wAAAAD/AP8A/38A//8AAP//AACAAACAACkAAg8JAAH/AAP5BQUC+QUG/wAAAAD/AP8A/38A//8AAP//AACAAACAAA=="},
+    {"category_id":1161,"scene_id":13256,"effect_id":41587,"name":"White Light","code":43,"scene_type":0},
+    {"category_id":1161,"scene_id":13257,"effect_id":41584,"name":"Illumination","code":42,"scene_type":0},
     {"category_id":1161,"scene_id":13258,"effect_id":21905,"name":"Sleep","code":12067,"scene_type":2,"param":"ARoAAAABAAErKwCAFBQAgBQB/6QqAACAAACAAA=="},
     {"category_id":1161,"scene_id":13259,"effect_id":21906,"name":"Work","code":12068,"scene_type":2,"param":"ARoAAAABAAH//wCAFBQAgBQB//nvAACAAACAAA=="},
     {"category_id":1161,"scene_id":13260,"effect_id":21907,"name":"Reading","code":12069,"scene_type":2,"param":"ARoAAAAFAAHMzAGWMjIC3DIB/7M0AAAAAAAAAA=="},
