@@ -46,6 +46,65 @@ if _GENERATED_DIR:
 _MODULE_PREFIX = "" if _GENERATED_DIR else "custom_components.ha_govee_led_ble.generated_protocol."
 
 
+@pytest.mark.parametrize(
+    "enabled,command,reply",
+    [
+        (False, "330e00000000000000000000000000000000003d", "aa0e0000000000000000000000000000000000a4"),
+        (True, "330e01000000000000000000000000000000003c", "aa0e0100000000000000000000000000000000a5"),
+    ],
+)
+def test_h6179_synthetic_current_adaptation_bytes(enabled, command, reply):
+    profile = device_profile("H6179", 1, 1)
+    assert generated_protocol_adapter.build_boolean_control(
+        "limit", enabled, "H6179", profile=profile
+    ) == bytes.fromhex(command)
+    assert generated_protocol_adapter.build_boolean_control_query("limit", "H6179", profile=profile) == bytes.fromhex(
+        "aa0e0000000000000000000000000000000000a4"
+    )
+    from custom_components.ha_govee_led_ble.coordinator_status import decode_status_frame, status_is_authorized
+
+    decoded = decode_status_frame(bytes.fromhex(reply), "H6179", profile=profile)
+    assert decoded is not None and status_is_authorized(decoded, profile)
+    assert generated_protocol_adapter.parse_boolean_control(decoded.generated, "H6179", profile=profile) == {
+        "limit": enabled
+    }
+    assert not status_is_authorized(decoded, device_profile("H6179", 10, 1))
+
+
+def test_h6179_kelvin_command_uses_table_companion():
+    assert build_color_temp(2000, "H6179") == bytes.fromhex("33050dffffff07d0ff8d0b00000000000000006a")
+
+
+@pytest.mark.parametrize(
+    "mixed,first",
+    [
+        (False, "a30001020400006403ff0000000000000000003c"),
+        (True, "a300010204ff003206ff00000000ff0400000269"),
+    ],
+)
+def test_h6179_newer_diy_synthetic_bytes(mixed, first):
+    from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
+    from custom_components.ha_govee_led_ble.effect_domain import (
+        EffectPair,
+        H6179MixedDiyEffect,
+        H6179SingleDiyEffect,
+        LibraryItem,
+    )
+
+    content = (
+        H6179MixedDiyEffect("H6179", (EffectPair(0, 0), EffectPair(2, 0)), 50, ((255, 0, 0), (0, 0, 255)))
+        if mixed
+        else H6179SingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))
+    )
+    compiled = compile_effect(
+        LibraryItem.new("Synthetic revision fixture", content),
+        "H6179",
+        diy_code=0x1234,
+        profile=device_profile("H6179", 10, 1),
+    )
+    assert compiled.upload_packets == (bytes.fromhex(first), bytes.fromhex("a3ff00000000000000000000000000000000005c"))
+
+
 def _generated(module: str, class_name: str) -> type[Any]:
     return getattr(import_module(f"{_MODULE_PREFIX}{module}"), class_name)
 

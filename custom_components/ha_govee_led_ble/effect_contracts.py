@@ -63,7 +63,7 @@ class CompilerDeployerStrategy(StrEnum):
     MODEL_SCENE_ENGINE = "model_scene_engine"
     COORDINATOR_WRITER = "coordinator_writer"
     A3_EFFECT_UPLOAD = "a3_effect_upload"
-    H6179_A1_EFFECT_UPLOAD = "h6179_a1_effect_upload"
+    H6179_EFFECT_UPLOAD = "h6179_effect_upload"
 
 
 class VerificationConfidence(StrEnum):
@@ -317,7 +317,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         "Single DIY",
         "h6179_single_diy",
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H6179_A1_EFFECT_UPLOAD,
+        _S.H6179_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
         _P.NOT_VALIDATED,
         _E.STRUCTURAL,
@@ -328,7 +328,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
         "Mixed DIY",
         "h6179_mixed_diy",
         _R.HOME_ASSISTANT_CONTROL,
-        _S.H6179_A1_EFFECT_UPLOAD,
+        _S.H6179_EFFECT_UPLOAD,
         _V.SELECTION_ONLY,
         _P.NOT_VALIDATED,
         _E.STRUCTURAL,

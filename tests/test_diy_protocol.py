@@ -8,7 +8,7 @@ from kaitaistruct import KaitaiStream
 
 from custom_components.ha_govee_led_ble import effect_commands as proto
 from custom_components.ha_govee_led_ble import effect_contracts
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, get_profile
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile, get_profile
 from custom_components.ha_govee_led_ble.effect_catalogue import (
     H617A_TYPE04_APPLY_CODE,
     H6199_PALETTE_DIY_APPLY_CODE,
@@ -301,6 +301,31 @@ def test_h6179_single_diy_round_trips_through_semantic_codec() -> None:
         )
         == content
     )
+
+
+@pytest.mark.parametrize(
+    "pact_type,pact_code,transport", [(1, 1, "a1_02"), (9, 1, "a1_02"), (10, 0, "a1_02"), (10, 1, "a3"), (10, 2, "a3")]
+)
+@pytest.mark.parametrize("content", [H6179_CONTENT, H6179SingleDiyEffect("H6179", 0, 0, 100, ((255, 0, 0),))])
+def test_h6179_diy_transport_follows_pact_without_changing_content(pact_type, pact_code, transport, content):
+    profile = device_profile("H6179", pact_type, pact_code)
+    compiled = compile_effect(LibraryItem.new("Revision DIY", content), "H6179", diy_code=0x1234, profile=profile)
+    assert compiled.upload_transport == transport
+    assert decode_effect_frames(compiled.upload_packets, "H6179", transport) == content
+    assert compiled.activation_packet == H("33050a341200000000000000000000000000001a")
+    other = device_profile("H6179", *((1, 1) if transport == "a3" else (10, 1)))
+    with pytest.raises(ValueError, match="transport"):
+        validate_compiled_geometry(compiled, other)
+
+
+def test_h6179_unknown_pact_does_not_guess_diy_transport():
+    with pytest.raises(ValueError):
+        compile_effect(
+            LibraryItem.new("Unqualified DIY", H6179_CONTENT),
+            "H6179",
+            diy_code=0x1234,
+            profile=device_profile("H6179", None, None),
+        )
 
 
 def test_h6199_fixed_diy_envelope_accepts_the_largest_structurally_fitting_palette(monkeypatch) -> None:

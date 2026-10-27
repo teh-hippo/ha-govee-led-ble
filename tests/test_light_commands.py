@@ -174,7 +174,14 @@ def test_h6179_uses_exact_raw_brightness_and_whole_device_static_commands() -> N
     assert rgb == H("33050d0a141e000000000000000000000000003b")
     assert parsed_rgb is not None and parsed_rgb.rgb == (10, 20, 30) and parsed_rgb.whole_strip
     assert parsed_temperature is not None and parsed_temperature.kelvin == 3600
-    assert parsed_temperature.kelvin_companion_rgb == kelvin_to_rgb(3600)
+    assert parsed_temperature.kelvin_companion_rgb == (255, 203, 141)
+
+
+@pytest.mark.parametrize("requested,expected", [(2001, 2000), (2049, 2000), (2050, 2100)])
+def test_h6179_kelvin_normalises_before_selecting_companion(requested, expected):
+    static = parse_static_write(build_color_temp(requested, "H6179"), "H6179")
+    assert static is not None and static.kelvin == expected
+    assert static.kelvin_companion_rgb == ((255, 141, 11) if expected == 2000 else (255, 146, 29))
 
 
 def test_segment_numbering_and_masks() -> None:

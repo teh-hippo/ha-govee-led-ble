@@ -83,14 +83,15 @@ def decode_status_frame(
 
 def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -> bool:
     """Boolean registers have independent authorization, not the catch-all OTHER domain."""
-    domain_name = getattr(decoded.generated.domain, "name", "")
+    domain = decoded.generated.domain
+    domain_name = domain if isinstance(domain, str) else getattr(domain, "name", "")
     if domain_name == "bar_enable":
         return profile.setting_grammar == "H6046" and bool(profile.boolean_controls)
     if domain_name == "power_off_memory" and profile.setting_grammar == "H6046":
         return False
     if domain_name == "power_on_behaviour":
         return profile.supports_power_on_behaviour
-    control = boolean_control_name(getattr(decoded.generated.domain, "name", ""))
+    control = boolean_control_name(domain_name)
     if control is not None:
         return boolean_control_is_authorized(control, profile)
     if decoded.domain is ReadDomain.PHYSICAL_IC_COUNT:

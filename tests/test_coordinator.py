@@ -175,6 +175,33 @@ async def test_h6125_writes_the_register_while_expectations_stay_in_percent(h612
     assert {"music_mode", "music_sensitivity"} <= h6125._expected_state.keys()
 
 
+async def test_h6179_advertised_pact_rejects_stale_diy_at_physical_write(hass):
+    from custom_components.ha_govee_led_ble.effect_compiler import compile_effect, validate_compiled_geometry
+    from custom_components.ha_govee_led_ble.effect_domain import H6179SingleDiyEffect, LibraryItem
+
+    coordinator = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6179", configuration_url=_CONFIGURATION_URL)
+    item = LibraryItem.new("Disposable DIY", H6179SingleDiyEffect("H6179", 0, 0, 50, ((255, 0, 0),)))
+    coordinator._resolve_device_profile()
+    with pytest.raises(ValueError):
+        compile_effect(item, "H6179", diy_code=0x1234, profile=coordinator.profile)
+    coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 1, 0))}))
+    compiled = compile_effect(item, "H6179", diy_code=0x1234, profile=coordinator.profile)
+    client = MagicMock(is_connected=True, write_gatt_char=AsyncMock())
+    coordinator._client = client
+    coordinator._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 10, 1, 0))}))
+    with pytest.raises(ValueError, match="transport"):
+        await coordinator._async_write_packet(
+            client,
+            compiled.upload_packets[0],
+            before_write=lambda: validate_compiled_geometry(compiled, coordinator.profile),
+        )
+    client.write_gatt_char.assert_not_awaited()
+    current = compile_effect(item, "H6179", diy_code=0x1234, profile=coordinator.profile)
+    assert current.upload_transport == "a3"
+    coordinator._clear_client_state(client)
+    assert coordinator.profile == device_profile("H6179", 10, 1)
+
+
 def test_h6125_advertised_pact_and_notified_identity_qualify_the_profile(h6125):
     h6125.config_entry = MagicMock(entry_id="test-entry")
     h6125._note_advertisement(SimpleNamespace(manufacturer_data={34818: bytes((0xEC, 0, 1, 2, 0))}))

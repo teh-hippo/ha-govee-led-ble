@@ -2157,9 +2157,11 @@ async def test_h6179_preview_revalidates_fresh_mode_before_zero_effect_writes(
     await manager.async_shutdown()
 
 
+@pytest.mark.parametrize("pact_type", [1, 10])
 async def test_h6179_preview_holds_previews_through_admission_check_before_selector(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
+    pact_type: int,
 ) -> None:
     coordinator = GoveeBLECoordinator(
         hass,
@@ -2167,12 +2169,14 @@ async def test_h6179_preview_holds_previews_through_admission_check_before_selec
         "H6179",
         configuration_url="homeassistant://ha-govee-led-ble/editor/entry-a",
     )
+    coordinator.pact_type, coordinator.pact_code = pact_type, 1
+    coordinator._resolve_device_profile()
     coordinator.is_on = True
     coordinator.diy_code = 0x1234
     coordinator.async_preview_preflight = AsyncMock()  # type: ignore[method-assign]
     coordinator.refresh_state = AsyncMock(return_value=True)  # type: ignore[method-assign]
     item = _h6179_item()
-    compiled = compile_application(item, "H6179", diy_code=0x1234)
+    compiled = compile_application(item, "H6179", diy_code=0x1234, profile=coordinator.profile)
     assert isinstance(compiled, CompiledEffect)
     writes: list[bytes] = []
     user_entered = asyncio.Event()

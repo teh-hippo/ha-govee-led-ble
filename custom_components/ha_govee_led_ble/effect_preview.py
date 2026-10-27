@@ -975,8 +975,12 @@ class EffectPreviewManager:
             else:
                 assert compiled is not None
                 if isinstance(compiled, CompiledEffect):
-                    a1_activation = compiled.activation_packet if compiled.upload_transport == "a1_02" else None
-                    packets = list(compiled.upload_packets if a1_activation is not None else compiled.packets)
+                    final_activation = (
+                        compiled.activation_packet
+                        if compiled.upload_transport == "a1_02" or requires_approved_diy_slot(compiled.model)
+                        else None
+                    )
+                    packets = list(compiled.upload_packets if final_activation is not None else compiled.packets)
                     power_required = not coordinator.is_on
                     if power_required:
                         packets.insert(0, build_power(True, coordinator.model))
@@ -994,8 +998,8 @@ class EffectPreviewManager:
                         if "native_diy_positive_ack_required" in compiled.evidence_codes
                         else {}
                     )
-                    if a1_activation is not None:
-                        write_options.update(final_packet=a1_activation, before_final=before_final)
+                    if final_activation is not None:
+                        write_options.update(final_packet=final_activation, before_final=before_final)
 
                     def validate_effect_write() -> None:
                         validate_compiled_geometry(compiled, coordinator.profile)
