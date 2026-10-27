@@ -187,6 +187,7 @@ def _make_coord(**ov) -> MagicMock:
         relative_brightness_strip_left=None,
         relative_brightness_strip_right=None,
         blank_screen=None,
+        low_blue_light=None,
         black_border=None,
         installation_direction=None,
         camera_health="unknown",

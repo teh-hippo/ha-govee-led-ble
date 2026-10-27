@@ -16,6 +16,7 @@ Each device protocol is captured in [Kaitai Struct](https://kaitai.io/) (`.ksy`)
 | **H1A42** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/429) |
 | **H601C** | ✅ Supported | [Corrected owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/329#issuecomment-6117023962) |
 | **H6046** | 🚧 Experimental | [Awaiting confirmation](https://github.com/teh-hippo/ha-govee-led-ble/issues/481) |
+| **H6072** | 🚧 Experimental | [Awaiting confirmation](https://github.com/teh-hippo/ha-govee-led-ble/issues/486) |
 | **H6076** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/247#issuecomment-5482287413) |
 | **H6097** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/445#issuecomment-6389678992) |
 | **H6099** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/258#issuecomment-5703821314) |
@@ -61,6 +62,11 @@ New Experimental devices also show setup guidance linking to their existing conf
 Fill missing versions from the Govee app and identify that source.  Review diagnostics before attaching them because GitHub comments and attachments are public.
 
 H60A1 and H60A6 include their exact-model scene catalogues and DIY effects.  H60A6 also supports native layered effects and 133-point paint, with independent **Panel enabled** and **Ring enabled** switches and a **Power-on behaviour** select.  These additional entities are hidden by default; enabling a zone does not switch on master power.  Newly added ceiling-light effect and setting paths still need owner confirmation on hardware.
+
+On H6072 firmware 2.04.07 or newer, **Low-blue-light** and **Low-blue-light level** configuration entities expose the native setting and integer levels from 20 to 100.
+Changing either control preserves the other setting and the device's opaque sibling fields, and requires fresh matching readback.
+Unknown or missing replies remain unknown rather than adopting an optimistic default.
+This Experimental setting still needs [owner confirmation](https://github.com/teh-hippo/ha-govee-led-ble/issues/486); no health benefit or visible rendering is inferred from readback.
 
 The `ha_govee_led_ble.paint_segments` action accepts `rgb_scale` from 0 to 100, applied once to the unscaled RGB groups supplied in that request.  Zero paints black rather than switching power off.  This is static RGB composition, not native ring brightness; retained RGB cannot safely recover native-white intent after a disconnect, so no separate ring-scale number is exposed.
 

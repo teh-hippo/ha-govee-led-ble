@@ -90,6 +90,7 @@ from .h6102_capabilities import (
 from .light_commands import (
     parse_static_write,
 )
+from .low_blue_light import LowBlueLightState
 from .music_semantics import (
     music_body_params_for_mode,
 )
@@ -248,6 +249,7 @@ class GoveeBLECoordinator(
         self.pact_type: int | None = None
         self.pact_code: int | None = None
         self.boolean_control_state: dict[str, bool] = {}
+        self.low_blue_light: LowBlueLightState | None = None
         self.power_on_behaviour: str | None = None
         self._bulk_collector: BulkStatusCollector | None = None
         self._bulk_query_deadline: float | None = None
@@ -569,6 +571,8 @@ class GoveeBLECoordinator(
         self.boolean_control_state = {
             key: value for key, value in self.boolean_control_state.items() if key in profile.boolean_controls
         }
+        if not profile.supports_low_blue_light:
+            self.low_blue_light = None
         self._profile_generation += 1
         self._expected_state.clear()
         self._sync_device_configuration_url()
@@ -699,6 +703,22 @@ class GoveeBLECoordinator(
                                 await self._disconnect_if_current_locked(client)
                             raise BleakError(f"State query failed for {self.address}")
                         read_succeeded = True
+                        if self.profile.supports_low_blue_light and self.identity_fields_confirmed(
+                            frozenset({"fw_version"})
+                        ):
+                            from .low_blue_light import build_query
+
+                            # Quarantining an optional read must not undo the verified basic poll.
+                            try:
+                                async with self._lock:
+                                    await self._async_read_setting_fields(
+                                        client,
+                                        build_query(self.profile),
+                                        ("low_blue_light",),
+                                        deadline=time.monotonic() + 2.0,
+                                    )
+                            except BleakError, ValueError, TimeoutError:
+                                _LOGGER.debug("Optional low-blue-light query failed", exc_info=True)
                     finally:
                         self._state_read_available = read_succeeded
                     if client is not previous_client and self.connection_mode != CONNECTION_MODE_HOLD:
@@ -933,6 +953,7 @@ class GoveeBLECoordinator(
             self.strip_direction = self.camera_position = self.gradient = None
             self.camera_status = "unknown"
             self.boolean_control_state.clear()
+            self.low_blue_light = None
             self.power_on_behaviour = None
         self._physical_ic_count_confirmed = False
         if self.profile.can_read(ReadDomain.PHYSICAL_IC_COUNT) and get_profile(self.model).physical_ic_count is None:
@@ -1514,11 +1535,24 @@ class GoveeBLECoordinator(
             return self.profile
         if self.model == "H6102":
             return self._h6102_authorization_profile()
-        return device_profile(self.model, self.pact_type, self.pact_code, firmware=None, hardware=None)
+        return device_profile(
+            self.model,
+            self.pact_type,
+            self.pact_code,
+            firmware=self.fw_version if self.identity_fields_confirmed(frozenset({"fw_version"})) else None,
+            hardware=self.hw_version if self.identity_fields_confirmed(frozenset({"hw_version"})) else None,
+        )
 
     def _validate_authorized_packet(
         self, packet: bytes, validator: Callable[[bytes, ModelProfile], None] = require_profile_packet
     ) -> None:
+        from .low_blue_light import parse_setting
+
+        if parse_setting(packet, self.profile, "envelope").parsed is not None:
+            require_profile_packet(packet, self.profile)
+            if not self.identity_fields_confirmed(frozenset({"fw_version"})):
+                raise ValueError("Low-blue-light requires freshly confirmed firmware")
+            return
         profile = self._authorization_profile()
         if profile != self.profile:
             validator(packet, profile)
@@ -1629,6 +1663,11 @@ class GoveeBLECoordinator(
     async def async_set_boolean_control(self, control: str, enabled: bool) -> None:
         await self._async_set_verified_setting(control, enabled)
 
+    async def async_set_low_blue_light(self, *, enabled: bool | None = None, level: int | None = None) -> None:
+        from .low_blue_light import async_set_setting
+
+        await async_set_setting(self, enabled=enabled, level=level)
+
     async def async_set_power_on_behaviour(self, value: str) -> None:
         await self._async_set_verified_setting("power_on_behaviour", value)
 
@@ -1735,6 +1774,17 @@ class GoveeBLECoordinator(
         write_guard: Callable[[], None] | None = None,
     ) -> bool:
         fields = ("boolean_left_bar_enabled", "boolean_right_bar_enabled")
+        return await self._async_read_setting_fields(client, query, fields, deadline=deadline, write_guard=write_guard)
+
+    async def _async_read_setting_fields(
+        self,
+        client: BleakClient,
+        query: bytes,
+        fields: tuple[str, ...],
+        *,
+        deadline: float,
+        write_guard: Callable[[], None] | None = None,
+    ) -> bool:
         baseline = {field: self._field_revisions.get(field, 0) for field in fields}
         token, generation = self._notification_token, self._profile_generation
         attempted = complete = False
@@ -1768,7 +1818,7 @@ class GoveeBLECoordinator(
                     async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
                         await self._disconnect_if_current_locked(client)
                 except TimeoutError:
-                    _LOGGER.debug("Timed out disconnecting an abandoned native bar query")
+                    _LOGGER.debug("Timed out disconnecting an abandoned native setting query")
 
     async def _async_set_bar_control(self, control: str, enabled: bool) -> None:
         from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query

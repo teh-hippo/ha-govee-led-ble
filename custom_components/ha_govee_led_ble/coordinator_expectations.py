@@ -243,6 +243,8 @@ def _expected_color_mode(
         return ParsedMode.MUSIC, None
     if mode == "scene":
         return ParsedMode.SCENE, None
+    if mode == "legacy_static":
+        return ParsedMode.COLOUR, None
     if mode == "static":
         return ParsedMode.COLOUR, (int(detail.static_sub) if static_echoes_color else None)
     return None

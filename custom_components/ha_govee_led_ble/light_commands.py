@@ -227,6 +227,29 @@ def parse_static_write(
     if generated is None or not hasattr(generated.opcode, "name"):
         return None
     whole_device_mask = profile.whole_device_mask
+    if profile.command_grammar in {"H6072", "H6072-legacy"} and generated.is_static:
+        legacy = generated.body.sub.name == "legacy_static"
+        if legacy != (profile.command_grammar == "H6072-legacy"):
+            raise ValueError("Static format does not match the confirmed revision")
+        if legacy:
+            body = generated.body.sub_body
+            kelvin = int(body.kelvin)
+            return ParsedStaticWrite(
+                operation=int(generated.body.sub),
+                segment_mask=int(body.mask),
+                whole_device_mask=whole_device_mask,
+                rgb=None
+                if kelvin
+                else (int(body.rgb_direct.red), int(body.rgb_direct.green), int(body.rgb_direct.blue)),
+                kelvin=kelvin or None,
+                kelvin_companion_rgb=(
+                    int(body.rgb_preview.red),
+                    int(body.rgb_preview.green),
+                    int(body.rgb_preview.blue),
+                )
+                if kelvin
+                else None,
+            )
     if profile.command_grammar == "H601C":
         if not generated.is_static:
             return None

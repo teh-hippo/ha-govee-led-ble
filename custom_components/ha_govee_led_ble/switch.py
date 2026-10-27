@@ -24,7 +24,10 @@ async def async_setup_entry(
     added: set[str] = set()
 
     def add_qualified() -> None:
-        controls = entry.runtime_data.profile.boolean_controls - added
+        profile = entry.runtime_data.profile
+        controls = (
+            profile.boolean_controls | ({"low_blue_light"} if profile.supports_low_blue_light else set())
+        ) - added
         if controls:
             added.update(controls)
             async_add_entities([GoveeBLEControlSwitch(entry, control) for control in sorted(controls)])
@@ -48,10 +51,18 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
 
     @property
     def available(self) -> bool:
-        return self._control in self.coordinator.profile.boolean_controls and super().available
+        supported = (
+            self.coordinator.profile.supports_low_blue_light
+            if self._control == "low_blue_light"
+            else self._control in self.coordinator.profile.boolean_controls
+        )
+        return supported and super().available
 
     @property
     def is_on(self) -> bool | None:
+        if self._control == "low_blue_light":
+            state = self.coordinator.low_blue_light
+            return state.enabled if state is not None else None
         return self.coordinator.boolean_control_state.get(self._control)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -62,6 +73,9 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
 
     async def _set(self, enabled: bool) -> None:
         try:
-            await self.coordinator.async_set_boolean_control(self._control, enabled)
+            if self._control == "low_blue_light":
+                await self.coordinator.async_set_low_blue_light(enabled=enabled)
+            else:
+                await self.coordinator.async_set_boolean_control(self._control, enabled)
         except (BleakError, ValueError, TimeoutError) as error:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error

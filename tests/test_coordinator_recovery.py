@@ -101,6 +101,24 @@ async def test_h6046_mixed_native_white_revokes_known_rgb_even_when_rendering_is
         await async_prepare_effect_control_state(coord, require_restorable_static=True)
 
 
+async def test_h6072_optional_nonzero_kelvin_revokes_rgb_only_preview_recovery(hass):
+    from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
+
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6072", configuration_url=None)
+    coord.profile = device_profile("H6072", 2, 1, firmware="2.04.10", hardware="3.02.00")
+    coord.color_mode = ParsedMode.COLOUR
+    coord.segment_state_source = "observed"
+    coord._static_rgb_known = True
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 1, 0x0C, 0x80])))
+    state = coord.capture_effect_control_state()
+    assert state.color_temp_kelvin == 3200 and coord.color_temp_kelvin_source == "observed"
+    assert not state.static_rgb_known and not coord.profile.static_readback_kelvin
+    with pytest.raises(RuntimeError, match="white intent"):
+        await async_prepare_effect_control_state(coord, require_restorable_static=True)
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 1, 0, 0])))
+    assert coord.color_temp_kelvin == 3200 and not coord._static_rgb_known
+
+
 def test_h6046_recovery_persists_both_white_points_and_native_power_flags():
     from custom_components.ha_govee_led_ble.light_commands import kelvin_companion_rgb
 

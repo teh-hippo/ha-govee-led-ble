@@ -259,8 +259,12 @@ class _NotificationMixin(_CoordinatorBase):
             if parsed.rgb_color is not None and self.profile.static_readback_echoes_color:
                 static_values["rgb_color"] = parsed.rgb_color
             if (
-                self.profile.static_readback_kelvin
-                and (parsed.color_temp_kelvin is not None or self.profile.static_readback_zero_kelvin_is_rgb)
+                (self.profile.static_readback_kelvin or self.profile.static_readback_nonzero_kelvin)
+                and (
+                    parsed.color_temp_kelvin is not None
+                    or self.profile.static_readback_kelvin
+                    and self.profile.static_readback_zero_kelvin_is_rgb
+                )
                 and not (self.profile.status_grammar == "H6046" and parsed.left_bar_kelvin != parsed.right_bar_kelvin)
             ):
                 static_values["color_temp_kelvin"] = parsed.color_temp_kelvin
@@ -401,6 +405,24 @@ class _NotificationMixin(_CoordinatorBase):
             frame = decoded_frame
         self._last_rx_monotonic = time.monotonic()
         if self._handle_bulk_notification(frame):
+            return
+        from .low_blue_light import parse_setting, setting_state
+
+        low_blue_light = parse_setting(frame, self.profile)
+        if low_blue_light.parsed is not None:
+            if not self.profile.supports_low_blue_light or not self.identity_fields_confirmed(
+                frozenset({"fw_version"})
+            ):
+                self._record_packet(
+                    "rx", frame, outcome="rejected", reason="unauthorised_setting", parser=low_blue_light.parser
+                )
+                return
+            self.low_blue_light = setting_state(low_blue_light.parsed)
+            self._mark_received(StatusDomain.LOW_BLUE_LIGHT, "low_blue_light")
+            self._record_packet(
+                "rx", frame, outcome="parsed", reason="native_setting_status", parser=low_blue_light.parser
+            )
+            self.async_set_updated_data(self.data or {})
             return
         zone_result = parse_zone_notification(frame, self.profile)
         if zone_result.parsed is not None:

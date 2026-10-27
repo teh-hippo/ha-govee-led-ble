@@ -15,6 +15,8 @@ from .music_semantics import (
     H617C_MUSIC_VARIANTS,
     H617E_MUSIC_VARIANTS,
     H6046_MUSIC_VARIANTS,
+    H6072_LEGACY_MUSIC_VARIANTS,
+    H6072_MUSIC_VARIANTS,
     H6076_LEGACY_MUSIC_VARIANTS,
     H6076_MUSIC_VARIANTS,
     H6097_MUSIC_VARIANTS,
@@ -91,6 +93,7 @@ class ReadDomain(StrEnum):
     PHYSICAL_IC_COUNT = "physical_ic_count"
     INSTALLATION_DIRECTION = "installation_direction"
     CAMERA_HEALTH = "camera_health"
+    LOW_BLUE_LIGHT = "low_blue_light"
     OTHER = "other"
 
 
@@ -165,6 +168,7 @@ class ModelProfile:
     supports_rgb: bool = False
     supports_installation_direction: bool = False
     supports_color_temperature: bool = False
+    supports_low_blue_light: bool = False
     min_color_temp_kelvin: int = 2000
     max_color_temp_kelvin: int = 9000
     readback_min_color_temp_kelvin: int | None = None
@@ -213,6 +217,7 @@ class ModelProfile:
     supports_white_brightness: bool = False
     static_readback_echoes_color: bool = False
     static_readback_kelvin: bool = False
+    static_readback_nonzero_kelvin: bool = False
     static_readback_zero_kelvin_is_rgb: bool = False
     static_readback_gradual: bool = False
     whole_device_mask: int = 0
@@ -584,17 +589,104 @@ _H6076_MUSIC_PROFILE = replace(
     music_params_require_activation=True,
 )
 
-# H6072 Floor Lamp: same wire protocol as H6076 (status_grammar "H6076" parses its
-# replies; mode selector 0x15=static confirmed by live capture), segments and
-# multi_effect domains answer. Music modes unverified -> trimmed off.
-_H6072_PROFILE = replace(
-    _H6076_PROFILE,
-    name="H6072 Floor Lamp",
+_H6072_PROFILE = ModelProfile(
+    "H6072 Floor Lamp",
     support_quality=SupportQuality.EXPERIMENTAL,
-    confirmation_issue=442,
-    music_grammar=None,
-    music_modes=(),
-    readback_music_modes=(),
+    confirmation_issue=486,
+    command_grammar="H6072",
+    command_ack_grammar="H617A",
+    status_grammar="H6072",
+    setting_grammar="H6072",
+    effect_grammar="H617A",
+    effect_workflows=frozenset(
+        {
+            "native_scenes",
+            "native_music",
+            "single",
+            "multi",
+            "painted",
+            "edited_palette_scenes",
+            "layered_scenes",
+            "advanced",
+        }
+    ),
+    command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "music", "effect_upload"}),
+    read_domains=frozenset(
+        {
+            ReadDomain.POWER,
+            ReadDomain.BRIGHTNESS,
+            ReadDomain.COLOUR_MODE,
+            ReadDomain.FIRMWARE,
+            ReadDomain.HARDWARE,
+            ReadDomain.SEGMENTS,
+            ReadDomain.LOW_BLUE_LIGHT,
+        }
+    ),
+    setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS}),
+    profile_identity_fields=frozenset({"fw_version", "hw_version"}),
+    profile_pact_dependent=True,
+    supports_rgb=True,
+    supports_color_temperature=True,
+    min_color_temp_kelvin=2200,
+    max_color_temp_kelvin=6500,
+    kelvin_direct_rgb=(255, 255, 255),
+    kelvin_companion_uses_table=True,
+    color_temp_step_kelvin=100,
+    static_readback_gradual=True,
+    static_readback_nonzero_kelvin=True,
+    segment_colour_mode_ambiguous=True,
+    segment_kelvin_renders_device_rgb=True,
+    whole_device_mask=0xFF,
+    segment_count=8,
+    segment_group_size=3,
+    physical_ic_count=66,
+    supports_segment_writes=True,
+    supports_segment_brightness=True,
+    supports_scenes=True,
+    scene_catalogue_sku="H6072",
+    supports_custom_effects=True,
+    supports_multi_layered_effects=True,
+    supports_advanced_effects=True,
+    advanced_diy_selector=402,
+    diy_requires_upload_ack=True,
+    effect_readback="diy_code_only",
+    music_grammar="H6072",
+    music_modes=(
+        "energetic",
+        "rhythm",
+        "bounce",
+        "hopping",
+        "beat",
+        "spray",
+        "skittles",
+        "torch",
+        "candy_crush",
+        "fusion",
+        "shiny",
+        "separation",
+    ),
+    readback_music_modes=(
+        "energetic",
+        "rhythm",
+        "bounce",
+        "hopping",
+        "beat",
+        "spray",
+        "skittles",
+        "torch",
+        "candy_crush",
+        "fusion",
+        "shiny",
+        "separation",
+    ),
+    music_variants=H6072_MUSIC_VARIANTS,
+    supports_music_color=True,
+    music_upload_before_selector=True,
+    music_requires_upload_ack=True,
+    music_params_require_activation=True,
+    supports_low_blue_light=True,
+    boolean_controls=frozenset({"gradual"}),
+    connection_idle_timeout=3.0,
 )
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
@@ -1840,6 +1932,61 @@ def _h6125_profile(
     )
 
 
+def _h6072_profile(
+    pact_type: int | None, pact_code: int | None, firmware: str | None, hardware: str | None
+) -> ModelProfile:
+    from .firmware_version import FirmwareVersion
+    from .scenes import SCENE_ENTRIES
+
+    profile = MODEL_PROFILES["H6072"]
+    fw, hw = FirmwareVersion.parse(firmware), FirmwareVersion.parse(hardware)
+    new_static = (
+        fw is not None and hw is not None and fw >= FirmwareVersion((1, 0, 11)) and hw >= FirmwareVersion((1, 0, 1))
+    )
+    legacy_static = (fw is not None and fw < FirmwareVersion((1, 0, 11))) or (
+        hw is not None and hw < FirmwareVersion((1, 0, 1))
+    )
+    new_scenes = fw is not None and fw >= FirmwareVersion((1, 1))
+    new_music = fw is not None and (
+        (pact_type, pact_code) == (1, 1)
+        and fw >= FirmwareVersion((1, 3))
+        or (pact_type, pact_code) == (2, 1)
+        and fw >= FirmwareVersion((2, 2))
+    )
+    low_blue = fw is not None and fw >= FirmwareVersion((2, 4, 7))
+    workflows = frozenset({"native_scenes", "native_music", "single", "multi", "edited_palette_scenes"})
+    if new_static:
+        workflows |= {"painted"}
+    if new_scenes:
+        workflows |= {"layered_scenes"}
+    if new_static and new_scenes:
+        workflows |= {"advanced"}
+    return replace(
+        profile,
+        command_grammar="H6072-legacy" if legacy_static else "H6072",
+        supports_rgb=new_static or legacy_static,
+        supports_color_temperature=new_static or legacy_static,
+        kelvin_direct_rgb=(255, 255, 255) if new_static else (0, 0, 0),
+        supports_segment_writes=new_static or legacy_static,
+        supports_segment_brightness=new_static,
+        read_domains=profile.read_domains
+        - (set() if new_static or legacy_static else {ReadDomain.SEGMENTS})
+        - (set() if low_blue else {ReadDomain.LOW_BLUE_LIGHT}),
+        scene_codes=None
+        if new_scenes
+        else frozenset(scene.code for scene in SCENE_ENTRIES["H6072"] if scene.scene_type in {0, 1}),
+        effect_workflows=workflows,
+        supports_advanced_effects=new_static and new_scenes,
+        advanced_diy_selector=402 if new_static and new_scenes else None,
+        music_modes=profile.music_modes if new_music else profile.music_modes[:6],
+        music_variants=H6072_MUSIC_VARIANTS if new_music else H6072_LEGACY_MUSIC_VARIANTS,
+        music_requires_upload_ack=new_music,
+        music_upload_before_selector=new_music,
+        music_params_require_activation=new_music,
+        supports_low_blue_light=low_blue,
+    )
+
+
 def _h6076_profile(pact_type: int | None, pact_code: int | None, firmware: str | None) -> ModelProfile:
     """Resolve H6076 music modes by software version and Kelvin floor by Pact type."""
     from .firmware_version import FirmwareVersion
@@ -1977,6 +2124,8 @@ def device_profile(
                 dreamview_reads=profile.dreamview_reads | {"same_brightness"},
             )
         return profile
+    if model == "H6072":
+        return _h6072_profile(pact_type, pact_code, firmware, hardware)
     if model == "H6076":
         return _h6076_profile(pact_type, pact_code, firmware)
     if model == "H6179":

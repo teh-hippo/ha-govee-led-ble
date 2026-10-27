@@ -1,6 +1,7 @@
 {
   "entity": {
     "switch": {
+      "low_blue_light": {"name": "Low-blue-light"},
       "gradual": {"name": "Gradual"},
       "limit": {"name": "Limit"},
       "power_off_memory": {"name": "Power-off memory"},
@@ -8,6 +9,9 @@
       "ring_enabled": {"name": "Ring enabled"},
       "left_bar_enabled": {"name": "Left light bar enabled"},
       "right_bar_enabled": {"name": "Right light bar enabled"}
+    },
+    "number": {
+      "low_blue_light_level": {"name": "Low-blue-light level"}
     },
     "select": {
       "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},

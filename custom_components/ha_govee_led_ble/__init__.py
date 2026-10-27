@@ -53,7 +53,7 @@ from .light_services import async_register_light_services
 type GoveeBLEConfigEntry = ConfigEntry[GoveeBLECoordinator]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-PLATFORMS = [Platform.LIGHT, Platform.SELECT, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.LIGHT, Platform.NUMBER, Platform.SELECT, Platform.SENSOR, Platform.SWITCH]
 _LEGACY_ENTITY_SUFFIXES = {
     "_active_mode",
     "_blank_screen",

@@ -109,6 +109,42 @@ def _generated(module: str, class_name: str) -> type[Any]:
     return getattr(import_module(f"{_MODULE_PREFIX}{module}"), class_name)
 
 
+@pytest.mark.parametrize(
+    ("raw", "group", "count", "brightness"),
+    [
+        ("aaa501640102033204050600000000000000005f", 1, 3, True),
+        ("aaa50300000000630d0e0f000000000000000063", 3, 2, True),
+        ("aaa201010203040506000000000000000000000e", 1, 3, False),
+        ("aaa2030000000d0e0f0000000000000000000007", 3, 2, False),
+    ],
+)
+def test_h6072_reconstructed_three_record_pages(raw, group, count, brightness):
+    root = _generated("h6072_status_reply", "H6072StatusReply").from_bytes(bytes.fromhex(raw))
+    root._read()
+    assert root.body.group == group and root.body.num_segments == count
+    assert len(root.body.segments) == count
+    assert hasattr(root.body.segments[0], "brightness") is brightness
+    assert root._io.is_eof()
+
+
+@pytest.mark.parametrize(
+    ("raw", "legacy"),
+    [
+        ("3305140000000898ff982900ff00000000000003", True),
+        ("33051501ffffff0898ff9829ff000000000000fc", False),
+    ],
+)
+def test_h6072_reconstructed_kelvin_commands(raw, legacy):
+    root = _generated("h6072_command_write", "H6072CommandWrite").from_bytes(bytes.fromhex(raw))
+    root._read()
+    body = root.body.sub_body if legacy else root.body.sub_body.static_body
+    assert body.kelvin == 2200
+    assert (body.rgb_direct.red, body.rgb_direct.green, body.rgb_direct.blue) == (
+        (0, 0, 0) if legacy else (255, 255, 255)
+    )
+    assert (body.mask if legacy else body.mask.bits) == 0xFF
+
+
 def test_h6097_synthetic_frames_keep_unknown_music_and_ordinary_setting_fields():
     # Structural hypotheses for issue #431, not hardware captures.
     status_root = _generated("h6097_status_reply", "H6097StatusReply")

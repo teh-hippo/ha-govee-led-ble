@@ -759,6 +759,32 @@ H7025_DIY_FAMILIES: Final = tuple(
     for family in H7020_DIY_FAMILIES[:6]
 )
 
+H6072_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        name,
+        label,
+        family,
+        tuple(
+            DiyEffectVariation(str(variant), f"{label} {index + 1}" if len(variants) > 1 else label, variant)
+            for index, variant in enumerate(variants)
+        ),
+        family != 4,
+        rate="sensitivity" if family == 4 else "speed",
+        palette_max=8,
+        source_reference="H6072 candidate basic and mixed DIY parameters",
+    )
+    for name, label, family, variants in (
+        ("fade", "Fade", 0, (1, 0)),
+        ("breathe", "Breathe", 5, (1, 0, 2)),
+        ("jumping", "Jumping", 1, (2, 0)),
+        ("stacking", "Stacking", 24, (0,)),
+        ("chase", "Chase", 10, (0,)),
+        ("flow", "Flow", 9, (13, 14)),
+        ("spray", "Spray", 25, (0,)),
+        ("music", "Music", 4, (8, 17, 18, 11, 16)),
+    )
+)
+
 H6076_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,
@@ -1338,6 +1364,9 @@ H617C_NATIVE_MUSIC_MODES: Final = _native_music_modes("H617C")
 H6076_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H6076"].music_modes
 )
+H6072_NATIVE_MUSIC_MODES: Final = tuple(
+    NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H6072"].music_modes
+)
 H7025_NATIVE_MUSIC_MODES: Final = tuple(
     NativeModeOption(slug, _mode_label(slug)) for slug in MODEL_PROFILES["H7025"].music_modes
 )
@@ -1820,6 +1849,49 @@ MODEL_EFFECT_CATALOGUES: Final = {
             palette_diy=studio_apply_capability_state("H6199", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H6199", CapabilityWorkflow.WORKSHOP),
         ),
+    ),
+    "H6072": ModelEffectCatalogue(
+        sku="H6072",
+        painted_addressing="physical_ic",
+        painted_background=(255, 255, 255),
+        painted_effects=tuple(
+            {"id": name, "label": name.replace("_", " ").capitalize()}
+            for name in ("clockwise", "counter_clockwise", "cycle", "gradient", "twinkle", "breathe")
+        ),
+        effects=H6072_DIY_FAMILIES,
+        music_modes=H6072_NATIVE_MUSIC_MODES,
+        video_modes=(),
+        templates=(
+            CatalogueTemplate(
+                id="template:paint",
+                label="Paint",
+                category="single-layer",
+                content=PaintedEffect(
+                    effect="clockwise",
+                    speed=50,
+                    brightness=100,
+                    segments=(None,),
+                    background=(255, 255, 255),
+                    addressing="physical_ic",
+                ),
+            ),
+            *(_single_template("H6072", family) for family in H6072_DIY_FAMILIES),
+            *(_music_template("H6072", mode) for mode in H6072_NATIVE_MUSIC_MODES),
+        ),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6072", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6072", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6072", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H6072", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H6072", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6072", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H6072", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H6072", CapabilityWorkflow.WORKSHOP),
+        ),
+        diy_slot_policy="approved_observed",
     ),
     "H6076": ModelEffectCatalogue(
         sku="H6076",

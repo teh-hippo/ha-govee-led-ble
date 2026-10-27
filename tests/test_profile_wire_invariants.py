@@ -41,6 +41,8 @@ from custom_components.ha_govee_led_ble.light_commands import (
     build_segment_color,
     build_segment_color_temp,
 )
+from custom_components.ha_govee_led_ble.low_blue_light import build_query as build_low_blue_light_query
+from custom_components.ha_govee_led_ble.low_blue_light import parse_setting
 from custom_components.ha_govee_led_ble.music_commands import (
     prepare_music_profile_writes,
     prepare_music_request,
@@ -101,6 +103,15 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
 
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
+    ("H6072-bootstrap", "H6072", None, None, None, None),
+    ("H6072-legacy", "H6072", 1, 1, "1.00.10", None),
+    ("H6072-new-scenes-old-static", "H6072", 1, 1, "1.01.00", "1.00.00"),
+    ("H6072-new-static-old-scenes", "H6072", 1, 1, "1.00.11", "1.00.01"),
+    ("H6072-new-static-and-scenes", "H6072", 1, 1, "1.01.00", "1.00.01"),
+    ("H6072-pact1-companions", "H6072", 1, 1, "1.03.00", "1.00.01"),
+    ("H6072-companions-unknown-static", "H6072", 1, 1, "1.03.00", None),
+    ("H6072-low-blue-unknown-static", "H6072", None, None, "2.04.07", None),
+    ("H6072-low-blue-legacy-static", "H6072", 2, 1, "2.04.07", "1.00.00"),
     ("H6046-unqualified", "H6046", None, None, None, None),
     ("H60A1-2200k", "H60A1", None, None, None, "1.04.02"),
     ("H60A1-segmented", "H60A1", 1, 1, "1.02.20", "1.04.03"),
@@ -262,7 +273,7 @@ def _status_music_enum(profile: ModelProfile):
         return protocol_core.H6046CommandWrite.MusicMode
     if profile.status_grammar == "H6097":
         return protocol_core.H6097MusicWrite.MusicMode
-    if profile.status_grammar == "H6076":
+    if profile.status_grammar in {"H6072", "H6076"}:
         return protocol_core.H6076MusicWrite.MusicMode
     if profile.status_grammar == "H6125-intermediate":
         return protocol_core.H6125StatusReply.MusicMode
@@ -343,6 +354,8 @@ def _status_frames_for_domain(domain: ReadDomain, model: str, profile: ModelProf
         return (_status(0x30, b"\x02"),)
     if domain is ReadDomain.CAMERA_HEALTH:
         return (_status(0x32, b"\x01"),)
+    if domain is ReadDomain.LOW_BLUE_LIGHT:
+        return (_status(0xBA, bytes.fromhex("0101255650")),)
     raise AssertionError(f"no representative status frame defined for {domain}")
 
 
@@ -379,6 +392,8 @@ def test_every_claimed_read_domain_has_a_typed_body(model: str, profile: ModelPr
                 f"{model} ({profile.name}) rejected {domain.value} frame: {raw.rejection}"
             )
             parser = "h60a_bulk.payload" if a.is_bulk_status_frame(frame, profile) else expected_parser
+            if domain is ReadDomain.LOW_BLUE_LIGHT:
+                parser = "h6072_low_blue_light"
             assert raw.parser == parser
             assert not isinstance(raw.parsed.body, (bytes, bytearray)), (
                 f"{model} ({profile.name}) leaves {domain.value} as raw bytes in {expected_parser}"
@@ -480,6 +495,7 @@ def _query_builders(model: str, profile: ModelProfile) -> dict[ReadDomain, tuple
         ReadDomain.RELATIVE_BRIGHTNESS: (lambda: a.build_relative_brightness_query(model, profile=profile),),
         ReadDomain.INSTALLATION_DIRECTION: (lambda: a.build_installation_direction_query(model, profile=profile),),
         ReadDomain.CAMERA_HEALTH: (lambda: a.build_camera_health_query(model, profile=profile),),
+        ReadDomain.LOW_BLUE_LIGHT: (lambda: build_low_blue_light_query(profile),),
     }
 
 
@@ -495,6 +511,11 @@ def test_every_claimed_read_domain_can_actually_be_asked_for(model: str, profile
             query = build()
             assert len(query) == 20 and xor_checksum(query) == 0
             a.require_profile_packet(query, profile)
+            if domain is ReadDomain.LOW_BLUE_LIGHT:
+                parsed_setting = parse_setting(query, profile, "query")
+                assert parsed_setting.parsed is not None and parsed_setting.rejection is None
+                assert parsed_setting.parsed.opcode.name == domain.value
+                continue
             if a.is_bulk_status_frame(query, profile):
                 bulk_query = protocol_core.H60aBulk.Query.from_bytes(query)
                 bulk_query._read()
@@ -526,6 +547,8 @@ def test_every_claimed_read_domain_is_consumed(hass, model: str, profile: ModelP
         coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", model, configuration_url="http://x")
         coordinator._client = MagicMock(is_connected=True)
         coordinator.profile = replace(profile, profile_identity_fields=frozenset())
+        if domain is ReadDomain.LOW_BLUE_LIGHT:
+            coordinator._confirmed_identity_fields.add("fw_version")
         if profile.configured_string_counts:
             coordinator._configured_strings_confirmed = True
             coordinator._segment_query_generation = coordinator._profile_generation

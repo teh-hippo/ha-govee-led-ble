@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .coordinator_modes import PreModeSnapshot
     from .generated_protocol_adapter import BulkStatusCollector
     from .govee_encryption.session import GoveeEncryptionSession
+    from .low_blue_light import LowBlueLightState
     from .native_profile_controls import ProfileWriter
 
 
@@ -97,6 +98,7 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     segment_brightness: list[int]
     segment_brightness_readable: bool
     boolean_control_state: dict[str, bool]
+    low_blue_light: LowBlueLightState | None
     _music_palette: tuple[str, tuple[tuple[int, int, int], ...]] | None
     _music_body: tuple[str, bytes] | None
     static_gradual: bool | None
@@ -148,6 +150,8 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
         async def _disconnect_locked(self, *, clear_cache: bool = False) -> None: ...
 
         def _authorization_profile(self) -> ModelProfile: ...
+
+        def identity_fields_confirmed(self, fields: frozenset[str] | None = None) -> bool: ...
 
         def _record_packet(
             self,

@@ -30,7 +30,7 @@ seq:
         'aa_domain::fw_version': h6125_status_reply::version_body
         'aa_domain::hw_version': h6125_status_reply::hw_version_body
         'aa_domain::multi_effect': h6102_status_reply::multi_effect_body
-        'aa_domain::segments': govee_rgb_segment_page(15)
+        'aa_domain::segments': govee_rgb_segment_page(15, 4)
   - id: checksum
     type: u1
 enums:
