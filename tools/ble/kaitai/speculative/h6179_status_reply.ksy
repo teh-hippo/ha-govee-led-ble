@@ -5,12 +5,16 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6179 compatibility hypothesis: exact-SKU status replies use a
+  SPECULATIVE H6179 compatibility hypothesis, owner confirmations #448:
+  exact-SKU status replies use a
   20-byte 0xaa envelope with the candidate domain, mode, timer, sleep, wake,
   limit, version, brightness, and colour layouts below.
-  Unresolved assumptions: no exact-model capture verifies any selector or field
-  meaning, string encoding, timer count rule, optional music colour, opaque
-  tails, or XOR checksum byte.
+  An owner report for hardware 1.00.01 and firmware 1.00.08 in
+  jacobEAdamson/ha-govee-led-ble#1 identifies music replies containing a stored
+  RGB triplet even in automatic-colour mode, plus static RGB/Kelvin replies.
+  Only abbreviated payloads are available, not complete official-app captures.
+  Unresolved assumptions include other revisions, selectors and field meanings,
+  string encoding, timer count rules, opaque tails, and the XOR checksum byte.
 seq:
   - id: header
     contents: [0xaa]

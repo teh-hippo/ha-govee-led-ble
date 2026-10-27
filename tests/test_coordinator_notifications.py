@@ -12,6 +12,7 @@ from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.effect_deployments import PriorControlState
 from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_blank_screen_query,
     build_brightness,
@@ -33,6 +34,7 @@ from custom_components.ha_govee_led_ble.light_commands import (
 )
 from custom_components.ha_govee_led_ble.protocol_core import H6199StatusReply, StatusReply
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, SCENES
+from custom_components.ha_govee_led_ble.transport import xor_checksum
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 
 M = "custom_components.ha_govee_led_ble.coordinator"
@@ -59,6 +61,54 @@ def test_h6179_notifications_update_power_brightness_and_diy_mode(h6179):
     assert h6179.brightness_pct == 50
     assert h6179.color_mode is ParsedMode.DIY
     assert h6179.diy_code == 0x1234
+
+
+@pytest.mark.parametrize("mode_id", (0, 1))
+def test_h6179_automatic_music_clears_fixed_colour_and_restores_automatic_selection(h6179, mode_id):
+    h6179._notify_callback(None, bytearray(_packet(0xAA, 0x01, [1])))
+    h6179._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x0E, mode_id, 99, 1, 255, 0, 0])))
+    assert h6179.music_color == (255, 0, 0)
+    revision = h6179._field_revisions["music_color"]
+
+    h6179._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x0E, mode_id, 99, 0, 255, 0, 0])))
+
+    assert h6179.color_mode is ParsedMode.MUSIC
+    assert h6179.music_mode == f"mode_{mode_id}" and h6179.music_sensitivity == 99
+    assert h6179.music_color is None and h6179._field_revisions["music_color"] > revision
+    snapshot = PriorControlState.from_dict(h6179.capture_effect_control_state().to_dict())
+    assert snapshot.music_color is None
+    prepared = h6179._prepare_music_restore(snapshot)
+    assert prepared is not None
+    assert prepared[1][-1][0] == build_music_mode(mode_id, 99, None, False, "H6179")
+
+
+@pytest.mark.parametrize(
+    ("offset", "value"),
+    (
+        pytest.param(3, 2, id="unknown-selector"),
+        pytest.param(4, 100, id="invalid-sensitivity"),
+        pytest.param(5, 2, id="invalid-colour-mode"),
+        pytest.param(9, 1, id="nonzero-remaining-tail"),
+        pytest.param(-1, 0, id="invalid-checksum"),
+        pytest.param(20, 0, id="truncated"),
+    ),
+)
+def test_h6179_rejected_music_does_not_change_observed_state(h6179, offset, value):
+    h6179._notify_callback(None, bytearray(_packet(0xAA, 5, [0x0E, 1, 99, 1, 255, 0, 0])))
+    state = h6179.capture_effect_control_state()
+    revisions = dict(h6179._field_revisions)
+    frame = bytearray(_packet(0xAA, 5, [0x0E, 0, 99, 0, 255, 0, 0]))
+    if offset == 20:
+        frame.pop()
+    else:
+        frame[offset] = value
+        if offset != -1:
+            frame[-1] = xor_checksum(frame[:-1])
+
+    h6179._notify_callback(None, frame)
+
+    assert h6179.capture_effect_control_state() == state
+    assert h6179._field_revisions == revisions
 
 
 def test_notify_callback(h6199):

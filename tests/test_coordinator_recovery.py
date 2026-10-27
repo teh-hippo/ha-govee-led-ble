@@ -19,6 +19,7 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_power,
     build_scene_activation,
 )
+from custom_components.ha_govee_led_ble.light_commands import build_color_rgb, kelvin_companion_rgb
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES, scene_selector_code
 from custom_components.ha_govee_led_ble.transport import WRITE_UUID
 from custom_components.ha_govee_led_ble.video_applicability import video_identity_fields
@@ -531,6 +532,32 @@ async def test_restore_h6179_scene_converts_legacy_catalogue_code_to_wire_select
         call(build_scene_activation("H6179", selector, scene.music_code)),
     ]
     refresh.assert_awaited_once_with(expected_on=True, expected_brightness=72, expected_scene_code=selector)
+
+
+async def test_h6179_zero_kelvin_rgb_observation_replaces_retained_white_and_restores_rgb(hass):
+    coordinator = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6179", configuration_url=_CONFIGURATION_URL)
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 1, [1])))
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 5, [0x0D, 255, 255, 255, 0x0E, 0x10, 255, 203, 141])))
+    assert coordinator.color_temp_kelvin == 3600
+    rgb = kelvin_companion_rgb(3600, coordinator.profile)
+    coordinator._notify_callback(None, bytearray(_packet(0xAA, 5, [0x0D, *rgb, 0, 0, 0, 0, 0])))
+    state = PriorControlState.from_dict(coordinator.capture_effect_control_state().to_dict())
+    assert state.color_temp_kelvin is None and state.rgb_color == rgb
+
+    with (
+        patch.object(coordinator, "send_command", new_callable=AsyncMock) as send,
+        patch.object(coordinator, "refresh_state", new_callable=AsyncMock, return_value=True) as refresh,
+    ):
+        assert await coordinator.async_restore_effect_control_state(state, overwritten_diy_code=None)
+
+    assert send.await_args_list == [
+        call(build_power(True, "H6179")),
+        call(build_brightness(100, "H6179")),
+        call(build_color_rgb(*rgb, "H6179")),
+    ]
+    refresh.assert_awaited_once_with(
+        expected_on=True, expected_brightness=100, expected_rgb_color=rgb, expected_zero_kelvin=True
+    )
 
 
 async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
