@@ -2017,6 +2017,7 @@ def test_registers_light_services_during_integration_setup():
     async_register_light_services(hass)
     registered = {call.args[1] for call in hass.services.async_register.call_args_list}
     assert registered == {
+        "swap_light_bars",
         "paint_segments",
         "set_segment_brightness",
         "set_segment_color",

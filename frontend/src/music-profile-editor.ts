@@ -92,6 +92,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     );
     const colourMode = this.content.colour === null ? "automatic" : "fixed";
     const fixedColour = this.content.colour ?? this.lastFixedColour ?? recentColour(0);
+    const wholeColour = this.settings?.colour && !("left_colour" in (this.settings.parameters ?? {}));
 
     return html`
       <section class="card">
@@ -110,7 +111,7 @@ export class GoveeMusicProfileEditor extends LitElement {
               }),
           )}
 
-          ${this.settings?.colour ? html`<label class="field">
+          ${wholeColour ? html`<label class="field">
             <span>Colour mode</span>
             <select
               aria-label="Colour mode"
@@ -132,7 +133,7 @@ export class GoveeMusicProfileEditor extends LitElement {
             </select>
           </label>` : nothing}
 
-          ${this.settings?.colour && colourMode === "fixed"
+          ${wholeColour && colourMode === "fixed"
             ? html`
                 <govee-single-colour-field
                   label="Fixed colour"
@@ -313,7 +314,7 @@ export class GoveeMusicProfileEditor extends LitElement {
     update = (key: string, value: boolean | number | string) => this.updateParameter(key, value)) {
     return Object.entries(settings?.parameters ?? {}).map(([key, spec]) => {
       const label = parameterLabel(key);
-      if (key === "background" && spec.kind === "number") {
+      if ((key === "background" || key === "left_colour" || key === "right_colour") && spec.kind === "number") {
         const value = numberParameter(content.parameters, key, spec.default as number, spec.min, spec.max);
         const colour: RGB = [value >> 16, (value >> 8) & 255, value & 255];
         const change = (event: CustomEvent<{ colour: RGB }>, interaction: LivePreviewInteraction) => {
@@ -325,15 +326,16 @@ export class GoveeMusicProfileEditor extends LitElement {
         return html`
           <div class="field">
             <govee-single-colour-field
-              label="Background colour"
+              label=${key === "background" ? "Background colour" : label}
               .colour=${colour}
               .disabled=${this.disabled}
               @colour-changing=${(event: CustomEvent<{ colour: RGB }>) => change(event, "changing")}
               @colour-changed=${(event: CustomEvent<{ colour: RGB }>) => change(event, "committed")}
             ></govee-single-colour-field>
-            <button type="button" ?disabled=${this.disabled} @click=${() => update(key, 0x010101)}>
-              No colour
-            </button>
+            ${key === "background" ? html`
+              <button type="button" ?disabled=${this.disabled} @click=${() => update(key, 0x010101)}>
+                No colour
+              </button>` : nothing}
           </div>
         `;
       }
@@ -432,6 +434,15 @@ export class GoveeMusicProfileEditor extends LitElement {
     this.updateContent((content) => {
       const parameters = structuredClone(content.parameters);
       parameters[key] = value;
+      if (key === "fixed_colour" && value === true) {
+        for (const colourKey of ["left_colour", "right_colour"]) {
+          const spec = this.settings?.parameters?.[colourKey];
+          if (spec?.kind === "number") {
+            parameters[colourKey] = numberParameter(parameters, colourKey, spec.default as number, spec.min, spec.max);
+          }
+        }
+      }
+      if (key === "left_colour" || key === "right_colour") parameters.fixed_colour = true;
       content.parameters = parameters;
       return content;
     });

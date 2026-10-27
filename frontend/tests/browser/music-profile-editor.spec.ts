@@ -80,6 +80,35 @@ test("selector parameters reuse shared controls without exposing legacy style", 
   )).toEqual({response: "dynamic"});
 });
 
+test("enabling fixed bar colour submits the displayed defaults without requiring a colour edit", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?bar-colours");
+  await page.getByRole("checkbox", {name: "Fixed colour", exact: true}).check();
+  expect(await page.locator("govee-music-profile-editor").evaluate(el =>
+    (el as GoveeMusicProfileEditor).content!.parameters,
+  )).toEqual({fixed_colour: true, left_colour: 0xff0000, right_colour: 0xff0000});
+});
+
+test("per-bar music colour controls preserve omitted and unequal sibling parameters", async ({ page }) => {
+  await page.goto("/tests/browser/fixtures/music-profile-editor.html?bar-colours");
+  const editor = page.locator("govee-music-profile-editor");
+  await expect(page.getByRole("group", {name: "Left colour", exact: true})).toBeVisible();
+  await expect(page.getByRole("group", {name: "Right colour", exact: true})).toBeVisible();
+  expect(await editor.evaluate(el => (el as GoveeMusicProfileEditor).content!.parameters)).toEqual({});
+  const fields = page.locator("govee-single-colour-field");
+  await fields.first().evaluate(el => el.dispatchEvent(new CustomEvent("colour-changed", {
+    detail: {colour: [17, 34, 51]}, bubbles: true, composed: true,
+  })));
+  expect(await editor.evaluate(el => (el as GoveeMusicProfileEditor).content!.parameters)).toEqual({
+    fixed_colour: true, left_colour: 0x112233,
+  });
+  await fields.last().evaluate(el => el.dispatchEvent(new CustomEvent("colour-changed", {
+    detail: {colour: [68, 85, 102]}, bubbles: true, composed: true,
+  })));
+  expect(await editor.evaluate(el => (el as GoveeMusicProfileEditor).content!.parameters)).toEqual({
+    fixed_colour: true, left_colour: 0x112233, right_colour: 0x445566,
+  });
+});
+
 test("H617A fixed colour contract follows the exact legacy editor roster", async ({ page }) => {
   for (const mode of ["spectrum", "rolling", "energetic"]) {
     await page.goto(`/tests/browser/fixtures/music-profile-editor.html?mode=${mode}`);

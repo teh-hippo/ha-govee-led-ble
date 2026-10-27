@@ -8,7 +8,7 @@ from kaitaistruct import KaitaiStructError
 
 from .const import ModelProfile, get_profile
 from .generated_protocol_adapter import build_music_mode, build_power
-from .music_protocol import music_code_for, music_codebook, music_mode_has_parameter_write
+from .music_protocol import H6046CommandWrite, music_code_for, music_codebook, music_mode_has_parameter_write
 from .music_semantics import (
     COMPANION_MUSIC_LAYOUTS,
     compile_music_parameters,
@@ -21,6 +21,32 @@ from .music_semantics import (
 )
 from .protocol_music_params import encode_music_parameters, music_default_palette, parse_music_parameters
 from .transport import fragment_a3
+
+
+def _music_selector_targets(
+    colour: tuple[int, int, int] | None, parameters: Mapping[str, int], profile: ModelProfile
+) -> tuple[tuple[tuple[int, int, int] | None, dict[str, int]], ...]:
+    if profile.music_grammar != "H6046":
+        return ((colour, dict(parameters)),)
+    if parameters.get("fixed_colour") == 0:
+        return ((None, {}),)
+    left, right = int(H6046CommandWrite.BarFlag.left), int(H6046CommandWrite.BarFlag.right)
+    colours = {
+        bar: ((value >> 16) & 255, (value >> 8) & 255, value & 255)
+        for bar in ("left", "right")
+        if (value := parameters.get(f"{bar}_colour")) is not None
+    }
+    if not colours:
+        if parameters.get("fixed_colour") and colour is None:
+            raise ValueError("fixed music colour requires a known bar colour")
+        return ((colour, {}),)
+    if colour is not None:
+        colours = {"left": colour, "right": colour, **colours}
+    if len(colours) == 2 and colours["left"] == colours["right"]:
+        return ((colours["left"], {"bar_mask": left | right}),)
+    return tuple(
+        (colours[bar], {"bar_mask": mask}) for bar, mask in (("left", left), ("right", right)) if bar in colours
+    )
 
 
 def build_music_params(
@@ -88,16 +114,13 @@ def prepare_music_request(
         else []
     )
     selector_parameters = encode_music_selector_parameters(compiled, mode_code, profile)
-    selector = build_music_mode(
-        mode_code,
-        sensitivity,
-        colour,
-        calm,
-        model,
-        profile=profile,
-        **({"selector_parameters": selector_parameters} if selector_parameters else {}),
+    selectors = tuple(
+        build_music_mode(
+            mode_code, sensitivity, target_colour, calm, model, profile=profile, selector_parameters=target_parameters
+        )
+        for target_colour, target_parameters in _music_selector_targets(colour, selector_parameters, profile)
     )
-    control = (*companion, selector) if profile.music_upload_before_selector else (selector, *companion)
+    control = (*companion, *selectors) if profile.music_upload_before_selector else (*selectors, *companion)
     return (build_power(True, model), *control)
 
 
@@ -168,8 +191,11 @@ def prepare_music_profile_writes(
         packets = (power, *upload, selector) if profile.music_upload_before_selector else (power, selector, *upload)
     states: list[dict[str, Any]] = [{} for _ in packets]
     states[0] = {"is_on": True}
-    selector_index = len(packets) - 1 if profile.music_upload_before_selector else 1
-    states[selector_index] = {
+    targets = _music_selector_targets(colour, encode_music_selector_parameters(compiled, mode_code, profile), profile)
+    variant = music_variant(profile, mode_code)
+    selector_count = len(targets)
+    selector_index = len(packets) - selector_count if profile.music_upload_before_selector else 1
+    selector_state = {
         "music_sensitivity": sensitivity,
         "music_color": colour,
         "music_calm": calm,
@@ -177,16 +203,33 @@ def prepare_music_profile_writes(
         "video_mode": "off",
         "effect": None,
         "diy_code": None,
-        **{spec.key: compiled[spec.profile_key] for spec in music_selector_params_for_mode(mode_code, profile)},
+        **{
+            spec.key: compiled[spec.profile_key]
+            for spec in music_selector_params_for_mode(mode_code, profile)
+            if spec.profile_key in compiled
+        },
     }
-    variant = music_variant(profile, mode_code)
+    for offset, (target_colour, target_parameters) in enumerate(targets):
+        state = dict(selector_state)
+        if profile.music_grammar == "H6046" and variant and variant.supports_fixed_colour:
+            left, right = int(H6046CommandWrite.BarFlag.left), int(H6046CommandWrite.BarFlag.right)
+            state["music_color"] = (
+                target_colour if target_parameters.get("bar_mask", left | right) == left | right else None
+            )
+            for bar, mask in (("left", left), ("right", right)):
+                state.pop(f"music_{bar}_colour", None)
+                if target_colour is not None and target_parameters.get("bar_mask", left | right) & mask:
+                    red, green, blue = target_colour
+                    state[f"music_{bar}_colour"] = (red << 16) | (green << 8) | blue
+            state["music_fixed_colour"] = target_colour is not None
+        states[selector_index + offset] = state
     if variant and variant.layout in COMPANION_MUSIC_LAYOUTS:
         # New selectors carry neither style nor fixed colour, even without an upload.
         del states[selector_index]["music_calm"]
         del states[selector_index]["music_color"]
-    if len(packets) > 2:
+    if len(packets) > 1 + selector_count:
         # Earlier fragments cannot complete the companion; a final attempt may.
-        companion_index = len(packets) - 2 if profile.music_upload_before_selector else len(packets) - 1
+        companion_index = selector_index - 1 if profile.music_upload_before_selector else len(packets) - 1
         states[companion_index] = {
             spec.key: compiled[spec.profile_key]
             for spec in music_body_params_for_mode(mode_code, profile)
@@ -217,7 +260,7 @@ def prepare_music_profile_writes(
                 states[companion_index]["_music_calm" if style is None else "music_calm"] = style
             # Retained display fields are not edit intent or geometry-dependent writes.
             states[companion_index]["_music_parameter_keys"] = ()
-        first_companion = 1 if profile.music_upload_before_selector else 2
+        first_companion = 1 if profile.music_upload_before_selector else 1 + selector_count
         states[first_companion]["_music_body"] = None
         # Candidate only: async_write_music_sequence defers this until successful completion.
         states[companion_index]["_music_body"] = (mode, body)

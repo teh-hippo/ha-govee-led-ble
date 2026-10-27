@@ -23,6 +23,7 @@ class MusicParamSpec:
     max_value: int = 0
     options: tuple[str, ...] = ()
     requires_physical_ic_count: bool = False
+    optional: bool = False
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,45 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
         "h1a42_music_parameters",
         "h61f5_music_parameters",
         "h7025_music_body",
+        "h6046_music_body",
     }
+)
+
+_H6046_BAR_COLOURS = (
+    MusicParamSpec("music_fixed_colour", "fixed_colour", "fixed_colour", "switch", False, optional=True),
+    *tuple(
+        MusicParamSpec(
+            f"music_{bar}_colour", f"{bar}_colour", f"{bar}_colour", "number", 0xFF0000, 0, 0xFFFFFF, optional=True
+        )
+        for bar in ("left", "right")
+    ),
+)
+H6046_MUSIC_VARIANTS = (
+    *(
+        MusicVariant(
+            code,
+            "H6046 audited prospective per-bar music selector",
+            selector_parameters=_H6046_BAR_COLOURS,
+            supports_style=code == 3,
+        )
+        for code in (5, 3, 8, 9)
+    ),
+    *(
+        MusicVariant(
+            code,
+            "H6046 audited prospective palette companion",
+            "h6046_music_body",
+            bytes.fromhex(f"{code:02x}" + palette + "00"),
+            palette_bounds=bounds,
+            supports_fixed_colour=False,
+        )
+        for code, palette, bounds in (
+            (0x49, "03ff000000ff000000ff", (2, 8)),
+            (0x50, "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff", (1, 8)),
+            (0x51, "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff", (6, 8)),
+            (0x52, "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff", (1, 8)),
+        )
+    ),
 )
 
 # Captured values, not values calculated from logical colour zones or guessed IC counts.
@@ -1094,6 +1133,8 @@ def compile_music_parameters(
         raise ValueError(f"music mode does not support parameter {unsupported[0]} (unqualified or unavailable)")
     compiled: dict[str, int | bool | str] = {}
     for spec in relevant:
+        if spec.optional and spec.profile_key not in raw:
+            continue
         value = raw.get(spec.profile_key, spec.default)
         if spec.kind == "number":
             if type(value) is not int or not spec.min_value <= value <= spec.max_value:
@@ -1112,6 +1153,8 @@ def encode_music_selector_parameters(
 ) -> dict[str, int]:
     encoded: dict[str, int] = {}
     for spec in music_selector_params_for_mode(mode_code, profile):
+        if spec.profile_key not in parameters:
+            continue
         value = parameters[spec.profile_key]
         if spec.kind == "select":
             assert isinstance(value, str)

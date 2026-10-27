@@ -1,3 +1,7 @@
+swap_light_bars:
+  name: Swap Light Bars
+  description: Swap the left and right H6046 light-bar positions once.  This action has no absolute-position readback and is not automatically repeated after an uncertain write.
+  target: {entity: {integration: ha_govee_led_ble, domain: light}}
 set_installation_direction:
   name: Set Installation Direction
   description: Select H6099 BLE installation direction 2, 3, 4, or 5. Labels are numeric until the APK image orientations are qualified; no corner mapping is implied. Does not enter calibration or change camera position. Requires fresh direction readback for confirmation.

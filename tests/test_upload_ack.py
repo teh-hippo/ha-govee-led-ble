@@ -48,7 +48,7 @@ DIY_NO = frame("a30201")
 @pytest.fixture
 async def connected(hass, monkeypatch, request):
     c = GoveeBLECoordinator(hass, "11:22:33:44:55:66", getattr(request, "param", "H617A"), configuration_url=None)
-    if c.model == "H6097":
+    if c.model in {"H6097", "H6046"}:
         c.pact_type, c.pact_code = 2, 1
         c._resolve_device_profile()
     client = MagicMock(is_connected=True, start_notify=AsyncMock(), write_gatt_char=AsyncMock())
@@ -57,7 +57,7 @@ async def connected(hass, monkeypatch, request):
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
-    if c.model not in {"H6097", "H7025"}:
+    if c.model not in {"H6097", "H7025", "H6046"}:
         monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 1)
     monkeypatch.setattr(coordinator_module, "RETRY_BACKOFF_SECONDS", 0)
 
@@ -117,34 +117,36 @@ async def test_h6097_missing_scene_readback_does_not_repeat_accepted_upload(conn
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
 
 
-@pytest.mark.parametrize("connected", ["H6097", "H7025"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046"], indirect=True)
 @pytest.mark.parametrize("accepted", [False, True])
 async def test_h7025_music_waits_for_positive_upload_result(connected, accepted):
     c, client = connected
     c.music_sensitivity = 42
-    expected = prepare_music_request(c.model, "hopping", 42, None, False, {})
+    mode, code = ("torch", "50") if c.model == "H6046" else ("hopping", "48")
+    expected = prepare_music_request(c.model, mode, 42, None, False, {})
 
     async def write(_uuid, packet, **_kwargs):
         if packet == expected[-2]:
-            receive(client, frame("a34148" + ("00" if accepted else "01")))
+            receive(client, frame("a341" + code + ("00" if accepted else "01")))
 
     client.write_gatt_char.side_effect = write
     if accepted:
-        await c.async_select_music_slug("hopping")
+        await c.async_select_music_slug(mode)
         assert c.music_body is not None
     else:
         with pytest.raises(RuntimeError, match="Device rejected A3 upload"):
-            await c.async_select_music_slug("hopping")
+            await c.async_select_music_slug(mode)
         assert c.music_body is None
     sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
     assert (expected[-1] in sent) is accepted
 
 
-@pytest.mark.parametrize("connected", ["H6097", "H7025"], indirect=True)
+@pytest.mark.parametrize("connected", ["H6097", "H7025", "H6046"], indirect=True)
 @pytest.mark.parametrize("fault", ["missing_ack", "write_timeout", "disconnect"])
 async def test_h7025_uncertain_upload_is_not_automatically_replayed(connected, fault):
     c, client = connected
-    expected = prepare_music_request(c.model, "hopping", 99, None, False, {})
+    mode = "torch" if c.model == "H6046" else "hopping"
+    expected = prepare_music_request(c.model, mode, 99, None, False, {})
 
     async def reconnect():
         c._client = client
@@ -162,7 +164,7 @@ async def test_h7025_uncertain_upload_is_not_automatically_replayed(connected, f
     c._ensure_connected.side_effect = reconnect
     client.write_gatt_char.side_effect = write
     with pytest.raises((TimeoutError, BleakError)):
-        await c.async_select_music_slug("hopping")
+        await c.async_select_music_slug(mode)
     sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
     assert sent == (list(expected[:-1]) if fault == "missing_ack" else list(expected[:2]))
     assert c._ensure_connected.await_count == 1

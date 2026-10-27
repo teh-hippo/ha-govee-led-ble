@@ -100,6 +100,9 @@ class _CoordinatorBase(DataUpdateCoordinator[dict[str, Any]]):
     _music_palette: tuple[str, tuple[tuple[int, int, int], ...]] | None
     _music_body: tuple[str, bytes] | None
     static_gradual: bool | None
+    left_bar_kelvin: int | None
+    right_bar_kelvin: int | None
+    bar_enable_mask: int | None
     white_balance_scalar: int | None
     black_border: bool | None
     segment_state_observed_at: str | None

@@ -251,7 +251,7 @@ def parse_static_write(
             if kelvin
             else None,
         )
-    if profile.command_grammar in {"H6099", "H6199"}:
+    if profile.command_grammar in {"H6046", "H6099", "H6199"}:
         if generated.opcode.name != "mode" or getattr(generated.body.sub_mode, "name", None) != "static_colour":
             return None
         detail = generated.body.detail

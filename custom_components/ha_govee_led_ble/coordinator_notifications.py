@@ -56,6 +56,9 @@ _COLOR_MODE_FIELDS = (
     "music_sensitivity",
     "music_calm",
     "music_color",
+    "music_fixed_colour",
+    "music_left_colour",
+    "music_right_colour",
     "white_brightness",
 )
 _COLOR_EXPECTATION_FIELDS = frozenset(
@@ -235,6 +238,14 @@ class _NotificationMixin(_CoordinatorBase):
                         setattr(self, attr, value)
                         observed.append(attr)
         if parsed.mode is ParsedMode.COLOUR:
+            if self.profile.status_grammar == "H6046":
+                self.left_bar_kelvin, self.right_bar_kelvin = parsed.left_bar_kelvin, parsed.right_bar_kelvin
+                if parsed.left_bar_kelvin or parsed.right_bar_kelvin:
+                    self._static_rgb_known = False
+                if parsed.left_bar_kelvin != parsed.right_bar_kelvin:
+                    self.color_temp_kelvin = None
+                    self.color_temp_kelvin_source = "initial"
+                observed.extend(("left_bar_kelvin", "right_bar_kelvin"))
             if self.profile.static_readback_gradual:
                 # AA05 describes the colour mode; only AAA3 confirms a setting write.
                 self.static_gradual = bool(parsed.multi_effect_flag)
@@ -247,8 +258,10 @@ class _NotificationMixin(_CoordinatorBase):
             static_values: dict[str, Any] = {}
             if parsed.rgb_color is not None and self.profile.static_readback_echoes_color:
                 static_values["rgb_color"] = parsed.rgb_color
-            if self.profile.static_readback_kelvin and (
-                parsed.color_temp_kelvin is not None or self.profile.static_readback_zero_kelvin_is_rgb
+            if (
+                self.profile.static_readback_kelvin
+                and (parsed.color_temp_kelvin is not None or self.profile.static_readback_zero_kelvin_is_rgb)
+                and not (self.profile.status_grammar == "H6046" and parsed.left_bar_kelvin != parsed.right_bar_kelvin)
             ):
                 static_values["color_temp_kelvin"] = parsed.color_temp_kelvin
             accepted_values = dict(static_values)
@@ -512,6 +525,8 @@ class _NotificationMixin(_CoordinatorBase):
                 from .generated_protocol_adapter import parse_boolean_control
 
                 boolean_values = parse_boolean_control(generated, self.model, profile=self.profile)
+                if self.profile.setting_grammar == "H6046" and boolean_values:
+                    self.bar_enable_mask = int(generated.body.mask)
                 self.boolean_control_state.update(boolean_values)
                 observed = tuple(f"boolean_{key}" for key in boolean_values)
             if self.profile.status_grammar == "H6199" and domain is not StatusDomain.COLOUR_MODE:

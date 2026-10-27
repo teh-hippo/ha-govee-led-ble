@@ -1,10 +1,13 @@
 """Coordinator control-state capture and restoration tests."""
 
+import asyncio
+import time
+from dataclasses import replace
 from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
-from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS
+from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, MUSIC_MODE_SLUGS, device_profile
 from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
@@ -22,6 +25,125 @@ from custom_components.ha_govee_led_ble.video_applicability import video_identit
 from tests.coordinator_test_support import _CONFIGURATION_URL, _c, _packet
 
 M = "custom_components.ha_govee_led_ble.coordinator"
+
+
+@pytest.mark.parametrize(
+    "outcome", ("match", "missing", "verification_missing", "cancelled", "sibling_changed", "subscription_changed")
+)
+async def test_h6046_bar_write_preserves_fresh_sibling_and_unknown_flags(hass, monkeypatch, virtual_clock, outcome):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
+    coord.pact_type, coord.pact_code = 2, 1
+    coord._resolve_device_profile()
+    coord._notify_started_monotonic = time.monotonic()
+    coord._notification_token = object()
+    coord.boolean_control_state = {"left_bar_enabled": False, "right_bar_enabled": False}
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    queried = 0
+
+    async def respond(_uuid, packet, **kwargs):
+        nonlocal queried
+        if packet[:2] == b"\xaa\x33":
+            queried += 1
+            if outcome == "cancelled":
+                raise asyncio.CancelledError
+            if outcome == "missing" or (outcome == "verification_missing" and queried == 2):
+                return
+            flags = 0x90 if queried == 1 else 0x81 if outcome == "sibling_changed" else 0x91
+            coord._notify_callback(None, bytearray(_packet(0xAA, 0x33, [flags])))
+            if outcome == "subscription_changed":
+                coord._notification_token = object()
+
+    client.write_gatt_char.side_effect = respond
+    if outcome == "match":
+        await coord.async_set_boolean_control("left_bar_enabled", True)
+        assert coord.boolean_control_state == {"left_bar_enabled": True, "right_bar_enabled": True}
+    elif outcome == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            await coord.async_set_boolean_control("left_bar_enabled", True)
+    else:
+        with pytest.raises(ValueError):
+            await coord.async_set_boolean_control("left_bar_enabled", True)
+    writes = [item.args[1] for item in client.write_gatt_char.await_args_list]
+    if outcome in {"missing", "subscription_changed", "cancelled"}:
+        assert writes == [_packet(0xAA, 0x33, [])]
+    else:
+        assert writes == [_packet(0xAA, 0x33, []), _packet(0x33, 0x33, [0x91]), _packet(0xAA, 0x33, [])]
+    if outcome in {"missing", "verification_missing", "subscription_changed", "cancelled"}:
+        client.disconnect.assert_awaited_once()
+        assert coord._client is None
+    coord._clear_client_state(client)
+
+
+async def test_h6046_mixed_native_white_revokes_known_rgb_even_when_rendering_is_unchanged(hass):
+    from custom_components.ha_govee_led_ble.effect_runtime import async_prepare_effect_control_state
+    from custom_components.ha_govee_led_ble.light_commands import kelvin_companion_rgb
+
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
+    coord.pact_type, coord.pact_code = 1, 1
+    coord._resolve_device_profile()
+    coord._notify_started_monotonic = time.monotonic()
+    coord.color_mode = ParsedMode.COLOUR
+    coord.segment_colors = [kelvin_companion_rgb(2700, coord.profile)] * 10
+    coord.segment_state_source = "observed"
+    coord._static_rgb_known = True
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x33, [0x11])))
+    baseline = coord._field_revisions.get("color_temp_kelvin", 0)
+    coord._notify_callback(None, bytearray(_packet(0xAA, 0x05, [0x15, 0, 0x0A, 0x8C, 0, 0])))
+    assert (coord.left_bar_kelvin, coord.right_bar_kelvin) == (2700, 0)
+    assert not coord._static_rgb_known
+    assert coord._field_revisions.get("color_temp_kelvin", 0) == baseline
+    assert coord.color_temp_kelvin_source != "observed"
+    with pytest.raises(RuntimeError, match="white intent"):
+        await async_prepare_effect_control_state(coord, require_restorable_static=True)
+
+
+def test_h6046_recovery_persists_both_white_points_and_native_power_flags():
+    from custom_components.ha_govee_led_ble.light_commands import kelvin_companion_rgb
+
+    profile = device_profile("H6046", 1, 1)
+    colours = (kelvin_companion_rgb(2700, profile),) * 5 + (kelvin_companion_rgb(6500, profile),) * 5
+    state = PriorControlState(
+        mode="colour",
+        is_on=False,
+        brightness_pct=20,
+        rgb_color=(1, 2, 3),
+        left_bar_enabled=False,
+        right_bar_enabled=True,
+        left_bar_kelvin=2700,
+        right_bar_kelvin=6500,
+        segment_colors=colours,
+        segment_brightness=(50,) * 10,
+    )
+    restored = PriorControlState.from_dict(state.to_dict())
+    assert restored == state and restored.restorable_bar_white(profile)
+    assert not replace(restored, left_bar_kelvin=0).restorable_bar_white(profile)
+    assert not replace(restored, segment_colors=((1, 2, 3),) * 10).restorable_bar_white(profile)
+    legacy = state.to_dict()
+    for field in ("left_bar_enabled", "right_bar_enabled", "left_bar_kelvin", "right_bar_kelvin"):
+        legacy.pop(field)
+    prior = PriorControlState.from_dict(legacy)
+    assert prior.left_bar_enabled is None and prior.right_bar_kelvin is None
+    assert not prior.restorable_bar_white(profile)
+
+
+async def test_h6046_swap_is_not_replayed_after_ambiguous_write(hass, monkeypatch):
+    coord = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url=_CONFIGURATION_URL)
+    coord.pact_type, coord.pact_code = 1, 1
+    coord._resolve_device_profile()
+    client = _c(write_gatt_char=AsyncMock(side_effect=RuntimeError("ambiguous swap")))
+    coord._client = client
+    coord._static_rgb_known = True
+    coord.left_bar_kelvin = 2700
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    with pytest.raises(RuntimeError, match="ambiguous"):
+        await coord.async_swap_bars()
+    assert client.write_gatt_char.await_count == 1
+    assert client.write_gatt_char.call_args.args[1] == _packet(0x33, 0x34, [])
+    assert not coord._static_rgb_known and coord.left_bar_kelvin is None
+    coord._clear_client_state(client)
 
 
 def test_capture_effect_control_state(coord):

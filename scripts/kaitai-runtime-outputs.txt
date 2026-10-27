@@ -1,5 +1,11 @@
 __init__.py
 command_write.py
+h6046_command_write.py
+h6046_status_query.py
+h6046_status_reply.py
+h6046_command_ack.py
+h6046_effect_upload.py
+h6046_music_body.py
 diy_type03.py
 diy_type04.py
 govee_common.py

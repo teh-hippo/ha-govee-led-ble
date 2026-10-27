@@ -33,6 +33,10 @@ from .protocol_core import (
     H66a0MusicWrite,
     H66a0VideoCommand,
     H601cCommandWrite,
+    H6046CommandAck,
+    H6046CommandWrite,
+    H6046EffectUpload,
+    H6046MusicBody,
     H6076MusicAck,
     H6076MusicBody,
     H6076MusicWrite,
@@ -160,7 +164,10 @@ def _complete_a3_upload(
     packets: Sequence[bytes], index: int, model: str, profile: ModelProfile | None
 ) -> tuple[int, bytes]:
     active_profile = profile or get_profile(model)
-    if active_profile.command_grammar not in {"H617A", "H7020"} and active_profile.command_ack_grammar != "H617A":
+    if (
+        active_profile.command_grammar not in {"H6046", "H617A", "H7020"}
+        and active_profile.command_ack_grammar != "H617A"
+    ):
         raise ValueError("Upload ACK semantics are not qualified for this command grammar")
     roots = {"H617A": ("command_write.upload_frame", CommandWrite.UploadFrame)}
     for start in range(index, -1, -1):
@@ -196,12 +203,13 @@ def upload_ack_mode(
     packets: Sequence[bytes], index: int, model: str, *, profile: ModelProfile | None = None
 ) -> int | None:
     """Return the music mode an exact-model acknowledgement must repeat, if its schema carries one."""
-    if (profile or get_profile(model)).music_grammar != "H6076":
+    grammar = (profile or get_profile(model)).music_grammar
+    if grammar not in {"H6076", "H6046"}:
         return None
     subtype, envelope = _complete_a3_upload(packets, index, model, profile)
     if subtype != 0x41:
         return None
-    body = H6076MusicBody.from_bytes(envelope)
+    body = (H6046MusicBody if grammar == "H6046" else H6076MusicBody).from_bytes(envelope)
     body._read()
     return int(body.mode)
 
@@ -212,7 +220,9 @@ def upload_ack_success(
     """Return a matching upload result, never treating an ordinary ACK as upload acceptance."""
     if protocol is not None and getattr(parsed, "protocol_id", None) != protocol:
         return None
-    if isinstance(parsed, H6076MusicAck):
+    if isinstance(parsed, H6076MusicAck) or (
+        isinstance(parsed, H6046CommandAck) and getattr(parsed, "mode", None) is not None
+    ):
         return (
             bool(parsed.is_success)
             if mode is not None and parsed.opcode == subtype and int(parsed.mode) == mode
@@ -323,6 +333,13 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     command = _parse_xor_frame(frame, profile.command_grammar, _COMMAND_ROOTS).parsed
     if command is not None:
         operation = getattr(command.opcode, "name", "")
+        if operation in {"bar_enable", "swap_bars"}:
+            if profile.setting_grammar == "H6046" and profile.boolean_controls == {
+                "left_bar_enabled",
+                "right_bar_enabled",
+            }:
+                return
+            raise ValueError("Bar control is outside profile capabilities")
         if operation in {"multi", "mode"}:
             sub_attr = getattr(command.body, "sub", getattr(command.body, "sub_mode", None))
             sub_operation = getattr(sub_attr, "name", "")
@@ -411,6 +428,10 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
     ).parsed
     if query is not None:
         domain = getattr(query.domain, "name", "")
+        if domain == "bar_enable":
+            if profile.setting_grammar == "H6046" and profile.boolean_controls:
+                return
+            raise ValueError("Bar control readback is outside profile capabilities")
         control = boolean_control_name(domain)
         if control is not None:
             if boolean_control_is_authorized(control, profile):
@@ -434,7 +455,7 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
             if upload.index == 0 and upload.body.subtype != H60a6EffectFrame.Subtype.native_effect:
                 raise ValueError("Native effect subtype is outside profile capabilities")
             return
-        if upload is not None and profile.effect_grammar == "H617A":
+        if upload is not None and profile.effect_grammar in {"H6046", "H617A"}:
             if upload.index == 0:
                 from .scenes import SCENE_ENTRIES
 
@@ -483,6 +504,8 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         root_type = H6099EffectUpload
     elif grammar == "H6199":
         root_type = H6199EffectUpload
+    elif grammar == "H6046":
+        root_type = H6046EffectUpload
     elif grammar == "H60A6":
         root_type = H60a6EffectFrame.A3Envelope
     else:
@@ -506,7 +529,7 @@ def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any
     resolved = (profile or get_profile(model)).command_grammar
     if resolved == "H7020":
         return H7020CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
-    if resolved in {"H601C", "H6099", "H6179", "H6199"}:
+    if resolved in {"H601C", "H6046", "H6099", "H6179", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         return root_type, root_type.PowerBody, root_type.BrightnessBody
     if resolved != "H617A":
@@ -610,9 +633,34 @@ def build_hardware_query(model: str = "H617A", *, profile: ModelProfile | None =
     return _build_status_query("hardware", (profile or get_profile(model)).command_grammar)
 
 
-def build_boolean_control(control: str, enabled: bool, model: str, *, profile: ModelProfile | None = None) -> bytes:
+def build_boolean_control(
+    control: str,
+    enabled: bool,
+    model: str,
+    *,
+    profile: ModelProfile | None = None,
+    sibling_enabled: bool | None = None,
+    native_mask: int = 0,
+) -> bytes:
     """Build a qualified shared register write; revision gating belongs to the profile."""
     profile = profile or get_profile(model)
+    if profile.setting_grammar == "H6046":
+        if control not in profile.boolean_controls or type(enabled) is not bool or type(sibling_enabled) is not bool:
+            raise ValueError("Bar control requires both native bar states")
+        flags = H6046CommandWrite.BarFlag
+        left, right = (enabled, sibling_enabled) if control == "left_bar_enabled" else (sibling_enabled, enabled)
+        root = H6046CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H6046CommandWrite.CommandOp.bar_enable
+        root.body = _child(H6046CommandWrite.BarEnableBody, root)
+        if type(native_mask) is not int or not 0 <= native_mask <= 255:
+            raise ValueError("Native bar flags must be one byte")
+        known_flags = int(flags.left) | int(flags.right)
+        root.body.mask = (
+            (native_mask & ~known_flags) | (int(flags.left) if left else 0) | (int(flags.right) if right else 0)
+        )
+        root.body.unknown_tail = bytes(16)
+        return _serialize_xor(root)
     if control not in profile.boolean_controls or profile.command_grammar not in {"H617A", "H7020"}:
         raise ValueError(f"{model} does not support boolean control {control}")
     if type(enabled) is not bool:
@@ -645,6 +693,10 @@ def build_boolean_control(control: str, enabled: bool, model: str, *, profile: M
 def build_boolean_control_query(control: str, model: str, *, profile: ModelProfile | None = None) -> bytes:
     """Read a declared boolean register independently of ordinary read domains."""
     profile = profile or get_profile(model)
+    if profile.setting_grammar == "H6046":
+        if control not in profile.boolean_controls:
+            raise ValueError("Bar control is outside profile capabilities")
+        return _build_status_query("bar_enable", profile.command_grammar)
     if control not in profile.boolean_controls or profile.command_grammar not in {"H617A", "H7020"}:
         raise ValueError(f"{model} does not support boolean control {control}")
     if profile.setting_grammar == "H60A6" and control in H60a6Control.Zone.__members__:
@@ -654,6 +706,17 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
     if domain is None or domain not in root_type.QueryDomain.__members__:
         raise ValueError("unknown boolean control")
     return _build_status_query(domain, profile.command_grammar)
+
+
+def build_swap_bars(profile: ModelProfile) -> bytes:
+    if profile.setting_grammar != "H6046" or not profile.boolean_controls:
+        raise ValueError("Device profile does not support swapping light bars")
+    root = H6046CommandWrite()
+    root.header = b"\x33"
+    root.opcode = H6046CommandWrite.CommandOp.swap_bars
+    root.body = _child(H6046CommandWrite.SwapBody, root)
+    root.body.unknown_tail = bytes(17)
+    return _serialize_xor(root)
 
 
 def bulk_status_domains(profile: ModelProfile) -> frozenset[str]:
@@ -780,6 +843,12 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     """Decode register replies only; mode flags and command ACKs are not confirmation."""
     profile = profile or get_profile(model)
     domain = getattr(getattr(generated, "domain", None), "name", "")
+    if domain == "bar_enable" and profile.setting_grammar == "H6046":
+        values = {
+            "left_bar_enabled": bool(generated.body.left_enabled),
+            "right_bar_enabled": bool(generated.body.right_enabled),
+        }
+        return {key: value for key, value in values.items() if key in profile.boolean_controls}
     control = boolean_control_name(domain)
     if control is None or control not in profile.boolean_controls:
         return {}
@@ -1092,6 +1161,8 @@ def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None 
     root.opcode = root_type.CommandOpcode.power if root_type is H6179CommandWrite else root_type.CommandOp.power
     body = power_type(None, root, root._root)
     body.is_on = int(on)
+    if root_type is H6046CommandWrite:
+        body.unknown_tail = bytes(16)
     if root_type is H6179CommandWrite:
         body.opaque = bytes(16)
     elif root_type is H601cCommandWrite:
@@ -1113,6 +1184,8 @@ def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfil
         body.opaque = bytes(16)
     else:
         body.percent = max(0, min(100, percent))
+    if root_type is H6046CommandWrite:
+        body.unknown_tail = bytes(16)
     if root_type is H601cCommandWrite:
         body.padding = bytes(16)
     root.body = body
@@ -1217,7 +1290,7 @@ def build_segment_colour(
             kelvin=0,
             preview=(0, 0, 0),
         )
-    if resolved in {"H6099", "H6199"}:
+    if resolved in {"H6046", "H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
         root.header = b"\x33"
@@ -1232,6 +1305,8 @@ def build_segment_colour(
         detail.kelvin = 0
         detail.preview = _rgb(detail, 0, 0, 0)
         detail.segment_mask = mask
+        if resolved == "H6046":
+            detail.unknown_tail = bytes(5)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
@@ -1268,7 +1343,7 @@ def build_colour_temperature(
             kelvin=value,
             preview=preview,
         )
-    if resolved in {"H6099", "H6199"}:
+    if resolved in {"H6046", "H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
         root.header = b"\x33"
@@ -1281,6 +1356,8 @@ def build_colour_temperature(
         detail.kelvin = value
         detail.preview = _rgb(detail, *preview)
         detail.segment_mask = mask
+        if resolved == "H6046":
+            detail.unknown_tail = bytes(5)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
@@ -1307,7 +1384,7 @@ def build_segment_brightness(
     resolved = (profile or get_profile(model)).command_grammar
     if resolved == "H6179":
         raise ValueError("H6179 has no segment-brightness operation")
-    if resolved in {"H6099", "H6199"}:
+    if resolved in {"H6046", "H6099", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         root = root_type()
         root.header = b"\x33"
@@ -1318,6 +1395,8 @@ def build_segment_brightness(
         detail.operation = root_type.StaticOperation.brightness
         detail.brightness_percent = value
         detail.brightness_segment_mask = mask
+        if resolved == "H6046":
+            detail.unknown_tail = bytes(12)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
@@ -1363,7 +1442,7 @@ def build_scene_activation(
         return build_h6179_scene(scene_code)
     if grammar == "H6199":
         return build_h6199_scene(scene_code, music_code)
-    if grammar in {"H601C", "H6099"}:
+    if grammar in {"H601C", "H6046", "H6099"}:
         if music_code or scene_type:
             raise ValueError(f"{grammar} scene selector has no music-code or scene-type field")
         root_type = _COMMAND_ROOTS[grammar][1]
@@ -1376,6 +1455,8 @@ def build_scene_activation(
         detail.scene_id = max(0, min(0xFFFF, scene_code))
         if grammar == "H601C":
             detail.padding = bytes(14)
+        elif grammar == "H6046":
+            detail.unknown_tail = bytes(14)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
@@ -1415,15 +1496,19 @@ def build_diy_activation(diy_code: int, model: str, *, profile: ModelProfile | N
     grammar = (profile or get_profile(model)).command_grammar
     if grammar in {"H617A", "H7020"}:
         return build_h617a_diy_activation(diy_code, root_type=_COMMAND_ROOTS[grammar][1])
-    if grammar == "H601C":
-        root = H601cCommandWrite()
+    if grammar in {"H601C", "H6046"}:
+        root_type = _COMMAND_ROOTS[grammar][1]
+        root = root_type()
         root.header = b"\x33"
-        root.opcode = H601cCommandWrite.CommandOp.mode
-        mode = _child(H601cCommandWrite.ModeBody, root)
-        mode.sub_mode = H601cCommandWrite.ModeSel.diy
-        detail = _child(H601cCommandWrite.DiyBody, mode)
+        root.opcode = root_type.CommandOp.mode
+        mode = _child(root_type.ModeBody, root)
+        mode.sub_mode = root_type.ModeSel.diy
+        detail = _child(root_type.DiyBody, mode)
         detail.code = diy_code
-        detail.padding = bytes(14)
+        if grammar == "H601C":
+            detail.padding = bytes(14)
+        else:
+            detail.unknown_tail = bytes(14)
         mode.detail = detail
         root.body = mode
         return _serialize_xor(root)
@@ -1702,10 +1787,39 @@ def build_music_mode(
         raise ValueError("fixed music colour is unsupported or invalid")
     resolved = profile.music_grammar or profile.command_grammar
     selector_parameters = selector_parameters or {}
-    if resolved != "H7020" and selector_parameters:
+    if resolved not in {"H7020", "H6046"} and selector_parameters:
         raise ValueError("Music selector parameters are unsupported by this grammar")
     if resolved == "H6076":
         return _build_h6076_music_selector(mode_id, sensitivity, colour, calm)
+    if resolved == "H6046":
+        if selector_parameters.keys() - {"bar_mask"}:
+            raise ValueError("Unsupported music selector parameter")
+        root_type = _COMMAND_ROOTS[resolved][1]
+        left, right = int(root_type.BarFlag.left), int(root_type.BarFlag.right)
+        mask = selector_parameters.get("bar_mask", left | right)
+        if type(mask) is not int or mask not in (left, right, left | right):
+            raise ValueError("Music bar mask must target left, right or both")
+        root = root_type()
+        root.header = b"\x33"
+        root.opcode = root_type.CommandOp.mode
+        mode = _child(root_type.ModeBody, root)
+        mode.sub_mode = root_type.ModeSel.music
+        detail = _child(root_type.MusicBody, mode)
+        detail.mode = root_type.MusicMode(mode_id)
+        detail.sensitivity = sensitivity
+        if variant is not None and variant.supports_fixed_colour:
+            detail.is_calm = int(calm)
+            detail.has_fixed_colour = int(colour is not None)
+            if colour is not None:
+                detail.bar_mask = mask
+                detail.fixed_colour = _rgb(detail, *colour)
+        used = 2 + int(mode_id == int(root_type.MusicMode.rhythm))
+        if detail.is_base:
+            used += 1 + (4 if colour is not None else 0)
+        detail.unknown_tail = bytes(16 - used)
+        mode.detail = detail
+        root.body = mode
+        return _serialize_xor(root)
     if resolved == "H7020":
         allowed = {"rhythm_response"} if mode_id == 3 else set()
         if selector_parameters.keys() - allowed:

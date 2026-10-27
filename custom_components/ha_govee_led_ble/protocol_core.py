@@ -529,7 +529,27 @@ def _serialize_xor(root: Any, length: int = 20) -> bytes:
     return _write(root, length)
 
 
+H6046CommandWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_command_write").H6046CommandWrite
+)
+H6046StatusQuery = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_status_query").H6046StatusQuery
+)
+H6046StatusReply = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_status_reply").H6046StatusReply
+)
+H6046CommandAck = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_command_ack").H6046CommandAck
+)
+H6046EffectUpload = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_effect_upload").H6046EffectUpload
+)
+H6046MusicBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_music_body").H6046MusicBody
+)
+
 _STATUS_ROOTS = {
+    "H6046": ("h6046_status_reply", H6046StatusReply),
     "H60A1": ("h60a1_status_reply", H60a1StatusReply),
     "H60A6": ("h60a6_status_reply", H60a6StatusReply),
     "H601C": ("h601c_status_reply", H601cStatusReply),
@@ -554,6 +574,7 @@ _STATUS_ROOTS = {
 
 
 _COMMAND_ROOTS = {
+    "H6046": ("h6046_command_write", H6046CommandWrite),
     "H601C": ("h601c_command_write", H601cCommandWrite),
     "H6099": ("h6099_command_write", H6099CommandWrite),
     "H617A": ("command_write", CommandWrite),
@@ -564,6 +585,7 @@ _COMMAND_ROOTS = {
 
 
 _STATUS_QUERY_ROOTS = {
+    "H6046": ("h6046_status_query", H6046StatusQuery),
     "H601C": ("status_query", StatusQuery),
     "H6099": ("h6099_status_query", H6099StatusQuery),
     "H617A": ("status_query", StatusQuery),
@@ -587,6 +609,7 @@ _MUSIC_WRITE_ROOTS = {
 
 
 _COMMAND_ACK_ROOTS = {
+    "H6046": ("h6046_command_ack", H6046CommandAck),
     "H60A6": ("h60a6_command_ack", H60a6CommandAck),
     "H6125": ("h6125_command_ack", H6125CommandAck),
     "H6099": ("h6099_command_ack", H6099CommandAck),
@@ -610,7 +633,7 @@ def _has_unknown_discriminator(parsed: Any, parser: str) -> bool:
                 and getattr(parsed.body.sub_body.mode_id, "name", None) is None
             )
         )
-    if parser == "h6199_command_write" and parsed.opcode.name == "mode":
+    if parser in {"h6046_command_write", "h6199_command_write"} and parsed.opcode.name == "mode":
         mode = getattr(parsed.body.sub_mode, "name", None)
         return mode is None or (mode == "static_colour" and getattr(parsed.body.detail.operation, "name", None) is None)
     return False

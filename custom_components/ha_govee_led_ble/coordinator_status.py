@@ -83,7 +83,12 @@ def decode_status_frame(
 
 def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -> bool:
     """Boolean registers have independent authorization, not the catch-all OTHER domain."""
-    if getattr(decoded.generated.domain, "name", "") == "power_on_behaviour":
+    domain_name = getattr(decoded.generated.domain, "name", "")
+    if domain_name == "bar_enable":
+        return profile.setting_grammar == "H6046" and bool(profile.boolean_controls)
+    if domain_name == "power_off_memory" and profile.setting_grammar == "H6046":
+        return False
+    if domain_name == "power_on_behaviour":
         return profile.supports_power_on_behaviour
     control = boolean_control_name(getattr(decoded.generated.domain, "name", ""))
     if control is not None:
@@ -121,10 +126,15 @@ class ParsedColorModeResponse:
     music_calm: bool | None = None
     music_color: tuple[int, int, int] | None = None
     music_color_present: bool = True
+    music_fixed_colour: bool | None = None
+    music_left_colour: int | None = None
+    music_right_colour: int | None = None
     rgb_color: tuple[int, int, int] | None = None
     color_temp_kelvin: int | None = None
     white_brightness: int | None = None
     multi_effect_flag: int | None = None
+    left_bar_kelvin: int | None = None
+    right_bar_kelvin: int | None = None
     raw_mode: int | None = None
 
 
@@ -200,12 +210,47 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
     music_mode = None
     if mode_name == "music":
         detail = getattr(body, "detail", getattr(body, "mode_body", None))
+        if detail is None:
+            raise ValueError("Music status has no details")
         mode_id = getattr(detail, "mode", getattr(detail, "mode_id", -1))
         music_mode = getattr(mode_id, "name", None)
         if music_mode not in (profile.readback_music_modes or profile.music_modes):
             raise ValueError("music selector is unsupported for model")
+        if profile.status_grammar == "H6046":
+            music_values: dict[str, Any] = {}
+            if detail.is_base:
+                music_values["music_fixed_colour"] = bool(detail.has_fixed_colour)
+                for bar in ("left", "right"):
+                    rgb = getattr(detail, f"{bar}_colour")
+                    music_values[f"music_{bar}_colour"] = (int(rgb.red) << 16) | (int(rgb.green) << 8) | int(rgb.blue)
+                if detail.has_fixed_colour and music_values["music_left_colour"] == music_values["music_right_colour"]:
+                    rgb = detail.left_colour
+                    music_values["music_color"] = (int(rgb.red), int(rgb.green), int(rgb.blue))
+            return ParsedColorModeResponse(
+                mode=ParsedMode.MUSIC,
+                music_mode=music_mode,
+                music_sensitivity=int(detail.sensitivity),
+                music_calm=bool(detail.is_calm) if music_mode == "rhythm" else None,
+                music_color_present=bool(detail.is_base),
+                **music_values,
+            )
     if mode_name in {"static", "static_colour"}:
         detail = getattr(body, "mode_body", getattr(body, "detail", None))
+        if detail is None:
+            raise ValueError("Static status has no details")
+        if profile.status_grammar == "H6046":
+            left, right = int(detail.left_kelvin), int(detail.right_kelvin)
+            if any(
+                value and not profile.min_color_temp_kelvin <= value <= profile.max_color_temp_kelvin
+                for value in (left, right)
+            ):
+                raise ValueError("Bar Kelvin outside profile range")
+            return ParsedColorModeResponse(
+                mode=ParsedMode.COLOUR,
+                color_temp_kelvin=left if left == right and left else None,
+                left_bar_kelvin=left,
+                right_bar_kelvin=right,
+            )
         rgb = getattr(detail, "rgb", None)
         raw_kelvin = getattr(detail, "kelvin", None) or None
         min_kelvin = profile.readback_min_color_temp_kelvin or profile.min_color_temp_kelvin

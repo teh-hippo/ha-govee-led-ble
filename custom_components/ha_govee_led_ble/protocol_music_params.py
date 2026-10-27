@@ -30,6 +30,14 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
     """Validate a complete retained body with the selected KSY, independent of authoring bounds."""
     if not isinstance(body, bytes) or not body or len(body) > 255 * 17 - 3:
         raise ValueError("invalid music body length")
+    if variant.layout == "h6046_music_body":
+        from .protocol_core import H6046MusicBody
+
+        root = H6046MusicBody.from_bytes(b"\x01\x02\x41" + body)
+        root._read()
+        if int(root.mode) != variant.mode_code or not root._io.is_eof():
+            raise ValueError("music body does not match qualified layout")
+        return root
     if variant.layout in {
         "h6097_music_parameters",
         "h6099_music_parameters",
@@ -84,6 +92,22 @@ def encode_music_parameters(
     preserve_companions: bool = False,
 ) -> bytes:
     """Edit named Kaitai fields; palette length never becomes an absolute tail offset."""
+    if variant.layout == "h6046_music_body":
+        root = parse_music_parameters(variant, variant.template)
+        length = len(variant.template) + 3
+        if palette is not None:
+            if (
+                variant.palette_bounds is None
+                or not variant.palette_bounds[0] <= len(palette) <= variant.palette_bounds[1]
+            ):
+                raise ValueError("palette count is outside music variant bounds")
+            if any(len(rgb) != 3 or any(type(c) is not int or not 0 <= c <= 255 for c in rgb) for rgb in palette):
+                raise ValueError("invalid music palette")
+            length += 3 * (len(palette) - root.palette_count)
+            root.palette_count = len(palette)
+            root.palette = [_rgb(root, *rgb) for rgb in palette]
+        _check_tree(root)
+        return _write(root, length)[3:]
     if variant.layout in {
         "h6097_music_parameters",
         "h6099_music_parameters",

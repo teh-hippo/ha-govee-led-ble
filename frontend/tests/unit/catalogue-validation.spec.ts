@@ -20,6 +20,7 @@ test("canonical backend catalogue decodes through the production catalogue valid
   expect(Object.keys(decoded.models)).toEqual([
     "H1A42",
     "H601C",
+    "H6046",
     "H6076",
     "H6097",
     "H6099",

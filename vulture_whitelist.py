@@ -19,6 +19,7 @@ async_remove_entry  # __init__.py
 _.async_select_option  # select.py
 _.async_set_segment_color  # light_services.py
 _.async_set_segment_color_temp  # light_services.py
+_.async_swap_light_bars  # light_services.py entity service registered by name
 async_setup  # __init__.py
 _._async_setup  # coordinator.py
 async_setup_entry  # __init__.py, light.py, select.py, sensor.py, switch.py
@@ -45,6 +46,12 @@ _.native_value  # sensor.py
 PARALLEL_UPDATES  # light.py, select.py, sensor.py, switch.py
 _.supported_features  # light.py
 VERSION  # config_flow.py
+
+# --- Profile-selected music state ---
+# Parameter specs select these coordinator/DTO fields through getattr/setattr.
+_.music_fixed_colour
+_.music_left_colour
+_.music_right_colour
 
 # --- Enum members ---
 # Enum members. Enums are built from wire or stored values, so a member that is never named in code is still

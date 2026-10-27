@@ -167,6 +167,9 @@ unresolved assumptions.  Preserve uncertain bytes as opaque or unknown data.
 Do not invent enum members, semantic names, `reserved` fields, or `valid`
 constraints.
 
+An audited candidate may use the header `SPECULATIVE (audited prospective)`.
+This records protocol-review confidence without promoting its capture evidence or hardware support status.
+
 Speculative roots may be generated into the runtime package, and only roots
 used by an enabled profile path belong in the runtime root list.  Enable all
 defensible in-scope capabilities backed by exact-model speculative schemas or
@@ -193,7 +196,7 @@ two replies differ only in a mode/flag that recovery must retain. Legacy missing
 fields stay unknown; restored values never become fresh observations. Test
 partial writes and complete-but-mismatched readback, not only missing replies.
 Independent master and zone-enable flags stay independent in controls and recovery.
-Abandoned segment or bulk queries quarantine their subscription until reconnect; late replies never make it reusable.
+Abandoned segment, bulk or combined native-zone queries quarantine their subscription until reconnect; late replies never make it reusable.
 Deliberate effect Apply may skip unrelated ambiguous segment reads, but must retain fresh recovery snapshots for models with unambiguous static readback.
 Preview requires fresh native zone flags and a restorable mode, even when a selector alone can be observed.
 An aggregate Kelvin value or RGB segment page cannot establish every zone's native-white intent.
@@ -201,6 +204,7 @@ Kelvin confirmation may retry complete transitional segment snapshots within a b
 H66A0 partial writes confirm plausible settled rendering, not exact Kelvin.  H1A42 and H61F5 compare their rendered palette; H61F5 retains commanded Kelvin without treating its zero aggregate register as RGB proof.
 The three models round requests to 100 K with upward ties before building, presenting or verifying them.  Their direct RGB sentinel remains independent of companion conversion.
 Unknown native-white intent prevents lossless preview/recovery.  A captured known-RGB layout must come from complete observations following a successful RGB write on the current subscription; failed writes, optimistic or legacy state do not qualify.
+A non-zero native-white observation in any independently controlled zone revokes that known-RGB layout, even when rendered RGB has not changed.
 Do not expose a persistent palette-bound scale control without independently reachable safe requalification after normal Release-mode disconnects.
 Keep every investigation finding in its verification ledger, including deferred
 paths and the evidence or approval needed to qualify them.
@@ -220,6 +224,9 @@ line within the existing JSON schema to keep exact-SKU snapshots compact and
 diffable.  Catalogue availability proves scene identity and vendor
 payload data only; it does not prove transport, activation, upload, or readback
 compatibility.
+
+Refresh a new SKU's snapshot before registering its runtime profile.
+Runtime imports load every registered model's catalogue, so registering the profile first can prevent the refresh tool from starting.
 
 Review snapshot identity changes and update pinned digests and parser counts together.  Keep edge-case tests independent of whether the current vendor catalogue contains an example.
 

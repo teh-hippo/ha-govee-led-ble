@@ -14,6 +14,7 @@ from .music_semantics import (
     H617A_MUSIC_VARIANTS,
     H617C_MUSIC_VARIANTS,
     H617E_MUSIC_VARIANTS,
+    H6046_MUSIC_VARIANTS,
     H6076_LEGACY_MUSIC_VARIANTS,
     H6076_MUSIC_VARIANTS,
     H6097_MUSIC_VARIANTS,
@@ -249,7 +250,15 @@ class ModelProfile:
             type(channel) is not int or not 0 <= channel <= 255 for channel in self.kelvin_direct_rgb
         ):
             raise ValueError("Kelvin direct RGB must contain three byte values")
-        if not self.boolean_controls <= {"gradual", "limit", "power_off_memory", "panel_enabled", "ring_enabled"}:
+        if not self.boolean_controls <= {
+            "gradual",
+            "limit",
+            "power_off_memory",
+            "panel_enabled",
+            "ring_enabled",
+            "left_bar_enabled",
+            "right_bar_enabled",
+        }:
             raise ValueError("unknown boolean device setting")
         if self.configured_string_counts and (
             self.bulbs_per_string <= 0
@@ -570,6 +579,64 @@ _H6076_MUSIC_PROFILE = replace(
 )
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "H6046": ModelProfile(
+        "H6046 TV Light Bars",
+        command_grammar="H6046",
+        command_ack_grammar="H6046",
+        command_operations=frozenset(
+            {"power", "brightness", "static", "scene", "diy", "music", "effect_upload", "bar_enable", "swap_bars"}
+        ),
+        status_grammar="H6046",
+        setting_grammar="H6046",
+        effect_grammar="H6046",
+        music_grammar="H6046",
+        profile_pact_dependent=True,
+        read_domains=frozenset(
+            {
+                ReadDomain.POWER,
+                ReadDomain.BRIGHTNESS,
+                ReadDomain.COLOUR_MODE,
+                ReadDomain.FIRMWARE,
+                ReadDomain.HARDWARE,
+                ReadDomain.SUBORDINATE_20,
+                ReadDomain.SUBORDINATE_21,
+                ReadDomain.SEGMENTS,
+            }
+        ),
+        setup_required_read_domains=frozenset({ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE}),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        kelvin_companion_uses_table=True,
+        kelvin_direct_rgb=(255, 255, 255),
+        supports_segment_writes=True,
+        supports_segment_brightness=True,
+        supports_segment_color_temperature=True,
+        segment_colour_mode_ambiguous=True,
+        supports_scenes=True,
+        supports_custom_effects=True,
+        supports_multi_layered_effects=True,
+        supports_advanced_effects=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        whole_device_mask=0x03FF,
+        segment_count=10,
+        segment_group_size=4,
+        physical_ic_count=10,
+        scene_catalogue_sku="H6046",
+        advanced_diy_selector=401,
+        diy_requires_upload_ack=True,
+        effect_retry_after_upload=False,
+        effect_readback="diy_code_only",
+        boolean_controls=frozenset({"left_bar_enabled", "right_bar_enabled"}),
+        music_modes=("energetic", "rhythm", "impact", "spray", "beat", "torch", "rainbow_ring", "glitter"),
+        music_variants=H6046_MUSIC_VARIANTS,
+        music_sensitivity_min=0,
+        music_sensitivity_max=99,
+        supports_music_color=True,
+        music_upload_before_selector=True,
+        music_requires_upload_ack=True,
+        music_retry_after_upload=False,
+    ),
     "H60A1": ModelProfile(
         "H60A1 Ceiling Light",
         support_quality=SupportQuality.SUPPORTED,
@@ -1599,8 +1666,8 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
 # Grammar families shared by several SKUs; shared code tests membership here, not literal sets.
 VIDEO_GRAMMARS = frozenset({"H6099", "H6199"})
-MODE_COMMAND_GRAMMARS = frozenset({"H601C", "H6099", "H6199"})
-PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H6097", "H6099", "H6199", "H66A0"})
+MODE_COMMAND_GRAMMARS = frozenset({"H601C", "H6046", "H6099", "H6199"})
+PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H6046", "H6097", "H6099", "H6199", "H66A0"})
 
 
 def _h6199_pact1_wire(packet: bytes) -> bytes:
@@ -1773,7 +1840,7 @@ def device_profile(
     hardware: str | None = None,
 ) -> ModelProfile:
     """Resolve exact-product capabilities from evidenced revision context."""
-    if model in {"H6097", "H7020"}:
+    if model in {"H6046", "H6097", "H7020"}:
         profile = get_profile(model)
         if (pact_type, pact_code) in {(1, 1), (2, 1)}:
             return profile

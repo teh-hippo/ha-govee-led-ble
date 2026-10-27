@@ -69,12 +69,54 @@ from custom_components.ha_govee_led_ble.protocol_h6199 import build_h6199_scene
 from custom_components.ha_govee_led_ble.scenes import MODEL_SCENES
 
 
+@pytest.mark.parametrize(
+    "content",
+    (
+        SingleEffect(family=5, variant=0, speed=1, palette=((10, 20, 30),)),
+        MultiEffect(
+            effects=tuple(EffectPair(family, 0) for family in (0, 5, 11, 13)),
+            speed=100,
+            palette=((10, 20, 30), (40, 50, 60)),
+        ),
+    ),
+)
+def test_h6046_diy_uses_approved_slot_and_own_envelope(content):
+    from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
+    from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
+    from custom_components.ha_govee_led_ble.generated_protocol_adapter import require_profile_packet
+
+    item = LibraryItem.new("H6046 DIY", content)
+    with pytest.raises(ValueError, match="approved|DIY code"):
+        compile_effect(item, "H6046")
+    compiled = compile_effect(item, "H6046", diy_code=4096)
+    for packet in (*compiled.upload_packets, compiled.activation_packet):
+        require_profile_packet(packet, MODEL_PROFILES["H6046"])
+    assert decode_effect_frames(compiled.upload_packets, "H6046", compiled.upload_transport) == content
+    assert compiled.activation_packet[2:5] == b"\x0a\x00\x10"
+
+
+def test_h6046_workshop_uses_selector_not_catalogue_identity():
+    from custom_components.ha_govee_led_ble.effect_compiler import compile_effect
+    from custom_components.ha_govee_led_ble.effect_protocol_decoder import decode_effect_frames
+    from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
+    from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene
+
+    entry = next(scene for scene in MODEL_SCENES["H6046"].values() if scene.scene_type == 2)
+    content = decode_layered_scene(
+        CatalogueRef("H6046", entry.scene_id, entry.effect_id), base64.b64decode(entry.param)
+    ).effect
+    compiled = compile_effect(LibraryItem.new("H6046 Workshop", content), "H6046")
+    assert compiled.activation_packet[2:5] == b"\x04\x91\x01"
+    assert decode_effect_frames(compiled.upload_packets, "H6046", compiled.upload_transport) == content
+
+
 def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view() -> None:
     catalogue = custom_effect_catalogue_payload()
 
     assert catalogue["schema_version"] == EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION
     assert catalogue["sku"] == LEGACY_CATALOGUE_SKU
     assert set(catalogue["models"]) == {
+        "H6046",
         "H1A42",
         "H601C",
         "H6076",

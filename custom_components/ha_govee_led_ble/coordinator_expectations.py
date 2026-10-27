@@ -79,6 +79,20 @@ def expectations_from_packet(
             music_mode = music_slug_for(model, int(detail.mode), profile=profile)
             expectations["music_mode"] = music_mode
             expectations["music_sensitivity"] = int(detail.sensitivity)
+            if profile.music_grammar == "H6046":
+                if not detail.is_base:
+                    return expectations
+                expectations["music_fixed_colour"] = bool(detail.has_fixed_colour)
+                if music_mode == "rhythm":
+                    expectations["music_calm"] = bool(detail.is_calm)
+                if detail.has_fixed_colour:
+                    rgb = detail.fixed_colour
+                    value = (int(rgb.red) << 16) | (int(rgb.green) << 8) | int(rgb.blue)
+                    for bar in ("left", "right"):
+                        mask = int(getattr(type(generated).BarFlag, bar))
+                        if detail.bar_mask & mask:
+                            expectations[f"music_{bar}_colour"] = value
+                return expectations
             if not getattr(detail, "is_legacy", True):
                 return expectations
             if music_mode == "rhythm":
