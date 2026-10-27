@@ -1496,6 +1496,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_music_color=True,
         static_readback_echoes_color=True,
         static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
         scene_catalogue_sku="H6179",
         selector_only_scene_bits=8,
         effect_readback="diy_code_only",

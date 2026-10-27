@@ -141,6 +141,24 @@ H6179_LEGACY_COLOUR = bytes.fromhex("3305020a141e0000000000000000000000000034")
 H6179_STATUS = bytes.fromhex("aa050d12345600000000000000000000000000d2")
 H6179_DIY = bytes.fromhex("feff003206ff00000000ff0400000200")
 H6179_SCHEDULE = bytes.fromhex("33091314040401091e000000000000000000002b")
+
+
+@pytest.mark.parametrize(
+    "frame",
+    (
+        "aa050e006300ff0000000000000000000000003d",
+        "aa050e016300ff0000000000000000000000003c",
+    ),
+)
+def test_h6179_automatic_music_consumes_inactive_stored_colour(frame):
+    # Synthetic full frames reconstructed from the abbreviated owner report.
+    parsed = _parse(H6179StatusReply, bytes.fromhex(frame))
+    detail = parsed.body.detail
+    assert detail.automatic_colour
+    assert (detail.fixed_colour.red, detail.fixed_colour.green, detail.fixed_colour.blue) == (255, 0, 0)
+    assert not any(detail.opaque)
+
+
 # Issue #115: identical H6199 notification observed three times on 2026-09-17.
 H6199_DIY_UPLOAD_ACK = bytes.fromhex("a3040000000000000000000000000000000000a7")
 # H6199 Pact 1 producer fixtures, not physical-device captures.

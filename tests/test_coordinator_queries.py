@@ -309,6 +309,36 @@ async def test_h6076_refresh_all_uses_colour_mode_and_segment_readback(hass, vir
     assert coordinator.static_gradual is True
 
 
+@pytest.mark.parametrize(("mode_id", "fixed_colour", "confirmed"), ((0, 0, True), (1, 0, True), (1, 1, False)))
+async def test_h6179_setup_reads_automatic_music_and_rejects_fixed_colour_mismatch(
+    hass, virtual_clock, mode_id, fixed_colour, confirmed
+):
+    coordinator = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6179", configuration_url=_CONFIGURATION_URL)
+    coordinator._client = client = _c()
+
+    async def reply(**kwargs):
+        assert kwargs["query_color_mode"]
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 1, [1])))
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 4, [254])))
+        coordinator._notify_callback(None, bytearray(_packet(0xAA, 5, [0x0E, mode_id, 99, fixed_colour, 255, 0, 0])))
+        return True
+
+    with (
+        patch.object(coordinator, "_ensure_connected", AsyncMock(return_value=client)),
+        patch.object(coordinator, "_send_state_queries", AsyncMock(side_effect=reply)),
+    ):
+        assert (
+            await coordinator.refresh_state(
+                refresh_all=True,
+                required_domains=coordinator.profile.setup_required_read_domains,
+                expected_music_mode=f"mode_{mode_id}",
+                expected_music_sensitivity=99,
+                expected_music_auto_color=True,
+                timeout=0.02,
+            )
+        ) is confirmed
+
+
 async def test_refresh_reply_timeout_starts_after_connection(coord, virtual_clock):
     client = _c()
 
