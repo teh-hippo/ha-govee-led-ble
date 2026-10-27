@@ -584,6 +584,19 @@ _H6076_MUSIC_PROFILE = replace(
     music_params_require_activation=True,
 )
 
+# H6072 Floor Lamp: same wire protocol as H6076 (status_grammar "H6076" parses its
+# replies; mode selector 0x15=static confirmed by live capture), segments and
+# multi_effect domains answer. Music modes unverified -> trimmed off.
+_H6072_PROFILE = replace(
+    _H6076_PROFILE,
+    name="H6072 Floor Lamp",
+    support_quality=SupportQuality.EXPERIMENTAL,
+    confirmation_issue=442,
+    music_grammar=None,
+    music_modes=(),
+    readback_music_modes=(),
+)
+
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6046": ModelProfile(
         "H6046 TV Light Bars",
@@ -1290,6 +1303,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H617F",
     ),
     "H6076": _H6076_MUSIC_PROFILE,
+    "H6072": _H6072_PROFILE,
     "H6102": ModelProfile(
         "H6102 LED Strip",
         support_quality=SupportQuality.SUPPORTED,
