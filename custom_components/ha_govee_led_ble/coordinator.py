@@ -235,6 +235,9 @@ class GoveeBLECoordinator(
         self._pending_kelvin: int | None = None
         self._static_rgb_known = False
         self.static_gradual: bool | None = None
+        self.left_bar_kelvin: int | None = None
+        self.right_bar_kelvin: int | None = None
+        self.bar_enable_mask: int | None = None
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.effect: str | None = None
         # Device identity from the aa 06/aa 07 handshake replies; None until first read.
@@ -280,6 +283,9 @@ class GoveeBLECoordinator(
         self.video_sound_effects_softness = 100
         self.video_parameters: dict[str, Any] | None = None
         self.music_color: tuple[int, int, int] | None = None
+        self.music_fixed_colour: bool | None = None
+        self.music_left_colour: int | None = None
+        self.music_right_colour: int | None = None
         # H6199 display settings and edge brightness. None means the first read has not landed.
         self.white_balance_red: int | None = None
         self.control_write_attempts = 0
@@ -573,6 +579,7 @@ class GoveeBLECoordinator(
         self.music_mode = self.video_mode = "off"
         self.music_sensitivity = 99
         self.music_color = self._music_palette = self._music_body = None
+        self.music_fixed_colour = self.music_left_colour = self.music_right_colour = None
         self.music_calm = False
         self.video_saturation = self.video_sound_effects_softness = 100
         self.video_full_screen, self.video_sound_effects = True, False
@@ -580,6 +587,7 @@ class GoveeBLECoordinator(
         self.rgb_color_source = self.color_temp_kelvin_source = "initial"
         self.color_temp_kelvin = None
         self.static_gradual = None
+        self.left_bar_kelvin = self.right_bar_kelvin = None
         self._static_rgb_known = False
         self.segment_colors = [(255, 255, 255)] * profile.segment_count
         self.segment_brightness = [100] * profile.segment_count
@@ -899,6 +907,9 @@ class GoveeBLECoordinator(
         self._static_rgb_known = False
         self._music_palette = self._music_body = None
         self._notification_token = None
+        self.bar_enable_mask = None
+        for field in ("left_bar_kelvin", "right_bar_kelvin", "boolean_left_bar_enabled", "boolean_right_bar_enabled"):
+            self._field_received_at.pop(field, None)
         self.video_parameters = None
         self._confirmed_identity_fields.clear()
         self._authorization_generation += 1
@@ -1282,14 +1293,11 @@ class GoveeBLECoordinator(
             if full_query and profile.boolean_controls and profile.setting_grammar != "H60A6":
                 from .generated_protocol_adapter import build_boolean_control_query
 
-                queries.extend(
-                    (
-                        build_boolean_control_query(control, self.model, profile=profile),
-                        ReadDomain.OTHER,
-                        (f"boolean_{control}",),
-                    )
-                    for control in sorted(profile.boolean_controls)
-                )
+                boolean_queries: dict[bytes, tuple[str, ...]] = {}
+                for control in sorted(profile.boolean_controls):
+                    query = build_boolean_control_query(control, self.model, profile=profile)
+                    boolean_queries[query] = (*boolean_queries.get(query, ()), f"boolean_{control}")
+                queries.extend((query, ReadDomain.OTHER, fields) for query, fields in boolean_queries.items())
             if full_query and profile.supports_power_on_behaviour and profile.bulk_status_grammar is None:
                 from .generated_protocol_adapter import build_power_on_behaviour_query
 
@@ -1325,6 +1333,16 @@ class GoveeBLECoordinator(
                 if time.monotonic() >= deadline:
                     return all(d not in required for _, d, _ in queries[index:])
                 baselines = {field: self._field_revisions.get(field, 0) for field in fields}
+                if profile.setting_grammar == "H6046" and set(fields) == {
+                    "boolean_left_bar_enabled",
+                    "boolean_right_bar_enabled",
+                }:
+                    if optional_baselines is not None:
+                        for field, revision in baselines.items():
+                            optional_baselines.setdefault(field, revision)
+                    if not await self._async_read_bar_flags(client, query, deadline=deadline):
+                        return domain not in required and all(d not in required for _, d, _ in queries[index + 1 :])
+                    continue
                 if domain is ReadDomain.COLOUR_MODE and profile.bulk_status_grammar is not None:
                     if optional_baselines is not None and domain not in required:
                         for field, revision in baselines.items():
@@ -1583,13 +1601,7 @@ class GoveeBLECoordinator(
             raise ValueError("Invalid configured string command")
         opcode = int(command.opcode)
         async with async_control_intent(self, ControlIntent.USER):
-            if self.config_entry is not None:
-                from .effect_setup import get_effect_backend
-
-                if backend := get_effect_backend(self.hass):
-                    await backend.preview.async_supersede_device(
-                        self.config_entry.entry_id, reason="home_assistant_control"
-                    )
+            await self._async_supersede_effect_preview()
             async with self._lock:
                 client = await self._ensure_connected()
                 future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
@@ -1636,6 +1648,11 @@ class GoveeBLECoordinator(
                 raise ValueError("Device profile does not support this setting")
 
         qualified()
+        if self.profile.setting_grammar == "H6046":
+            if type(value) is not bool:
+                raise ValueError("Boolean setting requires a boolean")
+            await self._async_set_bar_control(control, value)
+            return
         if control == "power_on_behaviour":
             if not isinstance(value, str):
                 raise ValueError("Power-on behaviour requires an option")
@@ -1648,13 +1665,7 @@ class GoveeBLECoordinator(
             async with self._lock:
                 await self._ensure_connected()
             qualified()
-            if self.config_entry is not None:
-                from .effect_setup import get_effect_backend
-
-                if backend := get_effect_backend(self.hass):
-                    await backend.preview.async_supersede_device(
-                        self.config_entry.entry_id, reason="home_assistant_control"
-                    )
+            await self._async_supersede_effect_preview()
             generation = self._profile_generation
             field = control if control == "power_on_behaviour" else f"boolean_{control}"
             baseline = {field: self._field_revisions.get(field, 0)}
@@ -1688,6 +1699,122 @@ class GoveeBLECoordinator(
                 )
                 if actual != value:
                     raise ValueError("Device did not confirm the requested setting")
+
+    async def _async_supersede_effect_preview(self) -> None:
+        if self.config_entry is None:
+            return
+        from .effect_setup import get_effect_backend
+
+        if backend := get_effect_backend(self.hass):
+            await backend.preview.async_supersede_device(self.config_entry.entry_id, reason="home_assistant_control")
+
+    async def _async_read_bar_flags(
+        self,
+        client: BleakClient,
+        query: bytes,
+        *,
+        deadline: float,
+        write_guard: Callable[[], None] | None = None,
+    ) -> bool:
+        fields = ("boolean_left_bar_enabled", "boolean_right_bar_enabled")
+        baseline = {field: self._field_revisions.get(field, 0) for field in fields}
+        token, generation = self._notification_token, self._profile_generation
+        attempted = complete = False
+
+        def mark_attempted() -> None:
+            nonlocal attempted
+            attempted = True
+
+        try:
+            async with asyncio.timeout_at(deadline) as read_timeout:
+                await self._async_write_packet(
+                    client, query, before_write=write_guard, on_write=mark_attempted, cleanup_deadline=deadline
+                )
+                complete = await self._wait_for_revisions(baseline, {}, deadline)
+                complete = (
+                    complete
+                    and self._client is client
+                    and client.is_connected
+                    and self._notification_token is token
+                    and self._profile_generation == generation
+                )
+            return complete
+        except TimeoutError:
+            if not read_timeout.expired():
+                raise
+            return False
+        finally:
+            if attempted and not complete and self._client is client:
+                # The wire has no query ID; a late reply cannot qualify another read.
+                try:
+                    async with asyncio.timeout(VALIDATION_DISCONNECT_TIMEOUT):
+                        await self._disconnect_if_current_locked(client)
+                except TimeoutError:
+                    _LOGGER.debug("Timed out disconnecting an abandoned native bar query")
+
+    async def _async_set_bar_control(self, control: str, enabled: bool) -> None:
+        from .generated_protocol_adapter import build_boolean_control, build_boolean_control_query
+
+        sibling = "right_bar_enabled" if control == "left_bar_enabled" else "left_bar_enabled"
+        async with async_control_intent(self, ControlIntent.USER):
+            await self._async_supersede_effect_preview()
+            async with self._lock:
+                client = await self._ensure_connected()
+                profile, generation, token = self.profile, self._profile_generation, self._notification_token
+
+                def guard() -> None:
+                    if (
+                        self.profile != profile
+                        or self._profile_generation != generation
+                        or self._notification_token is not token
+                        or self._client is not client
+                        or not client.is_connected
+                        or control not in self.profile.boolean_controls
+                    ):
+                        raise ValueError("Bar control connection or profile changed")
+
+                query = build_boolean_control_query(control, self.model, profile=profile)
+                if not await self._async_read_bar_flags(
+                    client, query, deadline=time.monotonic() + 4.0, write_guard=guard
+                ):
+                    raise ValueError("Device did not provide both native bar states")
+                guard()
+                sibling_enabled = self.boolean_control_state.get(sibling)
+                packet = build_boolean_control(
+                    control,
+                    enabled,
+                    self.model,
+                    profile=profile,
+                    sibling_enabled=sibling_enabled,
+                    native_mask=self.bar_enable_mask or 0,
+                )
+                expected = {f"boolean_{control}": enabled, f"boolean_{sibling}": sibling_enabled}
+                await self._async_write_packet(client, packet, arm_expected=True, before_write=guard)
+                if not await self._async_read_bar_flags(
+                    client, query, deadline=time.monotonic() + 4.0, write_guard=guard
+                ):
+                    raise ValueError("Device did not confirm both native bar states")
+                guard()
+                if any(
+                    self.boolean_control_state.get(name.removeprefix("boolean_")) != value
+                    for name, value in expected.items()
+                ):
+                    raise ValueError("Device changed the requested bar or its sibling")
+
+    async def async_swap_bars(self) -> None:
+        from .generated_protocol_adapter import build_swap_bars
+
+        packet = build_swap_bars(self.profile)
+        async with async_control_intent(self, ControlIntent.USER):
+            async with self._lock:
+                client = await self._ensure_connected()
+                try:
+                    await self._async_write_packet(client, packet, arm_expected=True)
+                finally:
+                    self._static_rgb_known = False
+                    self.left_bar_kelvin = self.right_bar_kelvin = None
+                    self.segment_state_source = "initial"
+            await self.refresh_state(refresh_all=True)
 
     @property
     def physical_ic_count_source(self) -> str:

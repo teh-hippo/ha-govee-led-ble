@@ -42,7 +42,7 @@ class GoveeBLEControlSwitch(GoveeBLEEntity, SwitchEntity):
         self._attr_translation_key = control
         self._attr_unique_id = f"{self.coordinator.address.replace(':', '').lower()}_{control}"
         self._attr_device_info = self.coordinator.device_info
-        if control in {"panel_enabled", "ring_enabled"}:
+        if control in {"panel_enabled", "ring_enabled", "left_bar_enabled", "right_bar_enabled"}:
             self._attr_entity_category = None
             self._attr_entity_registry_visible_default = False
 

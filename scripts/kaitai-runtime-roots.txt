@@ -1,4 +1,10 @@
 command_write
+speculative/h6046_command_write
+speculative/h6046_status_query
+speculative/h6046_status_reply
+speculative/h6046_command_ack
+speculative/h6046_effect_upload
+speculative/h6046_music_body
 diy_type03
 diy_type04
 speculative/h6102_status_reply

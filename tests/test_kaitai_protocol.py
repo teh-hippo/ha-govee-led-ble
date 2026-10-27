@@ -1701,3 +1701,181 @@ REJECTED_ROOTS = (
 def test_critical_invalid_shapes_are_rejected(root_type: type[Any], raw_hex: str) -> None:
     with pytest.raises(KaitaiStructError):
         _parse(root_type, bytes.fromhex(raw_hex))
+
+
+# H6046 #479 examples below are source-reconstructed plaintext, not hardware captures.
+def test_h6046_direct_bytes_static_masks_and_selector_endianness() -> None:
+    root = _generated("h6046_command_write", "H6046CommandWrite")
+    all_red = _parse(root, bytes.fromhex("33051501ff00000000000000ff03000000000021")).body.detail
+    right_white = _parse(root, bytes.fromhex("330515010102030e10ffcb8de003000000000066")).body.detail
+    boundary_brightness = _parse(root, bytes.fromhex("3305150264200000000000000000000000000065")).body.detail
+    assert (all_red.red, all_red.kelvin, all_red.segment_mask) == (255, 0, 0x03FF)
+    assert (right_white.kelvin, right_white.segment_mask) == (3600, 0x03E0)
+    assert (right_white.preview.red, right_white.preview.green, right_white.preview.blue) == (255, 203, 141)
+    assert (boundary_brightness.brightness_percent, boundary_brightness.brightness_segment_mask) == (100, 0x20)
+    scene = _parse(root, bytes.fromhex("330504b084000000000000000000000000000006")).body.detail
+    diy = _parse(root, bytes.fromhex("33050a341200000000000000000000000000001a")).body.detail
+    assert scene.scene_id == 33968
+    assert diy.code == 0x1234
+
+
+def test_h6046_direct_bytes_percent_brightness_and_complete_vector() -> None:
+    root = _generated("h6046_command_write", "H6046CommandWrite")
+    power = _parse(root, bytes.fromhex("3301010000000000000000000000000000000033"))
+    brightness = _parse(root, bytes.fromhex("3304320000000000000000000000000000000005"))
+    assert power.body.is_on == 1 and brightness.body.percent == 50
+    payload = bytes.fromhex("3305150300010203043233346364").ljust(19, b"\x00")
+    vector = _parse(root, payload + bytes((xor_checksum(payload),))).body.detail
+    assert vector.operation.name == "brightness_vector"
+    assert vector.brightness_values == [0, 1, 2, 3, 4, 50, 51, 52, 99, 100]
+
+
+@pytest.mark.parametrize(
+    ("raw_hex", "left", "right"),
+    [
+        ("aa0515a50e101770deadbeef0000000000000044", 3600, 6000),
+        ("aa0515a500001770deadbeef000000000000005a", 0, 6000),
+    ],
+)
+def test_h6046_direct_bytes_static_is_two_kelvin_not_h6199_gradient(raw_hex: str, left: int, right: int) -> None:
+    root = _generated("h6046_status_reply", "H6046StatusReply")
+    raw = bytes.fromhex(raw_hex)
+    detail = _parse(root, raw).body.detail
+    assert (detail.unknown_flag, detail.left_kelvin, detail.right_kelvin) == (0xA5, left, right)
+    assert detail.unknown_tail == bytes.fromhex("deadbeef00000000000000")
+    assert not hasattr(detail, "gradient")
+
+
+@pytest.mark.parametrize(
+    ("write_hex", "reply_hex", "mode", "mask", "left", "right"),
+    [
+        (
+            "3305130332000101ff00000000000000000000eb",
+            "aa051303320001ff000000ff000000000000008c",
+            "rhythm",
+            1,
+            (255, 0, 0),
+            (0, 255, 0),
+        ),
+        (
+            "3305130532011000ff00000000000000000000fc",
+            "aa0513053201ff000000ff00000000000000008a",
+            "energetic",
+            16,
+            (255, 0, 0),
+            (0, 255, 0),
+        ),
+    ],
+)
+def test_h6046_direct_bytes_music_tx_target_differs_from_two_colour_rx(
+    write_hex: str, reply_hex: str, mode: str, mask: int, left: tuple[int, int, int], right: tuple[int, int, int]
+) -> None:
+    write = _parse(_generated("h6046_command_write", "H6046CommandWrite"), bytes.fromhex(write_hex)).body.detail
+    reply = _parse(_generated("h6046_status_reply", "H6046StatusReply"), bytes.fromhex(reply_hex)).body.detail
+    assert write.mode.name == reply.mode.name == mode
+    assert write.sensitivity == reply.sensitivity == 50
+    assert write.bar_mask == mask and write.has_fixed_colour == reply.has_fixed_colour == 1
+    assert (reply.left_colour.red, reply.left_colour.green, reply.left_colour.blue) == left
+    assert (reply.right_colour.red, reply.right_colour.green, reply.right_colour.blue) == right
+    assert hasattr(write, "is_calm") == (mode == "rhythm")
+    assert not hasattr(reply, "bar_mask")
+    dynamic = _parse(
+        _generated("h6046_command_write", "H6046CommandWrite"),
+        bytes.fromhex("330513083200000000000000000000000000001f"),
+    ).body.detail
+    assert dynamic.mode.name == "impact" and dynamic.has_fixed_colour == 0
+    assert not hasattr(dynamic, "bar_mask") and not hasattr(dynamic, "fixed_colour")
+
+
+def test_h6046_direct_bytes_bar_flags_queries_and_swap_action() -> None:
+    command = _generated("h6046_command_write", "H6046CommandWrite")
+    status = _generated("h6046_status_reply", "H6046StatusReply")
+    query = _generated("h6046_status_query", "H6046StatusQuery")
+    left = _parse(status, bytes.fromhex("aa33010000000000000000000000000000000098")).body
+    right_unknown = _parse(status, bytes.fromhex("aa33900000000000000000000000000000000009")).body
+    assert left.left_enabled and not left.right_enabled
+    assert not right_unknown.left_enabled and right_unknown.right_enabled
+    assert right_unknown.mask == 0x90
+    swap = _parse(command, bytes.fromhex("3334000000000000000000000000000000000007"))
+    assert swap.opcode.name == "swap_bars" and not hasattr(swap.body, "value")
+    final_group = _parse(query, bytes.fromhex("aaa503000000000000000000000000000000000c"))
+    hardware = _parse(query, bytes.fromhex("aa070300000000000000000000000000000000ae"))
+    assert final_group.body.group == 3 and final_group.body.zeros == [0] * 16
+    assert hardware.body.selector == b"\x03"
+    decode_only = _parse(status, bytes.fromhex("aa410201000000000000000000000000000000e8"))
+    assert decode_only.domain.name == "power_off_memory"
+    assert decode_only.body.unknown_leading == 2 and decode_only.body.value == 1
+    assert "power_off_memory" not in query.QueryDomain.__members__
+
+
+@pytest.mark.parametrize(
+    ("raw_hex", "opcode", "mode", "success"),
+    [
+        ("3334110000000000000000000000000000000016", 0x34, None, False),
+        ("a3415000000000000000000000000000000000b2", 0x41, 0x50, True),
+        ("a3415007000000000000000000000000000000b5", 0x41, 0x50, False),
+        ("a3020000000000000000000000000000000000a1", 2, None, True),
+        ("a3040900000000000000000000000000000000ae", 4, None, False),
+    ],
+)
+def test_h6046_direct_bytes_ack_result_offset(raw_hex: str, opcode: int, mode: int | None, success: bool) -> None:
+    raw = bytes.fromhex(raw_hex)
+    ack = _parse(_generated("h6046_command_ack", "H6046CommandAck"), raw)
+    assert xor_checksum(raw) == 0
+    assert ack.opcode == opcode and ack.is_success is success
+    assert ack.is_upload is (raw[0] == 0xA3)
+    assert (int(ack.mode) if hasattr(ack, "mode") else None) == mode
+
+
+def test_h6046_direct_bytes_final_page_retains_unused_slots_and_tails() -> None:
+    root = _generated("h6046_status_reply", "H6046StatusReply")
+    raw = bytes.fromhex("aaa50364ff00003200ff001122334455667788d2")
+    parsed = _parse(root, raw)
+    assert parsed.body.num_segments == 2
+    assert [record.brightness for record in parsed.body.segments] == [100, 50]
+    assert bytes(parsed.body.unused) == bytes.fromhex("1122334455667788")
+    parsed._check()
+    output = io.BytesIO(bytes(20))
+    parsed._write(KaitaiStream(output))
+    assert output.getvalue() == raw
+
+
+@pytest.mark.parametrize(("mode", "count"), [(0x49, 2), (0x50, 1), (0x51, 6), (0x52, 1)])
+def test_h6046_reconstructed_music_companion_keeps_subeffect_after_palette(mode: int, count: int) -> None:
+    root = _generated("h6046_music_body", "H6046MusicBody")
+    raw = bytes((1, 3, 0x41, mode, count)) + bytes.fromhex("123456") * count + bytes.fromhex("00deadbeef")
+    body = _parse(root, raw)
+    assert body.palette_count == count and len(body.palette) == count
+    assert body.subeffect == 0 and body.unknown_tail == bytes.fromhex("deadbeef")
+    assert body.palette[0].red == 0x12
+
+
+@pytest.mark.parametrize(("mode", "count"), [(0x49, 1), (0x50, 0), (0x51, 5), (0x52, 9)])
+def test_h6046_music_companion_rejects_outside_evidenced_palette_bounds(mode: int, count: int) -> None:
+    root = _generated("h6046_music_body", "H6046MusicBody")
+    with pytest.raises(KaitaiStructError):
+        _parse(root, bytes((1, 3, 0x41, mode, count)) + bytes(3 * count + 1))
+
+
+def test_h6046_reconstructed_flat_and_mixed_diy_keep_opaque_tail() -> None:
+    root = _generated("h6046_effect_upload", "H6046EffectUpload")
+    flat = _parse(root, bytes.fromhex("0102040d003203ff0000deadbeef")).content
+    mixed = _parse(root, bytes.fromhex("010204ff003203ff000008000001000b000d00deadbeef")).content
+    assert flat.family.name == "aurora" and flat.speed == 50
+    assert flat.palette_len == 3 and flat.palette[0].red == 255
+    assert flat.unknown_tail == mixed.unknown_tail == bytes.fromhex("deadbeef")
+    assert len(mixed.pairs) == 4
+    assert [pair.family.name for pair in mixed.pairs] == ["fade", "jumping", "snow", "aurora"]
+    with pytest.raises(KaitaiStructError):
+        _parse(root, bytes.fromhex("01020403003203ff0000"))
+    with pytest.raises(KaitaiStructError):
+        _parse(root, bytes.fromhex("010204ff003203ff00000a") + bytes(10))
+
+
+def test_h6046_reconstructed_scene_envelope_uses_shared_content() -> None:
+    root = _generated("h6046_effect_upload", "H6046EffectUpload")
+    type1 = _parse(root, bytes.fromhex("010201030001ff000000"))
+    type2 = _parse(root, bytes.fromhex("010202011400000001000000320001ff000000000000000000deadbeef"))
+    assert type1.kind.name == "builtin_parameters" and type1.content.palette[0].red == 255
+    assert type2.kind.name == "scene" and type2.content.blocks[0].body.palette[0].red == 255
+    assert type2.content.unknown_tail == bytes.fromhex("deadbeef")

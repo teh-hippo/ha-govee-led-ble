@@ -172,6 +172,35 @@ _W, _R, _S, _V, _P, _E = (
 
 
 _RELEASE_CAPABILITY_BASE: Final = (
+    *(
+        _capability(
+            "H6046",
+            workflow,
+            label,
+            kind,
+            route,
+            strategy,
+            _V.SELECTION_ONLY,
+            _P.NOT_VALIDATED,
+            _E.STRUCTURAL,
+        )
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (
+                _W.EDITED_PALETTE_SCENES,
+                "Edited palette scenes",
+                "scene_palette",
+                _R.HOME_ASSISTANT_CONTROL,
+                _S.MODEL_SCENE_ENGINE,
+            ),
+            (_W.LAYERED_SCENES, "Layered scenes", "scene_layered", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.NATIVE_MUSIC, "Music", "music_profile", _R.HOME_ASSISTANT_CONTROL, _S.COORDINATOR_WRITER),
+            (_W.ADVANCED, "Advanced", "advanced", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+            (_W.WORKSHOP, "Workshop", "workshop", _R.HOME_ASSISTANT_CONTROL, _S.MODEL_SCENE_ENGINE),
+        )
+    ),
     _capability(
         "H617A",
         _W.NATIVE_SCENES,
@@ -407,6 +436,7 @@ _RELEASE_CAPABILITY_BASE: Final = (
 
 
 RELEASE_CAPABILITY_CONTRACT: Final = (
+    *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H6046"),
     *(
         _capability(
             model,
@@ -810,7 +840,7 @@ def profile_supports_workflow(profile: ModelProfile, workflow: CapabilityWorkflo
 def require_effect_route(
     model: str,
     workflow: CapabilityWorkflow,
-    grammars: tuple[str, ...] = ("H617A", "H6199", "H6099", "H6179", "H60A6"),
+    grammars: tuple[str, ...] = ("H6046", "H617A", "H6199", "H6099", "H6179", "H60A6"),
     *,
     profile: ModelProfile | None = None,
 ) -> str:

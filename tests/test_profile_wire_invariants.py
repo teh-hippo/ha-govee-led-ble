@@ -101,6 +101,7 @@ def _consume_status(coordinator: GoveeBLECoordinator, frame: bytes) -> None:
 
 # Runtime qualification contexts that produce distinct effective profiles through device_profile().
 _QUALIFIED_CONTEXTS: tuple[tuple[str, str, int | None, int | None, str | None, str | None], ...] = (
+    ("H6046-unqualified", "H6046", None, None, None, None),
     ("H60A1-2200k", "H60A1", None, None, None, "1.04.02"),
     ("H60A1-segmented", "H60A1", 1, 1, "1.02.20", "1.04.03"),
     ("H60A1-segmented-2200k", "H60A1", 2, 1, "1.02.20", "1.04.02"),
@@ -240,6 +241,8 @@ def _status_root_type(profile: ModelProfile):
 
 
 def _status_color_mode_enum(profile: ModelProfile):
+    if profile.status_grammar == "H6046":
+        return protocol_core.H6046CommandWrite.ModeSel
     if profile.bulk_status_grammar:
         return protocol_core.H60aBulk.Mode
     if profile.status_grammar == "H6097":
@@ -253,6 +256,8 @@ def _status_color_mode_enum(profile: ModelProfile):
 
 
 def _status_music_enum(profile: ModelProfile):
+    if profile.status_grammar == "H6046":
+        return protocol_core.H6046CommandWrite.MusicMode
     if profile.status_grammar == "H6097":
         return protocol_core.H6097MusicWrite.MusicMode
     if profile.status_grammar == "H6076":
@@ -868,6 +873,18 @@ def test_diy_commands_and_status_readback(hass, model: str, profile: ModelProfil
         assert coordinator.color_mode is ParsedMode.DIY and coordinator.diy_code == diy_code
 
 
+def test_h6046_kelvin_direct_bytes_do_not_change_h6076_encoding():
+    for packet in (
+        build_color_temp(2700, "H6046"),
+        build_segment_color_temp(range(1, 6), 2700, "H6046"),
+    ):
+        assert packet[:9] == bytes.fromhex("33051501ffffff0a8c")
+    legacy_packet = build_color_temp(2700, "H6076")
+    legacy = a.parse_command(legacy_packet, "H6076")
+    direct = legacy.body.sub_body.static_body.rgb_direct
+    assert (direct.red, direct.green, direct.blue) == (0, 0, 0)
+
+
 @pytest.mark.parametrize(("model", "profile"), _COLOUR_MODE_READBACK_PROFILES)
 def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: ModelProfile) -> None:
     """Profiles with colour-mode readback must decode static colour replies and enforce
@@ -897,6 +914,8 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
                 if profile.status_grammar in {"H601C", "H6179"}
                 else bytes([static_byte, 1]) + kelvin_bytes
             )
+            if profile.status_grammar == "H6046":
+                body += kelvin_bytes
             reply = _status(0x05, body)
             decoded = decode_status_frame(reply, model, profile=profile)
             assert decoded is not None
@@ -929,7 +948,13 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
         a.require_profile_packet(query, profile)
         domain_byte = query[1]
         for enabled in (False, True):
-            cmd = a.build_boolean_control(control, enabled, model, profile=profile)
+            cmd = a.build_boolean_control(
+                control,
+                enabled,
+                model,
+                profile=profile,
+                **({"sibling_enabled": True, "native_mask": 0x80} if profile.setting_grammar == "H6046" else {}),
+            )
             assert len(cmd) == 20 and xor_checksum(cmd) == 0
             a.require_profile_packet(cmd, profile)
             if profile.setting_grammar == "H60A6":
@@ -941,6 +966,17 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
                 assert coordinator.boolean_control_state[control] is enabled
                 assert coordinator._field_revisions[f"boolean_{control}"] > 0
                 continue
+            if profile.setting_grammar == "H6046":
+                reply = _status(domain_byte, cmd[2:3])
+                decoded = decode_status_frame(reply, model, profile=profile)
+                assert decoded is not None and status_is_authorized(decoded, profile)
+                expected = {"left_bar_enabled": True, "right_bar_enabled": True} | {control: enabled}
+                assert a.parse_boolean_control(decoded.generated, model, profile=profile) == expected
+                _consume_status(coordinator, reply)
+                assert coordinator.boolean_control_state == expected
+                assert coordinator.bar_enable_mask == cmd[2]
+                assert all(coordinator._field_revisions[f"boolean_{name}"] > 0 for name in expected)
+                continue
             reply = _status(domain_byte, bytes([int(enabled)]))
             decoded = decode_status_frame(reply, model, profile=profile)
             assert decoded is not None and status_is_authorized(decoded, profile)
@@ -949,6 +985,8 @@ def test_declared_boolean_controls_round_trip(hass, model: str, profile: ModelPr
             assert coordinator.boolean_control_state[control] is enabled
             assert coordinator._field_revisions[f"boolean_{control}"] > 0
 
+        if profile.setting_grammar == "H6046":
+            continue
         bad_reply = (
             _xor(b"\xee\x30\x02" + bytes(16)) if profile.setting_grammar == "H60A6" else _status(domain_byte, b"\x02")
         )

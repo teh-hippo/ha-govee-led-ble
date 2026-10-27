@@ -1486,9 +1486,10 @@ async def async_prepare_effect_control_state(
     if require_restorable_static:
         if any(
             name in profile.boolean_controls and getattr(prior, name, None) is None
-            for name in ("panel_enabled", "ring_enabled")
+            for name in ("panel_enabled", "ring_enabled", "left_bar_enabled", "right_bar_enabled")
         ):
-            raise RuntimeError("Could not read restorable panel and ring enablement before preview")
+            zones = "left and right bar" if profile.setting_grammar == "H6046" else "panel and ring"
+            raise RuntimeError(f"Could not read restorable {zones} enablement before preview")
         if (
             prior_mode == "music"
             and isinstance(prior, PriorControlState)
@@ -1498,7 +1499,7 @@ async def async_prepare_effect_control_state(
         if prior_mode not in {"colour", "unknown"}:
             return True
         if profile.segment_colour_mode_ambiguous and not (
-            isinstance(prior, PriorControlState) and prior.static_rgb_known
+            isinstance(prior, PriorControlState) and (prior.static_rgb_known or prior.restorable_bar_white(profile))
         ):
             raise RuntimeError("The current per-bulb RGB or white intent cannot be safely restored after preview")
         if not profile.configured_string_counts:
@@ -1591,6 +1592,29 @@ def compiled_observation(
         return expectations, ObservationConfidence.ACTIVATION_MATCH
     if isinstance(compiled, CompiledMusicProfile):
         expectations["music_mode"] = compiled.mode
+        if profile.music_grammar == "H6046":
+            variant = music_variant(profile, music_code_for(compiled.model, compiled.mode, profile=profile))
+            writes = prepare_music_profile_writes(
+                compiled.model,
+                compiled.mode,
+                compiled.sensitivity,
+                compiled.colour,
+                compiled.calm,
+                compiled.parameters,
+                profile=profile,
+                palette=compiled.palette,
+            )
+            for _, state in writes:
+                expectations.update(
+                    (field, value)
+                    for field, value in state.items()
+                    if field.startswith("music_")
+                    and field != "music_color"
+                    and (field != "music_calm" or (variant and variant.supports_style))
+                )
+            return expectations, (
+                ObservationConfidence.MODE_MATCH if variant and variant.layout else ObservationConfidence.SETTINGS_MATCH
+            )
         # H617A settings are not confirmed by the shipped readback evidence.
         if profile.status_grammar == "H6097":
             expectations["music_sensitivity"] = compiled.sensitivity

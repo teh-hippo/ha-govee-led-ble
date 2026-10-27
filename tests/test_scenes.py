@@ -70,6 +70,7 @@ def test_scene_type_prefix():
 
 
 def test_per_model_snapshots_preserve_vendor_identity():
+    assert len(SCENE_ENTRIES["H6046"]) == 76
     assert len(SCENE_ENTRIES["H617A"]) == 83
     assert len(SCENE_ENTRIES["H617E"]) == 240
     assert len(SCENE_ENTRIES["H617C"]) == 240

@@ -511,6 +511,30 @@ H6102_DIY_FAMILIES: Final = tuple(
 )
 
 # Android 7.6.01 pact_h6099/detail/diy/H6099DiyConfig, goods 191.
+H6046_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        name,
+        label,
+        family,
+        (DiyEffectVariation("default", "Default", 0),),
+        True,
+        rate_min=1,
+        palette_max=8,
+        source_reference="tools/ble/kaitai/speculative/h6046_effect_upload.ksy",
+    )
+    for name, label, family in (
+        ("fade", "Fade", 0),
+        ("jumping", "Jumping", 1),
+        ("blinking", "Blinking", 2),
+        ("breathing", "Breathing", 5),
+        ("stream", "Stream", 8),
+        ("flow", "Flow", 9),
+        ("chase", "Chase", 10),
+        ("snow", "Snow", 11),
+        ("aurora", "Aurora", 13),
+    )
+)
+
 H6099_DIY_APPLY_CODE: Final = 254
 H6099_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
@@ -951,7 +975,7 @@ def _single_template(
     variation = family.variations[0]
     content: EffectContent
     grammar = get_profile(model).effect_grammar if grammar is None else grammar
-    if grammar in {"H617A", "H6099"}:
+    if grammar in {"H6046", "H617A", "H6099"}:
         content = SingleEffect(
             family=family.family,
             variant=variation.variant,
@@ -1368,6 +1392,33 @@ def _ceiling_catalogue(model: str) -> ModelEffectCatalogue:
 
 
 MODEL_EFFECT_CATALOGUES: Final = {
+    "H6046": ModelEffectCatalogue(
+        sku="H6046",
+        painted_effects=(),
+        effects=H6046_DIY_FAMILIES,
+        music_modes=_native_music_modes("H6046"),
+        video_modes=(),
+        templates=(
+            *(_single_template("H6046", family) for family in H6046_DIY_FAMILIES),
+            *(_music_template("H6046", mode) for mode in _native_music_modes("H6046")),
+        ),
+        workshop_templates=(),
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H6046", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H6046", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H6046", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=CapabilityState.UNSUPPORTED,
+            single=studio_apply_capability_state("H6046", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H6046", CapabilityWorkflow.MULTI),
+            palette_diy=CapabilityState.UNSUPPORTED,
+            workshop=studio_apply_capability_state("H6046", CapabilityWorkflow.WORKSHOP),
+        ),
+        speed_min=1,
+        multi_max=4,
+        diy_slot_policy="approved_observed",
+    ),
     "H60A1": _ceiling_catalogue("H60A1"),
     "H60A6": _ceiling_catalogue("H60A6"),
     "H6102": ModelEffectCatalogue(

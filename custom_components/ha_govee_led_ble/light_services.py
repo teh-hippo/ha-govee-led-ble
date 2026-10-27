@@ -107,6 +107,7 @@ def async_register_light_services(hass: HomeAssistant) -> None:
     )
     async_register_dreamview_services(hass)
     for name, schema, method in (
+        ("swap_light_bars", {}, "async_swap_light_bars"),
         ("paint_segments", _PAINT_SEGMENTS_SCHEMA, "async_paint_segments"),
         ("set_segment_color", _SET_SEGMENT_COLOR_SCHEMA, "async_set_segment_color"),
         ("set_segment_color_temp", _SET_SEGMENT_COLOR_TEMP_SCHEMA, "async_set_segment_color_temp"),
@@ -158,6 +159,20 @@ class _GoveeLightOwner:
 
 class _GoveeLightServicesMixin(_GoveeLightOwner):
     """Entity-service methods for the Govee BLE light."""
+
+    async def async_swap_light_bars(self) -> None:
+        from .generated_protocol_adapter import build_swap_bars
+
+        self._require_support("swap_light_bars", supported=self.coordinator.profile.setting_grammar == "H6046")
+        try:
+            build_swap_bars(self.coordinator.profile)
+            await self._async_supersede_preview()
+            await self.coordinator.async_swap_bars()
+        except HomeAssistantError:
+            raise
+        except Exception as error:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="device_command_failed") from error
+        self._notify_state_changed()
 
     async def async_paint_segments(self, groups: list[dict[str, Any]], rgb_scale: int = 100) -> None:
         self._require_support(

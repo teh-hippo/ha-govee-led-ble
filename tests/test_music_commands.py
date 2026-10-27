@@ -12,8 +12,10 @@ from bleak import BleakError
 from homeassistant.core import CoreState
 
 from custom_components.ha_govee_led_ble.const import MODEL_PROFILES, ModelProfile, device_profile, get_profile
+from custom_components.ha_govee_led_ble.control_arbiter import ControlIntent
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
-from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode
+from custom_components.ha_govee_led_ble.coordinator_expectations import expectations_from_packet
+from custom_components.ha_govee_led_ble.coordinator_status import ParsedMode, parse_color_mode
 from custom_components.ha_govee_led_ble.effect_catalogue import MODEL_EFFECT_CATALOGUES, NativeModeOption
 from custom_components.ha_govee_led_ble.effect_compiler import CompatibilityState, compatibility, compile_music_profile
 from custom_components.ha_govee_led_ble.effect_deployments import (
@@ -29,7 +31,14 @@ from custom_components.ha_govee_led_ble.effect_runtime import (
     compiled_observation,
 )
 from custom_components.ha_govee_led_ble.effect_selector import compatible_saved_effects
-from custom_components.ha_govee_led_ble.generated_protocol_adapter import build_brightness, build_power
+from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
+    build_brightness,
+    build_power,
+    parse_command_ack_result,
+    parse_status,
+    upload_ack_mode,
+    upload_ack_success,
+)
 from custom_components.ha_govee_led_ble.music_commands import (
     build_music_params,
     prepare_music_profile_writes,
@@ -47,6 +56,179 @@ from custom_components.ha_govee_led_ble.transport import WRITE_UUID, reassemble_
 from tests.storage_test_double import InMemoryVersionedDocumentStore
 
 H = bytes.fromhex
+
+
+@pytest.mark.parametrize("mode", ["energetic", "rhythm", "impact", "spray"])
+def test_h6046_per_bar_selectors_are_one_ordered_request_with_packet_specific_state(mode):
+    writes = prepare_music_profile_writes(
+        "H6046", mode, 42, None, mode == "rhythm", {"left_colour": 0x112233, "right_colour": 0x445566}
+    )
+    assert len(writes) == 3
+    left, right = writes[1:]
+    offset = 1 if mode == "rhythm" else 0
+    assert left[0][5 + offset : 10 + offset] == H("0101112233")
+    assert right[0][5 + offset : 10 + offset] == H("0110445566")
+    assert left[1]["music_left_colour"] == 0x112233
+    assert "music_right_colour" not in left[1]
+    assert right[1]["music_right_colour"] == 0x445566
+    assert "music_left_colour" not in right[1]
+    assert expectations_from_packet(left[0], "H6046")["music_left_colour"] == 0x112233
+    assert "music_right_colour" not in expectations_from_packet(left[0], "H6046")
+
+
+def test_h6046_equal_bar_colours_collapse_and_omitted_bar_is_not_invented():
+    equal = prepare_music_profile_writes(
+        "H6046", "rhythm", 99, None, False, {"left_colour": 0x112233, "right_colour": 0x112233}
+    )
+    assert len(equal) == 2 and equal[1][0][7] == 17
+    assert equal[1][1]["music_left_colour"] == equal[1][1]["music_right_colour"] == 0x112233
+    left = prepare_music_profile_writes("H6046", "rhythm", 99, None, False, {"left_colour": 0x112233})
+    assert left[1][0][7] == 1
+    assert "music_right_colour" not in left[1][1]
+    automatic = prepare_music_profile_writes(
+        "H6046", "rhythm", 99, None, True, {"fixed_colour": False, "left_colour": 0x112233}
+    )
+    assert automatic[1][0][6] == 0
+    assert automatic[1][1]["music_fixed_colour"] is False
+    assert "music_left_colour" not in automatic[1][1]
+
+
+@pytest.mark.parametrize(
+    ("mode", "code", "minimum"), [("beat", 73, 2), ("torch", 80, 1), ("rainbow_ring", 81, 6), ("glitter", 82, 1)]
+)
+def test_h6046_palette_bounds_upload_before_selector_and_retained_body(mode, code, minimum):
+    for size in (minimum, 8):
+        palette = [(1, 2, 3)] * size
+        writes = prepare_music_profile_writes("H6046", mode, 0, None, False, {}, palette=palette)
+        envelope = reassemble_a3([packet for packet, _ in writes[1:-1]])
+        assert envelope[2 : 6 + 3 * size] == bytes((0x41, code, size)) + H("010203") * size + b"\x00"
+        assert writes[-1][0][:5] == bytes((0x33, 5, 0x13, code, 0))
+        assert writes[-1][0][5:19] == bytes(14)
+        assert "_music_body" not in writes[-1][1]
+        assert writes[-2][1]["_music_body"][0] == mode
+        assert upload_ack_mode([packet for packet, _ in writes], len(writes) - 2, "H6046") == code
+    for size in (minimum - 1, 9):
+        with pytest.raises(ValueError):
+            prepare_music_request("H6046", mode, 99, None, False, {}, palette=[(1, 2, 3)] * size)
+    with pytest.raises(ValueError, match="sensitivity"):
+        prepare_music_request("H6046", mode, 100, None, False, {})
+
+
+def test_h6046_music_ack_matches_mode_and_separate_zero_result():
+    for mode, status in ((73, 0), (73, 1), (80, 0)):
+        raw = bytes((0xA3, 0x41, mode, status)) + bytes(15)
+        parsed = parse_command_ack_result(raw + bytes((xor_checksum(raw),)), "H6046").parsed
+        assert parsed is not None
+        assert upload_ack_success(parsed, 0x41, 73, protocol=0xA3) is ((status == 0) if mode == 73 else None)
+        assert upload_ack_success(parsed, 0x41, 73, protocol=0xAA) is None
+
+
+def test_h6046_two_colour_readback_and_persistence_keep_unequal_siblings():
+    raw = H("aa051303320101112233445566") + bytes(6)
+    generated = parse_status(raw + bytes((xor_checksum(raw),)), "H6046")
+    assert generated is not None
+    parsed = parse_color_mode(generated, "H6046")
+    assert parsed.music_left_colour == 0x112233 and parsed.music_right_colour == 0x445566
+    assert parsed.music_fixed_colour is True and parsed.music_calm is True
+    parameters = capture_music_parameters(parsed, get_profile("H6046"), "rhythm")
+    assert parameters == {"fixed_colour": True, "left_colour": 0x112233, "right_colour": 0x445566}
+    state = PriorControlState(
+        mode="music",
+        is_on=True,
+        brightness_pct=50,
+        rgb_color=(1, 2, 3),
+        music_mode="rhythm",
+        music_model="H6046",
+        music_parameters=parameters,
+    )
+    assert PriorControlState.from_dict(state.to_dict()).music_parameters == parameters
+
+
+async def test_h6046_per_bar_state_is_installed_at_each_physical_attempt(hass):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url="test")
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._resolve_device_profile()
+    coordinator.music_left_colour, coordinator.music_right_colour = 0x010203, 0x040506
+    writes = prepare_music_profile_writes(
+        "H6046",
+        "rhythm",
+        42,
+        None,
+        True,
+        {"left_colour": 0x112233, "right_colour": 0x445566},
+        profile=coordinator.profile,
+    )
+    attempts = []
+
+    async def write(_uuid, packet, **_kwargs):
+        attempts.append(packet)
+        if packet == writes[1][0]:
+            assert coordinator.music_left_colour == 0x112233
+            assert coordinator.music_right_colour == 0x040506
+        if packet == writes[2][0]:
+            assert coordinator.music_right_colour == 0x445566
+
+    with _music_transport(coordinator) as physical:
+        physical.side_effect = write
+        await coordinator.async_write_music_sequence(
+            writes,
+            mode_code=3,
+            physical_ic_count=coordinator.profile.physical_ic_count,
+            intent=ControlIntent.USER,
+        )
+    assert attempts == [packet for packet, _ in writes]
+
+
+@pytest.mark.parametrize("mode", ["energetic", "rhythm", "torch"])
+def test_h6046_compiled_observation_requires_only_readable_music_fields(mode):
+    profile = get_profile("H6046")
+    parameters = {} if mode == "torch" else {"left_colour": 0x112233, "right_colour": 0x445566}
+    compiled = compile_music_profile(
+        LibraryItem.new("Music", MusicProfile("H6046", mode, 42, parameters=parameters)), "H6046", profile=profile
+    )
+    expected, confidence = compiled_observation(compiled, profile=profile)
+    assert expected["music_mode"] == mode and expected["music_sensitivity"] == 42
+    assert ("music_calm" in expected) is (mode == "rhythm")
+    if mode == "torch":
+        assert confidence is ObservationConfidence.MODE_MATCH
+        assert expected == {"is_on": True, "music_mode": "torch", "music_sensitivity": 42}
+    else:
+        assert confidence is ObservationConfidence.SETTINGS_MATCH
+        assert expected["music_left_colour"] == 0x112233 and expected["music_right_colour"] == 0x445566
+
+
+@pytest.mark.parametrize("readback", ["matching", "stale", "wrong_right"])
+async def test_h6046_recovery_requires_fresh_both_bar_colours(hass, readback):
+    coordinator = GoveeBLECoordinator(hass, "AA:BB:CC:DD:EE:FF", "H6046", configuration_url="test")
+    coordinator.pact_type, coordinator.pact_code = 1, 1
+    coordinator._resolve_device_profile()
+    parameters = {"fixed_colour": True, "left_colour": 0x112233, "right_colour": 0x445566}
+    state = replace(
+        coordinator.capture_effect_control_state(),
+        mode="music",
+        is_on=True,
+        music_mode="rhythm",
+        music_calm=True,
+        music_parameters=parameters,
+    )
+    prepared = coordinator._prepare_music_restore(state)
+    assert prepared is not None
+    variant, writes = prepared
+
+    async def observe(**_kwargs):
+        if readback != "stale":
+            for key, value in parameters.items():
+                field = f"music_{key}"
+                setattr(coordinator, field, value)
+                coordinator._field_revisions[field] = coordinator._field_revisions.get(field, 0) + 1
+            if readback == "wrong_right":
+                coordinator.music_right_colour = 0x778899
+        return True
+
+    with _music_transport(coordinator), patch.object(coordinator, "refresh_state", side_effect=observe):
+        restored = await coordinator._restore_music(state, variant, writes, coordinator.profile.physical_ic_count, True)
+    assert restored is (readback == "matching")
+    assert coordinator._prepare_music_restore(replace(state, music_parameters=None)) is None
 
 
 @pytest.mark.parametrize(

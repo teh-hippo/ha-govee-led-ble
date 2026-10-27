@@ -413,7 +413,7 @@ def compatibility(item: LibraryItem, model: str, *, profile: ModelProfile | None
                     else CapabilityWorkflow.SINGLE
                     if isinstance(content, SingleEffect)
                     else CapabilityWorkflow.MULTI,
-                    ("H617A", "H6099"),
+                    ("H6046", "H617A", "H6099"),
                     profile=profile,
                 )
             else:
@@ -522,7 +522,7 @@ def _has_fixed_diy_slot(model: str, *, profile: ModelProfile | None = None) -> b
 def workshop_apply_code(model: str, *, profile: ModelProfile | None = None) -> int:
     """Require Workshop authorization and an evidenced grammar/activation pair."""
     grammar = require_effect_route(model, CapabilityWorkflow.WORKSHOP, profile=profile)
-    return H617A_WORKSHOP_APPLY_CODE if grammar == "H617A" else H6199_WORKSHOP_APPLY_CODE
+    return H617A_WORKSHOP_APPLY_CODE if grammar in {"H6046", "H617A"} else H6199_WORKSHOP_APPLY_CODE
 
 
 def resolve_diy_code(
@@ -606,7 +606,7 @@ def resolve_diy_code(
         )
         profile = get_profile("H617A" if model is None else model) if profile is None else profile
         grammar = require_effect_route(
-            "H617A" if model is None else model, workflow, ("H617A", "H6099"), profile=profile
+            "H617A" if model is None else model, workflow, ("H6046", "H617A", "H6099"), profile=profile
         )
         a1_selector = None if isinstance(content, PaintedEffect) else profile.a1_diy_selector
         approved_slot = model is not None and requires_approved_diy_slot(model)

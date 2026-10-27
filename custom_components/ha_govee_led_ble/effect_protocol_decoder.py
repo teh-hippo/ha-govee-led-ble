@@ -23,6 +23,7 @@ from .protocol_core import (
     DiyType04,
     H60a6DiyBody,
     H60a6EffectFrame,
+    H6046EffectUpload,
     H6199EffectUpload,
     SceneBody,
     SceneType1Body,
@@ -76,6 +77,22 @@ def decode_effect_frames(
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
     grammar = get_profile(model).effect_grammar
+    if grammar == "H6046":
+        if tree.kind == H6046EffectUpload.BodyKind.scene:
+            return _decode_layered_tree(tree, model)
+        if tree.kind == H6046EffectUpload.BodyKind.diy:
+            body = tree.content
+            if any(body.unknown_tail):
+                raise UnsupportedA3EffectError("H6046 DIY has unrepresented trailing data")
+            palette = tuple(_rgb(colour) for colour in body.palette)
+            if body.family == H6046EffectUpload.EffectFamily.mixed:
+                return MultiEffect(
+                    effects=tuple(EffectPair(int(pair.family), pair.variant) for pair in body.pairs),
+                    speed=body.speed,
+                    palette=palette,
+                )
+            return SingleEffect(family=int(body.family), variant=body.variant, speed=body.speed, palette=palette)
+        raise UnsupportedA3EffectError("H6046 built-in parameters require catalogue identity")
     if grammar == "H60A6":
         if isinstance(tree, H60a6DiyBody):
             return decode_native_body(serialize_native_body(tree), family=797)

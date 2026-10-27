@@ -13,7 +13,7 @@ from uuid import UUID
 
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, MODEL_PROFILES
+from .const import DOMAIN, MODEL_PROFILES, ModelProfile
 from .effect_domain import LibraryItem, SourceKind, effect_content_from_dict, effect_content_hash
 from .effect_limits import (
     MAX_DEPLOYMENT_RECORDS,
@@ -92,6 +92,10 @@ class PriorControlState:
     static_gradual: bool | None = None
     panel_enabled: bool | None = None
     ring_enabled: bool | None = None
+    left_bar_enabled: bool | None = None
+    right_bar_enabled: bool | None = None
+    left_bar_kelvin: int | None = None
+    right_bar_kelvin: int | None = None
     effect: str | None = None
     scene_code: int | None = None
     diy_code: int | None = None
@@ -148,9 +152,12 @@ class PriorControlState:
             raise EffectStorageError("prior static RGB intent must be a boolean")
         if self.static_gradual is not None and type(self.static_gradual) is not bool:
             raise EffectStorageError("prior static gradual must be a boolean or null")
-        for zone_enabled in (self.panel_enabled, self.ring_enabled):
+        for zone_enabled in (self.panel_enabled, self.ring_enabled, self.left_bar_enabled, self.right_bar_enabled):
             if zone_enabled is not None and type(zone_enabled) is not bool:
                 raise EffectStorageError("prior zone enablement must be a boolean or null")
+        for kelvin in (self.left_bar_kelvin, self.right_bar_kelvin):
+            if kelvin is not None and (type(kelvin) is not int or not 0 <= kelvin <= 10000):
+                raise EffectStorageError("prior bar Kelvin must be a bounded integer or null")
         if self.video_parameters is not None:
             if not isinstance(self.video_parameters, Mapping):
                 raise EffectStorageError("prior video parameters must be a mapping")
@@ -356,6 +363,21 @@ class PriorControlState:
         if self.black_border is not None and type(self.black_border) is not bool:
             raise EffectStorageError("prior black-border state must be a boolean or null")
 
+    def restorable_bar_white(self, profile: ModelProfile) -> bool:
+        from .light_commands import kelvin_companion_rgb
+
+        if profile.setting_grammar != "H6046" or self.segment_colors is None:
+            return False
+        half = profile.segment_count // 2
+        if len(self.segment_colors) != profile.segment_count or not half:
+            return False
+        return all(
+            kelvin is not None
+            and profile.min_color_temp_kelvin <= kelvin <= profile.max_color_temp_kelvin
+            and self.segment_colors[start : start + half] == (kelvin_companion_rgb(kelvin, profile),) * half
+            for start, kelvin in ((0, self.left_bar_kelvin), (half, self.right_bar_kelvin))
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "mode": self.mode,
@@ -372,6 +394,16 @@ class PriorControlState:
             **({"static_gradual": self.static_gradual} if self.static_gradual is not None else {}),
             "panel_enabled": self.panel_enabled,
             "ring_enabled": self.ring_enabled,
+            **{
+                field: value
+                for field, value in (
+                    ("left_bar_enabled", self.left_bar_enabled),
+                    ("right_bar_enabled", self.right_bar_enabled),
+                    ("left_bar_kelvin", self.left_bar_kelvin),
+                    ("right_bar_kelvin", self.right_bar_kelvin),
+                )
+                if value is not None
+            },
             **(
                 {
                     "segment_colors": [list(rgb) for rgb in self.segment_colors],
@@ -490,6 +522,10 @@ class PriorControlState:
             static_gradual=_optional_bool(raw, "static_gradual"),
             panel_enabled=_optional_bool(raw, "panel_enabled"),
             ring_enabled=_optional_bool(raw, "ring_enabled"),
+            left_bar_enabled=_optional_bool(raw, "left_bar_enabled"),
+            right_bar_enabled=_optional_bool(raw, "right_bar_enabled"),
+            left_bar_kelvin=_optional_int(raw, "left_bar_kelvin"),
+            right_bar_kelvin=_optional_int(raw, "right_bar_kelvin"),
             segment_colors=segment_colors,
             segment_brightness=segment_brightness,
             effect=_optional_str(raw, "effect"),

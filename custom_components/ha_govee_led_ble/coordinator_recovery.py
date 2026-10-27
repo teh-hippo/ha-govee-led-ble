@@ -22,6 +22,7 @@ from .light_commands import (
     build_color_rgb,
     build_color_temp,
     build_segment_brightness,
+    build_segment_color_temp,
     build_segment_paint,
     kelvin_companion_rgb,
 )
@@ -65,7 +66,7 @@ class _RecoveryMixin(_CoordinatorBase):
         zone_flags = {
             name: value
             for name, value in self.boolean_control_state.items()
-            if name in {"panel_enabled", "ring_enabled"}
+            if name in {"panel_enabled", "ring_enabled", "left_bar_enabled", "right_bar_enabled"}
             and self._notify_started_monotonic is not None
             and self._field_received_at.get(f"boolean_{name}", -1) >= self._notify_started_monotonic
         }
@@ -93,6 +94,16 @@ class _RecoveryMixin(_CoordinatorBase):
             static_gradual=self.static_gradual if self.color_mode is ParsedMode.COLOUR else None,
             panel_enabled=zone_flags.get("panel_enabled"),
             ring_enabled=zone_flags.get("ring_enabled"),
+            left_bar_enabled=zone_flags.get("left_bar_enabled"),
+            right_bar_enabled=zone_flags.get("right_bar_enabled"),
+            left_bar_kelvin=self.left_bar_kelvin
+            if self._notify_started_monotonic is not None
+            and self._field_received_at.get("left_bar_kelvin", -1) >= self._notify_started_monotonic
+            else None,
+            right_bar_kelvin=self.right_bar_kelvin
+            if self._notify_started_monotonic is not None
+            and self._field_received_at.get("right_bar_kelvin", -1) >= self._notify_started_monotonic
+            else None,
             segment_colors=tuple(self.segment_colors) if self.segment_state_source == "observed" else None,
             segment_brightness=tuple(self.segment_brightness)
             if self.segment_state_source == "observed" and self.segment_brightness_readable
@@ -150,7 +161,12 @@ class _RecoveryMixin(_CoordinatorBase):
         overwritten_diy_code: int | None,
     ) -> bool:
         restored = await self._async_restore_effect_appearance(state, overwritten_diy_code=overwritten_diy_code)
-        native_zones = self.profile.boolean_controls & {"panel_enabled", "ring_enabled"}
+        native_zones = self.profile.boolean_controls & {
+            "panel_enabled",
+            "ring_enabled",
+            "left_bar_enabled",
+            "right_bar_enabled",
+        }
         if not native_zones:
             return restored
         expected = {name: value for name in native_zones if (value := getattr(state, name)) is not None}
@@ -158,7 +174,16 @@ class _RecoveryMixin(_CoordinatorBase):
             return False
         async with self._lock:
             client = await self._ensure_connected()
-            if not await self._async_read_bulk_status(
+            if self.profile.setting_grammar == "H6046":
+                from .generated_protocol_adapter import build_boolean_control_query
+
+                if not await self._as_coordinator._async_read_bar_flags(
+                    client,
+                    build_boolean_control_query(next(iter(native_zones)), self.model, profile=self.profile),
+                    deadline=time.monotonic() + 4.0,
+                ):
+                    return False
+            elif not await self._async_read_bulk_status(
                 client, deadline=time.monotonic() + 4.0, domains=("zone_enable",)
             ):
                 return False
@@ -179,7 +204,11 @@ class _RecoveryMixin(_CoordinatorBase):
     ) -> bool:
         if not state.is_on:
             return await self._async_restore_effect_control_state(state, overwritten_diy_code=overwritten_diy_code)
-        if state.mode == "colour" and self.profile.segment_colour_mode_ambiguous and not state.static_rgb_known:
+        if (
+            state.mode == "colour"
+            and self.profile.segment_colour_mode_ambiguous
+            and not (state.static_rgb_known or state.restorable_bar_white(self.profile))
+        ):
             return False
         async with self.async_mask_transaction() if state.mode == "colour" else nullcontext():
             if (
@@ -257,9 +286,16 @@ class _RecoveryMixin(_CoordinatorBase):
                 music_code_for(self.model, state.music_mode, profile=self.profile),
             )
             if variant and any(
-                spec.profile_key not in (state.music_parameters or {}) for spec in variant.selector_parameters
+                not spec.optional and spec.profile_key not in (state.music_parameters or {})
+                for spec in variant.selector_parameters
             ):
                 return None
+            if self.profile.music_grammar == "H6046" and variant and variant.supports_fixed_colour:
+                parameters = state.music_parameters or {}
+                if "fixed_colour" not in parameters or (
+                    parameters["fixed_colour"] and not {"left_colour", "right_colour"} <= parameters.keys()
+                ):
+                    return None
             # Legacy snapshots retain style across modes even when the active selector
             # has no style byte semantics. Do not reinterpret that retained value.
             music_calm = state.music_calm if variant and variant.supports_style else False
@@ -282,6 +318,7 @@ class _RecoveryMixin(_CoordinatorBase):
                     {
                         spec.profile_key: (state.music_parameters or {})[spec.profile_key]
                         for spec in (() if variant is None else variant.selector_parameters)
+                        if spec.profile_key in (state.music_parameters or {})
                     },
                     profile=self.profile,
                     include_parameters=False,
@@ -517,13 +554,21 @@ class _RecoveryMixin(_CoordinatorBase):
         complete: bool,
     ) -> bool:
         music_expectations: dict[str, Any] = {}
-        if variant is None or variant.layout is None:
+        selector_expectations = {
+            spec.key: (state.music_parameters or {})[spec.profile_key]
+            for spec in (() if variant is None else variant.selector_parameters)
+            if self.profile.music_grammar == "H6046" and spec.profile_key in (state.music_parameters or {})
+        }
+        selector_baselines = {field: self._field_revisions.get(field, 0) for field in selector_expectations}
+        if (variant is None or variant.layout is None) and self.profile.music_grammar != "H6046":
             music_expectations = {
                 "expected_music_color": state.music_color,
                 "expected_music_auto_color": state.music_color is None,
             }
             if variant and variant.supports_style:
                 music_expectations["expected_music_calm"] = state.music_calm
+        if self.profile.music_grammar == "H6046" and variant and variant.supports_style:
+            music_expectations["expected_music_calm"] = state.music_calm
 
         def guard_music_recovery() -> None:
             profile = self._authorization_profile()
@@ -544,7 +589,7 @@ class _RecoveryMixin(_CoordinatorBase):
             physical_ic_count=physical_ic_count,
             intent=ControlIntent.APPLY,
         )
-        return (
+        restored = (
             self.profile.state_readable
             and await self.refresh_state(
                 expected_on=True,
@@ -557,6 +602,10 @@ class _RecoveryMixin(_CoordinatorBase):
             and complete
             # Successful upload/ACK retains bytes; no supported query verifies the body.
             and state.music_body is None
+        )
+        return restored and all(
+            getattr(self, field, None) == value and self._field_revisions.get(field, 0) > selector_baselines[field]
+            for field, value in selector_expectations.items()
         )
 
     async def _restore_video_mode(self, state: PriorControlState, permitted: set[str], complete: bool) -> bool:
@@ -633,6 +682,16 @@ class _RecoveryMixin(_CoordinatorBase):
             build_segment_brightness(segments, brightness, self.model, profile=self.profile)
             for brightness, segments in brightness_groups.items()
         ]
+        if self.profile.setting_grammar == "H6046" and state.restorable_bar_white(self.profile):
+            half = self.profile.segment_count // 2
+            packets = [
+                build_segment_color_temp(range(start + 1, start + half + 1), kelvin, self.model, profile=self.profile)
+                for start, kelvin in ((0, state.left_bar_kelvin), (half, state.right_bar_kelvin))
+                if kelvin is not None
+            ] + [
+                build_segment_brightness(segments, brightness, self.model, profile=self.profile)
+                for brightness, segments in brightness_groups.items()
+            ]
         for packet in (build_power(True, self.model), build_brightness(state.brightness_pct, self.model), *packets):
             await self.send_command(packet)
         if state.static_gradual is not None:
@@ -646,7 +705,11 @@ class _RecoveryMixin(_CoordinatorBase):
             expected_brightness=state.brightness_pct,
             refresh_all=True,
             expected_color_temp_kelvin=state.color_temp_kelvin if kelvin_restore else None,
-            expected_zero_kelvin=self.profile.static_readback_zero_kelvin_is_rgb and not kelvin_restore,
+            expected_zero_kelvin=(
+                self.profile.static_readback_zero_kelvin_is_rgb
+                and not kelvin_restore
+                and not state.restorable_bar_white(self.profile)
+            ),
         )
         segments_match = await self.async_refresh_segments()
         restored = (
@@ -660,6 +723,10 @@ class _RecoveryMixin(_CoordinatorBase):
             and tuple(self.segment_colors) == state.segment_colors
             and (state.segment_brightness is None or tuple(self.segment_brightness) == state.segment_brightness)
             and (state.static_gradual is None or self.static_gradual == state.static_gradual)
+            and (
+                self.profile.setting_grammar != "H6046"
+                or (self.left_bar_kelvin, self.right_bar_kelvin) == (state.left_bar_kelvin, state.right_bar_kelvin)
+            )
             and complete
         )
         if restored:

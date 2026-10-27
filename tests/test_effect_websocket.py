@@ -128,6 +128,7 @@ async def test_authenticated_users_can_read_contracts(
     assert "drafts_per_owner" not in info["result"]["limits"]
     assert library["result"] == {"generation": 0, "items": []}
     assert set(catalogue["result"]["catalogue"]["models"]) == {
+        "H6046",
         "H1A42",
         "H601C",
         "H6076",

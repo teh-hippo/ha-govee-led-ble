@@ -49,5 +49,12 @@ if (new URLSearchParams(location.search).has("selector-parameter")) {
     },
   };
 }
+if (new URLSearchParams(location.search).has("bar-colours")) {
+  catalogue.music_settings.separation.parameters = {
+    fixed_colour: {kind: "switch", default: false, min: 0, max: 0, options: []},
+    left_colour: {kind: "number", default: 0xff0000, min: 0, max: 0xffffff, options: []},
+    right_colour: {kind: "number", default: 0xff0000, min: 0, max: 0xffffff, options: []},
+  };
+}
 const mode = new URLSearchParams(location.search).get("mode");
 if (mode) editor.content = {...editor.content, mode};

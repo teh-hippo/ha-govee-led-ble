@@ -5,7 +5,9 @@
       "limit": {"name": "Limit"},
       "power_off_memory": {"name": "Power-off memory"},
       "panel_enabled": {"name": "Panel enabled"},
-      "ring_enabled": {"name": "Ring enabled"}
+      "ring_enabled": {"name": "Ring enabled"},
+      "left_bar_enabled": {"name": "Left light bar enabled"},
+      "right_bar_enabled": {"name": "Right light bar enabled"}
     },
     "select": {
       "strip_direction": {"name": "Strip direction", "state": {"clockwise": "Clockwise", "anticlockwise": "Anticlockwise"}},
