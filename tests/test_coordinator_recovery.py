@@ -560,6 +560,92 @@ async def test_h6179_zero_kelvin_rgb_observation_replaces_retained_white_and_res
     )
 
 
+async def test_h6179_off_grid_persisted_kelvin_restores_against_normalised_readback(hass, monkeypatch, virtual_clock):
+    coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6179", configuration_url=_CONFIGURATION_URL)
+    client = _c(write_gatt_char=AsyncMock())
+    coord._client = client
+    monkeypatch.setattr(coord, "_ensure_connected", AsyncMock(return_value=client))
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+
+    async def respond(_uuid, packet, **kwargs):
+        replies = {
+            b"\xaa\x01": _packet(0xAA, 1, [1]),
+            b"\xaa\x04": _packet(0xAA, 4, [254]),
+            b"\xaa\x05": _packet(0xAA, 5, [0x0D, 255, 255, 255, 7, 0xD0, 255, 141, 11]),
+        }
+        if reply := replies.get(packet[:2]):
+            coord._notify_callback(None, bytearray(reply))
+
+    client.write_gatt_char.side_effect = respond
+    state = PriorControlState.from_dict(
+        PriorControlState(
+            mode="colour", is_on=True, brightness_pct=100, rgb_color=(255, 141, 11), color_temp_kelvin=2001
+        ).to_dict()
+    )
+    assert await coord.async_restore_effect_control_state(state, overwritten_diy_code=None)
+    assert coord.color_temp_kelvin == 2000
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize(
+    "outcome",
+    ["match", "mismatch", "missing", "write_failure", "reconnect_failure", "profile_changed", "subscription_changed"],
+)
+async def test_h6179_current_adaptation_reconnects_without_replay_and_requires_fresh_readback(
+    hass, monkeypatch, virtual_clock, enabled, outcome
+):
+    from bleak.exc import BleakError
+
+    coord = GoveeBLECoordinator(hass, "55:66:77:88:99:AA", "H6179", configuration_url=_CONFIGURATION_URL)
+    coord.pact_type, coord.pact_code = 1, 1
+    coord._resolve_device_profile()
+    coord.boolean_control_state["limit"] = enabled
+    old = _c(write_gatt_char=AsyncMock())
+    new = _c(write_gatt_char=AsyncMock())
+    coord._client = old
+    connections = 0
+
+    async def connect():
+        nonlocal connections
+        connections += 1
+        if connections > 2 and outcome == "reconnect_failure":
+            raise BleakError("Restarted controller is unavailable")
+        coord._client = old if connections <= 2 else new
+        if connections > 2 and outcome == "profile_changed":
+            coord.pact_type, coord.pact_code = 10, 1
+            coord._resolve_device_profile()
+        return coord._client
+
+    async def respond(_uuid, packet, **kwargs):
+        if packet[:2] == b"\xaa\x0e" and outcome in {"match", "mismatch", "subscription_changed"}:
+            coord._notify_callback(
+                None, bytearray(_packet(0xAA, 0x0E, [int(not enabled if outcome == "mismatch" else enabled)]))
+            )
+            if outcome == "subscription_changed":
+                coord._notification_token = object()
+
+    new.write_gatt_char.side_effect = respond
+
+    async def write_setting(_uuid, packet, **kwargs):
+        if outcome == "write_failure":
+            raise BleakError("Controller disconnected during setting write")
+        coord._notify_callback(None, bytearray(_packet(0xAA, 0x0E, [int(enabled)])))
+
+    old.write_gatt_char.side_effect = write_setting
+    monkeypatch.setattr(coord, "_ensure_connected", connect)
+    monkeypatch.setattr(coord, "_renew_foreground_lease", lambda: None)
+    if outcome == "match":
+        await coord.async_set_boolean_control("limit", enabled)
+        assert coord.boolean_control_state["limit"] is enabled
+    else:
+        with pytest.raises((ValueError, BleakError)):
+            await coord.async_set_boolean_control("limit", enabled)
+    old.disconnect.assert_awaited_once()
+    assert [item.args[1] for item in old.write_gatt_char.await_args_list] == [_packet(0x33, 0x0E, [int(enabled)])]
+    assert all(item.args[1][:1] == b"\xaa" for item in new.write_gatt_char.await_args_list)
+    coord._clear_client_state(coord._client)
+
+
 async def test_restore_effect_control_state_maps_h617e_legacy_scene_name(hass):
     coordinator = GoveeBLECoordinator(
         hass,

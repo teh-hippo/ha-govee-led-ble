@@ -119,6 +119,10 @@ def parse_h6179_command(frame: bytes) -> ParsedH6179Command | None:
         if mode_values is None:
             return None
         values = mode_values
+    elif operation == "limit":
+        if parsed.body.value not in {0, 1} or not _has_zero_opaque(parsed.body):
+            return None
+        values = _values(flag=int(parsed.body.value))
     else:
         return None
     return ParsedH6179Command(operation=operation, values=values)
@@ -137,6 +141,10 @@ def _parse_h6179_status(parsed: Any) -> ParsedH6179Status | None:
         values = _values(is_on=bool(body.is_on))
     elif domain == "brightness":
         values = _values(brightness_pct=decode_h6179_brightness(int(body.raw_brightness)))
+    elif domain == "limit":
+        if body.value not in {0, 1}:
+            return None
+        values = _values(flag=int(body.value))
     elif domain in {"firmware", "hardware"}:
         if domain == "hardware" and getattr(body.selector, "name", None) != "primary":
             return None

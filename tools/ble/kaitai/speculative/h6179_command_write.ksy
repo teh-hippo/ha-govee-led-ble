@@ -7,7 +7,9 @@ meta:
 doc: |
   SPECULATIVE H6179 compatibility hypothesis: exact-SKU command writes use a
   20-byte 0x33 envelope with the candidate power, brightness, mode, scene, DIY,
-  static-colour, and music layouts below.
+  static-colour, music, and boolean current-adaptation layouts below.
+  Owner confirmations: #448.  Current adaptation may restart the controller;
+  its value must be queried afresh after reconnecting.
   Unresolved assumptions: no exact-model capture verifies the selectors, field
   meanings, brightness scale, optional music colour, opaque tails, or XOR
   checksum byte.
@@ -25,9 +27,18 @@ seq:
         'command_opcode::power': power_body
         'command_opcode::brightness': brightness_body
         'command_opcode::mode': mode_body
+        'command_opcode::limit': limit_body
   - id: checksum
     type: u1
 types:
+  limit_body:
+    seq:
+      - id: value
+        type: u1
+        valid:
+          any-of: [0, 1]
+      - id: opaque
+        size-eos: true
   power_body:
     seq:
       - id: is_on
@@ -103,6 +114,7 @@ enums:
     0x01: power
     0x04: brightness
     0x05: mode
+    0x0e: limit
   mode_selector:
     0x02: legacy_colour
     0x04: scene

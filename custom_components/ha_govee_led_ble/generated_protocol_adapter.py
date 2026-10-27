@@ -491,7 +491,11 @@ def parse_a3_effect_envelope(envelope: bytes, model: str, *, profile: ModelProfi
         raise ValueError("A3 effect envelope does not match its chunk count")
 
     grammar = (profile or get_profile(model)).effect_grammar
-    if grammar == "H617A":
+    if grammar == "H6179":
+        if envelope[2] != 0x04:
+            raise ValueError("H6179 A3 uploads require a type-04 DIY body")
+        root_type = DiyType04
+    elif grammar == "H617A":
         root_type = {
             0x01: SceneType1Body,
             0x02: SceneBody,
@@ -661,10 +665,20 @@ def build_boolean_control(
         )
         root.body.unknown_tail = bytes(16)
         return _serialize_xor(root)
-    if control not in profile.boolean_controls or profile.command_grammar not in {"H617A", "H7020"}:
+    if control not in profile.boolean_controls or profile.command_grammar not in {"H617A", "H6179", "H7020"}:
         raise ValueError(f"{model} does not support boolean control {control}")
     if type(enabled) is not bool:
         raise ValueError("boolean control requires a boolean")
+    if profile.command_grammar == "H6179":
+        if control != "limit":
+            raise ValueError("Unsupported H6179 boolean control")
+        root = H6179CommandWrite()
+        root.header = b"\x33"
+        root.opcode = H6179CommandWrite.CommandOpcode.limit
+        root.body = _child(H6179CommandWrite.LimitBody, root)
+        root.body.value = int(enabled)
+        root.body.opaque = bytes(16)
+        return _serialize_xor(root)
     if profile.setting_grammar == "H60A6" and control in H60a6Control.Zone.__members__:
         root = H60a6Control()
         root.header = b"\x33"
@@ -697,13 +711,14 @@ def build_boolean_control_query(control: str, model: str, *, profile: ModelProfi
         if control not in profile.boolean_controls:
             raise ValueError("Bar control is outside profile capabilities")
         return _build_status_query("bar_enable", profile.command_grammar)
-    if control not in profile.boolean_controls or profile.command_grammar not in {"H617A", "H7020"}:
+    if control not in profile.boolean_controls or profile.command_grammar not in {"H617A", "H6179", "H7020"}:
         raise ValueError(f"{model} does not support boolean control {control}")
     if profile.setting_grammar == "H60A6" and control in H60a6Control.Zone.__members__:
         return build_bulk_status_query(profile, domains=("zone_enable",))
     domain = {"gradual": "multi_effect", "limit": "limit", "power_off_memory": "power_off_memory"}.get(control)
     root_type = _STATUS_QUERY_ROOTS[profile.command_grammar][1]
-    if domain is None or domain not in root_type.QueryDomain.__members__:
+    domain_enum = root_type.StatusDomain if profile.command_grammar == "H6179" else root_type.QueryDomain
+    if domain is None or domain not in domain_enum.__members__:
         raise ValueError("unknown boolean control")
     return _build_status_query(domain, profile.command_grammar)
 
@@ -842,7 +857,8 @@ class BulkStatusCollector:
 def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile | None = None) -> dict[str, bool]:
     """Decode register replies only; mode flags and command ACKs are not confirmation."""
     profile = profile or get_profile(model)
-    domain = getattr(getattr(generated, "domain", None), "name", "")
+    domain = getattr(generated, "domain", None)
+    domain = domain if isinstance(domain, str) else getattr(domain, "name", "")
     if domain == "bar_enable" and profile.setting_grammar == "H6046":
         values = {
             "left_bar_enabled": bool(generated.body.left_enabled),
@@ -852,7 +868,7 @@ def parse_boolean_control(generated: Any, model: str, *, profile: ModelProfile |
     control = boolean_control_name(domain)
     if control is None or control not in profile.boolean_controls:
         return {}
-    flag = generated.body.flag
+    flag = generated.values["flag"] if profile.status_grammar == "H6179" else generated.body.flag
     if flag not in (0, 1):
         raise ValueError("boolean register reply must be 0 or 1")
     return {control: bool(flag)}

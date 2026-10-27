@@ -49,6 +49,7 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Music/video mode readback must not infer a saved profile from deployment history.  Preserve current saved-profile origin through power-only transitions;
   explicit native selection supersedes it only at an admitted effect-changing write.  Deployment recovery restores origin only after physical restoration succeeds.
   Upload acknowledgements and retry admission are independent of status readback.  A profile that forbids replay after an upload attempt must not reupload merely because selection readback is missing.
+  Settings that can restart a controller must declare that lifecycle policy, avoid automatic write replay, and require fresh matching readback after reconnection.
   DreamView member claim, disable and restoration rules: see the `coordinator_dreamview.py` module docstring.
 - **Shared routing and wire invariants:**
   Construct and validate the complete immutable request against the effective profile before cancelling previews, acquiring user control, or mutating state.
@@ -203,6 +204,7 @@ An aggregate Kelvin value or RGB segment page cannot establish every zone's nati
 Kelvin confirmation may retry complete transitional segment snapshots within a bounded deadline, without replaying the write or changing the original sibling/brightness baseline.
 H66A0 partial writes confirm plausible settled rendering, not exact Kelvin.  H1A42 and H61F5 compare their rendered palette; H61F5 retains commanded Kelvin without treating its zero aggregate register as RGB proof.
 The three models round requests to 100 K with upward ties before building, presenting or verifying them.  Their direct RGB sentinel remains independent of companion conversion.
+Persisted off-grid Kelvin states must use the same normalisation for restoration writes and their verification expectations.
 Unknown native-white intent prevents lossless preview/recovery.  A captured known-RGB layout must come from complete observations following a successful RGB write on the current subscription; failed writes, optimistic or legacy state do not qualify.
 A non-zero native-white observation in any independently controlled zone revokes that known-RGB layout, even when rendered RGB has not changed.
 Do not expose a persistent palette-bound scale control without independently reachable safe requalification after normal Release-mode disconnects.

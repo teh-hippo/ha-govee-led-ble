@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from .const import ModelProfile, get_profile
 from .effect_domain import H6179MixedDiyEffect, H6179SingleDiyEffect
 from .generated_protocol_adapter import (
     build_h617a_diy_activation as build_diy_activation,
@@ -96,8 +97,19 @@ def build_h617a_diy_activation(diy_code: int) -> bytes:
 
 def build_h6179_diy(
     content: H6179SingleDiyEffect | H6179MixedDiyEffect,
+    *,
+    profile: ModelProfile | None = None,
 ) -> list[bytes]:
-    return fragment_a1_02(encode_h6179_effect(content))
+    profile = profile or get_profile("H6179")
+    if profile.diy_upload_transport == "a1_02":
+        return fragment_a1_02(encode_h6179_effect(content))
+    if profile.diy_upload_transport == "a3":
+        if isinstance(content, H6179SingleDiyEffect):
+            return build_h617a_diy_single(content.family, content.variant, content.speed, content.palette)
+        return build_h617a_diy_multi(
+            tuple((pair.family, pair.variant) for pair in content.components), content.speed, content.palette
+        )
+    raise ValueError("H6179 DIY transport requires an identified controller revision")
 
 
 def build_h6179_diy_activation(diy_code: int) -> bytes:

@@ -235,15 +235,21 @@ class ModelProfile:
     advanced_diy_selector: int | None = None
     # When set, Type04 custom effects upload as A1 command-02 frames led by this selector and activate with it.
     a1_diy_selector: int | None = None
+    diy_upload_transport: str | None = None
     diy_requires_upload_ack: bool = False
     effect_retry_after_upload: bool = True
     packet_write_delay: float = 0.0
     boolean_controls: frozenset[str] = frozenset()
+    restarting_boolean_controls: frozenset[str] = frozenset()
     supports_power_on_behaviour: bool = False
     default_effect_families_override: frozenset[str] | None = None
     effect_readback: str = "none"
 
     def __post_init__(self) -> None:
+        if self.diy_upload_transport not in {None, "a1_02", "a3"}:
+            raise ValueError("unknown DIY upload transport")
+        if not self.restarting_boolean_controls <= self.boolean_controls:
+            raise ValueError("restarting settings must be declared boolean controls")
         if type(self.color_temp_step_kelvin) is not int or self.color_temp_step_kelvin < 1:
             raise ValueError("Kelvin step must be a positive integer")
         if len(self.kelvin_direct_rgb) != 3 or any(
@@ -1471,6 +1477,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         command_grammar="H6179",
         status_grammar="H6179",
         effect_grammar="H6179",
+        profile_pact_dependent=True,
+        diy_upload_transport="a1_02",
         read_domains=frozenset(
             {
                 ReadDomain.POWER,
@@ -1489,6 +1497,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         ),
         supports_rgb=True,
         supports_color_temperature=True,
+        kelvin_direct_rgb=(255, 255, 255),
+        color_temp_step_kelvin=100,
         supports_custom_effects=True,
         supports_scenes=True,
         supports_multi_layered_effects=True,
@@ -1500,6 +1510,8 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         scene_catalogue_sku="H6179",
         selector_only_scene_bits=8,
         effect_readback="diy_code_only",
+        boolean_controls=frozenset({"limit"}),
+        restarting_boolean_controls=frozenset({"limit"}),
     ),
     "H6199": ModelProfile(
         "H6199 DreamView T1",
@@ -1953,6 +1965,25 @@ def device_profile(
         return profile
     if model == "H6076":
         return _h6076_profile(pact_type, pact_code, firmware)
+    if model == "H6179":
+        profile = get_profile(model)
+        if pact_type is None or pact_code is None:
+            return replace(
+                profile,
+                diy_upload_transport=None,
+                supports_custom_effects=False,
+                supports_multi_layered_effects=False,
+                boolean_controls=frozenset(),
+                restarting_boolean_controls=frozenset(),
+            )
+        if pact_type >= 10 and pact_code >= 1:
+            return replace(
+                profile,
+                diy_upload_transport="a3",
+                boolean_controls=frozenset(),
+                restarting_boolean_controls=frozenset(),
+            )
+        return profile
     if model == "H6125":
         return _h6125_profile(pact_type, pact_code, firmware, hardware)
     if model == "H6102":

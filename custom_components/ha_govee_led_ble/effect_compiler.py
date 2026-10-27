@@ -219,6 +219,9 @@ def validate_compiled_geometry(compiled: CompiledApplication, profile: ModelProf
                 transport == "a1_02" and compiled.diy_code != profile.a1_diy_selector
             ):
                 raise ValueError("Device upload transport or selector changed since compilation")
+        if compiled.content_kind in {"h6179_single_diy", "h6179_mixed_diy"}:
+            if compiled.upload_transport != profile.diy_upload_transport:
+                raise ValueError("Device DIY transport changed since compilation")
         if profile.effect_workflows is not None:
             workflow = {
                 "scene_builtin": CapabilityWorkflow.NATIVE_SCENES,
@@ -985,13 +988,14 @@ def compile_h617a(
 
 
 def compile_h6179(item: LibraryItem, diy_code: int, *, profile: ModelProfile | None = None) -> CompiledEffect:
+    profile = profile or get_profile("H6179")
     result = compatibility(item, "H6179", profile=profile)
     if result.state is not CompatibilityState.COMPATIBLE:
         raise ValueError("; ".join(result.reasons))
     content = item.content
     if not isinstance(content, H6179SingleDiyEffect | H6179MixedDiyEffect):
         raise ValueError("unsupported H6179 DIY content")
-    upload = tuple(build_h6179_diy(content))
+    upload = tuple(build_h6179_diy(content, profile=profile))
     activation = build_diy_activation(diy_code, "H6179", profile=profile)
     return CompiledEffect(
         item_id=str(item.id),
@@ -1005,7 +1009,8 @@ def compile_h6179(item: LibraryItem, diy_code: int, *, profile: ModelProfile | N
         activation_packet=activation,
         artifact_sha256=sha256(b"".join((*upload, activation))).hexdigest(),
         evidence_codes=("effect_content_readback_unavailable",),
-        upload_transport="a1_02",
+        upload_transport="a3" if profile.diy_upload_transport == "a3" else "a1_02",
+        upload_subtype=4 if profile.diy_upload_transport == "a3" else None,
     )
 
 

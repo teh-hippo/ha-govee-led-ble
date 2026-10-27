@@ -25,6 +25,7 @@ from .light_commands import (
     build_segment_color_temp,
     build_segment_paint,
     kelvin_companion_rgb,
+    normalize_kelvin,
 )
 from .music_commands import prepare_music_profile_writes
 from .music_protocol import music_code_for
@@ -742,7 +743,7 @@ class _RecoveryMixin(_CoordinatorBase):
             await self.send_command(build_color_rgb(*state.rgb_color, self.model, profile=self.profile))
         static_expectations: dict[str, Any] = {}
         if state.color_temp_kelvin is not None and self.profile.static_readback_kelvin:
-            static_expectations["expected_color_temp_kelvin"] = state.color_temp_kelvin
+            static_expectations["expected_color_temp_kelvin"] = normalize_kelvin(state.color_temp_kelvin, self.profile)
         elif state.color_temp_kelvin is None and self.profile.static_readback_echoes_color:
             static_expectations["expected_rgb_color"] = state.rgb_color
         if state.color_temp_kelvin is None and self.profile.static_readback_zero_kelvin_is_rgb:

@@ -1669,12 +1669,24 @@ class GoveeBLECoordinator(
             generation = self._profile_generation
             field = control if control == "power_on_behaviour" else f"boolean_{control}"
             baseline = {field: self._field_revisions.get(field, 0)}
-            await self.send_command(packet, write_guard=qualified)
+            if control in self.profile.restarting_boolean_controls:
+                async with self._lock:
+                    write_client = await self._ensure_connected()
+                    try:
+                        await self._async_write_packet(write_client, packet, before_write=qualified)
+                    finally:
+                        await self._disconnect_locked()
+                    await self._ensure_connected()
+                    baseline[field] = self._field_revisions.get(field, 0)
+                    self.boolean_control_state.pop(control, None)
+            else:
+                await self.send_command(packet, write_guard=qualified)
             async with self._lock:
                 qualified()
                 client = self._client
                 if client is None or not client.is_connected:
                     raise BleakError("Device disconnected before setting readback")
+                token = self._notification_token
                 if generation != self._profile_generation:
                     raise ValueError("Device profile changed during setting write")
                 deadline = time.monotonic() + 4.0
@@ -1690,7 +1702,13 @@ class GoveeBLECoordinator(
                         if control == "power_on_behaviour"
                         else build_boolean_control_query(control, self.model, profile=self.profile),
                     )
-                if not await self._wait_for_revisions(baseline, {}, deadline) or generation != self._profile_generation:
+                if (
+                    not await self._wait_for_revisions(baseline, {}, deadline)
+                    or generation != self._profile_generation
+                    or self._client is not client
+                    or not client.is_connected
+                    or self._notification_token is not token
+                ):
                     raise ValueError("Device did not provide fresh setting readback")
                 actual = (
                     self.power_on_behaviour

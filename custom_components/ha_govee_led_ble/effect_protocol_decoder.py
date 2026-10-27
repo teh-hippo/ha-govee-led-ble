@@ -9,6 +9,8 @@ from .effect_domain import (
     H617A_SEGMENT_COUNT,
     EffectContent,
     EffectPair,
+    H6179MixedDiyEffect,
+    H6179SingleDiyEffect,
     MultiEffect,
     PaintedEffect,
     PaletteDiyEffect,
@@ -77,6 +79,13 @@ def decode_effect_frames(
 def decode_a3_effect(tree: Any, model: str) -> EffectContent:
     """Decode a parsed generated A3 tree without assigning unevidenced semantics."""
     grammar = get_profile(model).effect_grammar
+    if grammar == "H6179":
+        if not isinstance(tree, DiyType04):
+            raise TypeError("tree is not a generated H6179 type-04 DIY root")
+        content = _decode_h617a_type04(tree)
+        if isinstance(content, SingleEffect):
+            return H6179SingleDiyEffect(model, content.family, content.variant, content.speed, content.palette)
+        return H6179MixedDiyEffect(model, content.effects, content.speed, content.palette)
     if grammar == "H6046":
         if tree.kind == H6046EffectUpload.BodyKind.scene:
             return _decode_layered_tree(tree, model)
