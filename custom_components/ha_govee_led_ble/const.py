@@ -581,6 +581,8 @@ _H6076_MUSIC_PROFILE = replace(
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H6046": ModelProfile(
         "H6046 TV Light Bars",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=481,
         command_grammar="H6046",
         command_ack_grammar="H6046",
         command_operations=frozenset(
