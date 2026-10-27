@@ -26,6 +26,13 @@ h6076_music_ack.py
 h6076_music_body.py
 h6076_music_write.py
 h6076_status_reply.py
+h6072_command_write.py
+h6072_status_query.py
+h6072_legacy_query.py
+h6072_status_reply.py
+h6072_music_write.py
+h6072_music_body.py
+h6072_music_ack.py
 h7025_music_write.py
 h7025_music_body.py
 h7025_status_reply.py
@@ -49,6 +56,7 @@ h6099_music_parameters.py
 h6099_status_query.py
 h6099_status_reply.py
 h6097_control.py
+h6072_low_blue_light.py
 h6097_music_write.py
 h6097_music_parameters.py
 h6097_status_reply.py

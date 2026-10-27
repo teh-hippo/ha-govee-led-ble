@@ -40,6 +40,7 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   Declared `physical_ic_count` represents product geometry; `ReadDomain.PHYSICAL_IC_COUNT` (`aa 40`) measures installed geometry on the active strip and overrides declared product geometry when observed.
   Cached identity stabilises UI presentation across polls and Release-mode disconnects, while operation admission and physical writes require current-connection confirmation.
   Identity observations invalidate authorisation only when a capability depends on that field.  Background setup and polling retry a changed identity or profile once with fresh queries; command verification remains strict.
+  Resolve authorisation from each individually confirmed identity field; a missing sibling must not discard fresh evidence for an independent capability.
   State-readable devices default to Release mode and use Hold mode only when configured for periodic polling.
   Entry shutdown also cleans up BLE after failed setup: unsubscribe stop listeners, cancel entry-owned keep-alive work and run bounded connection cleanup.
   Recheck entry lifetime after awaited setup stages and physical writes, as well as before writes, so late operations cannot restart BLE work after shutdown.
@@ -50,6 +51,7 @@ Every exact SKU has its own profile, support quality, catalogue identity, and pr
   explicit native selection supersedes it only at an admitted effect-changing write.  Deployment recovery restores origin only after physical restoration succeeds.
   Upload acknowledgements and retry admission are independent of status readback.  A profile that forbids replay after an upload attempt must not reupload merely because selection readback is missing.
   Settings that can restart a controller must declare that lifecycle policy, avoid automatic write replay, and require fresh matching readback after reconnection.
+  Composite native settings must freshly read and preserve opaque sibling fields, verify the full written state, and leave unsupported methods unknown rather than substituting defaults.
   DreamView member claim, disable and restoration rules: see the `coordinator_dreamview.py` module docstring.
 - **Shared routing and wire invariants:**
   Construct and validate the complete immutable request against the effective profile before cancelling previews, acquiring user control, or mutating state.
@@ -197,7 +199,7 @@ two replies differ only in a mode/flag that recovery must retain. Legacy missing
 fields stay unknown; restored values never become fresh observations. Test
 partial writes and complete-but-mismatched readback, not only missing replies.
 Independent master and zone-enable flags stay independent in controls and recovery.
-Abandoned segment, bulk or combined native-zone queries quarantine their subscription until reconnect; late replies never make it reusable.
+Abandoned segment, bulk, native-setting or combined native-zone queries quarantine their subscription until reconnect; late replies never make it reusable.
 Deliberate effect Apply may skip unrelated ambiguous segment reads, but must retain fresh recovery snapshots for models with unambiguous static readback.
 Preview requires fresh native zone flags and a restorable mode, even when a selector alone can be observed.
 An aggregate Kelvin value or RGB segment page cannot establish every zone's native-white intent.
@@ -206,7 +208,7 @@ H66A0 partial writes confirm plausible settled rendering, not exact Kelvin.  H1A
 The three models round requests to 100 K with upward ties before building, presenting or verifying them.  Their direct RGB sentinel remains independent of companion conversion.
 Persisted off-grid Kelvin states must use the same normalisation for restoration writes and their verification expectations.
 Unknown native-white intent prevents lossless preview/recovery.  A captured known-RGB layout must come from complete observations following a successful RGB write on the current subscription; failed writes, optimistic or legacy state do not qualify.
-A non-zero native-white observation in any independently controlled zone revokes that known-RGB layout, even when rendered RGB has not changed.
+A valid non-zero native-white observation, including whole-lamp replies, revokes that known-RGB layout even when rendered RGB has not changed or Kelvin echoes are not required for every write.
 Do not expose a persistent palette-bound scale control without independently reachable safe requalification after normal Release-mode disconnects.
 Keep every investigation finding in its verification ledger, including deferred
 paths and the evidence or approval needed to qualify them.

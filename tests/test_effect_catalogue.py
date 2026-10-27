@@ -119,6 +119,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
         "H6046",
         "H1A42",
         "H601C",
+        "H6072",
         "H6076",
         "H6097",
         "H6099",

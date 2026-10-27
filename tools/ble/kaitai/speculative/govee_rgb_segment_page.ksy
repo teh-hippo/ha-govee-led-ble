@@ -5,20 +5,22 @@ meta:
   imports:
     - ../govee_shared
 doc: |
-  SPECULATIVE H6125, issue #117.
-  Compatibility hypothesis: legacy A2 pages contain a one-based group and four
-  RGB-only slots, with no brightness byte.  Only the declared segment count is
-  meaningful.  Unused slots and the final four bytes remain opaque; their
-  values and physical mapping are unqualified.
+  SPECULATIVE RGB-only pages, H6125 #117 and H6072 #486.
+  Compatibility hypothesis: legacy A2 pages contain a one-based group and
+  model-declared RGB-only slots, with no brightness byte. Only the declared
+  segment count is meaningful. Unused slots and suffix bytes remain opaque;
+  their values and physical mapping are unqualified.
 params:
   - id: segment_count
+    type: u1
+  - id: group_size
     type: u1
 seq:
   - id: group
     type: u1
     valid:
       min: 1
-      max: (segment_count + 3) / 4
+      max: (segment_count + group_size - 1) / group_size
   - id: segments
     type: segment_record
     repeat: expr
@@ -27,7 +29,7 @@ seq:
     size-eos: true
 instances:
   num_segments:
-    value: 'group * 4 <= segment_count ? 4 : segment_count - (group - 1) * 4'
+    value: 'group * group_size <= segment_count ? group_size : segment_count - (group - 1) * group_size'
 types:
   segment_record:
     seq:

@@ -52,6 +52,7 @@ COMPANION_MUSIC_LAYOUTS = frozenset(
     {
         "music_body",
         "h6076_music_body",
+        "h6072_music_body",
         "h6099_music_parameters",
         "h6097_music_parameters",
         "h66a0_music_parameters",
@@ -857,6 +858,25 @@ H6076_MUSIC_VARIANTS = (
     ),
 )
 
+H6072_LEGACY_MUSIC_VARIANTS = tuple(
+    replace(variant, evidence="H6072 candidate legacy selector parameters") for variant in H6076_LEGACY_MUSIC_VARIANTS
+)
+
+H6072_MUSIC_VARIANTS = tuple(
+    replace(
+        variant,
+        evidence="H6072 candidate onboard music parameters",
+        layout="h6072_music_body" if variant.layout else None,
+        template=_h6076_body(variant.mode_code, "020063")
+        if variant.mode_code == int(_H6076_MODE.separation)
+        else variant.template,
+        gradient_companions=(0x63, 0x62)
+        if variant.mode_code == int(_H6076_MODE.separation)
+        else variant.gradient_companions,
+    )
+    for variant in H6076_MUSIC_VARIANTS
+)
+
 H7020_MUSIC_VARIANTS = (
     MusicVariant(
         0x03,
@@ -1041,7 +1061,7 @@ def music_variant(profile: ModelProfile, mode_code: int) -> MusicVariant | None:
         )
     if (
         variant
-        and variant.layout in {"music_body", "h6076_music_body"}
+        and variant.layout in {"music_body", "h6072_music_body", "h6076_music_body"}
         and ic is not None
         and any(spec.requires_physical_ic_count for spec in variant.parameters)
     ):

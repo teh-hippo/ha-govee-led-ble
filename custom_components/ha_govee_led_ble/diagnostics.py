@@ -54,6 +54,17 @@ async def async_get_config_entry_diagnostics(
             domain.value for domain in coordinator.profile.setup_required_read_domains
         ),
         "supports_rgb": coordinator.profile.supports_rgb,
+        "supports_low_blue_light": coordinator.profile.supports_low_blue_light,
+        "low_blue_light": (
+            {
+                "enabled": coordinator.low_blue_light.enabled,
+                "level": coordinator.low_blue_light.level,
+                "sibling_1": coordinator.low_blue_light.sibling_1,
+                "sibling_2": coordinator.low_blue_light.sibling_2,
+            }
+            if coordinator.low_blue_light is not None
+            else None
+        ),
         "supports_color_temperature": coordinator.profile.supports_color_temperature,
         "color_temperature_range": {
             "minimum_kelvin": coordinator.profile.min_color_temp_kelvin,

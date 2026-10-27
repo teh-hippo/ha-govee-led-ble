@@ -17,6 +17,7 @@ async_migrate_entry  # __init__.py
 _._async_migrate_func  # effect_store.py
 async_remove_entry  # __init__.py
 _.async_select_option  # select.py
+_.async_set_native_value  # number.py
 _.async_set_segment_color  # light_services.py
 _.async_set_segment_color_temp  # light_services.py
 _.async_swap_light_bars  # light_services.py entity service registered by name

@@ -9,6 +9,7 @@ from typing import Any
 from .music_semantics import COMPANION_MUSIC_LAYOUTS, MusicVariant
 from .protocol_core import (
     H617aControlPayload,
+    H6072MusicBody,
     H6076MusicBody,
     H7025MusicBody,
     MusicBody,
@@ -71,6 +72,7 @@ def parse_music_parameters(variant: MusicVariant, body: bytes) -> Any:
         root_type = {
             "music_body": MusicBody,
             "h6076_music_body": H6076MusicBody,
+            "h6072_music_body": H6072MusicBody,
             "h7025_music_body": H7025MusicBody,
         }[variant.layout]
         root = root_type.from_bytes(b"\x01\x02\x41" + body)

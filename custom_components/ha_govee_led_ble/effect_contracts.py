@@ -762,6 +762,28 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
             _W.WORKSHOP,
         }
     ),
+    *(
+        replace(
+            capability,
+            model="H6072",
+            verification_confidence=_V.SELECTION_ONLY,
+            physical_validation_state=_P.NOT_VALIDATED,
+            diagnostics_evidence_classification=_E.STRUCTURAL,
+        )
+        for capability in _RELEASE_CAPABILITY_BASE
+        if capability.model == "H617A"
+        and capability.workflow
+        in {
+            _W.NATIVE_SCENES,
+            _W.EDITED_PALETTE_SCENES,
+            _W.LAYERED_SCENES,
+            _W.PAINTED,
+            _W.SINGLE,
+            _W.MULTI,
+            _W.NATIVE_MUSIC,
+            _W.ADVANCED,
+        }
+    ),
     *(capability for capability in _RELEASE_CAPABILITY_BASE if capability.model == "H617A"),
     *(
         replace(

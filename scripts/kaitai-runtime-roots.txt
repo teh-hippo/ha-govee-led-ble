@@ -22,6 +22,13 @@ speculative/h6076_music_ack
 speculative/h6076_music_body
 speculative/h6076_music_write
 speculative/h6076_status_reply
+speculative/h6072_command_write
+speculative/h6072_status_query
+speculative/h6072_legacy_query
+speculative/h6072_status_reply
+speculative/h6072_music_write
+speculative/h6072_music_body
+speculative/h6072_music_ack
 speculative/h7025_music_write
 speculative/h7025_music_body
 speculative/h7025_status_reply
@@ -46,6 +53,7 @@ speculative/h6099_music_parameters
 speculative/h6099_status_query
 speculative/h6099_status_reply
 speculative/h6097_control
+speculative/h6072_low_blue_light
 speculative/h6097_music_write
 speculative/h6097_music_parameters
 speculative/h6097_status_reply

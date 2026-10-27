@@ -548,7 +548,30 @@ H6046MusicBody = cast(
     Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6046_music_body").H6046MusicBody
 )
 
+H6072CommandWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_command_write").H6072CommandWrite
+)
+H6072StatusReply = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_status_reply").H6072StatusReply
+)
+H6072StatusQuery = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_status_query").H6072StatusQuery
+)
+H6072LegacyQuery = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_legacy_query").H6072LegacyQuery
+)
+H6072MusicWrite = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_music_write").H6072MusicWrite
+)
+H6072MusicBody = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_music_body").H6072MusicBody
+)
+H6072MusicAck = cast(
+    Any, import_module("custom_components.ha_govee_led_ble.generated_protocol.h6072_music_ack").H6072MusicAck
+)
+
 _STATUS_ROOTS = {
+    "H6072": ("h6072_status_reply", H6072StatusReply),
     "H6046": ("h6046_status_reply", H6046StatusReply),
     "H60A1": ("h60a1_status_reply", H60a1StatusReply),
     "H60A6": ("h60a6_status_reply", H60a6StatusReply),
@@ -574,6 +597,8 @@ _STATUS_ROOTS = {
 
 
 _COMMAND_ROOTS = {
+    "H6072": ("h6072_command_write", H6072CommandWrite),
+    "H6072-legacy": ("h6072_command_write", H6072CommandWrite),
     "H6046": ("h6046_command_write", H6046CommandWrite),
     "H601C": ("h601c_command_write", H601cCommandWrite),
     "H6099": ("h6099_command_write", H6099CommandWrite),
@@ -585,6 +610,8 @@ _COMMAND_ROOTS = {
 
 
 _STATUS_QUERY_ROOTS = {
+    "H6072": ("h6072_status_query", H6072StatusQuery),
+    "H6072-legacy": ("h6072_legacy_query", H6072LegacyQuery),
     "H6046": ("h6046_status_query", H6046StatusQuery),
     "H601C": ("status_query", StatusQuery),
     "H6099": ("h6099_status_query", H6099StatusQuery),
@@ -595,10 +622,14 @@ _STATUS_QUERY_ROOTS = {
 }
 
 
-_H6076_ACK_ROOTS = {"H6076": ("h6076_music_ack", H6076MusicAck)}
+_H6076_ACK_ROOTS = {
+    "H6076": ("h6076_music_ack", H6076MusicAck),
+    "H6072": ("h6072_music_ack", H6072MusicAck),
+}
 
 
 _MUSIC_WRITE_ROOTS = {
+    "H6072": ("h6072_music_write", H6072MusicWrite),
     "H6097": ("h6097_music_write", H6097MusicWrite),
     "H6076": ("h6076_music_write", H6076MusicWrite),
     "H66A0": ("h66a0_music_write", H66a0MusicWrite),

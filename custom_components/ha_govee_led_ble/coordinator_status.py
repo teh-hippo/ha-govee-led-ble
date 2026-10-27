@@ -33,10 +33,12 @@ _STATUS_DOMAIN_NAMES = {
     "display_setting": StatusDomain.DISPLAY_SETTING,
     "relative_brightness": StatusDomain.RELATIVE_BRIGHTNESS,
     "segments": StatusDomain.SEGMENTS,
+    "legacy_segments": StatusDomain.SEGMENTS,
     "configured_strings": StatusDomain.CONFIGURED_STRINGS,
     "physical_ic_count": StatusDomain.PHYSICAL_IC_COUNT,
     "installation_direction": StatusDomain.INSTALLATION_DIRECTION,
     "camera_health": StatusDomain.CAMERA_HEALTH,
+    "low_blue_light": StatusDomain.LOW_BLUE_LIGHT,
 }
 
 
@@ -91,6 +93,8 @@ def status_is_authorized(decoded: ParsedStatusEnvelope, profile: ModelProfile) -
         return False
     if domain_name == "power_on_behaviour":
         return profile.supports_power_on_behaviour
+    if decoded.domain is ReadDomain.LOW_BLUE_LIGHT:
+        return profile.setting_grammar == "H6072" and profile.supports_low_blue_light
     control = boolean_control_name(domain_name)
     if control is not None:
         return boolean_control_is_authorized(control, profile)
@@ -188,6 +192,8 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
 
     body = generated.body
     mode_name = getattr(body.mode, "name", None)
+    if mode_name == "legacy_static":
+        mode_name = "static"
     if profile.bulk_status_grammar == "H60A" and mode_name == "music":
         return ParsedColorModeResponse(mode=ParsedMode.MUSIC)
     if mode_name == "video" and profile.video_grammar == "H66A0-video":

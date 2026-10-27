@@ -161,6 +161,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         "H1A42": H1a42MusicWrite.MusicMode,
         "H61F5": H61f5MusicWrite.MusicMode,
         "H6076": H6076MusicWrite.MusicMode,
+        "H6072": H6076MusicWrite.MusicMode,
         "H6179": H6179CommandWrite.MusicEffect,
         "H6199": H6199CommandWrite.MusicMode,
         "H7020": H7020CommandWrite.MusicMode,
@@ -179,6 +180,7 @@ def test_codebooks_match_generated_kaitai_enums_and_gate_on_effective_profile() 
         "H1A42": H1a42MusicParameters.MusicMode,
         "H61F5": H61f5MusicParameters.MusicMode,
         "H6076": H6076MusicBody.MusicMode,
+        "H6072": H6076MusicBody.MusicMode,
         "H7025": H7025MusicBody.MusicMode,
     }
     for grammar, enum_type in expected_parameter_enums.items():
