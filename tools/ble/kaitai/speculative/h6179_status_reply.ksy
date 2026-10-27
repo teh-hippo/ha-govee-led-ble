@@ -122,7 +122,10 @@ types:
         type: u1
       - id: fixed_colour
         type: govee_shared::rgb
-        if: colour_mode != 0
+        # colour bytes are shipped even when colour_mode == 0 (live capture:
+        # aa 05 0e <music_id> <sensitivity> <colour_mode=00> ff 00 00 <opaque>).
+        # Reading them unconditionally keeps them out of `opaque`, so the
+        # semantic zero-opaque guard no longer rejects valid music replies.
       - id: opaque
         size-eos: true
     instances:
