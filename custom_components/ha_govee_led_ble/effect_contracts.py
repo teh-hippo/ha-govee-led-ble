@@ -463,6 +463,21 @@ RELEASE_CAPABILITY_CONTRACT: Final = (
         )
     ),
     *(
+        _capability("H600A", workflow, label, kind, route, strategy, _V.SELECTION_ONLY, _P.NOT_VALIDATED, _E.STRUCTURAL)
+        for workflow, label, kind, route, strategy in (
+            (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),
+            (
+                _W.EDITED_PALETTE_SCENES,
+                "Edited palette scenes",
+                "scene_palette",
+                _R.HOME_ASSISTANT_CONTROL,
+                _S.MODEL_SCENE_ENGINE,
+            ),
+            (_W.SINGLE, "Basic DIY", "h617a_single", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+            (_W.MULTI, "Mixed DIY", "h617a_multi", _R.HOME_ASSISTANT_CONTROL, _S.H617A_CUSTOM_ENGINE),
+        )
+    ),
+    *(
         _capability("H601C", workflow, label, kind, route, strategy, _V.UNVERIFIED, _P.NOT_VALIDATED, _E.STRUCTURAL)
         for workflow, label, kind, route, strategy in (
             (_W.NATIVE_SCENES, "Scenes", "scene_builtin", _R.STUDIO_SCENE_APPLY, _S.NATIVE_EFFECT_SELECTION),

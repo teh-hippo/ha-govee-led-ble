@@ -4,7 +4,14 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, cast
 
-from .const import PERCENT_BRIGHTNESS_STATUS_GRAMMARS, VIDEO_GRAMMARS, ModelProfile, ReadDomain, get_profile
+from .const import (
+    PERCENT_BRIGHTNESS_STATUS_GRAMMARS,
+    VIDEO_GRAMMARS,
+    WHOLE_BULB_GRAMMARS,
+    ModelProfile,
+    ReadDomain,
+    get_profile,
+)
 from .generated_protocol_adapter import (
     boolean_control_is_authorized,
     boolean_control_name,
@@ -266,7 +273,7 @@ def parse_color_mode(generated: Any, model: str, *, profile: ModelProfile | None
         return ParsedColorModeResponse(
             mode=ParsedMode.COLOUR,
             rgb_color=(int(rgb.red), int(rgb.green), int(rgb.blue))
-            if rgb is not None and not (profile.status_grammar == "H601C" and raw_kelvin is not None)
+            if rgb is not None and not (profile.status_grammar in WHOLE_BULB_GRAMMARS and raw_kelvin is not None)
             else None,
             color_temp_kelvin=int(raw_kelvin) if raw_kelvin is not None else None,
             multi_effect_flag=getattr(detail, "sub", None),

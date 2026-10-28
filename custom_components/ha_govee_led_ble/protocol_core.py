@@ -208,6 +208,21 @@ H617cStatusReply = cast(
 )
 
 
+H600aCommandWrite = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h600a_command_write").H600aCommandWrite,
+)
+
+H600aStatusReply = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h600a_status_reply").H600aStatusReply,
+)
+
+H600aCommandAck = cast(
+    Any,
+    import_module("custom_components.ha_govee_led_ble.generated_protocol.h600a_command_ack").H600aCommandAck,
+)
+
 H601cCommandWrite = cast(
     Any,
     import_module("custom_components.ha_govee_led_ble.generated_protocol.h601c_command_write").H601cCommandWrite,
@@ -571,6 +586,7 @@ H6072MusicAck = cast(
 )
 
 _STATUS_ROOTS = {
+    "H600A": ("h600a_status_reply", H600aStatusReply),
     "H6072": ("h6072_status_reply", H6072StatusReply),
     "H6046": ("h6046_status_reply", H6046StatusReply),
     "H60A1": ("h60a1_status_reply", H60a1StatusReply),
@@ -597,6 +613,7 @@ _STATUS_ROOTS = {
 
 
 _COMMAND_ROOTS = {
+    "H600A": ("h600a_command_write", H600aCommandWrite),
     "H6072": ("h6072_command_write", H6072CommandWrite),
     "H6072-legacy": ("h6072_command_write", H6072CommandWrite),
     "H6046": ("h6046_command_write", H6046CommandWrite),
@@ -610,6 +627,7 @@ _COMMAND_ROOTS = {
 
 
 _STATUS_QUERY_ROOTS = {
+    "H600A": ("status_query", StatusQuery),
     "H6072": ("h6072_status_query", H6072StatusQuery),
     "H6072-legacy": ("h6072_legacy_query", H6072LegacyQuery),
     "H6046": ("h6046_status_query", H6046StatusQuery),
@@ -640,6 +658,7 @@ _MUSIC_WRITE_ROOTS = {
 
 
 _COMMAND_ACK_ROOTS = {
+    "H600A": ("h600a_command_ack", H600aCommandAck),
     "H6046": ("h6046_command_ack", H6046CommandAck),
     "H60A6": ("h60a6_command_ack", H60a6CommandAck),
     "H6125": ("h6125_command_ack", H6125CommandAck),

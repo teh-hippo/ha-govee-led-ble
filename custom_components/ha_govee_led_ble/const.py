@@ -691,6 +691,40 @@ _H6072_PROFILE = ModelProfile(
 )
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "H600A": ModelProfile(
+        "H600A Smart LED Bulb",
+        support_quality=SupportQuality.EXPERIMENTAL,
+        confirmation_issue=494,
+        command_grammar="H600A",
+        command_ack_grammar="H600A",
+        status_grammar="H600A",
+        effect_grammar="H617A",
+        command_operations=frozenset({"power", "brightness", "static", "scene", "diy", "effect_upload"}),
+        colour_mode_query_selector=1,
+        read_domains=frozenset(
+            {ReadDomain.POWER, ReadDomain.BRIGHTNESS, ReadDomain.COLOUR_MODE, ReadDomain.FIRMWARE, ReadDomain.HARDWARE}
+        ),
+        supports_rgb=True,
+        supports_color_temperature=True,
+        min_color_temp_kelvin=2700,
+        max_color_temp_kelvin=6500,
+        color_temp_step_kelvin=100,
+        kelvin_direct_rgb=(255, 255, 255),
+        kelvin_companion_uses_table=True,
+        static_readback_echoes_color=True,
+        static_readback_kelvin=True,
+        static_readback_zero_kelvin_is_rgb=True,
+        supports_custom_effects=True,
+        supports_scenes=True,
+        supports_multi_layered_effects=True,
+        diy_requires_upload_ack=True,
+        effect_readback="diy_code_only",
+        whole_device_mask=1,
+        connection_idle_timeout=1.5,
+        scene_catalogue_sku="H600A",
+        music_modes=(),
+        effect_retry_after_upload=False,
+    ),
     "H6046": ModelProfile(
         "H6046 TV Light Bars",
         support_quality=SupportQuality.SUPPORTED,
@@ -1788,8 +1822,9 @@ UNSUPPORTED_PROFILE = ModelProfile("Unsupported Govee device")
 
 # Grammar families shared by several SKUs; shared code tests membership here, not literal sets.
 VIDEO_GRAMMARS = frozenset({"H6099", "H6199"})
-MODE_COMMAND_GRAMMARS = frozenset({"H601C", "H6046", "H6099", "H6199"})
-PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H6046", "H6097", "H6099", "H6199", "H66A0"})
+WHOLE_BULB_GRAMMARS = frozenset({"H600A", "H601C"})
+MODE_COMMAND_GRAMMARS = WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6199"}
+PERCENT_BRIGHTNESS_STATUS_GRAMMARS = frozenset({"H600A", "H6046", "H6097", "H6099", "H6199", "H66A0"})
 
 
 def _h6199_pact1_wire(packet: bytes) -> bytes:

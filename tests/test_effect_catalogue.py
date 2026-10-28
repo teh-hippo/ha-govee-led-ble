@@ -116,6 +116,7 @@ def test_model_aware_catalogue_includes_supported_models_and_legacy_h617a_view()
     assert catalogue["schema_version"] == EFFECT_STUDIO_CATALOGUE_SCHEMA_VERSION
     assert catalogue["sku"] == LEGACY_CATALOGUE_SKU
     assert set(catalogue["models"]) == {
+        "H600A",
         "H6046",
         "H1A42",
         "H601C",

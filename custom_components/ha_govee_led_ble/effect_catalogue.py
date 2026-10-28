@@ -814,6 +814,27 @@ H6076_DIY_FAMILIES: Final = tuple(
     )
 )
 
+H600A_DIY_FAMILIES: Final = tuple(
+    DiyEffectFamily(
+        name,
+        label,
+        family,
+        (DiyEffectVariation("0", label, 0),),
+        True,
+        rate="speed",
+        rate_min=0,
+        rate_max=100,
+        palette_max=8,
+        source_reference="H600A whole-bulb basic and mixed DIY codebook (#492)",
+    )
+    for name, label, family in (
+        ("fade", "Fade", 0),
+        ("jumping", "Jumping", 1),
+        ("blinking", "Blinking", 2),
+        ("breathe", "Breathe", 5),
+    )
+)
+
 H601C_DIY_FAMILIES: Final = tuple(
     DiyEffectFamily(
         name,
@@ -1982,6 +2003,29 @@ MODEL_EFFECT_CATALOGUES: Final = {
             multi=studio_apply_capability_state("H7025", CapabilityWorkflow.MULTI),
             palette_diy=studio_apply_capability_state("H7025", CapabilityWorkflow.PALETTE_DIY),
             workshop=studio_apply_capability_state("H7025", CapabilityWorkflow.WORKSHOP),
+        ),
+    ),
+    "H600A": ModelEffectCatalogue(
+        sku="H600A",
+        painted_effects=(),
+        effects=H600A_DIY_FAMILIES,
+        music_modes=(),
+        video_modes=(),
+        templates=tuple(_single_template("H600A", family) for family in H600A_DIY_FAMILIES),
+        workshop_templates=(),
+        advanced_create=False,
+        diy_slot_policy="approved_observed",
+        supports=CatalogueSupport(
+            multi=workflow_capability_state("H600A", CapabilityWorkflow.MULTI),
+            advanced=workflow_capability_state("H600A", CapabilityWorkflow.ADVANCED),
+            workshop=workflow_capability_state("H600A", CapabilityWorkflow.WORKSHOP),
+        ),
+        apply=ApplySupport(
+            painted=studio_apply_capability_state("H600A", CapabilityWorkflow.PAINTED),
+            single=studio_apply_capability_state("H600A", CapabilityWorkflow.SINGLE),
+            multi=studio_apply_capability_state("H600A", CapabilityWorkflow.MULTI),
+            palette_diy=studio_apply_capability_state("H600A", CapabilityWorkflow.PALETTE_DIY),
+            workshop=studio_apply_capability_state("H600A", CapabilityWorkflow.WORKSHOP),
         ),
     ),
     "H601C": ModelEffectCatalogue(

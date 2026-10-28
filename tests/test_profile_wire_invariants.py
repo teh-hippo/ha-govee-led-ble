@@ -17,6 +17,7 @@ from custom_components.ha_govee_led_ble import generated_protocol_adapter as a
 from custom_components.ha_govee_led_ble import protocol_core, protocol_music_params
 from custom_components.ha_govee_led_ble.const import (
     MODEL_PROFILES,
+    WHOLE_BULB_GRAMMARS,
     ModelProfile,
     ReadDomain,
     device_profile,
@@ -916,7 +917,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
     their declared Kelvin bounds on static temperature readback."""
     color_mode_enum = _status_color_mode_enum(profile)
     static_byte = int(getattr(color_mode_enum, "static", getattr(color_mode_enum, "static_colour", None)))
-    if profile.status_grammar in {"H601C", "H6179"}:
+    if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179"}:
         rgb_body = bytes([static_byte, 10, 20, 30, 0, 0])
     else:
         rgb_body = bytes([static_byte, 0, 0, 0])
@@ -936,7 +937,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             kelvin_bytes = kelvin.to_bytes(2, "big")
             body = (
                 bytes([static_byte, 255, 255, 255]) + kelvin_bytes
-                if profile.status_grammar in {"H601C", "H6179"}
+                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179"}
                 else bytes([static_byte, 1]) + kelvin_bytes
             )
             if profile.status_grammar == "H6046":
@@ -953,7 +954,7 @@ def test_static_colour_and_kelvin_status_readback(hass, model: str, profile: Mod
             bad_bytes = out_of_range.to_bytes(2, "big")
             bad_body = (
                 bytes([static_byte, 255, 255, 255]) + bad_bytes
-                if profile.status_grammar in {"H601C", "H6179"}
+                if profile.status_grammar in WHOLE_BULB_GRAMMARS | {"H6179"}
                 else bytes([static_byte, 1]) + bad_bytes
             )
             bad_reply = _status(0x05, bad_body)

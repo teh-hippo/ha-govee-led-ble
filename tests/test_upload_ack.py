@@ -57,7 +57,7 @@ async def connected(hass, monkeypatch, request):
     monkeypatch.setattr(c, "_ensure_connected", AsyncMock(return_value=client))
     monkeypatch.setattr(c, "_renew_foreground_lease", MagicMock())
     monkeypatch.setattr(coordinator_module, "UPLOAD_ACK_TIMEOUT", 0.02)
-    if c.model not in {"H6097", "H7025", "H6046"}:
+    if c.model not in {"H600A", "H6097", "H7025", "H6046"}:
         monkeypatch.setattr(coordinator_module, "EFFECT_SEQUENCE_ATTEMPTS", 1)
     monkeypatch.setattr(coordinator_module, "RETRY_BACKOFF_SECONDS", 0)
 
@@ -65,6 +65,14 @@ async def connected(hass, monkeypatch, request):
         c._clear_client_state(c._client)
 
     monkeypatch.setattr(c, "_disconnect_locked", AsyncMock(side_effect=disconnect))
+    if c.model == "H600A":
+
+        async def reconnect():
+            c._client = client
+            await c._start_notify()
+            return client
+
+        c._ensure_connected.side_effect = reconnect
     yield c, client
     if c._cancel_disconnect:
         c._cancel_disconnect()
@@ -74,34 +82,87 @@ def receive(client, data):
     client.start_notify.call_args.args[1](None, bytearray(data))
 
 
-@pytest.mark.parametrize("connected", ["H6097"], indirect=True)
-@pytest.mark.parametrize("fault", ["missing", "rejected", "write_timeout"])
-async def test_h6097_diy_upload_requires_result_without_uncertain_replay(connected, fault):
+@pytest.mark.parametrize("connected", ["H600A"], indirect=True)
+@pytest.mark.parametrize("kind", ["scene", "diy"])
+@pytest.mark.parametrize("response", ["accepted", "rejected", "missing"])
+async def test_h600a_scene_and_diy_ack_barrier(connected, kind, response):
     c, client = connected
-    compiled = compile_application(LibraryItem.new("Basic", SingleEffect(0, 0, 50, ((1, 2, 3),))), c.model)
+    c.is_on = True
+    if kind == "scene":
+        scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 1)
+        content = BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))
+    else:
+        content = SingleEffect(0, 0, 50, ((1, 2, 3),))
+    compiled = compile_effect(LibraryItem.new("Bulb effect", content), c.model, diy_code=24)
+    final_upload = len(compiled.upload_packets) - 1
+    subtype = upload_ack_subtype(compiled.upload_packets, final_upload, c.model)
+    assert subtype == (1 if kind == "scene" else 4)
+
+    async def write(_uuid, packet, **kwargs):
+        if packet == compiled.upload_packets[-1] and response != "missing":
+            assert compiled.activation_packet not in [call.args[1] for call in client.write_gatt_char.call_args_list]
+            receive(client, frame(f"a3{subtype:02x}{'00' if response == 'accepted' else '01'}"))
+
+    async def apply():
+        if kind == "scene":
+            await c.async_apply_native_scene(scene.display_name, scene_entry=scene, verify=False)
+        else:
+            await c.async_write_effect_sequence(
+                compiled.packets,
+                intent=ControlIntent.APPLY,
+                require_upload_ack=c.profile.diy_requires_upload_ack,
+                upload_ack_index=final_upload,
+            )
+
+    client.write_gatt_char.side_effect = write
+    if response == "accepted":
+        await apply()
+    else:
+        with pytest.raises((RuntimeError, TimeoutError)):
+            await apply()
+    sent = [call.args[1] for call in client.write_gatt_char.call_args_list]
+    assert sent == list(compiled.packets if response == "accepted" else compiled.upload_packets)
+    assert c._upload_ack is None
+    assert c._ensure_connected.await_count == 1
+
+
+@pytest.mark.parametrize("connected", ["H6097", "H600A"], indirect=True)
+@pytest.mark.parametrize("fault", ["missing", "rejected", "write_timeout", "disconnect"])
+async def test_diy_upload_requires_result_without_uncertain_replay(connected, fault):
+    c, client = connected
+    compiled = compile_application(
+        LibraryItem.new("Basic", SingleEffect(0, 0, 50, ((1, 2, 3),))),
+        c.model,
+        diy_code=24 if c.model == "H600A" else None,
+    )
     final_upload = len(compiled.upload_packets) - 1
 
     async def write(_uuid, packet, **kwargs):
         if packet == compiled.upload_packets[0] and fault == "write_timeout":
             raise TimeoutError("upload write timed out")
+        if packet == compiled.upload_packets[0] and fault == "disconnect":
+            c._clear_client_state(client)
+            raise BleakError("disconnected during upload")
         if packet == compiled.upload_packets[-1] and fault == "rejected":
             receive(client, frame("a30401"))
 
     client.write_gatt_char.side_effect = write
-    with pytest.raises((RuntimeError, TimeoutError)):
+    with pytest.raises((RuntimeError, TimeoutError, BleakError)):
         await c.async_write_effect_sequence(
             compiled.packets, intent=ControlIntent.APPLY, require_upload_ack=True, upload_ack_index=final_upload
         )
     sent = [call.args[1] for call in client.write_gatt_char.await_args_list]
-    assert sent == list(compiled.upload_packets[:1] if fault == "write_timeout" else compiled.upload_packets)
+    assert sent == list(
+        compiled.upload_packets[:1] if fault in {"write_timeout", "disconnect"} else compiled.upload_packets
+    )
     assert c._ensure_connected.await_count == 1
 
 
-@pytest.mark.parametrize("connected", ["H6097"], indirect=True)
-async def test_h6097_missing_scene_readback_does_not_repeat_accepted_upload(connected, monkeypatch):
+@pytest.mark.parametrize("connected", ["H6097", "H600A"], indirect=True)
+async def test_missing_scene_readback_does_not_repeat_accepted_upload(connected, monkeypatch):
     c, client = connected
     c.is_on = True
-    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == 2)
+    scene = next(scene for scene in SCENE_ENTRIES[c.model] if scene.scene_type == (1 if c.model == "H600A" else 2))
     compiled = compile_effect(
         LibraryItem.new("Scene", BuiltinScene(CatalogueRef(c.model, scene.scene_id, scene.effect_id))), c.model
     )
@@ -109,11 +170,40 @@ async def test_h6097_missing_scene_readback_does_not_repeat_accepted_upload(conn
 
     async def write(_uuid, packet, **kwargs):
         if packet == compiled.upload_packets[-1]:
-            receive(client, frame("a30200"))
+            subtype = upload_ack_subtype(compiled.upload_packets, len(compiled.upload_packets) - 1, c.model)
+            receive(client, frame(f"a3{subtype:02x}00"))
 
     client.write_gatt_char.side_effect = write
     with pytest.raises(RuntimeError, match="Failed to confirm scene"):
         await c.async_apply_native_scene(scene.display_name, scene_entry=scene)
+    assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
+    assert c._ensure_connected.await_count == 1
+
+
+@pytest.mark.parametrize("connected", ["H600A"], indirect=True)
+async def test_h600a_connection_failure_before_upload_can_retry(connected):
+    c, client = connected
+    compiled = compile_application(LibraryItem.new("Basic", SingleEffect(0, 0, 50, ((1, 2, 3),))), c.model, diy_code=24)
+    reconnect = c._ensure_connected.side_effect
+
+    async def connect():
+        if c._ensure_connected.await_count == 1:
+            raise BleakError("connection failed before upload")
+        return await reconnect()
+
+    async def write(_uuid, packet, **kwargs):
+        if packet == compiled.upload_packets[-1]:
+            receive(client, frame("a30400"))
+
+    c._ensure_connected.side_effect = connect
+    client.write_gatt_char.side_effect = write
+    await c.async_write_effect_sequence(
+        compiled.packets,
+        intent=ControlIntent.APPLY,
+        require_upload_ack=True,
+        upload_ack_index=len(compiled.upload_packets) - 1,
+    )
+    assert c._ensure_connected.await_count == 2
     assert [call.args[1] for call in client.write_gatt_char.await_args_list] == list(compiled.packets)
 
 

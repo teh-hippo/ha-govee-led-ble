@@ -9,7 +9,7 @@ from typing import Any
 
 from kaitaistruct import KaitaiStream, KaitaiStructError
 
-from .const import ModelProfile, ReadDomain, get_profile
+from .const import WHOLE_BULB_GRAMMARS, ModelProfile, ReadDomain, get_profile
 from .music_protocol import music_slug_for
 from .music_semantics import music_variant
 from .protocol_core import (
@@ -32,6 +32,7 @@ from .protocol_core import (
     H61f5MusicWrite,
     H66a0MusicWrite,
     H66a0VideoCommand,
+    H600aCommandWrite,
     H601cCommandWrite,
     H6046CommandAck,
     H6046CommandWrite,
@@ -175,7 +176,7 @@ def _complete_a3_upload(
 ) -> tuple[int, bytes]:
     active_profile = profile or get_profile(model)
     if (
-        active_profile.command_grammar not in {"H6046", "H617A", "H7020"}
+        active_profile.command_grammar not in {"H600A", "H6046", "H617A", "H7020"}
         and active_profile.command_ack_grammar != "H617A"
     ):
         raise ValueError("Upload ACK semantics are not qualified for this command grammar")
@@ -410,12 +411,12 @@ def require_profile_packet(frame: bytes, profile: ModelProfile) -> None:
                     if len(levels) != profile.segment_count or ((1 << len(levels)) - 1) & ~profile.whole_device_mask:
                         raise ValueError("segment brightness outside profile geometry")
             if static is not None:
-                if profile.command_grammar == "H601C":
+                if profile.command_grammar in WHOLE_BULB_GRAMMARS:
                     detail = command.body.detail
                     companion = bytes((detail.companion_rgb.red, detail.companion_rgb.green, detail.companion_rgb.blue))
                     expected_companion = _TABLE_KELVIN_RGB.get(static.kelvin or 0, bytes(3))
                     if companion != expected_companion:
-                        raise ValueError("H601C authored companion RGB does not match Kelvin")
+                        raise ValueError(f"{profile.command_grammar} authored companion RGB does not match Kelvin")
                 if static.segment_mask is not None and not static.segment_mask:
                     raise ValueError("no segments selected")
                 if static.segment_mask is not None and (
@@ -564,7 +565,7 @@ def _command_types(model: str, profile: ModelProfile | None = None) -> tuple[Any
         return H6072CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
     if resolved == "H7020":
         return H7020CommandWrite, CommandWrite.PowerCmd, CommandWrite.BrightnessCmd
-    if resolved in {"H601C", "H6046", "H6099", "H6179", "H6199"}:
+    if resolved in WHOLE_BULB_GRAMMARS | {"H6046", "H6099", "H6179", "H6199"}:
         root_type = _COMMAND_ROOTS[resolved][1]
         return root_type, root_type.PowerBody, root_type.BrightnessBody
     if resolved != "H617A":
@@ -619,7 +620,7 @@ def _build_status_query(
         body = _child(root_type.ColourModeQueryBody, root)
         body.selector = b"\x01"
         body.zeros = [0] * 16
-    elif domain == "colour_mode" and grammar in {"H601C", "H6072", "H6072-legacy", "H617A", "H7020"}:
+    elif domain == "colour_mode" and grammar in WHOLE_BULB_GRAMMARS | {"H6072", "H6072-legacy", "H617A", "H7020"}:
         body = _child(body_types.ColourModeQueryBody, root)
         body.selector = colour_mode_selector
         body.zeros = [0] * 16
@@ -1235,7 +1236,7 @@ def build_power(on: bool, model: str = "H617A", *, profile: ModelProfile | None 
         body.unknown_tail = bytes(16)
     if root_type is H6179CommandWrite:
         body.opaque = bytes(16)
-    elif root_type is H601cCommandWrite:
+    elif root_type in {H600aCommandWrite, H601cCommandWrite}:
         body.padding = bytes(16)
     root.body = body
     return _serialize_xor(root)
@@ -1256,7 +1257,7 @@ def build_brightness(percent: int, model: str = "H617A", *, profile: ModelProfil
         body.percent = max(0, min(100, percent))
     if root_type is H6046CommandWrite:
         body.unknown_tail = bytes(16)
-    if root_type is H601cCommandWrite:
+    if root_type in {H600aCommandWrite, H601cCommandWrite}:
         body.padding = bytes(16)
     root.body = body
     return _serialize_xor(root)
@@ -1338,19 +1339,22 @@ def _build_h6072_legacy_colour(
     return _serialize_xor(root)
 
 
-def _build_h601c_static_colour(mask: int, direct: tuple[int, int, int], kelvin: int, profile: ModelProfile) -> bytes:
+def _build_whole_bulb_static_colour(
+    mask: int, direct: tuple[int, int, int], kelvin: int, profile: ModelProfile
+) -> bytes:
     if mask != profile.whole_device_mask or not mask:
-        raise ValueError("H601C supports whole-device colour only")
+        raise ValueError(f"{profile.command_grammar} supports whole-device colour only")
     if kelvin and not 2700 <= kelvin <= 6500:
-        raise ValueError("H601C Kelvin outside 2700..6500")
+        raise ValueError(f"{profile.command_grammar} Kelvin outside 2700..6500")
     if kelvin and kelvin not in _TABLE_KELVIN_RGB:
-        raise ValueError("H601C Kelvin must use 100 K steps from 2700 to 6500")
-    root = H601cCommandWrite()
+        raise ValueError(f"{profile.command_grammar} Kelvin must use 100 K steps from 2700 to 6500")
+    root_type = _COMMAND_ROOTS[profile.command_grammar or ""][1]
+    root = root_type()
     root.header = b"\x33"
-    root.opcode = H601cCommandWrite.CommandOp.mode
-    mode = _child(H601cCommandWrite.ModeBody, root)
-    mode.sub_mode = H601cCommandWrite.ModeSel.static_colour
-    detail = _child(H601cCommandWrite.StaticColourBody, mode)
+    root.opcode = root_type.CommandOp.mode
+    mode = _child(root_type.ModeBody, root)
+    mode.sub_mode = root_type.ModeSel.static_colour
+    detail = _child(root_type.StaticColourBody, mode)
     detail.rgb = _rgb(detail, *direct)
     detail.kelvin = kelvin
     detail.companion_rgb = _rgb(detail, *_TABLE_KELVIN_RGB.get(kelvin, bytes(3)))
@@ -1373,8 +1377,8 @@ def build_segment_colour(
     resolved = profile.command_grammar
     if resolved == "H6072-legacy":
         return _build_h6072_legacy_colour(mask, (red, green, blue), 0, (0, 0, 0))
-    if resolved == "H601C":
-        return _build_h601c_static_colour(mask, (red, green, blue), 0, profile)
+    if resolved in WHOLE_BULB_GRAMMARS:
+        return _build_whole_bulb_static_colour(mask, (red, green, blue), 0, profile)
     if resolved == "H6179":
         if mask != 0:
             raise ValueError("H6179 static colour is inherently whole-device and has no segment mask")
@@ -1428,8 +1432,8 @@ def build_colour_temperature(
     resolved = profile.command_grammar
     if resolved == "H6072-legacy":
         return _build_h6072_legacy_colour(mask, profile.kelvin_direct_rgb, value, preview)
-    if resolved == "H601C":
-        return _build_h601c_static_colour(mask, (255, 255, 255), kelvin, profile)
+    if resolved in WHOLE_BULB_GRAMMARS:
+        return _build_whole_bulb_static_colour(mask, (255, 255, 255), kelvin, profile)
     if resolved == "H6179":
         if mask != 0:
             raise ValueError("H6179 colour temperature is inherently whole-device and has no segment mask")
@@ -1538,7 +1542,7 @@ def build_scene_activation(
         return build_h6179_scene(scene_code)
     if grammar == "H6199":
         return build_h6199_scene(scene_code, music_code)
-    if grammar in {"H601C", "H6046", "H6099"}:
+    if grammar in WHOLE_BULB_GRAMMARS | {"H6046", "H6099"}:
         if music_code or scene_type:
             raise ValueError(f"{grammar} scene selector has no music-code or scene-type field")
         root_type = _COMMAND_ROOTS[grammar][1]
@@ -1549,7 +1553,7 @@ def build_scene_activation(
         mode.sub_mode = root_type.ModeSel.scene
         detail = _child(root_type.SceneBody, mode)
         detail.scene_id = max(0, min(0xFFFF, scene_code))
-        if grammar == "H601C":
+        if grammar in WHOLE_BULB_GRAMMARS:
             detail.padding = bytes(14)
         elif grammar == "H6046":
             detail.unknown_tail = bytes(14)
@@ -1592,7 +1596,7 @@ def build_diy_activation(diy_code: int, model: str, *, profile: ModelProfile | N
     grammar = (profile or get_profile(model)).command_grammar
     if grammar in {"H6072", "H6072-legacy", "H617A", "H7020"}:
         return build_h617a_diy_activation(diy_code, root_type=_COMMAND_ROOTS[grammar][1])
-    if grammar in {"H601C", "H6046"}:
+    if grammar in WHOLE_BULB_GRAMMARS | {"H6046"}:
         root_type = _COMMAND_ROOTS[grammar][1]
         root = root_type()
         root.header = b"\x33"
@@ -1601,7 +1605,7 @@ def build_diy_activation(diy_code: int, model: str, *, profile: ModelProfile | N
         mode.sub_mode = root_type.ModeSel.diy
         detail = _child(root_type.DiyBody, mode)
         detail.code = diy_code
-        if grammar == "H601C":
+        if grammar in WHOLE_BULB_GRAMMARS:
             detail.padding = bytes(14)
         else:
             detail.unknown_tail = bytes(14)

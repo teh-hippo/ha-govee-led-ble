@@ -2051,11 +2051,13 @@ async def test_external_supersession_clears_pending_health_and_publishes_reason(
     await manager.async_shutdown()
 
 
-async def test_h6179_preview_requires_observed_disposable_approval_before_preflight(
+@pytest.mark.parametrize("model", ["H6179", "H600A"])
+async def test_preview_requires_observed_disposable_approval_before_preflight(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
+    model: str,
 ) -> None:
-    coordinator = _coordinator(model="H6179", readable=True)
+    coordinator = _coordinator(model=model, readable=True)
     coordinator.diy_code = 0x1234
     manager, _cache = await _manager(hass, monkeypatch, coordinator)
     owner = object()
@@ -2068,7 +2070,7 @@ async def test_h6179_preview_requires_observed_disposable_approval_before_prefli
             config_entry_id="entry-a",
             sequence=1,
             updated_at="2026-09-03T00:00:00Z",
-            item=_h6179_item(),
+            item=_h6179_item() if model == "H6179" else _item("Bulb DIY"),
         )
 
     coordinator.async_preview_preflight.assert_not_awaited()

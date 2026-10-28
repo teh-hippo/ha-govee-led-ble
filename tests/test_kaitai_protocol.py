@@ -110,6 +110,60 @@ def _generated(module: str, class_name: str) -> type[Any]:
 
 
 @pytest.mark.parametrize(
+    ("raw", "operation"),
+    [
+        ("3301010000000000000000000000000000000033", "power"),
+        ("3304010000000000000000000000000000000036", "brightness"),
+        ("3304640000000000000000000000000000000053", "brightness"),
+        ("33050d112233000000000000000000000000003b", "mode"),
+        ("33050dffffff0a8cffae54000000000000000047", "mode"),
+        ("33050490110000000000000000000000000000b3", "mode"),
+        ("33050a010000000000000000000000000000003d", "mode"),
+    ],
+)
+def test_h600a_reconstructed_whole_bulb_commands(raw, operation):
+    """#492 source-derived logical vectors, not owner or official-app captures."""
+    packet = bytes.fromhex(raw)
+    root = _generated("h600a_command_write", "H600aCommandWrite").from_bytes(packet)
+    root._read()
+    assert root.opcode.name == operation and xor_checksum(packet) == 0
+    generated_protocol_adapter.require_profile_packet(packet, get_profile("H600A"))
+    if root.is_static:
+        actual = (
+            build_color_temp(int(root.body.detail.kelvin), "H600A")
+            if root.body.detail.kelvin
+            else build_color_rgb(17, 34, 51, "H600A")
+        )
+        assert actual == packet
+
+
+@pytest.mark.parametrize(
+    ("raw", "subtype", "success"),
+    [
+        ("a3010000000000000000000000000000000000a2", 1, True),
+        ("a3040000000000000000000000000000000000a7", 4, True),
+        ("a3040100000000000000000000000000000000a6", 4, False),
+    ],
+)
+def test_h600a_reconstructed_upload_results(raw, subtype, success):
+    """#492 source-derived A3 results establish acceptance only, not rendering."""
+    packet = bytes.fromhex(raw)
+    root = _generated("h600a_command_ack", "H600aCommandAck").from_bytes(packet)
+    root._read()
+    assert xor_checksum(packet) == 0 and root.is_upload
+    assert generated_protocol_adapter.upload_ack_success(root, subtype, protocol=0xA3) is success
+
+
+def test_h600a_reconstructed_static_reply_preserves_unknowns():
+    packet = bytes.fromhex("aa050d11223300000000000000000000000000a2")
+    root = _generated("h600a_status_reply", "H600aStatusReply").from_bytes(packet)
+    root._read()
+    assert root.body.mode.name == "static_colour" and root.body.detail.kelvin == 0
+    parsed = parse_color_mode(root, "H600A")
+    assert parsed.rgb_color == (17, 34, 51) and parsed.color_temp_kelvin is None
+
+
+@pytest.mark.parametrize(
     ("raw", "group", "count", "brightness"),
     [
         ("aaa501640102033204050600000000000000005f", 1, 3, True),
