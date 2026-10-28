@@ -23,6 +23,7 @@ Do not post the Bluetooth address, serial number, account details, or other uniq
 - `coordinator*.py` owns connection lifecycle, queries, notifications, state, verification, and diagnostics.
 - `light.py`, `light_services.py`, and the model profile expose only capabilities declared for the configured device.
 - Effect Studio uses the same model profiles, capability contracts, and exact-SKU catalogues rather than a separate model architecture.
+- Effect Studio panel registration is a default-on, per-entry preference.  Register the shared panel while any enabled, Studio-capable entry opts in; preserve light capabilities, effects and Home Assistant's separate per-user sidebar preferences.
 - `scenes.py` loads committed exact-SKU Govee snapshots.  Catalogue data and BLE transport evidence remain separate.
 
 Every exact SKU has its own profile, support quality, catalogue identity, and product capability data.  Compatible models may share a Kaitai wire adapter, but do not share whole profiles or exact-SKU metadata.

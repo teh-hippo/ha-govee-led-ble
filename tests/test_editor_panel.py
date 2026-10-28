@@ -18,8 +18,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.ha_govee_led_ble import async_setup
-from custom_components.ha_govee_led_ble.const import CONF_MODEL, DOMAIN, device_profile
+from custom_components.ha_govee_led_ble import _async_update_editor_panel, async_setup
+from custom_components.ha_govee_led_ble.const import CONF_MODEL, CONF_REGISTER_EFFECT_STUDIO, DOMAIN, device_profile
 from custom_components.ha_govee_led_ble.coordinator import GoveeBLECoordinator
 from custom_components.ha_govee_led_ble.editor import (
     _EDITOR_MANIFEST,
@@ -107,6 +107,26 @@ async def test_panel_registration_is_idempotent_and_updates_configuration(
     panel = hass.data[frontend.DATA_PANELS][EDITOR_PANEL_PATH]
     assert panel.config is not None
     assert panel.config["_panel_custom"]["module_url"] == EDITOR_LOADER_MODULE_URL
+
+
+async def test_panel_registration_follows_opt_out_and_entry_removal(hass: HomeAssistant) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6199"})
+    entry.add_to_hass(hass)
+    assert await async_setup_component(hass, "http", {})
+    assert await async_setup(hass, {})
+    backend = get_effect_backend(hass)
+
+    hass.config_entries.async_update_entry(entry, options={CONF_REGISTER_EFFECT_STUDIO: False})
+    await _async_update_editor_panel(hass)
+    assert not frontend.async_panel_exists(hass, EDITOR_PANEL_PATH)
+    assert get_effect_backend(hass) is backend
+
+    hass.config_entries.async_update_entry(entry, options={CONF_REGISTER_EFFECT_STUDIO: True})
+    await _async_update_editor_panel(hass)
+    assert frontend.async_panel_exists(hass, EDITOR_PANEL_PATH)
+
+    await _async_update_editor_panel(hass, excluding_entry_id=entry.entry_id)
+    assert not frontend.async_panel_exists(hass, EDITOR_PANEL_PATH)
 
 
 async def test_backend_storage_failure_keeps_stable_fallback_panel(

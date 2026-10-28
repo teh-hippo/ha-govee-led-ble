@@ -26,6 +26,7 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_H6102_APP_FIRMWARE,
     CONF_H6102_APP_HARDWARE,
     CONF_MODEL,
+    CONF_REGISTER_EFFECT_STUDIO,
     DOMAIN,
     MODEL_PROFILES,
 )
@@ -109,8 +110,9 @@ async def test_setup_entry(hass: HomeAssistant):
 
 
 @pytest.mark.parametrize("model", ["H6076", "H6102"])
-async def test_setup_entry_links_effect_studio_for_models_with_effects(hass: HomeAssistant, model: str):
-    entry = _entry(data={CONF_MODEL: model})
+@pytest.mark.parametrize("options", [{}, {CONF_REGISTER_EFFECT_STUDIO: False}])
+async def test_setup_entry_links_effect_studio_for_models_with_effects(hass: HomeAssistant, model: str, options):
+    entry = _entry(data={CONF_MODEL: model}, options=options)
     with (
         patch("custom_components.ha_govee_led_ble.GoveeBLECoordinator", autospec=True) as cls,
         patch("custom_components.ha_govee_led_ble._async_cleanup_legacy_entities", new_callable=AsyncMock),
@@ -121,7 +123,7 @@ async def test_setup_entry_links_effect_studio_for_models_with_effects(hass: Hom
 
         assert await async_setup_entry(hass, entry) is True
 
-    assert cls.call_args.kwargs["configuration_url"] is not None
+    assert (cls.call_args.kwargs["configuration_url"] is not None) is options.get(CONF_REGISTER_EFFECT_STUDIO, True)
 
 
 async def test_setup_entry_passes_configured_h6102_firmware_context(hass: HomeAssistant):
@@ -528,19 +530,24 @@ async def test_remove_entry_purges_all_device_scoped_effect_state(hass: HomeAssi
 
 
 @pytest.mark.parametrize(
-    ("models", "disabled", "visible"),
+    ("models", "disabled", "opted_out", "visible"),
     [
-        ([], set(), False),
-        (["H6076"], set(), True),
-        (["H6102"], set(), True),
-        (["H617A"], set(), True),
-        (["H6076", "H6199"], set(), True),
-        (["H617A"], {0}, False),
+        ([], set(), set(), False),
+        (["H6076"], set(), set(), True),
+        (["H6102"], set(), set(), True),
+        (["H617A"], set(), set(), True),
+        (["H6076", "H6199"], set(), set(), True),
+        (["H617A"], {0}, set(), False),
+        (["H6199"], set(), {0}, False),
+        (["H6076", "H6199"], set(), {0}, True),
+        (["H6076", "H6199"], set(), {0, 1}, False),
+        (["H6076", "H6199"], {1}, {0}, False),
     ],
 )
 def test_effect_studio_sidebar_visibility_uses_enabled_configured_capabilities(
     models,
     disabled,
+    opted_out,
     visible,
 ):
     hass = MagicMock()
@@ -548,6 +555,7 @@ def test_effect_studio_sidebar_visibility_uses_enabled_configured_capabilities(
         _entry(
             entry_id=f"entry-{index}",
             data={CONF_MODEL: model},
+            options={CONF_REGISTER_EFFECT_STUDIO: False} if index in opted_out else {},
             disabled_by=ConfigEntryDisabler.USER if index in disabled else None,
         )
         for index, model in enumerate(models)

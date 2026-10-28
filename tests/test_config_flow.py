@@ -23,6 +23,7 @@ from custom_components.ha_govee_led_ble.const import (
     CONF_H6102_APP_HARDWARE,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
+    CONF_REGISTER_EFFECT_STUDIO,
     CONF_SHOW_EXPERIMENTAL_FEEDBACK,
     CONNECTION_MODE_HOLD,
     CONNECTION_MODE_RELEASE,
@@ -57,11 +58,57 @@ def mock_manual_validation():
 
 
 async def _init(hass, source, data=None):
-    return await hass.config_entries.flow.async_init(DOMAIN, context={"source": source}, data=data)
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": source}, data=data)
+    return await _finish_studio_setup(hass, result)
 
 
 async def _confirm(hass, result):
-    return await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    confirmed = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    return await _finish_studio_setup(hass, confirmed)
+
+
+async def _finish_studio_setup(hass, result):
+    if result.get("step_id") == "effect_studio":
+        return await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_REGISTER_EFFECT_STUDIO: True})
+    return result
+
+
+@pytest.mark.parametrize(
+    ("source", "data"),
+    [
+        (config_entries.SOURCE_BLUETOOTH, SVC),
+        (config_entries.SOURCE_USER, {CONF_ADDRESS: SVC.address, CONF_MODEL: "H7025"}),
+        (config_entries.SOURCE_USER, {CONF_ADDRESS: SVC_H6102.address, CONF_MODEL: "H6102"}),
+    ],
+)
+async def test_new_devices_can_opt_out_of_studio_registration(hass: HomeAssistant, source, data):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": source}, data=data)
+    while result.get("step_id") in {"bluetooth_confirm", "experimental", "h6102_firmware"}:
+        assert not result.get("errors")
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    assert result["step_id"] == "effect_studio"
+    schema = result["data_schema"]
+    assert schema is not None
+    assert schema({}) == {CONF_REGISTER_EFFECT_STUDIO: True}
+    assert not hass.config_entries.async_entries(DOMAIN)
+    created = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_REGISTER_EFFECT_STUDIO: False})
+    assert created["type"] is FlowResultType.CREATE_ENTRY
+    assert created["result"].options == {CONF_REGISTER_EFFECT_STUDIO: False}
+    assert CONF_REGISTER_EFFECT_STUDIO not in created["data"]
+
+
+async def test_studio_registration_step_rechecks_duplicate_entry(hass: HomeAssistant):
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_USER},
+        data={CONF_ADDRESS: SVC.address, CONF_MODEL: "H617A"},
+    )
+    assert result["step_id"] == "effect_studio"
+    MockConfigEntry(domain=DOMAIN, unique_id=SVC.address).add_to_hass(hass)
+    duplicate = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_REGISTER_EFFECT_STUDIO: False})
+    assert duplicate["type"] is FlowResultType.ABORT
+    assert duplicate["reason"] == "already_configured"
 
 
 async def test_bluetooth_discovery(hass: HomeAssistant, mock_manual_validation):
@@ -277,6 +324,7 @@ async def test_user_step_creates_manual_h6102_entry_without_promoting_discovery(
     assert firmware["type"] is FlowResultType.FORM
     assert firmware["step_id"] == "h6102_firmware"
     result = await hass.config_entries.flow.async_configure(firmware["flow_id"], {})
+    result = await _finish_studio_setup(hass, result)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {CONF_MODEL: "H6102"}
     mock_manual_validation.assert_awaited_once_with(hass, SVC_H6102.address)
@@ -293,6 +341,7 @@ async def test_user_step_stores_valid_h6102_firmware(hass: HomeAssistant):
         firmware["flow_id"],
         {CONF_H6102_APP_FIRMWARE: "1.03.01", CONF_H6102_APP_HARDWARE: "1.00.03"},
     )
+    result = await _finish_studio_setup(hass, result)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
@@ -339,6 +388,7 @@ async def test_user_step_rejects_invalid_h6102_firmware(hass: HomeAssistant, fir
     assert not hass.config_entries.async_entries(DOMAIN)
 
     cleared = await hass.config_entries.flow.async_configure(invalid["flow_id"], {})
+    cleared = await _finish_studio_setup(hass, cleared)
 
     assert cleared["type"] is FlowResultType.CREATE_ENTRY
     assert cleared["data"] == {CONF_MODEL: "H6102"}
@@ -517,6 +567,7 @@ async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssist
     assert schema is not None
     assert [marker.schema for marker in schema.schema] == [
         CONF_CONNECTION_MODE,
+        CONF_REGISTER_EFFECT_STUDIO,
         *expected,
         CONF_PREFIX_EFFECT_NAMES,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS,
@@ -524,6 +575,7 @@ async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssist
     ]
     assert schema({}) == {
         CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
+        CONF_REGISTER_EFFECT_STUDIO: True,
         **dict.fromkeys(expected, True),
         CONF_PREFIX_EFFECT_NAMES: False,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,
@@ -531,23 +583,24 @@ async def test_options_flow_shows_supported_category_checkboxes(hass: HomeAssist
     }
 
 
-async def test_options_flow_persists_feedback_notice_opt_out(hass: HomeAssistant):
+@pytest.mark.parametrize("option", [CONF_REGISTER_EFFECT_STUDIO, CONF_SHOW_EXPERIMENTAL_FEEDBACK])
+async def test_options_flow_persists_panel_and_feedback_opt_out(hass: HomeAssistant, option):
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_MODEL: "H6125"}, unique_id="AA:BB:CC:DD:EE:FF")
     entry.add_to_hass(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     schema = result["data_schema"]
     assert schema is not None
     values = schema({})
-    assert values[CONF_SHOW_EXPERIMENTAL_FEEDBACK] is True
-    values[CONF_SHOW_EXPERIMENTAL_FEEDBACK] = False
+    assert values[option] is True
+    values[option] = False
     with patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock):
         saved = await hass.config_entries.options.async_configure(result["flow_id"], values)
     assert saved["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_SHOW_EXPERIMENTAL_FEEDBACK] is False
+    assert entry.options[option] is False
     reopened = await hass.config_entries.options.async_init(entry.entry_id)
     reopened_schema = reopened["data_schema"]
     assert reopened_schema is not None
-    assert reopened_schema({})[CONF_SHOW_EXPERIMENTAL_FEEDBACK] is False
+    assert reopened_schema({})[option] is False
 
 
 async def test_options_flow_uses_stored_category_list_for_checkbox_defaults(hass: HomeAssistant):
@@ -565,6 +618,7 @@ async def test_options_flow_uses_stored_category_list_for_checkbox_defaults(hass
     assert schema is not None
     assert schema({}) == {
         CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
+        CONF_REGISTER_EFFECT_STUDIO: True,
         "scenes": True,
         "video": False,
         "effects": False,
@@ -631,6 +685,7 @@ async def test_options_flow_does_not_offer_hold_without_readable_state(hass: Hom
         saved = await hass.config_entries.options.async_configure(
             result["flow_id"],
             {
+                CONF_REGISTER_EFFECT_STUDIO: True,
                 "scenes": True,
                 "effects": False,
                 "multi_layered": True,
@@ -695,6 +750,7 @@ async def test_reconfigure_preserves_entry_identity_and_clears_effect_options(ha
             CONF_EFFECT_CATEGORIES: ["scenes", "effects"],
             CONF_PREFIX_EFFECT_NAMES: True,
             CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True,
+            CONF_REGISTER_EFFECT_STUDIO: False,
         },
         unique_id=SVC_H617E.address,
     )
@@ -718,7 +774,7 @@ async def test_reconfigure_preserves_entry_identity_and_clears_effect_options(ha
     assert entry.unique_id == SVC_H617E.address
     assert entry.title == "Govee H617E"
     assert entry.data == {CONF_MODEL: "H617E"}
-    assert entry.options == {}
+    assert entry.options == {CONF_REGISTER_EFFECT_STUDIO: False}
     reload_entry.assert_called_once_with(entry.entry_id)
 
 
@@ -824,6 +880,7 @@ async def test_options_flow_saves_ordered_studio_categories(hass: HomeAssistant)
             result["flow_id"],
             {
                 CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
+                CONF_REGISTER_EFFECT_STUDIO: True,
                 "scenes": True,
                 "video": False,
                 "effects": False,
@@ -836,6 +893,7 @@ async def test_options_flow_saves_ordered_studio_categories(hass: HomeAssistant)
     assert saved["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {
         CONF_CONNECTION_MODE: CONNECTION_MODE_RELEASE,
+        CONF_REGISTER_EFFECT_STUDIO: True,
         CONF_EFFECT_CATEGORIES: ["scenes", "reactive"],
         CONF_PREFIX_EFFECT_NAMES: False,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: True,
@@ -852,6 +910,7 @@ async def test_options_flow_persists_prefix_preference(hass: HomeAssistant):
             result["flow_id"],
             {
                 CONF_CONNECTION_MODE: CONNECTION_MODE_HOLD,
+                CONF_REGISTER_EFFECT_STUDIO: True,
                 "video": True,
                 "scenes": True,
                 "effects": False,
@@ -865,6 +924,7 @@ async def test_options_flow_persists_prefix_preference(hass: HomeAssistant):
     assert saved["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {
         CONF_CONNECTION_MODE: CONNECTION_MODE_HOLD,
+        CONF_REGISTER_EFFECT_STUDIO: True,
         CONF_EFFECT_CATEGORIES: ["video", "scenes"],
         CONF_PREFIX_EFFECT_NAMES: True,
         CONF_ALWAYS_INCLUDE_CUSTOM_EFFECTS: False,

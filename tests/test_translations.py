@@ -18,6 +18,7 @@ def test_effect_category_options_have_direct_labels():
 
     assert strings["options"]["step"]["init"]["data"] == {
         "connection_mode": "BLE connection mode",
+        "register_effect_studio": "Register Effect Studio panel",
         "scenes": "Scenes",
         "video": "Video",
         "effects": "Effects",
@@ -30,6 +31,7 @@ def test_effect_category_options_have_direct_labels():
     }
     assert set(strings["options"]["step"]["init"]["data_description"]) == {
         "connection_mode",
+        "register_effect_studio",
         "show_experimental_feedback",
     }
 

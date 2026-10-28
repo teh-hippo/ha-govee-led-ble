@@ -28,6 +28,7 @@ from .const import (
     CONF_H6102_PACT,
     CONF_MODEL,
     CONF_PREFIX_EFFECT_NAMES,
+    CONF_REGISTER_EFFECT_STUDIO,
     CONNECTION_MODE_RELEASE,
     DOMAIN,
     MODEL_PROFILES,
@@ -117,6 +118,7 @@ def _effect_studio_sidebar_visible(
     return any(
         entry.entry_id != excluding_entry_id
         and entry.disabled_by is None
+        and entry.options.get(CONF_REGISTER_EFFECT_STUDIO, True)
         and isinstance(model := entry.data.get(CONF_MODEL), str)
         and bool(supported_effect_categories(model))
         for entry in hass.config_entries.async_entries(DOMAIN)
@@ -284,7 +286,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeBLEConfigEntry) -> 
         hass,
         entry.unique_id,
         model,
-        configuration_url=editor_url(entry.entry_id) if supported_effect_categories(model) else None,
+        configuration_url=editor_url(entry.entry_id)
+        if supported_effect_categories(model) and entry.options.get(CONF_REGISTER_EFFECT_STUDIO, True)
+        else None,
         connection_mode=entry.options.get(CONF_CONNECTION_MODE, CONNECTION_MODE_RELEASE),
         effect_families=effect_families_from_options(model, entry.options),
         effect_categories=effect_categories_from_options(model, entry.options),

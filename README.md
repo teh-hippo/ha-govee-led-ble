@@ -50,6 +50,13 @@ To request support for another model or contribute protocol schemas, see [CONTRI
 
 Effect Studio adds a dedicated panel to the Home Assistant sidebar for lights that support scenes, custom DIY effects, reactive music modes, or camera video profiles.  Administrators can browse exact-SKU scene catalogues, customise palettes and layers, tune onboard microphone or camera settings, and preview changes live on the light before saving.
 
+**Register Effect Studio panel** is checked by default during setup and can be changed later in each light's integration options.
+The panel is shared by all users and remains registered while any enabled light has this option checked.
+Uncheck it on every light to unregister the panel; light controls, effects and saved data are unchanged.
+To hide the sidebar item only for yourself, use **Profile -> User preferences -> sidebar editor** instead.
+Home Assistant saves that preference per user across browser sessions and restarts.
+Studio is a custom panel, so it is not managed under **Settings -> Dashboards**.
+
 Saved effects are stored in Home Assistant and exposed directly through the standard `light` entity effect selector for use in dashboards, scripts, and automations.  Non-admin users can browse scenes and saved effects in read-only mode.
 
 Experimental devices show a compact **Experimental**, **Feedback** and **Hide** row.

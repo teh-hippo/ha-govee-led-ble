@@ -26,6 +26,16 @@
   },
   "config": {
     "step": {
+      "effect_studio": {
+        "title": "Effect Studio",
+        "description": "Choose whether this light registers the shared Effect Studio panel in Home Assistant.",
+        "data": {
+          "register_effect_studio": "Register Effect Studio panel"
+        },
+        "data_description": {
+          "register_effect_studio": "Registers one shared panel for all users while any enabled light has this option checked.  To hide it only for yourself, use your Home Assistant profile's sidebar settings.  Light controls and effects are unchanged."
+        }
+      },
       "experimental": {
         "title": "Experimental support",
         "description": "Support for this model has not yet been confirmed on actual hardware.  After trying the device, please share what works and what doesn't.  This will help other owners.\n\n[Feedback on GitHub]({feedback_url})"
@@ -223,9 +233,10 @@
     "step": {
       "init": {
         "title": "Device options",
-        "description": "Choose the BLE connection mode and, when available, which Effect Studio categories appear in the Studio and on the light entity.",
+        "description": "Choose the BLE connection mode, whether to register the shared Effect Studio panel and, when available, which categories appear in the Studio and on the light entity.",
         "data": {
           "connection_mode": "BLE connection mode",
+          "register_effect_studio": "Register Effect Studio panel",
           "scenes": "Scenes",
           "video": "Video",
           "effects": "Effects",
@@ -238,6 +249,7 @@
         },
         "data_description": {
           "connection_mode": "Release disconnects after use so the Govee app can connect. Hold keeps the BLE connection open and may prevent the app from connecting.",
+          "register_effect_studio": "Registers one shared panel for all users while any enabled light has this option checked.  To hide it only for yourself, use your Home Assistant profile's sidebar settings.  Light controls and effects are unchanged.",
           "show_experimental_feedback": "Show the feedback notice in Effect Studio for this light.  Turning this off hides it for all users.  Hide in Studio dismisses it only for the current tab session."
         }
       }
