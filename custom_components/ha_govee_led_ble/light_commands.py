@@ -4,7 +4,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .const import ModelProfile, get_profile
+from .const import WHOLE_BULB_GRAMMARS, ModelProfile, get_profile
 from .generated_protocol_adapter import build_colour_temperature, build_segment_colour, parse_command, table_kelvin_rgb
 from .generated_protocol_adapter import (
     build_segment_brightness as build_segment_brightness_mask,
@@ -133,7 +133,7 @@ def kelvin_companion_rgb(kelvin: int, profile: ModelProfile) -> tuple[int, int, 
     return (
         table_kelvin_rgb(kelvin)
         if profile.kelvin_companion_uses_table
-        or profile.command_grammar == "H601C"
+        or profile.command_grammar in WHOLE_BULB_GRAMMARS
         or profile.kelvin_direct_rgb == (255, 255, 255)
         else kelvin_to_rgb(kelvin)
     )
@@ -250,16 +250,16 @@ def parse_static_write(
                 if kelvin
                 else None,
             )
-    if profile.command_grammar == "H601C":
+    if profile.command_grammar in WHOLE_BULB_GRAMMARS:
         if not generated.is_static:
             return None
         detail = generated.body.detail
         rgb = (int(detail.rgb.red), int(detail.rgb.green), int(detail.rgb.blue))
         kelvin = int(detail.kelvin)
         if kelvin and rgb != (255, 255, 255):
-            raise ValueError("H601C Kelvin requires direct white RGB")
+            raise ValueError(f"{profile.command_grammar} Kelvin requires direct white RGB")
         if kelvin and (kelvin - 2700) % 100:
-            raise ValueError("H601C Kelvin must use 100 K steps from 2700 to 6500")
+            raise ValueError(f"{profile.command_grammar} Kelvin must use 100 K steps from 2700 to 6500")
         return ParsedStaticWrite(
             operation=int(generated.body.sub_mode),
             segment_mask=whole_device_mask,

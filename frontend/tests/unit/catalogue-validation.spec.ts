@@ -19,6 +19,7 @@ test("canonical backend catalogue decodes through the production catalogue valid
   expect(decoded.models.H6199.video_controls?.saturation_min).toBe(0);
   expect(Object.keys(decoded.models)).toEqual([
     "H1A42",
+    "H600A",
     "H601C",
     "H6046",
     "H6072",

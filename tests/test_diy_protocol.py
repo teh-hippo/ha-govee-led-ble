@@ -122,6 +122,29 @@ def test_activation_encoder_uses_diy_code_800() -> None:
     assert parsed.body.sub_body.code == 800
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        SingleEffect(0, 0, 0, ((255, 0, 0),)),
+        MultiEffect(tuple(EffectPair(family, 0) for family in (0, 1, 2, 5)), 100, ((1, 2, 3),) * 8),
+    ],
+)
+def test_h600a_basic_and_four_layer_diy_round_trip(content):
+    compiled = compile_effect(LibraryItem.new("Bulb DIY", content), "H600A", diy_code=24)
+    assert decode_effect_frames(compiled.upload_packets, "H600A", compiled.upload_transport) == content
+    activation = parse_command(compiled.activation_packet, "H600A")
+    assert activation.body.sub_mode.name == "diy" and activation.body.detail.code == 24
+    assert reassemble_a3(compiled.upload_packets)[2] == 4
+    invalid = (
+        SingleEffect(4, 0, 50, ((1, 2, 3),)),
+        SingleEffect(0, 1, 50, ((1, 2, 3),)),
+        SingleEffect(0, 0, 50, ((1, 2, 3),) * 9),
+    )
+    for rejected in invalid:
+        with pytest.raises(ValueError):
+            compile_effect(LibraryItem.new("Unsupported bulb DIY", rejected), "H600A", diy_code=24)
+
+
 def test_target_catalogue_limits_do_not_follow_shared_grammar(effect_catalogue_targets, monkeypatch):
     broad, narrow = effect_catalogue_targets
     palette = ((255, 0, 0), (0, 0, 255))

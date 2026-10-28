@@ -1,4 +1,4 @@
-"""H601C Android 7.6.01 STATIC DERIVED vectors; none are BLE captures."""
+"""Whole-bulb static-derived vectors and shared runtime checks; none are BLE captures."""
 
 from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
@@ -174,8 +174,9 @@ def test_opaque_modes_tails_and_malformed_envelopes():
 
 
 @pytest.fixture
-def device(hass, monkeypatch):
-    monkeypatch.setitem(MODEL_PROFILES, "H9901", PROFILE)
+def device(hass, monkeypatch, request):
+    profile = MODEL_PROFILES["H600A"] if getattr(request, "param", "H601C") == "H600A" else PROFILE
+    monkeypatch.setitem(MODEL_PROFILES, "H9901", profile)
     device = GoveeBLECoordinator(hass, "11:22:33:44:55:66", "H9901", configuration_url="test")
     client = MagicMock(is_connected=True, write_gatt_char=AsyncMock(), disconnect=AsyncMock())
     device._client = client
@@ -184,6 +185,7 @@ def device(hass, monkeypatch):
     return device
 
 
+@pytest.mark.parametrize("device", ["H601C", "H600A"], indirect=True)
 async def test_real_coordinator_queries_static_state_and_fresh_verification(device, virtual_clock):
     replies = {
         build_power_query(profile=PROFILE): "aa0101",
@@ -228,6 +230,7 @@ async def test_real_writer_expectations_rgb_kelvin_transition_and_rejections(dev
     assert device.capture_effect_control_state() == before
 
 
+@pytest.mark.parametrize("device", ["H601C", "H600A"], indirect=True)
 async def test_unsolicited_kelvin_demotes_old_rgb_and_preserves_companion_decode_only(device):
     device._notify_callback(None, bytearray(frame("aa050dff00000000000000")))
     assert device.rgb_color_source == "observed"
@@ -243,6 +246,7 @@ async def test_unsolicited_kelvin_demotes_old_rgb_and_preserves_companion_decode
         require_profile_packet(frame("33050dffffff0abe000000"), PROFILE)
 
 
+@pytest.mark.parametrize("device", ["H601C", "H600A"], indirect=True)
 async def test_entity_static_controls_require_fresh_reply_and_preserve_received_state(device, monkeypatch):
     light = GoveeBLELight(device)
     light.async_write_ha_state = MagicMock()
@@ -350,3 +354,15 @@ def test_h601c_scene_and_diy_vectors_status_and_upload_admission():
     assert diy_status is not None
     parsed_diy = parse_color_mode(diy_status.generated, "H601C", profile=status_profile)
     assert parsed_diy.mode is ParsedMode.DIY and parsed_diy.diy_code == 24
+
+
+def test_h600a_kelvin_grid_and_whole_bulb_admission():
+    profile = MODEL_PROFILES["H600A"]
+    assert build_color_temp(2750, "H600A") == build_color_temp(2800, "H600A")
+    for kelvin in range(2700, 6501, 100):
+        require_profile_packet(build_color_temp(kelvin, "H600A"), profile)
+    with pytest.raises(ValueError, match="whole-device"):
+        build_segment_colour(2, 1, 2, 3, "H600A")
+    for invalid in ("33050dffffff0fa0000000", "33050501", "330400"):
+        with pytest.raises(ValueError):
+            require_profile_packet(frame(invalid), profile)

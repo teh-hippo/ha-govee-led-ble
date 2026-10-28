@@ -130,6 +130,7 @@ async def test_authenticated_users_can_read_contracts(
     assert set(catalogue["result"]["catalogue"]["models"]) == {
         "H6046",
         "H1A42",
+        "H600A",
         "H601C",
         "H6072",
         "H6076",

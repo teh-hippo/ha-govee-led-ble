@@ -10,6 +10,7 @@ from bleak import BleakClient
 
 from .const import (
     PERCENT_BRIGHTNESS_STATUS_GRAMMARS,
+    WHOLE_BULB_GRAMMARS,
     ReadDomain,
     get_profile,
 )
@@ -277,7 +278,7 @@ class _NotificationMixin(_CoordinatorBase):
                 if static_values.get("color_temp_kelvin") is not None:
                     self._static_rgb_known = False
                 if (
-                    self.profile.status_grammar == "H601C"
+                    self.profile.status_grammar in WHOLE_BULB_GRAMMARS
                     and parsed.color_temp_kelvin is not None
                     and self.rgb_color_source == "observed"
                 ):

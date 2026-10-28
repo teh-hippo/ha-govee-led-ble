@@ -14,6 +14,7 @@ Each device protocol is captured in [Kaitai Struct](https://kaitai.io/) (`.ksy`)
 | Model | Status | Owner evidence or confirmation thread |
 | --- | --- | --- |
 | **H1A42** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/429) |
+| **H600A** | 🚧 Experimental | [Awaiting confirmation](https://github.com/teh-hippo/ha-govee-led-ble/issues/494) |
 | **H601C** | ✅ Supported | [Corrected owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/329#issuecomment-6117023962) |
 | **H6046** | ✅ Supported | [Owner results](https://github.com/teh-hippo/ha-govee-led-ble/issues/481#issuecomment-6445397881) |
 | **H6072** | 🚧 Experimental | [Awaiting confirmation](https://github.com/teh-hippo/ha-govee-led-ble/issues/486) |

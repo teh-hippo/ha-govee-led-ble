@@ -12,6 +12,9 @@ from custom_components.ha_govee_led_ble.generated_protocol_adapter import (
     build_h617a_scene,
     build_scene_activation,
     parse_scene_body_param,
+    parse_scene_type1_body_param,
+    require_profile_packet,
+    serialize_scene_type1_body_param,
 )
 from custom_components.ha_govee_led_ble.layered_scene import CatalogueRef
 from custom_components.ha_govee_led_ble.layered_scene_decoder import decode_layered_scene
@@ -32,7 +35,7 @@ from custom_components.ha_govee_led_ble.scenes import (
     _load_speed,
     scene_selector_code,
 )
-from custom_components.ha_govee_led_ble.transport import fragment_a3
+from custom_components.ha_govee_led_ble.transport import fragment_a3, reassemble_a3
 
 
 def _decode_layered(payload: bytes):
@@ -104,6 +107,26 @@ def test_h6179_scene_catalogue_uses_unique_one_byte_selectors() -> None:
         for scene, selector in zip(entries, selectors, strict=True)
     )
     require_native_scenes("H6179", get_profile("H6179"))
+
+
+def test_h600a_complete_catalogue_uses_type1_uploads_and_16_bit_selectors():
+    profile = get_profile("H600A")
+    entries = SCENE_ENTRIES["H600A"]
+    assert Counter(entry.scene_type for entry in entries) == {0: 4, 1: 59}
+    for scene in entries:
+        packets = build_native_scene_packets("H600A", scene)
+        assert packets[-1] == build_scene_activation("H600A", scene.code)
+        assert scene.speed is None
+        for packet in packets:
+            require_profile_packet(packet, profile)
+        if scene.scene_type == 0:
+            assert len(packets) == 1
+        else:
+            source = base64.b64decode(scene.param)
+            parsed = parse_scene_type1_body_param(source)
+            canonical = serialize_scene_type1_body_param(parsed)
+            assert canonical.startswith(source) and not any(canonical[len(source) :])
+            assert reassemble_a3(packets[:-1]).endswith(canonical)
 
 
 def test_h617e_uses_its_exact_catalogue_with_the_shared_wire_adapter():

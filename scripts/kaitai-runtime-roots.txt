@@ -32,6 +32,9 @@ speculative/h6072_music_ack
 speculative/h7025_music_write
 speculative/h7025_music_body
 speculative/h7025_status_reply
+speculative/h600a_command_write
+speculative/h600a_status_reply
+speculative/h600a_command_ack
 speculative/h601c_command_write
 speculative/h601c_status_reply
 speculative/h60a1_status_reply
