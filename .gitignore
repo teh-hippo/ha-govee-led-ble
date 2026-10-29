@@ -9,6 +9,7 @@ __pycache__/
 .build/
 dist/
 frontend/node_modules/
+.claude/
 /custom_components/ha_govee_led_ble/generated_protocol/
 /frontend/tests/fixtures/backend-contracts.json
 /custom_components/ha_govee_led_ble/frontend/effect-studio-bootstrap.js
