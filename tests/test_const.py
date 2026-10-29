@@ -125,6 +125,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.SUPPORTED
     } == {
         "H1A42",
+        "H600A",
         "H601C",
         "H6046",
         "H6076",
@@ -145,7 +146,7 @@ def test_support_quality_has_only_supported_and_experimental_states():
     }
     assert {
         model for model, profile in MODEL_PROFILES.items() if profile.support_quality is SupportQuality.EXPERIMENTAL
-    } == {"H600A", "H6072", "H6179", "H7025"}
+    } == {"H6072", "H6179", "H7025"}
 
 
 def test_h6125_is_an_exact_supported_profile_on_the_shared_dreamcolor_route():

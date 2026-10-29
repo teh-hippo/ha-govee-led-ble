@@ -693,7 +693,7 @@ _H6072_PROFILE = ModelProfile(
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "H600A": ModelProfile(
         "H600A Smart LED Bulb",
-        support_quality=SupportQuality.EXPERIMENTAL,
+        support_quality=SupportQuality.SUPPORTED,
         confirmation_issue=494,
         command_grammar="H600A",
         command_ack_grammar="H600A",
