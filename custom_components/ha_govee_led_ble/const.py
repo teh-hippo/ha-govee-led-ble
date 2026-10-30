@@ -1708,8 +1708,6 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
         setup_required_read_domains=frozenset(
             {
                 ReadDomain.POWER,
-                ReadDomain.BRIGHTNESS,
-                ReadDomain.COLOUR_MODE,
             }
         ),
         supports_rgb=True,
