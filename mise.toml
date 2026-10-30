@@ -1,4 +1,4 @@
 [tools]
-node = "24.22.1"
+node = "24.22.2"
 # Official compiler used only to generate and verify committed Python protocol modules.
 "github:kaitai-io/kaitai_struct_compiler" = "0.11"
